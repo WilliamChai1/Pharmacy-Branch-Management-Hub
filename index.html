@@ -24,9 +24,15 @@
         <div class="bg-white p-8 rounded-lg shadow-xl w-96 text-center">
             <i class="fa-solid fa-staff-snake text-5xl text-blue-600 mb-4"></i>
             <h2 class="text-2xl font-bold mb-2">Hub Login</h2>
-            <p class="text-gray-500 text-sm mb-6">Enter your Master PIN to access the hub.</p>
-            <input type="password" id="loginPin" class="w-full border border-gray-300 rounded px-4 py-2 mb-4 text-center text-xl tracking-widest focus:ring-2 focus:ring-blue-500 outline-none" placeholder="••••">
-            <button onclick="login()" class="w-full bg-blue-600 text-white font-bold py-2 rounded hover:bg-blue-700 transition">Access Hub</button>
+            <p class="text-gray-500 text-sm mb-6">Enter your credentials to access the hub.</p>
+            
+            <input type="text" id="loginUsername" class="w-full border border-gray-300 rounded px-4 py-2 mb-3 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Username">
+            <input type="password" id="loginPassword" class="w-full border border-gray-300 rounded px-4 py-2 mb-4 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Password">
+            
+            <button onclick="login()" id="loginBtn" class="w-full bg-blue-600 text-white font-bold py-2 rounded hover:bg-blue-700 transition flex justify-center items-center">
+                <span>Login</span>
+            </button>
+            <p id="loginError" class="text-red-500 text-sm mt-3 hidden"></p>
         </div>
     </div>
 
@@ -38,6 +44,7 @@
                 <h1 class="text-xl font-bold tracking-wide">Branch Management Hub</h1>
             </div>
             <div class="flex items-center space-x-4">
+                <span id="loggedInUser" class="text-sm text-blue-200 font-medium"></span>
                 <select id="branchSelector" class="text-sm text-gray-900 px-3 py-1 rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="">Select Branch...</option>
                 </select>
@@ -58,9 +65,6 @@
                 </button>
                 <button onclick="switchTab('inventory')" id="tab-inventory" class="tab-btn border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2">
                     <i class="fa-solid fa-boxes-stacked"></i><span>Inventory Engine</span>
-                </button>
-                <button onclick="switchTab('settings')" id="tab-settings" class="tab-btn border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ml-auto">
-                    <i class="fa-solid fa-gear"></i><span>Settings & Sync</span>
                 </button>
             </nav>
         </div>
@@ -86,160 +90,170 @@
             </div>
         </div>
 
-        <!-- MODULE 4: Settings & Sync -->
-        <div id="content-settings" class="tab-content hidden">
+        <!-- MODULE 2: Outlet 5S Video Audit -->
+        <div id="content-audit" class="tab-content hidden">
             <div class="bg-white rounded-lg shadow p-6">
-                <h2 class="text-lg font-semibold mb-4">Hub Configuration</h2>
+                <h2 class="text-lg font-semibold mb-2">AI-Powered 5S Video Audit</h2>
+                <p class="text-gray-600 text-sm mb-4">Upload a walkthrough video of the pharmacy. The Gemini Multimodal Vision model will analyze it for 5S compliance.</p>
                 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <!-- Google Sheets Sync -->
-                    <div class="border rounded p-4 bg-gray-50">
-                        <h3 class="font-medium text-gray-800 mb-2"><i class="fa-brands fa-google text-blue-500"></i> Google Sheets Database</h3>
-                        <p class="text-xs text-gray-500 mb-4">Sync staff nicknames and branch hours from your master Google Sheet.</p>
-                        
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Google Sheets API Key</label>
-                        <input type="password" id="gsApiKey" class="w-full border rounded px-3 py-2 mb-3 text-sm" placeholder="AIzaSy...">
-                        
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Spreadsheet ID</label>
-                        <input type="text" id="gsSheetId" class="w-full border rounded px-3 py-2 mb-4 text-sm" placeholder="1BxiMVs0XRY...">
-                        
-                        <button onclick="syncGoogleSheet()" class="w-full bg-green-600 text-white text-sm font-bold py-2 rounded hover:bg-green-700 transition">
-                            <i class="fa-solid fa-rotate"></i> Sync Data Now
-                        </button>
-                        <p id="syncStatus" class="text-xs text-center mt-2 font-medium"></p>
-                    </div>
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Gemini API Key (Required for AI Audit)</label>
+                    <input type="password" id="geminiApiKey" class="w-full md:w-1/2 border rounded px-3 py-2 text-sm" placeholder="Enter Gemini API Key">
+                </div>
 
-                    <!-- Gemini API -->
-                    <div class="border rounded p-4 bg-gray-50">
-                        <h3 class="font-medium text-gray-800 mb-2"><i class="fa-solid fa-brain text-purple-500"></i> Gemini AI Configuration</h3>
-                        <p class="text-xs text-gray-500 mb-4">Required for the 5S Video Audit module.</p>
-                        
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Gemini API Key</label>
-                        <input type="password" id="geminiApiKey" class="w-full border rounded px-3 py-2 mb-4 text-sm" placeholder="AIzaSy...">
-                        
-                        <button onclick="saveSettings()" class="w-full bg-blue-600 text-white text-sm font-bold py-2 rounded hover:bg-blue-700 transition">
-                            Save Keys Securely
-                        </button>
-                    </div>
+                <div id="auditDropZone" class="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:bg-gray-50 transition cursor-pointer mb-6">
+                    <i class="fa-solid fa-cloud-arrow-up text-4xl text-blue-500 mb-3"></i>
+                    <p class="text-gray-600 font-medium">Drag & drop walkthrough video (MP4, MOV)</p>
+                    <input type="file" id="auditInput" accept="video/*" class="hidden">
+                </div>
+
+                <div id="auditProgress" class="hidden bg-gray-50 rounded-lg p-6 border border-gray-200 text-center">
+                    <div class="loader border-4 border-gray-200 rounded-full w-12 h-12 mx-auto mb-4"></div>
+                    <h3 id="auditStatusText" class="text-lg font-medium text-gray-800">Uploading video...</h3>
+                </div>
+
+                <div id="auditReportContainer" class="hidden mt-6">
+                    <h3 class="text-xl font-bold text-gray-800 border-b pb-2 mb-4">5S Audit Report</h3>
+                    <div id="auditReportContent" class="prose max-w-none text-gray-700"></div>
                 </div>
             </div>
         </div>
 
-        <!-- (Keep Module 2 and 3 HTML exactly as they were in the previous code) -->
-        <div id="content-audit" class="tab-content hidden">... (Same as previous) ...</div>
-        <div id="content-inventory" class="tab-content hidden">... (Same as previous) ...</div>
+        <!-- MODULE 3: Inventory Replenishment Engine -->
+        <div id="content-inventory" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-lg font-semibold mb-2">Xilnex CSV to PO ZIP Engine</h2>
+                <p class="text-gray-600 text-sm mb-6">Upload your Xilnex 3-month sales export. The engine calculates order quantities based on a 2-month stock cycle + 1-week delivery buffer.</p>
+
+                <div id="inventoryDropZone" class="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:bg-gray-50 transition cursor-pointer">
+                    <i class="fa-solid fa-file-csv text-4xl text-purple-600 mb-3"></i>
+                    <p class="text-gray-600 font-medium">Drag & drop Xilnex CSV here</p>
+                    <input type="file" id="inventoryInput" accept=".csv" class="hidden">
+                </div>
+            </div>
+        </div>
 
     </main>
 
     <script>
-        // --- AUTHENTICATION & STATE MANAGEMENT ---
-        const MASTER_PIN = "2026"; // Change this to your desired PIN
-        let appData = {
-            branches: {}, // { "Branch A": { startTime: "0730" } }
-            staff: {}     // { "Branch A": { "WILLIAM": { id: "PMG001", name: "WILLIAM CHONG" } } }
-        };
+        // ==========================================
+        // 🛑 SYSTEM CONFIGURATION 🛑
+        // PASTE YOUR GOOGLE SHEETS DETAILS HERE
+        // ==========================================
+        const GOOGLE_SHEETS_API_KEY = "AIzaSyAfJqs6YnY5J_URsuvmSMi8WM3BckVwKY4"; 
+        const SPREADSHEET_ID = "1HVpF66K59fbNOmyvouih5knTPMBwoCZ_lGLczD5QaB0/edit?gid=365382016#gid=365382016";
+        // ==========================================
 
-        function login() {
-            const pin = document.getElementById('loginPin').value;
-            if (pin === MASTER_PIN) {
-                document.getElementById('authOverlay').classList.add('hidden');
-                document.getElementById('mainHeader').classList.remove('hidden');
-                document.getElementById('mainNav').classList.remove('hidden');
-                document.getElementById('mainContent').classList.remove('hidden');
-                loadSettings();
-                loadAppData();
-            } else {
-                alert("Invalid PIN");
-            }
-        }
+        let appData = { branches: {}, staff: {}, currentUser: null };
 
-        function logout() {
-            location.reload();
-        }
+        // --- AUTHENTICATION & GOOGLE SHEETS SYNC ---
+        async function login() {
+            const user = document.getElementById('loginUsername').value.trim();
+            const pass = document.getElementById('loginPassword').value.trim();
+            const btn = document.getElementById('loginBtn');
+            const errorEl = document.getElementById('loginError');
 
-        // --- SETTINGS & GOOGLE SHEETS SYNC ---
-        function saveSettings() {
-            localStorage.setItem('gsApiKey', document.getElementById('gsApiKey').value);
-            localStorage.setItem('gsSheetId', document.getElementById('gsSheetId').value);
-            localStorage.setItem('geminiApiKey', document.getElementById('geminiApiKey').value);
-            alert("Settings saved securely to browser storage.");
-        }
-
-        function loadSettings() {
-            document.getElementById('gsApiKey').value = localStorage.getItem('gsApiKey') || '';
-            document.getElementById('gsSheetId').value = localStorage.getItem('gsSheetId') || '';
-            document.getElementById('geminiApiKey').value = localStorage.getItem('geminiApiKey') || '';
-        }
-
-        async function syncGoogleSheet() {
-            const apiKey = document.getElementById('gsApiKey').value;
-            const sheetId = document.getElementById('gsSheetId').value;
-            const statusEl = document.getElementById('syncStatus');
-
-            if (!apiKey || !sheetId) {
-                alert("Please enter both Google Sheets API Key and Spreadsheet ID.");
+            if (!user || !pass) {
+                showError("Please enter username and password.");
                 return;
             }
 
-            statusEl.innerText = "Syncing...";
-            statusEl.className = "text-xs text-center mt-2 font-medium text-blue-600";
+            if (GOOGLE_SHEETS_API_KEY === "YOUR_GOOGLE_API_KEY_HERE") {
+                showError("System Error: Google Sheets API Key not configured in code.");
+                return;
+            }
+
+            btn.innerHTML = '<div class="loader border-2 border-white rounded-full w-5 h-5 mr-2"></div> Authenticating...';
+            btn.disabled = true;
+            errorEl.classList.add('hidden');
 
             try {
-                // Fetch Branches Tab
-                const branchRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Branches!A2:B?key=${apiKey}`);
-                const branchData = await branchRes.json();
+                // 1. Fetch Users Tab
+                const userRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Users!A2:C?key=${GOOGLE_SHEETS_API_KEY}`);
+                const userData = await userRes.json();
+
+                if (userData.error) throw new Error("Database connection failed. Check API Key/Sheet ID.");
+
+                // 2. Verify Credentials
+                let validUser = null;
+                if (userData.values) {
+                    validUser = userData.values.find(row => row[0] === user && row[1] === pass);
+                }
+
+                if (!validUser) {
+                    throw new Error("Invalid Username or Password.");
+                }
+
+                // 3. If valid, fetch Branches and Staff data immediately
+                btn.innerHTML = '<div class="loader border-2 border-white rounded-full w-5 h-5 mr-2"></div> Syncing Data...';
                 
-                // Fetch Staff Tab
-                const staffRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Staff!A2:D?key=${apiKey}`);
+                const [branchRes, staffRes] = await Promise.all([
+                    fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Branches!A2:B?key=${GOOGLE_SHEETS_API_KEY}`),
+                    fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Staff!A2:D?key=${GOOGLE_SHEETS_API_KEY}`)
+                ]);
+
+                const branchData = await branchRes.json();
                 const staffData = await staffRes.json();
 
-                if (branchData.error || staffData.error) throw new Error("API Error. Check your keys and sheet names.");
-
-                // Process Data
+                // Process Branches
                 let newBranches = {};
+                if (branchData.values) {
+                    branchData.values.forEach(row => {
+                        if(row[0]) newBranches[row[0]] = { startTime: row[1] || "0730" };
+                    });
+                }
+
+                // Process Staff
                 let newStaff = {};
+                if (staffData.values) {
+                    staffData.values.forEach(row => {
+                        const branch = row[0];
+                        const nick = (row[1] || "").toUpperCase();
+                        if (!newStaff[branch]) newStaff[branch] = {};
+                        newStaff[branch][nick] = { id: row[2], name: row[3] };
+                    });
+                }
 
-                branchData.values.forEach(row => {
-                    if(row[0]) newBranches[row[0]] = { startTime: row[1] || "0730" };
-                });
-
-                staffData.values.forEach(row => {
-                    const branch = row[0];
-                    const nick = (row[1] || "").toUpperCase();
-                    const empNo = row[2];
-                    const empName = row[3];
-                    
-                    if (!newStaff[branch]) newStaff[branch] = {};
-                    newStaff[branch][nick] = { id: empNo, name: empName };
-                });
-
-                // Save to LocalStorage
+                // Save to memory
                 appData.branches = newBranches;
                 appData.staff = newStaff;
-                localStorage.setItem('pharmacyAppData', JSON.stringify(appData));
+                appData.currentUser = { username: validUser[0], assignedBranch: validUser[2] };
 
-                statusEl.innerText = "Sync Successful!";
-                statusEl.className = "text-xs text-center mt-2 font-medium text-green-600";
-                
-                populateBranchSelector();
+                // Unlock UI
+                unlockApp();
 
             } catch (error) {
-                statusEl.innerText = "Sync Failed: " + error.message;
-                statusEl.className = "text-xs text-center mt-2 font-medium text-red-600";
+                showError(error.message);
+                btn.innerHTML = 'Login';
+                btn.disabled = false;
             }
         }
 
-        function loadAppData() {
-            const saved = localStorage.getItem('pharmacyAppData');
-            if (saved) {
-                appData = JSON.parse(saved);
-                populateBranchSelector();
-            }
+        function showError(msg) {
+            const errorEl = document.getElementById('loginError');
+            errorEl.innerText = msg;
+            errorEl.classList.remove('hidden');
+        }
+
+        function unlockApp() {
+            document.getElementById('authOverlay').classList.add('hidden');
+            document.getElementById('mainHeader').classList.remove('hidden');
+            document.getElementById('mainNav').classList.remove('hidden');
+            document.getElementById('mainContent').classList.remove('hidden');
+            
+            document.getElementById('loggedInUser').innerText = `Welcome, ${appData.currentUser.username}`;
+            
+            populateBranchSelector();
+        }
+
+        function logout() {
+            location.reload(); // Simple reload clears memory and resets to login screen
         }
 
         function populateBranchSelector() {
             const selector = document.getElementById('branchSelector');
             selector.innerHTML = '<option value="">Select Branch...</option>';
+            
             Object.keys(appData.branches).forEach(branch => {
                 const opt = document.createElement('option');
                 opt.value = branch;
@@ -247,56 +261,52 @@
                 selector.appendChild(opt);
             });
 
-            selector.addEventListener('change', (e) => {
-                const branch = e.target.value;
-                const badge = document.getElementById('activeBranchBadge');
-                if (branch) {
-                    badge.innerText = `Active: ${branch}`;
-                    badge.className = "bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded border border-green-400";
-                } else {
-                    badge.innerText = "No Branch Selected";
-                    badge.className = "bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded border border-red-400";
-                }
-            });
+            // Auto-select branch if user is assigned to a specific one
+            if (appData.currentUser.assignedBranch && appData.currentUser.assignedBranch !== "ALL") {
+                selector.value = appData.currentUser.assignedBranch;
+                updateBranchBadge(appData.currentUser.assignedBranch);
+            }
+
+            selector.addEventListener('change', (e) => updateBranchBadge(e.target.value));
+        }
+
+        function updateBranchBadge(branch) {
+            const badge = document.getElementById('activeBranchBadge');
+            if (branch) {
+                badge.innerText = `Active: ${branch}`;
+                badge.className = "bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded border border-green-400";
+            } else {
+                badge.innerText = "No Branch Selected";
+                badge.className = "bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded border border-red-400";
+            }
         }
 
         // --- DYNAMIC TIME MAPPING GENERATOR ---
         function generateTimeMapping(startTimeStr) {
-            // startTimeStr e.g., "0730" or "0900"
             let startHour = parseInt(startTimeStr.substring(0, 2));
             let startMin = startTimeStr.substring(2, 4);
-            
             let startTimes = {};
             let endTimes = {};
             
-            // Map columns 2 to 15 dynamically based on branch start time
             for(let c = 2; c <= 15; c++) {
                 let currentH = (startHour + (c - 2)).toString().padStart(2, '0');
                 let nextH = (startHour + (c - 1)).toString().padStart(2, '0');
-                
                 startTimes[c] = `${currentH}${startMin}`;
                 endTimes[c] = `${nextH}${startMin}`;
             }
             return { startTimes, endTimes };
         }
 
-        // --- MODULE 1: ROSTER TO RYMNET (Dynamic Branch Version) ---
+        // --- MODULE 1: ROSTER TO RYMNET ---
         function processRoster(file) {
             const selectedBranch = document.getElementById('branchSelector').value;
-            if (!selectedBranch) {
-                alert("Please select a branch from the top right dropdown first.");
-                return;
-            }
+            if (!selectedBranch) return alert("Please select a branch from the top right dropdown first.");
 
             const branchStaff = appData.staff[selectedBranch];
             const branchStartTime = appData.branches[selectedBranch].startTime;
             
-            if (!branchStaff) {
-                alert("No staff data found for this branch. Please sync Google Sheets.");
-                return;
-            }
+            if (!branchStaff) return alert("No staff data found for this branch in Google Sheets.");
 
-            // Generate dynamic time mapping for this specific branch
             const { startTimes, endTimes } = generateTimeMapping(branchStartTime);
 
             Papa.parse(file, {
@@ -309,7 +319,6 @@
                         let targetMonth = null;
                         let targetYear = null;
 
-                        // Parse Visual Schedule
                         data.forEach(row => {
                             const col0 = (row[0] || "").toString().trim().toUpperCase();
                             const dateMatch = col0.match(/(\d{2})\.(\d{2})\.(\d{4})/);
@@ -321,17 +330,13 @@
                                 scheduleData[currentParsedDate] = { isPH: false, shifts: {} };
                             }
                             
-                            if (col0.includes("PH") && currentParsedDate) {
-                                scheduleData[currentParsedDate].isPH = true;
-                            }
+                            if (col0.includes("PH") && currentParsedDate) scheduleData[currentParsedDate].isPH = true;
 
                             if (currentParsedDate) {
                                 const offCell = (row[1] || "").toString().toUpperCase();
                                 Object.keys(branchStaff).forEach(nick => {
                                     if (offCell.includes(nick)) {
-                                        if (!scheduleData[currentParsedDate].shifts[nick]) {
-                                            scheduleData[currentParsedDate].shifts[nick] = { off: true };
-                                        }
+                                        if (!scheduleData[currentParsedDate].shifts[nick]) scheduleData[currentParsedDate].shifts[nick] = { off: true };
                                     }
                                 });
 
@@ -353,12 +358,11 @@
 
                         if (!targetMonth || !targetYear) throw new Error("Could not detect dates in the format DD.MM.YYYY");
 
-                        // Generate Rymnet Format
                         const rymnetOutput = [];
                         const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
-                        
                         const headers = ["Employee No", "Employee Name"];
                         const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+                        
                         for (let d = 1; d <= daysInMonth; d++) {
                             const dateObj = new Date(targetYear, targetMonth - 1, d);
                             headers.push(`${d.toString().padStart(2, '0')} (${daysOfWeek[dateObj.getDay()]})`);
@@ -375,7 +379,7 @@
                                 const dateObj = new Date(targetYear, targetMonth - 1, d);
                                 const dateStr = `${targetYear}-${targetMonth.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
                                 
-                                if (dateObj.getDay() === 1) offCount = 0; // Reset on Monday
+                                if (dateObj.getDay() === 1) offCount = 0; 
 
                                 const dayData = scheduleData[dateStr];
 
@@ -391,8 +395,6 @@
                                         const end = shiftInfo.end;
                                         const hoursSpan = (end - start) + 1;
                                         const workHours = hoursSpan >= 8 ? 8 : 5;
-                                        
-                                        // Uses the dynamically generated times for this branch
                                         const shiftCode = `${workHours}H_${startTimes[start]}-${endTimes[end]}`;
                                         shiftRow.push(shiftCode);
                                         leaveRow.push("");
@@ -418,31 +420,135 @@
             });
         }
 
-        // Setup Drag and Drop
+        // --- MODULE 2: 5S VIDEO AUDIT ---
+        async function processVideoAudit(file) {
+            const apiKey = document.getElementById('geminiApiKey').value.trim();
+            if (!apiKey) return alert("Please enter your Gemini API Key first.");
+
+            const progressDiv = document.getElementById('auditProgress');
+            const statusText = document.getElementById('auditStatusText');
+            const reportContainer = document.getElementById('auditReportContainer');
+            const reportContent = document.getElementById('auditReportContent');
+
+            progressDiv.classList.remove('hidden');
+            reportContainer.classList.add('hidden');
+            document.getElementById('auditDropZone').classList.add('hidden');
+
+            try {
+                statusText.innerText = "Uploading video to Gemini...";
+                const uploadUrl = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`;
+                const uploadRes = await fetch(uploadUrl, {
+                    method: 'POST',
+                    headers: { 'X-Goog-Upload-Protocol': 'raw', 'X-Goog-Upload-Header-Content-Length': file.size.toString(), 'X-Goog-Upload-Header-Content-Type': file.type, 'Content-Type': file.type },
+                    body: file
+                });
+
+                if (!uploadRes.ok) throw new Error(`Upload failed: ${uploadRes.statusText}`);
+                const uploadData = await uploadRes.json();
+                const fileUri = uploadData.file.uri;
+                const fileName = uploadData.file.name;
+
+                statusText.innerText = "Processing video (this may take a few minutes)...";
+                let state = 'PROCESSING';
+                while (state === 'PROCESSING') {
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    const checkRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${apiKey}`);
+                    const checkData = await checkRes.json();
+                    state = checkData.state;
+                    if (state === 'FAILED') throw new Error("Gemini failed to process the video.");
+                }
+
+                statusText.innerText = "Analyzing 5S Compliance...";
+                const prompt = `You are a strict Pharmacy Branch Manager conducting a 5S audit. Analyze this walkthrough video. 1. Identify compliance. 2. Identify non-compliance. 3. Provide recommendations. Format in Markdown.`;
+
+                const generateUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`;
+                const genRes = await fetch(generateUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { fileData: { mimeType: file.type, fileUri: fileUri } }] }] })
+                });
+
+                if (!genRes.ok) throw new Error("Failed to generate audit report.");
+                const genData = await genRes.json();
+                
+                reportContent.innerHTML = marked.parse(genData.candidates[0].content.parts[0].text);
+                progressDiv.classList.add('hidden');
+                reportContainer.classList.remove('hidden');
+                document.getElementById('auditDropZone').classList.remove('hidden');
+
+            } catch (error) {
+                alert("Audit Error: " + error.message);
+                progressDiv.classList.add('hidden');
+                document.getElementById('auditDropZone').classList.remove('hidden');
+            }
+        }
+
+        // --- MODULE 3: INVENTORY ENGINE ---
+        function processInventory(file) {
+            Papa.parse(file, {
+                header: true, skipEmptyLines: true,
+                complete: function(results) {
+                    try {
+                        const vendors = {};
+                        results.data.forEach(row => {
+                            const vendor = (row['Vendor'] || 'Uncategorized').trim();
+                            const itemCode = row['Item Code'] || '';
+                            const desc = row['Description'] || '';
+                            const sales3m = parseFloat(row['3 Months Sales Qty']) || 0;
+                            const onHand = parseFloat(row['On Hand Qty']) || 0;
+
+                            const monthlySales = sales3m / 3;
+                            const weeklySales = monthlySales / 4;
+                            const targetStock = monthlySales * 2;
+                            const deliveryBuffer = weeklySales * 1;
+                            
+                            let orderQty = Math.ceil((targetStock + deliveryBuffer) - onHand);
+                            if (orderQty < 0) orderQty = 0;
+
+                            if (!vendors[vendor]) vendors[vendor] = [];
+                            if (orderQty > 0) {
+                                vendors[vendor].push({ "Item Code": itemCode, "Description": desc, "Current On Hand": onHand, "3M Sales": sales3m, "Suggested Order Qty": orderQty });
+                            }
+                        });
+
+                        const zip = new JSZip();
+                        let filesAdded = 0;
+                        for (const [vendor, items] of Object.entries(vendors)) {
+                            if (items.length > 0) {
+                                zip.file(`PO_${vendor.replace(/[^a-z0-9]/gi, '_')}.csv`, Papa.unparse(items));
+                                filesAdded++;
+                            }
+                        }
+
+                        if (filesAdded === 0) return alert("No items require ordering.");
+
+                        zip.generateAsync({ type: "blob" }).then(content => {
+                            saveAs(content, `Vendor_POs_${new Date().toISOString().split('T')[0]}.zip`);
+                            alert(`Successfully generated ${filesAdded} Purchase Orders!`);
+                        });
+                    } catch (error) { alert("Error processing inventory: " + error.message); }
+                }
+            });
+        }
+
+        // --- UTILITIES ---
         function setupDragAndDrop(zoneId, inputId, processFunction) {
             const zone = document.getElementById(zoneId);
             const input = document.getElementById(inputId);
             zone.addEventListener('click', () => input.click());
             zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
             zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-            zone.addEventListener('drop', (e) => {
-                e.preventDefault(); zone.classList.remove('drag-over');
-                if (e.dataTransfer.files.length) processFunction(e.dataTransfer.files[0]);
-            });
-            input.addEventListener('change', (e) => {
-                if (e.target.files.length) { processFunction(e.target.files[0]); input.value = ''; }
-            });
+            zone.addEventListener('drop', (e) => { e.preventDefault(); zone.classList.remove('drag-over'); if (e.dataTransfer.files.length) processFunction(e.dataTransfer.files[0]); });
+            input.addEventListener('change', (e) => { if (e.target.files.length) { processFunction(e.target.files[0]); input.value = ''; } });
         }
 
         setupDragAndDrop('rosterDropZone', 'rosterInput', processRoster);
+        setupDragAndDrop('auditDropZone', 'auditInput', processVideoAudit);
+        setupDragAndDrop('inventoryDropZone', 'inventoryInput', processInventory);
 
-        // Tab Switching Logic
         function switchTab(tabId) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-            document.querySelectorAll('.tab-btn').forEach(el => {
-                el.classList.remove('border-blue-500', 'text-blue-600');
-                el.classList.add('border-transparent', 'text-gray-500');
-            });
+            document.querySelectorAll('.tab-btn').forEach(el => { el.classList.remove('border-blue-500', 'text-blue-600'); el.classList.add('border-transparent', 'text-gray-500'); });
             document.getElementById(`content-${tabId}`).classList.remove('hidden');
             const activeBtn = document.getElementById(`tab-${tabId}`);
             activeBtn.classList.remove('border-transparent', 'text-gray-500');
