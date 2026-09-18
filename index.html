@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pharmacy Branch Management Hub</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- SheetJS (Excel Processing) -->
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    
+    <!-- PapaParse (CSV Processing) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    
+    <!-- JSZip & FileSaver (ZIP Generation) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    
+    <!-- Marked.js (Markdown Rendering for Gemini) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.2/marked.min.js"></script>
+
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        .drag-over { border-color: #3b82f6; background-color: #eff6ff; }
+        .loader { border-top-color: #3b82f6; -webkit-animation: spinner 1.5s linear infinite; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-blue-900 text-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <i class="fa-solid fa-staff-snake text-2xl"></i>
+                <h1 class="text-xl font-bold tracking-wide">Branch Management Hub</h1>
+            </div>
+            <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-key text-sm text-blue-300"></i>
+                <input type="password" id="geminiApiKey" placeholder="Enter Gemini API Key" 
+                    class="text-sm text-gray-900 px-3 py-1 rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
+                    title="Required for 5S Video Audit">
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <div class="bg-white border-b border-gray-200 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <nav class="flex space-x-8" aria-label="Tabs">
+                <button onclick="switchTab('roster')" id="tab-roster" class="tab-btn border-blue-500 text-blue-600 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2">
+                    <i class="fa-solid fa-calendar-days"></i><span>Roster to Rymnet</span>
+                </button>
+                <button onclick="switchTab('audit')" id="tab-audit" class="tab-btn border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2">
+                    <i class="fa-solid fa-video"></i><span>Outlet 5S Video Audit</span>
+                </button>
+                <button onclick="switchTab('inventory')" id="tab-inventory" class="tab-btn border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2">
+                    <i class="fa-solid fa-boxes-stacked"></i><span>Inventory Replenishment</span>
+                </button>
+            </nav>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+
+        <!-- MODULE 1: Roster to Rymnet -->
+        <div id="content-roster" class="tab-content block">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-lg font-semibold mb-2">Roster Unpivot Engine</h2>
+                <p class="text-gray-600 text-sm mb-6">Upload your branch Excel roster. The engine will unpivot the dates and generate a Rymnet-compatible CSV file 100% locally in your browser.</p>
+                
+                <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
+                    <p class="text-sm text-blue-700"><strong>Expected Format:</strong> Column A = Employee ID, Column B = Name. Columns C onwards = Dates (e.g., 1-Sep, 2-Sep). Cell values = Shift Codes.</p>
+                </div>
+
+                <div id="rosterDropZone" class="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:bg-gray-50 transition cursor-pointer">
+                    <i class="fa-solid fa-file-excel text-4xl text-green-600 mb-3"></i>
+                    <p class="text-gray-600 font-medium">Drag & drop your Excel Roster here</p>
+                    <p class="text-gray-400 text-sm mt-1">or click to browse</p>
+                    <input type="file" id="rosterInput" accept=".xlsx, .xls" class="hidden">
+                </div>
+            </div>
+        </div>
+
+        <!-- MODULE 2: Outlet 5S Video Audit -->
+        <div id="content-audit" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-lg font-semibold mb-2">AI-Powered 5S Video Audit</h2>
+                <p class="text-gray-600 text-sm mb-6">Upload a walkthrough video of the pharmacy. The Gemini Multimodal Vision model will analyze it for 5S compliance (Sort, Set in order, Shine, Standardize, Sustain).</p>
+
+                <div id="auditDropZone" class="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:bg-gray-50 transition cursor-pointer mb-6">
+                    <i class="fa-solid fa-cloud-arrow-up text-4xl text-blue-500 mb-3"></i>
+                    <p class="text-gray-600 font-medium">Drag & drop walkthrough video (MP4, MOV)</p>
+                    <p class="text-gray-400 text-sm mt-1">Max size depends on your network speed</p>
+                    <input type="file" id="auditInput" accept="video/*" class="hidden">
+                </div>
+
+                <!-- Progress Indicator -->
+                <div id="auditProgress" class="hidden bg-gray-50 rounded-lg p-6 border border-gray-200 text-center">
+                    <div class="loader border-4 border-gray-200 rounded-full w-12 h-12 mx-auto mb-4"></div>
+                    <h3 id="auditStatusText" class="text-lg font-medium text-gray-800">Uploading video...</h3>
+                    <p class="text-sm text-gray-500 mt-2">Please do not close this tab.</p>
+                </div>
+
+                <!-- Report Rendering -->
+                <div id="auditReportContainer" class="hidden mt-6">
+                    <h3 class="text-xl font-bold text-gray-800 border-b pb-2 mb-4">5S Audit Report</h3>
+                    <div id="auditReportContent" class="prose max-w-none text-gray-700"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODULE 3: Inventory Replenishment Engine -->
+        <div id="content-inventory" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-lg font-semibold mb-2">Xilnex CSV to PO ZIP Engine</h2>
+                <p class="text-gray-600 text-sm mb-6">Upload your Xilnex 3-month sales export. The engine calculates order quantities based on a 2-month stock cycle + 1-week delivery buffer, and generates separated POs by Vendor.</p>
+
+                <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+                    <p class="text-sm text-yellow-800"><strong>Expected CSV Columns:</strong> <code>Item Code</code>, <code>Description</code>, <code>Vendor</code>, <code>3 Months Sales Qty</code>, <code>On Hand Qty</code>.</p>
+                </div>
+
+                <div id="inventoryDropZone" class="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:bg-gray-50 transition cursor-pointer">
+                    <i class="fa-solid fa-file-csv text-4xl text-purple-600 mb-3"></i>
+                    <p class="text-gray-600 font-medium">Drag & drop Xilnex CSV here</p>
+                    <p class="text-gray-400 text-sm mt-1">or click to browse</p>
+                    <input type="file" id="inventoryInput" accept=".csv" class="hidden">
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // --- Tab Navigation Logic ---
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('border-blue-500', 'text-blue-600');
+                el.classList.add('border-transparent', 'text-gray-500');
+            });
+
+            document.getElementById(`content-${tabId}`).classList.remove('hidden');
+            const activeBtn = document.getElementById(`tab-${tabId}`);
+            activeBtn.classList.remove('border-transparent', 'text-gray-500');
+            activeBtn.classList.add('border-blue-500', 'text-blue-600');
+        }
+
+        // --- Drag and Drop Utility ---
+        function setupDragAndDrop(zoneId, inputId, processFunction) {
+            const zone = document.getElementById(zoneId);
+            const input = document.getElementById(inputId);
+
+            zone.addEventListener('click', () => input.click());
+            zone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                zone.classList.add('drag-over');
+            });
+            zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+            zone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                zone.classList.remove('drag-over');
+                if (e.dataTransfer.files.length) {
+                    processFunction(e.dataTransfer.files[0]);
+                }
+            });
+            input.addEventListener('change', (e) => {
+                if (e.target.files.length) {
+                    processFunction(e.target.files[0]);
+                    input.value = ''; // Reset
+                }
+            });
+        }
+
+        // --- MODULE 1: Roster to Rymnet (SheetJS) ---
+        function processRoster(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    
+                    // Convert to 2D array
+                    const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                    if (json.length < 2) throw new Error("Spreadsheet is empty or invalid.");
+
+                    const headers = json[0];
+                    const unpivotedData = [];
+                    
+                    // Rymnet standard headers
+                    unpivotedData.push(["EmployeeID", "EmployeeName", "Date", "ShiftCode"]);
+
+                    for (let i = 1; i < json.length; i++) {
+                        const row = json[i];
+                        if (!row || !row[0]) continue; // Skip empty rows
+                        
+                        const empId = row[0];
+                        const empName = row[1] || "";
+
+                        // Loop through date columns (assuming dates start at index 2)
+                        for (let j = 2; j < headers.length; j++) {
+                            const shiftCode = row[j];
+                            if (shiftCode) {
+                                unpivotedData.push([empId, empName, headers[j], shiftCode]);
+                            }
+                        }
+                    }
+
+                    // Convert back to CSV
+                    const csv = Papa.unparse(unpivotedData);
+                    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                    saveAs(blob, `Rymnet_Upload_${new Date().toISOString().split('T')[0]}.csv`);
+                    alert("Roster successfully unpivoted and downloaded!");
+
+                } catch (error) {
+                    alert("Error processing roster: " + error.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+        setupDragAndDrop('rosterDropZone', 'rosterInput', processRoster);
+
+
+        // --- MODULE 2: Outlet 5S Video Audit (Gemini API) ---
+        async function processVideoAudit(file) {
+            const apiKey = document.getElementById('geminiApiKey').value.trim();
+            if (!apiKey) {
+                alert("Please enter your Gemini API Key in the header first.");
+                return;
+            }
+
+            const progressDiv = document.getElementById('auditProgress');
+            const statusText = document.getElementById('auditStatusText');
+            const reportContainer = document.getElementById('auditReportContainer');
+            const reportContent = document.getElementById('auditReportContent');
+
+            progressDiv.classList.remove('hidden');
+            reportContainer.classList.add('hidden');
+            document.getElementById('auditDropZone').classList.add('hidden');
+
+            try {
+                // 1. Upload File to Gemini File API
+                statusText.innerText = "Uploading video to Gemini...";
+                const uploadUrl = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`;
+                
+                const uploadRes = await fetch(uploadUrl, {
+                    method: 'POST',
+                    headers: {
+                        'X-Goog-Upload-Protocol': 'raw',
+                        'X-Goog-Upload-Header-Content-Length': file.size.toString(),
+                        'X-Goog-Upload-Header-Content-Type': file.type,
+                        'Content-Type': file.type
+                    },
+                    body: file
+                });
+
+                if (!uploadRes.ok) throw new Error(`Upload failed: ${uploadRes.statusText}`);
+                const uploadData = await uploadRes.json();
+                const fileUri = uploadData.file.uri;
+                const fileName = uploadData.file.name;
+
+                // 2. Poll for Processing State
+                statusText.innerText = "Processing video (this may take a few minutes)...";
+                let state = 'PROCESSING';
+                while (state === 'PROCESSING') {
+                    await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+                    const checkRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${apiKey}`);
+                    const checkData = await checkRes.json();
+                    state = checkData.state;
+                    if (state === 'FAILED') throw new Error("Gemini failed to process the video.");
+                }
+
+                // 3. Generate Content (5S Audit Prompt)
+                statusText.innerText = "Analyzing 5S Compliance...";
+                const prompt = `You are a strict and observant Pharmacy Branch Manager conducting a 5S (Sort, Set in order, Shine, Standardize, Sustain) audit. 
+                Analyze this walkthrough video. 
+                1. Identify specific areas of compliance.
+                2. Identify specific areas of non-compliance (clutter, misaligned items, cleanliness issues).
+                3. Provide actionable recommendations for the branch staff.
+                Format the output in clean Markdown.`;
+
+                const generateUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`;
+                const genRes = await fetch(generateUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [
+                                { text: prompt },
+                                { fileData: { mimeType: file.type, fileUri: fileUri } }
+                            ]
+                        }]
+                    })
+                });
+
+                if (!genRes.ok) throw new Error("Failed to generate audit report.");
+                const genData = await genRes.json();
+                const markdownText = genData.candidates[0].content.parts[0].text;
+
+                // Render Markdown
+                reportContent.innerHTML = marked.parse(markdownText);
+                progressDiv.classList.add('hidden');
+                reportContainer.classList.remove('hidden');
+                document.getElementById('auditDropZone').classList.remove('hidden');
+
+            } catch (error) {
+                alert("Audit Error: " + error.message);
+                progressDiv.classList.add('hidden');
+                document.getElementById('auditDropZone').classList.remove('hidden');
+            }
+        }
+        setupDragAndDrop('auditDropZone', 'auditInput', processVideoAudit);
+
+
+        // --- MODULE 3: Inventory Replenishment Engine ---
+        function processInventory(file) {
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    try {
+                        const data = results.data;
+                        const vendors = {};
+
+                        data.forEach(row => {
+                            // Extract and sanitize data
+                            const vendor = (row['Vendor'] || 'Uncategorized').trim();
+                            const itemCode = row['Item Code'] || '';
+                            const desc = row['Description'] || '';
+                            const sales3m = parseFloat(row['3 Months Sales Qty']) || 0;
+                            const onHand = parseFloat(row['On Hand Qty']) || 0;
+
+                            // Core Replenishment Logic
+                            // 1. Calculate Monthly & Weekly Sales
+                            const monthlySales = sales3m / 3;
+                            const weeklySales = monthlySales / 4; // Approx 1 week
+
+                            // 2. Target Stock (HQ sets 1.5 to 2 months. We target max 2 months)
+                            const targetStock = monthlySales * 2;
+
+                            // 3. Delivery Buffer (1 week delivery time)
+                            const deliveryBuffer = weeklySales * 1;
+
+                            // 4. Total Required & Order Quantity
+                            const totalRequired = targetStock + deliveryBuffer;
+                            let orderQty = Math.ceil(totalRequired - onHand);
+                            
+                            // Prevent negative orders
+                            if (orderQty < 0) orderQty = 0;
+
+                            // Group by Vendor
+                            if (!vendors[vendor]) vendors[vendor] = [];
+                            
+                            // Only add items that actually need ordering
+                            if (orderQty > 0) {
+                                vendors[vendor].push({
+                                    "Item Code": itemCode,
+                                    "Description": desc,
+                                    "Current On Hand": onHand,
+                                    "3M Sales": sales3m,
+                                    "Suggested Order Qty": orderQty
+                                });
+                            }
+                        });
+
+                        // Generate ZIP file containing CSVs
+                        const zip = new JSZip();
+                        let filesAdded = 0;
+
+                        for (const [vendor, items] of Object.entries(vendors)) {
+                            if (items.length > 0) {
+                                const csv = Papa.unparse(items);
+                                // Sanitize vendor name for filename
+                                const safeVendorName = vendor.replace(/[^a-z0-9]/gi, '_');
+                                zip.file(`PO_${safeVendorName}.csv`, csv);
+                                filesAdded++;
+                            }
+                        }
+
+                        if (filesAdded === 0) {
+                            alert("No items require ordering based on the current stock and sales data.");
+                            return;
+                        }
+
+                        zip.generateAsync({ type: "blob" }).then(function(content) {
+                            saveAs(content, `Vendor_POs_${new Date().toISOString().split('T')[0]}.zip`);
+                            alert(`Successfully generated ${filesAdded} Purchase Orders!`);
+                        });
+
+                    } catch (error) {
+                        alert("Error processing inventory data: " + error.message);
+                    }
+                },
+                error: function(err) {
+                    alert("Error parsing CSV: " + err.message);
+                }
+            });
+        }
+        setupDragAndDrop('inventoryDropZone', 'inventoryInput', processInventory);
+
+    </script>
+</body>
+</html>
