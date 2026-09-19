@@ -70,19 +70,6 @@ function processRoster() {
     return;
   }
 
-  // Row 0 = headers: first cell is the nickname column label, remaining = day numbers
-  const headerRow  = rosterRawData[0];
-  const dayNumbers = [];
-  for (let c = 1; c < headerRow.length; c++) {
-    const d = parseInt(String(headerRow[c]).trim(), 10);
-    if (!isNaN(d) && d >= 1 && d <= 31) dayNumbers.push({ col: c, day: d });
-  }
-
-  if (dayNumbers.length === 0) {
-    if (statusEl) { statusEl.textContent = 'Error: could not detect day columns (expected numbers 1–31 in header row).'; statusEl.className = 'text-red-600 text-sm mt-2'; }
-    return;
-  }
-
   const [yearStr, monthStr] = monthVal.split('-');
   const year  = parseInt(yearStr, 10);
   const month = parseInt(monthStr, 10);
@@ -91,32 +78,238 @@ function processRoster() {
   rosterFlatRecords = [];
   const unmappedNicknames = new Set();
 
-  for (let r = 1; r < rosterRawData.length; r++) {
-    const row      = rosterRawData[r];
-    const nickname = String(row[0] || '').trim();
-    if (!nickname) continue;
-
-    const staffObj = lookupStaff(nickname);
-    if (!staffObj) unmappedNicknames.add(nickname);
-
-    const empNo   = staffObj ? staffObj.empNo   : `UNMAPPED_${nickname}`;
-    const empName = staffObj ? staffObj.empName : nickname;
-
-    for (const { col, day } of dayNumbers) {
-      if (day > maxDayInMonth) continue;
-      const cellRaw   = String(row[col] || '').trim();
-      if (!cellRaw) continue;
-      const workDate  = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-      const shiftCode = resolveShiftCode(cellRaw);
-      if (!shiftCode) continue;
-
-      rosterFlatRecords.push({
-        empNo, empName, nickname,
-        isMapped: !!staffObj,
-        workDate, shiftCode,
-        rawCell: cellRaw,
-      });
+  // ── Mode 1: Check if file contains Monthly Matrix (Employee No, Employee Name, 01 (Tue)...) ──
+  let matrixHeaderIdx = -1;
+  for (let r = 0; r < Math.min(rosterRawData.length, 10); r++) {
+    const rowStr = rosterRawData[r].map(c => String(c).trim().toLowerCase()).join(' ');
+    if (rowStr.includes('employee no') || rowStr.includes('employee name') || /\b0?1\s*\([a-z]{3}\)/i.test(rowStr) || (rowStr.includes('1') && rowStr.includes('2') && rowStr.includes('3') && rowStr.includes('4'))) {
+      matrixHeaderIdx = r;
+      break;
     }
+  }
+
+  // ── Mode 2: Check if file contains Visual Hourly Schedule (DAY, OFF, 7.30-8.30AM...) ──
+  let visualHeaderIdx = -1;
+  for (let r = 0; r < rosterRawData.length; r++) {
+    const rowStr = rosterRawData[r].map(c => String(c).trim().toLowerCase()).join(' ');
+    if (rowStr.includes('day') && rowStr.includes('off') && (rowStr.includes('7.30') || rowStr.includes('8.30') || rowStr.includes('half day'))) {
+      visualHeaderIdx = r;
+      break;
+    }
+  }
+
+  if (matrixHeaderIdx !== -1) {
+    // ══════════════════════════════════════════════════════════════════════════
+    // PARSE MODE 1: MONTHLY ROSTER MATRIX (Rymnet Format)
+    // ══════════════════════════════════════════════════════════════════════════
+    const headerRow  = rosterRawData[matrixHeaderIdx];
+    const dayNumbers = [];
+
+    for (let c = 0; c < headerRow.length; c++) {
+      const cellVal = String(headerRow[c] || '').trim();
+      // Matches "01 (Tue)", "1 (Wed)", "01", "1", etc.
+      const match = cellVal.match(/\b0?([1-9]|[12][0-9]|3[01])\b/);
+      if (match && !/employee|emp|branch|nickname/i.test(cellVal)) {
+        const d = parseInt(match[1], 10);
+        if (d >= 1 && d <= 31) {
+          dayNumbers.push({ col: c, day: d });
+        }
+      }
+    }
+
+    if (dayNumbers.length === 0) {
+      if (statusEl) { statusEl.textContent = 'Error: could not detect day columns (expected 01–31 in header row).'; statusEl.className = 'text-red-600 text-sm mt-2'; }
+      return;
+    }
+
+    let r = matrixHeaderIdx + 1;
+    while (r < rosterRawData.length) {
+      const row = rosterRawData[r];
+      // Stop if we hit the visual schedule section
+      if (visualHeaderIdx !== -1 && r >= visualHeaderIdx) break;
+
+      const col0 = String(row[0] || '').trim();
+      const col1 = String(row[1] || '').trim();
+
+      // Check if this row represents an employee
+      const hasEmpId = col0.toUpperCase().startsWith('PMG') || /^[A-Z0-9_-]{4,12}$/i.test(col0);
+      const hasEmpName = col1.length > 2 && !/^(RD|OD|OFF|SL|MC|ANL|AL|PH|RPL|BL)$/i.test(col1);
+
+      if (hasEmpId || hasEmpName || col0.length > 1) {
+        const staffIdentifier = hasEmpId ? col0 : (col0 || col1);
+        const staffObj = lookupStaff(staffIdentifier) || lookupStaff(col1);
+
+        const empNo   = staffObj ? staffObj.empNo   : (hasEmpId ? col0 : `UNMAPPED_${col0}`);
+        const empName = staffObj ? staffObj.empName : (col1 || col0);
+        const nickname = staffObj ? staffObj.nickname : (col0 || col1);
+
+        if (!staffObj) unmappedNicknames.add(col0 || col1);
+
+        const shiftRow = row;
+        let leaveRow = null;
+
+        // Check if next row is a leave/status row (empty or non-PMG in col 0/1)
+        if (r + 1 < rosterRawData.length) {
+          const nextRow = rosterRawData[r + 1];
+          const nextCol0 = String(nextRow[0] || '').trim();
+          const nextCol1 = String(nextRow[1] || '').trim();
+          const isNextEmp = nextCol0.toUpperCase().startsWith('PMG') || (nextCol1.length > 3 && !/^(RD|OD|OFF|SL|MC|ANL|AL|PH|RPL|BL)$/i.test(nextCol1));
+          const hasLeaveCodes = dayNumbers.some(({ col }) => {
+            const val = String(nextRow[col] || '').trim().toUpperCase();
+            return ['RD','OD','OFF','SL','MC','ANL','AL','PH','RPL','BL'].includes(val);
+          });
+
+          if (!isNextEmp && hasLeaveCodes) {
+            leaveRow = nextRow;
+            r++; // consume leave row
+          }
+        }
+
+        for (const { col, day } of dayNumbers) {
+          if (day > maxDayInMonth) continue;
+
+          const shiftVal = String(shiftRow[col] || '').trim();
+          const leaveVal = leaveRow ? String(leaveRow[col] || '').trim() : '';
+
+          let shiftCode = '';
+          // Priority logic:
+          // 1. Definite leaves (Annual, Sick, Replacement, Block) take priority
+          if (['ANL','AL','SL','MC','RPL','BL','EL','UPL'].includes(leaveVal.toUpperCase())) {
+            shiftCode = resolveShiftCode(leaveVal);
+          } else if (shiftVal) {
+            shiftCode = resolveShiftCode(shiftVal);
+          } else if (leaveVal) {
+            shiftCode = resolveShiftCode(leaveVal);
+          } else {
+            shiftCode = 'OFF'; // empty day in monthly roster
+          }
+
+          if (shiftCode) {
+            const workDate = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+            rosterFlatRecords.push({
+              empNo, empName, nickname,
+              isMapped: !!staffObj,
+              workDate, shiftCode,
+              rawCell: shiftVal || leaveVal || 'OFF',
+            });
+          }
+        }
+      }
+      r++;
+    }
+
+  } else if (visualHeaderIdx !== -1) {
+    // ══════════════════════════════════════════════════════════════════════════
+    // PARSE MODE 2: VISUAL HOURLY SCHEDULE (DAY, OFF, 7.30-8.30AM...)
+    // ══════════════════════════════════════════════════════════════════════════
+    const vHeader = rosterRawData[visualHeaderIdx].map(c => String(c).trim());
+    const offCol = vHeader.findIndex(h => h.toUpperCase() === 'OFF');
+    const timeCols = [];
+
+    // Identify hourly columns (e.g. 7.30-8.30AM, etc.)
+    for (let c = 0; c < vHeader.length; c++) {
+      const h = vHeader[c];
+      if (/(\d{1,2})[.:](\d{2})[-–](\d{1,2})[.:](\d{2})/i.test(h) || /\d+[-–]\d+\s*(AM|PM)/i.test(h)) {
+        timeCols.push({ col: c, header: h });
+      }
+    }
+
+    let currentDate = '';
+    for (let r = visualHeaderIdx + 1; r < rosterRawData.length; r++) {
+      const row = rosterRawData[r];
+      const col0 = String(row[0] || '').trim();
+
+      // Check if row contains a date like 14.09.2026 or 2026-09-14
+      const dateMatch = col0.match(/(\d{1,2})[./-](\d{1,2})[./-](\d{4})/) || col0.match(/(\d{4})[./-](\d{1,2})[./-](\d{1,2})/);
+      if (dateMatch) {
+        if (dateMatch[3].length === 4) {
+          // DD.MM.YYYY
+          currentDate = `${dateMatch[3]}-${dateMatch[2].padStart(2,'0')}-${dateMatch[1].padStart(2,'0')}`;
+        } else {
+          // YYYY-MM-DD
+          currentDate = `${dateMatch[1]}-${dateMatch[2].padStart(2,'0')}-${dateMatch[3].padStart(2,'0')}`;
+        }
+      }
+
+      if (!currentDate) continue;
+
+      // Check OFF column
+      if (offCol !== -1 && row[offCol]) {
+        const offStaffNames = String(row[offCol]).split(/[\n,;/]+/).map(s => s.trim()).filter(Boolean);
+        for (const offName of offStaffNames) {
+          const staffObj = lookupStaff(offName);
+          if (!staffObj) unmappedNicknames.add(offName);
+          rosterFlatRecords.push({
+            empNo: staffObj ? staffObj.empNo : `UNMAPPED_${offName}`,
+            empName: staffObj ? staffObj.empName : offName,
+            nickname: staffObj ? staffObj.nickname : offName,
+            isMapped: !!staffObj,
+            workDate: currentDate,
+            shiftCode: 'OFF',
+            rawCell: 'OFF (Visual)',
+          });
+        }
+      }
+
+      // Check staff assigned to time slots in this row
+      const staffInRow = new Set();
+      timeCols.forEach(({ col }) => {
+        const val = String(row[col] || '').trim();
+        if (val && val.toUpperCase() !== 'REST' && val.length >= 2) {
+          staffInRow.add(val.toUpperCase());
+        }
+      });
+
+      for (const nick of staffInRow) {
+        // Find first and last time slot for this staff in this row
+        let firstSlot = null, lastSlot = null, count = 0;
+        timeCols.forEach(({ col, header }) => {
+          const cell = String(row[col] || '').trim().toUpperCase();
+          if (cell === nick) {
+            if (!firstSlot) firstSlot = header;
+            lastSlot = header;
+            count++;
+          }
+        });
+
+        if (firstSlot && lastSlot) {
+          const staffObj = lookupStaff(nick);
+          if (!staffObj) unmappedNicknames.add(nick);
+
+          // Translate slots into shift code
+          let shiftCode = '8H_0730-1630'; // default
+          if (firstSlot.includes('7.30') && (lastSlot.includes('3.30') || lastSlot.includes('4.30'))) {
+            shiftCode = '8H_0730-1630';
+          } else if (firstSlot.includes('7.30') && (lastSlot.includes('11.30') || lastSlot.includes('12.30'))) {
+            shiftCode = '5H_0730-1230';
+          } else if (firstSlot.includes('12.30') && (lastSlot.includes('8.30') || lastSlot.includes('9.30') || lastSlot.includes('2130'))) {
+            shiftCode = '8H_1230-2130';
+          } else if (firstSlot.includes('8.00') && (lastSlot.includes('4.00') || lastSlot.includes('5.00'))) {
+            shiftCode = '8H_0800-1700';
+          } else if (firstSlot.includes('1.00') || firstSlot.includes('1300')) {
+            shiftCode = '8H_1300-2200';
+          } else if (count <= 5) {
+            shiftCode = '5H_0730-1230';
+          }
+
+          rosterFlatRecords.push({
+            empNo: staffObj ? staffObj.empNo : `UNMAPPED_${nick}`,
+            empName: staffObj ? staffObj.empName : nick,
+            nickname: staffObj ? staffObj.nickname : nick,
+            isMapped: !!staffObj,
+            workDate: currentDate,
+            shiftCode: shiftCode,
+            rawCell: `${firstSlot} -> ${lastSlot} (${count}h)`,
+          });
+        }
+      }
+    }
+  } else {
+    if (statusEl) {
+      statusEl.textContent = 'Error: could not recognize format. Expected either Monthly Grid (01–31 headers) or Visual Hourly Schedule (DAY, OFF, 7.30-8.30AM).';
+      statusEl.className = 'text-red-600 text-sm mt-2';
+    }
+    return;
   }
 
   renderRosterPreview(unmappedNicknames);

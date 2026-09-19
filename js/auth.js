@@ -159,10 +159,17 @@ function hideAuthOverlay() {
 }
 
 function showMainApp() {
-  ['mainHeader', 'mainNav', 'mainContent'].forEach(id => {
+  ['mainHeader', 'mainNav', 'mainContent', 'mainFooter'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.remove('hidden');
   });
+
+  // Update branch badge in inventory
+  const session = getSession();
+  if (session) {
+    const badge = document.getElementById('invBranchBadge');
+    if (badge) badge.textContent = session.branch === 'ALL' ? 'All Branches' : session.branch;
+  }
 }
 
 function logout() {

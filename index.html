@@ -616,20 +616,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// Show footer when app unlocks
-const _origShowMain = showMainApp;
-function showMainApp() {
-  _origShowMain();
-  const footer = document.getElementById('mainFooter');
-  if (footer) footer.classList.remove('hidden');
-
-  // Update branch badge in inventory
-  const session = getSession();
-  if (session) {
-    const badge = document.getElementById('invBranchBadge');
-    if (badge) badge.textContent = session.branch === 'ALL' ? 'All Branches' : session.branch;
-  }
-}
 </script>
 
 </body>

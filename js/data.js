@@ -168,18 +168,34 @@ function fetchWithTimeout(url, ms) {
 
 // ─── SHIFT CODE MAPPING ───────────────────────────────────────────────────────
 const SHIFT_CODE_MAP = [
-  { patterns: ['0730-1630', '07:30-16:30', '07:30 - 16:30', '7:30-16:30'],  code: '8H_0730-1630' },
-  { patterns: ['0800-1700', '08:00-17:00', '08:00 - 17:00', '8:00-17:00'],  code: '8H_0800-1700' },
-  { patterns: ['0830-1730', '08:30-17:30', '08:30 - 17:30', '8:30-17:30'],  code: '8H_0830-1730' },
-  { patterns: ['1300-2200', '13:00-22:00', '13:00 - 22:00'],                code: '8H_1300-2200' },
-  { patterns: ['1330-2230', '13:30-22:30', '13:30 - 22:30'],                code: '8H_1330-2230' },
-  { patterns: ['OFF', 'RD', 'REST', 'DAY OFF'],                             code: 'OFF'           },
-  { patterns: ['AL', 'ANNUAL LEAVE', 'A/L'],                                code: 'AL'            },
-  { patterns: ['MC', 'SICK', 'MEDICAL', 'MED CERT'],                        code: 'MC'            },
-  { patterns: ['PH', 'PUBLIC HOLIDAY', 'PH OFF'],                           code: 'PH'            },
-  { patterns: ['EL', 'EMERGENCY LEAVE'],                                     code: 'EL'            },
-  { patterns: ['UPL', 'UNPAID LEAVE'],                                       code: 'UPL'           },
-  { patterns: ['TRAINING', 'TRG'],                                           code: 'TRG'           },
+  // 8-Hour Full Shifts
+  { patterns: ['0730-1630', '07:30-16:30', '07:30 - 16:30', '7:30-16:30', '7.30-4.30PM', '7.30-4.30', '8H_0730-1630', '8H_0730-0430'],  code: '8H_0730-1630' },
+  { patterns: ['0800-1700', '08:00-17:00', '08:00 - 17:00', '8:00-17:00', '8.00-5.00PM', '8.00-5.00', '8H_0800-1700'],                     code: '8H_0800-1700' },
+  { patterns: ['0830-1730', '08:30-17:30', '08:30 - 17:30', '8:30-17:30', '8.30-5.30PM', '8.30-5.30', '8H_0830-1730'],                     code: '8H_0830-1730' },
+  { patterns: ['1230-2130', '12:30-21:30', '12:30 - 21:30', '12.30-9.30PM', '12.30-9.30', '8H_1230-2130'],                                 code: '8H_1230-2130' },
+  { patterns: ['1300-2200', '13:00-22:00', '13:00 - 22:00', '1.00-10.00PM', '1.00-10.00', '8H_1300-2200'],                                 code: '8H_1300-2200' },
+  { patterns: ['1330-2230', '13:30-22:30', '13:30 - 22:30', '1.30-10.30PM', '1.30-10.30', '8H_1330-2230'],                                 code: '8H_1330-2230' },
+
+  // 5-Hour Half Shifts
+  { patterns: ['0730-1230', '07:30-12:30', '7:30-12:30', '7.30-12.30PM', '7.30-12.30', '5H_0730-1230'],                                     code: '5H_0730-1230' },
+  { patterns: ['0800-1300', '08:00-13:00', '8:00-13:00', '8.00-1.00PM', '8.00-1.00', '5H_0800-1300'],                                       code: '5H_0800-1300' },
+  { patterns: ['1630-2130', '16:30-21:30', '4.30-9.30PM', '4.30-9.30', '5H_1630-2130'],                                                     code: '5H_1630-2130' },
+
+  // 4-Hour Part Shifts
+  { patterns: ['0730-1130', '07:30-11:30', '7:30-11:30', '7.30-11.30AM', '7.30-11.30', '4H_0730-1130'],                                     code: '4H_0730-1130' },
+
+  // Rest & Leave Status Codes (Rymnet standard)
+  { patterns: ['RD', 'REST DAY', 'REST'],                                                                                                    code: 'RD'           },
+  { patterns: ['OD', 'OFF DAY', 'OFF'],                                                                                                      code: 'OD'           },
+  { patterns: ['ANL', 'AL', 'ANNUAL LEAVE', 'A/L'],                                                                                          code: 'ANL'          },
+  { patterns: ['SL', 'MC', 'SICK LEAVE', 'SICK', 'MEDICAL CERTIFICATE', 'MED CERT'],                                                         code: 'SL'           },
+  { patterns: ['PH', 'PUBLIC HOLIDAY', 'PH OFF'],                                                                                            code: 'PH'           },
+  { patterns: ['RPL', 'REPLACEMENT LEAVE', 'REPLACEMENT', 'RL'],                                                                             code: 'RPL'          },
+  { patterns: ['BL', 'BLOCK LEAVE', 'BEREAVEMENT LEAVE'],                                                                                    code: 'BL'           },
+  { patterns: ['EL', 'EMERGENCY LEAVE'],                                                                                                     code: 'EL'           },
+  { patterns: ['UPL', 'UNPAID LEAVE'],                                                                                                       code: 'UPL'          },
+  { patterns: ['TRAINING', 'TRG'],                                                                                                           code: 'TRG'          },
+  { patterns: ['NA', 'N/A'],                                                                                                                 code: 'NA'           },
 ];
 
 // ─── PUBLIC HELPERS ──────────────────────────────────────────────────────────
@@ -187,22 +203,51 @@ const SHIFT_CODE_MAP = [
 function resolveShiftCode(raw) {
   if (!raw || String(raw).trim() === '') return '';
   const upper = String(raw).toUpperCase().trim();
+
+  // If already standard Rymnet shift pattern (e.g. 8H_0730-1630, 5H_0800-1300, 4H_0730-1130)
+  if (/^[0-9]H_[0-9]{4}-[0-9]{4}$/.test(upper)) {
+    return upper;
+  }
+
   for (const entry of SHIFT_CODE_MAP) {
     for (const pat of entry.patterns) {
       if (upper === pat.toUpperCase()) return entry.code;
     }
   }
+
   // Flexible numeric time-range match: "0730-1630" or "730-1630"
   const m = upper.replace(/[:\s]/g, '').match(/^(\d{3,4})-(\d{3,4})$/);
   if (m) {
-    return `8H_${m[1].padStart(4,'0')}-${m[2].padStart(4,'0')}`;
+    const s1 = parseInt(m[1], 10);
+    const s2 = parseInt(m[2], 10);
+    const diff = Math.round((s2 - s1) / 100);
+    const prefix = diff <= 5 ? `${diff}H` : '8H';
+    return `${prefix}_${m[1].padStart(4,'0')}-${m[2].padStart(4,'0')}`;
   }
+
   return upper || 'UNKNOWN';
 }
 
-function lookupStaff(nickname) {
-  if (!nickname) return null;
-  return NICKNAME_LOOKUP[String(nickname).toUpperCase().trim()] || null;
+function lookupStaff(query) {
+  if (!query) return null;
+  const q = String(query).toUpperCase().trim();
+
+  // 1. By nickname
+  if (NICKNAME_LOOKUP[q]) return NICKNAME_LOOKUP[q];
+
+  // 2. By EmpNo (e.g. PMG00723)
+  const byNo = STAFF_MAP.find(s => s.empNo && s.empNo.toUpperCase().trim() === q);
+  if (byNo) return byNo;
+
+  // 3. By full employee name
+  const byName = STAFF_MAP.find(s => s.empName && s.empName.toUpperCase().trim() === q);
+  if (byName) return byName;
+
+  // 4. By partial/fuzzy name
+  const byPartial = STAFF_MAP.find(s => s.empName && s.empName.toUpperCase().includes(q));
+  if (byPartial) return byPartial;
+
+  return null;
 }
 
 function getBranch(codeOrName) {
