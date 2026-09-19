@@ -1,588 +1,636 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pharmacy Branch Management Hub</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.2/marked.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        .drag-over { border-color: #3b82f6; background-color: #eff6ff; }
-        .loader { border-top-color: #3b82f6; animation: spinner 1.5s linear infinite; }
-        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PMG Branch Operations & Management Hub</title>
+  <meta name="description" content="PMG Pharmacy Branch Operations & Management Hub — Inventory, Roster, and 5S Audit tools for retail pharmacy managers.">
+  <meta name="theme-color" content="#1e3a8a">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- SheetJS (xlsx) -->
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
+  <!-- PapaParse -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+  <!-- JSZip -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <!-- FileSaver.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="css/custom.css">
 </head>
-<body class="bg-gray-50 text-gray-800 font-sans min-h-screen flex flex-col">
 
-    <!-- AUTHENTICATION OVERLAY -->
-    <div id="authOverlay" class="fixed inset-0 bg-blue-900 z-50 flex items-center justify-center">
-        <div class="bg-white p-8 rounded-lg shadow-xl w-96 text-center">
-            <i class="fa-solid fa-staff-snake text-5xl text-blue-600 mb-4"></i>
-            <h2 class="text-2xl font-bold mb-2">Hub Login</h2>
-            <p class="text-gray-500 text-sm mb-6">Enter your credentials to access the hub.</p>
-            
-            <input type="text" id="loginUsername" class="w-full border border-gray-300 rounded px-4 py-2 mb-3 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Username">
-            <input type="password" id="loginPassword" class="w-full border border-gray-300 rounded px-4 py-2 mb-4 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Password">
-            
-            <button onclick="login()" id="loginBtn" class="w-full bg-blue-600 text-white font-bold py-2 rounded hover:bg-blue-700 transition flex justify-center items-center">
-                <span>Login</span>
+<body class="bg-gray-100 text-gray-800 font-sans min-h-screen flex flex-col">
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     AUTH OVERLAY
+══════════════════════════════════════════════════════════════════════════════ -->
+<div id="authOverlay" class="fixed inset-0 z-50 flex items-center justify-center"
+     style="background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #1d4ed8 100%);">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+    <!-- Header banner -->
+    <div class="bg-blue-900 px-8 py-6 text-center">
+      <div class="w-16 h-16 bg-blue-700 rounded-full flex items-center justify-center mx-auto mb-3">
+        <i class="fa-solid fa-staff-snake text-white text-3xl"></i>
+      </div>
+      <h1 class="text-white text-xl font-bold tracking-wide">PMG Management Hub</h1>
+      <p class="text-blue-300 text-xs mt-1">Branch Operations Platform</p>
+    </div>
+    <!-- Form -->
+    <div class="px-8 py-6">
+      <div class="mb-4">
+        <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Username</label>
+        <input type="text" id="loginUsername" autocomplete="username"
+          class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+          placeholder="e.g. KS01 or williamchai">
+      </div>
+      <div class="mb-5">
+        <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Password / PIN</label>
+        <input type="password" id="loginPassword" autocomplete="current-password"
+          class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+          placeholder="Enter 4–6 digit PIN">
+      </div>
+      <button id="loginBtn" onclick="login()"
+        class="w-full bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white font-bold py-3 rounded-lg transition flex justify-center items-center gap-2 text-sm">
+        <i class="fa-solid fa-right-to-bracket"></i>
+        <span>Sign In</span>
+      </button>
+      <p id="loginError" class="text-red-500 text-xs mt-3 text-center hidden"></p>
+      <p class="text-gray-400 text-xs text-center mt-4">
+        Branch Managers: use branch code + PIN<br>
+        Area Manager: username <strong>am</strong> + AM PIN
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     MAIN HEADER
+══════════════════════════════════════════════════════════════════════════════ -->
+<header id="mainHeader" class="bg-blue-900 text-white shadow-lg hidden">
+  <div class="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center flex-wrap gap-2">
+    <!-- Logo + Title -->
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 bg-blue-700 rounded-full flex items-center justify-center shrink-0">
+        <i class="fa-solid fa-staff-snake text-white text-lg"></i>
+      </div>
+      <div>
+        <h1 class="text-base font-bold tracking-wide leading-tight">PMG Branch Operations & Management Hub</h1>
+        <p class="text-blue-300 text-xs leading-tight hidden sm:block">Retail Pharmacy Operations Platform</p>
+      </div>
+    </div>
+    <!-- Right controls -->
+    <div class="flex items-center gap-3 flex-wrap">
+      <span id="loggedInUser" class="text-blue-200 text-xs font-medium bg-blue-800 px-3 py-1 rounded-full"></span>
+      <span id="liveDataIndicator" class="text-xs px-2 py-0.5 rounded bg-blue-800 text-blue-300">⏳ Syncing…</span>
+      <!-- AM-only: branch switcher -->
+      <select id="branchSelector" style="display:none"
+        class="text-gray-900 text-xs px-3 py-1.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
+        <option value="">All Branches</option>
+      </select>
+      <button onclick="logout()"
+        class="text-blue-200 hover:text-white text-xs flex items-center gap-1.5 border border-blue-700 hover:border-blue-500 px-3 py-1.5 rounded-lg transition">
+        <i class="fa-solid fa-right-from-bracket"></i>
+        <span>Logout</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     NAVIGATION TABS
+══════════════════════════════════════════════════════════════════════════════ -->
+<nav id="mainNav" class="bg-white border-b border-gray-200 shadow-sm hidden">
+  <div class="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex gap-1 overflow-x-auto">
+      <button onclick="switchTab('inventory')" id="tab-inventory"
+        class="tab-btn active whitespace-nowrap py-3.5 px-4 border-b-2 text-sm flex items-center gap-2">
+        <i class="fa-solid fa-boxes-stacked text-sm"></i>
+        <span>Inventory Engine</span>
+      </button>
+      <button onclick="switchTab('roster')" id="tab-roster"
+        class="tab-btn whitespace-nowrap py-3.5 px-4 border-b-2 text-sm flex items-center gap-2">
+        <i class="fa-solid fa-calendar-days text-sm"></i>
+        <span>Roster to Rymnet</span>
+      </button>
+      <button onclick="switchTab('audit')" id="tab-audit"
+        class="tab-btn whitespace-nowrap py-3.5 px-4 border-b-2 text-sm flex items-center gap-2" style="display:none">
+        <i class="fa-solid fa-video text-sm"></i>
+        <span>5S Walkthrough Audit</span>
+        <span class="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">AM Only</span>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     MAIN CONTENT
+══════════════════════════════════════════════════════════════════════════════ -->
+<main id="mainContent" class="flex-grow max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full hidden">
+
+  <!-- ─────────────────────────────────────────────────────────────────────────
+       MODULE 1: INVENTORY REPLENISHMENT ENGINE
+  ───────────────────────────────────────────────────────────────────────────── -->
+  <div id="content-inventory" class="tab-content block">
+
+    <!-- Module header -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-5">
+      <div class="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+              <i class="fa-solid fa-boxes-stacked text-blue-700"></i>
+            </div>
+            <h2 class="text-lg font-bold text-gray-900">Inventory Replenishment Engine</h2>
+          </div>
+          <p class="text-gray-500 text-sm">Upload a Xilnex CSV export. The engine calculates ADS, ROP, and suggested order quantities per SKU, grouped by vendor for PO generation.</p>
+        </div>
+        <span id="invBranchBadge" class="text-xs bg-blue-100 text-blue-800 font-semibold px-3 py-1 rounded-full border border-blue-200 shrink-0">—</span>
+      </div>
+    </div>
+
+    <!-- Parameters -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-5">
+      <h3 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+        <i class="fa-solid fa-sliders text-blue-500"></i> Calculation Parameters
+      </h3>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Sales History (days)</label>
+          <input id="paramSalesWindow" type="number" value="90" min="1"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-blue-400 focus:border-blue-400 outline-none">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Lead Time (days)</label>
+          <input id="paramLeadTime" type="number" value="7" min="1"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-blue-400 focus:border-blue-400 outline-none">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Safety Buffer (days)</label>
+          <input id="paramSafetyDays" type="number" value="45" min="1"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-blue-400 focus:border-blue-400 outline-none">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Target Coverage (days)</label>
+          <input id="paramTargetDays" type="number" value="70" min="1"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-blue-400 focus:border-blue-400 outline-none">
+        </div>
+      </div>
+      <p class="text-xs text-gray-400 mt-3">ROP = ADS × (Lead Time + Safety Buffer) &nbsp;|&nbsp; Suggested Order = Max(0, ceil(ADS × Target − IP)) if IP ≤ ROP</p>
+    </div>
+
+    <!-- File drop zone -->
+    <div id="invDropZone"
+      class="bg-white rounded-xl shadow-sm border-2 border-dashed border-gray-300 p-10 text-center hover:border-blue-400 hover:bg-blue-50 transition cursor-pointer mb-5">
+      <div class="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+        <i class="fa-solid fa-file-csv text-green-600 text-2xl"></i>
+      </div>
+      <p class="font-semibold text-gray-700">Drag & drop Xilnex CSV here</p>
+      <p class="text-sm text-gray-400 mt-1">or click to browse — CSV format only</p>
+      <p class="text-xs text-gray-400 mt-1">Expected columns: Item_Code, Description, Vendor_Code, Sales_Qty_90d, SOH, On_Order, UOM</p>
+      <input type="file" id="invFileInput" accept=".csv" class="hidden">
+    </div>
+    <p id="invStatus" class="text-sm text-gray-500 mb-4 text-center"></p>
+
+    <!-- KPI counters + filter/search (hidden until file loaded) -->
+    <div id="invResultPanel" class="hidden">
+      <!-- KPI row -->
+      <div class="grid grid-cols-3 gap-4 mb-5">
+        <div class="kpi-card rounded-xl p-4 shadow-sm border border-gray-200">
+          <p class="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total SKUs</p>
+          <p id="kpiTotalSKUs" class="text-3xl font-bold text-blue-700 mt-1">0</p>
+        </div>
+        <div class="kpi-card amber rounded-xl p-4 shadow-sm border border-gray-200">
+          <p class="text-xs text-gray-500 uppercase tracking-wide font-semibold">SKUs to Reorder</p>
+          <p id="kpiToReorder" class="text-3xl font-bold text-amber-600 mt-1">0</p>
+        </div>
+        <div class="kpi-card green rounded-xl p-4 shadow-sm border border-gray-200">
+          <p class="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Order Units</p>
+          <p id="kpiTotalUnits" class="text-3xl font-bold text-green-700 mt-1">0</p>
+        </div>
+      </div>
+
+      <!-- Filter & search row -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4 flex flex-wrap gap-3 items-center justify-between">
+        <div class="flex items-center gap-3 flex-wrap">
+          <div class="relative">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+            <input id="invSearch" type="text" placeholder="Search by SKU or description…"
+              class="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-blue-400 focus:border-blue-400 outline-none w-64">
+          </div>
+          <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+            <input id="invFilterReorder" type="checkbox"
+              class="w-4 h-4 accent-blue-600 rounded">
+            Show only SKUs to reorder
+          </label>
+        </div>
+        <button id="invDownloadBtn"
+          class="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-5 py-2 rounded-lg flex items-center gap-2 transition shadow-sm">
+          <i class="fa-solid fa-file-zipper"></i>
+          Generate & Download Xilnex PO ZIP
+        </button>
+      </div>
+
+      <!-- Order grid table -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="inv-table-wrap">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-gray-50 border-b border-gray-200">
+                <th class="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Item Code</th>
+                <th class="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Description</th>
+                <th class="px-3 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide">Vendor</th>
+                <th class="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">SOH</th>
+                <th class="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">On Order</th>
+                <th class="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">ADS</th>
+                <th class="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">Days Cover</th>
+                <th class="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">ROP</th>
+                <th class="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">Suggested Qty</th>
+                <th class="px-3 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide">Approved Qty ✏️</th>
+              </tr>
+            </thead>
+            <tbody id="invTableBody">
+              <tr><td colspan="10" class="text-center py-12 text-gray-400 text-sm">Upload a CSV file to see the replenishment grid.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────────────────────
+       MODULE 2: ROSTER TO RYMNET
+  ───────────────────────────────────────────────────────────────────────────── -->
+  <div id="content-roster" class="tab-content hidden">
+
+    <!-- Module header -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-5">
+      <div class="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+              <i class="fa-solid fa-calendar-days text-green-700"></i>
+            </div>
+            <h2 class="text-lg font-bold text-gray-900">Roster Matrix → Rymnet HRMS Converter</h2>
+          </div>
+          <p class="text-gray-500 text-sm">Upload your visual monthly roster (.xlsx / .xls / .csv). Staff nicknames are automatically resolved to Rymnet Employee IDs. Shift time ranges are translated to official Rymnet shift codes.</p>
+        </div>
+        <span id="activeBranchBadge" class="text-xs bg-green-100 text-green-800 font-semibold px-3 py-1 rounded-full border border-green-200 shrink-0">—</span>
+      </div>
+    </div>
+
+    <!-- Configuration row -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-5">
+      <h3 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+        <i class="fa-solid fa-gear text-green-500"></i> Configuration
+      </h3>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Branch Code</label>
+          <input id="rosterBranchCode" type="text" value="KS01" placeholder="e.g. KS01"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-green-400 outline-none uppercase"
+            oninput="this.value = this.value.toUpperCase()">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Roster Month / Year</label>
+          <input id="rosterMonth" type="month"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-green-400 outline-none">
+        </div>
+        <div class="flex items-end">
+          <p class="text-xs text-gray-400 leading-relaxed">Set month before uploading.<br>Unmapped nicknames shown in amber.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shift code reference -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-5">
+      <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Shift Code Reference</h3>
+      <div class="flex flex-wrap gap-2">
+        <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">0730–1630 → 8H_0730-1630</span>
+        <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">0800–1700 → 8H_0800-1700</span>
+        <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">0830–1730 → 8H_0830-1730</span>
+        <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">1300–2200 → 8H_1300-2200</span>
+        <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">1330–2230 → 8H_1330-2230</span>
+        <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">OFF → OFF</span>
+        <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">AL → AL</span>
+        <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">MC → MC</span>
+        <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">PH → PH</span>
+      </div>
+    </div>
+
+    <!-- Drop zone -->
+    <div id="rosterDropZone"
+      class="bg-white rounded-xl shadow-sm border-2 border-dashed border-gray-300 p-10 text-center hover:border-green-400 hover:bg-green-50 transition cursor-pointer mb-5">
+      <div class="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+        <i class="fa-solid fa-file-excel text-blue-600 text-2xl"></i>
+      </div>
+      <p class="font-semibold text-gray-700">Drag & drop Visual Roster here</p>
+      <p class="text-sm text-gray-400 mt-1">Accepts .xlsx, .xls, .csv — or click to browse</p>
+      <p class="text-xs text-gray-400 mt-1">Expected: Row 1 = header with day numbers (1–31), Column A = nickname</p>
+      <input type="file" id="rosterInput" accept=".xlsx,.xls,.csv" class="hidden">
+    </div>
+    <p id="rosterStatus" class="text-sm text-gray-500 mb-4 text-center"></p>
+
+    <!-- Results (hidden until file loaded) -->
+    <div id="rosterResultPanel" class="hidden">
+      <!-- Preview table -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-5">
+        <div class="flex justify-between items-center px-5 py-3 border-b border-gray-100">
+          <h3 class="text-sm font-semibold text-gray-700">Preview (first 15 records)</h3>
+          <span id="rosterPreviewSummary" class="text-xs text-gray-400"></span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th class="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Emp ID</th>
+                <th class="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Emp Name</th>
+                <th class="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Nickname</th>
+                <th class="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Work Date</th>
+                <th class="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Shift Code</th>
+                <th class="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Raw Cell</th>
+              </tr>
+            </thead>
+            <tbody id="rosterPreviewBody">
+              <tr><td colspan="6" class="text-center py-8 text-gray-400 text-sm">No data yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Download button -->
+      <div class="flex justify-end">
+        <button id="rosterDownloadBtn"
+          class="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-6 py-2.5 rounded-lg flex items-center gap-2 transition shadow-sm">
+          <i class="fa-solid fa-file-arrow-down"></i>
+          Download Rymnet Import CSV
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────────────────────
+       MODULE 3: 5S AI WALKTHROUGH AUDITOR (AM ONLY)
+  ───────────────────────────────────────────────────────────────────────────── -->
+  <div id="content-audit" class="tab-content hidden">
+
+    <!-- Module header -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-5">
+      <div class="flex items-start gap-3">
+        <div class="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center shrink-0">
+          <i class="fa-solid fa-video text-amber-700 text-lg"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2 mb-0.5">
+            <h2 class="text-lg font-bold text-gray-900">5S Outlet Walkthrough AI Auditor</h2>
+            <span class="text-xs bg-amber-100 text-amber-700 font-semibold px-2 py-0.5 rounded">Area Manager</span>
+          </div>
+          <p class="text-gray-500 text-sm">Upload a 60–90 second MP4/MOV walkthrough video. Gemini Vision analyses it across 4 compliance categories and generates a timestamped findings report.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- API key + branch selector -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-5">
+      <h3 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+        <i class="fa-solid fa-key text-amber-500"></i> Gemini API Configuration
+      </h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Gemini API Key <span class="text-gray-400">(stored locally, never uploaded)</span></label>
+          <input type="password" id="geminiApiKey" autocomplete="off"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-amber-400 outline-none"
+            placeholder="AIza…   (leave blank for demo mode)">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Target Branch for Audit</label>
+          <select id="auditBranchSelect"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-amber-400 outline-none bg-white">
+            <option value="">Select branch…</option>
+            <option value="KS01">KS01 – Kota Sentosa</option>
+            <option value="BR02">BR02 – Branch 02</option>
+            <option value="BR03">BR03 – Branch 03</option>
+            <option value="BR04">BR04 – Branch 04</option>
+            <option value="BR05">BR05 – Branch 05</option>
+            <option value="BR06">BR06 – Branch 06</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Video drop zone -->
+    <div id="auditDropZone"
+      class="bg-white rounded-xl shadow-sm border-2 border-dashed border-gray-300 p-10 text-center hover:border-amber-400 hover:bg-amber-50 transition cursor-pointer mb-5">
+      <div class="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
+        <i class="fa-solid fa-cloud-arrow-up text-amber-600 text-2xl"></i>
+      </div>
+      <p class="font-semibold text-gray-700">Drag & drop walkthrough video here</p>
+      <p class="text-sm text-gray-400 mt-1">MP4 or MOV — recommended 60–90 seconds</p>
+      <input type="file" id="auditInput" accept="video/mp4,video/quicktime,video/*" class="hidden">
+    </div>
+
+    <!-- Video preview card -->
+    <div id="auditVideoPreview" class="hidden bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-5">
+      <h3 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+        <i class="fa-solid fa-play-circle text-amber-500"></i> Video Preview
+      </h3>
+      <video id="auditVideoEl" controls class="w-full max-h-64 rounded-lg bg-black mb-2"></video>
+      <p id="auditVideoInfo" class="text-xs text-gray-400"></p>
+    </div>
+
+    <!-- Run button -->
+    <div class="flex justify-center mb-5 no-print">
+      <button id="auditRunBtn" onclick="runAudit()"
+        class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-8 py-3 rounded-xl flex items-center gap-2 transition shadow-md text-sm">
+        <i class="fa-solid fa-wand-magic-sparkles"></i>
+        Run 5S AI Audit
+      </button>
+    </div>
+
+    <!-- Progress indicator -->
+    <div id="auditProgress" class="hidden bg-gray-50 border border-gray-200 rounded-xl p-8 text-center mb-5">
+      <div class="loader border-4 border-gray-200 rounded-full w-14 h-14 mx-auto mb-4"></div>
+      <p id="auditStatusText" class="text-base font-medium text-gray-700">Initialising…</p>
+    </div>
+
+    <!-- Audit report (hidden until analysis done) -->
+    <div id="auditReportContainer" class="hidden">
+
+      <!-- Report header -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-5">
+        <div class="flex flex-wrap gap-6 items-center">
+          <!-- Gauge -->
+          <div id="auditGauge" class="shrink-0"></div>
+          <!-- Meta -->
+          <div class="flex-grow">
+            <h3 class="text-xl font-bold text-gray-900 mb-2">5S Compliance Report</h3>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+              <div><span class="text-gray-400 text-xs uppercase">Branch</span><br><span id="auditBranch" class="font-semibold">—</span></div>
+              <div><span class="text-gray-400 text-xs uppercase">Date</span><br><span id="auditDate" class="font-semibold">—</span></div>
+              <div><span class="text-gray-400 text-xs uppercase">Overall Score</span><br><span id="auditScoreText" class="font-bold text-lg">—</span></div>
+            </div>
+          </div>
+          <!-- Action buttons -->
+          <div class="flex gap-2 flex-wrap no-print">
+            <button id="auditWABtn" onclick="copyWhatsAppSummary()"
+              class="bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-2 transition">
+              <i class="fa-brands fa-whatsapp text-base"></i> Copy WhatsApp Summary
             </button>
-            <p id="loginError" class="text-red-500 text-sm mt-3 hidden"></p>
+            <button id="auditPrintBtn" onclick="printAuditReport()"
+              class="bg-gray-700 hover:bg-gray-800 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-2 transition">
+              <i class="fa-solid fa-print"></i> Print PDF Report
+            </button>
+          </div>
         </div>
-    </div>
+      </div>
 
-    <!-- Header -->
-    <header class="bg-blue-900 text-white shadow-md hidden" id="mainHeader">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-            <div class="flex items-center space-x-3">
-                <i class="fa-solid fa-staff-snake text-2xl"></i>
-                <h1 class="text-xl font-bold tracking-wide">Branch Management Hub</h1>
-            </div>
-            <div class="flex items-center space-x-4">
-                <span id="loggedInUser" class="text-sm text-blue-200 font-medium"></span>
-                <select id="branchSelector" class="text-sm text-gray-900 px-3 py-1 rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">Select Branch...</option>
-                </select>
-                <button onclick="logout()" class="text-sm text-blue-200 hover:text-white"><i class="fa-solid fa-right-from-bracket"></i> Logout</button>
-            </div>
+      <!-- Category cards -->
+      <div id="auditCategoryCards" class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5"></div>
+
+      <!-- Timestamped findings table -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-5">
+        <div class="px-5 py-3 border-b border-gray-100">
+          <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            <i class="fa-solid fa-table-list text-amber-500"></i> Timestamped Findings
+          </h3>
         </div>
-    </header>
-
-    <!-- Navigation Tabs -->
-    <div class="bg-white border-b border-gray-200 shadow-sm hidden" id="mainNav">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <nav class="flex space-x-8" aria-label="Tabs">
-                <button onclick="switchTab('roster')" id="tab-roster" class="tab-btn border-blue-500 text-blue-600 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2">
-                    <i class="fa-solid fa-calendar-days"></i><span>Roster to Rymnet</span>
-                </button>
-                <button onclick="switchTab('audit')" id="tab-audit" class="tab-btn border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2">
-                    <i class="fa-solid fa-video"></i><span>5S Video Audit</span>
-                </button>
-                <button onclick="switchTab('inventory')" id="tab-inventory" class="tab-btn border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2">
-                    <i class="fa-solid fa-boxes-stacked"></i><span>Inventory Engine</span>
-                </button>
-            </nav>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Time</th>
+                <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Category</th>
+                <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Observation</th>
+                <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 uppercase">Severity</th>
+              </tr>
+            </thead>
+            <tbody id="auditFindingsBody"></tbody>
+          </table>
         </div>
-    </div>
+      </div>
+
+      <!-- Priority actions -->
+      <div class="bg-red-50 border border-red-200 rounded-xl p-5 mb-5">
+        <h3 class="text-sm font-bold text-red-700 mb-3 flex items-center gap-2">
+          <i class="fa-solid fa-triangle-exclamation"></i> Top Priority Actions
+        </h3>
+        <div id="auditPriorityActions"></div>
+      </div>
+
+      <!-- Actionable checklist -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-5">
+        <h3 class="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+          <i class="fa-solid fa-clipboard-check text-green-600"></i> Floor Rectification Checklist
+          <span class="text-xs text-gray-400">(tick off as completed)</span>
+        </h3>
+        <div id="auditChecklist" class="space-y-3"></div>
+      </div>
+
+    </div><!-- /auditReportContainer -->
+
+  </div><!-- /content-audit -->
+
+</main>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     FOOTER
+══════════════════════════════════════════════════════════════════════════════ -->
+<footer class="bg-white border-t border-gray-200 py-3 text-center text-xs text-gray-400 hidden" id="mainFooter">
+  PMG Branch Operations & Management Hub · All data processed client-side · No external servers
+</footer>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SCRIPTS (load order matters: data → auth → modules)
+══════════════════════════════════════════════════════════════════════════════ -->
+<script src="js/data.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/inventory.js"></script>
+<script src="js/roster.js"></script>
+<script src="js/audit.js"></script>
+
+<script>
+// ─── TAB SWITCHER ─────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+
+  const content = document.getElementById(`content-${tab}`);
+  const tabBtn  = document.getElementById(`tab-${tab}`);
+  if (content) content.classList.remove('hidden');
+  if (tabBtn)  tabBtn.classList.add('active');
+}
+
+// ─── APP INIT ─────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  // Set default month for roster to current month
+  const monthInput = document.getElementById('rosterMonth');
+  if (monthInput) {
+    const now   = new Date();
+    const year  = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    monthInput.value = `${year}-${month}`;
+  }
+
+  // Pre-fill baked-in Gemini API key
+  const geminiInput = document.getElementById('geminiApiKey');
+  if (geminiInput && !geminiInput.value) {
+    const saved = localStorage.getItem('pmg_gemini_key') || '';
+    if (saved) geminiInput.value = saved;
+    else geminiInput.value = 'AIzaSyAfJqs6YnY5J_URsuvmSMi8WM3BckVwKY4';
+  }
+
+  // Initialise modules
+  initInventory();
+  initRoster();
+  initAudit();
+
+  // Fetch live data from Google Sheets (non-blocking background fetch).
+  // Auth works immediately from offline fallback while this loads.
+  // Once URLs are set in js/data.js → GOOGLE_SHEETS_CONFIG, this auto-syncs on every load.
+  loadLiveSheetData();
+
+  // Boot authentication
+  bootAuth();
+
+  // Show footer once logged in
+  const session = getSession();
+  if (session) {
+    const footer = document.getElementById('mainFooter');
+    if (footer) footer.classList.remove('hidden');
+  }
+
+  // PWA service worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+});
+
+// Show footer when app unlocks
+const _origShowMain = showMainApp;
+function showMainApp() {
+  _origShowMain();
+  const footer = document.getElementById('mainFooter');
+  if (footer) footer.classList.remove('hidden');
+
+  // Update branch badge in inventory
+  const session = getSession();
+  if (session) {
+    const badge = document.getElementById('invBranchBadge');
+    if (badge) badge.textContent = session.branch === 'ALL' ? 'All Branches' : session.branch;
+  }
+}
+</script>
 
-    <!-- Main Content Area -->
-    <main class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full hidden" id="mainContent">
-
-        <!-- MODULE 1: Roster to Rymnet -->
-        <div id="content-roster" class="tab-content block">
-            <div class="bg-white rounded-lg shadow p-6">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-lg font-semibold">Visual Roster to Rymnet Engine</h2>
-                    <span id="activeBranchBadge" class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded border border-blue-400">No Branch Selected</span>
-                </div>
-                <p class="text-gray-600 text-sm mb-6">Upload your visual hourly schedule. The engine will automatically map nicknames to Employee IDs and calculate shift hours based on the selected branch's operational time.</p>
-                
-                <div id="rosterDropZone" class="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:bg-gray-50 transition cursor-pointer">
-                    <i class="fa-solid fa-file-csv text-4xl text-green-600 mb-3"></i>
-                    <p class="text-gray-600 font-medium">Drag & drop Visual Schedule (CSV) here</p>
-                    <input type="file" id="rosterInput" accept=".csv" class="hidden">
-                </div>
-            </div>
-        </div>
-
-        <!-- MODULE 2: Outlet 5S Video Audit -->
-        <div id="content-audit" class="tab-content hidden">
-            <div class="bg-white rounded-lg shadow p-6">
-                <h2 class="text-lg font-semibold mb-2">AI-Powered 5S Video Audit</h2>
-                <p class="text-gray-600 text-sm mb-4">Upload a walkthrough video of the pharmacy. The Gemini Multimodal Vision model will analyze it for 5S compliance.</p>
-                
-                <div class="mb-6">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Gemini API Key (Required for AI Audit)</label>
-                    <input type="password" id="geminiApiKey" class="w-full md:w-1/2 border rounded px-3 py-2 text-sm" placeholder="Enter Gemini API Key">
-                </div>
-
-                <div id="auditDropZone" class="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:bg-gray-50 transition cursor-pointer mb-6">
-                    <i class="fa-solid fa-cloud-arrow-up text-4xl text-blue-500 mb-3"></i>
-                    <p class="text-gray-600 font-medium">Drag & drop walkthrough video (MP4, MOV)</p>
-                    <input type="file" id="auditInput" accept="video/*" class="hidden">
-                </div>
-
-                <div id="auditProgress" class="hidden bg-gray-50 rounded-lg p-6 border border-gray-200 text-center">
-                    <div class="loader border-4 border-gray-200 rounded-full w-12 h-12 mx-auto mb-4"></div>
-                    <h3 id="auditStatusText" class="text-lg font-medium text-gray-800">Uploading video...</h3>
-                </div>
-
-                <div id="auditReportContainer" class="hidden mt-6">
-                    <h3 class="text-xl font-bold text-gray-800 border-b pb-2 mb-4">5S Audit Report</h3>
-                    <div id="auditReportContent" class="prose max-w-none text-gray-700"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- MODULE 3: Inventory Replenishment Engine -->
-        <div id="content-inventory" class="tab-content hidden">
-            <div class="bg-white rounded-lg shadow p-6">
-                <h2 class="text-lg font-semibold mb-2">Xilnex CSV to PO ZIP Engine</h2>
-                <p class="text-gray-600 text-sm mb-6">Upload your Xilnex 3-month sales export. The engine calculates order quantities based on a 2-month stock cycle + 1-week delivery buffer.</p>
-
-                <div id="inventoryDropZone" class="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:bg-gray-50 transition cursor-pointer">
-                    <i class="fa-solid fa-file-csv text-4xl text-purple-600 mb-3"></i>
-                    <p class="text-gray-600 font-medium">Drag & drop Xilnex CSV here</p>
-                    <input type="file" id="inventoryInput" accept=".csv" class="hidden">
-                </div>
-            </div>
-        </div>
-
-    </main>
-
-    <script>
-        // ==========================================
-        // 🛑 SYSTEM CONFIGURATION 🛑
-        // PASTE YOUR GOOGLE SHEETS DETAILS HERE
-        // ==========================================
-        const GOOGLE_SHEETS_API_KEY = "AIzaSyAfJqs6YnY5J_URsuvmSMi8WM3BckVwKY4"; 
-        const SPREADSHEET_ID = "1HVpF66K59fbNOmyvouih5knTPMBwoCZ_lGLczD5QaB0";
-        // ==========================================
-
-        let appData = { branches: {}, staff: {}, currentUser: null };
-
-        // --- AUTHENTICATION & GOOGLE SHEETS SYNC ---
-        async function login() {
-            const user = document.getElementById('loginUsername').value.trim();
-            const pass = document.getElementById('loginPassword').value.trim();
-            const btn = document.getElementById('loginBtn');
-            const errorEl = document.getElementById('loginError');
-
-            if (!user || !pass) {
-                showError("Please enter username and password.");
-                return;
-            }
-
-            if (GOOGLE_SHEETS_API_KEY === "YOUR_GOOGLE_API_KEY_HERE") {
-                showError("System Error: Google Sheets API Key not configured in code.");
-                return;
-            }
-
-            btn.innerHTML = '<div class="loader border-2 border-white rounded-full w-5 h-5 mr-2"></div> Authenticating...';
-            btn.disabled = true;
-            errorEl.classList.add('hidden');
-
-            try {
-                // 1. Fetch Users Tab
-                const userRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Users!A2:C?key=${GOOGLE_SHEETS_API_KEY}`);
-                const userData = await userRes.json();
-
-                if (userData.error) throw new Error("Database connection failed. Check API Key/Sheet ID.");
-
-                // 2. Verify Credentials
-                let validUser = null;
-                if (userData.values) {
-                    validUser = userData.values.find(row => row[0] === user && row[1] === pass);
-                }
-
-                if (!validUser) {
-                    throw new Error("Invalid Username or Password.");
-                }
-
-                // 3. If valid, fetch Branches and Staff data immediately
-                btn.innerHTML = '<div class="loader border-2 border-white rounded-full w-5 h-5 mr-2"></div> Syncing Data...';
-                
-                const [branchRes, staffRes] = await Promise.all([
-                    fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Branches!A2:B?key=${GOOGLE_SHEETS_API_KEY}`),
-                    fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Staff!A2:D?key=${GOOGLE_SHEETS_API_KEY}`)
-                ]);
-
-                const branchData = await branchRes.json();
-                const staffData = await staffRes.json();
-
-                // Process Branches
-                let newBranches = {};
-                if (branchData.values) {
-                    branchData.values.forEach(row => {
-                        if(row[0]) newBranches[row[0]] = { startTime: row[1] || "0730" };
-                    });
-                }
-
-                // Process Staff
-                let newStaff = {};
-                if (staffData.values) {
-                    staffData.values.forEach(row => {
-                        const branch = row[0];
-                        const nick = (row[1] || "").toUpperCase();
-                        if (!newStaff[branch]) newStaff[branch] = {};
-                        newStaff[branch][nick] = { id: row[2], name: row[3] };
-                    });
-                }
-
-                // Save to memory
-                appData.branches = newBranches;
-                appData.staff = newStaff;
-                appData.currentUser = { username: validUser[0], assignedBranch: validUser[2] };
-
-                // Unlock UI
-                unlockApp();
-
-            } catch (error) {
-                showError(error.message);
-                btn.innerHTML = 'Login';
-                btn.disabled = false;
-            }
-        }
-
-        function showError(msg) {
-            const errorEl = document.getElementById('loginError');
-            errorEl.innerText = msg;
-            errorEl.classList.remove('hidden');
-        }
-
-        function unlockApp() {
-            document.getElementById('authOverlay').classList.add('hidden');
-            document.getElementById('mainHeader').classList.remove('hidden');
-            document.getElementById('mainNav').classList.remove('hidden');
-            document.getElementById('mainContent').classList.remove('hidden');
-            
-            document.getElementById('loggedInUser').innerText = `Welcome, ${appData.currentUser.username}`;
-            
-            populateBranchSelector();
-        }
-
-        function logout() {
-            location.reload(); // Simple reload clears memory and resets to login screen
-        }
-
-        function populateBranchSelector() {
-            const selector = document.getElementById('branchSelector');
-            selector.innerHTML = '<option value="">Select Branch...</option>';
-            
-            Object.keys(appData.branches).forEach(branch => {
-                const opt = document.createElement('option');
-                opt.value = branch;
-                opt.innerText = branch;
-                selector.appendChild(opt);
-            });
-
-            // Auto-select branch if user is assigned to a specific one
-            if (appData.currentUser.assignedBranch && appData.currentUser.assignedBranch !== "ALL") {
-                selector.value = appData.currentUser.assignedBranch;
-                updateBranchBadge(appData.currentUser.assignedBranch);
-            }
-
-            selector.addEventListener('change', (e) => updateBranchBadge(e.target.value));
-        }
-
-        function updateBranchBadge(branch) {
-            const badge = document.getElementById('activeBranchBadge');
-            if (branch) {
-                badge.innerText = `Active: ${branch}`;
-                badge.className = "bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded border border-green-400";
-            } else {
-                badge.innerText = "No Branch Selected";
-                badge.className = "bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded border border-red-400";
-            }
-        }
-
-        // --- DYNAMIC TIME MAPPING GENERATOR ---
-        function generateTimeMapping(startTimeStr) {
-            let startHour = parseInt(startTimeStr.substring(0, 2));
-            let startMin = startTimeStr.substring(2, 4);
-            let startTimes = {};
-            let endTimes = {};
-            
-            for(let c = 2; c <= 15; c++) {
-                let currentH = (startHour + (c - 2)).toString().padStart(2, '0');
-                let nextH = (startHour + (c - 1)).toString().padStart(2, '0');
-                startTimes[c] = `${currentH}${startMin}`;
-                endTimes[c] = `${nextH}${startMin}`;
-            }
-            return { startTimes, endTimes };
-        }
-
-        // --- MODULE 1: ROSTER TO RYMNET ---
-        function processRoster(file) {
-            const selectedBranch = document.getElementById('branchSelector').value;
-            if (!selectedBranch) return alert("Please select a branch from the top right dropdown first.");
-
-            const branchStaff = appData.staff[selectedBranch];
-            const branchStartTime = appData.branches[selectedBranch].startTime;
-            
-            if (!branchStaff) return alert("No staff data found for this branch in Google Sheets.");
-
-            const { startTimes, endTimes } = generateTimeMapping(branchStartTime);
-
-            Papa.parse(file, {
-                skipEmptyLines: true,
-                complete: function(results) {
-                    try {
-                        const data = results.data;
-                        const scheduleData = {}; 
-                        let currentParsedDate = null;
-                        let targetMonth = null;
-                        let targetYear = null;
-
-                        data.forEach(row => {
-                            const col0 = (row[0] || "").toString().trim().toUpperCase();
-                            const dateMatch = col0.match(/(\d{2})\.(\d{2})\.(\d{4})/);
-                            
-                            if (dateMatch) {
-                                currentParsedDate = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
-                                targetMonth = parseInt(dateMatch[2], 10);
-                                targetYear = parseInt(dateMatch[3], 10);
-                                scheduleData[currentParsedDate] = { isPH: false, shifts: {} };
-                            }
-                            
-                            if (col0.includes("PH") && currentParsedDate) scheduleData[currentParsedDate].isPH = true;
-
-                            if (currentParsedDate) {
-                                const offCell = (row[1] || "").toString().toUpperCase();
-                                Object.keys(branchStaff).forEach(nick => {
-                                    if (offCell.includes(nick)) {
-                                        if (!scheduleData[currentParsedDate].shifts[nick]) scheduleData[currentParsedDate].shifts[nick] = { off: true };
-                                    }
-                                });
-
-                                for (let c = 2; c <= 15; c++) {
-                                    const cell = (row[c] || "").toString().toUpperCase();
-                                    Object.keys(branchStaff).forEach(nick => {
-                                        if (cell.includes(nick)) {
-                                            if (!scheduleData[currentParsedDate].shifts[nick]) {
-                                                scheduleData[currentParsedDate].shifts[nick] = { start: c, end: c };
-                                            } else if (!scheduleData[currentParsedDate].shifts[nick].off) {
-                                                scheduleData[currentParsedDate].shifts[nick].start = Math.min(scheduleData[currentParsedDate].shifts[nick].start, c);
-                                                scheduleData[currentParsedDate].shifts[nick].end = Math.max(scheduleData[currentParsedDate].shifts[nick].end, c);
-                                            }
-                                        }
-                                    });
-                                }
-                            }
-                        });
-
-                        if (!targetMonth || !targetYear) throw new Error("Could not detect dates in the format DD.MM.YYYY");
-
-                        const rymnetOutput = [];
-                        const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
-                        const headers = ["Employee No", "Employee Name"];
-                        const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-                        
-                        for (let d = 1; d <= daysInMonth; d++) {
-                            const dateObj = new Date(targetYear, targetMonth - 1, d);
-                            headers.push(`${d.toString().padStart(2, '0')} (${daysOfWeek[dateObj.getDay()]})`);
-                        }
-                        rymnetOutput.push(headers);
-
-                        Object.keys(branchStaff).forEach(nick => {
-                            const emp = branchStaff[nick];
-                            const shiftRow = [emp.id, emp.name];
-                            const leaveRow = ["", ""];
-                            let offCount = 0; 
-
-                            for (let d = 1; d <= daysInMonth; d++) {
-                                const dateObj = new Date(targetYear, targetMonth - 1, d);
-                                const dateStr = `${targetYear}-${targetMonth.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
-                                
-                                if (dateObj.getDay() === 1) offCount = 0; 
-
-                                const dayData = scheduleData[dateStr];
-
-                                if (dayData && dayData.shifts[nick]) {
-                                    const shiftInfo = dayData.shifts[nick];
-
-                                    if (shiftInfo.off) {
-                                        shiftRow.push("");
-                                        leaveRow.push(dayData.isPH ? "PH" : (offCount === 0 ? "RD" : "OD"));
-                                        if(!dayData.isPH) offCount++;
-                                    } else {
-                                        const start = shiftInfo.start;
-                                        const end = shiftInfo.end;
-                                        const hoursSpan = (end - start) + 1;
-                                        const workHours = hoursSpan >= 8 ? 8 : 5;
-                                        const shiftCode = `${workHours}H_${startTimes[start]}-${endTimes[end]}`;
-                                        shiftRow.push(shiftCode);
-                                        leaveRow.push("");
-                                    }
-                                } else {
-                                    shiftRow.push("");
-                                    leaveRow.push("");
-                                }
-                            }
-                            rymnetOutput.push(shiftRow);
-                            rymnetOutput.push(leaveRow);
-                        });
-
-                        const csv = Papa.unparse(rymnetOutput);
-                        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-                        saveAs(blob, `Rymnet_${selectedBranch}_${targetYear}_${targetMonth.toString().padStart(2, '0')}.csv`);
-                        alert(`Successfully generated Rymnet file for ${selectedBranch}!`);
-
-                    } catch (error) {
-                        alert("Error processing schedule: " + error.message);
-                    }
-                }
-            });
-        }
-
-        // --- MODULE 2: 5S VIDEO AUDIT (Upgraded to Gemini 3.5) ---
-        async function processVideoAudit(file) {
-            const apiKey = document.getElementById('geminiApiKey').value.trim();
-            if (!apiKey) return alert("Please enter your Gemini API Key first.");
-
-            const progressDiv = document.getElementById('auditProgress');
-            const statusText = document.getElementById('auditStatusText');
-            const reportContainer = document.getElementById('auditReportContainer');
-            const reportContent = document.getElementById('auditReportContent');
-
-            progressDiv.classList.remove('hidden');
-            reportContainer.classList.add('hidden');
-            document.getElementById('auditDropZone').classList.add('hidden');
-
-            try {
-                // 1. Upload Video
-                statusText.innerText = "Uploading video to Gemini...";
-                const uploadUrl = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`;
-                const uploadRes = await fetch(uploadUrl, {
-                    method: 'POST',
-                    headers: { 'X-Goog-Upload-Protocol': 'raw', 'X-Goog-Upload-Header-Content-Length': file.size.toString(), 'X-Goog-Upload-Header-Content-Type': file.type, 'Content-Type': file.type },
-                    body: file
-                });
-
-                if (!uploadRes.ok) throw new Error(`Upload failed: ${uploadRes.statusText}`);
-                const uploadData = await uploadRes.json();
-                const fileUri = uploadData.file.uri;
-                const fileName = uploadData.file.name;
-
-                // 2. Wait for Processing
-                statusText.innerText = "Processing video (this may take a few minutes)...";
-                let state = 'PROCESSING';
-                while (state === 'PROCESSING') {
-                    await new Promise(resolve => setTimeout(resolve, 5000));
-                    const checkRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${apiKey}`);
-                    const checkData = await checkRes.json();
-                    state = checkData.state;
-                    if (state === 'FAILED') throw new Error("Gemini failed to process the video.");
-                }
-
-                // 3. Generate Content with Fallback Logic
-                statusText.innerText = "Analyzing 5S Compliance (Trying Gemini 3.5 Flash Lite)...";
-                const prompt = `You are a strict Pharmacy Branch Manager conducting a 5S audit. Analyze this walkthrough video. 1. Identify compliance. 2. Identify non-compliance. 3. Provide recommendations. Format in Markdown.`;
-
-                const requestBody = JSON.stringify({ 
-                    contents: [{ parts: [{ text: prompt }, { fileData: { mimeType: file.type, fileUri: fileUri } }] }] 
-                });
-
-                let genRes;
-                let usedModel = "gemini-3.5-flash-lite";
-                
-                // PRIMARY ATTEMPT: Gemini 3.5 Flash Lite
-                genRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: requestBody
-                });
-
-                // SECONDARY ATTEMPT: Fallback to Gemini 3.5 Flash if Lite fails
-                if (!genRes.ok) {
-                    console.warn("Primary model failed, falling back to Gemini 3.5 Flash...");
-                    statusText.innerText = "Lite model unavailable. Analyzing with Gemini 3.5 Flash...";
-                    usedModel = "gemini-3.5-flash";
-                    
-                    genRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: requestBody
-                    });
-                }
-
-                if (!genRes.ok) throw new Error("Both primary and secondary AI models failed to generate the audit report. Please check your API key or try again later.");
-                
-                const genData = await genRes.json();
-                
-                // Add a small badge to the UI to show which model was actually used
-                const modelBadge = `<span class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded ml-2 align-middle border border-purple-300">Generated by ${usedModel}</span>`;
-                document.querySelector('#auditReportContainer h3').innerHTML = `5S Audit Report ${modelBadge}`;
-                
-                // Render the Markdown report
-                reportContent.innerHTML = marked.parse(genData.candidates[0].content.parts[0].text);
-                progressDiv.classList.add('hidden');
-                reportContainer.classList.remove('hidden');
-                document.getElementById('auditDropZone').classList.remove('hidden');
-
-            } catch (error) {
-                alert("Audit Error: " + error.message);
-                progressDiv.classList.add('hidden');
-                document.getElementById('auditDropZone').classList.remove('hidden');
-            }
-        }
-
-        // --- MODULE 3: INVENTORY ENGINE ---
-        function processInventory(file) {
-            Papa.parse(file, {
-                header: true, skipEmptyLines: true,
-                complete: function(results) {
-                    try {
-                        const vendors = {};
-                        results.data.forEach(row => {
-                            const vendor = (row['Vendor'] || 'Uncategorized').trim();
-                            const itemCode = row['Item Code'] || '';
-                            const desc = row['Description'] || '';
-                            const sales3m = parseFloat(row['3 Months Sales Qty']) || 0;
-                            const onHand = parseFloat(row['On Hand Qty']) || 0;
-
-                            const monthlySales = sales3m / 3;
-                            const weeklySales = monthlySales / 4;
-                            const targetStock = monthlySales * 2;
-                            const deliveryBuffer = weeklySales * 1;
-                            
-                            let orderQty = Math.ceil((targetStock + deliveryBuffer) - onHand);
-                            if (orderQty < 0) orderQty = 0;
-
-                            if (!vendors[vendor]) vendors[vendor] = [];
-                            if (orderQty > 0) {
-                                vendors[vendor].push({ "Item Code": itemCode, "Description": desc, "Current On Hand": onHand, "3M Sales": sales3m, "Suggested Order Qty": orderQty });
-                            }
-                        });
-
-                        const zip = new JSZip();
-                        let filesAdded = 0;
-                        for (const [vendor, items] of Object.entries(vendors)) {
-                            if (items.length > 0) {
-                                zip.file(`PO_${vendor.replace(/[^a-z0-9]/gi, '_')}.csv`, Papa.unparse(items));
-                                filesAdded++;
-                            }
-                        }
-
-                        if (filesAdded === 0) return alert("No items require ordering.");
-
-                        zip.generateAsync({ type: "blob" }).then(content => {
-                            saveAs(content, `Vendor_POs_${new Date().toISOString().split('T')[0]}.zip`);
-                            alert(`Successfully generated ${filesAdded} Purchase Orders!`);
-                        });
-                    } catch (error) { alert("Error processing inventory: " + error.message); }
-                }
-            });
-        }
-
-        // --- UTILITIES ---
-        function setupDragAndDrop(zoneId, inputId, processFunction) {
-            const zone = document.getElementById(zoneId);
-            const input = document.getElementById(inputId);
-            zone.addEventListener('click', () => input.click());
-            zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
-            zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-            zone.addEventListener('drop', (e) => { e.preventDefault(); zone.classList.remove('drag-over'); if (e.dataTransfer.files.length) processFunction(e.dataTransfer.files[0]); });
-            input.addEventListener('change', (e) => { if (e.target.files.length) { processFunction(e.target.files[0]); input.value = ''; } });
-        }
-
-        setupDragAndDrop('rosterDropZone', 'rosterInput', processRoster);
-        setupDragAndDrop('auditDropZone', 'auditInput', processVideoAudit);
-        setupDragAndDrop('inventoryDropZone', 'inventoryInput', processInventory);
-
-        function switchTab(tabId) {
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-            document.querySelectorAll('.tab-btn').forEach(el => { el.classList.remove('border-blue-500', 'text-blue-600'); el.classList.add('border-transparent', 'text-gray-500'); });
-            document.getElementById(`content-${tabId}`).classList.remove('hidden');
-            const activeBtn = document.getElementById(`tab-${tabId}`);
-            activeBtn.classList.remove('border-transparent', 'text-gray-500');
-            activeBtn.classList.add('border-blue-500', 'text-blue-600');
-        }
-    </script>
 </body>
 </html>
