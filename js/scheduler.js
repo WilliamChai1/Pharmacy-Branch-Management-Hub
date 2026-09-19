@@ -1217,19 +1217,327 @@ function exportScheduleToRymnetCSV() {
   saveAs(blob, `rymnet_ai_generated_${branch}_${month}.csv`);
 }
 
+// ─── ENSURE EXCELJS IS LOADED ────────────────────────────────────────────────
+async function ensureExcelJS() {
+  if (typeof ExcelJS !== 'undefined') return true;
+  return new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+    s.onload = () => resolve(true);
+    s.onerror = () => {
+      const s2 = document.createElement('script');
+      s2.src = 'js/exceljs.min.js';
+      s2.onload = () => resolve(true);
+      s2.onerror = () => resolve(false);
+      document.head.appendChild(s2);
+    };
+    document.head.appendChild(s);
+  });
+}
+
 // ─── EXPORT TO PMG VISUAL DAILY TIMELINE EXCEL ────────────────────────────────
-function exportScheduleToPmgVisualExcel() {
+async function exportScheduleToPmgVisualExcel() {
   if (!generatedScheduleData || !generatedScheduleData.days) {
     alert('Please generate a schedule first before exporting.');
     return;
   }
 
-  if (typeof XLSX === 'undefined') {
-    alert('SheetJS (XLSX) library not loaded.');
-    return;
-  }
-
   const { month, branch, days } = generatedScheduleData;
+  const hasExcelJS = await ensureExcelJS();
+
+  if (hasExcelJS && typeof ExcelJS !== 'undefined') {
+    await generateStyledPmgExcel(month, branch, days);
+  } else if (typeof XLSX !== 'undefined') {
+    generateBasicPmgExcel(month, branch, days);
+  } else {
+    alert('Spreadsheet library not loaded. Please check your internet connection.');
+  }
+}
+
+async function generateStyledPmgExcel(month, branch, days) {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'PMG Pharmacy Management Hub';
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet(`Visual_Timeline_${month}`, {
+    views: [{ showGridLines: true }]
+  });
+
+  const headers = [
+    'DAY', 'OFF',
+    '7.30-8.30AM', '8.30-9.30AM', '9.30-10.30AM', '10.30-11.30AM', '11.30-12.30PM',
+    '12.30-1.30PM',
+    '1.30-2.30PM', '2.30-3.30PM', '3.30-4.30PM',
+    '4.30-5.30PM', '5.30-6.30PM', '6.30-7.30PM', '7.30-8.30PM', '8.30-9.30PM',
+    'HALF DAY', 'NOTES'
+  ];
+
+  sheet.columns = [
+    { header: headers[0], width: 15 },
+    { header: headers[1], width: 14 },
+    { header: headers[2], width: 13 },
+    { header: headers[3], width: 13 },
+    { header: headers[4], width: 13 },
+    { header: headers[5], width: 13 },
+    { header: headers[6], width: 13 },
+    { header: headers[7], width: 13 },
+    { header: headers[8], width: 13 },
+    { header: headers[9], width: 13 },
+    { header: headers[10], width: 13 },
+    { header: headers[11], width: 13 },
+    { header: headers[12], width: 13 },
+    { header: headers[13], width: 13 },
+    { header: headers[14], width: 13 },
+    { header: headers[15], width: 13 },
+    { header: headers[16], width: 14 },
+    { header: headers[17], width: 28 }
+  ];
+
+  const thinBorder = {
+    top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    right: { style: 'thin', color: { argb: 'FFCBD5E1' } }
+  };
+
+  const headerColors = [
+    'FF1E3A8A', // DAY (Navy)
+    'FFDC2626', // OFF (Crimson)
+    'FF0284C7', 'FF0284C7', 'FF0284C7', 'FF0284C7', 'FF0284C7', // Morning slots (Sky Blue)
+    'FFD97706', // 12.30-1.30PM (Lunch Amber)
+    'FF2563EB', 'FF2563EB', // Afternoon slots (Royal Blue)
+    'FFEA580C', // 3.30-4.30PM (Dinner Orange)
+    'FF4F46E5', 'FF4F46E5', 'FF4F46E5', 'FF4F46E5', 'FF4F46E5', // Night slots (Indigo)
+    'FF7C3AED', // HALF DAY (Purple)
+    'FF0F766E'  // NOTES (Teal)
+  ];
+
+  const headerRow = sheet.getRow(1);
+  headerRow.height = 30;
+  headerRow.eachCell((cell, colNum) => {
+    const bg = headerColors[colNum - 1] || 'FF1E3A8A';
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
+    cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    cell.border = thinBorder;
+  });
+
+  let currentLine = 2;
+
+  days.forEach(d => {
+    const [y, m, dayNum] = d.date.split('-');
+    const dayLabel = `${d.dayOfWeek.slice(0, 3).toUpperCase()}\n${dayNum}.${m}.${y}`;
+
+    const isHoliday = !!HOLIDAYS_2026_SARAWAK[d.date];
+    const holidayName = isHoliday ? HOLIDAYS_2026_SARAWAK[d.date] : '';
+
+    const offList = [];
+    const halfDayList = [];
+    const morningStaff = [];
+    const nightStaff = [];
+
+    currentTeammates.forEach(tm => {
+      const shift = (d.shifts && d.shifts[tm.empNo]) || 'RD';
+      const isPharm = tm.isPharmacist || tm.position === 'Pharmacist';
+
+      if (shift === 'RD' || shift === 'OFF') {
+        offList.push(tm.nickname);
+      } else if (shift === 'PH') {
+        offList.push(`${tm.nickname} (PH)`);
+      } else if (shift.includes('0730-1130') || shift.includes('0730-1230')) {
+        halfDayList.push(tm.nickname);
+        morningStaff.push({ nickname: tm.nickname, empNo: tm.empNo, isPharm, isHalf: true, shift });
+      } else if (shift.includes('1630-2130')) {
+        halfDayList.push(tm.nickname);
+        nightStaff.push({ nickname: tm.nickname, empNo: tm.empNo, isPharm, isHalf: true, shift });
+      } else if (shift.includes('0730') || shift.includes('0800')) {
+        morningStaff.push({ nickname: tm.nickname, empNo: tm.empNo, isPharm, isHalf: false, shift });
+      } else if (shift.includes('1230') || shift.includes('1300')) {
+        nightStaff.push({ nickname: tm.nickname, empNo: tm.empNo, isPharm, isHalf: false, shift });
+      }
+    });
+
+    const workingStaffRows = [...morningStaff, ...nightStaff];
+    const dayRowCount = Math.max(workingStaffRows.length, offList.length, halfDayList.length, 6);
+    const startRow = currentLine;
+    const endRow = currentLine + dayRowCount - 1;
+
+    // Day styling
+    let dayBg = 'FFF8FAFC';
+    let dayFg = 'FF0F172A';
+    if (isHoliday) {
+      dayBg = 'FFFFE4E6';
+      dayFg = 'FFBE123C';
+    } else if (d.dayOfWeek === 'Sunday') {
+      dayBg = 'FFFEE2E2';
+      dayFg = 'FF991B1B';
+    } else if (d.dayOfWeek === 'Saturday') {
+      dayBg = 'FFFEF9C3';
+      dayFg = 'FF854D0E';
+    }
+
+    for (let r = 0; r < dayRowCount; r++) {
+      const rowNum = currentLine + r;
+      const row = sheet.getRow(rowNum);
+      row.height = 24;
+
+      // Col 1: DAY
+      const dayCell = row.getCell(1);
+      if (r === 0) dayCell.value = dayLabel;
+      dayCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: dayBg } };
+      dayCell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: dayFg } };
+      dayCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      dayCell.border = thinBorder;
+
+      // Col 2: OFF
+      const offCell = row.getCell(2);
+      if (r < offList.length) {
+        offCell.value = offList[r];
+        offCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+        offCell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF991B1B' } };
+      } else {
+        offCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+      }
+      offCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      offCell.border = thinBorder;
+
+      // Cols 3 to 16: Hourly timeline
+      const staff = r < workingStaffRows.length ? workingStaffRows[r] : null;
+
+      for (let c = 3; c <= 16; c++) {
+        const timeCell = row.getCell(c);
+        timeCell.border = thinBorder;
+        timeCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        if (!staff) {
+          timeCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+          continue;
+        }
+
+        const nick = staff.nickname;
+        let cellText = '';
+        let cellBg = 'FFFFFFFF';
+        let cellFg = 'FF000000';
+
+        // Staff badge colors
+        const staffBg = staff.isPharm
+          ? 'FFCFFAFE' // Soft Cyan (Pharmacist)
+          : (staff.isHalf
+            ? 'FFFFEDD5' // Soft Warm Peach (Half Day)
+            : (morningStaff.includes(staff)
+              ? 'FFDCFCE7' // Soft Mint Green (Morning Shift)
+              : 'FFEDE9FE')); // Soft Lavender (Night Shift)
+
+        const staffFg = staff.isPharm
+          ? 'FF0E7490' // Dark Teal
+          : (staff.isHalf
+            ? 'FFC2410C' // Warm Rust
+            : (morningStaff.includes(staff)
+              ? 'FF15803D' // Forest Green
+              : 'FF6D28D9')); // Deep Violet
+
+        if (staff.isHalf) {
+          if (staff.shift.includes('0730-1130')) {
+            if (c >= 3 && c <= 6) { cellText = nick; cellBg = staffBg; cellFg = staffFg; }
+          } else if (staff.shift.includes('0730-1230')) {
+            if (c >= 3 && c <= 7) { cellText = nick; cellBg = staffBg; cellFg = staffFg; }
+          } else if (staff.shift.includes('1630-2130')) {
+            if (c >= 12 && c <= 16) { cellText = nick; cellBg = staffBg; cellFg = staffFg; }
+          }
+        } else if (morningStaff.includes(staff)) {
+          // Morning Full Shift
+          if (c >= 3 && c <= 7) {
+            cellText = nick; cellBg = staffBg; cellFg = staffFg;
+          } else if (c === 8) {
+            cellText = 'REST';
+            cellBg = 'FFFEF08A'; // Bright Golden Yellow
+            cellFg = 'FF854D0E'; // Golden Brown
+          } else if (c >= 9 && c <= 11) {
+            cellText = nick; cellBg = staffBg; cellFg = staffFg;
+          }
+        } else {
+          // Night Full Shift
+          if (c >= 8 && c <= 10) {
+            cellText = nick; cellBg = staffBg; cellFg = staffFg;
+          } else if (c === 11) {
+            cellText = 'REST';
+            cellBg = 'FFFEF08A'; // Bright Golden Yellow
+            cellFg = 'FF854D0E'; // Golden Brown
+          } else if (c >= 12 && c <= 16) {
+            cellText = nick; cellBg = staffBg; cellFg = staffFg;
+          }
+        }
+
+        if (cellText) {
+          timeCell.value = cellText;
+          timeCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: cellBg } };
+          timeCell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: cellFg } };
+        } else {
+          timeCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+        }
+      }
+
+      // Col 17: HALF DAY
+      const halfCell = row.getCell(17);
+      if (r < halfDayList.length) {
+        halfCell.value = halfDayList[r];
+        halfCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3E8FF' } };
+        halfCell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF7E22CE' } };
+      } else {
+        halfCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+      }
+      halfCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      halfCell.border = thinBorder;
+
+      // Col 18: NOTES
+      const notesCell = row.getCell(18);
+      if (r === 0 && holidayName) notesCell.value = holidayName;
+      notesCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: holidayName ? 'FFFFE4E6' : 'FFFFFFFF' } };
+      notesCell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFBE123C' } };
+      notesCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      notesCell.border = thinBorder;
+    }
+
+    // Merges for this day
+    sheet.mergeCells(startRow, 1, endRow, 1);
+    if (halfDayList.length <= 1) {
+      sheet.mergeCells(startRow, 17, endRow, 17);
+    }
+    if (holidayName) {
+      sheet.mergeCells(startRow, 18, endRow, 18);
+    }
+
+    currentLine += dayRowCount;
+
+    // Day divider row
+    const divRow = sheet.getRow(currentLine);
+    divRow.height = 6;
+    for (let c = 1; c <= 18; c++) {
+      const cell = divRow.getCell(c);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+    }
+    currentLine++;
+  });
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const filename = `PMG_Visual_Schedule_${branch}_${month}.xlsx`;
+
+  if (typeof saveAs !== 'undefined') {
+    saveAs(blob, filename);
+  } else {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+}
+
+function generateBasicPmgExcel(month, branch, days) {
   const wsData = [];
   const merges = [];
 
@@ -1244,14 +1552,12 @@ function exportScheduleToPmgVisualExcel() {
   ];
   wsData.push(header);
 
-  let currentRowIdx = 1; // Row 0 is header
+  let currentRowIdx = 1;
 
   days.forEach(d => {
-    // Format date string: MON 28.09.2026
     const [y, m, dayNum] = d.date.split('-');
     const dayLabel = `${d.dayOfWeek.slice(0, 3).toUpperCase()}\n${dayNum}.${m}.${y}`;
 
-    // Separate staff for this day
     const offList = [];
     const halfDayList = [];
     const morningStaff = [];
@@ -1289,65 +1595,45 @@ function exportScheduleToPmgVisualExcel() {
     for (let r = 0; r < dayRowCount; r++) {
       const row = new Array(18).fill('');
 
-      // Col A: DAY (first row only, merged across block)
       if (r === 0) row[0] = dayLabel;
-
-      // Col B: OFF staff list
       if (r < offList.length) row[1] = offList[r];
 
-      // Cols C to P: Hourly timeline (Cols 2 to 15)
       if (r < workingStaffRows.length) {
         const staff = workingStaffRows[r];
         const nick = staff.nickname;
 
         if (staff.isHalf) {
           if (staff.shift.includes('0730-1130')) {
-            // 7.30 - 11.30 (Cols C to F: 2, 3, 4, 5)
             row[2] = nick; row[3] = nick; row[4] = nick; row[5] = nick;
           } else if (staff.shift.includes('0730-1230')) {
-            // 7.30 - 12.30 (Cols C to G: 2, 3, 4, 5, 6)
             row[2] = nick; row[3] = nick; row[4] = nick; row[5] = nick; row[6] = nick;
           } else if (staff.shift.includes('1630-2130')) {
-            // 4.30 - 9.30 (Cols L to P: 11, 12, 13, 14, 15)
             row[11] = nick; row[12] = nick; row[13] = nick; row[14] = nick; row[15] = nick;
           }
         } else if (staff.shift.includes('0730') || staff.shift.includes('0800')) {
-          // Morning Full Shift:
-          // 7.30 - 12.30: nick (Cols 2, 3, 4, 5, 6)
           row[2] = nick; row[3] = nick; row[4] = nick; row[5] = nick; row[6] = nick;
-          // 12.30 - 1.30: REST (Col 7)
           row[7] = 'REST';
-          // 1.30 - 4.30: nick (Cols 8, 9, 10)
           row[8] = nick; row[9] = nick; row[10] = nick;
         } else {
-          // Night Full Shift:
-          // 12.30 - 3.30: nick (Cols 7, 8, 9)
           row[7] = nick; row[8] = nick; row[9] = nick;
-          // 3.30 - 4.30: REST (Col 10)
           row[10] = 'REST';
-          // 4.30 - 9.30: nick (Cols 11, 12, 13, 14, 15)
           row[11] = nick; row[12] = nick; row[13] = nick; row[14] = nick; row[15] = nick;
         }
       }
 
-      // Col Q: HALF DAY staff list
       if (r < halfDayList.length) row[16] = halfDayList[r];
-
-      // Col R: NOTES
       if (r === 0) row[17] = holidayName;
 
       wsData.push(row);
       currentRowIdx++;
     }
 
-    // Merges for this day
-    merges.push({ s: { r: startRow, c: 0 }, e: { r: endRow, c: 0 } }); // DAY
+    merges.push({ s: { r: startRow, c: 0 }, e: { r: endRow, c: 0 } });
     if (halfDayList.length <= 1) {
-      merges.push({ s: { r: startRow, c: 16 }, e: { r: endRow, c: 16 } }); // HALF DAY
+      merges.push({ s: { r: startRow, c: 16 }, e: { r: endRow, c: 16 } });
     }
-    merges.push({ s: { r: startRow, c: 17 }, e: { r: endRow, c: 17 } }); // NOTES
+    merges.push({ s: { r: startRow, c: 17 }, e: { r: endRow, c: 17 } });
 
-    // Empty separator row between days
     const emptySep = new Array(18).fill('');
     wsData.push(emptySep);
     currentRowIdx++;
@@ -1358,24 +1644,9 @@ function exportScheduleToPmgVisualExcel() {
 
   ws['!merges'] = merges;
   ws['!cols'] = [
-    { wch: 14 }, // A: DAY
-    { wch: 14 }, // B: OFF
-    { wch: 13 }, // C: 7.30-8.30AM
-    { wch: 13 }, // D: 8.30-9.30AM
-    { wch: 13 }, // E: 9.30-10.30AM
-    { wch: 13 }, // F: 10.30-11.30AM
-    { wch: 13 }, // G: 11.30-12.30PM
-    { wch: 13 }, // H: 12.30-1.30PM
-    { wch: 13 }, // I: 1.30-2.30PM
-    { wch: 13 }, // J: 2.30-3.30PM
-    { wch: 13 }, // K: 3.30-4.30PM
-    { wch: 13 }, // L: 4.30-5.30PM
-    { wch: 13 }, // M: 5.30-6.30PM
-    { wch: 13 }, // N: 6.30-7.30PM
-    { wch: 13 }, // O: 7.30-8.30PM
-    { wch: 13 }, // P: 8.30-9.30PM
-    { wch: 14 }, // Q: HALF DAY
-    { wch: 28 }  // R: NOTES
+    { wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 13 },
+    { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 13 },
+    { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 14 }, { wch: 28 }
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, `Visual_Timeline_${month}`);
