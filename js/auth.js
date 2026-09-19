@@ -100,11 +100,16 @@ async function login() {
       for (const row of parsed.data) {
         if (row.Username && row.Username.toLowerCase() === username.toLowerCase() &&
             String(row.Password).trim() === String(password).trim()) {
+          const branchVal = row.AssignedBranch || row.Branch || '';
+          const isAM = (row.Role && row.Role.toUpperCase() === 'AM') ||
+                       branchVal.toUpperCase() === 'ALL' ||
+                       row.Username.toLowerCase() === 'williamchai' ||
+                       row.Username.toLowerCase() === 'am';
           matchedUser = {
             username:    row.Username,
             displayName: row.DisplayName || row.Username,
-            branch:      row.AssignedBranch || 'ALL',
-            role:        (row.Role || 'BM').toUpperCase(),
+            branch:      branchVal || 'ALL',
+            role:        isAM ? 'AM' : 'BM',
           };
           break;
         }
@@ -121,11 +126,15 @@ async function login() {
       String(u.password).trim() === String(password).trim()
     );
     if (found) {
+      const isAM = found.role === 'AM' ||
+                   found.branch === 'ALL' ||
+                   found.username.toLowerCase() === 'williamchai' ||
+                   found.username.toLowerCase() === 'am';
       matchedUser = {
         username:    found.username,
         displayName: found.displayName,
         branch:      found.branch,
-        role:        found.role,
+        role:        isAM ? 'AM' : (found.role || 'BM'),
       };
     }
   }

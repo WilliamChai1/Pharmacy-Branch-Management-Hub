@@ -42,7 +42,7 @@ const BRANCHES = [
 // When Google Sheets is reachable, this is overridden by live sheet data.
 // Role: 'AM' if AssignedBranch === 'ALL', else 'BM'.
 let USERS = [
-  { username: 'williamchai', password: '833445', branch: 'Kota Sentosa', role: 'BM', displayName: 'William Chai' },
+  { username: 'williamchai', password: '833445', branch: 'ALL',          role: 'AM', displayName: 'William Chai' },
   { username: 'am',          password: '9999',   branch: 'ALL',          role: 'AM', displayName: 'Area Manager'  },
   { username: 'KS01',        password: '1234',   branch: 'Kota Sentosa', role: 'BM', displayName: 'Manager KS01'  },
   { username: 'BR02',        password: '1234',   branch: 'Branch 02',    role: 'BM', displayName: 'Manager BR02'  },
