@@ -90,7 +90,7 @@ const DEFAULT_KS01_TEAMMATES = [
     empNo: 'PMG00723',
     nickname: 'TING',
     empName: 'TING KWANG YU',
-    position: 'Staff', // Corrected: NOT a pharmacist
+    position: 'Branch Manager',
     isPharmacist: false,
     scheduleMode: 'Rotating',
     race: 'Chinese',
@@ -331,10 +331,12 @@ function loadTeammates(branchCode) {
     }
   }
 
-  // Ensure Ting Kwang Yu is corrected in stored data if loaded from an older cache
+  // Ensure Ting Kwang Yu is not marked as pharmacist from legacy data, while respecting saved position
   const ting = currentTeammates.find(t => t.empNo === 'PMG00723' || t.nickname === 'TING');
   if (ting) {
-    ting.position = 'Staff';
+    if (ting.position === 'Pharmacist') {
+      ting.position = 'Branch Manager';
+    }
     ting.isPharmacist = false;
   }
 
