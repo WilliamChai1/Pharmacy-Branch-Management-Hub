@@ -4,23 +4,58 @@
 let rosterRawData     = [];
 let rosterFlatRecords = [];
 
+let currentWorkbook = null;
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 function initRoster() {
-  const dropZone  = document.getElementById('rosterDropZone');
-  const fileInput = document.getElementById('rosterInput');
+  const dropZone    = document.getElementById('rosterDropZone');
+  const fileInput   = document.getElementById('rosterInput');
+  const browseBtn   = document.getElementById('rosterBrowseBtn');
+  const sheetSelect = document.getElementById('rosterSheetSelect');
+
   if (!dropZone || !fileInput) return;
 
-  dropZone.addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', e => {
-    if (e.target.files.length) handleRosterFile(e.target.files[0]);
+  const openPicker = (e) => {
+    e.stopPropagation();
+    fileInput.value = '';
+    fileInput.click();
+  };
+
+  dropZone.addEventListener('click', (e) => {
+    if (e.target !== fileInput && e.target !== browseBtn) {
+      openPicker(e);
+    }
   });
+
+  if (browseBtn) {
+    browseBtn.addEventListener('click', openPicker);
+  }
+
+  fileInput.addEventListener('click', e => e.stopPropagation());
+
+  fileInput.addEventListener('change', e => {
+    if (e.target.files.length) {
+      handleRosterFile(e.target.files[0]);
+    }
+  });
+
   dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
   dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
   dropZone.addEventListener('drop', e => {
     e.preventDefault();
     dropZone.classList.remove('drag-over');
-    if (e.dataTransfer.files.length) handleRosterFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files.length) {
+      handleRosterFile(e.dataTransfer.files[0]);
+    }
   });
+
+  if (sheetSelect) {
+    sheetSelect.addEventListener('change', (e) => {
+      if (currentWorkbook && e.target.value) {
+        selectSheet(e.target.value);
+      }
+    });
+  }
 
   const dlBtn = document.getElementById('rosterDownloadBtn');
   if (dlBtn) dlBtn.addEventListener('click', downloadRymnetCSV);
@@ -28,31 +63,106 @@ function initRoster() {
 
 // ─── FILE HANDLER ─────────────────────────────────────────────────────────────
 function handleRosterFile(file) {
-  const statusEl = document.getElementById('rosterStatus');
-  if (statusEl) { statusEl.textContent = `Reading: ${file.name}…`; statusEl.className = 'text-blue-600 text-sm mt-2'; }
+  const statusEl       = document.getElementById('rosterStatus');
+  const sheetContainer = document.getElementById('rosterSheetSelectContainer');
+  const sheetSelect    = document.getElementById('rosterSheetSelect');
+
+  if (statusEl) {
+    statusEl.innerHTML = `<div class="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-xs font-semibold">
+      <i class="fa-solid fa-spinner fa-spin"></i> Reading ${escHtml(file.name)} (${(file.size / 1024).toFixed(1)} KB)…
+    </div>`;
+  }
 
   const ext = file.name.split('.').pop().toLowerCase();
 
   if (ext === 'csv') {
+    if (sheetContainer) sheetContainer.classList.add('hidden');
+    currentWorkbook = null;
     Papa.parse(file, {
-      complete(results) { rosterRawData = results.data; processRoster(); },
-      error(err) { if (statusEl) { statusEl.textContent = `CSV parse error: ${err.message}`; statusEl.className = 'text-red-600 text-sm mt-2'; } }
+      skipEmptyLines: false,
+      complete(results) {
+        rosterRawData = results.data;
+        processRoster();
+      },
+      error(err) {
+        if (statusEl) {
+          statusEl.innerHTML = `<div class="inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-700 rounded-lg text-xs font-semibold">
+            <i class="fa-solid fa-triangle-exclamation"></i> CSV parse error: ${escHtml(err.message)}
+          </div>`;
+        }
+      }
     });
   } else {
+    // .xlsx, .xls
+    if (typeof XLSX === 'undefined') {
+      if (statusEl) {
+        statusEl.innerHTML = `<div class="inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-700 rounded-lg text-xs font-semibold">
+          <i class="fa-solid fa-triangle-exclamation"></i> Excel parser (SheetJS) is still loading. Please wait 2 seconds and try again.
+        </div>`;
+      }
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = function(ev) {
       try {
         const data = new Uint8Array(ev.target.result);
         const wb   = XLSX.read(data, { type: 'array' });
-        const ws   = wb.Sheets[wb.SheetNames[0]];
-        rosterRawData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-        processRoster();
+        currentWorkbook = wb;
+
+        // Populate sheet selector if multiple sheets
+        if (sheetSelect && wb.SheetNames.length > 1) {
+          sheetSelect.innerHTML = wb.SheetNames.map(name =>
+            `<option value="${escHtml(name)}">${escHtml(name)}</option>`
+          ).join('');
+          if (sheetContainer) sheetContainer.classList.remove('hidden');
+        } else {
+          if (sheetContainer) sheetContainer.classList.add('hidden');
+        }
+
+        // Find best sheet (look for one containing day numbers or visual headers)
+        let chosenSheet = wb.SheetNames[0];
+        for (const sName of wb.SheetNames) {
+          const testSheet = wb.Sheets[sName];
+          const testData = XLSX.utils.sheet_to_json(testSheet, { header: 1, defval: '' });
+          for (let r = 0; r < Math.min(testData.length, 10); r++) {
+            const rowStr = testData[r].map(c => String(c).trim().toLowerCase()).join(' ');
+            if (rowStr.includes('employee no') || rowStr.includes('employee name') || /\b0?1\s*\([a-z]{3}\)/i.test(rowStr) || (rowStr.includes('day') && rowStr.includes('off'))) {
+              chosenSheet = sName;
+              break;
+            }
+          }
+        }
+
+        if (sheetSelect) sheetSelect.value = chosenSheet;
+        selectSheet(chosenSheet);
+
       } catch(err) {
-        if (statusEl) { statusEl.textContent = `XLSX parse error: ${err.message}`; statusEl.className = 'text-red-600 text-sm mt-2'; }
+        console.error('[PMG Roster] Excel parse error:', err);
+        if (statusEl) {
+          statusEl.innerHTML = `<div class="inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-700 rounded-lg text-xs font-semibold">
+            <i class="fa-solid fa-triangle-exclamation"></i> Excel file error: ${escHtml(err.message)}
+          </div>`;
+        }
+      }
+    };
+    reader.onerror = function(err) {
+      if (statusEl) {
+        statusEl.innerHTML = `<div class="inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-700 rounded-lg text-xs font-semibold">
+          <i class="fa-solid fa-triangle-exclamation"></i> Could not read file: ${escHtml(err.message)}
+        </div>`;
       }
     };
     reader.readAsArrayBuffer(file);
   }
+}
+
+function selectSheet(sheetName) {
+  if (!currentWorkbook || !currentWorkbook.Sheets[sheetName]) return;
+  const ws = currentWorkbook.Sheets[sheetName];
+  rosterRawData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  console.log(`[PMG Roster] Loaded sheet "${sheetName}" with ${rosterRawData.length} rows`);
+  processRoster();
 }
 
 // ─── PROCESS ROSTER ───────────────────────────────────────────────────────────

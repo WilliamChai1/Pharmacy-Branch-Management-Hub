@@ -313,42 +313,41 @@
       </div>
     </div>
 
-    <!-- Shift code reference -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-5">
-      <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Shift Code Reference</h3>
-      <div class="flex flex-wrap gap-2">
-        <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">0730–1630 → 8H_0730-1630</span>
-        <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">0800–1700 → 8H_0800-1700</span>
-        <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">0830–1730 → 8H_0830-1730</span>
-        <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">1300–2200 → 8H_1300-2200</span>
-        <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">1330–2230 → 8H_1330-2230</span>
-        <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">OFF → OFF</span>
-        <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">AL → AL</span>
-        <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">MC → MC</span>
-        <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">PH → PH</span>
-      </div>
-    </div>
-
-    <!-- Drop zone -->
+    <!-- Drop zone (Prominent & immediately visible) -->
     <div id="rosterDropZone"
-      class="bg-white rounded-xl shadow-sm border-2 border-dashed border-gray-300 p-10 text-center hover:border-green-400 hover:bg-green-50 transition cursor-pointer mb-5">
-      <div class="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-        <i class="fa-solid fa-file-excel text-blue-600 text-2xl"></i>
+      class="bg-white rounded-xl shadow-sm border-2 border-dashed border-gray-300 p-8 text-center hover:border-green-500 hover:bg-green-50 transition cursor-pointer mb-4">
+      <div class="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+        <i class="fa-solid fa-file-excel text-green-600 text-2xl"></i>
       </div>
-      <p class="font-semibold text-gray-700">Drag & drop Visual Roster here</p>
-      <p class="text-sm text-gray-400 mt-1">Accepts .xlsx, .xls, .csv — or click to browse</p>
-      <p class="text-xs text-gray-400 mt-1">Expected: Row 1 = header with day numbers (1–31), Column A = nickname</p>
+      <p class="font-semibold text-gray-800 text-base mb-1">Drag & drop Monthly Roster or Visual Schedule here</p>
+      <p class="text-sm text-gray-500 mb-3">Accepts Excel (.xlsx, .xls) and CSV (.csv)</p>
+      <button type="button" id="rosterBrowseBtn"
+        class="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-5 py-2.5 rounded-lg shadow-sm transition inline-flex items-center gap-2">
+        <i class="fa-solid fa-folder-open"></i> Browse Computer
+      </button>
       <input type="file" id="rosterInput" accept=".xlsx,.xls,.csv" class="hidden">
     </div>
-    <p id="rosterStatus" class="text-sm text-gray-500 mb-4 text-center"></p>
+
+    <!-- Sheet Selector (visible when Excel has multiple sheets) -->
+    <div id="rosterSheetSelectContainer" class="hidden bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 flex items-center justify-between flex-wrap gap-3">
+      <div class="flex items-center gap-2 text-sm text-blue-900 font-medium">
+        <i class="fa-solid fa-table-cells text-blue-600"></i>
+        <span>Active Sheet / Tab:</span>
+        <select id="rosterSheetSelect" class="bg-white border border-blue-300 rounded-lg px-3 py-1.5 text-xs text-gray-800 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </select>
+      </div>
+      <span class="text-xs text-blue-700">Select another tab if your roster is in a different sheet</span>
+    </div>
+
+    <div id="rosterStatus" class="text-sm text-gray-600 mb-5 text-center"></div>
 
     <!-- Results (hidden until file loaded) -->
-    <div id="rosterResultPanel" class="hidden">
+    <div id="rosterResultPanel" class="hidden mb-6">
       <!-- Preview table -->
-      <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-5">
-        <div class="flex justify-between items-center px-5 py-3 border-b border-gray-100">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-4">
+        <div class="flex justify-between items-center px-5 py-3 border-b border-gray-100 flex-wrap gap-2">
           <h3 class="text-sm font-semibold text-gray-700">Preview (first 15 records)</h3>
-          <span id="rosterPreviewSummary" class="text-xs text-gray-400"></span>
+          <span id="rosterPreviewSummary" class="text-xs text-gray-500 font-medium"></span>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
@@ -376,6 +375,31 @@
           <i class="fa-solid fa-file-arrow-down"></i>
           Download Rymnet Import CSV
         </button>
+      </div>
+    </div>
+
+    <!-- Shift code reference (collapsible / compact at bottom) -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-5">
+      <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+        <i class="fa-solid fa-circle-info text-blue-500"></i> Supported Shift & Leave Codes
+      </h3>
+      <div class="flex flex-wrap gap-2 text-xs">
+        <span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded">8H_0730-1630</span>
+        <span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded">8H_0800-1700</span>
+        <span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded">8H_0830-1730</span>
+        <span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded">8H_1230-2130</span>
+        <span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded">8H_1300-2200</span>
+        <span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded">8H_1330-2230</span>
+        <span class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-1 rounded">5H_0730-1230</span>
+        <span class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-1 rounded">5H_0800-1300</span>
+        <span class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-1 rounded">5H_1630-2130</span>
+        <span class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-1 rounded">4H_0730-1130</span>
+        <span class="bg-gray-100 text-gray-700 px-2 py-1 rounded font-mono">RD (Rest Day)</span>
+        <span class="bg-gray-100 text-gray-700 px-2 py-1 rounded font-mono">OD (Off Day)</span>
+        <span class="bg-gray-100 text-gray-700 px-2 py-1 rounded font-mono">ANL (Annual Leave)</span>
+        <span class="bg-gray-100 text-gray-700 px-2 py-1 rounded font-mono">SL (Sick Leave)</span>
+        <span class="bg-gray-100 text-gray-700 px-2 py-1 rounded font-mono">PH (Public Holiday)</span>
+        <span class="bg-gray-100 text-gray-700 px-2 py-1 rounded font-mono">RPL (Replacement)</span>
       </div>
     </div>
   </div>

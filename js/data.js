@@ -24,7 +24,7 @@
 //
 const GOOGLE_SHEETS_CONFIG = {
   usersCSV:  '',   // 🔴 KEEP EMPTY — credentials never go to the web
-  staffCSV:  '',   // ✅ https://docs.google.com/spreadsheets/d/e/2PACX-1vTlHMEjiMuH7Km9XtJkwENvsephsxLD6gMoX1uNrpyg-MOB24NU3-PaYbz53UvegxvnHVYbrBwHz693/pub?gid=1659746892&single=true&output=csv
+  staffCSV:  'https://docs.google.com/spreadsheets/d/e/2PACX-1vTlHMEjiMuH7Km9XtJkwENvsephsxLD6gMoX1uNrpyg-MOB24NU3-PaYbz53UvegxvnHVYbrBwHz693/pub?gid=1659746892&single=true&output=csv',
   branchCSV: '',   // ✅ Paste published Branches CSV URL here (optional)
 };
 
