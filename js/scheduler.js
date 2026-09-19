@@ -273,6 +273,9 @@ function initScheduler() {
   if (addStaffBtn) addStaffBtn.addEventListener('click', showAddTeammateModal);
 
   // Export buttons
+  const dlVisualXlsxBtn = document.getElementById('schedulerDownloadVisualXlsxBtn');
+  if (dlVisualXlsxBtn) dlVisualXlsxBtn.addEventListener('click', exportScheduleToPmgVisualExcel);
+
   const dlCsvBtn = document.getElementById('schedulerDownloadCsvBtn');
   if (dlCsvBtn) dlCsvBtn.addEventListener('click', exportScheduleToRymnetCSV);
 
@@ -1212,7 +1215,172 @@ function exportScheduleToRymnetCSV() {
   saveAs(blob, `rymnet_ai_generated_${branch}_${month}.csv`);
 }
 
-// ─── EXPORT TO EXCEL ──────────────────────────────────────────────────────────
+// ─── EXPORT TO PMG VISUAL DAILY TIMELINE EXCEL ────────────────────────────────
+function exportScheduleToPmgVisualExcel() {
+  if (!generatedScheduleData || !generatedScheduleData.days) {
+    alert('Please generate a schedule first before exporting.');
+    return;
+  }
+
+  if (typeof XLSX === 'undefined') {
+    alert('SheetJS (XLSX) library not loaded.');
+    return;
+  }
+
+  const { month, branch, days } = generatedScheduleData;
+  const wsData = [];
+  const merges = [];
+
+  // Header row matching PMG retail pharmacy roster
+  const header = [
+    'DAY', 'OFF',
+    '7.30-8.30AM', '8.30-9.30AM', '9.30-10.30AM', '10.30-11.30AM', '11.30-12.30PM',
+    '12.30-1.30PM',
+    '1.30-2.30PM', '2.30-3.30PM', '3.30-4.30PM',
+    '4.30-5.30PM', '5.30-6.30PM', '6.30-7.30PM', '7.30-8.30PM', '8.30-9.30PM',
+    'HALF DAY', 'NOTES'
+  ];
+  wsData.push(header);
+
+  let currentRowIdx = 1; // Row 0 is header
+
+  days.forEach(d => {
+    // Format date string: MON 28.09.2026
+    const [y, m, dayNum] = d.date.split('-');
+    const dayLabel = `${d.dayOfWeek.slice(0, 3).toUpperCase()}\n${dayNum}.${m}.${y}`;
+
+    // Separate staff for this day
+    const offList = [];
+    const halfDayList = [];
+    const morningStaff = [];
+    const nightStaff = [];
+
+    const isHoliday = !!HOLIDAYS_2026_SARAWAK[d.date];
+    const holidayName = isHoliday ? HOLIDAYS_2026_SARAWAK[d.date] : '';
+
+    currentTeammates.forEach(tm => {
+      const shift = (d.shifts && d.shifts[tm.empNo]) || 'RD';
+
+      if (shift === 'RD' || shift === 'OFF') {
+        offList.push(tm.nickname);
+      } else if (shift === 'PH') {
+        offList.push(`${tm.nickname} (PH)`);
+      } else if (shift.includes('0730-1130') || shift.includes('0730-1230')) {
+        halfDayList.push(tm.nickname);
+        morningStaff.push({ nickname: tm.nickname, isHalf: true, shift });
+      } else if (shift.includes('1630-2130')) {
+        halfDayList.push(tm.nickname);
+        nightStaff.push({ nickname: tm.nickname, isHalf: true, shift });
+      } else if (shift.includes('0730') || shift.includes('0800')) {
+        morningStaff.push({ nickname: tm.nickname, isHalf: false, shift });
+      } else if (shift.includes('1230') || shift.includes('1300')) {
+        nightStaff.push({ nickname: tm.nickname, isHalf: false, shift });
+      }
+    });
+
+    const workingStaffRows = [...morningStaff, ...nightStaff];
+    const dayRowCount = Math.max(workingStaffRows.length, offList.length, halfDayList.length, 6);
+
+    const startRow = currentRowIdx;
+    const endRow = currentRowIdx + dayRowCount - 1;
+
+    for (let r = 0; r < dayRowCount; r++) {
+      const row = new Array(18).fill('');
+
+      // Col A: DAY (first row only, merged across block)
+      if (r === 0) row[0] = dayLabel;
+
+      // Col B: OFF staff list
+      if (r < offList.length) row[1] = offList[r];
+
+      // Cols C to P: Hourly timeline (Cols 2 to 15)
+      if (r < workingStaffRows.length) {
+        const staff = workingStaffRows[r];
+        const nick = staff.nickname;
+
+        if (staff.isHalf) {
+          if (staff.shift.includes('0730-1130')) {
+            // 7.30 - 11.30 (Cols C to F: 2, 3, 4, 5)
+            row[2] = nick; row[3] = nick; row[4] = nick; row[5] = nick;
+          } else if (staff.shift.includes('0730-1230')) {
+            // 7.30 - 12.30 (Cols C to G: 2, 3, 4, 5, 6)
+            row[2] = nick; row[3] = nick; row[4] = nick; row[5] = nick; row[6] = nick;
+          } else if (staff.shift.includes('1630-2130')) {
+            // 4.30 - 9.30 (Cols L to P: 11, 12, 13, 14, 15)
+            row[11] = nick; row[12] = nick; row[13] = nick; row[14] = nick; row[15] = nick;
+          }
+        } else if (staff.shift.includes('0730') || staff.shift.includes('0800')) {
+          // Morning Full Shift:
+          // 7.30 - 12.30: nick (Cols 2, 3, 4, 5, 6)
+          row[2] = nick; row[3] = nick; row[4] = nick; row[5] = nick; row[6] = nick;
+          // 12.30 - 1.30: REST (Col 7)
+          row[7] = 'REST';
+          // 1.30 - 4.30: nick (Cols 8, 9, 10)
+          row[8] = nick; row[9] = nick; row[10] = nick;
+        } else {
+          // Night Full Shift:
+          // 12.30 - 3.30: nick (Cols 7, 8, 9)
+          row[7] = nick; row[8] = nick; row[9] = nick;
+          // 3.30 - 4.30: REST (Col 10)
+          row[10] = 'REST';
+          // 4.30 - 9.30: nick (Cols 11, 12, 13, 14, 15)
+          row[11] = nick; row[12] = nick; row[13] = nick; row[14] = nick; row[15] = nick;
+        }
+      }
+
+      // Col Q: HALF DAY staff list
+      if (r < halfDayList.length) row[16] = halfDayList[r];
+
+      // Col R: NOTES
+      if (r === 0) row[17] = holidayName;
+
+      wsData.push(row);
+      currentRowIdx++;
+    }
+
+    // Merges for this day
+    merges.push({ s: { r: startRow, c: 0 }, e: { r: endRow, c: 0 } }); // DAY
+    if (halfDayList.length <= 1) {
+      merges.push({ s: { r: startRow, c: 16 }, e: { r: endRow, c: 16 } }); // HALF DAY
+    }
+    merges.push({ s: { r: startRow, c: 17 }, e: { r: endRow, c: 17 } }); // NOTES
+
+    // Empty separator row between days
+    const emptySep = new Array(18).fill('');
+    wsData.push(emptySep);
+    currentRowIdx++;
+  });
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  ws['!merges'] = merges;
+  ws['!cols'] = [
+    { wch: 14 }, // A: DAY
+    { wch: 14 }, // B: OFF
+    { wch: 13 }, // C: 7.30-8.30AM
+    { wch: 13 }, // D: 8.30-9.30AM
+    { wch: 13 }, // E: 9.30-10.30AM
+    { wch: 13 }, // F: 10.30-11.30AM
+    { wch: 13 }, // G: 11.30-12.30PM
+    { wch: 13 }, // H: 12.30-1.30PM
+    { wch: 13 }, // I: 1.30-2.30PM
+    { wch: 13 }, // J: 2.30-3.30PM
+    { wch: 13 }, // K: 3.30-4.30PM
+    { wch: 13 }, // L: 4.30-5.30PM
+    { wch: 13 }, // M: 5.30-6.30PM
+    { wch: 13 }, // N: 6.30-7.30PM
+    { wch: 13 }, // O: 7.30-8.30PM
+    { wch: 13 }, // P: 8.30-9.30PM
+    { wch: 14 }, // Q: HALF DAY
+    { wch: 28 }  // R: NOTES
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, `Visual_Timeline_${month}`);
+  XLSX.writeFile(wb, `PMG_Visual_Schedule_${branch}_${month}.xlsx`);
+}
+
+// ─── EXPORT TO EXCEL (MONTHLY MATRIX) ─────────────────────────────────────────
 function exportScheduleToExcel() {
   if (!generatedScheduleData || !generatedScheduleData.days) {
     alert('Please generate a schedule first before exporting.');
