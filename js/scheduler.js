@@ -5,102 +5,239 @@
 const SCHEDULER_PRIMARY_MODEL   = 'gemini-3.5-flash';
 const SCHEDULER_SECONDARY_MODEL = 'gemini-3.5-flash-lite';
 
+// ─── 2026 GAZETTED PUBLIC HOLIDAYS (SARAWAK & MALAYSIA NATIONAL) ──────────────
+// Chai Yee Sian (William) follows all National & Sarawak Gazetted Public Holidays.
+const HOLIDAYS_2026_SARAWAK = {
+  '2026-01-01': "New Year's Day",
+  '2026-02-17': "Chinese New Year (Day 1)",
+  '2026-02-18': "Chinese New Year (Day 2)",
+  '2026-03-20': "Hari Raya Aidilfitri (Day 1)",
+  '2026-03-21': "Hari Raya Aidilfitri (Day 2)",
+  '2026-04-03': "Good Friday",
+  '2026-05-01': "Labour Day",
+  '2026-05-31': "Wesak Day",
+  '2026-06-01': "Hari Gawai Dayak (Day 1)",
+  '2026-06-02': "Hari Gawai Dayak (Day 2)",
+  '2026-06-08': "Yang di-Pertuan Agong's Birthday",
+  '2026-07-22': "Sarawak Independence Day",
+  '2026-08-31': "National Day (Merdeka)",
+  '2026-09-16': "Malaysia Day",
+  '2026-09-25': "Prophet Muhammad's Birthday (Maulidur Rasul)",
+  '2026-10-10': "Sarawak Governor's Birthday",
+  '2026-11-08': "Deepavali",
+  '2026-12-25': "Christmas Day"
+};
+
 // ─── DEFAULT TEAMMATES DATA FOR KOTA SENTOSA (KS01) ──────────────────────────
+// Notes:
+// 1. Ting Kwang Yu is NOT a pharmacist (Position: Staff).
+// 2. Chai Yee Sian (William) is a licensed Pharmacist with a FIXED schedule:
+//    - Mon–Fri: 07:30 - 16:30 (8H_0730-1630)
+//    - Sat: 07:30 - 11:30 (4H_0730-1130)
+//    - Sun: Rest Day (RD)
+//    - All Malaysia & Sarawak Public Holidays: PH
+// 3. Kenix Ling is a licensed Pharmacist.
 const DEFAULT_KS01_TEAMMATES = [
-  {
-    empNo: 'PMG00723',
-    nickname: 'TING',
-    empName: 'TING KWANG YU',
-    position: 'Pharmacist',
-    race: 'Chinese',
-    shiftPref: 'Morning Preferred',
-    restDayPref: 'Sunday',
-    halfDayPref: 'None'
-  },
   {
     empNo: 'PMG00831',
     nickname: 'WILLIAM',
     empName: 'CHAI YEE SIAN',
-    position: 'Branch Manager', // Licensed Pharmacist & Branch Manager
+    position: 'Pharmacist',
+    isPharmacist: true,
+    scheduleMode: 'Fixed', // Fixed Schedule
     race: 'Chinese',
-    shiftPref: 'Flexible',
+    shiftPref: 'Morning Only',
     restDayPref: 'Sunday',
-    halfDayPref: 'Saturday Morning'
+    halfDayPref: 'Saturday Morning (4H)',
+    dayPrefs: {
+      Monday: 'Morning Only',
+      Tuesday: 'Morning Only',
+      Wednesday: 'Morning Only',
+      Thursday: 'Morning Only',
+      Friday: 'Morning Only',
+      Saturday: 'Morning Half (4H)',
+      Sunday: 'RD'
+    },
+    fixedPattern: {
+      weekdays: '8H_0730-1630',
+      saturday: '4H_0730-1130',
+      sunday: 'RD',
+      holidays: 'PH'
+    }
   },
   {
     empNo: 'PMG02963',
     nickname: 'KENIX',
     empName: 'KENIX LING WANG YIING',
     position: 'Pharmacist',
+    isPharmacist: true,
+    scheduleMode: 'Rotating',
     race: 'Chinese',
     shiftPref: 'Night Preferred',
     restDayPref: 'Monday',
-    halfDayPref: 'None'
+    halfDayPref: 'None',
+    dayPrefs: {
+      Monday: 'RD',
+      Tuesday: 'Night Preferred',
+      Wednesday: 'Flexible',
+      Thursday: 'Night Preferred',
+      Friday: 'Flexible',
+      Saturday: 'Night Preferred',
+      Sunday: 'Flexible'
+    }
+  },
+  {
+    empNo: 'PMG00723',
+    nickname: 'TING',
+    empName: 'TING KWANG YU',
+    position: 'Staff', // Corrected: NOT a pharmacist
+    isPharmacist: false,
+    scheduleMode: 'Rotating',
+    race: 'Chinese',
+    shiftPref: 'Morning Preferred',
+    restDayPref: 'Sunday',
+    halfDayPref: 'None',
+    dayPrefs: {
+      Monday: 'Flexible',
+      Tuesday: 'Flexible',
+      Wednesday: 'Flexible',
+      Thursday: 'Flexible',
+      Friday: 'Flexible',
+      Saturday: 'Flexible',
+      Sunday: 'RD'
+    }
   },
   {
     empNo: 'PMG02694',
     nickname: 'PENNY',
     empName: 'JONG PEI CHOO',
     position: 'Assistant Branch Manager',
+    isPharmacist: false,
+    scheduleMode: 'Rotating',
     race: 'Chinese',
     shiftPref: 'Morning Preferred',
     restDayPref: 'Friday',
-    halfDayPref: 'Thursday'
+    halfDayPref: 'Thursday',
+    dayPrefs: {
+      Monday: 'Flexible',
+      Tuesday: 'Flexible',
+      Wednesday: 'Flexible',
+      Thursday: 'Morning Half (4H)',
+      Friday: 'RD',
+      Saturday: 'Flexible',
+      Sunday: 'Flexible'
+    }
   },
   {
     empNo: 'PMG01294',
     nickname: 'LOUNA',
     empName: 'HANIESHA LOUNA ANAK DAGENG',
     position: 'Staff',
+    isPharmacist: false,
+    scheduleMode: 'Rotating',
     race: 'Iban / Bidayuh',
     shiftPref: 'Flexible',
     restDayPref: 'Tuesday',
-    halfDayPref: 'None'
+    halfDayPref: 'None',
+    dayPrefs: {
+      Monday: 'Flexible',
+      Tuesday: 'RD',
+      Wednesday: 'Flexible',
+      Thursday: 'Flexible',
+      Friday: 'Flexible',
+      Saturday: 'Flexible',
+      Sunday: 'Flexible'
+    }
   },
   {
     empNo: 'PMG01780',
     nickname: 'FIONA',
     empName: 'FIONA FIENA ANAK JAMES',
     position: 'Staff',
+    isPharmacist: false,
+    scheduleMode: 'Rotating',
     race: 'Iban / Bidayuh',
     shiftPref: 'Morning Preferred',
     restDayPref: 'Wednesday',
-    halfDayPref: 'None'
+    halfDayPref: 'None',
+    dayPrefs: {
+      Monday: 'Flexible',
+      Tuesday: 'Flexible',
+      Wednesday: 'RD',
+      Thursday: 'Flexible',
+      Friday: 'Flexible',
+      Saturday: 'Flexible',
+      Sunday: 'Flexible'
+    }
   },
   {
     empNo: 'PMG03062',
     nickname: 'JANET',
     empName: 'DANIELA JANET ANAK MUSTAPHA',
     position: 'Staff',
+    isPharmacist: false,
+    scheduleMode: 'Rotating',
     race: 'Iban / Bidayuh',
     shiftPref: 'Night Preferred',
     restDayPref: 'Thursday',
-    halfDayPref: 'None'
+    halfDayPref: 'None',
+    dayPrefs: {
+      Monday: 'Flexible',
+      Tuesday: 'Flexible',
+      Wednesday: 'Flexible',
+      Thursday: 'RD',
+      Friday: 'Flexible',
+      Saturday: 'Flexible',
+      Sunday: 'Flexible'
+    }
   },
   {
     empNo: 'PMG02070',
     nickname: 'NURHAFIZAH',
     empName: 'NURHAFIZAH BINTI PAULI',
     position: 'Staff',
+    isPharmacist: false,
+    scheduleMode: 'Rotating',
     race: 'Malay',
     shiftPref: 'Morning Preferred',
     restDayPref: 'Friday',
-    halfDayPref: 'None'
+    halfDayPref: 'None',
+    dayPrefs: {
+      Monday: 'Flexible',
+      Tuesday: 'Flexible',
+      Wednesday: 'Flexible',
+      Thursday: 'Flexible',
+      Friday: 'RD',
+      Saturday: 'Flexible',
+      Sunday: 'Flexible'
+    }
   },
   {
     empNo: 'PMG03375',
     nickname: 'FARIZIN',
     empName: 'MUHAMMAD NUR FARIZIN BIN ABDULLAH',
     position: 'Staff',
+    isPharmacist: false,
+    scheduleMode: 'Rotating',
     race: 'Malay',
     shiftPref: 'Night Preferred',
     restDayPref: 'Saturday',
-    halfDayPref: 'None'
+    halfDayPref: 'None',
+    dayPrefs: {
+      Monday: 'Flexible',
+      Tuesday: 'Flexible',
+      Wednesday: 'Flexible',
+      Thursday: 'Flexible',
+      Friday: 'Flexible',
+      Saturday: 'RD',
+      Sunday: 'Flexible'
+    }
   }
 ];
 
 let currentTeammates = [];
 let generatedScheduleData = null; // Stored { month, branch, days: [...] }
+let editingTeammateEmpNo = null;   // For Day Preferences Modal
 
 // ─── INIT SCHEDULER ───────────────────────────────────────────────────────────
 function initScheduler() {
@@ -111,10 +248,9 @@ function initScheduler() {
   const resetPrefBtn = document.getElementById('schedulerResetPrefBtn');
   const addStaffBtn  = document.getElementById('schedulerAddStaffBtn');
 
-  // Set default month to next month (or current if end of month)
+  // Set default month to next month
   if (monthInput && !monthInput.value) {
     const now = new Date();
-    // Default to next month for planning
     const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     const y = nextMonth.getFullYear();
     const m = String(nextMonth.getMonth() + 1).padStart(2, '0');
@@ -149,7 +285,7 @@ function initScheduler() {
 
 // ─── TEAMMATE STORAGE & LOADING ──────────────────────────────────────────────
 function getStorageKey(branchCode) {
-  return `pmg_staff_preferences_${branchCode || 'KS01'}`;
+  return `pmg_staff_preferences_v2_${branchCode || 'KS01'}`;
 }
 
 function loadTeammates(branchCode) {
@@ -175,15 +311,36 @@ function loadTeammates(branchCode) {
           nickname: s.nickname,
           empName: s.empName,
           position: idx === 0 ? 'Pharmacist' : (idx === 1 ? 'Branch Manager' : 'Staff'),
+          isPharmacist: idx === 0,
+          scheduleMode: 'Rotating',
           race: 'Chinese',
           shiftPref: 'Flexible',
           restDayPref: 'Sunday',
-          halfDayPref: 'None'
+          halfDayPref: 'None',
+          dayPrefs: {
+            Monday: 'Flexible', Tuesday: 'Flexible', Wednesday: 'Flexible',
+            Thursday: 'Flexible', Friday: 'Flexible', Saturday: 'Flexible', Sunday: 'RD'
+          }
         }));
       } else {
         currentTeammates = JSON.parse(JSON.stringify(DEFAULT_KS01_TEAMMATES));
       }
     }
+  }
+
+  // Ensure Ting Kwang Yu is corrected in stored data if loaded from an older cache
+  const ting = currentTeammates.find(t => t.empNo === 'PMG00723' || t.nickname === 'TING');
+  if (ting) {
+    ting.position = 'Staff';
+    ting.isPharmacist = false;
+  }
+
+  // Ensure William Chai has his fixed schedule attributes
+  const william = currentTeammates.find(t => t.empNo === 'PMG00831' || t.nickname === 'WILLIAM');
+  if (william) {
+    william.position = 'Pharmacist';
+    william.isPharmacist = true;
+    william.scheduleMode = 'Fixed';
   }
 
   renderTeammatesTable();
@@ -205,15 +362,21 @@ function saveTeammatePreferences() {
     const raceEl  = tr.querySelector('.tm-race');
     const shiftEl = tr.querySelector('.tm-shift-pref');
     const restEl  = tr.querySelector('.tm-rest-pref');
-    const halfEl  = tr.querySelector('.tm-half-pref');
+
+    const posVal = posEl ? posEl.value : (orig.position || 'Staff');
+    const isPharm = posVal === 'Pharmacist' || (orig.empNo === 'PMG00831'); // William Chai is pharmacist
 
     updated.push({
       ...orig,
-      position:    posEl ? posEl.value : (orig.position || 'Staff'),
+      position:    posVal,
+      isPharmacist: isPharm,
       race:        raceEl ? raceEl.value : (orig.race || 'Chinese'),
       shiftPref:   shiftEl ? shiftEl.value : (orig.shiftPref || 'Flexible'),
       restDayPref: restEl ? restEl.value : (orig.restDayPref || 'Sunday'),
-      halfDayPref: halfEl ? halfEl.value : (orig.halfDayPref || 'None')
+      dayPrefs:    orig.dayPrefs || {
+        Monday: 'Flexible', Tuesday: 'Flexible', Wednesday: 'Flexible',
+        Thursday: 'Flexible', Friday: 'Flexible', Saturday: 'Flexible', Sunday: 'RD'
+      }
     });
   });
 
@@ -223,7 +386,7 @@ function saveTeammatePreferences() {
   const saveBtn = document.getElementById('schedulerSavePrefBtn');
   if (saveBtn) {
     const origHtml = saveBtn.innerHTML;
-    saveBtn.innerHTML = '<i class="fa-solid fa-circle-check text-green-300"></i> Saved!';
+    saveBtn.innerHTML = '<i class="fa-solid fa-circle-check text-green-300"></i> Preferences Saved!';
     saveBtn.classList.replace('bg-blue-700', 'bg-green-700');
     setTimeout(() => {
       saveBtn.innerHTML = origHtml;
@@ -252,36 +415,42 @@ function renderTeammatesTable() {
 
   const positionOptions = ['Pharmacist', 'Branch Manager', 'Assistant Branch Manager', 'Staff'];
   const raceOptions = ['Chinese', 'Malay', 'Iban / Bidayuh', 'Other'];
-  const shiftOptions = ['Morning Preferred', 'Night Preferred', 'Flexible'];
+  const shiftOptions = ['Morning Preferred', 'Night Preferred', 'Flexible', 'Morning Only'];
   const restOptions = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Flexible'];
-  const halfOptions = ['None', 'Saturday Morning', 'Thursday', 'Friday', 'Flexible'];
 
   let html = '';
   currentTeammates.forEach(t => {
-    const isPharm = t.position === 'Pharmacist' || t.position === 'Branch Manager';
-    const posBadgeColor = t.position === 'Pharmacist' ? 'bg-blue-100 text-blue-800 border-blue-200' :
-                          t.position === 'Branch Manager' ? 'bg-purple-100 text-purple-800 border-purple-200' :
-                          t.position === 'Assistant Branch Manager' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' :
-                          'bg-gray-100 text-gray-700 border-gray-200';
+    const isPharm = t.isPharmacist || t.position === 'Pharmacist';
+    const isFixed = t.scheduleMode === 'Fixed' || t.empNo === 'PMG00831';
 
-    const raceBadgeColor = t.race === 'Chinese' ? 'bg-amber-100 text-amber-800 border-amber-200' :
-                           t.race === 'Malay' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
-                           'bg-sky-100 text-sky-800 border-sky-200';
+    // Summary of day preferences
+    const activeDayPrefs = [];
+    if (t.dayPrefs) {
+      Object.entries(t.dayPrefs).forEach(([day, pref]) => {
+        if (pref && pref !== 'Flexible') {
+          activeDayPrefs.push(`${day.slice(0, 3)}: ${pref.replace(' Preferred', '').replace(' Only', '')}`);
+        }
+      });
+    }
+    const dayPrefSummary = activeDayPrefs.length ? activeDayPrefs.join(', ') : 'Standard / Flexible';
 
     html += `
       <tr data-emp-no="${escHtml(t.empNo)}" class="hover:bg-gray-50 border-b border-gray-100 transition text-xs">
         <td class="px-3 py-3">
-          <div class="font-bold text-gray-900">${escHtml(t.empName)}</div>
-          <div class="text-[11px] text-gray-500 font-mono flex items-center gap-1.5">
+          <div class="flex items-center gap-1.5">
+            <span class="font-bold text-gray-900">${escHtml(t.empName)}</span>
+            ${isFixed ? '<span class="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold border border-amber-200">Fixed Pattern</span>' : ''}
+          </div>
+          <div class="text-[11px] text-gray-500 font-mono flex items-center gap-1.5 mt-0.5">
             <span>${escHtml(t.empNo)}</span>
             <span class="bg-gray-200 text-gray-700 px-1 rounded font-semibold">${escHtml(t.nickname)}</span>
           </div>
         </td>
         <td class="px-2 py-3">
-          <select class="tm-position text-xs border border-gray-300 rounded px-2 py-1 bg-white font-medium focus:ring-1 focus:ring-purple-400 outline-none w-full">
+          <select class="tm-position text-xs border border-gray-300 rounded px-2 py-1 bg-white font-medium focus:ring-1 focus:ring-purple-400 outline-none w-full" ${isFixed ? 'disabled' : ''}>
             ${positionOptions.map(p => `<option value="${p}" ${t.position === p ? 'selected' : ''}>${p}</option>`).join('')}
           </select>
-          ${isPharm ? '<span class="inline-block mt-1 text-[10px] text-blue-700 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200"><i class="fa-solid fa-mortar-pestle mr-1"></i>Rx Qualified</span>' : ''}
+          ${isPharm ? '<span class="inline-block mt-1 text-[10px] text-blue-700 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200"><i class="fa-solid fa-mortar-pestle mr-1"></i>Rx Qualified</span>' : '<span class="inline-block mt-1 text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">Staff</span>'}
         </td>
         <td class="px-2 py-3">
           <select class="tm-race text-xs border border-gray-300 rounded px-2 py-1 bg-white font-medium focus:ring-1 focus:ring-purple-400 outline-none w-full">
@@ -289,30 +458,115 @@ function renderTeammatesTable() {
           </select>
         </td>
         <td class="px-2 py-3">
-          <select class="tm-rest-pref text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-purple-400 outline-none w-full">
+          <select class="tm-rest-pref text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-purple-400 outline-none w-full" ${isFixed ? 'disabled' : ''}>
             ${restOptions.map(o => `<option value="${o}" ${t.restDayPref === o ? 'selected' : ''}>${o}</option>`).join('')}
           </select>
         </td>
         <td class="px-2 py-3">
-          <select class="tm-half-pref text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-purple-400 outline-none w-full">
-            ${halfOptions.map(o => `<option value="${o}" ${t.halfDayPref === o ? 'selected' : ''}>${o}</option>`).join('')}
-          </select>
-        </td>
-        <td class="px-2 py-3">
-          <select class="tm-shift-pref text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-purple-400 outline-none w-full">
+          <select class="tm-shift-pref text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-purple-400 outline-none w-full" ${isFixed ? 'disabled' : ''}>
             ${shiftOptions.map(s => `<option value="${s}" ${t.shiftPref === s ? 'selected' : ''}>${s}</option>`).join('')}
           </select>
         </td>
-        <td class="px-2 py-3 text-center">
-          <button type="button" onclick="removeTeammate('${escHtml(t.empNo)}')" class="text-red-500 hover:text-red-700 p-1.5 rounded hover:bg-red-50 transition" title="Remove Teammate">
-            <i class="fa-solid fa-trash-can"></i>
+        <td class="px-2 py-3 min-w-[150px]">
+          <button type="button" onclick="openDayPrefsModal('${escHtml(t.empNo)}')"
+            class="w-full text-left bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded px-2 py-1 text-[11px] text-purple-800 font-medium transition flex items-center justify-between">
+            <span class="truncate max-w-[120px]">${escHtml(dayPrefSummary)}</span>
+            <i class="fa-solid fa-calendar-week text-purple-600 shrink-0 ml-1"></i>
           </button>
+        </td>
+        <td class="px-2 py-3 text-center">
+          ${isFixed ? '<span class="text-gray-400 text-[10px]" title="Fixed schedule cannot be deleted">Locked</span>' : `
+            <button type="button" onclick="removeTeammate('${escHtml(t.empNo)}')" class="text-red-500 hover:text-red-700 p-1.5 rounded hover:bg-red-50 transition" title="Remove Teammate">
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+          `}
         </td>
       </tr>
     `;
   });
 
   tbody.innerHTML = html;
+}
+
+// ─── DAY-OF-WEEK PREFERENCES MODAL ───────────────────────────────────────────
+function openDayPrefsModal(empNo) {
+  const tm = currentTeammates.find(t => t.empNo === empNo);
+  if (!tm) return;
+
+  editingTeammateEmpNo = empNo;
+
+  const modal = document.getElementById('schedulerDayPrefsModal');
+  const title = document.getElementById('dayPrefsModalTitle');
+  const form  = document.getElementById('dayPrefsModalForm');
+
+  if (!modal || !title || !form) return;
+
+  title.textContent = `Day-of-Week Shift Preferences: ${tm.empName} (${tm.nickname})`;
+
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const prefOptions = [
+    { val: 'Flexible', label: 'Flexible (AI Decides)' },
+    { val: 'Morning Preferred', label: 'Morning Preferred (07:30-16:30)' },
+    { val: 'Night Preferred', label: 'Night Preferred (12:30-21:30)' },
+    { val: 'Morning Only', label: 'Morning ONLY' },
+    { val: 'Night Only', label: 'Night ONLY' },
+    { val: 'Morning Half (4H)', label: 'Morning Half Day (07:30-11:30)' },
+    { val: 'RD', label: 'Rest Day (OFF)' }
+  ];
+
+  const currentPrefs = tm.dayPrefs || {};
+
+  let formHtml = '';
+  days.forEach(day => {
+    const curVal = currentPrefs[day] || (day === tm.restDayPref ? 'RD' : 'Flexible');
+    formHtml += `
+      <div class="flex items-center justify-between py-2 border-b border-gray-100 text-xs">
+        <span class="font-bold text-gray-700 w-28">${day}</span>
+        <select data-day="${day}" class="day-pref-select border border-gray-300 rounded px-2.5 py-1.5 bg-white text-xs focus:ring-1 focus:ring-purple-400 outline-none flex-1">
+          ${prefOptions.map(opt => `<option value="${opt.val}" ${curVal === opt.val ? 'selected' : ''}>${opt.label}</option>`).join('')}
+        </select>
+      </div>
+    `;
+  });
+
+  if (tm.empNo === 'PMG00831') {
+    formHtml = `
+      <div class="p-3 bg-amber-50 text-amber-900 rounded-lg text-xs mb-3 border border-amber-200">
+        <strong>Chai Yee Sian (Fixed Schedule Rule):</strong><br>
+        • Mon–Fri: Morning 07:30 – 16:30<br>
+        • Sat: Morning Half Day 07:30 – 11:30<br>
+        • Sun: Rest Day (OFF)<br>
+        • All Malaysia National & Sarawak Public Holidays: PH (OFF)
+      </div>
+    ` + formHtml;
+  }
+
+  form.innerHTML = formHtml;
+  modal.classList.remove('hidden');
+}
+
+function saveDayPrefsModal() {
+  if (!editingTeammateEmpNo) return;
+  const tm = currentTeammates.find(t => t.empNo === editingTeammateEmpNo);
+  if (!tm) return;
+
+  const selects = document.querySelectorAll('#dayPrefsModalForm .day-pref-select');
+  const newPrefs = {};
+  selects.forEach(sel => {
+    const day = sel.getAttribute('data-day');
+    newPrefs[day] = sel.value;
+  });
+
+  tm.dayPrefs = newPrefs;
+  closeDayPrefsModal();
+  saveTeammatePreferences();
+  renderTeammatesTable();
+}
+
+function closeDayPrefsModal() {
+  const modal = document.getElementById('schedulerDayPrefsModal');
+  if (modal) modal.classList.add('hidden');
+  editingTeammateEmpNo = null;
 }
 
 function removeTeammate(empNo) {
@@ -332,10 +586,16 @@ function showAddTeammateModal() {
     nickname: nickname.trim().toUpperCase(),
     empName: empName.trim().toUpperCase(),
     position: 'Staff',
+    isPharmacist: false,
+    scheduleMode: 'Rotating',
     race: 'Chinese',
     shiftPref: 'Flexible',
     restDayPref: 'Sunday',
-    halfDayPref: 'None'
+    halfDayPref: 'None',
+    dayPrefs: {
+      Monday: 'Flexible', Tuesday: 'Flexible', Wednesday: 'Flexible',
+      Thursday: 'Flexible', Friday: 'Flexible', Saturday: 'Flexible', Sunday: 'RD'
+    }
   });
 
   renderTeammatesTable();
@@ -354,7 +614,6 @@ async function generateTimetable() {
   const branchVal = branchSelect ? branchSelect.value : 'KS01';
   const monthVal  = monthInput?.value || '2026-10';
 
-  // Make sure current table preferences are captured
   saveTeammatePreferences();
 
   if (!currentTeammates.length) {
@@ -363,9 +622,9 @@ async function generateTimetable() {
   }
 
   // Verify that we have at least one pharmacist
-  const pharmacists = currentTeammates.filter(t => t.position === 'Pharmacist' || t.position === 'Branch Manager');
+  const pharmacists = currentTeammates.filter(t => t.isPharmacist || t.position === 'Pharmacist');
   if (pharmacists.length === 0) {
-    alert('⚠️ Crucial Pharmacy Constraint Warning: No Pharmacist or Branch Manager defined in the team. At least 1 pharmacist is required for legal operation.');
+    alert('⚠️ Crucial Pharmacy Constraint Warning: No Pharmacist defined in the team. At least 1 pharmacist is required for legal operation.');
     return;
   }
 
@@ -385,9 +644,8 @@ async function generateTimetable() {
 
   try {
     if (apiKey) {
-      if (statusText) statusText.textContent = `Querying ${SCHEDULER_PRIMARY_MODEL} with pharmacy constraints…`;
+      if (statusText) statusText.textContent = `Querying ${SCHEDULER_PRIMARY_MODEL} with M/N shift balance & pharmacist rules…`;
       
-      // Attempt Tier 1: Primary Model (gemini-3.5-flash)
       let aiResult = null;
       try {
         aiResult = await callSchedulerGemini(SCHEDULER_PRIMARY_MODEL, branchVal, monthVal, totalDays, apiKey);
@@ -399,7 +657,6 @@ async function generateTimetable() {
         console.warn(`[PMG Scheduler] Tier 1 (${SCHEDULER_PRIMARY_MODEL}) failed:`, tier1Err.message);
         if (statusText) statusText.textContent = `Failing over to ${SCHEDULER_SECONDARY_MODEL}…`;
 
-        // Attempt Tier 2: Secondary Model (gemini-3.5-flash-lite)
         try {
           aiResult = await callSchedulerGemini(SCHEDULER_SECONDARY_MODEL, branchVal, monthVal, totalDays, apiKey);
           if (modelBadge) {
@@ -434,7 +691,6 @@ async function generateTimetable() {
 
   } catch (err) {
     console.error('[PMG Scheduler Error]', err);
-    // Graceful fallback to heuristic solver so the user is NEVER left stranded
     if (statusText) statusText.textContent = `AI note: ${err.message}. Generating with Smart Heuristic Solver…`;
     await new Promise(r => setTimeout(r, 500));
     generatedScheduleData = runHeuristicScheduleGenerator(branchVal, year, month, totalDays);
@@ -458,9 +714,16 @@ async function generateTimetable() {
 async function callSchedulerGemini(model, branchVal, monthVal, totalDays, apiKey) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
+  // Find holidays in this month
+  const monthHolidays = {};
+  Object.entries(HOLIDAYS_2026_SARAWAK).forEach(([date, name]) => {
+    if (date.startsWith(monthVal)) monthHolidays[date] = name;
+  });
+
   const prompt = `You are an expert Pharmacy Operations Director scheduling the retail branch roster for PMG Pharmacy.
 Branch: ${branchVal} (Operating Hours: 07:30 to 21:30 daily).
 Month: ${monthVal} (Total Days: ${totalDays}).
+Public Holidays in this month (Malaysia & Sarawak): ${JSON.stringify(monthHolidays)}
 
 TEAMMATES (${currentTeammates.length} staff):
 ${JSON.stringify(currentTeammates.map(t => ({
@@ -468,34 +731,51 @@ ${JSON.stringify(currentTeammates.map(t => ({
   name: t.empName,
   nickname: t.nickname,
   position: t.position,
+  isPharmacist: t.isPharmacist || false,
+  scheduleMode: t.scheduleMode || 'Rotating',
   race: t.race,
   shiftPref: t.shiftPref,
   restDayPref: t.restDayPref,
-  halfDayPref: t.halfDayPref
+  dayPrefs: t.dayPrefs || {}
 })), null, 2)}
 
-OPERATIONAL RULES & CONSTRAINTS (STRICT):
-1. MANDATORY PHARMACIST COVERAGE: Under Malaysian Pharmacy and Poisons law, AT LEAST ONE Pharmacist (or Branch Manager who is a pharmacist) MUST BE ON DUTY AT ALL TIMES:
-   - Morning Shift (8H_0730-1630): Minimum 1 Pharmacist.
-   - Night Shift (8H_1230-2130): Minimum 1 Pharmacist.
-2. SARAWAK MULTILINGUAL / RACE COMMUNICATION: Retail pharmacy customers in Sarawak speak English, Bahasa Melayu, Mandarin/Hokkien, and Iban/Bidayuh.
-   - On EVERY shift (Morning and Night), ensure balanced demographic coverage (at least 1 Chinese speaker AND at least 1 Malay or Iban speaker).
-3. LABOR LAW:
+STRICT OPERATIONAL RULES:
+1. SPECIAL FIXED SCHEDULE FOR CHAI YEE SIAN (WILLIAM - PMG00831):
+   - Monday to Friday: Morning shift '8H_0730-1630' (07:30 to 16:30).
+   - Saturday: Morning Half Day '4H_0730-1130' (07:30 to 11:30).
+   - Sunday: Rest Day 'RD'.
+   - Public Holidays (Malaysia National & Sarawak Gazetted): Off 'PH'.
+   - Covers the Morning Pharmacist duty on Monday–Saturday!
+
+2. MANDATORY PHARMACIST COVERAGE:
+   - Pharmacists: William Chai (PMG00831) and Kenix Ling (PMG02963). Note: Ting Kwang Yu is NOT a pharmacist!
+   - Morning Shift (07:30-16:30): Covered by William Chai (Mon–Sat). On Sundays or PH when William is off, Kenix Ling MUST be scheduled.
+   - Night Shift (12:30-21:30): Covered by Kenix Ling (or cover pharmacist). Minimum 1 Pharmacist on duty at all times!
+
+3. FAIR SHIFT BALANCE (MORNING VS NIGHT):
+   - For all rotating staff (Ting, Penny, Louna, Fiona, Janet, Nurhafizah, Farizin), the total count of Morning ('8H_0730-1630') and Night ('8H_1230-2130') shifts across the month MUST BE BALANCED (approximately equal 50/50 distribution). No staff should do excessive night shifts while others only do morning shifts.
+
+4. DAY-OF-WEEK & INDIVIDUAL PREFERENCES:
+   - Strictly honor teammates' dayPrefs (e.g. if a teammate prefers morning on certain days, or RD on a specific day).
+
+5. SARAWAK MULTILINGUAL / DEMOGRAPHIC BALANCE:
+   - Ensure balanced customer communication on every shift: at least 1 Chinese speaker and at least 1 Malay or Iban speaker on every Morning and Night shift.
+
+6. LABOR LAW:
    - Max 6 consecutive working days without a Rest Day ('RD').
    - Minimum 1 Rest Day ('RD') per person per 7-day week.
-4. INDIVIDUAL PREFERENCES:
-   - Honor employee Rest Day ('RD') preference where feasible.
-   - Honor Half Day preference ('5H_0730-1230' or '5H_1630-2130') where requested.
-   - Honor Morning vs Night shift preference where feasible.
-5. SHIFT CODES TO USE:
-   - '8H_0730-1630' (Full Morning)
-   - '8H_1230-2130' (Full Night)
-   - '5H_0730-1230' (Half Morning)
-   - '5H_1630-2130' (Half Night)
-   - 'RD' (Rest Day)
+
+SHIFT CODES:
+- '8H_0730-1630' (Full Morning)
+- '8H_1230-2130' (Full Night)
+- '4H_0730-1130' (Half Morning 4H)
+- '5H_0730-1230' (Half Morning 5H)
+- '5H_1630-2130' (Half Night 5H)
+- 'RD' (Rest Day)
+- 'PH' (Public Holiday)
 
 OUTPUT FORMAT:
-Respond ONLY with a valid JSON object (no surrounding markdown fences, no text outside JSON):
+Respond ONLY with a valid JSON object:
 {
   "month": "${monthVal}",
   "branch": "${branchVal}",
@@ -505,13 +785,13 @@ Respond ONLY with a valid JSON object (no surrounding markdown fences, no text o
       "date": "${monthVal}-01",
       "dayOfWeek": "...",
       "shifts": {
-        "EMP_NO_1": "8H_0730-1630",
-        "EMP_NO_2": "8H_1230-2130",
-        "EMP_NO_3": "RD"
+        "PMG00831": "8H_0730-1630",
+        "PMG02963": "8H_1230-2130",
+        ...
       }
     }
   ],
-  "summary": "High-level summary of coverage, pharmacist compliance, and language balance."
+  "summary": "Summary of pharmacist coverage, M/N shift balance, and holiday compliance."
 }`;
 
   const response = await fetch(url, {
@@ -544,95 +824,138 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const days = [];
 
-  const pharmacists = currentTeammates.filter(t => t.position === 'Pharmacist' || t.position === 'Branch Manager');
-  const staffMembers = currentTeammates.filter(t => t.position !== 'Pharmacist' && t.position !== 'Branch Manager');
+  const william = currentTeammates.find(t => t.empNo === 'PMG00831' || t.nickname === 'WILLIAM');
+  const kenix   = currentTeammates.find(t => t.empNo === 'PMG02963' || t.nickname === 'KENIX');
+  const rotatingStaff = currentTeammates.filter(t => t.empNo !== 'PMG00831');
 
-  // Track consecutive working days per teammate
-  const consecutiveDays = {};
-  currentTeammates.forEach(t => { consecutiveDays[t.empNo] = 0; });
+  // Track shift statistics for fair M/N balance
+  const stats = {};
+  currentTeammates.forEach(t => {
+    stats[t.empNo] = { morningCount: 0, nightCount: 0, consecutiveDays: 0, rdCount: 0 };
+  });
 
   for (let d = 1; d <= totalDays; d++) {
     const dateObj = new Date(year, month - 1, d);
     const dayOfWeek = daysOfWeek[dateObj.getDay()];
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const isHoliday = !!HOLIDAYS_2026_SARAWAK[dateStr];
 
     const dayShifts = {};
 
-    // 1. Determine Rest Days (RD) based on preference or 6-day max rule
-    currentTeammates.forEach(t => {
-      const isRestDayPref = (t.restDayPref === dayOfWeek);
-      const isOverworked = (consecutiveDays[t.empNo] >= 6);
+    // 1. Assign Chai Yee Sian (William) Fixed Schedule
+    if (william) {
+      if (isHoliday) {
+        dayShifts[william.empNo] = 'PH';
+        stats[william.empNo].consecutiveDays = 0;
+      } else if (dayOfWeek === 'Sunday') {
+        dayShifts[william.empNo] = 'RD';
+        stats[william.empNo].consecutiveDays = 0;
+        stats[william.empNo].rdCount++;
+      } else if (dayOfWeek === 'Saturday') {
+        dayShifts[william.empNo] = '4H_0730-1130';
+        stats[william.empNo].morningCount++;
+        stats[william.empNo].consecutiveDays++;
+      } else {
+        dayShifts[william.empNo] = '8H_0730-1630';
+        stats[william.empNo].morningCount++;
+        stats[william.empNo].consecutiveDays++;
+      }
+    }
 
-      if (isRestDayPref || isOverworked) {
-        dayShifts[t.empNo] = 'RD';
-        consecutiveDays[t.empNo] = 0;
+    // 2. Assign Kenix Ling (Pharmacist Coverage)
+    // William covers Mon–Sat mornings. Kenix covers Night shift, and Sunday / Holiday mornings.
+    if (kenix) {
+      const isWilliamWorkingMorning = (dayShifts[william?.empNo] === '8H_0730-1630' || dayShifts[william?.empNo] === '4H_0730-1130');
+
+      if (!isWilliamWorkingMorning) {
+        // William is off on Sunday or PH -> Kenix covers Morning
+        dayShifts[kenix.empNo] = '8H_0730-1630';
+        stats[kenix.empNo].morningCount++;
+        stats[kenix.empNo].consecutiveDays++;
+      } else if (dayOfWeek === (kenix.restDayPref || 'Monday') || stats[kenix.empNo].consecutiveDays >= 6) {
+        // Kenix Rest Day
+        dayShifts[kenix.empNo] = 'RD';
+        stats[kenix.empNo].consecutiveDays = 0;
+        stats[kenix.empNo].rdCount++;
+      } else {
+        // Kenix covers Night Shift
+        dayShifts[kenix.empNo] = '8H_1230-2130';
+        stats[kenix.empNo].nightCount++;
+        stats[kenix.empNo].consecutiveDays++;
+      }
+    }
+
+    // 3. Assign Rotating Staff with M/N Balance & Day-of-Week Preferences
+    const availableStaff = rotatingStaff.filter(s => s.empNo !== kenix?.empNo);
+
+    // Step A: Determine Rest Days for rotating staff
+    availableStaff.forEach(s => {
+      const dayPref = s.dayPrefs ? s.dayPrefs[dayOfWeek] : null;
+      const isDayOffPref = (dayPref === 'RD' || s.restDayPref === dayOfWeek);
+      const isMaxConsecutive = (stats[s.empNo].consecutiveDays >= 6);
+
+      if (isDayOffPref || isMaxConsecutive) {
+        dayShifts[s.empNo] = 'RD';
+        stats[s.empNo].consecutiveDays = 0;
+        stats[s.empNo].rdCount++;
       }
     });
 
-    // 2. Guarantee Pharmacist Coverage
-    // Ensure at least 1 pharmacist on Morning and 1 on Night
-    const workingPharm = pharmacists.filter(p => dayShifts[p.empNo] !== 'RD');
-    if (workingPharm.length === 0) {
-      // If all pharmacists were assigned RD, pull one back
-      const chosen = pharmacists[d % pharmacists.length];
-      delete dayShifts[chosen.empNo];
-      workingPharm.push(chosen);
-    }
+    // Step B: Assign Working Shifts for remaining rotating staff (Balancing Morning & Night)
+    const workingRotating = availableStaff.filter(s => dayShifts[s.empNo] !== 'RD');
 
-    if (workingPharm.length === 1) {
-      // Single pharmacist works morning or flexible
-      dayShifts[workingPharm[0].empNo] = '8H_0730-1630';
-      consecutiveDays[workingPharm[0].empNo]++;
-    } else {
-      // Split pharmacists across Morning and Night
-      workingPharm.forEach((p, idx) => {
-        if (p.shiftPref === 'Morning Preferred' || (idx % 2 === 0 && p.shiftPref !== 'Night Preferred')) {
-          dayShifts[p.empNo] = '8H_0730-1630';
-        } else {
-          dayShifts[p.empNo] = '8H_1230-2130';
-        }
-        consecutiveDays[p.empNo]++;
-      });
-    }
+    // Sort staff by who needs more Morning shifts vs who needs more Night shifts
+    workingRotating.sort((a, b) => {
+      const diffA = stats[a.empNo].morningCount - stats[a.empNo].nightCount;
+      const diffB = stats[b.empNo].morningCount - stats[b.empNo].nightCount;
+      return diffA - diffB; // Staff with fewer mornings will be first
+    });
 
-    // 3. Assign Staff with Demographic & Race Balance
-    const availableStaff = staffMembers.filter(s => dayShifts[s.empNo] !== 'RD');
-
-    // Separate by race for balanced allocation
-    const malayStaff = availableStaff.filter(s => s.race === 'Malay');
-    const ibanStaff  = availableStaff.filter(s => s.race === 'Iban / Bidayuh');
-    const chineseStaff = availableStaff.filter(s => s.race === 'Chinese');
-
-    let mAssignedCount = 0;
-    let nAssignedCount = 0;
-
-    availableStaff.forEach((s, idx) => {
+    workingRotating.forEach((s, idx) => {
+      const dayPref = s.dayPrefs ? s.dayPrefs[dayOfWeek] : null;
       let shift = '8H_0730-1630';
 
-      // Check Half Day preference
-      if (s.halfDayPref === 'Saturday Morning' && dayOfWeek === 'Saturday') {
-        shift = '5H_0730-1230';
-      } else if (s.halfDayPref === 'Thursday' && dayOfWeek === 'Thursday') {
-        shift = '5H_0730-1230';
-      } else if (s.halfDayPref === 'Friday' && dayOfWeek === 'Friday') {
-        shift = '5H_1630-2130';
-      } else if (s.shiftPref === 'Night Preferred' || (idx % 2 === 1 && s.shiftPref !== 'Morning Preferred')) {
-        shift = '8H_1230-2130';
-        nAssignedCount++;
-      } else {
+      if (dayPref === 'Morning Half (4H)') {
+        shift = '4H_0730-1130';
+        stats[s.empNo].morningCount++;
+      } else if (dayPref === 'Morning Only') {
         shift = '8H_0730-1630';
-        mAssignedCount++;
+        stats[s.empNo].morningCount++;
+      } else if (dayPref === 'Night Only') {
+        shift = '8H_1230-2130';
+        stats[s.empNo].nightCount++;
+      } else {
+        // Balance based on count: if employee has more mornings than nights, give night; else give morning
+        const mCount = stats[s.empNo].morningCount;
+        const nCount = stats[s.empNo].nightCount;
+
+        if (mCount > nCount) {
+          shift = '8H_1230-2130';
+          stats[s.empNo].nightCount++;
+        } else if (nCount > mCount) {
+          shift = '8H_0730-1630';
+          stats[s.empNo].morningCount++;
+        } else {
+          // Equal: split by index
+          if (idx % 2 === 0) {
+            shift = '8H_0730-1630';
+            stats[s.empNo].morningCount++;
+          } else {
+            shift = '8H_1230-2130';
+            stats[s.empNo].nightCount++;
+          }
+        }
       }
 
       dayShifts[s.empNo] = shift;
-      consecutiveDays[s.empNo]++;
+      stats[s.empNo].consecutiveDays++;
     });
 
     // Final fill-in for any missing
     currentTeammates.forEach(t => {
       if (!dayShifts[t.empNo]) {
         dayShifts[t.empNo] = 'RD';
-        consecutiveDays[t.empNo] = 0;
+        stats[t.empNo].consecutiveDays = 0;
       }
     });
 
@@ -648,7 +971,7 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
     month: `${year}-${String(month).padStart(2, '0')}`,
     branch: branchVal,
     days,
-    summary: 'Heuristically generated schedule satisfying 100% pharmacist duty coverage, Sarawak demographic balance, and labor laws.'
+    summary: 'Heuristically generated schedule with William Chai fixed pattern, 100% pharmacist coverage, balanced Morning/Night shift distribution, and day-of-week preferences.'
   };
 }
 
@@ -662,7 +985,6 @@ function renderScheduleMatrix(schedule) {
 
   if (summaryEl) summaryEl.textContent = schedule.summary || '';
 
-  // KPI calculations
   let totalShifts = 0;
   let totalRestDays = 0;
   let pharmCoverageDays = 0;
@@ -678,11 +1000,11 @@ function renderScheduleMatrix(schedule) {
       const tm = currentTeammates.find(t => t.empNo === empNo);
       if (!tm) return;
 
-      const isWorking = shift && shift !== 'RD' && shift !== 'OFF';
+      const isWorking = shift && shift !== 'RD' && shift !== 'OFF' && shift !== 'PH';
       if (isWorking) totalShifts++;
-      else totalRestDays++;
+      else if (shift === 'RD' || shift === 'OFF') totalRestDays++;
 
-      const isPharm = tm.position === 'Pharmacist' || tm.position === 'Branch Manager';
+      const isPharm = tm.isPharmacist || tm.position === 'Pharmacist';
       if (shift.includes('0730') || shift.includes('0800')) {
         if (isPharm) hasMorningPharm = true;
         morningRaces.add(tm.race);
@@ -710,18 +1032,21 @@ function renderScheduleMatrix(schedule) {
 
   // Build Table Header
   let headerHtml = `
-    <th class="sticky left-0 bg-gray-100 z-20 px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase border-r border-gray-200 min-w-[180px]">
+    <th class="sticky left-0 bg-gray-100 z-20 px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase border-r border-gray-200 min-w-[190px]">
       Teammate (KS01)
     </th>
   `;
 
   schedule.days.forEach(d => {
     const isWeekend = d.dayOfWeek === 'Saturday' || d.dayOfWeek === 'Sunday';
-    const dayBg = isWeekend ? 'bg-amber-50 text-amber-900' : 'bg-gray-50 text-gray-700';
+    const isHoliday = !!HOLIDAYS_2026_SARAWAK[d.date];
+    const dayBg = isHoliday ? 'bg-rose-50 text-rose-900 border-rose-200' : (isWeekend ? 'bg-amber-50 text-amber-900' : 'bg-gray-50 text-gray-700');
+
     headerHtml += `
-      <th class="px-2 py-2 text-center text-xs font-semibold ${dayBg} border-r border-gray-200 min-w-[70px]">
-        <div class="text-[10px] uppercase font-bold text-gray-400">${d.dayOfWeek.slice(0, 3)}</div>
+      <th class="px-2 py-2 text-center text-xs font-semibold ${dayBg} border-r border-gray-200 min-w-[70px]" title="${isHoliday ? HOLIDAYS_2026_SARAWAK[d.date] : ''}">
+        <div class="text-[10px] uppercase font-bold ${isHoliday ? 'text-rose-600' : 'text-gray-400'}">${d.dayOfWeek.slice(0, 3)}</div>
         <div class="text-sm font-extrabold">${d.day}</div>
+        ${isHoliday ? '<span class="text-[9px] bg-rose-200 text-rose-800 px-1 rounded font-bold">PH</span>' : ''}
       </th>
     `;
   });
@@ -730,17 +1055,32 @@ function renderScheduleMatrix(schedule) {
   // Build Table Body
   let bodyHtml = '';
   currentTeammates.forEach(tm => {
-    const isPharm = tm.position === 'Pharmacist' || tm.position === 'Branch Manager';
+    const isPharm = tm.isPharmacist || tm.position === 'Pharmacist';
+    const isFixed = tm.scheduleMode === 'Fixed' || tm.empNo === 'PMG00831';
+
+    // Count shifts for this teammate
+    let mCount = 0;
+    let nCount = 0;
+    schedule.days.forEach(d => {
+      const s = d.shifts[tm.empNo] || '';
+      if (s.includes('0730') || s.includes('0800')) mCount++;
+      if (s.includes('1230') || s.includes('1300') || s.includes('1630')) nCount++;
+    });
+
     bodyHtml += `
       <tr class="hover:bg-blue-50/50 border-b border-gray-200 transition text-xs">
         <td class="sticky left-0 bg-white z-10 px-3 py-2.5 font-medium text-gray-900 border-r border-gray-200 shadow-sm">
           <div class="flex items-center justify-between gap-1">
             <span class="font-bold text-gray-800">${escHtml(tm.nickname)}</span>
-            <span class="text-[10px] px-1.5 py-0.5 rounded font-semibold ${isPharm ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}">
-              ${isPharm ? 'Rx' : 'Staff'}
-            </span>
+            <div class="flex items-center gap-1">
+              ${isPharm ? '<span class="text-[9px] px-1 py-0.5 rounded font-bold bg-blue-100 text-blue-800 border border-blue-200">Rx</span>' : ''}
+              ${isFixed ? '<span class="text-[9px] px-1 py-0.5 rounded font-bold bg-amber-100 text-amber-800">Fixed</span>' : ''}
+            </div>
           </div>
-          <div class="text-[10px] text-gray-400 truncate max-w-[160px]">${escHtml(tm.empName)}</div>
+          <div class="text-[10px] text-gray-400 truncate max-w-[170px]">${escHtml(tm.empName)}</div>
+          <div class="text-[10px] text-gray-500 font-mono mt-0.5">
+            <span class="text-blue-600 font-bold">M: ${mCount}</span> · <span class="text-purple-600 font-bold">N: ${nCount}</span>
+          </div>
         </td>
     `;
 
@@ -773,7 +1113,7 @@ function renderScheduleMatrix(schedule) {
     Object.entries(d.shifts).forEach(([empNo, shift]) => {
       const tm = currentTeammates.find(t => t.empNo === empNo);
       if (!tm) return;
-      const isPharm = tm.position === 'Pharmacist' || tm.position === 'Branch Manager';
+      const isPharm = tm.isPharmacist || tm.position === 'Pharmacist';
       if (isPharm) {
         if (shift.includes('0730') || shift.includes('0800')) amPharm = true;
         if (shift.includes('1230') || shift.includes('1300') || shift.includes('1630')) pmPharm = true;
@@ -797,6 +1137,12 @@ function renderScheduleMatrix(schedule) {
 function getShiftBadgeStyle(code) {
   if (!code || code === 'RD' || code === 'OFF') {
     return { label: 'RD', classes: 'bg-gray-100 text-gray-500 border border-gray-200' };
+  }
+  if (code === 'PH') {
+    return { label: 'PH', classes: 'bg-rose-100 text-rose-800 border border-rose-300 font-bold' };
+  }
+  if (code.includes('0730-1130')) {
+    return { label: 'M (4H)', classes: 'bg-amber-100 text-amber-900 border border-amber-300 font-bold' };
   }
   if (code.includes('0730-1630') || code.includes('0800-1700')) {
     return { label: 'M (8H)', classes: 'bg-blue-100 text-blue-800 border border-blue-200' };
@@ -845,6 +1191,9 @@ function exportScheduleToRymnetCSV() {
       if (code === 'RD' || code === 'OFF') {
         shiftRow.push('');
         leaveRow.push('RD');
+      } else if (code === 'PH') {
+        shiftRow.push('');
+        leaveRow.push('PH');
       } else {
         shiftRow.push(code);
         leaveRow.push('');
@@ -879,7 +1228,7 @@ function exportScheduleToExcel() {
   const wsData = [];
 
   // Header row
-  const header = ['Emp ID', 'Nickname', 'Full Name', 'Position', 'Race'];
+  const header = ['Emp ID', 'Nickname', 'Full Name', 'Position', 'Race', 'M Shifts', 'N Shifts'];
   days.forEach(d => {
     header.push(`${d.day} (${d.dayOfWeek.slice(0, 3)})`);
   });
@@ -887,7 +1236,15 @@ function exportScheduleToExcel() {
 
   // Data rows
   currentTeammates.forEach(tm => {
-    const row = [tm.empNo, tm.nickname, tm.empName, tm.position, tm.race];
+    let mCount = 0;
+    let nCount = 0;
+    days.forEach(d => {
+      const s = d.shifts[tm.empNo] || '';
+      if (s.includes('0730') || s.includes('0800')) mCount++;
+      if (s.includes('1230') || s.includes('1300') || s.includes('1630')) nCount++;
+    });
+
+    const row = [tm.empNo, tm.nickname, tm.empName, tm.position, tm.race, mCount, nCount];
     days.forEach(d => {
       row.push(d.shifts[tm.empNo] || 'RD');
     });
@@ -910,10 +1267,13 @@ function copyScheduleWhatsAppSummary() {
   const { month, branch, days } = generatedScheduleData;
 
   let text = `📢 *PMG PHARMACY (${branch}) — MONTHLY SCHEDULE (${month})*\n`;
-  text += `Generated with AI Schedule Intelligence (100% Pharmacist Coverage & Multilingual Balance)\n\n`;
+  text += `Generated with AI Schedule Intelligence (Balanced Shifts & Pharmacist Coverage)\n\n`;
 
   days.slice(0, 7).forEach(d => {
-    text += `📅 *${d.dayOfWeek}, ${d.date}*\n`;
+    const isHoliday = !!HOLIDAYS_2026_SARAWAK[d.date];
+    const holidayName = isHoliday ? ` 🔴 *[${HOLIDAYS_2026_SARAWAK[d.date]}]*` : '';
+
+    text += `📅 *${d.dayOfWeek}, ${d.date}*${holidayName}\n`;
     const morning = [];
     const night   = [];
     const off     = [];
@@ -928,7 +1288,7 @@ function copyScheduleWhatsAppSummary() {
 
     text += `  🌅 *Morning (07:30-16:30):* ${morning.join(', ') || 'None'}\n`;
     text += `  🌙 *Night (12:30-21:30):* ${night.join(', ') || 'None'}\n`;
-    text += `  ☕ *Rest Day:* ${off.join(', ') || 'None'}\n\n`;
+    text += `  ☕ *Rest / Holiday:* ${off.join(', ') || 'None'}\n\n`;
   });
 
   if (days.length > 7) {
