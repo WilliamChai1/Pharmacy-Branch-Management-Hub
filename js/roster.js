@@ -378,23 +378,28 @@ function parseSingleSheet(rawData, year, month, maxDayInMonth, unmappedNicknames
       // ── Process OFF column ────────────────────────────────────────────────
       if (offCol !== -1 && row[offCol]) {
         const offStaffNames = String(row[offCol]).split(/[\n,;/]+/).map(s => s.trim()).filter(Boolean);
-        for (const offName of offStaffNames) {
+        for (const offItem of offStaffNames) {
           // Skip general holiday labels like "PH - MALAYSIA DAY"
-          if (/PH\b|MALAYSIA DAY|PUBLIC HOLIDAY/i.test(offName)) continue;
+          if (/PH\b|MALAYSIA DAY|PUBLIC HOLIDAY/i.test(offItem)) continue;
 
-          const staffObj = lookupStaff(offName);
-          if (!staffObj) unmappedNicknames.add(offName);
+          const { staffName, leaveCode: extractedLeave } = parseStaffAndLeave(offItem);
+          if (!staffName) continue;
+
+          const staffObj = lookupStaff(staffName);
+          if (!staffObj) unmappedNicknames.add(staffName);
+
+          const leaveCode = extractedLeave || (isPH ? 'PH' : 'OFF');
 
           records.push({
-            empNo: staffObj ? staffObj.empNo : `UNMAPPED_${offName}`,
-            empName: staffObj ? staffObj.empName : offName,
-            nickname: staffObj ? staffObj.nickname : offName,
+            empNo: staffObj ? staffObj.empNo : `UNMAPPED_${staffName}`,
+            empName: staffObj ? staffObj.empName : staffName,
+            nickname: staffObj ? staffObj.nickname : staffName,
             isMapped: !!staffObj,
             workDate: currentDate,
             day: dayNum, // Integer day 1..31
             shiftCode: '',
-            leaveCode: isPH ? 'PH' : 'OFF',
-            rawCell: 'OFF (Visual)',
+            leaveCode: leaveCode,
+            rawCell: `OFF: ${offItem}`,
           });
         }
       }
@@ -420,8 +425,10 @@ function parseSingleSheet(rawData, year, month, maxDayInMonth, unmappedNicknames
         });
 
         if (firstSlot && lastSlot) {
-          const staffObj = lookupStaff(nick);
-          if (!staffObj) unmappedNicknames.add(nick);
+          const { staffName, leaveCode: cellLeave } = parseStaffAndLeave(nick);
+          const effectiveName = staffName || nick;
+          const staffObj = lookupStaff(effectiveName);
+          if (!staffObj) unmappedNicknames.add(effectiveName);
 
           let shiftCode = '8H_0730-1630';
 
@@ -452,14 +459,14 @@ function parseSingleSheet(rawData, year, month, maxDayInMonth, unmappedNicknames
           }
 
           records.push({
-            empNo: staffObj ? staffObj.empNo : `UNMAPPED_${nick}`,
-            empName: staffObj ? staffObj.empName : nick,
-            nickname: staffObj ? staffObj.nickname : nick,
+            empNo: staffObj ? staffObj.empNo : `UNMAPPED_${effectiveName}`,
+            empName: staffObj ? staffObj.empName : effectiveName,
+            nickname: staffObj ? staffObj.nickname : effectiveName,
             isMapped: !!staffObj,
             workDate: currentDate,
             day: dayNum, // Integer day 1..31
             shiftCode: shiftCode,
-            leaveCode: isPH ? 'PH' : '',
+            leaveCode: cellLeave || (isPH ? 'PH' : ''),
             rawCell: `${firstSlot} -> ${lastSlot} (${count}h)`,
           });
         }

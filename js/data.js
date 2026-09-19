@@ -247,7 +247,48 @@ function lookupStaff(query) {
   const byPartial = STAFF_MAP.find(s => s.empName && s.empName.toUpperCase().includes(q));
   if (byPartial) return byPartial;
 
+  // 5. Common nickname aliases (e.g. HAFIZAH / FIZAH -> NURHAFIZAH)
+  if (q === 'HAFIZAH' || q === 'FIZAH') {
+    const h = STAFF_MAP.find(s => s.nickname === 'NURHAFIZAH' || s.empName.toUpperCase().includes('NURHAFIZAH'));
+    if (h) return h;
+  }
+
   return null;
+}
+
+// Extract staff name and leave code from composite strings like "FARIZIN MC", "HAFIZAH RL", "JANET BL"
+function parseStaffAndLeave(rawStr) {
+  if (!rawStr) return { staffName: '', leaveCode: '' };
+  let s = String(rawStr).trim();
+
+  // Remove parentheses, brackets, colons, or hyphens around leave codes: e.g. "FARIZIN (MC)" -> "FARIZIN MC"
+  s = s.replace(/[()[\]:\-]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  let leaveCode = '';
+  let staffName = s;
+
+  // Check if string contains a leave code at the end: "FARIZIN MC", "HAFIZAH RL", "JANET BL"
+  const endMatch = s.match(/^(.*?)\s+(MC|SL|RL|RPL|AL|ANL|BL|EL|UPL|PH|RD|OD|OFF|HALF|HL)$/i);
+  if (endMatch) {
+    staffName = endMatch[1].trim();
+    leaveCode = endMatch[2].toUpperCase();
+  } else {
+    // Check if string starts with a leave code: "MC FARIZIN"
+    const startMatch = s.match(/^(MC|SL|RL|RPL|AL|ANL|BL|EL|UPL|PH|RD|OD|OFF|HALF|HL)\s+(.*?)$/i);
+    if (startMatch) {
+      leaveCode = startMatch[1].toUpperCase();
+      staffName = startMatch[2].trim();
+    }
+  }
+
+  // Normalize leave code
+  if (leaveCode === 'MC')  leaveCode = 'SL';
+  if (leaveCode === 'RL')  leaveCode = 'RPL';
+  if (leaveCode === 'AL')  leaveCode = 'ANL';
+  if (leaveCode === 'OFF') leaveCode = 'RD';
+  if (leaveCode === 'HL' || leaveCode === 'HALF') leaveCode = 'RPL';
+
+  return { staffName, leaveCode };
 }
 
 function getBranch(codeOrName) {
