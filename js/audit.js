@@ -5,7 +5,7 @@ let auditVideoFile   = null;
 let auditFileUri     = null;   // Gemini Files API uploaded URI
 let auditChecklistState = {};  // { itemId: boolean }
 
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_MODEL = 'gemini-3.5-flash';
 const GEMINI_FILES_API = 'https://generativelanguage.googleapis.com/upload/v1beta/files';
 const GEMINI_GENERATE_API = 'https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODEL + ':generateContent';
 

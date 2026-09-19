@@ -531,8 +531,8 @@ function processRoster(targetSheet) {
   if (allExtractedRecords.length === 0) {
     if (statusEl) {
       statusEl.innerHTML = `<div class="p-3 bg-red-50 text-red-700 rounded-lg text-xs font-semibold">
-        <i class="fa-solid fa-triangle-exclamation"></i> Could not find any valid schedule data in the uploaded file for ${monthVal}.
-        Please check your selected month or ensure the sheets contain visual schedule days.
+        <i class="fa-solid fa-triangle-exclamation"></i> Could not find any valid schedule data in the uploaded file.
+        Please ensure the sheet contains either day columns (01–31) or visual time slots (DAY, OFF, 7.30-8.30AM).
       </div>`;
     }
     return;
@@ -588,7 +588,7 @@ function processRoster(targetSheet) {
     let msg = `<div class="p-3 bg-green-50 border border-green-200 text-green-800 rounded-lg text-xs font-semibold flex items-center justify-between flex-wrap gap-2">
       <div>
         <i class="fa-solid fa-circle-check text-green-600 mr-1.5"></i>
-        <span>${sheetDesc} — <strong>${rosterFlatRecords.length} schedule records</strong> for ${monthVal}!</span>
+        <span>${sheetDesc} — <strong>${rosterFlatRecords.length} total schedule records</strong> for ${monthVal}!</span>
       </div>`;
 
     if (u > 0) {
@@ -836,11 +836,11 @@ function downloadRymnetCSV() {
 
 // ─── GEMINI AI SCHEDULE INTELLIGENCE & AUDIT ──────────────────────────────────
 // Dual-Tier Architecture:
-// Primary:   gemini-2.5-flash       (Fast, powerful reasoning, structured output)
-// Secondary: gemini-2.5-flash-lite  (Ultra-fast, lightweight fallback on 429/quota)
+// Primary:   gemini-3.5-flash       (Fast, powerful reasoning, structured output)
+// Secondary: gemini-3.5-flash-lite  (Ultra-fast, lightweight fallback on 429/quota)
 
-const GEMINI_PRIMARY_MODEL   = 'gemini-2.5-flash';
-const GEMINI_SECONDARY_MODEL = 'gemini-2.5-flash-lite';
+const GEMINI_PRIMARY_MODEL   = 'gemini-3.5-flash';
+const GEMINI_SECONDARY_MODEL = 'gemini-3.5-flash-lite';
 
 async function runRosterAiAudit() {
   const panel      = document.getElementById('rosterAiPanel');
@@ -973,23 +973,23 @@ Provide a concise, professional markdown response with headers and bullet points
 }
 
 async function callGeminiDualTier(prompt, apiKey, statusTxt, badgeEl) {
-  // Tier 1: Try Primary (gemini-2.5-flash)
+  // Tier 1: Try Primary (gemini-3.5-flash)
   try {
     if (statusTxt) statusTxt.textContent = `Connecting to ${GEMINI_PRIMARY_MODEL} (Primary)…`;
     const res = await callGeminiModel(GEMINI_PRIMARY_MODEL, prompt, apiKey);
     if (badgeEl) {
-      badgeEl.textContent = '⚡ Gemini 2.5 Flash';
+      badgeEl.textContent = '⚡ Gemini 3.5 Flash';
       badgeEl.className = 'text-xs font-semibold px-2.5 py-1 rounded bg-green-100 text-green-800 border border-green-200';
     }
     return res;
   } catch (err) {
     console.warn(`[PMG AI] Primary model ${GEMINI_PRIMARY_MODEL} failed, falling back to ${GEMINI_SECONDARY_MODEL}:`, err.message);
     
-    // Tier 2: Fallback to Secondary (gemini-2.5-flash-lite)
+    // Tier 2: Fallback to Secondary (gemini-3.5-flash-lite)
     if (statusTxt) statusTxt.textContent = `Switching to ${GEMINI_SECONDARY_MODEL} (Fallback)…`;
     const res = await callGeminiModel(GEMINI_SECONDARY_MODEL, prompt, apiKey);
     if (badgeEl) {
-      badgeEl.textContent = '🛡️ Gemini 2.5 Flash-Lite (Failover)';
+      badgeEl.textContent = '🛡️ Gemini 3.5 Flash-Lite (Failover)';
       badgeEl.className = 'text-xs font-semibold px-2.5 py-1 rounded bg-amber-100 text-amber-800 border border-amber-200';
     }
     return res;
@@ -1068,3 +1068,4 @@ Please answer concisely and accurately based on the schedule data above.`;
     if (statusEl) statusEl.classList.add('hidden');
   }
 }
+
