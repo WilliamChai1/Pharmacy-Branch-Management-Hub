@@ -152,6 +152,8 @@ function selectSheet(sheetName) {
 function parseSingleSheet(rawData, year, month, maxDayInMonth, unmappedNicknames) {
   if (!rawData || rawData.length < 2) return [];
 
+  const leaveCodesList = ['RD', 'OD', 'OFF', 'ANL', 'AL', 'SL', 'MC', 'PH', 'RPL', 'BL', 'EL', 'UPL', 'TRG'];
+
   // Check if sheet contains Monthly Matrix (Employee No, Employee Name, 01 (Tue)...)
   let matrixHeaderIdx = -1;
   for (let r = 0; r < Math.min(rawData.length, 10); r++) {
@@ -174,8 +176,10 @@ function parseSingleSheet(rawData, year, month, maxDayInMonth, unmappedNicknames
 
   const records = [];
 
+  // ════════════════════════════════════════════════════════════════════════════
+  // MODE 1: MONTHLY MATRIX (Employee No, Employee Name, 01 (Tue)...)
+  // ════════════════════════════════════════════════════════════════════════════
   if (matrixHeaderIdx !== -1) {
-    // Mode 1: Monthly Matrix
     const headerRow  = rawData[matrixHeaderIdx];
     const dayNumbers = [];
 
@@ -199,15 +203,15 @@ function parseSingleSheet(rawData, year, month, maxDayInMonth, unmappedNicknames
         const col0 = String(row[0] || '').trim();
         const col1 = String(row[1] || '').trim();
 
-        const hasEmpId = col0.toUpperCase().startsWith('PMG') || /^[A-Z0-9_-]{4,12}$/i.test(col0);
+        const hasEmpId   = col0.toUpperCase().startsWith('PMG') || /^[A-Z0-9_-]{4,12}$/i.test(col0);
         const hasEmpName = col1.length > 2 && !/^(RD|OD|OFF|SL|MC|ANL|AL|PH|RPL|BL)$/i.test(col1);
 
         if (hasEmpId || hasEmpName || col0.length > 1) {
           const staffIdentifier = hasEmpId ? col0 : (col0 || col1);
           const staffObj = lookupStaff(staffIdentifier) || lookupStaff(col1);
 
-          const empNo   = staffObj ? staffObj.empNo   : (hasEmpId ? col0 : `UNMAPPED_${col0}`);
-          const empName = staffObj ? staffObj.empName : (col1 || col0);
+          const empNo    = staffObj ? staffObj.empNo   : (hasEmpId ? col0 : `UNMAPPED_${col0}`);
+          const empName  = staffObj ? staffObj.empName : (col1 || col0);
           const nickname = staffObj ? staffObj.nickname : (col0 || col1);
 
           if (!staffObj) unmappedNicknames.add(col0 || col1);
@@ -222,7 +226,7 @@ function parseSingleSheet(rawData, year, month, maxDayInMonth, unmappedNicknames
             const isNextEmp = nextCol0.toUpperCase().startsWith('PMG') || (nextCol1.length > 3 && !/^(RD|OD|OFF|SL|MC|ANL|AL|PH|RPL|BL)$/i.test(nextCol1));
             const hasLeaveCodes = dayNumbers.some(({ col }) => {
               const val = String(nextRow[col] || '').trim().toUpperCase();
-              return ['RD','OD','OFF','SL','MC','ANL','AL','PH','RPL','BL'].includes(val);
+              return leaveCodesList.includes(val);
             });
 
             if (!isNextEmp && hasLeaveCodes) {
@@ -238,25 +242,50 @@ function parseSingleSheet(rawData, year, month, maxDayInMonth, unmappedNicknames
             const leaveVal = leaveRow ? String(leaveRow[col] || '').trim() : '';
 
             let shiftCode = '';
-            if (['ANL','AL','SL','MC','RPL','BL','EL','UPL'].includes(leaveVal.toUpperCase())) {
-              shiftCode = resolveShiftCode(leaveVal);
-            } else if (shiftVal) {
-              shiftCode = resolveShiftCode(shiftVal);
-            } else if (leaveVal) {
-              shiftCode = resolveShiftCode(leaveVal);
-            } else {
-              shiftCode = 'OFF';
+            let leaveCode = '';
+
+            // Check shiftVal
+            if (shiftVal) {
+              const sUpper = shiftVal.toUpperCase();
+              if (leaveCodesList.includes(sUpper)) {
+                leaveCode = resolveShiftCode(sUpper);
+              } else {
+                shiftCode = resolveShiftCode(shiftVal);
+              }
             }
 
-            if (shiftCode) {
-              const workDate = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-              records.push({
-                empNo, empName, nickname,
-                isMapped: !!staffObj,
-                workDate, shiftCode,
-                rawCell: shiftVal || leaveVal || 'OFF',
-              });
+            // Check leaveVal
+            if (leaveVal) {
+              const lUpper = leaveVal.toUpperCase();
+              if (leaveCodesList.includes(lUpper)) {
+                leaveCode = resolveShiftCode(lUpper);
+              } else if (!shiftCode) {
+                shiftCode = resolveShiftCode(leaveVal);
+              }
             }
+
+            // Normalise leave codes
+            if (leaveCode.toUpperCase() === 'OFF') leaveCode = 'RD';
+            if (leaveCode.toUpperCase() === 'AL')  leaveCode = 'ANL';
+            if (leaveCode.toUpperCase() === 'MC')  leaveCode = 'SL';
+
+            // If neither shift nor leave was in the row, default to Rest Day
+            if (!shiftCode && !leaveCode) {
+              leaveCode = 'RD';
+            }
+
+            const workDate = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+            records.push({
+              empNo,
+              empName,
+              nickname,
+              isMapped: !!staffObj,
+              workDate,
+              day, // Integer day of month 1..31
+              shiftCode: shiftCode || '',
+              leaveCode: leaveCode || '',
+              rawCell: `${shiftVal} / ${leaveVal}`.trim(),
+            });
           }
         }
         r++;
@@ -264,10 +293,12 @@ function parseSingleSheet(rawData, year, month, maxDayInMonth, unmappedNicknames
     }
   }
 
+  // ════════════════════════════════════════════════════════════════════════════
+  // MODE 2: VISUAL HOURLY SCHEDULE (DAY, OFF, 7.30-8.30AM...)
+  // ════════════════════════════════════════════════════════════════════════════
   if (visualHeaderIdx !== -1) {
-    // Mode 2: Visual Hourly Schedule
     const vHeader = rawData[visualHeaderIdx].map(c => String(c).trim());
-    const offCol = vHeader.findIndex(h => h.toUpperCase() === 'OFF');
+    const offCol  = vHeader.findIndex(h => h.toUpperCase() === 'OFF');
     const timeCols = [];
 
     for (let c = 0; c < vHeader.length; c++) {
@@ -278,38 +309,74 @@ function parseSingleSheet(rawData, year, month, maxDayInMonth, unmappedNicknames
     }
 
     let currentDate = '';
+
     for (let r = visualHeaderIdx + 1; r < rawData.length; r++) {
-      const row = rawData[r];
+      const row  = rawData[r];
       const col0 = String(row[0] || '').trim();
 
-      const dateMatch = col0.match(/(\d{1,2})[./-](\d{1,2})[./-](\d{4})/) || col0.match(/(\d{4})[./-](\d{1,2})[./-](\d{1,2})/);
-      if (dateMatch) {
-        if (dateMatch[3].length === 4) {
-          currentDate = `${dateMatch[3]}-${dateMatch[2].padStart(2,'0')}-${dateMatch[1].padStart(2,'0')}`;
+      // Detect start of a new day block (e.g. "MON", "TUES", "WED", etc.)
+      const isDayName = /^(MON|TUE|TUES|WED|THU|THUR|THURS|FRI|SAT|SUN)\b/i.test(col0);
+
+      // If this row has a day name, look ahead up to 6 rows to locate the date
+      if (isDayName) {
+        for (let look = r; look < Math.min(r + 6, rawData.length); look++) {
+          const lookCol0 = String(rawData[look][0] || '').trim();
+          const dMatch = lookCol0.match(/(\d{1,2})[./-](\d{1,2})[./-](\d{4})/) || lookCol0.match(/(\d{4})[./-](\d{1,2})[./-](\d{1,2})/);
+          if (dMatch) {
+            if (dMatch[3].length === 4) {
+              currentDate = `${dMatch[3]}-${dMatch[2].padStart(2,'0')}-${dMatch[1].padStart(2,'0')}`;
+            } else {
+              currentDate = `${dMatch[1]}-${dMatch[2].padStart(2,'0')}-${dMatch[3].padStart(2,'0')}`;
+            }
+            break;
+          }
+        }
+      }
+
+      // Also check if current row's col0 itself is a date
+      const directDateMatch = col0.match(/(\d{1,2})[./-](\d{1,2})[./-](\d{4})/) || col0.match(/(\d{4})[./-](\d{1,2})[./-](\d{1,2})/);
+      if (directDateMatch) {
+        if (directDateMatch[3].length === 4) {
+          currentDate = `${directDateMatch[3]}-${directDateMatch[2].padStart(2,'0')}-${directDateMatch[1].padStart(2,'0')}`;
         } else {
-          currentDate = `${dateMatch[1]}-${dateMatch[2].padStart(2,'0')}-${dateMatch[3].padStart(2,'0')}`;
+          currentDate = `${directDateMatch[1]}-${directDateMatch[2].padStart(2,'0')}-${directDateMatch[3].padStart(2,'0')}`;
         }
       }
 
       if (!currentDate) continue;
 
+      const dayNum = parseInt(currentDate.split('-')[2], 10);
+      if (isNaN(dayNum) || dayNum < 1 || dayNum > maxDayInMonth) continue;
+
+      // Check if this date has a Public Holiday remark
+      const isPH = /PH\b|MALAYSIA DAY|PUBLIC HOLIDAY/i.test(col0) ||
+        (offCol !== -1 && /PH\b|MALAYSIA DAY|PUBLIC HOLIDAY/i.test(String(row[offCol] || '')));
+
+      // ── Process OFF column ────────────────────────────────────────────────
       if (offCol !== -1 && row[offCol]) {
         const offStaffNames = String(row[offCol]).split(/[\n,;/]+/).map(s => s.trim()).filter(Boolean);
         for (const offName of offStaffNames) {
+          // Skip general holiday labels like "PH - MALAYSIA DAY"
+          if (/PH\b|MALAYSIA DAY|PUBLIC HOLIDAY/i.test(offName)) continue;
+
           const staffObj = lookupStaff(offName);
           if (!staffObj) unmappedNicknames.add(offName);
+
           records.push({
             empNo: staffObj ? staffObj.empNo : `UNMAPPED_${offName}`,
             empName: staffObj ? staffObj.empName : offName,
             nickname: staffObj ? staffObj.nickname : offName,
             isMapped: !!staffObj,
             workDate: currentDate,
-            shiftCode: 'OFF',
+            day: dayNum, // Integer day 1..31
+            shiftCode: '',
+            leaveCode: isPH ? 'PH' : 'OFF',
             rawCell: 'OFF (Visual)',
           });
         }
       }
 
+      // ── Process working staff in time columns ──────────────────────────────
       const staffInRow = new Set();
       timeCols.forEach(({ col }) => {
         const val = String(row[col] || '').trim();
@@ -334,18 +401,31 @@ function parseSingleSheet(rawData, year, month, maxDayInMonth, unmappedNicknames
           if (!staffObj) unmappedNicknames.add(nick);
 
           let shiftCode = '8H_0730-1630';
-          if (firstSlot.includes('7.30') && (lastSlot.includes('3.30') || lastSlot.includes('4.30'))) {
-            shiftCode = '8H_0730-1630';
-          } else if (firstSlot.includes('7.30') && (lastSlot.includes('11.30') || lastSlot.includes('12.30'))) {
+
+          if (count === 4 || (firstSlot.includes('7.30') && lastSlot.includes('11.30'))) {
+            shiftCode = '4H_0730-1130';
+          } else if (count === 5 && firstSlot.includes('7.30')) {
             shiftCode = '5H_0730-1230';
-          } else if (firstSlot.includes('12.30') && (lastSlot.includes('8.30') || lastSlot.includes('9.30') || lastSlot.includes('2130'))) {
-            shiftCode = '8H_1230-2130';
+          } else if (count === 5 && firstSlot.includes('8.00')) {
+            shiftCode = '5H_0800-1300';
+          } else if (count === 5 && (firstSlot.includes('4.30') || firstSlot.includes('1630'))) {
+            shiftCode = '5H_1630-2130';
+          } else if (firstSlot.includes('7.30') && (lastSlot.includes('3.30') || lastSlot.includes('4.30'))) {
+            shiftCode = '8H_0730-1630';
           } else if (firstSlot.includes('8.00') && (lastSlot.includes('4.00') || lastSlot.includes('5.00'))) {
             shiftCode = '8H_0800-1700';
+          } else if (firstSlot.includes('8.30') && (lastSlot.includes('5.00') || lastSlot.includes('5.30'))) {
+            shiftCode = '8H_0830-1730';
+          } else if (firstSlot.includes('12.30') && (lastSlot.includes('8.30') || lastSlot.includes('9.30') || lastSlot.includes('2130'))) {
+            shiftCode = '8H_1230-2130';
           } else if (firstSlot.includes('1.00') || firstSlot.includes('1300')) {
             shiftCode = '8H_1300-2200';
+          } else if (count <= 4) {
+            shiftCode = '4H_0730-1130';
           } else if (count <= 5) {
             shiftCode = '5H_0730-1230';
+          } else {
+            shiftCode = '8H_0730-1630';
           }
 
           records.push({
@@ -354,7 +434,9 @@ function parseSingleSheet(rawData, year, month, maxDayInMonth, unmappedNicknames
             nickname: staffObj ? staffObj.nickname : nick,
             isMapped: !!staffObj,
             workDate: currentDate,
+            day: dayNum, // Integer day 1..31
             shiftCode: shiftCode,
+            leaveCode: isPH ? 'PH' : '',
             rawCell: `${firstSlot} -> ${lastSlot} (${count}h)`,
           });
         }
@@ -438,12 +520,29 @@ function processRoster(targetSheet) {
   allExtractedRecords.forEach(rec => {
     const key = `${rec.empNo}_${rec.workDate}`;
     if (!mergedMap.has(key)) {
-      mergedMap.set(key, rec);
+      mergedMap.set(key, { ...rec });
     } else {
       const existing = mergedMap.get(key);
-      // If existing is OFF but new is an active shift/leave, overwrite with active shift
-      if (existing.shiftCode === 'OFF' && rec.shiftCode !== 'OFF') {
-        mergedMap.set(key, rec);
+
+      // If new record has an active shift code, prefer it over empty/OFF/RD
+      if (rec.shiftCode && !['OFF', 'RD', 'OD'].includes(rec.shiftCode)) {
+        existing.shiftCode = rec.shiftCode;
+      }
+
+      // If new record has a specific leave code (RPL, PH, SL, ANL, BL, etc.)
+      if (rec.leaveCode && !['OFF', 'RD', 'OD'].includes(rec.leaveCode)) {
+        existing.leaveCode = rec.leaveCode;
+      } else if (!existing.leaveCode && rec.leaveCode) {
+        existing.leaveCode = rec.leaveCode;
+      }
+
+      // If an active shift is present, clear generic rest day leave codes
+      if (existing.shiftCode && ['OFF', 'RD', 'OD'].includes(existing.leaveCode)) {
+        existing.leaveCode = '';
+      }
+
+      if (rec.rawCell) {
+        existing.rawCell = `${existing.rawCell}; ${rec.rawCell}`;
       }
     }
   });
@@ -490,14 +589,27 @@ function renderRosterPreview(unmappedSet) {
   if (!tbody) return;
 
   const monthVal = document.getElementById('rosterMonth')?.value || '2026-09';
+  const branchVal = document.getElementById('rosterBranchCode')?.value?.trim() || 'KS01';
   const [yearStr, monthStr] = monthVal.split('-');
   const year = parseInt(yearStr, 10);
   const month = parseInt(monthStr, 10);
   const maxDayInMonth = new Date(year, month, 0).getDate();
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  // 1. Group records by employee
+  // 1. Group records by employee (seed with branch staff first)
   const employeeMap = new Map();
+
+  const branchStaff = STAFF_MAP.filter(s => !s.branchCode || s.branchCode === branchVal);
+  (branchStaff.length > 0 ? branchStaff : STAFF_MAP).forEach(s => {
+    employeeMap.set(s.empNo, {
+      empNo: s.empNo,
+      empName: s.empName,
+      nickname: s.nickname,
+      isMapped: true,
+      days: {},
+    });
+  });
+
   rosterFlatRecords.forEach(rec => {
     if (!employeeMap.has(rec.empNo)) {
       employeeMap.set(rec.empNo, {
@@ -511,8 +623,8 @@ function renderRosterPreview(unmappedSet) {
     employeeMap.get(rec.empNo).days[rec.day] = rec;
   });
 
-  // 2. Render dynamic Matrix Header (first 10 days preview or all days)
-  const previewDays = Math.min(maxDayInMonth, 14); // show first 14 days in table for responsive fit
+  // 2. Render dynamic Matrix Header (first 14 days preview)
+  const previewDays = Math.min(maxDayInMonth, 14);
   if (thead) {
     let thHtml = `<tr>
       <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide bg-gray-100 sticky left-0 z-10">Employee No</th>
@@ -535,7 +647,7 @@ function renderRosterPreview(unmappedSet) {
   // 3. Render paired Shift & Leave rows for each employee
   let rowsHtml = '';
   employeeMap.forEach(emp => {
-    const rowBg = !emp.isMapped ? 'bg-amber-50' : 'hover:bg-blue-50/40';
+    const rowBg  = !emp.isMapped ? 'bg-amber-50' : 'hover:bg-blue-50/40';
     const border = !emp.isMapped ? 'border-l-4 border-amber-400' : '';
 
     // Shift row
@@ -546,8 +658,8 @@ function renderRosterPreview(unmappedSet) {
     for (let d = 1; d <= previewDays; d++) {
       const rec = emp.days[d];
       let sVal = rec ? (rec.shiftCode || '') : '';
-      if (['RD','OD','OFF','ANL','AL','SL','MC','PH','RPL','BL','EL','UPL'].includes(sVal.toUpperCase())) {
-        sVal = ''; // leave code goes to leave row
+      if (['RD','OD','OFF','ANL','AL','SL','MC','PH','RPL','BL','EL','UPL','TRG'].includes(sVal.toUpperCase())) {
+        sVal = '';
       }
       rowsHtml += `<td class="px-2 py-1.5 text-center text-xs border-l border-gray-100 font-mono">
         ${sVal ? `<span class="inline-block px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 text-[11px] font-semibold">${escHtml(sVal)}</span>` : ''}
@@ -564,7 +676,7 @@ function renderRosterPreview(unmappedSet) {
     for (let d = 1; d <= previewDays; d++) {
       const rec = emp.days[d];
       let lVal = rec ? (rec.leaveCode || '') : '';
-      if (!lVal && rec && ['RD','OD','OFF','ANL','AL','SL','MC','PH','RPL','BL','EL','UPL'].includes(rec.shiftCode?.toUpperCase())) {
+      if (!lVal && rec && ['RD','OD','OFF','ANL','AL','SL','MC','PH','RPL','BL','EL','UPL','TRG'].includes(rec.shiftCode?.toUpperCase())) {
         lVal = rec.shiftCode;
       }
       if (!lVal && !rec?.shiftCode) lVal = 'RD';
@@ -589,12 +701,6 @@ function renderRosterPreview(unmappedSet) {
   if (summary) {
     summary.textContent = `Showing ${employeeMap.size} staff members across ${maxDayInMonth} days (Rymnet Matrix format)`;
   }
-}
-
-function shiftBadgeClass(code) {
-  if (!code || code === 'UNKNOWN') return 'bg-red-100 text-red-700';
-  if (['OFF','RD','OD','AL','ANL','MC','SL','PH','RPL','BL','EL','UPL','TRG'].includes(code)) return 'bg-gray-100 text-gray-600';
-  return 'bg-blue-100 text-blue-700';
 }
 
 function escHtml(str) {
@@ -627,8 +733,18 @@ function downloadRymnetCSV() {
   headerCols.push(''); // Trailing comma matching official format
   const lines = [headerCols.join(',')];
 
-  // 2. Group records by employee
+  // 2. Group records by employee (seed with branch staff first)
   const employeeMap = new Map();
+
+  const branchStaff = STAFF_MAP.filter(s => !s.branchCode || s.branchCode === branchVal);
+  (branchStaff.length > 0 ? branchStaff : STAFF_MAP).forEach(s => {
+    employeeMap.set(s.empNo, {
+      empNo: s.empNo,
+      empName: s.empName,
+      days: {}
+    });
+  });
+
   rosterFlatRecords.forEach(rec => {
     if (!employeeMap.has(rec.empNo)) {
       employeeMap.set(rec.empNo, {
@@ -655,7 +771,7 @@ function downloadRymnetCSV() {
         lVal = rec.leaveCode || '';
 
         // If sVal is actually a leave code (e.g. RD, OD, OFF, SL, ANL)
-        if (['RD', 'OD', 'OFF', 'ANL', 'AL', 'SL', 'MC', 'PH', 'RPL', 'BL', 'EL', 'UPL'].includes(sVal.toUpperCase())) {
+        if (['RD', 'OD', 'OFF', 'ANL', 'AL', 'SL', 'MC', 'PH', 'RPL', 'BL', 'EL', 'UPL', 'TRG'].includes(sVal.toUpperCase())) {
           if (!lVal) lVal = sVal;
           sVal = '';
         }
