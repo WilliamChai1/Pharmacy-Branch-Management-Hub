@@ -482,45 +482,118 @@ function processRoster(targetSheet) {
   if (panel) panel.classList.remove('hidden');
 }
 
-// ─── PREVIEW TABLE ────────────────────────────────────────────────────────────
+// ─── PREVIEW TABLE (RYMNET MATRIX PREVIEW) ──────────────────────────────────
 function renderRosterPreview(unmappedSet) {
   const tbody   = document.getElementById('rosterPreviewBody');
   const summary = document.getElementById('rosterPreviewSummary');
+  const thead   = document.querySelector('#rosterResultPanel thead');
   if (!tbody) return;
 
-  const preview = rosterFlatRecords.slice(0, 15);
+  const monthVal = document.getElementById('rosterMonth')?.value || '2026-09';
+  const [yearStr, monthStr] = monthVal.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+  const maxDayInMonth = new Date(year, month, 0).getDate();
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  tbody.innerHTML = preview.map(rec => {
-    const rowBg = !rec.isMapped ? 'bg-amber-50' : '';
-    const border = !rec.isMapped ? 'border-l-4 border-amber-400' : '';
-    const empLabel = !rec.isMapped
-      ? `<span class="text-amber-700 font-semibold font-mono text-xs" title="Nickname not in staff map">${escHtml(rec.empNo)}</span>`
-      : `<span class="font-mono text-xs text-gray-700">${escHtml(rec.empNo)}</span>`;
-    return `<tr class="border-b border-gray-100 ${rowBg} ${border}">
-      <td class="px-3 py-2">${empLabel}</td>
-      <td class="px-3 py-2 text-xs text-gray-700">${escHtml(rec.empName)}</td>
-      <td class="px-3 py-2 text-xs text-gray-500">${escHtml(rec.nickname)}</td>
-      <td class="px-3 py-2 text-xs font-mono">${escHtml(rec.workDate)}</td>
-      <td class="px-3 py-2 text-xs">
-        <span class="inline-block px-2 py-0.5 rounded text-xs font-medium ${shiftBadgeClass(rec.shiftCode)}">${escHtml(rec.shiftCode)}</span>
-      </td>
-      <td class="px-3 py-2 text-xs text-gray-400 italic">${escHtml(rec.rawCell)}</td>
-    </tr>`;
-  }).join('');
+  // 1. Group records by employee
+  const employeeMap = new Map();
+  rosterFlatRecords.forEach(rec => {
+    if (!employeeMap.has(rec.empNo)) {
+      employeeMap.set(rec.empNo, {
+        empNo: rec.empNo,
+        empName: rec.empName,
+        nickname: rec.nickname,
+        isMapped: rec.isMapped,
+        days: {},
+      });
+    }
+    employeeMap.get(rec.empNo).days[rec.day] = rec;
+  });
 
-  if (preview.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-400 text-sm">No records generated. Check your file format.</td></tr>';
+  // 2. Render dynamic Matrix Header (first 10 days preview or all days)
+  const previewDays = Math.min(maxDayInMonth, 14); // show first 14 days in table for responsive fit
+  if (thead) {
+    let thHtml = `<tr>
+      <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide bg-gray-100 sticky left-0 z-10">Employee No</th>
+      <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide bg-gray-100">Employee Name</th>`;
+
+    for (let d = 1; d <= previewDays; d++) {
+      const dt = new Date(year, month - 1, d);
+      const dayName = dayNames[dt.getDay()];
+      thHtml += `<th class="px-2 py-2 text-center text-xs font-semibold text-gray-600 uppercase border-l border-gray-200 whitespace-nowrap">
+        ${String(d).padStart(2,'0')} (${dayName})
+      </th>`;
+    }
+    if (maxDayInMonth > previewDays) {
+      thHtml += `<th class="px-3 py-2 text-center text-xs font-semibold text-gray-500 italic bg-gray-50">… +${maxDayInMonth - previewDays} days</th>`;
+    }
+    thHtml += `</tr>`;
+    thead.innerHTML = thHtml;
   }
 
+  // 3. Render paired Shift & Leave rows for each employee
+  let rowsHtml = '';
+  employeeMap.forEach(emp => {
+    const rowBg = !emp.isMapped ? 'bg-amber-50' : 'hover:bg-blue-50/40';
+    const border = !emp.isMapped ? 'border-l-4 border-amber-400' : '';
+
+    // Shift row
+    rowsHtml += `<tr class="border-t border-gray-200 ${rowBg} ${border}">
+      <td class="px-3 py-2 font-mono text-xs font-semibold text-blue-900 bg-white/80 sticky left-0 z-10">${escHtml(emp.empNo)}</td>
+      <td class="px-3 py-2 text-xs font-medium text-gray-800 whitespace-nowrap">${escHtml(emp.empName)}</td>`;
+
+    for (let d = 1; d <= previewDays; d++) {
+      const rec = emp.days[d];
+      let sVal = rec ? (rec.shiftCode || '') : '';
+      if (['RD','OD','OFF','ANL','AL','SL','MC','PH','RPL','BL','EL','UPL'].includes(sVal.toUpperCase())) {
+        sVal = ''; // leave code goes to leave row
+      }
+      rowsHtml += `<td class="px-2 py-1.5 text-center text-xs border-l border-gray-100 font-mono">
+        ${sVal ? `<span class="inline-block px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 text-[11px] font-semibold">${escHtml(sVal)}</span>` : ''}
+      </td>`;
+    }
+    if (maxDayInMonth > previewDays) rowsHtml += `<td class="px-2 py-1.5 text-center text-xs text-gray-400 bg-gray-50">…</td>`;
+    rowsHtml += `</tr>`;
+
+    // Leave row
+    rowsHtml += `<tr class="border-b border-gray-200 bg-gray-50/50 text-gray-500">
+      <td class="px-3 py-1 text-[11px] text-gray-400 italic bg-gray-50/80 sticky left-0 z-10">↳ Leave / Rest</td>
+      <td class="px-3 py-1 text-[11px] text-gray-400 italic"></td>`;
+
+    for (let d = 1; d <= previewDays; d++) {
+      const rec = emp.days[d];
+      let lVal = rec ? (rec.leaveCode || '') : '';
+      if (!lVal && rec && ['RD','OD','OFF','ANL','AL','SL','MC','PH','RPL','BL','EL','UPL'].includes(rec.shiftCode?.toUpperCase())) {
+        lVal = rec.shiftCode;
+      }
+      if (!lVal && !rec?.shiftCode) lVal = 'RD';
+      if (lVal.toUpperCase() === 'OFF') lVal = 'RD';
+      if (lVal.toUpperCase() === 'AL')  lVal = 'ANL';
+      if (lVal.toUpperCase() === 'MC')  lVal = 'SL';
+
+      const lClass = ['ANL','SL','RPL','BL','PH'].includes(lVal.toUpperCase())
+        ? 'bg-amber-100 text-amber-800 font-bold'
+        : (lVal ? 'text-gray-600 font-semibold' : '');
+
+      rowsHtml += `<td class="px-2 py-1 text-center text-xs border-l border-gray-100 font-mono">
+        ${lVal ? `<span class="inline-block px-1 py-0.2 rounded text-[11px] ${lClass}">${escHtml(lVal)}</span>` : ''}
+      </td>`;
+    }
+    if (maxDayInMonth > previewDays) rowsHtml += `<td class="px-2 py-1 text-center text-xs text-gray-400 bg-gray-50">…</td>`;
+    rowsHtml += `</tr>`;
+  });
+
+  tbody.innerHTML = rowsHtml;
+
   if (summary) {
-    summary.textContent = `Showing ${preview.length} of ${rosterFlatRecords.length} records`
-      + (unmappedSet?.size > 0 ? ` · ${unmappedSet.size} unmapped nicknames highlighted in amber` : '');
+    summary.textContent = `Showing ${employeeMap.size} staff members across ${maxDayInMonth} days (Rymnet Matrix format)`;
   }
 }
 
 function shiftBadgeClass(code) {
   if (!code || code === 'UNKNOWN') return 'bg-red-100 text-red-700';
-  if (['OFF','AL','MC','PH','EL','UPL','TRG'].includes(code)) return 'bg-gray-100 text-gray-600';
+  if (['OFF','RD','OD','AL','ANL','MC','SL','PH','RPL','BL','EL','UPL','TRG'].includes(code)) return 'bg-gray-100 text-gray-600';
   return 'bg-blue-100 text-blue-700';
 }
 
@@ -528,28 +601,95 @@ function escHtml(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ─── DOWNLOAD RYMNET CSV ──────────────────────────────────────────────────────
+// ─── DOWNLOAD RYMNET MATRIX CSV ───────────────────────────────────────────────
 function downloadRymnetCSV() {
   if (!rosterFlatRecords.length) {
     alert('No records to export. Please upload a roster file first.');
     return;
   }
 
-  const monthVal  = document.getElementById('rosterMonth')?.value  || 'YYYY-MM';
-  const branchVal = document.getElementById('rosterBranchCode')?.value?.trim() || 'BRANCH';
+  const monthVal  = document.getElementById('rosterMonth')?.value  || '2026-09';
+  const branchVal = document.getElementById('rosterBranchCode')?.value?.trim() || 'KS01';
 
-  const header = 'Emp_ID,Emp_Name,Work_Date,Shift_Code\r\n';
-  const body   = rosterFlatRecords
-    .map(r => `${r.empNo},"${r.empName.replace(/"/g,'""')}",${r.workDate},${r.shiftCode}`)
-    .join('\r\n');
+  const [yearStr, monthStr] = monthVal.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+  const maxDayInMonth = new Date(year, month, 0).getDate();
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  const blob = new Blob([header + body + '\r\n'], { type: 'text/csv;charset=utf-8;' });
-  saveAs(blob, `rymnet_${branchVal}_${monthVal}.csv`);
+  // 1. Generate Header: Employee No,Employee Name,01 (Tue),02 (Wed),...30 (Wed),
+  const headerCols = ['Employee No', 'Employee Name'];
+  for (let d = 1; d <= maxDayInMonth; d++) {
+    const dt = new Date(year, month - 1, d);
+    const dayName = dayNames[dt.getDay()];
+    headerCols.push(`${String(d).padStart(2, '0')} (${dayName})`);
+  }
+  headerCols.push(''); // Trailing comma matching official format
+  const lines = [headerCols.join(',')];
+
+  // 2. Group records by employee
+  const employeeMap = new Map();
+  rosterFlatRecords.forEach(rec => {
+    if (!employeeMap.has(rec.empNo)) {
+      employeeMap.set(rec.empNo, {
+        empNo: rec.empNo,
+        empName: rec.empName,
+        days: {}
+      });
+    }
+    employeeMap.get(rec.empNo).days[rec.day] = rec;
+  });
+
+  // 3. For each employee, generate paired Shift row and Leave row
+  employeeMap.forEach(emp => {
+    const shiftRow = [emp.empNo, `"${emp.empName.replace(/"/g, '""')}"`];
+    const leaveRow = ['', ''];
+
+    for (let d = 1; d <= maxDayInMonth; d++) {
+      const rec = emp.days[d];
+      let sVal = '';
+      let lVal = '';
+
+      if (rec) {
+        sVal = rec.shiftCode || '';
+        lVal = rec.leaveCode || '';
+
+        // If sVal is actually a leave code (e.g. RD, OD, OFF, SL, ANL)
+        if (['RD', 'OD', 'OFF', 'ANL', 'AL', 'SL', 'MC', 'PH', 'RPL', 'BL', 'EL', 'UPL'].includes(sVal.toUpperCase())) {
+          if (!lVal) lVal = sVal;
+          sVal = '';
+        }
+
+        // Normalize leave codes for Rymnet
+        if (lVal.toUpperCase() === 'OFF') lVal = 'RD';
+        if (lVal.toUpperCase() === 'AL')  lVal = 'ANL';
+        if (lVal.toUpperCase() === 'MC')  lVal = 'SL';
+
+      } else {
+        // Default unscheduled day is Rest Day
+        sVal = '';
+        lVal = 'RD';
+      }
+
+      shiftRow.push(sVal);
+      leaveRow.push(lVal);
+    }
+
+    shiftRow.push(''); // Trailing comma
+    leaveRow.push(''); // Trailing comma
+
+    lines.push(shiftRow.join(','));
+    lines.push(leaveRow.join(','));
+  });
+
+  const csvContent = lines.join('\r\n') + '\r\n';
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  saveAs(blob, `rymnet_monthly_schedule_${branchVal}_${monthVal}.csv`);
 
   const dlBtn = document.getElementById('rosterDownloadBtn');
   if (dlBtn) {
     const orig = dlBtn.innerHTML;
-    dlBtn.innerHTML = '<i class="fa-solid fa-circle-check mr-2"></i>Downloaded!';
+    dlBtn.innerHTML = '<i class="fa-solid fa-circle-check mr-2"></i>Downloaded Rymnet Matrix!';
     dlBtn.disabled = true;
     setTimeout(() => { dlBtn.innerHTML = orig; dlBtn.disabled = false; }, 3000);
   }
