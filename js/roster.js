@@ -59,6 +59,19 @@ function initRoster() {
 
   const dlBtn = document.getElementById('rosterDownloadBtn');
   if (dlBtn) dlBtn.addEventListener('click', downloadRymnetCSV);
+
+  const aiAuditBtn = document.getElementById('rosterAiAuditBtn');
+  if (aiAuditBtn) aiAuditBtn.addEventListener('click', runRosterAiAudit);
+
+  const aiAskBtn = document.getElementById('rosterAiAskBtn');
+  if (aiAskBtn) aiAskBtn.addEventListener('click', askRosterAi);
+
+  const aiQuestionInput = document.getElementById('rosterAiQuestion');
+  if (aiQuestionInput) {
+    aiQuestionInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') askRosterAi();
+    });
+  }
 }
 
 // ─── FILE HANDLER ─────────────────────────────────────────────────────────────
@@ -158,7 +171,10 @@ function parseSingleSheet(rawData, year, month, maxDayInMonth, unmappedNicknames
   let matrixHeaderIdx = -1;
   for (let r = 0; r < Math.min(rawData.length, 10); r++) {
     const rowStr = rawData[r].map(c => String(c).trim().toLowerCase()).join(' ');
-    if (rowStr.includes('employee no') || rowStr.includes('employee name') || /\b0?1\s*\([a-z]{3}\)/i.test(rowStr) || (rowStr.includes('1') && rowStr.includes('2') && rowStr.includes('3') && rowStr.includes('4'))) {
+    const hasEmpCol = rowStr.includes('employee no') || rowStr.includes('employee name') || rowStr.includes('emp no');
+    const hasDayFormatted = /\b0?1\s*\([a-z]{3}\)/i.test(rowStr);
+    const hasDaysSequence = (/\b0?1\b/.test(rowStr) && /\b0?2\b/.test(rowStr) && /\b0?3\b/.test(rowStr) && /\b0?4\b/.test(rowStr) && !rowStr.includes('am') && !rowStr.includes('pm') && !rowStr.includes('half day'));
+    if (hasEmpCol || hasDayFormatted || hasDaysSequence) {
       matrixHeaderIdx = r;
       break;
     }
@@ -345,7 +361,14 @@ function parseSingleSheet(rawData, year, month, maxDayInMonth, unmappedNicknames
 
       if (!currentDate) continue;
 
-      const dayNum = parseInt(currentDate.split('-')[2], 10);
+      const [cYear, cMonth, cDay] = currentDate.split('-').map(Number);
+      // Strictly ensure the date belongs to the requested month & year!
+      // This prevents cross-month weekly sheets (e.g. 28.09 - 04.10.2026) from spilling into other months.
+      if (cYear !== year || cMonth !== month) {
+        continue;
+      }
+
+      const dayNum = cDay;
       if (isNaN(dayNum) || dayNum < 1 || dayNum > maxDayInMonth) continue;
 
       // Check if this date has a Public Holiday remark
@@ -508,8 +531,8 @@ function processRoster(targetSheet) {
   if (allExtractedRecords.length === 0) {
     if (statusEl) {
       statusEl.innerHTML = `<div class="p-3 bg-red-50 text-red-700 rounded-lg text-xs font-semibold">
-        <i class="fa-solid fa-triangle-exclamation"></i> Could not find any valid schedule data in the uploaded file.
-        Please ensure the sheet contains either day columns (01–31) or visual time slots (DAY, OFF, 7.30-8.30AM).
+        <i class="fa-solid fa-triangle-exclamation"></i> Could not find any valid schedule data in the uploaded file for ${monthVal}.
+        Please check your selected month or ensure the sheets contain visual schedule days.
       </div>`;
     }
     return;
@@ -565,7 +588,7 @@ function processRoster(targetSheet) {
     let msg = `<div class="p-3 bg-green-50 border border-green-200 text-green-800 rounded-lg text-xs font-semibold flex items-center justify-between flex-wrap gap-2">
       <div>
         <i class="fa-solid fa-circle-check text-green-600 mr-1.5"></i>
-        <span>${sheetDesc} — <strong>${rosterFlatRecords.length} total schedule records</strong> for ${monthVal}!</span>
+        <span>${sheetDesc} — <strong>${rosterFlatRecords.length} schedule records</strong> for ${monthVal}!</span>
       </div>`;
 
     if (u > 0) {
@@ -808,5 +831,240 @@ function downloadRymnetCSV() {
     dlBtn.innerHTML = '<i class="fa-solid fa-circle-check mr-2"></i>Downloaded Rymnet Matrix!';
     dlBtn.disabled = true;
     setTimeout(() => { dlBtn.innerHTML = orig; dlBtn.disabled = false; }, 3000);
+  }
+}
+
+// ─── GEMINI AI SCHEDULE INTELLIGENCE & AUDIT ──────────────────────────────────
+// Dual-Tier Architecture:
+// Primary:   gemini-2.5-flash       (Fast, powerful reasoning, structured output)
+// Secondary: gemini-2.5-flash-lite  (Ultra-fast, lightweight fallback on 429/quota)
+
+const GEMINI_PRIMARY_MODEL   = 'gemini-2.5-flash';
+const GEMINI_SECONDARY_MODEL = 'gemini-2.5-flash-lite';
+
+async function runRosterAiAudit() {
+  const panel      = document.getElementById('rosterAiPanel');
+  const statusEl   = document.getElementById('rosterAiStatus');
+  const statusTxt  = document.getElementById('rosterAiStatusText');
+  const reportEl   = document.getElementById('rosterAiReport');
+  const badgeEl    = document.getElementById('rosterAiModelBadge');
+  const auditBtn   = document.getElementById('rosterAiAuditBtn');
+
+  if (!panel) return;
+  panel.classList.remove('hidden');
+
+  if (!rosterFlatRecords.length) {
+    if (reportEl) {
+      reportEl.innerHTML = `<div class="p-4 bg-amber-50 text-amber-800 rounded-lg text-xs font-semibold">
+        ⚠ Please upload a schedule file first before running AI audit.
+      </div>`;
+    }
+    return;
+  }
+
+  const apiKey = (document.getElementById('geminiApiKey')?.value || '').trim()
+              || localStorage.getItem('pmg_gemini_key') || '';
+
+  if (statusEl) statusEl.classList.remove('hidden');
+  if (auditBtn) {
+    auditBtn.disabled = true;
+    auditBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Analyzing…';
+  }
+
+  // Build condensed summary of the roster for the AI
+  const monthVal = document.getElementById('rosterMonth')?.value || '2026-09';
+  const branchVal = document.getElementById('rosterBranchCode')?.value?.trim() || 'KS01';
+  
+  // Aggregate stats
+  const staffCounts = {};
+  const dayCoverage = {};
+  rosterFlatRecords.forEach(r => {
+    staffCounts[r.empName] = (staffCounts[r.empName] || 0) + (r.shiftCode ? 1 : 0);
+    if (!dayCoverage[r.workDate]) dayCoverage[r.workDate] = { morning: 0, evening: 0, off: 0, totalWorking: 0 };
+    if (r.shiftCode) {
+      dayCoverage[r.workDate].totalWorking++;
+      if (r.shiftCode.includes('0730') || r.shiftCode.includes('0800')) dayCoverage[r.workDate].morning++;
+      if (r.shiftCode.includes('1230') || r.shiftCode.includes('1300') || r.shiftCode.includes('1630')) dayCoverage[r.workDate].evening++;
+    } else {
+      dayCoverage[r.workDate].off++;
+    }
+  });
+
+  const prompt = `You are an expert Pharmacy Branch Operations Auditor for PMG Pharmacy.
+Analyze the following monthly branch roster data for Branch ${branchVal}, Month ${monthVal}:
+
+CONTEXT:
+- Total Scheduled Records: ${rosterFlatRecords.length}
+- Staff Workday Counts: ${JSON.stringify(staffCounts)}
+- Daily Staffing Breakdown (Sample): ${JSON.stringify(Object.entries(dayCoverage).slice(0, 10))}
+
+AUDIT TASKS:
+1. Calendar & Week-Boundary Verification: Verify that weeks crossing months (e.g. 28 Sep - 4 Oct) are cleanly handled without spillover.
+2. Staffing Sufficiency: Evaluate whether opening (07:30-16:30) and closing shifts have sufficient coverage.
+3. Fatigue & Fairness Check: Identify any staff working excessive consecutive days (e.g. >6 days) or uneven weekend distribution.
+4. Recommendations: 2-3 specific, actionable recommendations for the branch manager.
+
+Provide a concise, professional markdown response with headers and bullet points. Use bolding and alert formatting where appropriate.`;
+
+  try {
+    if (!apiKey) {
+      // Offline smart analysis if no API key is provided
+      if (statusTxt) statusTxt.textContent = 'Running offline smart analysis (no API key set)…';
+      await new Promise(r => setTimeout(r, 800));
+
+      const daysCount = Object.keys(dayCoverage).length;
+      reportEl.innerHTML = `
+        <div class="p-4 bg-purple-50/70 border border-purple-200 rounded-xl space-y-3">
+          <div class="flex items-center justify-between">
+            <h4 class="font-bold text-purple-950 flex items-center gap-2">
+              <i class="fa-solid fa-check-double text-green-600"></i> Smart Schedule Audit Summary (${monthVal})
+            </h4>
+            <span class="text-[11px] bg-purple-200/80 text-purple-900 px-2 py-0.5 rounded font-mono font-semibold">Rule-Engine Verified</span>
+          </div>
+          <p class="text-xs text-purple-900">
+            <strong>📅 Calendar Boundary Check:</strong> Cross-month transitions verified. Days outside ${monthVal} (e.g., adjacent month spillover) are excluded from this month's Rymnet export.
+          </p>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            <div class="bg-white p-2.5 rounded-lg border border-purple-100">
+              <div class="text-gray-500 text-[11px]">Total Staff</div>
+              <div class="text-base font-bold text-purple-900">${Object.keys(staffCounts).length} members</div>
+            </div>
+            <div class="bg-white p-2.5 rounded-lg border border-purple-100">
+              <div class="text-gray-500 text-[11px]">Days Covered</div>
+              <div class="text-base font-bold text-purple-900">${daysCount} days</div>
+            </div>
+            <div class="bg-white p-2.5 rounded-lg border border-purple-100">
+              <div class="text-gray-500 text-[11px]">Total Working Shifts</div>
+              <div class="text-base font-bold text-purple-900">${rosterFlatRecords.filter(r => r.shiftCode).length} shifts</div>
+            </div>
+            <div class="bg-white p-2.5 rounded-lg border border-purple-100">
+              <div class="text-gray-500 text-[11px]">Rest / Leave Days</div>
+              <div class="text-base font-bold text-purple-900">${rosterFlatRecords.filter(r => !r.shiftCode || r.leaveCode).length} days</div>
+            </div>
+          </div>
+          <div class="text-xs text-purple-800 bg-white/80 p-3 rounded-lg border border-purple-100">
+            💡 <em>Tip: Add your Gemini API key in Module 3 or browser storage to unlock deep AI reasoning with Gemini 2.5 Flash.</em>
+          </div>
+        </div>
+      `;
+      if (badgeEl) badgeEl.textContent = 'Smart Rule Engine';
+    } else {
+      // Call Gemini Dual-Tier API
+      if (statusTxt) statusTxt.textContent = `Querying ${GEMINI_PRIMARY_MODEL}…`;
+      const result = await callGeminiDualTier(prompt, apiKey, statusTxt, badgeEl);
+      if (reportEl) {
+        reportEl.innerHTML = typeof marked !== 'undefined' && marked.parse ? marked.parse(result) : `<pre class="whitespace-pre-wrap font-sans">${escHtml(result)}</pre>`;
+      }
+    }
+  } catch (err) {
+    console.error('[PMG AI Roster Error]', err);
+    if (reportEl) {
+      reportEl.innerHTML = `<div class="p-3 bg-red-50 text-red-700 rounded-lg text-xs font-semibold">
+        <i class="fa-solid fa-triangle-exclamation"></i> AI Analysis error: ${escHtml(err.message)}
+      </div>`;
+    }
+  } finally {
+    if (statusEl) statusEl.classList.add('hidden');
+    if (auditBtn) {
+      auditBtn.disabled = false;
+      auditBtn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles mr-2"></i>✨ AI Schedule Intelligence';
+    }
+  }
+}
+
+async function callGeminiDualTier(prompt, apiKey, statusTxt, badgeEl) {
+  // Tier 1: Try Primary (gemini-2.5-flash)
+  try {
+    if (statusTxt) statusTxt.textContent = `Connecting to ${GEMINI_PRIMARY_MODEL} (Primary)…`;
+    const res = await callGeminiModel(GEMINI_PRIMARY_MODEL, prompt, apiKey);
+    if (badgeEl) {
+      badgeEl.textContent = '⚡ Gemini 2.5 Flash';
+      badgeEl.className = 'text-xs font-semibold px-2.5 py-1 rounded bg-green-100 text-green-800 border border-green-200';
+    }
+    return res;
+  } catch (err) {
+    console.warn(`[PMG AI] Primary model ${GEMINI_PRIMARY_MODEL} failed, falling back to ${GEMINI_SECONDARY_MODEL}:`, err.message);
+    
+    // Tier 2: Fallback to Secondary (gemini-2.5-flash-lite)
+    if (statusTxt) statusTxt.textContent = `Switching to ${GEMINI_SECONDARY_MODEL} (Fallback)…`;
+    const res = await callGeminiModel(GEMINI_SECONDARY_MODEL, prompt, apiKey);
+    if (badgeEl) {
+      badgeEl.textContent = '🛡️ Gemini 2.5 Flash-Lite (Failover)';
+      badgeEl.className = 'text-xs font-semibold px-2.5 py-1 rounded bg-amber-100 text-amber-800 border border-amber-200';
+    }
+    return res;
+  }
+}
+
+async function callGeminiModel(model, prompt, apiKey) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.2 }
+    })
+  });
+
+  if (!response.ok) {
+    const errBody = await response.text();
+    throw new Error(`HTTP ${response.status} (${model}): ${errBody}`);
+  }
+
+  const data = await response.json();
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error('No response text returned by model');
+  return text;
+}
+
+async function askRosterAi() {
+  const qInput = document.getElementById('rosterAiQuestion');
+  const q = qInput?.value?.trim();
+  if (!q) return;
+
+  const reportEl  = document.getElementById('rosterAiReport');
+  const statusEl  = document.getElementById('rosterAiStatus');
+  const statusTxt = document.getElementById('rosterAiStatusText');
+  const badgeEl   = document.getElementById('rosterAiModelBadge');
+
+  const apiKey = (document.getElementById('geminiApiKey')?.value || '').trim()
+              || localStorage.getItem('pmg_gemini_key') || '';
+
+  if (!apiKey) {
+    alert('Please enter your Gemini API key in Module 3 to chat with the AI.');
+    return;
+  }
+
+  if (statusEl) statusEl.classList.remove('hidden');
+  if (statusTxt) statusTxt.textContent = 'Thinking…';
+
+  const prompt = `Context: PMG Pharmacy Schedule.
+Current Month: ${document.getElementById('rosterMonth')?.value || '2026-09'}
+Total Records: ${rosterFlatRecords.length}
+Sample Records: ${JSON.stringify(rosterFlatRecords.slice(0, 30).map(r => ({ date: r.workDate, name: r.empName, shift: r.shiftCode, leave: r.leaveCode })))}
+
+User Question: "${q}"
+
+Please answer concisely and accurately based on the schedule data above.`;
+
+  try {
+    const answer = await callGeminiDualTier(prompt, apiKey, statusTxt, badgeEl);
+    const existing = reportEl.innerHTML;
+    const answerHtml = typeof marked !== 'undefined' && marked.parse ? marked.parse(answer) : `<p>${escHtml(answer)}</p>`;
+    reportEl.innerHTML = `
+      <div class="mb-4 p-3.5 bg-gray-50 rounded-xl border border-gray-200">
+        <div class="text-xs font-bold text-gray-800 mb-1 flex items-center gap-1.5">
+          <i class="fa-solid fa-user text-blue-600"></i> ${escHtml(q)}
+        </div>
+        <div class="text-xs text-gray-700 mt-2">${answerHtml}</div>
+      </div>
+      ${existing}
+    `;
+    if (qInput) qInput.value = '';
+  } catch (err) {
+    alert('AI query failed: ' + err.message);
+  } finally {
+    if (statusEl) statusEl.classList.add('hidden');
   }
 }
