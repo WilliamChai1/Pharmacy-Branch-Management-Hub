@@ -763,8 +763,16 @@ STRICT OPERATIONAL RULES:
 4. DAY-OF-WEEK & INDIVIDUAL PREFERENCES:
    - Strictly honor teammates' dayPrefs (e.g. if a teammate prefers morning on certain days, or RD on a specific day).
 
-5. SARAWAK MULTILINGUAL / DEMOGRAPHIC BALANCE:
-   - Ensure balanced customer communication on every shift: at least 1 Chinese speaker and at least 1 Malay or Iban speaker on every Morning and Night shift.
+5. CULTURAL, RACE & MULTILINGUAL BALANCE:
+   a) MULTILINGUAL CUSTOMER COVERAGE:
+      - Every Morning ('8H_0730-1630') and Night ('8H_1230-2130') shift MUST include at least 1 Chinese speaker and at least 1 Malay or Iban/Bidayuh speaker so all customer demographics in Sarawak can communicate comfortably.
+   b) FRIDAY PRAYERS (SOLAT JUMAAT):
+      - On Fridays between 12:30 and 14:30, ensure non-Muslim staff are rostered on duty to cover the branch floor/dispensary so Muslim staff can attend Friday prayers without leaving the pharmacy unattended. Never schedule ONLY Muslim staff during Friday midday.
+   c) FESTIVE HOLIDAY LEAVE ROTATION:
+      - Chinese New Year: Prioritize Rest Days ('RD') for Chinese teammates; Malay and Iban/Bidayuh teammates cover duties.
+      - Hari Raya Aidilfitri / Aidiladha: Prioritize Rest Days ('RD') for Muslim/Malay teammates; Chinese and Iban/Bidayuh teammates cover duties.
+      - Hari Gawai Dayak (June 1-2): Prioritize Rest Days ('RD') for Iban/Bidayuh teammates; Chinese and Malay teammates cover duties.
+      - Deepavali: Prioritize Rest Days ('RD') for Indian teammates.
 
 6. LABOR LAW:
    - Max 6 consecutive working days without a Rest Day ('RD').
@@ -1020,8 +1028,13 @@ function renderScheduleMatrix(schedule) {
       }
     });
 
+    const hasMorningChinese = [...morningRaces].some(r => r === 'Chinese');
+    const hasMorningBumi    = [...morningRaces].some(r => r === 'Malay' || (r && (r.includes('Iban') || r.includes('Bidayuh'))));
+    const hasNightChinese   = [...nightRaces].some(r => r === 'Chinese');
+    const hasNightBumi      = [...nightRaces].some(r => r === 'Malay' || (r && (r.includes('Iban') || r.includes('Bidayuh'))));
+
     if (hasMorningPharm && hasNightPharm) pharmCoverageDays++;
-    if (morningRaces.size >= 2 && nightRaces.size >= 2) langBalancedDays++;
+    if ((hasMorningChinese && hasMorningBumi) && (hasNightChinese && hasNightBumi)) langBalancedDays++;
   });
 
   // Update KPI cards
