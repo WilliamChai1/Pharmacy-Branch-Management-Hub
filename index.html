@@ -128,6 +128,11 @@
         <i class="fa-solid fa-calendar-days text-sm"></i>
         <span>Roster to Rymnet</span>
       </button>
+      <button onclick="switchTab('patient')" id="tab-patient"
+        class="tab-btn whitespace-nowrap py-3.5 px-4 border-b-2 text-sm flex items-center gap-2">
+        <i class="fa-solid fa-hospital-user text-sm"></i>
+        <span>Patient Care & Appointments</span>
+      </button>
       <button onclick="switchTab('audit')" id="tab-audit"
         class="tab-btn whitespace-nowrap py-3.5 px-4 border-b-2 text-sm flex items-center gap-2" style="display:none">
         <i class="fa-solid fa-user-shield text-sm"></i>
@@ -847,6 +852,557 @@
 
   </div><!-- /content-audit -->
 
+  <!-- ─────────────────────────────────────────────────────────────────────────
+       MODULE 4: PATIENT CARE, CHRONIC REFILL & APPOINTMENT MANAGEMENT
+  ───────────────────────────────────────────────────────────────────────────── -->
+  <div id="content-patient" class="tab-content hidden">
+
+    <!-- Module Header -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-5">
+      <div class="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+              <i class="fa-solid fa-hospital-user text-blue-700"></i>
+            </div>
+            <h2 class="text-lg font-bold text-gray-900">Patient Care & Chronic Appointment Manager</h2>
+            <span class="text-xs bg-blue-100 text-blue-800 font-semibold px-2.5 py-0.5 rounded">Counter & Care Engine</span>
+          </div>
+          <p class="text-gray-500 text-sm">Record patient health screenings (BP, Glucose, Lipids, Uric Acid), track chronic medication refills, schedule follow-up appointments, and send 1-click multilingual WhatsApp reminders.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
+      <div class="bg-white rounded-xl p-4 shadow-sm border border-amber-200">
+        <p class="text-[11px] text-gray-500 uppercase tracking-wide font-semibold">Today's Appointments</p>
+        <p id="kpiPatientToday" class="text-2xl font-black text-amber-600 mt-0.5">0</p>
+        <p class="text-[10px] text-amber-700 mt-1 font-medium">Scheduled for today</p>
+      </div>
+      <div class="bg-white rounded-xl p-4 shadow-sm border border-blue-200">
+        <p class="text-[11px] text-gray-500 uppercase tracking-wide font-semibold">Due in Next 7 Days</p>
+        <p id="kpiPatientDue7" class="text-2xl font-black text-blue-700 mt-0.5">0</p>
+        <p class="text-[10px] text-blue-600 mt-1 font-medium">Upcoming refills & reviews</p>
+      </div>
+      <div class="bg-white rounded-xl p-4 shadow-sm border border-rose-200">
+        <p class="text-[11px] text-gray-500 uppercase tracking-wide font-semibold">Overdue / Missed</p>
+        <p id="kpiPatientOverdue" class="text-2xl font-black text-rose-600 mt-0.5">0</p>
+        <p class="text-[10px] text-rose-600 mt-1 font-medium">Requires WhatsApp recall</p>
+      </div>
+      <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+        <p class="text-[11px] text-gray-500 uppercase tracking-wide font-semibold">Total Patients</p>
+        <p id="kpiPatientTotal" class="text-2xl font-black text-gray-800 mt-0.5">0</p>
+        <p class="text-[10px] text-gray-500 mt-1 font-medium">Registered chronic patients</p>
+      </div>
+    </div>
+
+    <!-- Controls Bar -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-5 flex flex-wrap gap-3 items-center justify-between">
+      <div class="flex items-center gap-3 flex-wrap flex-1 min-w-[280px]">
+        <!-- Search -->
+        <div class="relative flex-1 min-w-[200px]">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-gray-400 text-xs"></i>
+          <input type="text" id="patientSearchInput" placeholder="Search patient name, phone, IC, condition..."
+            class="w-full pl-9 pr-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+        </div>
+        <!-- Branch selector -->
+        <select id="patientBranchFilter"
+          class="text-xs px-3 py-2 rounded-lg border border-gray-300 bg-white font-medium focus:ring-2 focus:ring-blue-500 outline-none">
+          <option value="">All Branches</option>
+        </select>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="flex items-center gap-2 flex-wrap">
+        <button id="patientNewBtn" type="button"
+          class="bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm">
+          <i class="fa-solid fa-user-plus"></i> New Patient
+        </button>
+        <button id="patientNewScreeningBtn" type="button"
+          class="bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm">
+          <i class="fa-solid fa-heart-pulse"></i> Record Screening
+        </button>
+        <button id="patientNewAptBtn" type="button"
+          class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm">
+          <i class="fa-regular fa-calendar-plus"></i> Book Appt
+        </button>
+        <button id="patientExportExcelBtn" type="button"
+          class="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm">
+          <i class="fa-solid fa-file-excel"></i> Export Excel
+        </button>
+      </div>
+    </div>
+
+    <!-- Sub-tabs for Queues -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-5">
+      <div class="flex border-b border-gray-200 bg-gray-50 overflow-x-auto">
+        <button id="patientSubTabBtn_today" type="button"
+          class="px-5 py-3 text-xs font-bold border-b-2 border-blue-700 text-blue-700 active flex items-center gap-2 transition whitespace-nowrap">
+          <i class="fa-solid fa-calendar-day"></i> Today's Queue
+        </button>
+        <button id="patientSubTabBtn_upcoming" type="button"
+          class="px-5 py-3 text-xs font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-800 flex items-center gap-2 transition whitespace-nowrap">
+          <i class="fa-regular fa-calendar-days"></i> Upcoming (7 Days)
+        </button>
+        <button id="patientSubTabBtn_overdue" type="button"
+          class="px-5 py-3 text-xs font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-800 flex items-center gap-2 transition whitespace-nowrap">
+          <i class="fa-solid fa-triangle-exclamation text-rose-500"></i> Overdue & Missed Refills
+        </button>
+        <button id="patientSubTabBtn_all" type="button"
+          class="px-5 py-3 text-xs font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-800 flex items-center gap-2 transition whitespace-nowrap">
+          <i class="fa-solid fa-address-book"></i> Patient Directory
+        </button>
+      </div>
+
+      <!-- Tab View 1: Today's Queue -->
+      <div id="patientView_today" class="p-0 overflow-x-auto">
+        <table class="w-full text-xs text-left">
+          <thead class="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200 uppercase tracking-wider text-[11px]">
+            <tr>
+              <th class="px-4 py-3">Time</th>
+              <th class="px-4 py-3">Patient</th>
+              <th class="px-4 py-3">Purpose / Notes</th>
+              <th class="px-4 py-3">Chronic Conditions</th>
+              <th class="px-4 py-3">Status</th>
+              <th class="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="patientTodayBody" class="divide-y divide-gray-100"></tbody>
+        </table>
+      </div>
+
+      <!-- Tab View 2: Upcoming (7 Days) -->
+      <div id="patientView_upcoming" class="hidden p-0 overflow-x-auto">
+        <table class="w-full text-xs text-left">
+          <thead class="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200 uppercase tracking-wider text-[11px]">
+            <tr>
+              <th class="px-4 py-3">Date & Time</th>
+              <th class="px-4 py-3">Patient</th>
+              <th class="px-4 py-3">Purpose</th>
+              <th class="px-4 py-3">Conditions</th>
+              <th class="px-4 py-3">Status</th>
+              <th class="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="patientUpcomingBody" class="divide-y divide-gray-100"></tbody>
+        </table>
+      </div>
+
+      <!-- Tab View 3: Overdue & Missed Refills -->
+      <div id="patientView_overdue" class="hidden p-0 overflow-x-auto">
+        <table class="w-full text-xs text-left">
+          <thead class="bg-rose-50/60 text-rose-900 font-semibold border-b border-rose-100 uppercase tracking-wider text-[11px]">
+            <tr>
+              <th class="px-4 py-3">Due / Missed Date</th>
+              <th class="px-4 py-3">Patient</th>
+              <th class="px-4 py-3">Refill / Appt Details</th>
+              <th class="px-4 py-3">Conditions</th>
+              <th class="px-4 py-3">Status</th>
+              <th class="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="patientOverdueBody" class="divide-y divide-gray-100"></tbody>
+        </table>
+      </div>
+
+      <!-- Tab View 4: Patient Directory -->
+      <div id="patientView_all" class="hidden p-0 overflow-x-auto">
+        <table class="w-full text-xs text-left">
+          <thead class="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200 uppercase tracking-wider text-[11px]">
+            <tr>
+              <th class="px-4 py-3">ID</th>
+              <th class="px-4 py-3">Patient Name</th>
+              <th class="px-4 py-3">Phone</th>
+              <th class="px-4 py-3">Branch</th>
+              <th class="px-4 py-3">Conditions</th>
+              <th class="px-4 py-3">Latest BP</th>
+              <th class="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="patientDirectoryBody" class="divide-y divide-gray-100"></tbody>
+        </table>
+      </div>
+
+    </div>
+
+  </div><!-- /content-patient -->
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════
+       PATIENT MODALS
+  ══════════════════════════════════════════════════════════════════════════════ -->
+
+  <!-- Modal 1: New Patient Registration -->
+  <div id="patientNewModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
+      <div class="flex items-center justify-between border-b pb-3 mb-4">
+        <h3 class="text-base font-bold text-gray-900 flex items-center gap-2">
+          <i class="fa-solid fa-user-plus text-blue-700"></i> Register New Patient
+        </h3>
+        <button onclick="closeNewPatientModal()" class="text-gray-400 hover:text-gray-600 text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3.5 text-xs">
+        <div>
+          <label class="block font-semibold text-gray-700 mb-1">Full Name *</label>
+          <input type="text" id="newPatientName" placeholder="e.g. Tan Ah Kow"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">IC / Passport</label>
+            <input type="text" id="newPatientIc" placeholder="e.g. 640512-13-5431"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+          </div>
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">Phone Number (WhatsApp) *</label>
+            <input type="text" id="newPatientPhone" placeholder="e.g. 0168889922"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-3">
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">Gender</label>
+            <select id="newPatientGender" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none">
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">Age</label>
+            <input type="number" id="newPatientAge" placeholder="e.g. 62" min="1" max="120"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none">
+          </div>
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">Branch</label>
+            <select id="newPatientBranch" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none">
+              <option value="KS01">KS01</option>
+              <option value="BR02">BR02</option>
+              <option value="BR03">BR03</option>
+              <option value="BR04">BR04</option>
+              <option value="BR05">BR05</option>
+              <option value="BR06">BR06</option>
+              <option value="BR07">BR07</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">Race</label>
+            <select id="newPatientRace" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none">
+              <option value="Chinese">Chinese</option>
+              <option value="Malay">Malay</option>
+              <option value="Iban / Bidayuh">Iban / Bidayuh</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">Preferred WhatsApp Language</label>
+            <select id="newPatientLanguage" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none">
+              <option value="Chinese">Chinese (中文)</option>
+              <option value="Malay">Bahasa Melayu</option>
+              <option value="English">English</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-gray-700 mb-1">Chronic Conditions</label>
+          <div class="grid grid-cols-2 gap-2 p-2.5 bg-gray-50 rounded-lg border border-gray-200">
+            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" value="Hypertension" class="patient-cond-cb rounded text-blue-600"> Hypertension</label>
+            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" value="Type 2 Diabetes" class="patient-cond-cb rounded text-blue-600"> Type 2 Diabetes</label>
+            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" value="Dyslipidemia" class="patient-cond-cb rounded text-blue-600"> Dyslipidemia</label>
+            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" value="Hyperuricemia / Gout" class="patient-cond-cb rounded text-blue-600"> Gout / Uric Acid</label>
+            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" value="Asthma / COPD" class="patient-cond-cb rounded text-blue-600"> Asthma / COPD</label>
+            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" value="Osteoarthritis" class="patient-cond-cb rounded text-blue-600"> Osteoarthritis</label>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-gray-700 mb-1">Drug Allergies</label>
+          <input type="text" id="newPatientAllergies" placeholder="e.g. Penicillin, NSAIDs, None"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+        </div>
+
+        <div>
+          <label class="block font-semibold text-gray-700 mb-1">Special Remarks / Notes</label>
+          <textarea id="newPatientNotes" rows="2" placeholder="e.g. Prefers morning appointments, takes medicine with milk"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 mt-5 pt-3 border-t">
+        <button onclick="closeNewPatientModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50">
+          Cancel
+        </button>
+        <button onclick="saveNewPatient()" class="px-5 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold shadow-sm">
+          Save Patient
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: Health Screening Recording -->
+  <div id="patientScreeningModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
+      <div class="flex items-center justify-between border-b pb-3 mb-4">
+        <h3 class="text-base font-bold text-gray-900 flex items-center gap-2">
+          <i class="fa-solid fa-heart-pulse text-teal-600"></i> Record Health Screening
+        </h3>
+        <button onclick="closeScreeningModal()" class="text-gray-400 hover:text-gray-600 text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3.5 text-xs">
+        <div>
+          <label class="block font-semibold text-gray-700 mb-1">Select Patient *</label>
+          <select id="screeningPatientSelect" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none"></select>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-gray-700 mb-1">Screening Date</label>
+          <input type="date" id="screeningDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none">
+        </div>
+
+        <!-- BP & Pulse -->
+        <div class="p-3 bg-blue-50/60 rounded-xl border border-blue-100 space-y-2">
+          <p class="font-bold text-blue-900 flex items-center gap-1.5"><i class="fa-solid fa-stethoscope text-blue-700"></i> Blood Pressure & Pulse</p>
+          <div class="grid grid-cols-3 gap-2">
+            <div>
+              <label class="block text-[11px] text-gray-600 mb-0.5">Systolic (mmHg)</label>
+              <input type="number" id="screeningBpSys" placeholder="e.g. 135" class="w-full border border-gray-300 rounded px-2.5 py-1.5 text-xs bg-white outline-none">
+            </div>
+            <div>
+              <label class="block text-[11px] text-gray-600 mb-0.5">Diastolic (mmHg)</label>
+              <input type="number" id="screeningBpDia" placeholder="e.g. 85" class="w-full border border-gray-300 rounded px-2.5 py-1.5 text-xs bg-white outline-none">
+            </div>
+            <div>
+              <label class="block text-[11px] text-gray-600 mb-0.5">Pulse (bpm)</label>
+              <input type="number" id="screeningPulse" placeholder="e.g. 74" class="w-full border border-gray-300 rounded px-2.5 py-1.5 text-xs bg-white outline-none">
+            </div>
+          </div>
+        </div>
+
+        <!-- Blood Glucose -->
+        <div class="p-3 bg-teal-50/60 rounded-xl border border-teal-100 space-y-2">
+          <p class="font-bold text-teal-900 flex items-center gap-1.5"><i class="fa-solid fa-droplet text-teal-700"></i> Blood Glucose</p>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[11px] text-gray-600 mb-0.5">Reading (mmol/L)</label>
+              <input type="number" step="0.1" id="screeningGlucose" placeholder="e.g. 6.8" class="w-full border border-gray-300 rounded px-2.5 py-1.5 text-xs bg-white outline-none">
+            </div>
+            <div>
+              <label class="block text-[11px] text-gray-600 mb-0.5">Type</label>
+              <select id="screeningGlucoseType" class="w-full border border-gray-300 rounded px-2.5 py-1.5 text-xs bg-white outline-none">
+                <option value="Fasting">Fasting</option>
+                <option value="Random">Random</option>
+                <option value="Post-Prandial">Post-Prandial (2h after food)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cholesterol & Uric Acid -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">Total Cholesterol (mmol/L)</label>
+            <input type="number" step="0.1" id="screeningCholesterol" placeholder="e.g. 5.2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none">
+          </div>
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">Uric Acid (umol/L)</label>
+            <input type="number" id="screeningUricAcid" placeholder="e.g. 380" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none">
+          </div>
+        </div>
+
+        <!-- Weight & Height -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">Weight (kg)</label>
+            <input type="number" step="0.5" id="screeningWeight" placeholder="e.g. 72" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none">
+          </div>
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">Height (cm)</label>
+            <input type="number" id="screeningHeight" placeholder="e.g. 168" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none">
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-gray-700 mb-1">Pharmacist Consultation / Advice Notes</label>
+          <textarea id="screeningNotes" rows="2" placeholder="e.g. BP elevated. Advised low salt diet. Recommended CoQ10."
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none"></textarea>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 mt-5 pt-3 border-t">
+        <button onclick="closeScreeningModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50">
+          Cancel
+        </button>
+        <button onclick="saveNewScreening()" class="px-5 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-bold shadow-sm">
+          Save Screening
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 3: Book Appointment -->
+  <div id="patientAptModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+      <div class="flex items-center justify-between border-b pb-3 mb-4">
+        <h3 class="text-base font-bold text-gray-900 flex items-center gap-2">
+          <i class="fa-regular fa-calendar-plus text-indigo-600"></i> Book Return Appointment
+        </h3>
+        <button onclick="closeAppointmentModal()" class="text-gray-400 hover:text-gray-600 text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3.5 text-xs">
+        <div>
+          <label class="block font-semibold text-gray-700 mb-1">Select Patient *</label>
+          <select id="aptPatientSelect" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none"></select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">Date *</label>
+            <input type="date" id="aptDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none">
+          </div>
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">Time Slot</label>
+            <input type="time" id="aptTime" value="10:00" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none">
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-gray-700 mb-1">Purpose of Visit</label>
+          <input type="text" id="aptPurpose" placeholder="e.g. Chronic Medication Refill & BP Review"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none">
+        </div>
+
+        <div>
+          <label class="block font-semibold text-gray-700 mb-1">Internal Notes</label>
+          <textarea id="aptNotes" rows="2" placeholder="e.g. Prepare 1 month pack Amlodipine & Metformin in advance"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none"></textarea>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 mt-5 pt-3 border-t">
+        <button onclick="closeAppointmentModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50">
+          Cancel
+        </button>
+        <button onclick="saveNewAppointment()" class="px-5 py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg text-xs font-bold shadow-sm">
+          Save Appointment
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 4: Patient Full Profile & History -->
+  <div id="patientProfileModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto p-6">
+      <div class="flex items-start justify-between border-b pb-4 mb-4">
+        <div>
+          <div class="flex items-center gap-3">
+            <h3 id="profName" class="text-xl font-bold text-gray-900">—</h3>
+            <div id="profConditions" class="flex gap-1 flex-wrap"></div>
+          </div>
+          <p id="profMeta" class="text-xs text-gray-500 mt-1">—</p>
+          <div class="flex gap-4 text-xs mt-2 text-gray-600">
+            <span><b>Allergies:</b> <span id="profAllergies" class="text-rose-700 font-semibold">—</span></span>
+            <span><b>Notes:</b> <span id="profNotes" class="italic">—</span></span>
+          </div>
+        </div>
+        <button onclick="closePatientProfileModal()" class="text-gray-400 hover:text-gray-600 text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Section 1: Screenings History -->
+      <div class="mb-5">
+        <div class="flex items-center justify-between mb-2">
+          <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wide flex items-center gap-1.5">
+            <i class="fa-solid fa-heart-pulse text-teal-600"></i> Health Screenings History
+          </h4>
+        </div>
+        <div class="overflow-x-auto border border-gray-200 rounded-xl">
+          <table class="w-full text-left">
+            <thead class="bg-gray-50 text-gray-600 text-[11px] border-b">
+              <tr>
+                <th class="px-3 py-2">Date</th>
+                <th class="px-3 py-2">BP (mmHg)</th>
+                <th class="px-3 py-2">Glucose</th>
+                <th class="px-3 py-2">Cholesterol</th>
+                <th class="px-3 py-2">Uric Acid</th>
+                <th class="px-3 py-2">BMI</th>
+                <th class="px-3 py-2">Notes</th>
+              </tr>
+            </thead>
+            <tbody id="profScreeningsBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Section 2: Chronic Medications & Refills -->
+      <div class="mb-5">
+        <div class="flex items-center justify-between mb-2">
+          <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wide flex items-center gap-1.5">
+            <i class="fa-solid fa-pills text-blue-600"></i> Chronic Medications & Refill Tracking
+          </h4>
+          <button onclick="promptAddMedication()" class="text-blue-700 hover:text-blue-800 text-xs font-bold flex items-center gap-1">
+            <i class="fa-solid fa-plus"></i> Add Medication
+          </button>
+        </div>
+        <div class="overflow-x-auto border border-gray-200 rounded-xl">
+          <table class="w-full text-left">
+            <thead class="bg-gray-50 text-gray-600 text-[11px] border-b">
+              <tr>
+                <th class="px-3 py-2">Medication</th>
+                <th class="px-3 py-2">Dosage Instructions</th>
+                <th class="px-3 py-2">Last Dispensed</th>
+                <th class="px-3 py-2">Supply Days</th>
+                <th class="px-3 py-2">Next Refill Due</th>
+              </tr>
+            </thead>
+            <tbody id="profMedsBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Section 3: Appointments History -->
+      <div>
+        <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+          <i class="fa-regular fa-calendar-check text-indigo-600"></i> Appointments History
+        </h4>
+        <div class="overflow-x-auto border border-gray-200 rounded-xl">
+          <table class="w-full text-left">
+            <thead class="bg-gray-50 text-gray-600 text-[11px] border-b">
+              <tr>
+                <th class="px-3 py-2">Date & Time</th>
+                <th class="px-3 py-2">Purpose</th>
+                <th class="px-3 py-2">Status</th>
+                <th class="px-3 py-2">Notes</th>
+                <th class="px-3 py-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="profAptsBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="flex justify-end mt-6 pt-3 border-t">
+        <button onclick="closePatientProfileModal()" class="px-5 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-xs font-bold">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
@@ -865,6 +1421,7 @@
 <script src="js/roster.js"></script>
 <script src="js/audit.js"></script>
 <script src="js/scheduler.js"></script>
+<script src="js/patient.js"></script>
 
 <script>
 // ─── TAB SWITCHER ─────────────────────────────────────────────────────────────
@@ -876,6 +1433,10 @@ function switchTab(tab) {
   const tabBtn  = document.getElementById(`tab-${tab}`);
   if (content) content.classList.remove('hidden');
   if (tabBtn)  tabBtn.classList.add('active');
+
+  if (tab === 'patient' && typeof renderPatientModule === 'function') {
+    renderPatientModule();
+  }
 }
 
 // ─── AM SUB-TAB SWITCHER ──────────────────────────────────────────────────────
@@ -920,6 +1481,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initRoster();
   initAudit();
   initScheduler();
+  initPatientModule();
 
   // Fetch live data from Google Sheets (non-blocking background fetch).
   // Auth works immediately from offline fallback while this loads.
