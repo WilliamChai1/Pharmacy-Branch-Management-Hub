@@ -1018,10 +1018,10 @@ function showNewEncounterModal(patientId) {
   document.getElementById('encTcaTime').value = '10:00';
   document.getElementById('encTcaPurpose').value = 'Chronic Medication Refill & Health Review';
 
-  // Reset custom tests & files
-  tempCustomTests = [];
+  // Reset other POCT notes & files
+  const otherNotesEl = document.getElementById('encOtherTestsNotes');
+  if (otherNotesEl) otherNotesEl.value = '';
   tempAttachedFiles = [];
-  renderTempCustomTests();
   renderTempAttachedFiles();
 
   modal.classList.remove('hidden');
@@ -1253,7 +1253,7 @@ async function saveNewEncounter() {
       airdoc: selectedAirdocFile ? selectedAirdocFile.name : null,
       rossmaxAct: document.getElementById('encRossmaxAct').value.trim() || null
     },
-    customTests: [...tempCustomTests],
+    customTests: document.getElementById('encOtherTestsNotes') ? document.getElementById('encOtherTestsNotes').value.trim() : '',
     preDiagnostic: document.getElementById('encPreDiag').value.trim(),
     planMedications: document.getElementById('encPlanMeds').value.trim(),
     planSupplements: document.getElementById('encPlanSupps').value.trim(),
@@ -1472,11 +1472,11 @@ function renderProfileEncounters(p) {
           ${enc.specialtyScans && enc.specialtyScans.airdoc ? `<span class="bg-purple-50 text-purple-800 px-2 py-0.5 rounded inline-flex items-center gap-1"><i class="fa-solid fa-file-pdf text-red-500"></i> Airdoc AI: <b>${enc.specialtyScans.airdoc}</b></span>` : ''}
         </div>
 
-        <!-- Custom Tests -->
-        ${(enc.customTests && enc.customTests.length) ? `
-          <div class="mt-2 text-[11px] bg-gray-50 p-2 rounded border border-gray-100">
-            <span class="font-bold text-gray-700">Other POCT:</span>
-            ${enc.customTests.map(ct => `<span class="ml-2 font-medium">${ct.name}: <b>${ct.result} ${ct.unit}</b></span>`).join(', ')}
+        <!-- Other POCT / Screening Notes -->
+        ${enc.customTests ? `
+          <div class="mt-2 text-[11px] bg-gray-50 p-2.5 rounded-lg border border-gray-200">
+            <span class="font-bold text-gray-700">Other POCT / Notes:</span>
+            <span class="ml-1.5 text-gray-800 font-medium">${typeof enc.customTests === 'string' ? enc.customTests : (Array.isArray(enc.customTests) ? enc.customTests.map(ct => `${ct.name}: ${ct.result} ${ct.unit}`).join(', ') : '')}</span>
           </div>
         ` : ''}
 

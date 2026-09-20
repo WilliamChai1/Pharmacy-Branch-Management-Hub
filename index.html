@@ -129,9 +129,10 @@
         <span>Roster to Rymnet</span>
       </button>
       <button onclick="switchTab('patient')" id="tab-patient"
-        class="tab-btn whitespace-nowrap py-3.5 px-4 border-b-2 text-sm flex items-center gap-2">
+        class="tab-btn whitespace-nowrap py-3.5 px-4 border-b-2 text-sm flex items-center gap-2" style="display:none">
         <i class="fa-solid fa-hospital-user text-sm"></i>
         <span>Patient Care & Appointments</span>
+        <span class="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-medium">AM Pilot</span>
       </button>
       <button onclick="switchTab('audit')" id="tab-audit"
         class="tab-btn whitespace-nowrap py-3.5 px-4 border-b-2 text-sm flex items-center gap-2" style="display:none">
@@ -1433,16 +1434,16 @@
               </div>
             </div>
 
-            <!-- Panel 7: Dynamic Custom Tests Slot -->
+            <!-- Panel 7: Other & Custom POCT Tests (Quick Notes) -->
             <div class="border border-gray-200 rounded-lg overflow-hidden">
-              <div class="bg-gray-50 px-3.5 py-2 flex justify-between items-center">
-                <span class="font-bold text-gray-800">➕ Other & Custom POCT Tests</span>
-                <button type="button" onclick="addCustomTestRow()" class="text-blue-700 hover:text-blue-800 font-bold text-xs flex items-center gap-1">
-                  <i class="fa-solid fa-plus"></i> Add Custom Test
-                </button>
-              </div>
-              <div class="p-3 bg-white" id="encCustomTestsList">
-                <p class="text-gray-400 text-xs italic">No custom tests added.</p>
+              <button type="button" onclick="togglePanel('panelOtherTests')" class="w-full bg-gray-50 px-3.5 py-2 text-left font-bold text-gray-800 flex justify-between items-center">
+                <span>➕ Other & Custom POCT Tests (Quick Notes)</span>
+                <i id="panelOtherTests_icon" class="fa-solid fa-chevron-down text-gray-400 text-xs transition-transform"></i>
+              </button>
+              <div id="panelOtherTests" class="p-3 bg-white">
+                <label class="block text-[11px] text-gray-600 mb-1 font-medium">Log any additional rapid tests, wellness screenings, or clinical notes:</label>
+                <textarea id="encOtherTestsNotes" rows="2" placeholder="e.g. Saliva Cortisol 12 nmol/L, Troponin-I negative, Rapid Strep Test negative, etc."
+                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-blue-500"></textarea>
               </div>
             </div>
 

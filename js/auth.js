@@ -27,11 +27,15 @@ function applyRoleUI(session) {
   // Show / hide tabs based on role
   const tabAudit = document.getElementById('tab-audit');
   const auditContent = document.getElementById('content-audit');
+  const tabPatient = document.getElementById('tab-patient');
+  const patientContent = document.getElementById('content-patient');
   const headerBranchSelector = document.getElementById('branchSelector');
   const amBadge = document.getElementById('amBranchSwitcher');
 
   if (tabAudit) tabAudit.style.display = isAM ? '' : 'none';
   if (auditContent && !isAM) auditContent.classList.add('hidden');
+  if (tabPatient) tabPatient.style.display = isAM ? '' : 'none';
+  if (patientContent && !isAM) patientContent.classList.add('hidden');
   if (headerBranchSelector) headerBranchSelector.style.display = isAM ? '' : 'none';
   if (amBadge) amBadge.style.display = isAM ? '' : 'none';
 
