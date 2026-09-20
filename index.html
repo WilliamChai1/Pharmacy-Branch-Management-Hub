@@ -1147,104 +1147,334 @@
     </div>
   </div>
 
-  <!-- Modal 2: Health Screening Recording -->
-  <div id="patientScreeningModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 hidden">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
+  <!-- Modal 2: Pharmacist Clinical Encounter & Comprehensive POCT Suite -->
+  <div id="patientEncounterModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto p-6">
       <div class="flex items-center justify-between border-b pb-3 mb-4">
-        <h3 class="text-base font-bold text-gray-900 flex items-center gap-2">
-          <i class="fa-solid fa-heart-pulse text-teal-600"></i> Record Health Screening
-        </h3>
-        <button onclick="closeScreeningModal()" class="text-gray-400 hover:text-gray-600 text-lg">
+        <div>
+          <h3 class="text-base font-bold text-gray-900 flex items-center gap-2">
+            <i class="fa-solid fa-notes-medical text-teal-600"></i> Pharmacist Clinical Encounter & POCT Suite
+          </h3>
+          <p class="text-xs text-gray-500 mt-0.5">Comprehensive patient consultation, point-of-care diagnostics, and care planning</p>
+        </div>
+        <button onclick="closeEncounterModal()" class="text-gray-400 hover:text-gray-600 text-lg">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
 
-      <div class="space-y-3.5 text-xs">
-        <div>
-          <label class="block font-semibold text-gray-700 mb-1">Select Patient *</label>
-          <select id="screeningPatientSelect" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none"></select>
-        </div>
-
-        <div>
-          <label class="block font-semibold text-gray-700 mb-1">Screening Date</label>
-          <input type="date" id="screeningDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none">
-        </div>
-
-        <!-- BP & Pulse -->
-        <div class="p-3 bg-blue-50/60 rounded-xl border border-blue-100 space-y-2">
-          <p class="font-bold text-blue-900 flex items-center gap-1.5"><i class="fa-solid fa-stethoscope text-blue-700"></i> Blood Pressure & Pulse</p>
-          <div class="grid grid-cols-3 gap-2">
-            <div>
-              <label class="block text-[11px] text-gray-600 mb-0.5">Systolic (mmHg)</label>
-              <input type="number" id="screeningBpSys" placeholder="e.g. 135" class="w-full border border-gray-300 rounded px-2.5 py-1.5 text-xs bg-white outline-none">
-            </div>
-            <div>
-              <label class="block text-[11px] text-gray-600 mb-0.5">Diastolic (mmHg)</label>
-              <input type="number" id="screeningBpDia" placeholder="e.g. 85" class="w-full border border-gray-300 rounded px-2.5 py-1.5 text-xs bg-white outline-none">
-            </div>
-            <div>
-              <label class="block text-[11px] text-gray-600 mb-0.5">Pulse (bpm)</label>
-              <input type="number" id="screeningPulse" placeholder="e.g. 74" class="w-full border border-gray-300 rounded px-2.5 py-1.5 text-xs bg-white outline-none">
-            </div>
-          </div>
-        </div>
-
-        <!-- Blood Glucose -->
-        <div class="p-3 bg-teal-50/60 rounded-xl border border-teal-100 space-y-2">
-          <p class="font-bold text-teal-900 flex items-center gap-1.5"><i class="fa-solid fa-droplet text-teal-700"></i> Blood Glucose</p>
-          <div class="grid grid-cols-2 gap-2">
-            <div>
-              <label class="block text-[11px] text-gray-600 mb-0.5">Reading (mmol/L)</label>
-              <input type="number" step="0.1" id="screeningGlucose" placeholder="e.g. 6.8" class="w-full border border-gray-300 rounded px-2.5 py-1.5 text-xs bg-white outline-none">
-            </div>
-            <div>
-              <label class="block text-[11px] text-gray-600 mb-0.5">Type</label>
-              <select id="screeningGlucoseType" class="w-full border border-gray-300 rounded px-2.5 py-1.5 text-xs bg-white outline-none">
-                <option value="Fasting">Fasting</option>
-                <option value="Random">Random</option>
-                <option value="Post-Prandial">Post-Prandial (2h after food)</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <!-- Cholesterol & Uric Acid -->
-        <div class="grid grid-cols-2 gap-3">
+      <div class="space-y-4 text-xs">
+        <!-- Patient & Date Header -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
           <div>
-            <label class="block font-semibold text-gray-700 mb-1">Total Cholesterol (mmol/L)</label>
-            <input type="number" step="0.1" id="screeningCholesterol" placeholder="e.g. 5.2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none">
+            <label class="block font-semibold text-gray-700 mb-1">Select Patient *</label>
+            <select id="encounterPatientSelect" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none"></select>
           </div>
           <div>
-            <label class="block font-semibold text-gray-700 mb-1">Uric Acid (umol/L)</label>
-            <input type="number" id="screeningUricAcid" placeholder="e.g. 380" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none">
+            <label class="block font-semibold text-gray-700 mb-1">Encounter Date</label>
+            <input type="date" id="encDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none">
           </div>
         </div>
 
-        <!-- Weight & Height -->
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block font-semibold text-gray-700 mb-1">Weight (kg)</label>
-            <input type="number" step="0.5" id="screeningWeight" placeholder="e.g. 72" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none">
+        <!-- 1. SUBJECTIVE: Chief Complaint & HPI -->
+        <div class="border border-blue-200 rounded-xl overflow-hidden">
+          <div class="bg-blue-50/80 px-4 py-2.5 font-bold text-blue-900 flex items-center justify-between">
+            <span class="flex items-center gap-2"><i class="fa-solid fa-comment-medical text-blue-700"></i> 1. Subjective (Chief Complaint & History)</span>
           </div>
-          <div>
-            <label class="block font-semibold text-gray-700 mb-1">Height (cm)</label>
-            <input type="number" id="screeningHeight" placeholder="e.g. 168" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none">
+          <div class="p-4 space-y-3 bg-white">
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">Chief Complaint (CC) *</label>
+              <input type="text" id="encChiefComplaint" placeholder="e.g. Routine Chronic Refill & BP Review"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none mb-1.5">
+              <!-- Quick-fill chips -->
+              <div class="flex flex-wrap gap-1 text-[11px]">
+                <span class="text-gray-400 self-center mr-1">Quick:</span>
+                <button type="button" onclick="setChiefComplaint('Routine Chronic Refill & BP Review')" class="bg-gray-100 hover:bg-blue-100 text-gray-700 px-2 py-0.5 rounded transition">Routine Refill & BP</button>
+                <button type="button" onclick="setChiefComplaint('BP Check & Dizziness')" class="bg-gray-100 hover:bg-blue-100 text-gray-700 px-2 py-0.5 rounded transition">BP & Dizziness</button>
+                <button type="button" onclick="setChiefComplaint('High Blood Glucose Follow-up')" class="bg-gray-100 hover:bg-blue-100 text-gray-700 px-2 py-0.5 rounded transition">High Glucose</button>
+                <button type="button" onclick="setChiefComplaint('Gout Flare / Joint Pain')" class="bg-gray-100 hover:bg-blue-100 text-gray-700 px-2 py-0.5 rounded transition">Gout Flare</button>
+                <button type="button" onclick="setChiefComplaint('Fatigue & Weakness')" class="bg-gray-100 hover:bg-blue-100 text-gray-700 px-2 py-0.5 rounded transition">Fatigue</button>
+                <button type="button" onclick="setChiefComplaint('Gastric / GERD Discomfort')" class="bg-gray-100 hover:bg-blue-100 text-gray-700 px-2 py-0.5 rounded transition">Gastric / GERD</button>
+              </div>
+            </div>
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">History of Present Illness (HPI)</label>
+              <textarea id="encHpi" rows="2" placeholder="Onset, duration, severity, compliance with current medications, dietary triggers, etc."
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
+            </div>
           </div>
         </div>
 
-        <div>
-          <label class="block font-semibold text-gray-700 mb-1">Pharmacist Consultation / Advice Notes</label>
-          <textarea id="screeningNotes" rows="2" placeholder="e.g. BP elevated. Advised low salt diet. Recommended CoQ10."
-            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none"></textarea>
+        <!-- 2. OBJECTIVE: Comprehensive POCT Suite (Accordion Panels) -->
+        <div class="border border-teal-200 rounded-xl overflow-hidden">
+          <div class="bg-teal-50/80 px-4 py-2.5 font-bold text-teal-900 flex items-center justify-between">
+            <span class="flex items-center gap-2"><i class="fa-solid fa-microscope text-teal-700"></i> 2. Objective (POCT & Clinical Diagnostic Panels)</span>
+            <span class="text-[11px] text-teal-700 font-normal">(Fill applicable tests)</span>
+          </div>
+
+          <div class="p-4 space-y-3 bg-white">
+            <!-- Panel 1: Vitals & Cardio-Pulmonary -->
+            <div class="border border-gray-200 rounded-lg overflow-hidden">
+              <button type="button" onclick="togglePanel('panelVitals')" class="w-full bg-gray-50 px-3.5 py-2 text-left font-bold text-gray-800 flex justify-between items-center">
+                <span>🫀 Vitals & Cardio-Pulmonary (BP, Pulse, SpO2, BMI)</span>
+                <i id="panelVitals_icon" class="fa-solid fa-chevron-down text-gray-400 text-xs transition-transform"></i>
+              </button>
+              <div id="panelVitals" class="p-3 grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-white">
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">BP Systolic (mmHg)</label>
+                  <input type="number" id="encBpSys" placeholder="e.g. 135" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">BP Diastolic (mmHg)</label>
+                  <input type="number" id="encBpDia" placeholder="e.g. 85" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">Pulse Rate (bpm)</label>
+                  <input type="number" id="encPulse" placeholder="e.g. 74" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">SpO2 Oxygen (%)</label>
+                  <input type="number" id="encSpo2" placeholder="e.g. 98" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">Weight (kg)</label>
+                  <input type="number" step="0.5" id="encWeight" placeholder="e.g. 72" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">Height (cm)</label>
+                  <input type="number" id="encHeight" placeholder="e.g. 168" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div class="col-span-2">
+                  <label class="block text-[11px] text-gray-600 mb-0.5">BMI (Auto-calculated)</label>
+                  <input type="text" id="encBmi" readonly placeholder="Auto-calculated" class="w-full border rounded px-2 py-1.5 text-xs bg-gray-50 font-bold text-gray-700 outline-none">
+                </div>
+              </div>
+            </div>
+
+            <!-- Panel 2: Full Lipid Profile -->
+            <div class="border border-gray-200 rounded-lg overflow-hidden">
+              <button type="button" onclick="togglePanel('panelLipid')" class="w-full bg-gray-50 px-3.5 py-2 text-left font-bold text-gray-800 flex justify-between items-center">
+                <span>🩸 Full Lipid Profile (POCT: TC, TG, HDL, LDL, AI, R-CHD)</span>
+                <i id="panelLipid_icon" class="fa-solid fa-chevron-down text-gray-400 text-xs transition-transform"></i>
+              </button>
+              <div id="panelLipid" class="p-3 grid grid-cols-2 sm:grid-cols-3 gap-2.5 bg-white">
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">Total Cholesterol (mmol/L)</label>
+                  <input type="number" step="0.1" id="encTc" placeholder="e.g. 5.4" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">Triglycerides (mmol/L)</label>
+                  <input type="number" step="0.1" id="encTg" placeholder="e.g. 1.8" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">HDL-C (mmol/L)</label>
+                  <input type="number" step="0.1" id="encHdl" placeholder="e.g. 1.1" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">LDL-C (mmol/L)</label>
+                  <input type="number" step="0.1" id="encLdl" placeholder="e.g. 3.5" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">AI (Arteriosclerosis Index)</label>
+                  <input type="text" id="encAi" readonly placeholder="Auto: (TC-HDL)/HDL" class="w-full border rounded px-2 py-1.5 text-xs bg-gray-50 font-bold text-blue-700 outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">R-CHD (Coronary Risk Ratio)</label>
+                  <input type="text" id="encRchd" readonly placeholder="Auto: TC/HDL" class="w-full border rounded px-2 py-1.5 text-xs bg-gray-50 font-bold text-blue-700 outline-none">
+                </div>
+              </div>
+            </div>
+
+            <!-- Panel 3: Kidney Function -->
+            <div class="border border-gray-200 rounded-lg overflow-hidden">
+              <button type="button" onclick="togglePanel('panelKidney')" class="w-full bg-gray-50 px-3.5 py-2 text-left font-bold text-gray-800 flex justify-between items-center">
+                <span>🧪 Kidney Function (POCT: UA, Creatinine, Urea, eGFR)</span>
+                <i id="panelKidney_icon" class="fa-solid fa-chevron-down text-gray-400 text-xs transition-transform"></i>
+              </button>
+              <div id="panelKidney" class="p-3 grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-white">
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">Uric Acid (umol/L)</label>
+                  <input type="number" id="encUa" placeholder="e.g. 380" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">Creatinine (umol/L)</label>
+                  <input type="number" id="encCreatinine" placeholder="e.g. 88" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">Urea (mmol/L)</label>
+                  <input type="number" step="0.1" id="encUrea" placeholder="e.g. 5.4" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">eGFR (mL/min/1.73m²)</label>
+                  <input type="number" id="encEgfr" placeholder="Auto / manual" class="w-full border rounded px-2 py-1.5 text-xs bg-gray-50 font-bold text-indigo-700 outline-none">
+                </div>
+              </div>
+            </div>
+
+            <!-- Panel 4: Liver Function -->
+            <div class="border border-gray-200 rounded-lg overflow-hidden">
+              <button type="button" onclick="togglePanel('panelLiver')" class="w-full bg-gray-50 px-3.5 py-2 text-left font-bold text-gray-800 flex justify-between items-center">
+                <span>🍃 Liver Function (POCT: AST, ALT, Albumin)</span>
+                <i id="panelLiver_icon" class="fa-solid fa-chevron-down text-gray-400 text-xs transition-transform"></i>
+              </button>
+              <div id="panelLiver" class="p-3 grid grid-cols-3 gap-2.5 bg-white">
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">AST / SGOT (U/L)</label>
+                  <input type="number" id="encAst" placeholder="e.g. 28" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">ALT / SGPT (U/L)</label>
+                  <input type="number" id="encAlt" placeholder="e.g. 32" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">Albumin (ALB, g/L)</label>
+                  <input type="number" id="encAlb" placeholder="e.g. 42" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+              </div>
+            </div>
+
+            <!-- Panel 5: Glycemic & Hematology -->
+            <div class="border border-gray-200 rounded-lg overflow-hidden">
+              <button type="button" onclick="togglePanel('panelGlycemic')" class="w-full bg-gray-50 px-3.5 py-2 text-left font-bold text-gray-800 flex justify-between items-center">
+                <span>🩸 Glycemic & Hematology (Glucose, HbA1c, Haemoglobin, HCT)</span>
+                <i id="panelGlycemic_icon" class="fa-solid fa-chevron-down text-gray-400 text-xs transition-transform"></i>
+              </button>
+              <div id="panelGlycemic" class="p-3 grid grid-cols-2 sm:grid-cols-5 gap-2.5 bg-white">
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">Blood Glucose (mmol/L)</label>
+                  <input type="number" step="0.1" id="encGlucose" placeholder="e.g. 6.8" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">Glucose Type</label>
+                  <select id="encGlucoseType" class="w-full border rounded px-2 py-1.5 text-xs bg-white outline-none">
+                    <option value="Fasting">Fasting</option>
+                    <option value="Random">Random</option>
+                    <option value="Post-Prandial">Post-Prandial (2h)</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">HbA1c (%)</label>
+                  <input type="number" step="0.1" id="encHba1c" placeholder="e.g. 6.9" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">Haemoglobin (Hb, g/dL)</label>
+                  <input type="number" step="0.1" id="encHb" placeholder="e.g. 14.2" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">Haematocrit (HCT, %)</label>
+                  <input type="number" step="0.1" id="encHct" placeholder="e.g. 42.5" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+              </div>
+            </div>
+
+            <!-- Panel 6: Specialty & Wellness Scans -->
+            <div class="border border-gray-200 rounded-lg overflow-hidden">
+              <button type="button" onclick="togglePanel('panelScans')" class="w-full bg-gray-50 px-3.5 py-2 text-left font-bold text-gray-800 flex justify-between items-center">
+                <span>🔬 Specialty & Wellness Scans (Vit D, Ferritin, TEDA, Airdoc, Rossmax ACT)</span>
+                <i id="panelScans_icon" class="fa-solid fa-chevron-down text-gray-400 text-xs transition-transform"></i>
+              </button>
+              <div id="panelScans" class="p-3 grid grid-cols-2 sm:grid-cols-3 gap-2.5 bg-white">
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">Vitamin D Home Kit (ng/mL)</label>
+                  <input type="number" step="0.1" id="encVitD" placeholder="e.g. 24.5" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">Ferritin Home Kit (ng/mL)</label>
+                  <input type="number" step="1" id="encFerritin" placeholder="e.g. 110" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">Rossmax ACT (Artery Condition)</label>
+                  <input type="text" id="encRossmaxAct" placeholder="e.g. ACT 3 / Vascular Age 60" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-600 mb-0.5">TEDA Wellness Scan</label>
+                  <input type="text" id="encTeda" placeholder="e.g. Mild metabolic stress" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+                <div class="col-span-2">
+                  <label class="block text-[11px] text-gray-600 mb-0.5">Airdoc Retinal AI Scan Findings</label>
+                  <input type="text" id="encAirdoc" placeholder="e.g. Grade 1 Hypertensive Retinopathy signs" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                </div>
+              </div>
+            </div>
+
+            <!-- Panel 7: Dynamic Custom Tests Slot -->
+            <div class="border border-gray-200 rounded-lg overflow-hidden">
+              <div class="bg-gray-50 px-3.5 py-2 flex justify-between items-center">
+                <span class="font-bold text-gray-800">➕ Other & Custom POCT Tests</span>
+                <button type="button" onclick="addCustomTestRow()" class="text-blue-700 hover:text-blue-800 font-bold text-xs flex items-center gap-1">
+                  <i class="fa-solid fa-plus"></i> Add Custom Test
+                </button>
+              </div>
+              <div class="p-3 bg-white" id="encCustomTestsList">
+                <p class="text-gray-400 text-xs italic">No custom tests added.</p>
+              </div>
+            </div>
+
+            <!-- Panel 8: Document / Lab Report Upload (IndexedDB) -->
+            <div class="border border-gray-200 rounded-lg overflow-hidden">
+              <div class="bg-gray-50 px-3.5 py-2 flex justify-between items-center">
+                <span class="font-bold text-gray-800">📄 Attach Full Blood Report / Documents (IndexedDB)</span>
+                <span class="text-[10px] text-gray-400">PDF / Images</span>
+              </div>
+              <div class="p-3 bg-white space-y-2">
+                <label class="block border-2 border-dashed border-gray-300 hover:border-blue-500 rounded-xl p-4 text-center cursor-pointer transition bg-gray-50/50">
+                  <i class="fa-solid fa-cloud-arrow-up text-blue-600 text-xl mb-1 block"></i>
+                  <span class="text-xs font-semibold text-gray-700">Click to select or drop lab report (PDF, JPG, PNG)</span>
+                  <span class="block text-[10px] text-gray-400 mt-0.5">Files are stored securely in browser IndexedDB (Gigabyte capacity)</span>
+                  <input type="file" multiple accept="application/pdf,image/*" class="hidden" onchange="handleEncounterFiles(this.files)">
+                </label>
+                <div id="encAttachedFilesList"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. ASSESSMENT: Pre-Diagnostic -->
+        <div class="border border-amber-200 rounded-xl overflow-hidden">
+          <div class="bg-amber-50/80 px-4 py-2.5 font-bold text-amber-900 flex items-center gap-2">
+            <i class="fa-solid fa-stethoscope text-amber-700"></i> 3. Assessment & Pre-Diagnostic (Clinical Impression)
+          </div>
+          <div class="p-4 bg-white">
+            <textarea id="encPreDiag" rows="2" placeholder="e.g. Suboptimally controlled Stage 1 HTN with borderline dyslipidemia and pre-diabetic fasting glucose. Suspected statin-associated muscle fatigue."
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-amber-500 outline-none"></textarea>
+          </div>
+        </div>
+
+        <!-- 4. PLAN OF ACTION -->
+        <div class="border border-emerald-200 rounded-xl overflow-hidden">
+          <div class="bg-emerald-50/80 px-4 py-2.5 font-bold text-emerald-900 flex items-center gap-2">
+            <i class="fa-solid fa-clipboard-list text-emerald-700"></i> 4. Plan of Action (Medications, Supplements & Counselling)
+          </div>
+          <div class="p-4 space-y-3 bg-white">
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">💊 Medications (Rx / Dispensed)</label>
+              <input type="text" id="encPlanMeds" placeholder="e.g. Amlodipine 10mg OD morning, Metformin 500mg BD with meals"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none">
+            </div>
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">🌿 Companion Supplements (Nutraceuticals / House Brand)</label>
+              <input type="text" id="encPlanSupps" placeholder="e.g. CoQ10 100mg OD (statin companion), B-Complex (metformin companion), Omega-3 1200mg"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none">
+            </div>
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">🗣️ Patient Counselling & Lifestyle Advice</label>
+              <textarea id="encPlanCounselling" rows="2" placeholder="e.g. Low sodium DASH diet, reduce seafood/beer for uric acid, brisk walk 30 mins 4x weekly"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"></textarea>
+            </div>
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">🚨 Referral / Follow-up Timeline</label>
+              <input type="text" id="encReferral" placeholder="e.g. Review in 1 month for BP & Lipid POCT. Refer GP if BP > 140/90 persistently."
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none">
+            </div>
+          </div>
         </div>
       </div>
 
       <div class="flex justify-end gap-2 mt-5 pt-3 border-t">
-        <button onclick="closeScreeningModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50">
+        <button onclick="closeEncounterModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50">
           Cancel
         </button>
-        <button onclick="saveNewScreening()" class="px-5 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-bold shadow-sm">
-          Save Screening
+        <button onclick="saveNewEncounter()" class="px-6 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-bold shadow-sm flex items-center gap-1.5">
+          <i class="fa-solid fa-floppy-disk"></i> Save Clinical Encounter
         </button>
       </div>
     </div>
@@ -1303,10 +1533,10 @@
     </div>
   </div>
 
-  <!-- Modal 4: Patient Full Profile & History -->
+  <!-- Modal 4: Patient Full Profile & History with 5 Tabs -->
   <div id="patientProfileModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 hidden">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto p-6">
-      <div class="flex items-start justify-between border-b pb-4 mb-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[94vh] overflow-y-auto p-6">
+      <div class="flex items-start justify-between border-b pb-4 mb-3">
         <div>
           <div class="flex items-center gap-3">
             <h3 id="profName" class="text-xl font-bold text-gray-900">—</h3>
@@ -1323,13 +1553,32 @@
         </button>
       </div>
 
-      <!-- Section 1: Screenings History -->
-      <div class="mb-5">
-        <div class="flex items-center justify-between mb-2">
-          <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wide flex items-center gap-1.5">
-            <i class="fa-solid fa-heart-pulse text-teal-600"></i> Health Screenings History
-          </h4>
-        </div>
+      <!-- Profile Tabs -->
+      <div class="flex border-b border-gray-200 mb-4 overflow-x-auto text-xs">
+        <button id="profTabBtn_encounters" onclick="switchProfileTab('encounters')" class="px-4 py-2.5 border-b-2 border-blue-700 text-blue-700 font-bold whitespace-nowrap flex items-center gap-1.5">
+          <i class="fa-solid fa-notes-medical"></i> Consultations (SOAP)
+        </button>
+        <button id="profTabBtn_trends" onclick="switchProfileTab('trends')" class="px-4 py-2.5 border-b-2 border-transparent text-gray-500 hover:text-gray-800 whitespace-nowrap flex items-center gap-1.5">
+          <i class="fa-solid fa-chart-line"></i> POCT Trends Table
+        </button>
+        <button id="profTabBtn_meds" onclick="switchProfileTab('meds')" class="px-4 py-2.5 border-b-2 border-transparent text-gray-500 hover:text-gray-800 whitespace-nowrap flex items-center gap-1.5">
+          <i class="fa-solid fa-pills"></i> Chronic Meds & Refills
+        </button>
+        <button id="profTabBtn_docs" onclick="switchProfileTab('docs')" class="px-4 py-2.5 border-b-2 border-transparent text-gray-500 hover:text-gray-800 whitespace-nowrap flex items-center gap-1.5">
+          <i class="fa-solid fa-file-medical"></i> Lab Reports & Docs
+        </button>
+        <button id="profTabBtn_apts" onclick="switchProfileTab('apts')" class="px-4 py-2.5 border-b-2 border-transparent text-gray-500 hover:text-gray-800 whitespace-nowrap flex items-center gap-1.5">
+          <i class="fa-regular fa-calendar-check"></i> Appointments
+        </button>
+      </div>
+
+      <!-- Tab 1: Encounters History -->
+      <div id="profTabView_encounters">
+        <div id="profEncountersList"></div>
+      </div>
+
+      <!-- Tab 2: POCT Trends Table -->
+      <div id="profTabView_trends" class="hidden">
         <div class="overflow-x-auto border border-gray-200 rounded-xl">
           <table class="w-full text-left">
             <thead class="bg-gray-50 text-gray-600 text-[11px] border-b">
@@ -1337,23 +1586,21 @@
                 <th class="px-3 py-2">Date</th>
                 <th class="px-3 py-2">BP (mmHg)</th>
                 <th class="px-3 py-2">Glucose</th>
-                <th class="px-3 py-2">Cholesterol</th>
+                <th class="px-3 py-2">HbA1c</th>
+                <th class="px-3 py-2">Lipid Profile</th>
+                <th class="px-3 py-2">AI Index</th>
                 <th class="px-3 py-2">Uric Acid</th>
-                <th class="px-3 py-2">BMI</th>
-                <th class="px-3 py-2">Notes</th>
+                <th class="px-3 py-2">Creatinine</th>
               </tr>
             </thead>
-            <tbody id="profScreeningsBody"></tbody>
+            <tbody id="profTrendsBody"></tbody>
           </table>
         </div>
       </div>
 
-      <!-- Section 2: Chronic Medications & Refills -->
-      <div class="mb-5">
-        <div class="flex items-center justify-between mb-2">
-          <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wide flex items-center gap-1.5">
-            <i class="fa-solid fa-pills text-blue-600"></i> Chronic Medications & Refill Tracking
-          </h4>
+      <!-- Tab 3: Chronic Medications & Refills -->
+      <div id="profTabView_meds" class="hidden">
+        <div class="flex justify-end mb-2">
           <button onclick="promptAddMedication()" class="text-blue-700 hover:text-blue-800 text-xs font-bold flex items-center gap-1">
             <i class="fa-solid fa-plus"></i> Add Medication
           </button>
@@ -1374,11 +1621,13 @@
         </div>
       </div>
 
-      <!-- Section 3: Appointments History -->
-      <div>
-        <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-          <i class="fa-regular fa-calendar-check text-indigo-600"></i> Appointments History
-        </h4>
+      <!-- Tab 4: Lab Reports & Documents (IndexedDB) -->
+      <div id="profTabView_docs" class="hidden">
+        <div id="profDocsGallery"></div>
+      </div>
+
+      <!-- Tab 5: Appointments History -->
+      <div id="profTabView_apts" class="hidden">
         <div class="overflow-x-auto border border-gray-200 rounded-xl">
           <table class="w-full text-left">
             <thead class="bg-gray-50 text-gray-600 text-[11px] border-b">
@@ -1395,8 +1644,26 @@
         </div>
       </div>
 
-      <div class="flex justify-end mt-6 pt-3 border-t">
+      <div class="flex justify-end mt-5 pt-3 border-t">
         <button onclick="closePatientProfileModal()" class="px-5 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-xs font-bold">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 5: Document Preview Modal -->
+  <div id="patientDocPreviewModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-hidden flex flex-col">
+      <div class="flex items-center justify-between p-4 border-b bg-gray-50">
+        <h4 id="docPreviewTitle" class="font-bold text-gray-800 text-sm truncate">Document Preview</h4>
+        <button onclick="closeDocPreviewModal()" class="text-gray-400 hover:text-gray-600 text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="p-4 flex-1 overflow-auto bg-gray-100 flex items-center justify-center" id="docPreviewContainer"></div>
+      <div class="p-3 border-t bg-gray-50 flex justify-end">
+        <button onclick="closeDocPreviewModal()" class="px-4 py-1.5 bg-gray-700 hover:bg-gray-800 text-white rounded-lg text-xs font-bold">
           Close
         </button>
       </div>
@@ -1421,6 +1688,7 @@
 <script src="js/roster.js"></script>
 <script src="js/audit.js"></script>
 <script src="js/scheduler.js"></script>
+<script src="js/db.js"></script>
 <script src="js/patient.js"></script>
 
 <script>
