@@ -931,6 +931,18 @@
           class="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm">
           <i class="fa-solid fa-file-excel"></i> Export Excel
         </button>
+        <button id="patientBackupBtn" type="button" onclick="backupToPenDrive()"
+          class="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Download encrypted full patient & document backup to USB Drive">
+          <i class="fa-solid fa-hard-drive"></i> Backup to Pen Drive
+        </button>
+        <button id="patientRestoreBtn" type="button" onclick="document.getElementById('restoreBackupInput').click()"
+          class="bg-gray-700 hover:bg-gray-800 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Restore patient database and reports from USB backup">
+          <i class="fa-solid fa-file-import"></i> Restore Backup
+        </button>
+        <input type="file" id="restoreBackupInput" accept=".pmgbak,.json" class="hidden" onchange="handleRestoreBackupFile(event)">
+        <span id="backupStatusBadge" class="text-[11px] font-semibold text-gray-500 bg-gray-100 px-2.5 py-1.5 rounded-lg border border-gray-200 flex items-center gap-1.5">
+          <i class="fa-solid fa-shield-halved text-gray-400"></i> <span id="backupStatusText">Backup: Checking...</span>
+        </span>
       </div>
     </div>
 
@@ -1372,26 +1384,51 @@
                 <span>🔬 Specialty & Wellness Scans (Vit D, Ferritin, TEDA, Airdoc, Rossmax ACT)</span>
                 <i id="panelScans_icon" class="fa-solid fa-chevron-down text-gray-400 text-xs transition-transform"></i>
               </button>
-              <div id="panelScans" class="p-3 grid grid-cols-2 sm:grid-cols-3 gap-2.5 bg-white">
+              <div id="panelScans" class="p-3 grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-white">
                 <div>
-                  <label class="block text-[11px] text-gray-600 mb-0.5">Vitamin D Home Kit (ng/mL)</label>
-                  <input type="number" step="0.1" id="encVitD" placeholder="e.g. 24.5" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                  <label class="block text-[11px] text-gray-600 mb-0.5 font-medium">Vitamin D Home Kit</label>
+                  <select id="encVitD" class="w-full border border-gray-300 rounded px-2 py-1.5 text-xs outline-none bg-white">
+                    <option value="">Not Tested</option>
+                    <option value="Sufficient">Sufficient (Normal)</option>
+                    <option value="Insufficient">Insufficient / Deficient</option>
+                  </select>
                 </div>
                 <div>
-                  <label class="block text-[11px] text-gray-600 mb-0.5">Ferritin Home Kit (ng/mL)</label>
-                  <input type="number" step="1" id="encFerritin" placeholder="e.g. 110" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                  <label class="block text-[11px] text-gray-600 mb-0.5 font-medium">Ferritin Home Kit</label>
+                  <select id="encFerritin" class="w-full border border-gray-300 rounded px-2 py-1.5 text-xs outline-none bg-white">
+                    <option value="">Not Tested</option>
+                    <option value="Sufficient">Sufficient (Normal)</option>
+                    <option value="Insufficient">Insufficient / Deficient</option>
+                  </select>
                 </div>
                 <div>
-                  <label class="block text-[11px] text-gray-600 mb-0.5">Rossmax ACT (Artery Condition)</label>
-                  <input type="text" id="encRossmaxAct" placeholder="e.g. ACT 3 / Vascular Age 60" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                  <label class="block text-[11px] text-gray-600 mb-0.5 font-medium">Rossmax ACT (Artery Condition)</label>
+                  <input type="text" id="encRossmaxAct" placeholder="e.g. ACT 3 / Vascular Age 60" class="w-full border border-gray-300 rounded px-2 py-1.5 text-xs outline-none">
                 </div>
-                <div>
-                  <label class="block text-[11px] text-gray-600 mb-0.5">TEDA Wellness Scan</label>
-                  <input type="text" id="encTeda" placeholder="e.g. Mild metabolic stress" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                <div class="sm:col-span-3">
+                  <div class="flex justify-between items-center mb-0.5">
+                    <label class="block text-[11px] text-gray-600 font-medium">TEDA Wellness Scan (Web Link)</label>
+                    <a href="javascript:void(0)" onclick="openTedaLink()" id="openTedaLinkBtn" class="text-[11px] text-blue-600 hover:underline hidden font-medium">
+                      <i class="fa-solid fa-arrow-up-right-from-square"></i> Open TEDA Report Link
+                    </a>
+                  </div>
+                  <input type="url" id="encTeda" oninput="checkTedaUrl(this.value)" placeholder="e.g. https://tedascan.com/report/view?id=..." class="w-full border border-gray-300 rounded px-2 py-1.5 text-xs outline-none">
                 </div>
-                <div class="col-span-2">
-                  <label class="block text-[11px] text-gray-600 mb-0.5">Airdoc Retinal AI Scan Findings</label>
-                  <input type="text" id="encAirdoc" placeholder="e.g. Grade 1 Hypertensive Retinopathy signs" class="w-full border rounded px-2 py-1.5 text-xs outline-none">
+                <div class="sm:col-span-3 border-t border-gray-100 pt-2.5">
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="block text-[11px] text-gray-700 font-semibold">Airdoc Retinal AI Scan (PDF Report)</label>
+                    <span id="encAirdocBadge" class="text-[10px] text-gray-400">No PDF selected</span>
+                  </div>
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <label class="cursor-pointer px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition">
+                      <i class="fa-solid fa-file-pdf text-red-500 text-sm"></i> Upload Airdoc PDF Report
+                      <input type="file" id="encAirdocPdf" accept="application/pdf" class="hidden" onchange="handleAirdocFile(this.files)">
+                    </label>
+                    <span id="encAirdocFileName" class="text-xs text-gray-600 font-medium truncate max-w-[280px]"></span>
+                    <button type="button" id="encAirdocRemoveBtn" onclick="removeAirdocFile()" class="text-rose-600 hover:text-rose-800 text-xs hidden font-bold" title="Remove Airdoc PDF">
+                      <i class="fa-solid fa-xmark"></i> Remove
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1464,6 +1501,39 @@
               <label class="block font-semibold text-gray-700 mb-1">🚨 Referral / Follow-up Timeline</label>
               <input type="text" id="encReferral" placeholder="e.g. Review in 1 month for BP & Lipid POCT. Refer GP if BP > 140/90 persistently."
                 class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none">
+            </div>
+
+            <!-- Integrated Next TCA (Return Appointment) -->
+            <div class="bg-indigo-50/80 border border-indigo-200 rounded-xl p-3.5 mt-2">
+              <div class="flex items-center justify-between mb-2">
+                <span class="font-bold text-indigo-900 text-xs flex items-center gap-1.5">
+                  <i class="fa-regular fa-calendar-check text-indigo-600"></i> Next TCA (To Come Again / Return Appointment)
+                </span>
+                <span class="text-[10px] text-indigo-700 font-semibold bg-indigo-100/80 px-2 py-0.5 rounded-md">Auto-books into Appointment Queue</span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label class="block text-[11px] text-gray-700 font-medium mb-0.5">TCA Date</label>
+                  <input type="date" id="encTcaDate" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white outline-none focus:ring-1 focus:ring-indigo-500">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-700 font-medium mb-0.5">Time Slot</label>
+                  <input type="time" id="encTcaTime" value="10:00" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white outline-none focus:ring-1 focus:ring-indigo-500">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-700 font-medium mb-0.5">Quick Intervals</label>
+                  <div class="grid grid-cols-4 gap-1">
+                    <button type="button" onclick="setQuickTca(14)" class="px-1 py-1.5 bg-white border border-indigo-200 hover:bg-indigo-100 rounded text-[11px] font-semibold text-indigo-700 transition text-center">+2 Wks</button>
+                    <button type="button" onclick="setQuickTca(30)" class="px-1 py-1.5 bg-white border border-indigo-200 hover:bg-indigo-100 rounded text-[11px] font-semibold text-indigo-700 transition text-center">+1 Mo</button>
+                    <button type="button" onclick="setQuickTca(60)" class="px-1 py-1.5 bg-white border border-indigo-200 hover:bg-indigo-100 rounded text-[11px] font-semibold text-indigo-700 transition text-center">+2 Mos</button>
+                    <button type="button" onclick="setQuickTca(90)" class="px-1 py-1.5 bg-white border border-indigo-200 hover:bg-indigo-100 rounded text-[11px] font-semibold text-indigo-700 transition text-center">+3 Mos</button>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-2.5">
+                <label class="block text-[11px] text-gray-700 font-medium mb-0.5">TCA Purpose / Follow-up Notes</label>
+                <input type="text" id="encTcaPurpose" placeholder="e.g. Chronic Medication Refill & Repeat BP / Lipid Review" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white outline-none focus:ring-1 focus:ring-indigo-500">
+              </div>
             </div>
           </div>
         </div>

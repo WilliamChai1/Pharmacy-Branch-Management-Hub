@@ -108,3 +108,112 @@ function formatFileSize(bytes) {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
+
+// ─── BLOB <-> DATAURL HELPERS ────────────────────────────────────────────────
+function blobToDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+function dataURLtoBlob(dataurl) {
+  const arr = dataurl.split(',');
+  const mime = arr[0].match(/:(.*?);/)[1];
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new Blob([u8arr], { type: mime });
+}
+
+// ─── EXPORT ALL DOCUMENTS (FOR PEN DRIVE BACKUP) ─────────────────────────────
+async function exportAllDocuments() {
+  const db = await openIndexedDB();
+  return new Promise(async (resolve, reject) => {
+    try {
+      const tx = db.transaction([STORE_DOCUMENTS], 'readonly');
+      const store = tx.objectStore(STORE_DOCUMENTS);
+      const req = store.getAll();
+
+      req.onsuccess = async (e) => {
+        const records = e.target.result || [];
+        const exported = [];
+
+        for (const rec of records) {
+          let dataUrl = '';
+          if (rec.blob) {
+            try {
+              dataUrl = await blobToDataURL(rec.blob);
+            } catch (err) {
+              console.warn('Failed to convert blob for doc:', rec.id, err);
+            }
+          }
+          exported.push({
+            id: rec.id,
+            patientId: rec.patientId,
+            name: rec.name,
+            type: rec.type,
+            size: rec.size,
+            date: rec.date,
+            createdAt: rec.createdAt,
+            notes: rec.notes || '',
+            dataUrl: dataUrl
+          });
+        }
+
+        resolve(exported);
+      };
+
+      req.onerror = (e) => reject(e);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+// ─── IMPORT / RESTORE ALL DOCUMENTS (FROM PEN DRIVE BACKUP) ──────────────────
+async function importAllDocuments(docsList = []) {
+  if (!Array.isArray(docsList) || docsList.length === 0) return 0;
+  const db = await openIndexedDB();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([STORE_DOCUMENTS], 'readwrite');
+    const store = tx.objectStore(STORE_DOCUMENTS);
+    let count = 0;
+
+    for (const doc of docsList) {
+      let blob = null;
+      if (doc.dataUrl) {
+        try {
+          blob = dataURLtoBlob(doc.dataUrl);
+        } catch (err) {
+          console.warn('Failed to reconstruct blob for doc:', doc.id, err);
+        }
+      }
+
+      const record = {
+        id: doc.id,
+        patientId: doc.patientId,
+        name: doc.name,
+        type: doc.type,
+        size: doc.size,
+        date: doc.date,
+        createdAt: doc.createdAt || new Date().toISOString(),
+        blob: blob,
+        notes: doc.notes || ''
+      };
+
+      store.put(record); // put overwrites or inserts
+      count++;
+    }
+
+    tx.oncomplete = () => resolve(count);
+    tx.onerror = (e) => reject(e);
+  });
+}
+

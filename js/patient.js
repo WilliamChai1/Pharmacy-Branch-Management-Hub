@@ -291,11 +291,13 @@ let viewingPatientId = null;
 let activeProfileTab = 'encounters'; // 'encounters', 'trends', 'meds', 'docs', 'apts'
 let tempCustomTests = []; // For the encounter modal
 let tempAttachedFiles = []; // For the encounter modal
+let selectedAirdocFile = null; // For the Airdoc PDF report
 
 // ─── INITIALIZATION ──────────────────────────────────────────────────────────
 function initPatientModule() {
   loadPatientsData();
   setupPatientEventListeners();
+  updateBackupStatusBadge();
   renderPatientModule();
 }
 
@@ -999,7 +1001,9 @@ function showNewEncounterModal(patientId) {
   document.getElementById('encVitD').value = '';
   document.getElementById('encFerritin').value = '';
   document.getElementById('encTeda').value = '';
-  document.getElementById('encAirdoc').value = '';
+  const tedaBtn = document.getElementById('openTedaLinkBtn');
+  if (tedaBtn) tedaBtn.classList.add('hidden');
+  removeAirdocFile();
   document.getElementById('encRossmaxAct').value = '';
 
   // Plan
@@ -1008,6 +1012,11 @@ function showNewEncounterModal(patientId) {
   document.getElementById('encPlanSupps').value = '';
   document.getElementById('encPlanCounselling').value = '';
   document.getElementById('encReferral').value = '';
+
+  // Next TCA (Return Appointment)
+  document.getElementById('encTcaDate').value = '';
+  document.getElementById('encTcaTime').value = '10:00';
+  document.getElementById('encTcaPurpose').value = 'Chronic Medication Refill & Health Review';
 
   // Reset custom tests & files
   tempCustomTests = [];
@@ -1039,6 +1048,60 @@ function togglePanel(panelId) {
   if (!panel) return;
   panel.classList.toggle('hidden');
   if (icon) icon.classList.toggle('rotate-180');
+}
+
+// ─── TEDA LINK HELPERS ───────────────────────────────────────────────────────
+function checkTedaUrl(url) {
+  const btn = document.getElementById('openTedaLinkBtn');
+  if (!btn) return;
+  if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+    btn.classList.remove('hidden');
+  } else {
+    btn.classList.add('hidden');
+  }
+}
+
+function openTedaLink() {
+  const url = document.getElementById('encTeda').value.trim();
+  if (url) window.open(url, '_blank');
+}
+
+// ─── AIRDOC RETINAL REPORT PDF HELPERS ───────────────────────────────────────
+function handleAirdocFile(files) {
+  if (!files || !files[0]) return;
+  selectedAirdocFile = files[0];
+  const nameEl = document.getElementById('encAirdocFileName');
+  const badgeEl = document.getElementById('encAirdocBadge');
+  const removeBtn = document.getElementById('encAirdocRemoveBtn');
+
+  if (nameEl) nameEl.textContent = `${selectedAirdocFile.name} (${formatFileSize(selectedAirdocFile.size)})`;
+  if (badgeEl) badgeEl.innerHTML = '<span class="text-emerald-700 font-bold">PDF Ready</span>';
+  if (removeBtn) removeBtn.classList.remove('hidden');
+}
+
+function removeAirdocFile() {
+  selectedAirdocFile = null;
+  const fileInput = document.getElementById('encAirdocPdf');
+  if (fileInput) fileInput.value = '';
+  const nameEl = document.getElementById('encAirdocFileName');
+  if (nameEl) nameEl.textContent = '';
+  const badgeEl = document.getElementById('encAirdocBadge');
+  if (badgeEl) badgeEl.textContent = 'No PDF selected';
+  const removeBtn = document.getElementById('encAirdocRemoveBtn');
+  if (removeBtn) removeBtn.classList.add('hidden');
+}
+
+// ─── QUICK TCA (RETURN APPOINTMENT) HELPER ──────────────────────────────────
+function setQuickTca(days) {
+  const target = new Date();
+  target.setDate(target.getDate() + days);
+  const yyyy = target.getFullYear();
+  const mm = String(target.getMonth() + 1).padStart(2, '0');
+  const dd = String(target.getDate()).padStart(2, '0');
+  const dateInput = document.getElementById('encTcaDate');
+  if (dateInput) {
+    dateInput.value = `${yyyy}-${mm}-${dd}`;
+  }
 }
 
 // Dynamic Custom Tests
@@ -1132,6 +1195,16 @@ async function saveNewEncounter() {
     }
   }
 
+  // Save Airdoc PDF into IndexedDB if attached
+  if (selectedAirdocFile) {
+    try {
+      const savedAirdoc = await savePatientDocument(pId, selectedAirdocFile, 'Airdoc Retinal AI Scan Report (' + document.getElementById('encDate').value + ')');
+      attachedDocIds.push({ id: savedAirdoc.id, name: '[Airdoc AI Report] ' + savedAirdoc.name, size: savedAirdoc.size });
+    } catch (err) {
+      console.error('Error saving Airdoc PDF to IndexedDB:', err);
+    }
+  }
+
   const newEnc = {
     id: 'ENC-' + Date.now(),
     date: document.getElementById('encDate').value || getTodayDateString(0),
@@ -1174,10 +1247,10 @@ async function saveNewEncounter() {
       hct: Number(document.getElementById('encHct').value) || null
     },
     specialtyScans: {
-      vitD: Number(document.getElementById('encVitD').value) || null,
-      ferritin: Number(document.getElementById('encFerritin').value) || null,
+      vitD: document.getElementById('encVitD').value || null,
+      ferritin: document.getElementById('encFerritin').value || null,
       teda: document.getElementById('encTeda').value.trim() || null,
-      airdoc: document.getElementById('encAirdoc').value.trim() || null,
+      airdoc: selectedAirdocFile ? selectedAirdocFile.name : null,
       rossmaxAct: document.getElementById('encRossmaxAct').value.trim() || null
     },
     customTests: [...tempCustomTests],
@@ -1191,6 +1264,23 @@ async function saveNewEncounter() {
 
   if (!p.encounters) p.encounters = [];
   p.encounters.unshift(newEnc);
+
+  // Auto-book Next TCA (Return Appointment) if filled
+  const tcaDate = document.getElementById('encTcaDate').value;
+  if (tcaDate) {
+    const tcaTime = document.getElementById('encTcaTime').value || '10:00';
+    const tcaPurpose = document.getElementById('encTcaPurpose').value.trim() || 'Follow-up Consultation & Refill';
+    const newApt = {
+      id: 'APT-' + Date.now(),
+      date: tcaDate,
+      time: tcaTime,
+      purpose: tcaPurpose,
+      status: 'Scheduled',
+      notes: 'Scheduled during consultation on ' + (document.getElementById('encDate').value || getTodayDateString(0))
+    };
+    if (!p.appointments) p.appointments = [];
+    p.appointments.unshift(newApt);
+  }
 
   savePatientsData();
   closeEncounterModal();
@@ -1375,9 +1465,11 @@ function renderProfileEncounters(p) {
           ${enc.lipidPanel && enc.lipidPanel.tc ? `<span class="bg-blue-50 text-blue-800 px-2 py-0.5 rounded">TC: <b>${enc.lipidPanel.tc}</b> | HDL: <b>${enc.lipidPanel.hdl}</b> | AI: <b>${enc.lipidPanel.ai}</b></span>` : ''}
           ${enc.kidneyPanel && enc.kidneyPanel.ua ? `<span class="bg-rose-50 text-rose-800 px-2 py-0.5 rounded">Uric Acid: <b>${enc.kidneyPanel.ua} umol/L</b></span>` : ''}
           ${enc.kidneyPanel && enc.kidneyPanel.creatinine ? `<span class="bg-indigo-50 text-indigo-800 px-2 py-0.5 rounded">Creatinine: <b>${enc.kidneyPanel.creatinine}</b> | eGFR: <b>${enc.kidneyPanel.egfr}</b></span>` : ''}
-          ${enc.liverPanel && enc.liverPanel.alt ? `<span class="bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded">ALT: <b>${enc.liverPanel.alt} U/L</b></span>` : ''}
+          ${enc.specialtyScans && enc.specialtyScans.vitD ? `<span class="px-2 py-0.5 rounded ${enc.specialtyScans.vitD === 'Sufficient' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}">Vit D: <b>${enc.specialtyScans.vitD}</b></span>` : ''}
+          ${enc.specialtyScans && enc.specialtyScans.ferritin ? `<span class="px-2 py-0.5 rounded ${enc.specialtyScans.ferritin === 'Sufficient' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}">Ferritin: <b>${enc.specialtyScans.ferritin}</b></span>` : ''}
           ${enc.specialtyScans && enc.specialtyScans.rossmaxAct ? `<span class="bg-amber-50 text-amber-800 px-2 py-0.5 rounded">Rossmax ACT: <b>${enc.specialtyScans.rossmaxAct}</b></span>` : ''}
-          ${enc.specialtyScans && enc.specialtyScans.airdoc ? `<span class="bg-purple-50 text-purple-800 px-2 py-0.5 rounded">Airdoc: <b>${enc.specialtyScans.airdoc}</b></span>` : ''}
+          ${enc.specialtyScans && enc.specialtyScans.teda ? `<a href="${enc.specialtyScans.teda}" target="_blank" class="bg-cyan-50 text-cyan-800 hover:underline px-2 py-0.5 rounded inline-flex items-center gap-1 font-medium"><i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i> TEDA Scan Report</a>` : ''}
+          ${enc.specialtyScans && enc.specialtyScans.airdoc ? `<span class="bg-purple-50 text-purple-800 px-2 py-0.5 rounded inline-flex items-center gap-1"><i class="fa-solid fa-file-pdf text-red-500"></i> Airdoc AI: <b>${enc.specialtyScans.airdoc}</b></span>` : ''}
         </div>
 
         <!-- Custom Tests -->
@@ -1853,3 +1945,139 @@ async function exportPatientDataToExcel() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 }
+
+// ─── PEN DRIVE BACKUP & RESTORE ENGINE ───────────────────────────────────────
+async function backupToPenDrive() {
+  try {
+    const session = getSession();
+    const branch = (session && session.branch && session.branch !== 'ALL') ? session.branch : 'ALL';
+    const dateStr = getTodayDateString(0);
+
+    // 1. Gather all documents from IndexedDB
+    let documents = [];
+    if (typeof exportAllDocuments === 'function') {
+      try {
+        documents = await exportAllDocuments();
+      } catch (err) {
+        console.warn('Error exporting documents from IndexedDB:', err);
+      }
+    }
+
+    // 2. Package into bundle
+    const backupBundle = {
+      app: 'PMG_MANAGEMENT_HUB',
+      version: '1.0',
+      type: 'FULL_PENDRIVE_BACKUP',
+      exportDate: new Date().toISOString(),
+      branch: branch,
+      patientCount: patientsData.length,
+      docCount: documents.length,
+      patients: patientsData,
+      documents: documents
+    };
+
+    const jsonStr = JSON.stringify(backupBundle, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const filename = `PMG_PatientBackup_${branch}_${dateStr}.pmgbak`;
+
+    // 3. Trigger download
+    if (typeof saveAs !== 'undefined') {
+      saveAs(blob, filename);
+    } else {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    // 4. Update backup status
+    localStorage.setItem('pmg_last_backup_date', new Date().toISOString());
+    updateBackupStatusBadge();
+
+    alert(`💾 Pen Drive Backup Created Successfully!\n\nFile: ${filename}\nPatients: ${patientsData.length}\nAttached Reports: ${documents.length}\n\nPlease save this file onto your branch USB Pen Drive.`);
+  } catch (err) {
+    console.error('Backup failed:', err);
+    alert('Failed to generate backup: ' + err.message);
+  }
+}
+
+async function handleRestoreBackupFile(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  if (!confirm(`Are you sure you want to restore from "${file.name}"?\n\nThis will restore patient profiles, consultation records, and all attached lab blood reports.`)) {
+    event.target.value = '';
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const content = e.target.result;
+      const backup = JSON.parse(content);
+
+      if (!backup || (!backup.patients && !Array.isArray(backup))) {
+        throw new Error('Invalid backup file format.');
+      }
+
+      // Restore patients
+      patientsData = backup.patients || backup;
+      savePatientsData();
+
+      // Restore IndexedDB documents
+      let restoredDocs = 0;
+      if (backup.documents && Array.isArray(backup.documents) && typeof importAllDocuments === 'function') {
+        restoredDocs = await importAllDocuments(backup.documents);
+      }
+
+      // Update backup status
+      localStorage.setItem('pmg_last_backup_date', new Date().toISOString());
+      updateBackupStatusBadge();
+      renderPatientModule();
+
+      alert(`✅ Restore Complete!\n\n• ${patientsData.length} patient records loaded.\n• ${restoredDocs} lab reports & documents restored into IndexedDB.`);
+    } catch (err) {
+      console.error('Restore error:', err);
+      alert('Failed to restore backup: ' + err.message);
+    } finally {
+      event.target.value = '';
+    }
+  };
+  reader.onerror = () => {
+    alert('Failed to read backup file.');
+    event.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function updateBackupStatusBadge() {
+  const textEl = document.getElementById('backupStatusText');
+  const badgeEl = document.getElementById('backupStatusBadge');
+  if (!textEl || !badgeEl) return;
+
+  const lastBackupStr = localStorage.getItem('pmg_last_backup_date');
+  if (!lastBackupStr) {
+    textEl.textContent = 'Backup: Not backed up yet';
+    badgeEl.className = 'text-[11px] font-semibold text-amber-700 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 flex items-center gap-1.5';
+    return;
+  }
+
+  const lastDate = new Date(lastBackupStr);
+  const diffDays = (Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
+
+  if (diffDays < 1) {
+    textEl.textContent = 'USB Backup: Today (Safe)';
+    badgeEl.className = 'text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200 flex items-center gap-1.5';
+  } else if (diffDays < 7) {
+    textEl.textContent = `USB Backup: ${Math.floor(diffDays)}d ago`;
+    badgeEl.className = 'text-[11px] font-semibold text-blue-700 bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-200 flex items-center gap-1.5';
+  } else {
+    textEl.textContent = `⚠️ Backup Due (${Math.floor(diffDays)}d ago)`;
+    badgeEl.className = 'text-[11px] font-semibold text-rose-700 bg-rose-50 px-2.5 py-1.5 rounded-lg border border-rose-200 flex items-center gap-1.5';
+  }
+}
+
