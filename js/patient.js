@@ -548,12 +548,19 @@ function renderPatientModule() {
   let overdueCount = 0;
   const totalPatientsCount = filteredPatients.length;
 
+  const pharmFilterEl = document.getElementById('patientPharmacistFilter');
+  const selectedPharm = pharmFilterEl ? pharmFilterEl.value.trim().toLowerCase() : '';
+
   const todayList = [];
   const upcomingList = [];
   const overdueList = [];
 
   filteredPatients.forEach(p => {
     (p.appointments || []).forEach(apt => {
+      // Filter by selected pharmacist if specified
+      if (selectedPharm && !(apt.pharmacist || '').toLowerCase().includes(selectedPharm)) {
+        return;
+      }
       const isPending = apt.status === 'Scheduled';
       if (apt.date === todayStr && isPending) {
         todayAptCount++;
@@ -616,6 +623,9 @@ function renderTodayQueue(items) {
     const apt = item.appointment;
     const waMsg = buildWhatsAppMessage(p, apt);
     const waUrl = `https://wa.me/${formatPhoneForWa(p.phone)}?text=${encodeURIComponent(waMsg)}`;
+    const pharmBadge = apt.pharmacist
+      ? `<span class="inline-flex items-center gap-1 bg-purple-50 border border-purple-200 text-purple-700 text-[10px] font-semibold px-2 py-0.5 rounded ml-1.5"><i class="fa-solid fa-user-doctor text-[9px]"></i> ${escHtml(apt.pharmacist)}</span>`
+      : `<span class="inline-flex items-center gap-1 bg-gray-50 border border-gray-200 text-gray-500 text-[10px] font-medium px-2 py-0.5 rounded ml-1.5"><i class="fa-solid fa-user-doctor text-[9px]"></i> Duty Pharmacist</span>`;
 
     return `
       <tr class="hover:bg-blue-50/40 transition border-b border-gray-100">
@@ -630,6 +640,7 @@ function renderTodayQueue(items) {
           <span class="inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-0.5 rounded">
             ${apt.purpose || 'Check-up'}
           </span>
+          ${pharmBadge}
           ${apt.notes ? `<p class="text-[11px] text-gray-500 mt-0.5 italic truncate max-w-xs">${apt.notes}</p>` : ''}
         </td>
         <td class="px-4 py-3 text-xs text-gray-600">
@@ -679,6 +690,9 @@ function renderUpcomingQueue(items) {
     const apt = item.appointment;
     const waMsg = buildWhatsAppMessage(p, apt);
     const waUrl = `https://wa.me/${formatPhoneForWa(p.phone)}?text=${encodeURIComponent(waMsg)}`;
+    const pharmBadge = apt.pharmacist
+      ? `<span class="inline-flex items-center gap-1 bg-purple-50 border border-purple-200 text-purple-700 text-[10px] font-semibold px-2 py-0.5 rounded ml-1.5"><i class="fa-solid fa-user-doctor text-[9px]"></i> ${escHtml(apt.pharmacist)}</span>`
+      : `<span class="inline-flex items-center gap-1 bg-gray-50 border border-gray-200 text-gray-500 text-[10px] font-medium px-2 py-0.5 rounded ml-1.5"><i class="fa-solid fa-user-doctor text-[9px]"></i> Duty Pharmacist</span>`;
 
     return `
       <tr class="hover:bg-blue-50/40 transition border-b border-gray-100">
@@ -693,6 +707,7 @@ function renderUpcomingQueue(items) {
           <span class="inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-0.5 rounded">
             ${apt.purpose || 'Check-up'}
           </span>
+          ${pharmBadge}
         </td>
         <td class="px-4 py-3 text-xs text-gray-600">
           ${(p.conditions || []).join(', ') || '—'}
@@ -1486,6 +1501,7 @@ async function saveNewEncounter() {
       date: tcaDate,
       time: tcaTime,
       purpose: tcaPurpose,
+      pharmacist: recorder,
       status: 'Scheduled',
       notes: 'Scheduled during consultation on ' + (document.getElementById('encDate').value || getTodayDateString(0))
     };
@@ -1519,6 +1535,17 @@ function showNewAppointmentModal(patientId) {
   document.getElementById('aptPurpose').value = 'Chronic Medication Refill & BP Review';
   document.getElementById('aptNotes').value = '';
 
+  const aptPharmEl = document.getElementById('aptPharmacist');
+  if (aptPharmEl) {
+    const session = getSession();
+    if (session && session.displayName) {
+      const match = Array.from(aptPharmEl.options).find(opt => opt.value.toLowerCase().includes(session.displayName.toLowerCase()));
+      if (match) {
+        aptPharmEl.value = match.value;
+      }
+    }
+  }
+
   modal.classList.remove('hidden');
 }
 
@@ -1532,11 +1559,15 @@ function saveNewAppointment() {
   const p = patientsData.find(pt => pt.id === pId);
   if (!p) return;
 
+  const aptPharmEl = document.getElementById('aptPharmacist');
+  const attendingPharm = aptPharmEl ? aptPharmEl.value.trim() : 'Duty Pharmacist';
+
   const newApt = {
     id: 'APT-' + Date.now(),
     date: document.getElementById('aptDate').value,
     time: document.getElementById('aptTime').value,
     purpose: document.getElementById('aptPurpose').value.trim(),
+    pharmacist: attendingPharm,
     status: 'Scheduled',
     notes: document.getElementById('aptNotes').value.trim()
   };
@@ -1908,7 +1939,10 @@ function renderProfileApts(p) {
     return `
       <tr class="border-b border-gray-100 hover:bg-gray-50 text-xs">
         <td class="px-3 py-2 font-semibold text-gray-800">${apt.date} ${apt.time || ''}</td>
-        <td class="px-3 py-2 font-medium text-gray-900">${apt.purpose}</td>
+        <td class="px-3 py-2 font-medium text-gray-900">
+          ${escHtml(apt.purpose || 'Check-up')}
+          ${apt.pharmacist ? `<span class="inline-flex items-center gap-1 bg-purple-50 border border-purple-200 text-purple-700 text-[10px] font-semibold px-1.5 py-0.5 rounded ml-1.5"><i class="fa-solid fa-user-doctor text-[9px]"></i> ${escHtml(apt.pharmacist)}</span>` : ''}
+        </td>
         <td class="px-3 py-2">
           <span class="inline-block px-2 py-0.5 rounded text-[11px] font-semibold ${stBadge}">${apt.status}</span>
         </td>
@@ -2755,9 +2789,12 @@ function handleCustomerBookingSubmit(e) {
     return;
   }
 
+  const preferredPharmEl = document.getElementById('custPharmacistSelect');
+  const preferredPharm = preferredPharmEl && preferredPharmEl.value ? preferredPharmEl.value : (schedForDate.pharmacist || schedForDate.branchName);
+
   const branchInfo = {
     name: schedForDate.branchName,
-    pharmacist: schedForDate.pharmacist || schedForDate.branchName
+    pharmacist: preferredPharm
   };
 
   const serviceEl = document.querySelector('input[name="custService"]:checked');

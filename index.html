@@ -965,6 +965,13 @@
           class="text-xs px-3 py-2 rounded-lg border border-gray-300 bg-white font-medium focus:ring-2 focus:ring-blue-500 outline-none">
           <option value="">All Branches</option>
         </select>
+        <!-- Pharmacist filter -->
+        <select id="patientPharmacistFilter" onchange="renderPatientModule()"
+          class="text-xs px-3 py-2 rounded-lg border border-purple-300 bg-purple-50 text-purple-900 font-semibold focus:ring-2 focus:ring-purple-500 outline-none">
+          <option value="">All Pharmacists (全部药剂师)</option>
+          <option value="William Chai">Pharmacist William Chai</option>
+          <option value="Kenix Ling">Pharmacist Kenix Ling</option>
+        </select>
       </div>
 
       <!-- Action buttons -->
@@ -1716,6 +1723,16 @@
         </div>
 
         <div>
+          <label class="block font-semibold text-gray-700 mb-1">Attending Pharmacist (负责药剂师) *</label>
+          <select id="aptPharmacist" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none">
+            <option value="William Chai (Pharmacist)">William Chai (Pharmacist)</option>
+            <option value="Kenix Ling (Pharmacist)">Kenix Ling (Pharmacist)</option>
+            <option value="Ting Kwang Yu (BM)">Ting Kwang Yu (BM)</option>
+            <option value="Duty Pharmacist">Duty Pharmacist</option>
+          </select>
+        </div>
+
+        <div>
           <label class="block font-semibold text-gray-700 mb-1">Internal Notes</label>
           <textarea id="aptNotes" rows="2" placeholder="e.g. Prepare 1 month pack Amlodipine & Metformin in advance"
             class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none"></textarea>
@@ -2248,11 +2265,28 @@
           </div>
         </div>
 
-        <!-- Step 3: Date & Time Picker -->
+        <!-- Step 3: Preferred Pharmacist / Consultant -->
+        <div class="space-y-1.5" id="custPharmacistSection">
+          <label class="block text-xs font-bold text-gray-700 flex items-center justify-between">
+            <span class="flex items-center gap-1.5">
+              <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">3</span>
+              Preferred Pharmacist / Consultant (选择指定药剂师 - Optional)
+            </span>
+            <span class="text-[10px] text-gray-400 font-normal">Optional</span>
+          </label>
+          <select id="custPharmacistSelect"
+            class="w-full border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+            <option value="">Any Available Pharmacist on Duty (随班执勤药剂师)</option>
+            <option value="Pharmacist William Chai">Pharmacist William Chai (蔡药剂师)</option>
+            <option value="Pharmacist Kenix Ling">Pharmacist Kenix Ling (林药剂师)</option>
+          </select>
+        </div>
+
+        <!-- Step 4: Date & Time Picker -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div class="space-y-1.5">
             <label class="block text-xs font-bold text-gray-700 flex items-center gap-1.5">
-              <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">3</span>
+              <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">4</span>
               Select Date
             </label>
             <input type="date" id="custBookDate" required onchange="updateCustBookHours()"
@@ -2260,7 +2294,7 @@
           </div>
           <div class="space-y-1.5">
             <label class="block text-xs font-bold text-gray-700 flex items-center gap-1.5">
-              <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">4</span>
+              <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">5</span>
               Select Time Slot
             </label>
             <select id="custBookTime" required
@@ -2272,11 +2306,11 @@
         <!-- Date Override / Closed Alert Banner -->
         <div id="custDateStatusBanner" class="hidden rounded-xl p-3 text-xs font-semibold flex items-center gap-2"></div>
 
-        <!-- Step 4: Customer Details -->
+        <!-- Step 6: Customer Details -->
         <div class="space-y-3 pt-2 border-t border-gray-100">
           <label class="block text-xs font-bold text-gray-700 flex items-center gap-1.5">
-            <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">5</span>
-            Your Particulars
+            <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">6</span>
+            Your Particulars (顾客个人资料)
           </label>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
