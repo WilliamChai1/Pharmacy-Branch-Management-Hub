@@ -812,10 +812,10 @@ function renderPatientDirectory(patients) {
             title="Start Pharmacist Consultation & POCT">
             <i class="fa-solid fa-notes-medical"></i> Consult & POCT
           </button>
-          <button onclick="showNewAppointmentModal('${p.id}')"
-            class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 transition"
-            title="Book Return Appointment">
-            <i class="fa-regular fa-calendar-plus"></i> Appt
+          <button onclick="sendPatientBookingWhatsApp('${p.id}')"
+            class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 transition"
+            title="Send WhatsApp Customer Self-Booking Link (Auto Language by Race & Supply Countdown)">
+            <i class="fa-brands fa-whatsapp text-emerald-600 text-sm"></i> Appt
           </button>
         </td>
       </tr>
@@ -829,6 +829,210 @@ function formatPhoneForWa(phone) {
   let cleaned = phone.replace(/[^0-9]/g, '');
   if (cleaned.startsWith('0')) cleaned = '60' + cleaned.slice(1);
   return cleaned;
+}
+
+/**
+ * Automatically detects the preferred communication language based on patient race,
+ * explicit language setting, or Sarawak/Malaysian naming conventions.
+ */
+function getPatientLanguageByRace(patient) {
+  if (!patient) return 'English';
+
+  const race = (patient.race || '').trim().toLowerCase();
+  const lang = (patient.language || '').trim().toLowerCase();
+
+  // Explicit race priority
+  if (race.includes('chinese') || race.includes('cina') || race.includes('hua') || lang.includes('chinese') || lang.includes('mandarin')) {
+    return 'Chinese';
+  }
+  if (race.includes('malay') || race.includes('melayu') || lang.includes('malay')) {
+    return 'Malay';
+  }
+  if (race.includes('iban') || race.includes('bidayuh') || race.includes('dayak')) {
+    return lang === 'english' ? 'English' : 'Malay';
+  }
+  if (race.includes('indian') || race.includes('india')) {
+    return 'English';
+  }
+
+  // Name heuristic fallback (common in Sarawak and Malaysia)
+  const name = (patient.name || '').toLowerCase();
+  if (/\b(bin|binti|bt|mohd|muhammad|nur|siti|ahmad|abdul|nor|dayang|awang|anak)\b/.test(name)) {
+    return 'Malay';
+  }
+  const chineseSurnames = [
+    'tan', 'lim', 'lee', 'wong', 'ng', 'ong', 'teo', 'ting', 'chai', 'lau',
+    'hii', 'ling', 'tiong', 'sim', 'jong', 'chin', 'kong', 'yong', 'phang',
+    'sia', 'law', 'ho', 'goh', 'yap', 'chan', 'chong', 'chew', 'chua', 'kueh',
+    'tay', 'pang', 'song', 'loo', 'low', 'koh', 'khoo', 'ang', 'heng', 'yeo',
+    'choo', 'seah', 'ko', 'chen', 'zhang', 'huang', 'lin', 'wu'
+  ];
+  const nameTokens = name.split(/[\s,.-]+/);
+  if (nameTokens.some(tok => chineseSurnames.includes(tok))) {
+    return 'Chinese';
+  }
+
+  if (lang === 'chinese') return 'Chinese';
+  if (lang === 'malay') return 'Malay';
+  return 'English';
+}
+
+/**
+ * Calculates medication supply countdown and generates natural phrasing
+ * informing the patient that their supply is running out / due for refill.
+ */
+function getPatientSupplySummary(patient, lang) {
+  const meds = Array.isArray(patient.medications) ? patient.medications.filter(m => m && m.name) : [];
+
+  if (meds.length > 0) {
+    let minDaysLeft = 999;
+    const now = new Date();
+    const todayZero = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+    meds.forEach(m => {
+      let days = null;
+      if (m.nextRefillDate) {
+        const refillTime = new Date(m.nextRefillDate).getTime();
+        days = Math.round((refillTime - todayZero) / 86400000);
+      } else if (m.lastDispensed && m.supplyDays) {
+        const dispTime = new Date(m.lastDispensed).getTime();
+        const dueTime = dispTime + (parseInt(m.supplyDays, 10) || 30) * 86400000;
+        days = Math.round((dueTime - todayZero) / 86400000);
+      }
+      if (days !== null && days < minDaysLeft) {
+        minDaysLeft = days;
+      }
+    });
+
+    const medNamesZh = meds.slice(0, 3).map(m => m.name).join('、') + (meds.length > 3 ? ' 等' : '');
+    const medNamesMy = meds.slice(0, 3).map(m => m.name).join(', ') + (meds.length > 3 ? ' dll.' : '');
+    const medNamesEn = meds.slice(0, 3).map(m => m.name).join(', ') + (meds.length > 3 ? ' etc.' : '');
+
+    if (minDaysLeft <= 0) {
+      if (lang === 'Chinese') {
+        return `根据我们的配药系统记录，您的常规药物【${medNamesZh}】药量预计已经用完或已到期续药。为保持血压与血糖指标平稳，切勿中断用药。`;
+      } else if (lang === 'Malay') {
+        return `Berdasarkan rekod sistem pengeluaran ubat kami, baki bekalan ubat rutin anda [${medNamesMy}] dijangka telah habis atau sudah tiba tarikh ulangan (refill). Jangan biarkan rawatan anda terputus demi memastikan kesihatan sentiasa terkawal.`;
+      } else {
+        return `Based on our dispensing records, your regular medication supply [${medNamesEn}] is now due for refill or running out. Maintaining consistent medication adherence is vital for your health control.`;
+      }
+    } else if (minDaysLeft <= 7) {
+      if (lang === 'Chinese') {
+        return `根据我们的配药系统记录，您的常规药物【${medNamesZh}】预计大约在 ${minDaysLeft} 天内即将用完。建议您提前安排预约，以确保按时补足药量。`;
+      } else if (lang === 'Malay') {
+        return `Berdasarkan semakan sistem kami, bekalan ubat rutin anda [${medNamesMy}] dijangka akan habis dalam masa lebih kurang ${minDaysLeft} hari lagi. Anda disarankan membuat tempahan awal sebelum ubat habis.`;
+      } else {
+        return `According to our records, your regular medication supply [${medNamesEn}] is estimated to finish in about ${minDaysLeft} day(s). We recommend booking your refill appointment in advance.`;
+      }
+    } else {
+      if (lang === 'Chinese') {
+        return `根据我们的配药系统记录，您的常规用药【${medNamesZh}】即将需要续药。我们随时为您做好药物准备与健康指标复查。`;
+      } else if (lang === 'Malay') {
+        return `Berdasarkan rekod kami, bekalan ubat rutin anda [${medNamesMy}] akan tiba masa untuk ulangan bekalan seterusnya bersama sesi semakan kesihatan.`;
+      } else {
+        return `Based on our records, your regular medication supply [${medNamesEn}] will soon be due for its next scheduled refill and review.`;
+      }
+    }
+  }
+
+  // Fallback: check recent encounters if any
+  const encs = Array.isArray(patient.encounters) && patient.encounters.length > 0 ? patient.encounters[0] : null;
+  if (encs && (encs.planMedications || encs.planSupplements)) {
+    if (lang === 'Chinese') {
+      return `根据您上次来访的健康随访记录，您的日常慢病药物与保健品预计快要用完了。建议您及时回来复查并补充所需用药。`;
+    } else if (lang === 'Malay') {
+      return `Berdasarkan rekod konsultasi anda sebelum ini, bekalan ubat dan suplemen kesihatan harian anda dijangka akan habis tidak lama lagi. Anda digalakkan datang untuk semakan semula.`;
+    } else {
+      return `Based on your recent consultation records, your regular medication and health supplement supply should be finishing soon.`;
+    }
+  }
+
+  // General fallback
+  if (lang === 'Chinese') {
+    return `温馨提醒您，根据您的用药周期计算，您的日常药物与健康补充品应该快用完了。建议您提前预约药剂师进行健康指标复查与用药咨询。`;
+  } else if (lang === 'Malay') {
+    return `Peringatan mesra, berdasarkan kitaran rawatan anda, bekalan ubat dan suplemen harian anda mungkin akan habis tidak lama lagi. Anda dialu-alukan membuat temujanji untuk semakan kesihatan.`;
+  } else {
+    return `Friendly reminder that based on your supply cycle, your daily medication and wellness supplements should be finishing soon.`;
+  }
+}
+
+/**
+ * Builds the personalized customer self-service booking portal URL with pre-filled query params.
+ */
+function getPatientSelfBookingUrl(patient) {
+  const baseUrl = window.location.origin + window.location.pathname;
+  const branch = patient.branch || 'KS01';
+  const name = patient.name || '';
+  const phone = patient.phone || '';
+  const ic = patient.ic || '';
+  const service = 'Chronic Medication Review & Refill';
+
+  const params = new URLSearchParams();
+  params.set('book', '1');
+  params.set('branch', branch);
+  if (name) params.set('name', name);
+  if (phone) params.set('phone', phone);
+  if (ic) params.set('ic', ic);
+  params.set('service', service);
+
+  return `${baseUrl}?${params.toString()}`;
+}
+
+/**
+ * Constructs the complete multilingual WhatsApp booking message.
+ */
+function buildPatientSupplyBookingMessage(patient) {
+  const branchCode = patient.branch || 'KS01';
+  const branchInfo = BRANCH_SCHEDULES[branchCode] || BRANCH_SCHEDULES['KS01'];
+  const sched = typeof getPharmacistSchedule === 'function' ? getPharmacistSchedule(branchCode) : null;
+  const branchName = sched ? (sched.branchName || branchInfo.name) : (branchInfo ? branchInfo.name : `PMG Pharmacy ${branchCode}`);
+  const monTemplate = sched && sched.weeklyTemplate ? (sched.weeklyTemplate['1'] || sched.weeklyTemplate['0']) : null;
+  const openTime = (monTemplate && monTemplate.open) || (branchInfo ? branchInfo.open : '07:30');
+  const closeTime = (monTemplate && monTemplate.close) || (branchInfo ? branchInfo.close : '21:30');
+  const pharmacistName = sched ? (sched.defaultPharmacist || branchInfo.pharmacist) : (branchInfo ? branchInfo.pharmacist : 'Ahli Farmasi PMG');
+
+  const lang = getPatientLanguageByRace(patient);
+  const supplyText = getPatientSupplySummary(patient, lang);
+  const bookingUrl = getPatientSelfBookingUrl(patient);
+  const patientName = patient.name || 'Pelanggan';
+
+  if (lang === 'Chinese') {
+    return `您好 ${patientName}，这里是 PMG Pharmacy（${branchName}）药剂团队。🌸\n\n${supplyText}\n\n为方便您妥善安排时间，我们特别为您开通了【顾客线上自主预约系统】。您可以直接点击下方专属链接，自主挑选最适合您的复查与取药时间：\n\n👉 点击预约专属链接：\n${bookingUrl}\n\n⏰ 药剂师驻店时间：${openTime} – ${closeTime}（星期一至星期日）\n👨‍⚕️ 驻店药剂师：${pharmacistName}\n\n如果您有任何药物疑问，或需要我们提前备妥药物，欢迎直接回复此信息。祝您身体健康，平安顺心！`;
+  } else if (lang === 'Malay') {
+    return `Salam sejahtera ${patientName}, ini adalah pesanan daripada pasukan farmasi PMG Pharmacy (${branchName}). 🌸\n\n${supplyText}\n\nBagi memudahkan urusan anda tanpa perlu menunggu lama, kami menyediakan 【Sistem Tempahan Temujanji Kendiri Dalam Talian】. Anda boleh memilih sendiri tarikh dan masa yang paling sesuai untuk sesi semakan kesihatan dan ulangan ubat (refill):\n\n👉 Tekan pautan peribadi untuk pilih masa temujanji:\n${bookingUrl}\n\n⏰ Waktu Bertugas Ahli Farmasi: ${openTime} – ${closeTime} (Setiap Hari)\n👨‍⚕️ Ahli Farmasi Bertugas: ${pharmacistName}\n\nJika anda ada sebarang pertanyaan atau ingin kami sediakan ubat terlebih dahulu, sila balas mesej ini. Terima kasih dan semoga sentiasa sihat!`;
+  } else {
+    return `Hello ${patientName}, this is the pharmacy team from PMG Pharmacy (${branchName}). 🌸\n\n${supplyText}\n\nTo help you plan ahead without waiting, we have provided an 【Online Self-Booking Portal】. You can easily select your preferred date and time for your routine health review, pharmacist consultation, and medication refill:\n\n👉 Tap your personalized link to book your slot:\n${bookingUrl}\n\n⏰ Pharmacist Consultation Hours: ${openTime} – ${closeTime} (Daily)\n👨‍⚕️ Duty Pharmacist: ${pharmacistName}\n\nIf you have any questions or need your medications packed in advance, simply reply to this message. Stay healthy!`;
+  }
+}
+
+/**
+ * Directly triggers WhatsApp to send the customer self-booking link with supply reminder.
+ */
+function sendPatientBookingWhatsApp(patientId) {
+  const p = patientsData.find(pt => pt.id === patientId);
+  if (!p) {
+    alert('Patient record not found.');
+    return;
+  }
+
+  let phone = p.phone;
+  if (!phone || phone.trim() === '') {
+    phone = prompt(`Please enter WhatsApp mobile number for ${p.name}:`, '01');
+    if (!phone || phone.trim() === '') return;
+    p.phone = phone.trim();
+    savePatientsData();
+  }
+
+  const cleanPhone = formatPhoneForWa(phone);
+  if (!cleanPhone) {
+    alert('Please enter a valid mobile number with country/area code.');
+    return;
+  }
+
+  const msg = buildPatientSupplyBookingMessage(p);
+  const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+  window.open(waUrl, '_blank');
 }
 
 function buildWhatsAppMessage(patient, appointment) {
@@ -2347,9 +2551,45 @@ function shareBookingViaWhatsApp() {
 let currentCustomerBooking = null;
 
 function initCustomerBooking(defaultBranchCode = 'KS01') {
+  const urlParams = new URLSearchParams(window.location.search);
+  const branchParam = urlParams.get('branch') || defaultBranchCode;
+
   const select = document.getElementById('custBranchSelect');
   if (select) {
-    select.value = BRANCH_SCHEDULES[defaultBranchCode] ? defaultBranchCode : 'KS01';
+    select.value = BRANCH_SCHEDULES[branchParam] ? branchParam : 'KS01';
+  }
+
+  // Pre-fill Name, Phone, IC, Service, Notes if passed via query params from WhatsApp link
+  const nameParam = urlParams.get('name');
+  if (nameParam) {
+    const nameInput = document.getElementById('custBookName');
+    if (nameInput) nameInput.value = nameParam;
+  }
+
+  const phoneParam = urlParams.get('phone');
+  if (phoneParam) {
+    const phoneInput = document.getElementById('custBookPhone');
+    if (phoneInput) phoneInput.value = phoneParam;
+  }
+
+  const icParam = urlParams.get('ic');
+  if (icParam) {
+    const icInput = document.getElementById('custBookIc');
+    if (icInput) icInput.value = icParam;
+  }
+
+  const serviceParam = urlParams.get('service');
+  if (serviceParam) {
+    const radio = document.querySelector(`input[name="custService"][value="${serviceParam}"]`);
+    if (radio) {
+      radio.checked = true;
+    }
+  }
+
+  const notesParam = urlParams.get('notes');
+  if (notesParam) {
+    const notesInput = document.getElementById('custBookNotes');
+    if (notesInput) notesInput.value = notesParam;
   }
 
   const dateInput = document.getElementById('custBookDate');
