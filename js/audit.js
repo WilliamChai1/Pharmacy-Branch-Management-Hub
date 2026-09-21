@@ -4,6 +4,13 @@
 let auditVideoFile   = null;
 let auditChecklistState = {};  // { itemId: boolean }
 
+// ─── DUAL-TIER GEMINI CONFIGURATION ───────────────────────────────────────────
+// User tier requirement:
+// Primary: Gemini 3.5 Flash (highest intelligence, multi-category reasoning & vision fidelity)
+// Secondary: Gemini 3.5 Flash-Lite (fast, low-latency, budget-efficient fallback)
+const AUDIT_PRIMARY_MODEL   = 'gemini-3.5-flash';
+const AUDIT_SECONDARY_MODEL = 'gemini-3.5-flash-lite';
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 function initAudit() {
   const dropZone  = document.getElementById('auditDropZone');
@@ -53,7 +60,7 @@ function initAudit() {
   if (runBtn) runBtn.addEventListener('click', runAudit);
 }
 
-// ─── TEST API KEY ─────────────────────────────────────────────────────────────
+// ─── TEST API KEY (DUAL-TIER: GEMINI 3.5 FLASH & FLASH-LITE) ──────────────────
 async function testGeminiApiKey() {
   const statusEl = document.getElementById('geminiKeyStatus');
   const apiKey = (document.getElementById('geminiApiKey')?.value || '').trim()
@@ -69,11 +76,12 @@ async function testGeminiApiKey() {
 
   if (statusEl) {
     statusEl.className = 'text-[11px] mt-1 text-amber-600 font-semibold';
-    statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Verifying API key with Google AI Studio…';
+    statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Testing connection with Gemini 3.5 Flash (Primary)…';
   }
 
   try {
-    const testResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+    // 1. Test Primary: Gemini 3.5 Flash
+    let testResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${AUDIT_PRIMARY_MODEL}:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -86,14 +94,45 @@ async function testGeminiApiKey() {
       localStorage.setItem('pmg_gemini_key', apiKey);
       if (statusEl) {
         statusEl.className = 'text-[11px] mt-1 text-green-600 font-semibold';
-        statusEl.innerHTML = '<i class="fa-solid fa-circle-check mr-1"></i> API key is active and verified! Ready to audit.';
+        statusEl.innerHTML = '<i class="fa-solid fa-circle-check mr-1"></i> API key is active on <b>Gemini 3.5 Flash</b> (Primary Tier)! Ready to audit.';
       }
-    } else {
-      const errData = await testResp.json().catch(() => ({}));
-      const msg = errData?.error?.message || `HTTP ${testResp.status}`;
+      return;
+    }
+
+    if (testResp.status === 403) {
       if (statusEl) {
         statusEl.className = 'text-[11px] mt-1 text-red-600 font-semibold';
-        if (testResp.status === 403) {
+        statusEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i> 403 Key Revoked/Invalid. <a href="https://aistudio.google.com/app/apikey" target="_blank" class="underline font-bold text-red-700">Get a new free key here</a>.';
+      }
+      return;
+    }
+
+    // 2. If primary returned 404 or other temporary status, test Secondary: Gemini 3.5 Flash-Lite
+    if (statusEl) {
+      statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Primary endpoint busy. Testing Gemini 3.5 Flash-Lite (Secondary)…';
+    }
+
+    const testRespLite = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${AUDIT_SECONDARY_MODEL}:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: 'ping' }] }],
+        generation_config: { max_output_tokens: 5 }
+      })
+    });
+
+    if (testRespLite.ok) {
+      localStorage.setItem('pmg_gemini_key', apiKey);
+      if (statusEl) {
+        statusEl.className = 'text-[11px] mt-1 text-emerald-600 font-semibold';
+        statusEl.innerHTML = '<i class="fa-solid fa-circle-check mr-1"></i> API key verified on <b>Gemini 3.5 Flash-Lite</b> (Secondary Tier)! Ready to audit.';
+      }
+    } else {
+      const errData = await testRespLite.json().catch(() => ({}));
+      const msg = errData?.error?.message || `HTTP ${testRespLite.status}`;
+      if (statusEl) {
+        statusEl.className = 'text-[11px] mt-1 text-red-600 font-semibold';
+        if (testRespLite.status === 403) {
           statusEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i> 403 Key Revoked/Invalid. <a href="https://aistudio.google.com/app/apikey" target="_blank" class="underline font-bold text-red-700">Get a new free key here</a>.';
         } else {
           statusEl.textContent = `❌ Verification failed: ${msg}`;
@@ -129,7 +168,7 @@ function handleAuditVideoSelect(file) {
 }
 
 // ─── CLIENT-SIDE VIDEO KEYFRAME EXTRACTION ────────────────────────────────────
-// Extracts 6-8 frames evenly distributed across the video and converts to lightweight JPEG base64.
+// Extracts 6 frames evenly distributed across the video and converts to lightweight JPEG base64.
 // This is 100% reliable in-browser, bypassing heavy video uploads, CORS blocks, and processing timeouts.
 function extractVideoFrames(videoFile, numFrames = 6, setStatus = () => {}) {
   return new Promise((resolve, reject) => {
@@ -267,7 +306,7 @@ async function runAudit() {
       setStatus('No Gemini API key detected — running offline demo report…');
       await sleep(1200);
       renderMockAuditReport(branchName);
-      alert('Note: Running in Demo Mode because no Gemini API key was provided. Enter a free Gemini API key above to run live AI audits on your videos.');
+      alert('Note: Running in Demo Mode because no Gemini API key was provided. Enter a free Gemini API key above to run live AI audits with Gemini 3.5 Flash.');
     } else if (!auditVideoFile) {
       alert('Please upload a store walkthrough video (MP4/MOV) first.');
       if (progressEl) progressEl.classList.add('hidden');
@@ -278,8 +317,8 @@ async function runAudit() {
       setStatus('Step 1/3 — Extracting video walkthrough keyframes…');
       const frames = await extractVideoFrames(auditVideoFile, 6, setStatus);
 
-      // Step 2: Gemini Vision evaluation
-      setStatus('Step 2/3 — Evaluating 5S compliance across 4 categories with Gemini Vision…');
+      // Step 2: Gemini Vision evaluation with Gemini 3.5 Flash (Primary) / Flash-Lite (Secondary)
+      setStatus('Step 2/3 — Evaluating 5S compliance across 4 categories with Gemini 3.5 Flash…');
       const reportJson = await callGeminiGenerateWithFrames(frames, branchName, apiKey, setStatus);
 
       // Step 3: Render report
@@ -301,7 +340,7 @@ async function runAudit() {
   }
 }
 
-// ─── GEMINI GENERATE WITH KEYFRAMES ───────────────────────────────────────────
+// ─── GEMINI GENERATE WITH KEYFRAMES (DUAL-TIER: 3.5 FLASH & 3.5 FLASH-LITE) ──
 async function callGeminiGenerateWithFrames(frames, branchName, apiKey, setStatus) {
   const today = new Date().toISOString().slice(0, 10);
   const systemPrompt = `You are a professional retail pharmacy 5S compliance auditor for PMG Pharmacy.
@@ -391,13 +430,18 @@ Return ONLY valid JSON matching this schema exactly:
     }
   };
 
-  const candidateModels = ['gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+  // Primary: Gemini 3.5 Flash | Secondary: Gemini 3.5 Flash-Lite
+  const candidateModels = [
+    { code: AUDIT_PRIMARY_MODEL,   name: 'Gemini 3.5 Flash (Primary)' },
+    { code: AUDIT_SECONDARY_MODEL, name: 'Gemini 3.5 Flash-Lite (Secondary)' }
+  ];
   let lastErr = null;
 
-  for (const model of candidateModels) {
+  for (let i = 0; i < candidateModels.length; i++) {
+    const m = candidateModels[i];
     try {
-      setStatus(`Analysing frames with Gemini Vision (${model})…`);
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      setStatus(`Analysing frames with ${m.name}…`);
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.code}:generateContent?key=${apiKey}`;
       const resp = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -409,8 +453,14 @@ Return ONLY valid JSON matching this schema exactly:
         throw new Error(`Gemini API 403 Forbidden: Invalid or revoked API key. ${errJson?.error?.message || ''}`);
       }
 
-      if (resp.status === 404) {
-        // Model not available on this endpoint, try next candidate model
+      if (resp.status === 404 || resp.status === 429 || resp.status >= 500) {
+        const errText = await resp.text();
+        console.warn(`${m.name} returned status ${resp.status}: ${errText}. Attempting next tier.`);
+        lastErr = new Error(`${m.name} returned HTTP ${resp.status}`);
+        if (i < candidateModels.length - 1) {
+          setStatus(`${m.name} busy or quota exceeded. Switching to ${candidateModels[i + 1].name}…`);
+          await sleep(800);
+        }
         continue;
       }
 
@@ -421,11 +471,18 @@ Return ONLY valid JSON matching this schema exactly:
 
       const data = await resp.json();
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-      return JSON.parse(text);
+      const parsed = JSON.parse(text);
+      parsed._modelUsed = m.name;
+      return parsed;
     } catch (err) {
       lastErr = err;
       if (err.message && err.message.includes('403')) {
         throw err;
+      }
+      console.warn(`Error on ${m.name}:`, err);
+      if (i < candidateModels.length - 1) {
+        setStatus(`${m.name} encountered error. Switching to ${candidateModels[i + 1].name}…`);
+        await sleep(800);
       }
     }
   }
@@ -443,6 +500,7 @@ function renderMockAuditReport(branchOverride) {
     overall_score: 74,
     branch_observed: branchName,
     audit_date: today,
+    _modelUsed: 'Demo Engine (Offline Reference)',
     categories: [
       {
         id: 'DISPENSARY_HYGIENE',
@@ -545,10 +603,12 @@ function renderAuditReport(report) {
       </p>`;
   }
 
-  // Score meta
-  setAuditText('auditBranch',    report.branch_observed || '—');
-  setAuditText('auditDate',      report.audit_date       || '—');
-  setAuditText('auditScoreText', `${score} / 100`);
+  // Score & Engine meta
+  setAuditText('auditBranch',     report.branch_observed || '—');
+  setAuditText('auditDate',       report.audit_date       || '—');
+  setAuditText('auditScoreText',  `${score} / 100`);
+  setAuditText('auditEngineText', report._modelUsed       || 'Gemini 3.5 Flash (Primary)');
+  setAuditText('auditModelBadge', report._modelUsed ? report._modelUsed.replace(' (Primary)', '').replace(' (Secondary)', '') : 'Gemini 3.5 Flash');
 
   // Category cards
   const catsEl = document.getElementById('auditCategoryCards');

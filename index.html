@@ -745,6 +745,11 @@
               </button>
             </div>
             <p id="geminiKeyStatus" class="text-[11px] mt-1 text-gray-500"></p>
+            <div class="flex items-center gap-1.5 mt-2 text-[11px] text-gray-500 flex-wrap">
+              <span class="font-semibold text-gray-700"><i class="fa-solid fa-layer-group text-amber-600 mr-1"></i>Tier:</span>
+              <span class="bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded">Primary: Gemini 3.5 Flash</span>
+              <span class="bg-gray-100 text-gray-700 font-semibold px-2 py-0.5 rounded">Secondary: Gemini 3.5 Flash-Lite</span>
+            </div>
           </div>
           <div>
             <label class="block text-xs text-gray-500 mb-1">Target Branch for Audit</label>
@@ -807,11 +812,15 @@
             <div id="auditGauge" class="shrink-0"></div>
             <!-- Meta -->
             <div class="flex-grow">
-              <h3 class="text-xl font-bold text-gray-900 mb-2">5S Compliance Report</h3>
-              <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+              <div class="flex items-center gap-2 mb-2 flex-wrap">
+                <h3 class="text-xl font-bold text-gray-900">5S Compliance Report</h3>
+                <span id="auditModelBadge" class="text-xs bg-amber-100 text-amber-800 font-semibold px-2 py-0.5 rounded">Gemini 3.5 Flash</span>
+              </div>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
                 <div><span class="text-gray-400 text-xs uppercase">Branch</span><br><span id="auditBranch" class="font-semibold">—</span></div>
                 <div><span class="text-gray-400 text-xs uppercase">Date</span><br><span id="auditDate" class="font-semibold">—</span></div>
                 <div><span class="text-gray-400 text-xs uppercase">Overall Score</span><br><span id="auditScoreText" class="font-bold text-lg">—</span></div>
+                <div><span class="text-gray-400 text-xs uppercase">AI Engine</span><br><span id="auditEngineText" class="font-semibold text-amber-700">Gemini 3.5 Flash</span></div>
               </div>
             </div>
             <!-- Action buttons -->
