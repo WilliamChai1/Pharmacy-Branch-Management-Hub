@@ -38,18 +38,31 @@ const BRANCHES = [
   { code: 'BR06', name: 'Branch 06',    startTime: '0730' },
 ];
 
-// ─── USERS / CREDENTIALS (offline fallback) ───────────────────────────────────
-// When Google Sheets is reachable, this is overridden by live sheet data.
-// Role: 'AM' if AssignedBranch === 'ALL', else 'BM'.
+// ─── USERS / CREDENTIALS (secure internal storage) ───────────────────────────
+// Stored securely inside app code — NEVER publish passwords to Google Sheets web CSV.
+// Permitted roles: Area Manager, Pharmacist, Branch Manager, Assistant Branch Manager.
+// Regular Staff rows cannot log in.
 let USERS = [
-  { username: 'williamchai', password: '833445', branch: 'ALL',          role: 'AM', displayName: 'William Chai' },
-  { username: 'am',          password: '9999',   branch: 'ALL',          role: 'AM', displayName: 'Area Manager'  },
-  { username: 'KS01',        password: '1234',   branch: 'Kota Sentosa', role: 'BM', displayName: 'Manager KS01'  },
-  { username: 'BR02',        password: '1234',   branch: 'Branch 02',    role: 'BM', displayName: 'Manager BR02'  },
-  { username: 'BR03',        password: '1234',   branch: 'Branch 03',    role: 'BM', displayName: 'Manager BR03'  },
-  { username: 'BR04',        password: '1234',   branch: 'Branch 04',    role: 'BM', displayName: 'Manager BR04'  },
-  { username: 'BR05',        password: '1234',   branch: 'Branch 05',    role: 'BM', displayName: 'Manager BR05'  },
-  { username: 'BR06',        password: '1234',   branch: 'Branch 06',    role: 'BM', displayName: 'Manager BR06'  },
+  // ── Area Manager (All Branches + Patient Care + Area Manager Suite) ──
+  { username: 'williamchai', password: '833445', branch: 'ALL',          role: 'AM',         displayName: 'Chai Yee Sian (Area Manager)', empNo: 'PMG00831' },
+  { username: 'am',          password: '9999',   branch: 'ALL',          role: 'AM',         displayName: 'Area Manager',                 empNo: 'PMG00831' },
+
+  // ── Branch Managers & Assistant Branch Managers (Inventory + Roster only) ──
+  { username: 'Ting',        password: '920429', branch: 'Kota Sentosa', role: 'BM',         displayName: 'Ting Kwang Yu (BM)',           empNo: 'PMG00723' },
+  { username: 'Louna',       password: '100711', branch: 'Kota Sentosa', role: 'ABM',        displayName: 'Haniesha Louna (ABM)',         empNo: 'PMG01294' },
+
+  // ── Pharmacists (Inventory + Roster only; Patient Care remains AM-only for now) ──
+  { username: 'Aylwinchai',  password: '446688', branch: 'Kota Sentosa', role: 'Pharmacist', displayName: 'Chai Yee Sian (Pharmacist)',  empNo: 'PMG00831' },
+  { username: 'Kenix',       password: '335577', branch: 'Kota Sentosa', role: 'Pharmacist', displayName: 'Kenix Ling (Pharmacist)',     empNo: 'PMG02963' },
+  { username: 'amychai',     password: '123456', branch: 'Matang Jaya',  role: 'Pharmacist', displayName: 'Amy Chai (Pharmacist)',        empNo: ''         },
+
+  // ── Generic Branch Accounts ──
+  { username: 'KS01',        password: '1234',   branch: 'Kota Sentosa', role: 'BM',         displayName: 'Manager KS01' },
+  { username: 'BR02',        password: '1234',   branch: 'Branch 02',    role: 'BM',         displayName: 'Manager BR02' },
+  { username: 'BR03',        password: '1234',   branch: 'Branch 03',    role: 'BM',         displayName: 'Manager BR03' },
+  { username: 'BR04',        password: '1234',   branch: 'Branch 04',    role: 'BM',         displayName: 'Manager BR04' },
+  { username: 'BR05',        password: '1234',   branch: 'Branch 05',    role: 'BM',         displayName: 'Manager BR05' },
+  { username: 'BR06',        password: '1234',   branch: 'Branch 06',    role: 'BM',         displayName: 'Manager BR06' },
 ];
 
 // ─── STAFF NICKNAME → RYMNET MAPPING (offline fallback) ──────────────────────
