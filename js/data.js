@@ -66,6 +66,7 @@ let STAFF_MAP = [
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'KENIX',      empNo: 'PMG02963', empName: 'KENIX LING WANG YIING'            },
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'JANET',      empNo: 'PMG03062', empName: 'DANIELA JANET ANAK MUSTAPHA'     },
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'FARIZIN',    empNo: 'PMG03375', empName: 'MUHAMMAD NUR FARIZIN BIN ABDULLAH'},
+  { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'CHRISTINA',  empNo: 'PMG03700', empName: 'CHRISTINA'                        },
   // ── BR02–BR06: add rows here OR just update the Google Sheet ──
 ];
 
@@ -247,7 +248,9 @@ function lookupStaff(query) {
   const byPartial = STAFF_MAP.find(s => s.empName && s.empName.toUpperCase().includes(q));
   if (byPartial) return byPartial;
 
-  // 5. Common nickname aliases (e.g. HAFIZAH / FIZAH -> NURHAFIZAH)
+  // 5. Common nickname aliases (e.g. HAFIZAH / FIZAH -> NURHAFIZAH, WILIAM -> WILLIAM, FI -> FIONA)
+  if (q === 'WILIAM') return lookupStaff('WILLIAM');
+  if (q === 'FI') return lookupStaff('FIONA');
   if (q === 'HAFIZAH' || q === 'FIZAH') {
     const h = STAFF_MAP.find(s => s.nickname === 'NURHAFIZAH' || s.empName.toUpperCase().includes('NURHAFIZAH'));
     if (h) return h;

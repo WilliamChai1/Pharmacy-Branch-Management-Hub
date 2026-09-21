@@ -985,6 +985,10 @@
           class="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Share customer self-booking link with branch working hours">
           <i class="fa-solid fa-link"></i> Customer Booking Link
         </button>
+        <button id="patientManageHoursBtn" type="button" onclick="openManageHoursModal()"
+          class="bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Configure fixed weekly template and edit specific dates / rest days">
+          <i class="fa-solid fa-clock-rotate-left"></i> Manage Working Hours
+        </button>
         <button id="patientExportExcelBtn" type="button"
           class="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm">
           <i class="fa-solid fa-file-excel"></i> Export Excel
@@ -1925,11 +1929,213 @@
             <span>Share Link via WhatsApp to Patient</span>
           </button>
         </div>
+
+        <!-- Shortcut to Manage Hours -->
+        <div class="pt-2 text-center border-t border-purple-100">
+          <button type="button" onclick="closeShareBookingModal(); openManageHoursModal();" class="text-purple-700 hover:text-purple-900 font-bold text-xs hover:underline inline-flex items-center gap-1.5">
+            <i class="fa-solid fa-clock-rotate-left"></i> Edit Working Hours, Rest Days or Public Holidays
+          </button>
+        </div>
       </div>
 
       <div class="bg-gray-50 px-6 py-3 border-t flex justify-end">
         <button onclick="closeShareBookingModal()" class="px-4 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs font-bold">
           Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 7: Pharmacist Operating Hours & Shift Manager Modal -->
+  <div id="manageHoursModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden border border-indigo-100 animate-fade-in">
+      <div class="bg-gradient-to-r from-indigo-800 via-blue-800 to-indigo-900 p-4 sm:p-5 text-white flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-base flex items-center gap-2">
+            <i class="fa-solid fa-clock-rotate-left text-amber-400"></i> Pharmacist Operating Hours & Shift Manager
+          </h3>
+          <p class="text-indigo-200 text-xs mt-0.5">Customize fixed weekly templates and edit specific dates or public holiday rest days.</p>
+        </div>
+        <button onclick="closeManageHoursModal()" class="text-indigo-200 hover:text-white text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Top Toolbar: Branch Select & Subtab Nav -->
+      <div class="bg-gray-50 border-b border-gray-200 px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <label class="text-xs font-bold text-gray-700">Branch:</label>
+          <select id="hoursBranchSelect" onchange="renderManageHoursModal()" class="border border-gray-300 rounded-lg px-3 py-1.5 text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none">
+            <option value="KS01">Kota Sentosa (KS01)</option>
+            <option value="BR02">Branch 02 (BR02)</option>
+            <option value="BR03">Branch 03 (BR03)</option>
+            <option value="BR04">Branch 04 (BR04)</option>
+            <option value="BR05">Branch 05 (BR05)</option>
+            <option value="BR06">Branch 06 (BR06)</option>
+          </select>
+        </div>
+
+        <div class="flex items-center gap-1 bg-gray-200/80 p-1 rounded-xl text-xs font-bold">
+          <button type="button" id="tabBtnWeekly" onclick="switchHoursSubTab('weekly')" class="px-3 py-1.5 rounded-lg bg-white shadow-sm text-indigo-700">
+            <i class="fa-regular fa-calendar"></i> Weekly Template
+          </button>
+          <button type="button" id="tabBtnOverrides" onclick="switchHoursSubTab('overrides')" class="px-3 py-1.5 rounded-lg text-gray-600 hover:text-gray-900">
+            <i class="fa-solid fa-calendar-day"></i> Date Overrides & PH
+          </button>
+          <button type="button" id="tabBtnSync" onclick="switchHoursSubTab('sync')" class="px-3 py-1.5 rounded-lg text-gray-600 hover:text-gray-900">
+            <i class="fa-solid fa-arrows-rotate"></i> Sync from Roster
+          </button>
+        </div>
+      </div>
+
+      <!-- Scrollable Modal Body -->
+      <div class="p-6 overflow-y-auto flex-1 space-y-6">
+        <!-- Subtab 1: Weekly Template -->
+        <div id="hoursSubTabWeekly" class="space-y-4">
+          <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-900 flex items-start gap-2.5">
+            <i class="fa-solid fa-circle-info text-blue-600 mt-0.5"></i>
+            <div>
+              <p class="font-bold">Fixed Weekly Schedule Template</p>
+              <p class="text-[11px] text-blue-800">Set the standard recurring consultation hours for each day of the week. Specific dates can be overridden in the Date Overrides tab.</p>
+            </div>
+          </div>
+
+          <form id="weeklyTemplateForm" onsubmit="saveWeeklyTemplate(event)">
+            <div class="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+              <table class="w-full text-xs text-left">
+                <thead class="bg-gray-100 text-gray-700 font-bold uppercase text-[10px] border-b border-gray-200">
+                  <tr>
+                    <th class="p-2.5">Day</th>
+                    <th class="p-2.5 text-center">Status</th>
+                    <th class="p-2.5">Open Time</th>
+                    <th class="p-2.5">Close Time</th>
+                    <th class="p-2.5">Duty Pharmacist</th>
+                  </tr>
+                </thead>
+                <tbody id="weeklyTemplateTbody" class="divide-y divide-gray-100 font-medium">
+                  <!-- Dynamic Rows Mon-Sun -->
+                </tbody>
+              </table>
+            </div>
+
+            <div class="flex justify-end pt-3">
+              <button type="submit" class="bg-indigo-700 hover:bg-indigo-800 text-white font-bold text-xs px-4 py-2 rounded-xl transition flex items-center gap-1.5 shadow-sm">
+                <i class="fa-solid fa-floppy-disk"></i> Save Weekly Template
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Subtab 2: Specific Dates & PH Overrides -->
+        <div id="hoursSubTabOverrides" class="space-y-5 hidden">
+          <!-- Add Override Card -->
+          <div class="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4">
+            <h4 class="font-bold text-xs text-indigo-900 mb-3 flex items-center gap-1.5">
+              <i class="fa-solid fa-calendar-plus text-indigo-600"></i> Add or Edit Date Override (Rest Day, Public Holiday or Custom Shift)
+            </h4>
+            <form id="dateOverrideForm" onsubmit="saveDateOverride(event)" class="space-y-3">
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label class="block text-[11px] font-bold text-gray-700 mb-1">Target Date:</label>
+                  <input type="date" id="overrideDateInput" required class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] font-bold text-gray-700 mb-1">Day Status:</label>
+                  <select id="overrideStatusSelect" onchange="toggleOverrideTimeInputs()" class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none">
+                    <option value="closed">🔴 Closed / Rest Day / Public Holiday</option>
+                    <option value="custom">🟢 Custom Working Hours</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-[11px] font-bold text-gray-700 mb-1">Reason / Note:</label>
+                  <input type="text" id="overrideReasonInput" placeholder="e.g. Malaysia Day, Annual Leave, Half-Day" class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+              </div>
+
+              <!-- Custom Hours Row (toggleable) -->
+              <div id="overrideTimeRow" class="hidden grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                <div>
+                  <label class="block text-[11px] font-bold text-gray-700 mb-1">Custom Open Time:</label>
+                  <input type="time" id="overrideOpenInput" value="07:30" class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] font-bold text-gray-700 mb-1">Custom Close Time:</label>
+                  <input type="time" id="overrideCloseInput" value="16:30" class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+                <div>
+                  <label class="block text-[11px] font-bold text-gray-700 mb-1">Duty Pharmacist:</label>
+                  <input type="text" id="overridePharmacistInput" placeholder="e.g. Pharmacist William" class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+              </div>
+
+              <div class="flex justify-end pt-1">
+                <button type="submit" class="bg-indigo-700 hover:bg-indigo-800 text-white font-bold text-xs px-4 py-2 rounded-xl transition flex items-center gap-1.5 shadow-sm">
+                  <i class="fa-solid fa-check"></i> Set Date Override
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Active Overrides Table -->
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <h5 class="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                <i class="fa-solid fa-list-check text-indigo-600"></i> Active Date Overrides (<span id="overrideCountBadge">0</span>)
+              </h5>
+            </div>
+            <div class="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+              <table class="w-full text-xs text-left">
+                <thead class="bg-gray-100 text-gray-700 font-bold uppercase text-[10px] border-b border-gray-200">
+                  <tr>
+                    <th class="p-2.5">Date</th>
+                    <th class="p-2.5">Status & Hours</th>
+                    <th class="p-2.5">Pharmacist</th>
+                    <th class="p-2.5">Reason</th>
+                    <th class="p-2.5 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="dateOverridesTbody" class="divide-y divide-gray-100">
+                  <!-- Dynamic rows -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Subtab 3: 1-Click Sync from Roster Matrix -->
+        <div id="hoursSubTabSync" class="space-y-4 hidden">
+          <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-xs text-emerald-900 space-y-2">
+            <div class="flex items-center gap-2 font-bold text-emerald-800">
+              <i class="fa-solid fa-bolt text-emerald-600 text-base"></i> Auto-Sync Operating Hours from Roster Matrix
+            </div>
+            <p class="text-[11px] text-emerald-800">
+              Instead of manually entering each shift and rest day, this tool reads the duty pharmacist's schedule directly from the loaded <b>Roster Matrix</b> (e.g. October 2026) and automatically configures date overrides for every day of the month!
+            </p>
+          </div>
+
+          <div class="border border-gray-200 rounded-xl p-4 space-y-3 bg-white">
+            <div class="space-y-1.5">
+              <label class="block text-xs font-bold text-gray-700">Select Pharmacist from Loaded Roster:</label>
+              <select id="rosterSyncPharmacistSelect" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-semibold focus:ring-2 focus:ring-emerald-500 outline-none">
+                <!-- Dynamically populated from loaded roster -->
+              </select>
+            </div>
+
+            <div id="rosterSyncPreview" class="text-xs text-gray-600 bg-gray-50 p-3 rounded-lg border border-gray-200 min-h-[60px]">
+              Upload a roster in Module 1 to enable 1-click sync.
+            </div>
+
+            <button type="button" onclick="syncPharmacistHoursFromRoster()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition flex items-center justify-center gap-2 shadow-sm">
+              <i class="fa-solid fa-arrows-rotate"></i> Sync Roster Shifts into Booking Hours
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="bg-gray-50 px-6 py-3 border-t flex justify-end">
+        <button onclick="closeManageHoursModal()" class="px-4 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs font-bold">
+          Done
         </button>
       </div>
     </div>
@@ -2063,6 +2269,9 @@
           </div>
         </div>
 
+        <!-- Date Override / Closed Alert Banner -->
+        <div id="custDateStatusBanner" class="hidden rounded-xl p-3 text-xs font-semibold flex items-center gap-2"></div>
+
         <!-- Step 4: Customer Details -->
         <div class="space-y-3 pt-2 border-t border-gray-100">
           <label class="block text-xs font-bold text-gray-700 flex items-center gap-1.5">
@@ -2071,17 +2280,15 @@
           </label>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label class="block text-[11px] font-semibold text-gray-600 mb-1">Full Name (姓名) *</label>
-              <input type="text" id="custBookName" required placeholder="e.g. Tan Ah Hock"
+              <label class="block text-[11px] font-semibold text-gray-600 mb-1">Full Name (姓名) <span class="text-rose-500">*</span></label>
+              <input type="text" id="custBookName" required placeholder="e.g. Tan Ah Kow"
                 class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
             </div>
             <div>
-              <label class="block text-[11px] font-semibold text-gray-600 mb-1">WhatsApp Mobile Number (手机号码) *</label>
-              <input type="tel" id="custBookPhone" required placeholder="e.g. 012-8889999"
+              <label class="block text-[11px] font-semibold text-gray-600 mb-1">WhatsApp / Mobile Number (电话) <span class="text-rose-500">*</span></label>
+              <input type="tel" id="custBookPhone" required placeholder="e.g. 016-8334455"
                 class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
             </div>
-          </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[11px] font-semibold text-gray-600 mb-1">IC / Passport Number (身份证号 - Optional)</label>
               <input type="text" id="custBookIc" placeholder="e.g. 750812-13-5567"
@@ -2097,9 +2304,9 @@
 
         <!-- Submit Button -->
         <div class="pt-3">
-          <button type="submit" class="w-full bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white font-bold py-3 px-6 rounded-xl text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2">
+          <button type="submit" id="custBookSubmitBtn" class="w-full bg-blue-700 hover:bg-blue-800 active:bg-blue-900 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-xl text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2">
             <i class="fa-solid fa-calendar-check"></i>
-            <span>Confirm & Book Appointment</span>
+            <span id="custBookSubmitText">Confirm & Book Appointment</span>
           </button>
         </div>
       </form>

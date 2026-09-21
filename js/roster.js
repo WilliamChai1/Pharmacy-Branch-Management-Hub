@@ -169,11 +169,14 @@ function parseSingleSheet(rawData, year, month, maxDayInMonth, unmappedNicknames
     }
   }
 
-  // Check if sheet contains Visual Hourly Schedule (DAY, OFF, 7.30-8.30AM...)
+  // ─── CHECK FOR VISUAL HOURLY SCHEDULE (DAY/DATE, OFF, 7.30-8.30AM...) ───────
+  const timeSlotRegex = /(\d{1,2})([.:](\d{2}))?\s*(am|pm)?\s*[-–]\s*(\d{1,2})([.:](\d{2}))?\s*(am|pm)?/i;
   let visualHeaderIdx = -1;
   for (let r = 0; r < rawData.length; r++) {
     const rowStr = rawData[r].map(c => String(c).trim().toLowerCase()).join(' ');
-    if (rowStr.includes('day') && rowStr.includes('off') && (rowStr.includes('7.30') || rowStr.includes('8.30') || rowStr.includes('half day'))) {
+    const hasTimeSlots = timeSlotRegex.test(rowStr);
+    const hasOffOrDate = rowStr.includes('off') || rowStr.includes('date') || rowStr.includes('day') || rowStr.includes('half');
+    if (hasTimeSlots && hasOffOrDate) {
       visualHeaderIdx = r;
       break;
     }
@@ -299,17 +302,47 @@ function parseSingleSheet(rawData, year, month, maxDayInMonth, unmappedNicknames
   }
 
   // ════════════════════════════════════════════════════════════════════════════
-  // MODE 2: VISUAL HOURLY SCHEDULE (DAY, OFF, 7.30-8.30AM...)
+  // MODE 2: VISUAL HOURLY SCHEDULE (DAY/DATE, OFF, HALF, 7.30AM-8.30AM...)
   // ════════════════════════════════════════════════════════════════════════════
   if (visualHeaderIdx !== -1) {
     const vHeader = rawData[visualHeaderIdx].map(c => String(c).trim());
     const offCol  = vHeader.findIndex(h => h.toUpperCase() === 'OFF');
+    const halfCol = vHeader.findIndex(h => h.toUpperCase().includes('HALF') || h.toUpperCase().includes('LEAVE') || h.toUpperCase() === 'REMARK');
     const timeCols = [];
 
     for (let c = 0; c < vHeader.length; c++) {
       const h = vHeader[c];
-      if (/(\d{1,2})[.:](\d{2})[-–](\d{1,2})[.:](\d{2})/i.test(h) || /\d+[-–]\d+\s*(AM|PM)/i.test(h)) {
+      if (timeSlotRegex.test(h)) {
         timeCols.push({ col: c, header: h });
+      }
+    }
+
+    // Auto-detect dominant year and month in this visual schedule sheet
+    let sheetYear = null, sheetMonth = null;
+    for (let r = visualHeaderIdx + 1; r < Math.min(rawData.length, visualHeaderIdx + 50); r++) {
+      const row = rawData[r];
+      if (!Array.isArray(row)) continue;
+      for (let c = 0; c < Math.min(row.length, 4); c++) {
+        const cell = String(row[c] || '').trim();
+        const dMatch = cell.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/) || cell.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
+        if (dMatch) {
+          sheetYear = dMatch[3].length === 4 ? parseInt(dMatch[3], 10) : parseInt(dMatch[1], 10);
+          sheetMonth = parseInt(dMatch[2], 10);
+          break;
+        }
+      }
+      if (sheetYear && sheetMonth) break;
+    }
+
+    if (sheetYear && sheetMonth) {
+      if (!year || !month || month !== sheetMonth || year !== sheetYear) {
+        year = sheetYear;
+        month = sheetMonth;
+        maxDayInMonth = new Date(year, month, 0).getDate();
+        if (typeof document !== 'undefined') {
+          const mInput = document.getElementById('rosterMonth');
+          if (mInput) mInput.value = `${year}-${String(month).padStart(2, '0')}`;
+        }
       }
     }
 
@@ -317,43 +350,26 @@ function parseSingleSheet(rawData, year, month, maxDayInMonth, unmappedNicknames
 
     for (let r = visualHeaderIdx + 1; r < rawData.length; r++) {
       const row  = rawData[r];
-      const col0 = String(row[0] || '').trim();
 
-      // Detect start of a new day block (e.g. "MON", "TUES", "WED", etc.)
-      const isDayName = /^(MON|TUE|TUES|WED|THU|THUR|THURS|FRI|SAT|SUN)\b/i.test(col0);
-
-      // If this row has a day name, look ahead up to 6 rows to locate the date
-      if (isDayName) {
-        for (let look = r; look < Math.min(r + 6, rawData.length); look++) {
-          const lookCol0 = String(rawData[look][0] || '').trim();
-          const dMatch = lookCol0.match(/(\d{1,2})[./-](\d{1,2})[./-](\d{4})/) || lookCol0.match(/(\d{4})[./-](\d{1,2})[./-](\d{1,2})/);
-          if (dMatch) {
-            if (dMatch[3].length === 4) {
-              currentDate = `${dMatch[3]}-${dMatch[2].padStart(2,'0')}-${dMatch[1].padStart(2,'0')}`;
-            } else {
-              currentDate = `${dMatch[1]}-${dMatch[2].padStart(2,'0')}-${dMatch[3].padStart(2,'0')}`;
-            }
-            break;
+      // Detect date in row (scan first 4 columns: col 0, 1, 2, 3)
+      for (let c = 0; c < Math.min(row.length, 4); c++) {
+        const cell = String(row[c] || '').trim();
+        const dMatch = cell.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/) || cell.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
+        if (dMatch) {
+          if (dMatch[3].length === 4) {
+            currentDate = `${dMatch[3]}-${dMatch[2].padStart(2, '0')}-${dMatch[1].padStart(2, '0')}`;
+          } else {
+            currentDate = `${dMatch[1]}-${dMatch[2].padStart(2, '0')}-${dMatch[3].padStart(2, '0')}`;
           }
-        }
-      }
-
-      // Also check if current row's col0 itself is a date
-      const directDateMatch = col0.match(/(\d{1,2})[./-](\d{1,2})[./-](\d{4})/) || col0.match(/(\d{4})[./-](\d{1,2})[./-](\d{1,2})/);
-      if (directDateMatch) {
-        if (directDateMatch[3].length === 4) {
-          currentDate = `${directDateMatch[3]}-${directDateMatch[2].padStart(2,'0')}-${directDateMatch[1].padStart(2,'0')}`;
-        } else {
-          currentDate = `${directDateMatch[1]}-${directDateMatch[2].padStart(2,'0')}-${directDateMatch[3].padStart(2,'0')}`;
+          break;
         }
       }
 
       if (!currentDate) continue;
 
       const [cYear, cMonth, cDay] = currentDate.split('-').map(Number);
-      // Strictly ensure the date belongs to the requested month & year!
-      // This prevents cross-month weekly sheets (e.g. 28.09 - 04.10.2026) from spilling into other months.
-      if (cYear !== year || cMonth !== month) {
+      // Strictly ensure the date belongs to the requested month & year
+      if (year && month && (cYear !== year || cMonth !== month)) {
         continue;
       }
 
@@ -361,51 +377,68 @@ function parseSingleSheet(rawData, year, month, maxDayInMonth, unmappedNicknames
       if (isNaN(dayNum) || dayNum < 1 || dayNum > maxDayInMonth) continue;
 
       // Check if this date has a Public Holiday remark
+      const col0 = String(row[0] || '').trim();
       const isPH = /PH\b|MALAYSIA DAY|PUBLIC HOLIDAY/i.test(col0) ||
         (offCol !== -1 && /PH\b|MALAYSIA DAY|PUBLIC HOLIDAY/i.test(String(row[offCol] || '')));
 
-      // ── Process OFF column ────────────────────────────────────────────────
+      // ── Process OFF / Leave column ──────────────────────────────────────────
       if (offCol !== -1 && row[offCol]) {
-        const offStaffNames = String(row[offCol]).split(/[\n,;/]+/).map(s => s.trim()).filter(Boolean);
-        for (const offItem of offStaffNames) {
-          // Skip general holiday labels like "PH - MALAYSIA DAY"
-          if (/PH\b|MALAYSIA DAY|PUBLIC HOLIDAY/i.test(offItem)) continue;
+        let rawOff = String(row[offCol]).trim();
+        if (rawOff && !/^(REST|OFF|HALF DAY)$/i.test(rawOff)) {
+          const offNames = rawOff.split(/[\n,;/]+/).map(s => s.trim()).filter(Boolean);
+          for (let offItem of offNames) {
+            if (/PH\b|MALAYSIA DAY|PUBLIC HOLIDAY/i.test(offItem)) continue;
 
-          const { staffName, leaveCode: extractedLeave } = parseStaffAndLeave(offItem);
-          if (!staffName) continue;
+            let { staffName, leaveCode: extractedLeave } = parseStaffAndLeave(offItem);
+            if (!staffName) staffName = offItem;
+            if (staffName.toUpperCase() === 'WILIAM') staffName = 'WILLIAM';
+            if (staffName.toUpperCase() === 'HAFIZAH') staffName = 'NURHAFIZAH';
+            if (staffName.toUpperCase() === 'FI') staffName = 'FIONA';
 
-          const staffObj = lookupStaff(staffName);
-          if (!staffObj) unmappedNicknames.add(staffName);
+            const staffObj = lookupStaff(staffName);
+            if (!staffObj) unmappedNicknames.add(staffName);
 
-          const leaveCode = extractedLeave || (isPH ? 'PH' : 'OFF');
+            let leaveReason = halfCol !== -1 && row[halfCol] ? String(row[halfCol]).trim().toUpperCase() : '';
+            let leaveCode = extractedLeave || leaveReason || (isPH ? 'PH' : 'OFF');
 
-          records.push({
-            empNo: staffObj ? staffObj.empNo : `UNMAPPED_${staffName}`,
-            empName: staffObj ? staffObj.empName : staffName,
-            nickname: staffObj ? staffObj.nickname : staffName,
-            isMapped: !!staffObj,
-            workDate: currentDate,
-            day: dayNum, // Integer day 1..31
-            shiftCode: '',
-            leaveCode: leaveCode,
-            rawCell: `OFF: ${offItem}`,
-          });
+            if (leaveCode === 'WO' || leaveCode === 'OFF') leaveCode = 'RD';
+            if (leaveCode === 'AL') leaveCode = 'ANL';
+            if (leaveCode === 'MC') leaveCode = 'SL';
+
+            records.push({
+              empNo: staffObj ? staffObj.empNo : `UNMAPPED_${staffName}`,
+              empName: staffObj ? staffObj.empName : staffName,
+              nickname: staffObj ? staffObj.nickname : staffName,
+              isMapped: !!staffObj,
+              workDate: currentDate,
+              day: dayNum,
+              shiftCode: (leaveCode === 'MEETING' || leaveCode === 'WORKSHOP' || leaveCode === 'TRAVELLING') ? leaveCode : '',
+              leaveCode: leaveCode,
+              rawCell: `OFF/LEAVE: ${offItem} (${leaveReason || leaveCode})`,
+            });
+          }
         }
       }
 
       // ── Process working staff in time columns ──────────────────────────────
       const staffInRow = new Set();
       timeCols.forEach(({ col }) => {
-        const val = String(row[col] || '').trim();
-        if (val && val.toUpperCase() !== 'REST' && val.length >= 2) {
-          staffInRow.add(val.toUpperCase());
+        let val = String(row[col] || '').trim().toUpperCase();
+        if (val === 'WILIAM') val = 'WILLIAM';
+        if (val === 'FI') val = 'FIONA';
+        if (val === 'HAFIZAH') val = 'NURHAFIZAH';
+        if (val && val !== 'REST' && val !== 'HALF DAY' && val.length >= 2) {
+          staffInRow.add(val);
         }
       });
 
       for (const nick of staffInRow) {
         let firstSlot = null, lastSlot = null, count = 0;
         timeCols.forEach(({ col, header }) => {
-          const cell = String(row[col] || '').trim().toUpperCase();
+          let cell = String(row[col] || '').trim().toUpperCase();
+          if (cell === 'WILIAM') cell = 'WILLIAM';
+          if (cell === 'FI') cell = 'FIONA';
+          if (cell === 'HAFIZAH') cell = 'NURHAFIZAH';
           if (cell === nick) {
             if (!firstSlot) firstSlot = header;
             lastSlot = header;
@@ -472,7 +505,57 @@ function processRoster(targetSheet) {
   const monthVal  = document.getElementById('rosterMonth')?.value || '';
   const branchVal = document.getElementById('rosterBranchCode')?.value?.trim() || 'KS01';
 
-  if (!monthVal) {
+  let year = null;
+  let month = null;
+  let maxDayInMonth = 31;
+
+  if (monthVal) {
+    const [yearStr, monthStr] = monthVal.split('-');
+    year  = parseInt(yearStr, 10);
+    month = parseInt(monthStr, 10);
+    maxDayInMonth = new Date(year, month, 0).getDate();
+  }
+
+  // Auto-detect year & month from uploaded file data if dates are present
+  let detectedYear = null, detectedMonth = null;
+  const sampleData = rosterRawData || (currentWorkbook && currentWorkbook.SheetNames.length > 0 ? XLSX.utils.sheet_to_json(currentWorkbook.Sheets[currentWorkbook.SheetNames[0]], { header: 1, defval: '' }) : null);
+
+  if (sampleData) {
+    for (let r = 0; r < Math.min(sampleData.length, 100); r++) {
+      const row = sampleData[r];
+      if (!Array.isArray(row)) continue;
+      for (let c = 0; c < Math.min(row.length, 6); c++) {
+        const cell = String(row[c] || '').trim();
+        const dMatch = cell.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/) || cell.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
+        if (dMatch) {
+          if (dMatch[3].length === 4) {
+            detectedYear = parseInt(dMatch[3], 10);
+            detectedMonth = parseInt(dMatch[2], 10);
+          } else {
+            detectedYear = parseInt(dMatch[1], 10);
+            detectedMonth = parseInt(dMatch[2], 10);
+          }
+          break;
+        }
+      }
+      if (detectedYear && detectedMonth) break;
+    }
+  }
+
+  // If detected date exists and differs from selected month (or no month selected), auto-sync!
+  if (detectedYear && detectedMonth) {
+    if (!year || !month || detectedYear !== year || detectedMonth !== month) {
+      year = detectedYear;
+      month = detectedMonth;
+      maxDayInMonth = new Date(year, month, 0).getDate();
+      const monthInput = document.getElementById('rosterMonth');
+      if (monthInput) {
+        monthInput.value = `${year}-${String(month).padStart(2, '0')}`;
+      }
+    }
+  }
+
+  if (!year || !month) {
     if (statusEl) {
       statusEl.innerHTML = `<div class="p-3 bg-amber-50 text-amber-800 rounded-lg text-xs font-semibold">
         ⚠ Please select the Month/Year before uploading.
@@ -480,11 +563,6 @@ function processRoster(targetSheet) {
     }
     return;
   }
-
-  const [yearStr, monthStr] = monthVal.split('-');
-  const year  = parseInt(yearStr, 10);
-  const month = parseInt(monthStr, 10);
-  const maxDayInMonth = new Date(year, month, 0).getDate();
 
   rosterFlatRecords = [];
   const unmappedNicknames = new Set();

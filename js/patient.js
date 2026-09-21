@@ -2089,7 +2089,7 @@ function updateBackupStatusBadge() {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// ─── BRANCH OPERATING HOURS & PHARMACIST SCHEDULES ────────────────────────────
+// ─── BRANCH OPERATING HOURS & DYNAMIC PHARMACIST SCHEDULES ───────────────────
 // ═════════════════════════════════════════════════════════════════════════════
 const BRANCH_SCHEDULES = {
   'KS01': { name: 'Kota Sentosa (KS01)', open: '07:30', close: '21:30', pharmacist: 'Pharmacist William / Ting', phone: '60168334455' },
@@ -2099,6 +2099,165 @@ const BRANCH_SCHEDULES = {
   'BR05': { name: 'Branch 05 (BR05)',    open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
   'BR06': { name: 'Branch 06 (BR06)',    open: '07:30', close: '21:30', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
 };
+
+function escHtml(str) {
+  if (str == null) return '';
+  return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m]);
+}
+
+/**
+ * Retrieves the full schedule configuration for a branch (template + overrides).
+ */
+function getPharmacistSchedule(branchCode) {
+  const code = branchCode || 'KS01';
+  const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['KS01'];
+
+  const storageKey = `pmg_pharmacist_schedule_${code}`;
+  let data = null;
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (raw) data = JSON.parse(raw);
+  } catch (_) { data = null; }
+
+  if (!data) {
+    data = {
+      branchCode: code,
+      branchName: defInfo.name,
+      defaultPharmacist: defInfo.pharmacist,
+      weeklyTemplate: {
+        "1": { dayName: "Monday",    isOpen: true, open: defInfo.open, close: defInfo.close, pharmacist: defInfo.pharmacist },
+        "2": { dayName: "Tuesday",   isOpen: true, open: defInfo.open, close: defInfo.close, pharmacist: defInfo.pharmacist },
+        "3": { dayName: "Wednesday", isOpen: true, open: defInfo.open, close: defInfo.close, pharmacist: defInfo.pharmacist },
+        "4": { dayName: "Thursday",  isOpen: true, open: defInfo.open, close: defInfo.close, pharmacist: defInfo.pharmacist },
+        "5": { dayName: "Friday",    isOpen: true, open: defInfo.open, close: defInfo.close, pharmacist: defInfo.pharmacist },
+        "6": { dayName: "Saturday",  isOpen: true, open: defInfo.open, close: defInfo.close, pharmacist: defInfo.pharmacist },
+        "0": { dayName: "Sunday",    isOpen: true, open: defInfo.open, close: defInfo.close, pharmacist: defInfo.pharmacist }
+      },
+      dateOverrides: {}
+    };
+  } else {
+    // Ensure all 7 days exist in weeklyTemplate
+    if (!data.weeklyTemplate) data.weeklyTemplate = {};
+    const daysMeta = [
+      { num: "1", name: "Monday" },
+      { num: "2", name: "Tuesday" },
+      { num: "3", name: "Wednesday" },
+      { num: "4", name: "Thursday" },
+      { num: "5", name: "Friday" },
+      { num: "6", name: "Saturday" },
+      { num: "0", name: "Sunday" }
+    ];
+    daysMeta.forEach(({ num, name }) => {
+      if (!data.weeklyTemplate[num]) {
+        data.weeklyTemplate[num] = { dayName: name, isOpen: true, open: defInfo.open, close: defInfo.close, pharmacist: defInfo.pharmacist };
+      }
+    });
+    if (!data.dateOverrides) data.dateOverrides = {};
+  }
+
+  return data;
+}
+
+/**
+ * Saves schedule config to localStorage.
+ */
+function savePharmacistSchedule(branchCode, scheduleObj) {
+  const code = branchCode || 'KS01';
+  localStorage.setItem(`pmg_pharmacist_schedule_${code}`, JSON.stringify(scheduleObj));
+}
+
+/**
+ * Resolves the effective schedule for a specific date (YYYY-MM-DD):
+ * Checks date overrides first, then weekly template, then static fallback.
+ */
+function getPharmacistScheduleForDate(branchCode, dateStr) {
+  const code = branchCode || 'KS01';
+  const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['KS01'];
+  const sched = getPharmacistSchedule(code);
+
+  // 1. Check Specific Date Overrides (Priority 1)
+  if (sched.dateOverrides && sched.dateOverrides[dateStr]) {
+    const ov = sched.dateOverrides[dateStr];
+    if (ov.isClosed) {
+      return {
+        branchCode: code,
+        branchName: defInfo.name,
+        date: dateStr,
+        isOpen: false,
+        isClosed: true,
+        open: '',
+        close: '',
+        pharmacist: '',
+        reason: ov.reason || 'Closed / Rest Day / Public Holiday',
+        isOverride: true
+      };
+    } else {
+      return {
+        branchCode: code,
+        branchName: defInfo.name,
+        date: dateStr,
+        isOpen: true,
+        isClosed: false,
+        open: ov.open || defInfo.open,
+        close: ov.close || defInfo.close,
+        pharmacist: ov.pharmacist || sched.defaultPharmacist || defInfo.pharmacist,
+        reason: ov.reason || 'Special Working Hours',
+        isOverride: true
+      };
+    }
+  }
+
+  // 2. Fall back to Weekly Template (Priority 2)
+  if (dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    const dayOfWeek = String(d.getDay()); // 0 = Sunday .. 6 = Saturday
+    const tmpl = sched.weeklyTemplate && sched.weeklyTemplate[dayOfWeek];
+
+    if (tmpl) {
+      if (!tmpl.isOpen) {
+        return {
+          branchCode: code,
+          branchName: defInfo.name,
+          date: dateStr,
+          isOpen: false,
+          isClosed: true,
+          open: '',
+          close: '',
+          pharmacist: '',
+          reason: 'Weekly Rest Day',
+          isOverride: false
+        };
+      } else {
+        return {
+          branchCode: code,
+          branchName: defInfo.name,
+          date: dateStr,
+          isOpen: true,
+          isClosed: false,
+          open: tmpl.open || defInfo.open,
+          close: tmpl.close || defInfo.close,
+          pharmacist: tmpl.pharmacist || defInfo.pharmacist,
+          reason: '',
+          isOverride: false
+        };
+      }
+    }
+  }
+
+  // 3. Fall back to static branch schedule (Priority 3)
+  return {
+    branchCode: code,
+    branchName: defInfo.name,
+    date: dateStr,
+    isOpen: true,
+    isClosed: false,
+    open: defInfo.open,
+    close: defInfo.close,
+    pharmacist: defInfo.pharmacist,
+    reason: '',
+    isOverride: false
+  };
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // ─── SHARE CUSTOMER BOOKING LINK MODAL (STAFF VIEW) ──────────────────────────
@@ -2133,12 +2292,17 @@ function updateShareBookingUrl() {
   const branchSelect = document.getElementById('shareBookingBranchSelect');
   const code = branchSelect ? branchSelect.value : 'KS01';
   const info = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['KS01'];
+  const sched = getPharmacistSchedule(code);
 
   const titleEl = document.getElementById('shareBookingHoursTitle');
   const descEl  = document.getElementById('shareBookingHoursDetails');
-  if (titleEl) titleEl.textContent = `${info.name} Pharmacist Hours`;
+  if (titleEl) titleEl.textContent = `${sched.branchName || info.name} Pharmacist Hours`;
+
+  const overrideCount = sched.dateOverrides ? Object.keys(sched.dateOverrides).length : 0;
+  const overrideNote = overrideCount > 0 ? `<br><span class="text-purple-700 font-semibold text-[10px]">✨ ${overrideCount} specific date / holiday override(s) active</span>` : '';
+
   if (descEl) {
-    descEl.innerHTML = `Consultation Hours: <b>${info.open} – ${info.close}</b> (Mon – Sun)<br>Duty Pharmacist: <b>${info.pharmacist}</b>`;
+    descEl.innerHTML = `Standard Consultation Hours: <b>${info.open} – ${info.close}</b> (Mon – Sun)<br>Duty Pharmacist: <b>${escHtml(sched.defaultPharmacist || info.pharmacist)}</b>${overrideNote}`;
   }
 
   const baseUrl = window.location.origin + window.location.pathname;
@@ -2167,10 +2331,11 @@ function shareBookingViaWhatsApp() {
   const inputEl = document.getElementById('shareBookingUrlInput');
   const branchSelect = document.getElementById('shareBookingBranchSelect');
   const code = branchSelect ? branchSelect.value : 'KS01';
+  const sched = getPharmacistSchedule(code);
   const info = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['KS01'];
   const bookingUrl = inputEl ? inputEl.value : '';
 
-  const msg = `Halo! Anda boleh tempah slot pemeriksaan kesihatan atau rundingan ahli farmasi di PMG Pharmacy (${info.name}) di pautan berikut:\n\n${bookingUrl}\n\nWaktu Perundingan: ${info.open} - ${info.close} setiap hari.\nJumpa anda nanti!`;
+  const msg = `Halo! Anda boleh tempah slot pemeriksaan kesihatan atau rundingan ahli farmasi di PMG Pharmacy (${sched.branchName || info.name}) di pautan berikut:\n\n${bookingUrl}\n\nWaktu Perundingan: ${info.open} - ${info.close}.\nJumpa anda nanti!`;
 
   const waUrl = `https://wa.me/?text=${encodeURIComponent(msg)}`;
   window.open(waUrl, '_blank');
@@ -2206,22 +2371,77 @@ function initCustomerBooking(defaultBranchCode = 'KS01') {
 }
 
 function updateCustBookHours() {
-  const select = document.getElementById('custBranchSelect');
-  const code = select ? select.value : 'KS01';
-  const info = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['KS01'];
+  const branchSelect = document.getElementById('custBranchSelect');
+  const code = branchSelect ? branchSelect.value : 'KS01';
+  const dateInput = document.getElementById('custBookDate');
+  const dateStr = dateInput ? dateInput.value : '';
+
+  const schedForDate = getPharmacistScheduleForDate(code, dateStr);
 
   const titleEl = document.getElementById('custBranchHoursTitle');
   const descEl  = document.getElementById('custBranchHoursDesc');
-  if (titleEl) titleEl.textContent = `${info.name} Pharmacist Hours`;
+  const bannerEl = document.getElementById('custDateStatusBanner');
+  const timeSelect = document.getElementById('custBookTime');
+  const submitBtn = document.getElementById('custBookSubmitBtn');
+  const submitText = document.getElementById('custBookSubmitText');
+
+  if (titleEl) titleEl.textContent = `${schedForDate.branchName} Pharmacist Hours`;
+
   if (descEl) {
-    descEl.innerHTML = `Operating Hours: <b>${info.open} – ${info.close}</b> (Mon – Sun)<br>Duty Pharmacist: <b>${info.pharmacist}</b>`;
+    if (schedForDate.isClosed) {
+      descEl.innerHTML = `<span class="text-rose-600 font-bold">⚠️ Pharmacist is closed / off on this date</span><br>Reason: <b>${escHtml(schedForDate.reason || 'Rest Day')}</b>`;
+    } else {
+      descEl.innerHTML = `Operating Hours: <b>${schedForDate.open} – ${schedForDate.close}</b>${schedForDate.isOverride ? ' <span class="text-xs text-indigo-600 font-bold">(Special Shift)</span>' : ''}<br>Duty Pharmacist: <b>${escHtml(schedForDate.pharmacist)}</b>`;
+    }
   }
 
-  const timeSelect = document.getElementById('custBookTime');
-  if (!timeSelect) return;
+  if (schedForDate.isClosed) {
+    // Banner warning
+    if (bannerEl) {
+      bannerEl.className = 'rounded-xl p-3 text-xs font-semibold flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-800';
+      bannerEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-rose-600 text-sm"></i>
+        <span><b>Branch Pharmacist is OFF / Closed on ${dateStr}</b> (${escHtml(schedForDate.reason || 'Rest Day / Public Holiday')}). Please choose another date.</span>`;
+      bannerEl.classList.remove('hidden');
+    }
 
-  const [openH, openM] = info.open.split(':').map(Number);
-  const [closeH, closeM] = info.close.split(':').map(Number);
+    if (timeSelect) {
+      timeSelect.innerHTML = `<option value="">No consultation slots available (Closed)</option>`;
+      timeSelect.disabled = true;
+    }
+
+    if (submitBtn) {
+      submitBtn.disabled = true;
+    }
+    if (submitText) {
+      submitText.textContent = `Branch Closed on Selected Date`;
+    }
+    return;
+  }
+
+  // Date is open!
+  if (bannerEl) {
+    if (schedForDate.isOverride) {
+      bannerEl.className = 'rounded-xl p-3 text-xs font-semibold flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-800';
+      bannerEl.innerHTML = `<i class="fa-solid fa-circle-info text-indigo-600 text-sm"></i>
+        <span><b>Special Hours for ${dateStr}:</b> Open ${schedForDate.open} – ${schedForDate.close} (${escHtml(schedForDate.reason || 'Special Shift')}) · Duty Pharmacist: <b>${escHtml(schedForDate.pharmacist)}</b></span>`;
+      bannerEl.classList.remove('hidden');
+    } else {
+      bannerEl.classList.add('hidden');
+    }
+  }
+
+  if (submitBtn) {
+    submitBtn.disabled = false;
+  }
+  if (submitText) {
+    submitText.textContent = `Confirm & Book Appointment`;
+  }
+
+  if (!timeSelect) return;
+  timeSelect.disabled = false;
+
+  const [openH, openM] = schedForDate.open.split(':').map(Number);
+  const [closeH, closeM] = schedForDate.close.split(':').map(Number);
   const openMinutes = openH * 60 + openM;
   const closeMinutes = closeH * 60 + closeM;
 
@@ -2239,6 +2459,10 @@ function updateCustBookHours() {
     options += `<option value="${timeVal}">${label} (${timeVal})</option>`;
   }
 
+  if (!options) {
+    options = `<option value="">No slots available within hours</option>`;
+  }
+
   timeSelect.innerHTML = options;
 }
 
@@ -2246,13 +2470,23 @@ function handleCustomerBookingSubmit(e) {
   e.preventDefault();
 
   const branchCode = document.getElementById('custBranchSelect').value;
-  const branchInfo = BRANCH_SCHEDULES[branchCode] || BRANCH_SCHEDULES['KS01'];
+  const date = document.getElementById('custBookDate').value;
+  const time = document.getElementById('custBookTime').value;
+  const schedForDate = getPharmacistScheduleForDate(branchCode, date);
+
+  if (schedForDate.isClosed) {
+    alert(`Sorry, the pharmacy is closed for consultation on ${date} (${schedForDate.reason || 'Rest Day / Public Holiday'}). Please select another date.`);
+    return;
+  }
+
+  const branchInfo = {
+    name: schedForDate.branchName,
+    pharmacist: schedForDate.pharmacist || schedForDate.branchName
+  };
 
   const serviceEl = document.querySelector('input[name="custService"]:checked');
   const service = serviceEl ? serviceEl.value : 'Comprehensive Health Screening';
 
-  const date = document.getElementById('custBookDate').value;
-  const time = document.getElementById('custBookTime').value;
   const name = document.getElementById('custBookName').value.trim();
   const phone = document.getElementById('custBookPhone').value.trim();
   const ic = document.getElementById('custBookIc').value.trim();
@@ -2373,6 +2607,388 @@ function resetCustomerBookingForm() {
   document.getElementById('customerBookingSuccessCard').classList.add('hidden');
   document.getElementById('customerBookingFormCard').classList.remove('hidden');
   initCustomerBooking('KS01');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ─── PHARMACIST OPERATING HOURS & SHIFT MODAL CONTROLLER ─────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+let activeHoursSubTab = 'weekly';
+
+function openManageHoursModal() {
+  const modal = document.getElementById('manageHoursModal');
+  if (!modal) return;
+
+  const session = typeof getSession === 'function' ? getSession() : null;
+  const userBranch = (session && session.branch && session.branch !== 'ALL') ? session.branch : 'KS01';
+
+  const branchSelect = document.getElementById('hoursBranchSelect');
+  if (branchSelect) {
+    for (let opt of branchSelect.options) {
+      if (opt.value === userBranch || opt.text.includes(userBranch)) {
+        branchSelect.value = opt.value;
+        break;
+      }
+    }
+  }
+
+  // Pre-fill override date input with today
+  const overrideDateInput = document.getElementById('overrideDateInput');
+  if (overrideDateInput && !overrideDateInput.value) {
+    overrideDateInput.value = new Date().toISOString().split('T')[0];
+  }
+
+  switchHoursSubTab('weekly');
+  renderManageHoursModal();
+  modal.classList.remove('hidden');
+}
+
+function closeManageHoursModal() {
+  const modal = document.getElementById('manageHoursModal');
+  if (modal) modal.classList.add('hidden');
+  updateShareBookingUrl();
+  updateCustBookHours();
+}
+
+function switchHoursSubTab(tabName) {
+  activeHoursSubTab = tabName;
+  const tabs = ['weekly', 'overrides', 'sync'];
+  tabs.forEach(t => {
+    const btn = document.getElementById(`tabBtn${t.charAt(0).toUpperCase() + t.slice(1)}`);
+    const pane = document.getElementById(`hoursSubTab${t.charAt(0).toUpperCase() + t.slice(1)}`);
+    if (t === tabName) {
+      if (btn) {
+        btn.className = 'px-3 py-1.5 rounded-lg bg-white shadow-sm text-indigo-700 font-bold';
+      }
+      if (pane) pane.classList.remove('hidden');
+    } else {
+      if (btn) {
+        btn.className = 'px-3 py-1.5 rounded-lg text-gray-600 hover:text-gray-900 font-bold';
+      }
+      if (pane) pane.classList.add('hidden');
+    }
+  });
+
+  renderManageHoursModal();
+}
+
+function renderManageHoursModal() {
+  const branchSelect = document.getElementById('hoursBranchSelect');
+  const code = branchSelect ? branchSelect.value : 'KS01';
+  const sched = getPharmacistSchedule(code);
+
+  if (activeHoursSubTab === 'weekly') {
+    renderWeeklyTemplateTbody(sched);
+  } else if (activeHoursSubTab === 'overrides') {
+    renderDateOverridesTbody(sched);
+  } else if (activeHoursSubTab === 'sync') {
+    renderRosterSyncTab(sched);
+  }
+}
+
+function renderWeeklyTemplateTbody(sched) {
+  const tbody = document.getElementById('weeklyTemplateTbody');
+  if (!tbody) return;
+
+  const dayOrder = [
+    { num: '1', label: 'Monday' },
+    { num: '2', label: 'Tuesday' },
+    { num: '3', label: 'Wednesday' },
+    { num: '4', label: 'Thursday' },
+    { num: '5', label: 'Friday' },
+    { num: '6', label: 'Saturday' },
+    { num: '0', label: 'Sunday' }
+  ];
+
+  let html = '';
+  dayOrder.forEach(({ num, label }) => {
+    const item = (sched.weeklyTemplate && sched.weeklyTemplate[num]) || {
+      dayName: label,
+      isOpen: true,
+      open: '07:30',
+      close: '21:30',
+      pharmacist: sched.defaultPharmacist || 'Duty Pharmacist'
+    };
+
+    html += `
+      <tr class="hover:bg-gray-50/80 transition" data-day="${num}">
+        <td class="p-2.5 font-bold text-gray-800">${label}</td>
+        <td class="p-2.5 text-center">
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="tmplOpen_${num}" ${item.isOpen ? 'checked' : ''} onchange="toggleWeeklyRowInputs('${num}')" class="sr-only peer">
+            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+          </label>
+        </td>
+        <td class="p-2.5">
+          <input type="time" id="tmplTimeOpen_${num}" value="${item.open || '07:30'}" ${item.isOpen ? '' : 'disabled'}
+            class="border border-gray-300 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-40">
+        </td>
+        <td class="p-2.5">
+          <input type="time" id="tmplTimeClose_${num}" value="${item.close || '21:30'}" ${item.isOpen ? '' : 'disabled'}
+            class="border border-gray-300 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-40">
+        </td>
+        <td class="p-2.5">
+          <input type="text" id="tmplPharm_${num}" value="${escHtml(item.pharmacist || '')}" placeholder="Duty Pharmacist" ${item.isOpen ? '' : 'disabled'}
+            class="border border-gray-300 rounded px-2 py-1 text-xs w-full outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-40">
+        </td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = html;
+}
+
+function toggleWeeklyRowInputs(dayNum) {
+  const chk = document.getElementById(`tmplOpen_${dayNum}`);
+  const isOpen = chk ? chk.checked : true;
+  const o = document.getElementById(`tmplTimeOpen_${dayNum}`);
+  const c = document.getElementById(`tmplTimeClose_${dayNum}`);
+  const p = document.getElementById(`tmplPharm_${dayNum}`);
+  if (o) o.disabled = !isOpen;
+  if (c) c.disabled = !isOpen;
+  if (p) p.disabled = !isOpen;
+}
+
+function saveWeeklyTemplate(e) {
+  if (e) e.preventDefault();
+  const branchSelect = document.getElementById('hoursBranchSelect');
+  const code = branchSelect ? branchSelect.value : 'KS01';
+  const sched = getPharmacistSchedule(code);
+
+  const dayNums = ['1', '2', '3', '4', '5', '6', '0'];
+  dayNums.forEach(num => {
+    const chk = document.getElementById(`tmplOpen_${num}`);
+    const isOpen = chk ? chk.checked : true;
+    const openVal = document.getElementById(`tmplTimeOpen_${num}`)?.value || '07:30';
+    const closeVal = document.getElementById(`tmplTimeClose_${num}`)?.value || '21:30';
+    const pharmVal = document.getElementById(`tmplPharm_${num}`)?.value?.trim() || sched.defaultPharmacist;
+
+    sched.weeklyTemplate[num] = {
+      dayName: sched.weeklyTemplate[num]?.dayName || num,
+      isOpen,
+      open: openVal,
+      close: closeVal,
+      pharmacist: pharmVal
+    };
+  });
+
+  savePharmacistSchedule(code, sched);
+  alert(`Weekly template for ${code} saved successfully!`);
+}
+
+function toggleOverrideTimeInputs() {
+  const sel = document.getElementById('overrideStatusSelect');
+  const row = document.getElementById('overrideTimeRow');
+  if (sel && row) {
+    if (sel.value === 'custom') {
+      row.classList.remove('hidden');
+    } else {
+      row.classList.add('hidden');
+    }
+  }
+}
+
+function saveDateOverride(e) {
+  if (e) e.preventDefault();
+  const branchSelect = document.getElementById('hoursBranchSelect');
+  const code = branchSelect ? branchSelect.value : 'KS01';
+  const sched = getPharmacistSchedule(code);
+
+  const dateInput = document.getElementById('overrideDateInput');
+  const dateStr = dateInput ? dateInput.value : '';
+  if (!dateStr) {
+    alert('Please choose a date.');
+    return;
+  }
+
+  const statusSel = document.getElementById('overrideStatusSelect')?.value || 'closed';
+  const reason = document.getElementById('overrideReasonInput')?.value?.trim() || '';
+
+  if (statusSel === 'closed') {
+    sched.dateOverrides[dateStr] = {
+      isClosed: true,
+      open: '',
+      close: '',
+      pharmacist: '',
+      reason: reason || 'Rest Day / Public Holiday'
+    };
+  } else {
+    const openVal = document.getElementById('overrideOpenInput')?.value || '07:30';
+    const closeVal = document.getElementById('overrideCloseInput')?.value || '16:30';
+    const pharmVal = document.getElementById('overridePharmacistInput')?.value?.trim() || sched.defaultPharmacist;
+
+    sched.dateOverrides[dateStr] = {
+      isClosed: false,
+      open: openVal,
+      close: closeVal,
+      pharmacist: pharmVal,
+      reason: reason || 'Custom Working Hours'
+    };
+  }
+
+  savePharmacistSchedule(code, sched);
+  renderDateOverridesTbody(sched);
+  const form = document.getElementById('dateOverrideForm');
+  if (form) form.reset();
+  toggleOverrideTimeInputs();
+}
+
+function deleteDateOverride(dateStr) {
+  const branchSelect = document.getElementById('hoursBranchSelect');
+  const code = branchSelect ? branchSelect.value : 'KS01';
+  const sched = getPharmacistSchedule(code);
+
+  if (sched.dateOverrides && sched.dateOverrides[dateStr]) {
+    delete sched.dateOverrides[dateStr];
+    savePharmacistSchedule(code, sched);
+    renderDateOverridesTbody(sched);
+  }
+}
+
+function renderDateOverridesTbody(sched) {
+  const tbody = document.getElementById('dateOverridesTbody');
+  const badge = document.getElementById('overrideCountBadge');
+  if (!tbody) return;
+
+  const overrides = sched.dateOverrides || {};
+  const dates = Object.keys(overrides).sort();
+  if (badge) badge.textContent = dates.length;
+
+  if (dates.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="5" class="p-6 text-center text-gray-400 text-xs italic">
+          No date overrides recorded. Pharmacist hours follow the Fixed Weekly Template.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  let html = '';
+  dates.forEach(d => {
+    const item = overrides[d];
+    const isClosed = item.isClosed;
+    const statusPill = isClosed
+      ? `<span class="bg-rose-100 text-rose-700 text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1"><i class="fa-solid fa-ban"></i> Closed / Rest Day</span>`
+      : `<span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1"><i class="fa-regular fa-clock"></i> ${item.open} – ${item.close}</span>`;
+
+    html += `
+      <tr class="hover:bg-gray-50/80 transition text-xs">
+        <td class="p-2.5 font-bold font-mono text-gray-900">${d}</td>
+        <td class="p-2.5">${statusPill}</td>
+        <td class="p-2.5 text-gray-700">${escHtml(item.pharmacist || '—')}</td>
+        <td class="p-2.5 text-gray-600">${escHtml(item.reason || '—')}</td>
+        <td class="p-2.5 text-center">
+          <button type="button" onclick="deleteDateOverride('${d}')" class="text-rose-500 hover:text-rose-700 p-1 rounded hover:bg-rose-50 transition" title="Delete this override">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+        </td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = html;
+}
+
+function renderRosterSyncTab(sched) {
+  const sel = document.getElementById('rosterSyncPharmacistSelect');
+  const preview = document.getElementById('rosterSyncPreview');
+  if (!sel || !preview) return;
+
+  const records = typeof rosterFlatRecords !== 'undefined' ? rosterFlatRecords : [];
+  if (!records || records.length === 0) {
+    sel.innerHTML = `<option value="">(No Roster Loaded in Module 1)</option>`;
+    sel.disabled = true;
+    preview.innerHTML = `
+      <p class="text-amber-800 font-semibold"><i class="fa-solid fa-triangle-exclamation"></i> No roster data loaded.</p>
+      <p class="text-gray-500 text-[11px] mt-1">Please go to <b>Module 1 (Roster Matrix)</b> and upload your monthly schedule file (CSV or Excel) first.</p>
+    `;
+    return;
+  }
+
+  const staffSet = new Map();
+  records.forEach(r => {
+    if (r.nickname && !staffSet.has(r.nickname)) {
+      staffSet.set(r.nickname, r.empName || r.nickname);
+    }
+  });
+
+  let optHtml = '';
+  const priorityNames = ['WILLIAM', 'TING', 'FIONA', 'LOUNA'];
+  staffSet.forEach((empName, nick) => {
+    const isPri = priorityNames.includes(nick.toUpperCase());
+    optHtml += `<option value="${escHtml(nick)}" ${isPri ? 'selected' : ''}>${escHtml(nick)} (${escHtml(empName)})</option>`;
+  });
+
+  sel.innerHTML = optHtml;
+  sel.disabled = false;
+
+  const datesSet = new Set(records.map(r => r.workDate));
+  preview.innerHTML = `
+    <p class="text-emerald-800 font-bold"><i class="fa-solid fa-check-circle"></i> Ready to Sync from Loaded Roster</p>
+    <p class="text-[11px] text-gray-600 mt-1">Detected <b>${records.length} shifts</b> covering <b>${datesSet.size} days</b> in loaded roster.</p>
+  `;
+}
+
+function syncPharmacistHoursFromRoster() {
+  const branchSelect = document.getElementById('hoursBranchSelect');
+  const code = branchSelect ? branchSelect.value : 'KS01';
+  const sched = getPharmacistSchedule(code);
+
+  const sel = document.getElementById('rosterSyncPharmacistSelect');
+  const targetStaff = sel ? sel.value : '';
+  if (!targetStaff) {
+    alert('Please select a staff member from the roster to sync.');
+    return;
+  }
+
+  const records = typeof rosterFlatRecords !== 'undefined' ? rosterFlatRecords : [];
+  const staffRecords = records.filter(r => r.nickname && r.nickname.toUpperCase() === targetStaff.toUpperCase());
+
+  if (staffRecords.length === 0) {
+    alert(`No records found in loaded roster for ${targetStaff}.`);
+    return;
+  }
+
+  let syncCount = 0;
+  staffRecords.forEach(rec => {
+    if (!rec.workDate) return;
+    const isOff = !rec.shiftCode || ['OFF', 'RD', 'OD', 'WO'].includes(rec.shiftCode) || ['RD', 'OD', 'OFF', 'ANL', 'AL', 'SL', 'MC', 'PH'].includes(rec.leaveCode);
+
+    if (isOff) {
+      const leaveReason = rec.leaveCode || 'Rest Day';
+      sched.dateOverrides[rec.workDate] = {
+        isClosed: true,
+        open: '',
+        close: '',
+        pharmacist: '',
+        reason: leaveReason === 'RD' ? 'Rest Day' : leaveReason
+      };
+      syncCount++;
+    } else {
+      let openTime = '07:30';
+      let closeTime = '21:30';
+
+      const m = rec.shiftCode.match(/(\d{4})-(\d{4})/);
+      if (m) {
+        openTime = `${m[1].slice(0,2)}:${m[1].slice(2,4)}`;
+        closeTime = `${m[2].slice(0,2)}:${m[2].slice(2,4)}`;
+      }
+
+      sched.dateOverrides[rec.workDate] = {
+        isClosed: false,
+        open: openTime,
+        close: closeTime,
+        pharmacist: `Pharmacist ${rec.empName || rec.nickname}`,
+        reason: `Roster Shift (${rec.shiftCode})`
+      };
+      syncCount++;
+    }
+  });
+
+  savePharmacistSchedule(code, sched);
+  alert(`Successfully synced ${syncCount} dates from Roster for ${targetStaff}! Check the Date Overrides tab.`);
+  switchHoursSubTab('overrides');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
