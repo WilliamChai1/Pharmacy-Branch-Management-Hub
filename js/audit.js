@@ -2,12 +2,7 @@
 'use strict';
 
 let auditVideoFile   = null;
-let auditFileUri     = null;   // Gemini Files API uploaded URI
 let auditChecklistState = {};  // { itemId: boolean }
-
-const GEMINI_MODEL = 'gemini-3.5-flash';
-const GEMINI_FILES_API = 'https://generativelanguage.googleapis.com/upload/v1beta/files';
-const GEMINI_GENERATE_API = 'https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODEL + ':generateContent';
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 function initAudit() {
@@ -27,18 +22,90 @@ function initAudit() {
     if (e.dataTransfer.files.length) handleAuditVideoSelect(e.dataTransfer.files[0]);
   });
 
-  // Persist API key to localStorage
+  // Persist API key to localStorage and clear stale revoked key
   const apiKeyInput = document.getElementById('geminiApiKey');
   if (apiKeyInput) {
-    const saved = localStorage.getItem('pmg_gemini_key') || '';
+    let saved = localStorage.getItem('pmg_gemini_key') || '';
+    if (saved === 'AIzaSyAfJqs6YnY5J_URsuvmSMi8WM3BckVwKY4') {
+      localStorage.removeItem('pmg_gemini_key');
+      saved = '';
+    }
     apiKeyInput.value = saved;
-    apiKeyInput.addEventListener('change', () => {
-      localStorage.setItem('pmg_gemini_key', apiKeyInput.value.trim());
+    apiKeyInput.addEventListener('input', () => {
+      const val = apiKeyInput.value.trim();
+      if (val) localStorage.setItem('pmg_gemini_key', val);
+      else localStorage.removeItem('pmg_gemini_key');
+    });
+  }
+
+  // Populate branch select if empty and BRANCHES is available
+  const branchSelect = document.getElementById('auditBranchSelect');
+  if (branchSelect && branchSelect.options.length <= 1 && typeof BRANCHES !== 'undefined' && Array.isArray(BRANCHES)) {
+    BRANCHES.forEach(b => {
+      const opt = document.createElement('option');
+      opt.value = b.code;
+      opt.textContent = `${b.code} – ${b.name}`;
+      branchSelect.appendChild(opt);
     });
   }
 
   const runBtn = document.getElementById('auditRunBtn');
   if (runBtn) runBtn.addEventListener('click', runAudit);
+}
+
+// ─── TEST API KEY ─────────────────────────────────────────────────────────────
+async function testGeminiApiKey() {
+  const statusEl = document.getElementById('geminiKeyStatus');
+  const apiKey = (document.getElementById('geminiApiKey')?.value || '').trim()
+              || localStorage.getItem('pmg_gemini_key') || '';
+
+  if (!apiKey) {
+    if (statusEl) {
+      statusEl.className = 'text-[11px] mt-1 text-red-600 font-semibold';
+      statusEl.textContent = '❌ Please enter an API key first.';
+    }
+    return;
+  }
+
+  if (statusEl) {
+    statusEl.className = 'text-[11px] mt-1 text-amber-600 font-semibold';
+    statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Verifying API key with Google AI Studio…';
+  }
+
+  try {
+    const testResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: 'ping' }] }],
+        generation_config: { max_output_tokens: 5 }
+      })
+    });
+
+    if (testResp.ok) {
+      localStorage.setItem('pmg_gemini_key', apiKey);
+      if (statusEl) {
+        statusEl.className = 'text-[11px] mt-1 text-green-600 font-semibold';
+        statusEl.innerHTML = '<i class="fa-solid fa-circle-check mr-1"></i> API key is active and verified! Ready to audit.';
+      }
+    } else {
+      const errData = await testResp.json().catch(() => ({}));
+      const msg = errData?.error?.message || `HTTP ${testResp.status}`;
+      if (statusEl) {
+        statusEl.className = 'text-[11px] mt-1 text-red-600 font-semibold';
+        if (testResp.status === 403) {
+          statusEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i> 403 Key Revoked/Invalid. <a href="https://aistudio.google.com/app/apikey" target="_blank" class="underline font-bold text-red-700">Get a new free key here</a>.';
+        } else {
+          statusEl.textContent = `❌ Verification failed: ${msg}`;
+        }
+      }
+    }
+  } catch (err) {
+    if (statusEl) {
+      statusEl.className = 'text-[11px] mt-1 text-red-600 font-semibold';
+      statusEl.textContent = `❌ Connection error: ${err.message}`;
+    }
+  }
 }
 
 // ─── VIDEO SELECT ─────────────────────────────────────────────────────────────
@@ -59,7 +126,116 @@ function handleAuditVideoSelect(file) {
   // Reset previous report
   const reportContainer = document.getElementById('auditReportContainer');
   if (reportContainer) reportContainer.classList.add('hidden');
-  auditFileUri = null;
+}
+
+// ─── CLIENT-SIDE VIDEO KEYFRAME EXTRACTION ────────────────────────────────────
+// Extracts 6-8 frames evenly distributed across the video and converts to lightweight JPEG base64.
+// This is 100% reliable in-browser, bypassing heavy video uploads, CORS blocks, and processing timeouts.
+function extractVideoFrames(videoFile, numFrames = 6, setStatus = () => {}) {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.preload = 'auto';
+    video.muted = true;
+    video.playsInline = true;
+    const url = URL.createObjectURL(videoFile);
+    video.src = url;
+
+    const cleanup = () => {
+      URL.revokeObjectURL(url);
+    };
+
+    video.onloadedmetadata = async () => {
+      try {
+        let duration = video.duration;
+        if (!duration || isNaN(duration) || !isFinite(duration) || duration <= 0) {
+          duration = 60; // fallback duration estimate
+        }
+
+        const timestamps = [];
+        for (let i = 0; i < numFrames; i++) {
+          const frac = (i + 0.5) / numFrames;
+          timestamps.push(duration * frac);
+        }
+
+        const frames = [];
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Scale to max width/height 1024 to keep payload lightweight and fast
+        const maxDim = 1024;
+        let w = video.videoWidth || 800;
+        let h = video.videoHeight || 600;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        canvas.width = w;
+        canvas.height = h;
+
+        for (let idx = 0; idx < timestamps.length; idx++) {
+          const t = timestamps[idx];
+          const timeLabel = formatTime(t);
+          setStatus(`Extracting walkthrough keyframe ${idx + 1}/${timestamps.length} (${timeLabel})…`);
+
+          await seekVideo(video, t);
+          ctx.drawImage(video, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+          const base64Data = dataUrl.split(',')[1];
+          frames.push({
+            timeSec: t,
+            timestampStr: timeLabel,
+            base64: base64Data
+          });
+        }
+
+        cleanup();
+        resolve(frames);
+      } catch (err) {
+        cleanup();
+        reject(err);
+      }
+    };
+
+    video.onerror = () => {
+      cleanup();
+      reject(new Error('Browser could not decode the video file. Please ensure it is an MP4 or MOV format.'));
+    };
+  });
+}
+
+function seekVideo(video, time) {
+  return new Promise((resolve) => {
+    let resolved = false;
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        video.removeEventListener('seeked', onSeeked);
+        resolve();
+      }
+    }, 3500);
+
+    const onSeeked = () => {
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timeout);
+        video.removeEventListener('seeked', onSeeked);
+        resolve();
+      }
+    };
+    video.addEventListener('seeked', onSeeked);
+    video.currentTime = Math.min(time, Math.max(0, (video.duration || time + 1) - 0.1));
+  });
+}
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 // ─── RUN AUDIT ────────────────────────────────────────────────────────────────
@@ -67,8 +243,13 @@ async function runAudit() {
   const apiKey = (document.getElementById('geminiApiKey')?.value || '').trim()
               || localStorage.getItem('pmg_gemini_key') || '';
 
+  const branchSelect = document.getElementById('auditBranchSelect');
+  const session = typeof getSession === 'function' ? getSession() : null;
+  const branchName = (branchSelect && branchSelect.options[branchSelect.selectedIndex]?.text)
+                  || (session ? session.branch : 'Kota Sentosa');
+
   if (!auditVideoFile && !apiKey) {
-    alert('Please upload a walkthrough video to begin the audit.');
+    alert('Please upload a walkthrough video and enter your Gemini API key.');
     return;
   }
 
@@ -83,107 +264,60 @@ async function runAudit() {
 
   try {
     if (!apiKey) {
-      // No API key → mock demo
-      setStatus('No API key detected — running offline demo report…');
-      await sleep(1500);
-      renderMockAuditReport();
+      setStatus('No Gemini API key detected — running offline demo report…');
+      await sleep(1200);
+      renderMockAuditReport(branchName);
+      alert('Note: Running in Demo Mode because no Gemini API key was provided. Enter a free Gemini API key above to run live AI audits on your videos.');
     } else if (!auditVideoFile) {
-      // API key but no video
-      setStatus('Running text-based 5S assessment (no video uploaded)…');
-      await sleep(1000);
-      renderMockAuditReport();
+      alert('Please upload a store walkthrough video (MP4/MOV) first.');
+      if (progressEl) progressEl.classList.add('hidden');
+      if (runBtn) { runBtn.disabled = false; runBtn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles mr-2"></i>Run 5S AI Audit'; }
+      return;
     } else {
-      // Real Gemini pipeline
-      setStatus('Step 1/3 — Uploading video to Gemini Files API…');
-      const fileUri = await uploadVideoToGemini(auditVideoFile, apiKey, setStatus);
-      setStatus('Step 2/3 — Running 5S analysis with Gemini Vision…');
-      const reportJson = await callGeminiGenerate(fileUri, apiKey, setStatus);
-      setStatus('Step 3/3 — Rendering report…');
+      // Step 1: Extract keyframes
+      setStatus('Step 1/3 — Extracting video walkthrough keyframes…');
+      const frames = await extractVideoFrames(auditVideoFile, 6, setStatus);
+
+      // Step 2: Gemini Vision evaluation
+      setStatus('Step 2/3 — Evaluating 5S compliance across 4 categories with Gemini Vision…');
+      const reportJson = await callGeminiGenerateWithFrames(frames, branchName, apiKey, setStatus);
+
+      // Step 3: Render report
+      setStatus('Step 3/3 — Rendering audit findings & action plan…');
       renderAuditReport(reportJson);
     }
   } catch (err) {
-    setStatus(`Error: ${err.message}. Falling back to demo report.`);
-    await sleep(800);
-    renderMockAuditReport();
+    console.error('Audit failure:', err);
+    let errMsg = err.message || 'Unknown error';
+    if (errMsg.includes('403')) {
+      errMsg = 'Gemini API Key rejected (403 Forbidden). Please click "Get Free Key" to generate a new free key in Google AI Studio and paste it above.';
+    }
+    setStatus(`⚠️ Error: ${errMsg}. Showing sample reference report.`);
+    alert(`5S Walkthrough Audit Notice:\n\n${errMsg}\n\nA demo reference report has been displayed below.`);
+    renderMockAuditReport(branchName);
   } finally {
     if (progressEl) progressEl.classList.add('hidden');
     if (runBtn) { runBtn.disabled = false; runBtn.innerHTML = '<i class="fa-solid fa-rotate mr-2"></i>Re-Run Audit'; }
   }
 }
 
-// ─── GEMINI FILES UPLOAD ──────────────────────────────────────────────────────
-async function uploadVideoToGemini(file, apiKey, setStatus) {
-  // Step 1: initiate resumable upload
-  const initResp = await fetch(`${GEMINI_FILES_API}?key=${apiKey}`, {
-    method: 'POST',
-    headers: {
-      'X-Goog-Upload-Protocol': 'resumable',
-      'X-Goog-Upload-Command': 'start',
-      'X-Goog-Upload-Header-Content-Length': file.size,
-      'X-Goog-Upload-Header-Content-Type': file.type || 'video/mp4',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ file: { display_name: file.name } }),
-  });
-
-  if (!initResp.ok) {
-    const errText = await initResp.text();
-    throw new Error(`Files API init failed (${initResp.status}): ${errText}`);
-  }
-
-  const uploadUrl = initResp.headers.get('X-Goog-Upload-URL');
-  if (!uploadUrl) throw new Error('No upload URL returned from Files API.');
-
-  // Step 2: upload bytes
-  setStatus('Uploading video bytes…');
-  const uploadResp = await fetch(uploadUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Length': file.size,
-      'X-Goog-Upload-Offset': 0,
-      'X-Goog-Upload-Command': 'upload, finalize',
-    },
-    body: file,
-  });
-
-  if (!uploadResp.ok) {
-    const errText = await uploadResp.text();
-    throw new Error(`Video upload failed (${uploadResp.status}): ${errText}`);
-  }
-
-  const uploadData = await uploadResp.json();
-  const fileUri = uploadData?.file?.uri;
-  if (!fileUri) throw new Error('No file URI in upload response.');
-
-  // Step 3: poll until ACTIVE
-  setStatus('Waiting for video to process…');
-  const fileId = uploadData.file.name;
-  for (let i = 0; i < 30; i++) {
-    await sleep(3000);
-    const pollResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileId}?key=${apiKey}`);
-    const pollData = await pollResp.json();
-    if (pollData?.state === 'ACTIVE') return fileUri;
-    if (pollData?.state === 'FAILED') throw new Error('Video processing failed on Gemini servers.');
-    setStatus(`Video processing… (${Math.round(((i+1)/30)*100)}%)`);
-  }
-  throw new Error('Video processing timed out after 90 seconds.');
-}
-
-// ─── GEMINI GENERATE ──────────────────────────────────────────────────────────
-async function callGeminiGenerate(fileUri, apiKey, setStatus) {
-  const systemPrompt = `You are a professional retail pharmacy 5S compliance auditor. Analyse the provided walkthrough video of a pharmacy outlet and produce a detailed structured JSON audit report.
+// ─── GEMINI GENERATE WITH KEYFRAMES ───────────────────────────────────────────
+async function callGeminiGenerateWithFrames(frames, branchName, apiKey, setStatus) {
+  const today = new Date().toISOString().slice(0, 10);
+  const systemPrompt = `You are a professional retail pharmacy 5S compliance auditor for PMG Pharmacy.
+Analyse the provided sequence of keyframe images extracted from a store walkthrough video (with timestamp labels) and produce a detailed structured JSON audit report.
 
 Evaluate across FOUR mandatory categories:
-1. DISPENSARY_HYGIENE: Paperwork clutter, prescription organisation, compounding area cleanliness, expired stock on shelves.
-2. MERCHANDISING_SHELVING: Shelf gaps, face-forward product alignment, missing price tags, planogram compliance.
+1. DISPENSARY_HYGIENE: Paperwork clutter, prescription organisation, compounding area cleanliness, expired stock on shelves, unorganised medications.
+2. MERCHANDISING_SHELVING: Shelf gaps, face-forward product alignment, missing price tags, planogram compliance, dusty displays.
 3. FLOOR_SAFETY: Corridor clearances (min 1m walkway), supplier cartons on floor, wet hazards, emergency exit obstruction.
 4. POP_MARKETING: Current promotional displays, expired posters removed, POP material condition and placement.
 
 Return ONLY valid JSON matching this schema exactly:
 {
   "overall_score": <integer 0-100>,
-  "branch_observed": "<string>",
-  "audit_date": "<YYYY-MM-DD>",
+  "branch_observed": "${branchName || 'Target Outlet'}",
+  "audit_date": "${today}",
   "categories": [
     {
       "id": "DISPENSARY_HYGIENE",
@@ -194,20 +328,62 @@ Return ONLY valid JSON matching this schema exactly:
         { "timestamp": "<MM:SS>", "observation": "<string>", "severity": "<Low|Medium|High>" }
       ],
       "checklist_items": ["<action item 1>", "<action item 2>"]
+    },
+    {
+      "id": "MERCHANDISING_SHELVING",
+      "name": "Merchandising & Shelf Facing",
+      "score": <integer 0-100>,
+      "status": "<PASS|FAIL|ATTENTION>",
+      "findings": [
+        { "timestamp": "<MM:SS>", "observation": "<string>", "severity": "<Low|Medium|High>" }
+      ],
+      "checklist_items": ["<action item 1>", "<action item 2>"]
+    },
+    {
+      "id": "FLOOR_SAFETY",
+      "name": "Floor Safety & Backroom Storage",
+      "score": <integer 0-100>,
+      "status": "<PASS|FAIL|ATTENTION>",
+      "findings": [
+        { "timestamp": "<MM:SS>", "observation": "<string>", "severity": "<Low|Medium|High>" }
+      ],
+      "checklist_items": ["<action item 1>", "<action item 2>"]
+    },
+    {
+      "id": "POP_MARKETING",
+      "name": "POP & Marketing Compliance",
+      "score": <integer 0-100>,
+      "status": "<PASS|FAIL|ATTENTION>",
+      "findings": [
+        { "timestamp": "<MM:SS>", "observation": "<string>", "severity": "<Low|Medium|High>" }
+      ],
+      "checklist_items": ["<action item 1>", "<action item 2>"]
     }
   ],
   "top_priority_actions": ["<string>", "<string>", "<string>"],
-  "whatsapp_summary": "<concise 3-4 line WhatsApp-ready text>"
+  "whatsapp_summary": "<concise 3-4 line WhatsApp-ready text with emojis>"
 }`;
+
+  const contentsParts = [];
+  frames.forEach((f, i) => {
+    contentsParts.push({
+      text: `Walkthrough Keyframe #${i + 1} at timestamp [${f.timestampStr}]:`
+    });
+    contentsParts.push({
+      inline_data: {
+        mime_type: 'image/jpeg',
+        data: f.base64
+      }
+    });
+  });
+
+  contentsParts.push({
+    text: `Conduct a thorough 5S walkthrough audit of this pharmacy outlet (${branchName}) using the keyframes above. Return the JSON report.`
+  });
 
   const body = {
     system_instruction: { parts: [{ text: systemPrompt }] },
-    contents: [{
-      parts: [
-        { file_data: { mime_type: 'video/mp4', file_uri: fileUri } },
-        { text: 'Conduct a thorough 5S walkthrough audit of this pharmacy video. Return the JSON report.' }
-      ]
-    }],
+    contents: [{ parts: contentsParts }],
     generation_config: {
       response_mime_type: 'application/json',
       temperature: 0.2,
@@ -215,30 +391,52 @@ Return ONLY valid JSON matching this schema exactly:
     }
   };
 
-  const resp = await fetch(`${GEMINI_GENERATE_API}?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const candidateModels = ['gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+  let lastErr = null;
 
-  if (!resp.ok) {
-    const errText = await resp.text();
-    throw new Error(`Gemini API error (${resp.status}): ${errText}`);
+  for (const model of candidateModels) {
+    try {
+      setStatus(`Analysing frames with Gemini Vision (${model})…`);
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (resp.status === 403) {
+        const errJson = await resp.json().catch(() => ({}));
+        throw new Error(`Gemini API 403 Forbidden: Invalid or revoked API key. ${errJson?.error?.message || ''}`);
+      }
+
+      if (resp.status === 404) {
+        // Model not available on this endpoint, try next candidate model
+        continue;
+      }
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(`Gemini API error (${resp.status}): ${errText}`);
+      }
+
+      const data = await resp.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+      return JSON.parse(text);
+    } catch (err) {
+      lastErr = err;
+      if (err.message && err.message.includes('403')) {
+        throw err;
+      }
+    }
   }
 
-  const data = await resp.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error('Gemini returned malformed JSON. Using demo report.');
-  }
+  throw lastErr || new Error('Failed to obtain audit report from Gemini Vision.');
 }
 
 // ─── MOCK DEMO REPORT ─────────────────────────────────────────────────────────
-function renderMockAuditReport() {
-  const session    = getSession();
-  const branchName = session ? session.branch : 'Kota Sentosa';
+function renderMockAuditReport(branchOverride) {
+  const session    = typeof getSession === 'function' ? getSession() : null;
+  const branchName = branchOverride || (session ? session.branch : 'Kota Sentosa');
   const today      = new Date().toISOString().slice(0, 10);
 
   const mockReport = {
@@ -348,9 +546,9 @@ function renderAuditReport(report) {
   }
 
   // Score meta
-  setText('auditBranch',    report.branch_observed || '—');
-  setText('auditDate',      report.audit_date       || '—');
-  setText('auditScoreText', `${score} / 100`);
+  setAuditText('auditBranch',    report.branch_observed || '—');
+  setAuditText('auditDate',      report.audit_date       || '—');
+  setAuditText('auditScoreText', `${score} / 100`);
 
   // Category cards
   const catsEl = document.getElementById('auditCategoryCards');
@@ -470,8 +668,20 @@ function printAuditReport() {
 }
 
 // ─── UTILITIES ────────────────────────────────────────────────────────────────
+function setAuditText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function escHtml(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// Expose globals for inline HTML event handlers
+window.testGeminiApiKey = testGeminiApiKey;
+window.runAudit = runAudit;
+window.toggleChecklist = toggleChecklist;
+window.copyWhatsAppSummary = copyWhatsAppSummary;
+window.printAuditReport = printAuditReport;

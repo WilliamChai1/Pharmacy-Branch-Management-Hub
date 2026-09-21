@@ -237,19 +237,30 @@
           <div class="relative">
             <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
             <input id="invSearch" type="text" placeholder="Search by SKU or description…"
-              class="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-blue-400 focus:border-blue-400 outline-none w-64">
+              class="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-blue-400 focus:border-blue-400 outline-none w-56">
           </div>
+          <!-- Preferred Vendor Filter -->
+          <select id="invVendorFilter" class="border border-gray-300 rounded-lg px-3 py-2 text-xs font-semibold bg-white outline-none focus:ring-1 focus:ring-blue-400 max-w-[240px]">
+            <option value="">All Preferred Vendors</option>
+          </select>
           <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
             <input id="invFilterReorder" type="checkbox"
               class="w-4 h-4 accent-blue-600 rounded">
             Show only SKUs to reorder
           </label>
         </div>
-        <button id="invDownloadBtn"
-          class="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-5 py-2 rounded-lg flex items-center gap-2 transition shadow-sm">
-          <i class="fa-solid fa-file-zipper"></i>
-          Generate & Download Xilnex PO ZIP
-        </button>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button id="invDownloadTryOutBtn" type="button"
+            class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm"
+            title="Download Xilnex Import CSV for selected vendor or all vendors in TRY OUT format">
+            <i class="fa-solid fa-file-csv"></i> Download "TRY OUT.csv"
+          </button>
+          <button id="invDownloadBtn" type="button"
+            class="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm"
+            title="Generate ZIP containing individual TRY OUT CSV files separated by Preferred Vendor">
+            <i class="fa-solid fa-file-zipper"></i> Download Vendor ZIP
+          </button>
+        </div>
       </div>
 
       <!-- Order grid table -->
@@ -718,10 +729,22 @@
         </h3>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label class="block text-xs text-gray-500 mb-1">Gemini API Key <span class="text-gray-400">(stored locally, never uploaded)</span></label>
-            <input type="password" id="geminiApiKey" autocomplete="off"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-amber-400 outline-none"
-              placeholder="AIza…   (leave blank for demo mode)">
+            <div class="flex justify-between items-center mb-1">
+              <label class="block text-xs text-gray-500 font-medium">Gemini API Key <span class="text-gray-400">(stored locally)</span></label>
+              <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" class="text-xs text-amber-700 hover:underline flex items-center gap-1 font-semibold">
+                <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i> Get Free Key
+              </a>
+            </div>
+            <div class="flex gap-2">
+              <input type="password" id="geminiApiKey" autocomplete="off"
+                class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-amber-400 outline-none"
+                placeholder="AIzaSy… (paste your free key here)">
+              <button id="btnTestGeminiKey" type="button" onclick="testGeminiApiKey()"
+                class="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition whitespace-nowrap shadow-sm">
+                <i class="fa-solid fa-bolt"></i> Test Key
+              </button>
+            </div>
+            <p id="geminiKeyStatus" class="text-[11px] mt-1 text-gray-500"></p>
           </div>
           <div>
             <label class="block text-xs text-gray-500 mb-1">Target Branch for Audit</label>
@@ -1807,12 +1830,15 @@ document.addEventListener('DOMContentLoaded', () => {
     monthInput.value = `${year}-${month}`;
   }
 
-  // Pre-fill baked-in Gemini API key
+  // Pre-fill Gemini API key from localStorage
   const geminiInput = document.getElementById('geminiApiKey');
-  if (geminiInput && !geminiInput.value) {
-    const saved = localStorage.getItem('pmg_gemini_key') || '';
+  if (geminiInput) {
+    let saved = localStorage.getItem('pmg_gemini_key') || '';
+    if (saved === 'AIzaSyAfJqs6YnY5J_URsuvmSMi8WM3BckVwKY4') {
+      localStorage.removeItem('pmg_gemini_key');
+      saved = '';
+    }
     if (saved) geminiInput.value = saved;
-    else geminiInput.value = 'AIzaSyAfJqs6YnY5J_URsuvmSMi8WM3BckVwKY4';
   }
 
   // Initialise modules

@@ -41,8 +41,14 @@ function initInventory() {
   const searchEl = document.getElementById('invSearch');
   if (searchEl) searchEl.addEventListener('input', renderInventoryGrid);
 
+  const vendorFilterEl = document.getElementById('invVendorFilter');
+  if (vendorFilterEl) vendorFilterEl.addEventListener('change', renderInventoryGrid);
+
   const filterToggle = document.getElementById('invFilterReorder');
   if (filterToggle) filterToggle.addEventListener('change', renderInventoryGrid);
+
+  const tryOutBtn = document.getElementById('invDownloadTryOutBtn');
+  if (tryOutBtn) tryOutBtn.addEventListener('click', downloadTryOutCsv);
 
   const dlBtn = document.getElementById('invDownloadBtn');
   if (dlBtn) dlBtn.addEventListener('click', generatePOZip);
@@ -79,29 +85,42 @@ function resolveCol(row, candidates) {
   return '';
 }
 
+// ─── CSV ESCAPE (RFC 4180) ──────────────────────────────────────────────────
+function csvEscape(val) {
+  if (val === null || val === undefined) return '';
+  const str = String(val).trim();
+  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
 // ─── CALCULATION ENGINE ───────────────────────────────────────────────────────
 function recalcInventory() {
   const p = getParams();
   inventoryGrid = inventoryData
     .filter(row => Object.values(row).some(v => v && String(v).trim()))
     .map((row, idx) => {
-      const itemCode   = resolveCol(row, ['Item_Code','ItemCode','item code','SKU','Code','Item']) || `ITEM${idx+1}`;
-      const desc       = resolveCol(row, ['Description','Desc','Item Description','Name','Product Name']) || '';
-      const vendorCode = resolveCol(row, ['Vendor_Code','VendorCode','Vendor','Supplier','Supp Code','Supplier Code']) || 'GEN';
+      const itemCode   = resolveCol(row, ['Item Code','Item_Code','ItemCode','item code','SKU','Code','Item']) || `ITEM${idx+1}`;
+      const desc       = resolveCol(row, ['Item Name','Item Description','Description','Desc','Name','Product Name']) || '';
+      let vendorCode   = resolveCol(row, ['Preferred Vendor','Vendor_Code','VendorCode','Vendor','Supplier','Supp Code','Supplier Code']).trim();
+      if (!vendorCode || vendorCode === '-') vendorCode = 'UNASSIGNED';
       const uom        = resolveCol(row, ['UOM','Unit','Unit of Measure','Uom']) || 'PCS';
-      const salesQty   = parseFloat(resolveCol(row, ['Sales_Qty_90d','SalesQty','Qty Sold','Sales Qty','Sales','Qty_Sold'])) || 0;
-      const soh        = parseFloat(resolveCol(row, ['SOH','Stock on Hand','StockOnHand','Closing Stock','Balance','Qty Balance'])) || 0;
-      const onOrder    = parseFloat(resolveCol(row, ['On_Order','OnOrder','Pending PO','In Transit','Order Qty','Pending_PO'])) || 0;
+      const salesQty   = parseFloat(resolveCol(row, ['Sales Qty','Sales_Qty_90d','SalesQty','Qty Sold','Sales','Qty_Sold'])) || 0;
+      const soh        = parseFloat(resolveCol(row, ['Quantity On Hand','SOH','Stock on Hand','StockOnHand','Closing Stock','Balance','Qty Balance'])) || 0;
+      const onOrder    = parseFloat(resolveCol(row, ['In Order Quantity','On_Order','OnOrder','Pending PO','In Transit','Order Qty','Pending_PO'])) || 0;
+      const activeVal  = resolveCol(row, ['Active','Status','IsActive']).trim().toLowerCase();
+      const isActive   = activeVal !== 'no' && activeVal !== 'false';
 
       const ads            = salesQty / p.salesWindow;
       const ip             = soh + onOrder;
       const rop            = ads * (p.leadTime + p.safetyDays);
       const targetMax      = ads * p.targetDays;
-      const suggestedOrder = (ip <= rop && ads > 0) ? Math.ceil(targetMax - ip) : 0;
+      const suggestedOrder = (ip <= rop && ads > 0 && isActive) ? Math.ceil(targetMax - ip) : 0;
       const daysCover      = ads > 0 ? Math.round(soh / ads) : 9999;
 
       return {
-        itemCode, desc, vendorCode, uom,
+        itemCode, desc, vendorCode, uom, isActive,
         salesQty, soh, onOrder,
         ads: +ads.toFixed(4),
         ip, rop: +rop.toFixed(2), targetMax: +targetMax.toFixed(2),
@@ -111,11 +130,43 @@ function recalcInventory() {
       };
     });
 
+  populateVendorDropdown();
   renderInventoryGrid();
   updateInventoryKPIs();
 
   const panelEl = document.getElementById('invResultPanel');
   if (panelEl) panelEl.classList.remove('hidden');
+}
+
+// ─── POPULATE VENDOR DROPDOWN ────────────────────────────────────────────────
+function populateVendorDropdown() {
+  const select = document.getElementById('invVendorFilter');
+  if (!select) return;
+  const currentVal = select.value;
+
+  const vendorMap = {};
+  inventoryGrid.forEach(r => {
+    const vc = r.vendorCode || 'UNASSIGNED';
+    if (!vendorMap[vc]) vendorMap[vc] = { total: 0, toOrder: 0 };
+    vendorMap[vc].total++;
+    if (r.approvedQty > 0) vendorMap[vc].toOrder++;
+  });
+
+  const sortedVendors = Object.keys(vendorMap).sort((a, b) => {
+    if (vendorMap[b].toOrder !== vendorMap[a].toOrder) {
+      return vendorMap[b].toOrder - vendorMap[a].toOrder;
+    }
+    return a.localeCompare(b);
+  });
+
+  select.innerHTML = '<option value="">All Preferred Vendors (' + sortedVendors.length + ' vendors)</option>' + sortedVendors.map(v => {
+    const count = vendorMap[v].toOrder;
+    return `<option value="${escHtml(v)}">${escHtml(v)} (${count} to order)</option>`;
+  }).join('');
+
+  if (currentVal && sortedVendors.includes(currentVal)) {
+    select.value = currentVal;
+  }
 }
 
 // ─── KPI COUNTERS ────────────────────────────────────────────────────────────
@@ -138,11 +189,13 @@ function renderInventoryGrid() {
   const tbody = document.getElementById('invTableBody');
   if (!tbody) return;
 
-  const searchQ     = (document.getElementById('invSearch')?.value || '').toLowerCase();
-  const onlyReorder = document.getElementById('invFilterReorder')?.checked || false;
+  const searchQ      = (document.getElementById('invSearch')?.value || '').toLowerCase();
+  const selectedVendor = document.getElementById('invVendorFilter')?.value || '';
+  const onlyReorder  = document.getElementById('invFilterReorder')?.checked || false;
 
   const filtered = inventoryGrid.filter(row => {
-    if (onlyReorder && row.suggestedOrder === 0) return false;
+    if (selectedVendor && row.vendorCode !== selectedVendor) return false;
+    if (onlyReorder && row.approvedQty === 0 && row.suggestedOrder === 0) return false;
     if (searchQ && !row.itemCode.toLowerCase().includes(searchQ) && !row.desc.toLowerCase().includes(searchQ)) return false;
     return true;
   });
@@ -156,7 +209,7 @@ function renderInventoryGrid() {
     return `<tr class="${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 border-b border-gray-100">
       <td class="px-3 py-2 text-xs font-mono text-gray-700">${escHtml(row.itemCode)}</td>
       <td class="px-3 py-2 text-xs text-gray-800 max-w-xs truncate" title="${escHtml(row.desc)}">${escHtml(row.desc)}</td>
-      <td class="px-3 py-2 text-xs text-center text-gray-600">${escHtml(row.vendorCode)}</td>
+      <td class="px-3 py-2 text-xs text-center text-gray-600 truncate max-w-[150px]" title="${escHtml(row.vendorCode)}">${escHtml(row.vendorCode)}</td>
       <td class="px-3 py-2 text-xs text-right">${row.soh}</td>
       <td class="px-3 py-2 text-xs text-right text-gray-500">${row.onOrder}</td>
       <td class="px-3 py-2 text-xs text-right text-gray-500">${row.ads}</td>
@@ -177,16 +230,19 @@ function renderInventoryGrid() {
 }
 
 function updateApprovedQtyByFilter(filteredIdx, val) {
-  const searchQ     = (document.getElementById('invSearch')?.value || '').toLowerCase();
-  const onlyReorder = document.getElementById('invFilterReorder')?.checked || false;
+  const searchQ        = (document.getElementById('invSearch')?.value || '').toLowerCase();
+  const selectedVendor = document.getElementById('invVendorFilter')?.value || '';
+  const onlyReorder    = document.getElementById('invFilterReorder')?.checked || false;
   let count = 0;
   for (let i = 0; i < inventoryGrid.length; i++) {
     const row = inventoryGrid[i];
-    if (onlyReorder && row.suggestedOrder === 0) continue;
+    if (selectedVendor && row.vendorCode !== selectedVendor) continue;
+    if (onlyReorder && row.approvedQty === 0 && row.suggestedOrder === 0) continue;
     if (searchQ && !row.itemCode.toLowerCase().includes(searchQ) && !row.desc.toLowerCase().includes(searchQ)) continue;
     if (count === filteredIdx) {
       inventoryGrid[i].approvedQty = Math.max(0, parseInt(val, 10) || 0);
       updateInventoryKPIs();
+      populateVendorDropdown();
       return;
     }
     count++;
@@ -197,7 +253,49 @@ function escHtml(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ─── PO ZIP EXPORT ────────────────────────────────────────────────────────────
+// ─── BUILD XILNEX TRY OUT CSV CONTENT ───────────────────────────────────────
+// Format: No,Serial No@Alt Serial No,Item Code,Quantity,Cost,Shelf No,EPC,Item Name,Remark 1,Remark 2,Po Transfer No,Alt Lookup,UOM,Reference PO No,Discount Rate
+function buildTryOutCsvContent(rows) {
+  const header = 'No,Serial No@Alt Serial No,Item Code,Quantity,Cost,Shelf No,EPC,Item Name,Remark 1,Remark 2,Po Transfer No,Alt Lookup,UOM,Reference PO No,Discount Rate';
+  const dataRows = rows.map(r => {
+    return `,,${csvEscape(r.itemCode)},${r.approvedQty},,,,${csvEscape(r.desc)},,,,,,,`;
+  });
+  return header + '\r\n' + dataRows.join('\r\n') + '\r\n';
+}
+
+// ─── DOWNLOAD SINGLE TRY OUT.CSV ─────────────────────────────────────────────
+function downloadTryOutCsv() {
+  const selectedVendor = document.getElementById('invVendorFilter')?.value || '';
+  let items = inventoryGrid.filter(r => r.approvedQty > 0);
+
+  if (selectedVendor) {
+    items = items.filter(r => r.vendorCode === selectedVendor);
+  }
+
+  if (items.length === 0) {
+    alert(selectedVendor 
+      ? `No approved order items for vendor "${selectedVendor}". Please check order quantities.`
+      : 'No approved order items to export. Please set Approved Qty > 0.');
+    return;
+  }
+
+  const csvContent = buildTryOutCsvContent(items);
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  
+  // Directly download as TRY OUT.csv (or with vendor name if user wants clarity)
+  const filename = selectedVendor ? `TRY OUT - ${selectedVendor.replace(/[^a-zA-Z0-9_-]/g, '_')}.csv` : 'TRY OUT.csv';
+  saveAs(blob, filename);
+
+  const btn = document.getElementById('invDownloadTryOutBtn');
+  if (btn) {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-circle-check mr-2"></i>Downloaded!';
+    btn.disabled = true;
+    setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 3000);
+  }
+}
+
+// ─── PO ZIP EXPORT (SEPARATED BY PREFERRED VENDOR) ───────────────────────────
 async function generatePOZip() {
   const approved = inventoryGrid.filter(r => r.approvedQty > 0);
   if (approved.length === 0) {
@@ -207,31 +305,35 @@ async function generatePOZip() {
 
   const byVendor = {};
   approved.forEach(row => {
-    if (!byVendor[row.vendorCode]) byVendor[row.vendorCode] = [];
-    byVendor[row.vendorCode].push(row);
+    const v = row.vendorCode || 'UNASSIGNED';
+    if (!byVendor[v]) byVendor[v] = [];
+    byVendor[v].push(row);
   });
 
   const zip = new JSZip();
-  const session    = getSession();
-  const branchCode = session ? (BRANCHES.find(b => b.name === session.branch)?.code || 'BRANCH') : 'BRANCH';
-  const dateStr    = new Date().toISOString().slice(0, 10);
+  const dateStr = new Date().toISOString().slice(0, 10);
 
+  // 1. Create a TRY OUT CSV for each vendor
   Object.entries(byVendor).forEach(([vendorCode, rows]) => {
-    const csvHeader  = 'Item Code,Order Qty,UOM\r\n';
-    const csvBody    = rows.map(r => `${r.itemCode},${r.approvedQty},${r.uom}`).join('\r\n');
-    zip.file(`${vendorCode}_PO_${branchCode}_${dateStr}.csv`, csvHeader + csvBody + '\r\n');
+    const cleanName = vendorCode.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const csvContent = buildTryOutCsvContent(rows);
+    zip.file(`TRY OUT - ${cleanName}.csv`, csvContent);
   });
 
-  // Summary manifest
-  const manifestLines = ['Vendor Code,SKU Count,Total Units,Generated Date'];
+  // 2. Also include a master TRY OUT.csv with all approved items combined
+  const masterContent = buildTryOutCsvContent(approved);
+  zip.file('TRY OUT.csv', masterContent);
+
+  // 3. Summary manifest
+  const manifestLines = ['Preferred Vendor,SKU Count,Total Order Units,Generated Date'];
   Object.entries(byVendor).forEach(([vc, rows]) => {
     const total = rows.reduce((s, r) => s + r.approvedQty, 0);
-    manifestLines.push(`${vc},${rows.length},${total},${dateStr}`);
+    manifestLines.push(`"${vc}",${rows.length},${total},${dateStr}`);
   });
-  zip.file(`_PO_Summary_${branchCode}_${dateStr}.csv`, manifestLines.join('\r\n'));
+  zip.file(`_Vendor_Summary_${dateStr}.csv`, manifestLines.join('\r\n'));
 
   const blob = await zip.generateAsync({ type: 'blob' });
-  saveAs(blob, `Xilnex_PO_${branchCode}_${dateStr}.zip`);
+  saveAs(blob, `Xilnex_Ordering_By_Vendor_${dateStr}.zip`);
 
   const dlBtn = document.getElementById('invDownloadBtn');
   if (dlBtn) {
