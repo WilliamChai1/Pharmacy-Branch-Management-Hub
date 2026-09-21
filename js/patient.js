@@ -2174,24 +2174,44 @@ async function backupToPenDrive() {
       }
     }
 
-    // 2. Package into bundle
+    // 2. Gather pharmacist working hour schedules & customer bookings from localStorage
+    const pharmacistSchedules = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('pmg_pharmacist_schedule_')) {
+        try {
+          pharmacistSchedules[key] = JSON.parse(localStorage.getItem(key));
+        } catch (_) {}
+      }
+    }
+
+    let customerBookings = [];
+    try {
+      customerBookings = JSON.parse(localStorage.getItem('pmg_customer_bookings') || '[]');
+    } catch (_) {}
+
+    // 3. Package into bundle
     const backupBundle = {
       app: 'PMG_MANAGEMENT_HUB',
-      version: '1.0',
+      version: '1.2',
       type: 'FULL_PENDRIVE_BACKUP',
       exportDate: new Date().toISOString(),
       branch: branch,
       patientCount: patientsData.length,
       docCount: documents.length,
+      scheduleCount: Object.keys(pharmacistSchedules).length,
+      bookingCount: customerBookings.length,
       patients: patientsData,
-      documents: documents
+      documents: documents,
+      pharmacistSchedules: pharmacistSchedules,
+      customerBookings: customerBookings
     };
 
     const jsonStr = JSON.stringify(backupBundle, null, 2);
     const blob = new Blob([jsonStr], { type: 'application/json' });
     const filename = `PMG_PatientBackup_${branch}_${dateStr}.pmgbak`;
 
-    // 3. Trigger download
+    // 4. Trigger download
     if (typeof saveAs !== 'undefined') {
       saveAs(blob, filename);
     } else {
@@ -2205,11 +2225,11 @@ async function backupToPenDrive() {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
-    // 4. Update backup status
+    // 5. Update backup status
     localStorage.setItem('pmg_last_backup_date', new Date().toISOString());
     updateBackupStatusBadge();
 
-    alert(`💾 Pen Drive Backup Created Successfully!\n\nFile: ${filename}\nPatients: ${patientsData.length}\nAttached Reports: ${documents.length}\n\nPlease save this file onto your branch USB Pen Drive.`);
+    alert(`💾 Pen Drive Backup Created Successfully!\n\nFile: ${filename}\nPatients: ${patientsData.length}\nAttached Reports: ${documents.length}\nPharmacist Schedules: ${Object.keys(pharmacistSchedules).length} branch(es)\nCustomer Bookings: ${customerBookings.length}\n\nPlease save this file onto your branch USB Pen Drive.`);
   } catch (err) {
     console.error('Backup failed:', err);
     alert('Failed to generate backup: ' + err.message);
@@ -2220,7 +2240,7 @@ async function handleRestoreBackupFile(event) {
   const file = event.target.files && event.target.files[0];
   if (!file) return;
 
-  if (!confirm(`Are you sure you want to restore from "${file.name}"?\n\nThis will restore patient profiles, consultation records, and all attached lab blood reports.`)) {
+  if (!confirm(`Are you sure you want to restore from "${file.name}"?\n\nThis will restore patient profiles, consultation records, attached lab reports, and pharmacist working hour schedules.`)) {
     event.target.value = '';
     return;
   }
@@ -2245,12 +2265,28 @@ async function handleRestoreBackupFile(event) {
         restoredDocs = await importAllDocuments(backup.documents);
       }
 
+      // Restore pharmacist schedules
+      let restoredSchedules = 0;
+      if (backup.pharmacistSchedules && typeof backup.pharmacistSchedules === 'object') {
+        Object.keys(backup.pharmacistSchedules).forEach(k => {
+          try {
+            localStorage.setItem(k, JSON.stringify(backup.pharmacistSchedules[k]));
+            restoredSchedules++;
+          } catch (_) {}
+        });
+      }
+
+      // Restore customer bookings
+      if (backup.customerBookings && Array.isArray(backup.customerBookings)) {
+        localStorage.setItem('pmg_customer_bookings', JSON.stringify(backup.customerBookings));
+      }
+
       // Update backup status
       localStorage.setItem('pmg_last_backup_date', new Date().toISOString());
       updateBackupStatusBadge();
       renderPatientModule();
 
-      alert(`✅ Restore Complete!\n\n• ${patientsData.length} patient records loaded.\n• ${restoredDocs} lab reports & documents restored into IndexedDB.`);
+      alert(`✅ Restore Complete!\n\n• ${patientsData.length} patient records loaded.\n• ${restoredDocs} lab reports & documents restored into IndexedDB.\n• ${restoredSchedules} branch pharmacist working hour schedules restored.`);
     } catch (err) {
       console.error('Restore error:', err);
       alert('Failed to restore backup: ' + err.message);
