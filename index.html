@@ -1000,18 +1000,46 @@
           class="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm">
           <i class="fa-solid fa-file-excel"></i> Export Excel
         </button>
+        <button id="patientOneDriveBackupBtn" type="button" onclick="backupToOneDrive()"
+          class="bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Save encrypted daily backup directly to company Microsoft OneDrive">
+          <i class="fa-brands fa-microsoft"></i> Daily Backup (OneDrive)
+        </button>
         <button id="patientBackupBtn" type="button" onclick="backupToPenDrive()"
-          class="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Download encrypted full patient & document backup to USB Drive">
-          <i class="fa-solid fa-hard-drive"></i> Backup to Pen Drive
+          class="bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium px-2.5 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Download encrypted full patient & document backup to USB Drive (Alternative)">
+          <i class="fa-solid fa-hard-drive"></i> USB Drive
         </button>
         <button id="patientRestoreBtn" type="button" onclick="document.getElementById('restoreBackupInput').click()"
-          class="bg-gray-700 hover:bg-gray-800 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Restore patient database and reports from USB backup">
+          class="bg-gray-700 hover:bg-gray-800 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Restore patient database and reports from OneDrive or USB backup">
           <i class="fa-solid fa-file-import"></i> Restore Backup
         </button>
         <input type="file" id="restoreBackupInput" accept=".pmgbak,.json" class="hidden" onchange="handleRestoreBackupFile(event)">
-        <span id="backupStatusBadge" class="text-[11px] font-semibold text-gray-500 bg-gray-100 px-2.5 py-1.5 rounded-lg border border-gray-200 flex items-center gap-1.5">
-          <i class="fa-solid fa-shield-halved text-gray-400"></i> <span id="backupStatusText">Backup: Checking...</span>
+        <span id="backupStatusBadge" onclick="openOneDriveGuideModal()"
+          class="cursor-pointer text-[11px] font-semibold text-gray-500 bg-gray-100 hover:bg-gray-200 px-2.5 py-1.5 rounded-lg border border-gray-200 flex items-center gap-1.5 transition" title="Click to view OneDrive Daily Backup status & sharing instructions">
+          <i class="fa-brands fa-microsoft text-sky-600"></i> <span id="backupStatusText">OneDrive: Checking...</span>
         </span>
+      </div>
+    </div>
+
+    <!-- Daily Backup Health & Reminder Banner -->
+    <div id="patientDailyBackupBanner" class="hidden mb-4 p-3.5 rounded-xl border text-xs flex flex-wrap items-center justify-between gap-3 shadow-sm transition">
+      <div class="flex items-center gap-3">
+        <div id="backupBannerIcon" class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0">
+          <i class="fa-brands fa-microsoft text-lg"></i>
+        </div>
+        <div>
+          <p id="backupBannerTitle" class="font-bold text-gray-900"></p>
+          <p id="backupBannerDesc" class="text-[11px] text-gray-600 mt-0.5"></p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button type="button" onclick="backupToOneDrive()" id="backupBannerActionBtn"
+          class="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5">
+          <i class="fa-solid fa-cloud-arrow-up"></i> Backup to OneDrive Now
+        </button>
+        <button type="button" onclick="openOneDriveGuideModal()"
+          class="bg-white hover:bg-gray-50 text-gray-700 font-semibold text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 transition">
+          <i class="fa-solid fa-circle-question mr-1 text-sky-600"></i> Setup Guide
+        </button>
       </div>
     </div>
 
@@ -2154,6 +2182,95 @@
         <button onclick="closeManageHoursModal()" class="px-4 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs font-bold">
           Done
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── ONEDRIVE BACKUP & AREA MANAGER SHARING GUIDE MODAL ──────────────── -->
+  <div id="oneDriveGuideModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[92vh]">
+      <!-- Header -->
+      <div class="bg-gradient-to-r from-sky-700 to-blue-800 text-white p-5 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-xl">
+            <i class="fa-brands fa-microsoft"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold">OneDrive Daily Backup & Area Manager Sync</h3>
+            <p class="text-xs text-sky-100 mt-0.5">Automated cloud backup without physical USB pen drives</p>
+          </div>
+        </div>
+        <button onclick="closeOneDriveGuideModal()" class="text-sky-200 hover:text-white text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="p-6 space-y-4 overflow-y-auto text-xs text-gray-700">
+        <!-- Card 1 -->
+        <div class="p-4 bg-sky-50/60 rounded-xl border border-sky-100">
+          <div class="flex items-center gap-2 mb-1.5">
+            <span class="w-6 h-6 rounded-full bg-sky-600 text-white flex items-center justify-center font-bold text-xs">1</span>
+            <h4 class="font-bold text-gray-900 text-sm">Branch Daily Routine (End of Shift / Closing)</h4>
+          </div>
+          <p class="text-gray-600 ml-8 leading-relaxed">
+            Before closing the pharmacy counter each day, the duty pharmacist simply clicks <b>"Daily Backup (OneDrive)"</b>.
+            When the save dialog appears, select your branch's local synced OneDrive folder:
+          </p>
+          <div class="ml-8 mt-2 p-2.5 bg-white rounded-lg border border-sky-200 font-mono text-[11px] text-sky-900 flex items-center gap-2">
+            <i class="fa-solid fa-folder-open text-sky-600"></i>
+            <span>OneDrive - PMG Pharmacy \ PatientCare_Backups \ [Branch_Name]</span>
+          </div>
+          <p class="text-[11px] text-gray-500 ml-8 mt-1.5">
+            Windows OneDrive automatically uploads and synchronizes the <code class="bg-sky-100 text-sky-800 px-1 py-0.5 rounded font-mono">.pmgbak</code> file to Microsoft Cloud within seconds.
+          </p>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="p-4 bg-blue-50/60 rounded-xl border border-blue-100">
+          <div class="flex items-center gap-2 mb-1.5">
+            <span class="w-6 h-6 rounded-full bg-blue-700 text-white flex items-center justify-center font-bold text-xs">2</span>
+            <h4 class="font-bold text-gray-900 text-sm">How Area Manager Receives Your Daily Backups</h4>
+          </div>
+          <ul class="ml-8 space-y-2 text-gray-600 leading-relaxed list-disc">
+            <li>
+              <b>Area Manager Setup:</b> William Chai creates a master OneDrive folder named <code class="bg-blue-100 text-blue-900 px-1 py-0.5 rounded font-mono">PMG_PatientCare_Backups</code> with branch subfolders (e.g., <code class="bg-blue-100 text-blue-900 px-1 py-0.5 rounded font-mono">Kota_Sentosa</code>, <code class="bg-blue-100 text-blue-900 px-1 py-0.5 rounded font-mono">Branch_02</code>).
+            </li>
+            <li>
+              <b>One-Time Sharing:</b> William shares each branch folder with that branch's Microsoft 365 login. The branch clicks <i>"Add shortcut to My files"</i> in OneDrive web once.
+            </li>
+            <li>
+              <b>Zero USB Dependency:</b> Whenever your branch saves its daily backup, it instantly appears in William's OneDrive. As Area Manager, William can inspect or restore any branch's data directly from his laptop or mobile.
+            </li>
+          </ul>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="p-4 bg-emerald-50/60 rounded-xl border border-emerald-100">
+          <div class="flex items-center gap-2 mb-1.5">
+            <span class="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs">3</span>
+            <h4 class="font-bold text-emerald-950 text-sm">Medical Data Protection & PDPA Compliance</h4>
+          </div>
+          <p class="text-gray-600 ml-8 leading-relaxed">
+            All files are bundled in the secure <code class="bg-emerald-100 text-emerald-900 px-1 py-0.5 rounded font-mono">.pmgbak</code> format. Even though files are stored in Microsoft OneDrive cloud, patient health data, NRICs, and lab reports are client-side protected and can only be opened through the authorized PMG Management Hub application.
+          </p>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="bg-gray-50 px-6 py-3.5 border-t flex items-center justify-between">
+        <span class="text-[11px] text-gray-500">
+          <i class="fa-solid fa-cloud-arrow-up text-sky-600 mr-1"></i> Status: Backups active
+        </span>
+        <div class="flex items-center gap-2">
+          <button onclick="closeOneDriveGuideModal(); backupToOneDrive();"
+            class="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition shadow-sm flex items-center gap-1.5">
+            <i class="fa-brands fa-microsoft"></i> Run OneDrive Backup Now
+          </button>
+          <button onclick="closeOneDriveGuideModal()" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-xl text-xs font-bold">
+            Close
+          </button>
+        </div>
       </div>
     </div>
   </div>

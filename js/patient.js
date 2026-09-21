@@ -298,6 +298,7 @@ function initPatientModule() {
   loadPatientsData();
   setupPatientEventListeners();
   updateBackupStatusBadge();
+  updateDailyBackupBanner();
   renderPatientModule();
 }
 
@@ -603,6 +604,8 @@ function renderPatientModule() {
   renderUpcomingQueue(upcomingList);
   renderOverdueQueue(overdueList);
   renderPatientDirectory(filteredPatients);
+  updateBackupStatusBadge();
+  updateDailyBackupBanner();
 }
 
 // ─── RENDER QUEUES ───────────────────────────────────────────────────────────
@@ -2191,61 +2194,140 @@ async function exportPatientDataToExcel() {
   }
 }
 
-// ─── PEN DRIVE BACKUP & RESTORE ENGINE ───────────────────────────────────────
+// ─── CLOUD ONEDRIVE & PEN DRIVE BACKUP ENGINE ────────────────────────────────
+async function createPatientBackupBundle(type = 'DAILY_ONEDRIVE_BACKUP') {
+  const session = getSession();
+  const branch = (session && session.branch && session.branch !== 'ALL') ? session.branch : 'KS01';
+  const dateStr = getTodayDateString(0);
+
+  // 1. Gather all documents from IndexedDB
+  let documents = [];
+  if (typeof exportAllDocuments === 'function') {
+    try {
+      documents = await exportAllDocuments();
+    } catch (err) {
+      console.warn('Error exporting documents from IndexedDB:', err);
+    }
+  }
+
+  // 2. Gather pharmacist working hour schedules & customer bookings from localStorage
+  const pharmacistSchedules = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith('pmg_pharmacist_schedule_')) {
+      try {
+        pharmacistSchedules[key] = JSON.parse(localStorage.getItem(key));
+      } catch (_) {}
+    }
+  }
+
+  let customerBookings = [];
+  try {
+    customerBookings = JSON.parse(localStorage.getItem('pmg_customer_bookings') || '[]');
+  } catch (_) {}
+
+  // 3. Package into bundle
+  const backupBundle = {
+    app: 'PMG_MANAGEMENT_HUB',
+    version: '1.2',
+    type: type,
+    exportDate: new Date().toISOString(),
+    branch: branch,
+    patientCount: patientsData.length,
+    docCount: documents.length,
+    scheduleCount: Object.keys(pharmacistSchedules).length,
+    bookingCount: customerBookings.length,
+    patients: patientsData,
+    documents: documents,
+    pharmacistSchedules: pharmacistSchedules,
+    customerBookings: customerBookings
+  };
+
+  const filename = `PMG_PatientBackup_${branch}_${dateStr}.pmgbak`;
+  const jsonStr = JSON.stringify(backupBundle, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+
+  return {
+    bundle: backupBundle,
+    filename,
+    blob,
+    branch,
+    patientCount: patientsData.length,
+    docCount: documents.length,
+    scheduleCount: Object.keys(pharmacistSchedules).length,
+    bookingCount: customerBookings.length
+  };
+}
+
+// 1-Click Daily Backup directly to Microsoft OneDrive
+async function backupToOneDrive() {
+  try {
+    const { filename, blob, patientCount, docCount, scheduleCount } = await createPatientBackupBundle('DAILY_ONEDRIVE_BACKUP');
+    let savedViaPicker = false;
+
+    // Use File System Access API (Chromium Edge/Chrome) to allow choosing/saving to OneDrive folder
+    if (window.showSaveFilePicker) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{
+            description: 'PMG Encrypted Patient Care Backup (.pmgbak)',
+            accept: { 'application/json': ['.pmgbak'] }
+          }]
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        savedViaPicker = true;
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          // User closed the file dialog without saving
+          return;
+        }
+        console.warn('showSaveFilePicker failed, falling back to download:', err);
+      }
+    }
+
+    if (!savedViaPicker) {
+      // Standard browser download
+      if (typeof saveAs !== 'undefined') {
+        saveAs(blob, filename);
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+    }
+
+    // Record last backup details
+    const session = getSession();
+    const nowIso = new Date().toISOString();
+    localStorage.setItem('pmg_last_backup_date', nowIso);
+    localStorage.setItem('pmg_last_backup_type', 'OneDrive');
+    if (session && session.displayName) {
+      localStorage.setItem('pmg_last_backup_user', session.displayName);
+    }
+
+    updateBackupStatusBadge();
+    updateDailyBackupBanner();
+
+    alert(`☁️ Daily OneDrive Backup Saved Successfully!\n\n• File: ${filename}\n• Patients: ${patientCount}\n• Attached Reports: ${docCount}\n• Pharmacist Schedules: ${scheduleCount} branch(es)\n\nSaved to your branch OneDrive sync folder. OneDrive will automatically synchronize this file with Area Manager William Chai in the cloud.`);
+  } catch (err) {
+    console.error('OneDrive backup failed:', err);
+    alert('Failed to generate OneDrive backup: ' + err.message);
+  }
+}
+
+// Offline fallback: Backup to physical USB Pen Drive
 async function backupToPenDrive() {
   try {
-    const session = getSession();
-    const branch = (session && session.branch && session.branch !== 'ALL') ? session.branch : 'ALL';
-    const dateStr = getTodayDateString(0);
+    const { filename, blob, patientCount, docCount, scheduleCount, bookingCount } = await createPatientBackupBundle('FULL_PENDRIVE_BACKUP');
 
-    // 1. Gather all documents from IndexedDB
-    let documents = [];
-    if (typeof exportAllDocuments === 'function') {
-      try {
-        documents = await exportAllDocuments();
-      } catch (err) {
-        console.warn('Error exporting documents from IndexedDB:', err);
-      }
-    }
-
-    // 2. Gather pharmacist working hour schedules & customer bookings from localStorage
-    const pharmacistSchedules = {};
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('pmg_pharmacist_schedule_')) {
-        try {
-          pharmacistSchedules[key] = JSON.parse(localStorage.getItem(key));
-        } catch (_) {}
-      }
-    }
-
-    let customerBookings = [];
-    try {
-      customerBookings = JSON.parse(localStorage.getItem('pmg_customer_bookings') || '[]');
-    } catch (_) {}
-
-    // 3. Package into bundle
-    const backupBundle = {
-      app: 'PMG_MANAGEMENT_HUB',
-      version: '1.2',
-      type: 'FULL_PENDRIVE_BACKUP',
-      exportDate: new Date().toISOString(),
-      branch: branch,
-      patientCount: patientsData.length,
-      docCount: documents.length,
-      scheduleCount: Object.keys(pharmacistSchedules).length,
-      bookingCount: customerBookings.length,
-      patients: patientsData,
-      documents: documents,
-      pharmacistSchedules: pharmacistSchedules,
-      customerBookings: customerBookings
-    };
-
-    const jsonStr = JSON.stringify(backupBundle, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const filename = `PMG_PatientBackup_${branch}_${dateStr}.pmgbak`;
-
-    // 4. Trigger download
     if (typeof saveAs !== 'undefined') {
       saveAs(blob, filename);
     } else {
@@ -2259,11 +2341,18 @@ async function backupToPenDrive() {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
-    // 5. Update backup status
-    localStorage.setItem('pmg_last_backup_date', new Date().toISOString());
-    updateBackupStatusBadge();
+    const session = getSession();
+    const nowIso = new Date().toISOString();
+    localStorage.setItem('pmg_last_backup_date', nowIso);
+    localStorage.setItem('pmg_last_backup_type', 'USB Pen Drive');
+    if (session && session.displayName) {
+      localStorage.setItem('pmg_last_backup_user', session.displayName);
+    }
 
-    alert(`💾 Pen Drive Backup Created Successfully!\n\nFile: ${filename}\nPatients: ${patientsData.length}\nAttached Reports: ${documents.length}\nPharmacist Schedules: ${Object.keys(pharmacistSchedules).length} branch(es)\nCustomer Bookings: ${customerBookings.length}\n\nPlease save this file onto your branch USB Pen Drive.`);
+    updateBackupStatusBadge();
+    updateDailyBackupBanner();
+
+    alert(`💾 USB Pen Drive Backup Saved!\n\nFile: ${filename}\nPatients: ${patientCount}\nAttached Reports: ${docCount}\nPharmacist Schedules: ${scheduleCount} branch(es)\nCustomer Bookings: ${bookingCount}\n\nPlease save this file onto your branch USB Pen Drive.`);
   } catch (err) {
     console.error('Backup failed:', err);
     alert('Failed to generate backup: ' + err.message);
@@ -2317,7 +2406,9 @@ async function handleRestoreBackupFile(event) {
 
       // Update backup status
       localStorage.setItem('pmg_last_backup_date', new Date().toISOString());
+      localStorage.setItem('pmg_last_backup_type', 'Restored Archive');
       updateBackupStatusBadge();
+      updateDailyBackupBanner();
       renderPatientModule();
 
       alert(`✅ Restore Complete!\n\n• ${patientsData.length} patient records loaded.\n• ${restoredDocs} lab reports & documents restored into IndexedDB.\n• ${restoredSchedules} branch pharmacist working hour schedules restored.`);
@@ -2340,26 +2431,99 @@ function updateBackupStatusBadge() {
   const badgeEl = document.getElementById('backupStatusBadge');
   if (!textEl || !badgeEl) return;
 
+  const todayStr = getTodayDateString(0);
   const lastBackupStr = localStorage.getItem('pmg_last_backup_date');
+  const lastType = localStorage.getItem('pmg_last_backup_type') || 'OneDrive';
+
   if (!lastBackupStr) {
-    textEl.textContent = 'Backup: Not backed up yet';
-    badgeEl.className = 'text-[11px] font-semibold text-amber-700 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 flex items-center gap-1.5';
+    textEl.textContent = 'OneDrive: Backup Due';
+    badgeEl.className = 'cursor-pointer text-[11px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 px-2.5 py-1.5 rounded-lg border border-amber-200 flex items-center gap-1.5 transition';
     return;
   }
 
   const lastDate = new Date(lastBackupStr);
-  const diffDays = (Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
+  const lastDateStr = lastBackupStr.split('T')[0];
+  const isBackedUpToday = (lastDateStr === todayStr);
 
-  if (diffDays < 1) {
-    textEl.textContent = 'USB Backup: Today (Safe)';
-    badgeEl.className = 'text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200 flex items-center gap-1.5';
-  } else if (diffDays < 7) {
-    textEl.textContent = `USB Backup: ${Math.floor(diffDays)}d ago`;
-    badgeEl.className = 'text-[11px] font-semibold text-blue-700 bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-200 flex items-center gap-1.5';
+  if (isBackedUpToday) {
+    const timeStr = lastDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    textEl.textContent = `OneDrive: Today ${timeStr} (Safe)`;
+    badgeEl.className = 'cursor-pointer text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-lg border border-emerald-200 flex items-center gap-1.5 transition';
   } else {
-    textEl.textContent = `⚠️ Backup Due (${Math.floor(diffDays)}d ago)`;
-    badgeEl.className = 'text-[11px] font-semibold text-rose-700 bg-rose-50 px-2.5 py-1.5 rounded-lg border border-rose-200 flex items-center gap-1.5';
+    const diffDays = Math.max(1, Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24)));
+    textEl.textContent = `⚠️ OneDrive Due (${diffDays}d ago)`;
+    badgeEl.className = 'cursor-pointer text-[11px] font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 px-2.5 py-1.5 rounded-lg border border-rose-200 flex items-center gap-1.5 transition';
   }
+}
+
+function updateDailyBackupBanner() {
+  const banner = document.getElementById('patientDailyBackupBanner');
+  const title = document.getElementById('backupBannerTitle');
+  const desc = document.getElementById('backupBannerDesc');
+  const icon = document.getElementById('backupBannerIcon');
+  const actionBtn = document.getElementById('backupBannerActionBtn');
+  if (!banner || !title || !desc) return;
+
+  const todayStr = getTodayDateString(0);
+  const lastBackupStr = localStorage.getItem('pmg_last_backup_date');
+  const lastType = localStorage.getItem('pmg_last_backup_type') || 'OneDrive';
+  const lastUser = localStorage.getItem('pmg_last_backup_user') || 'Pharmacist';
+
+  const lastDateStr = lastBackupStr ? lastBackupStr.split('T')[0] : '';
+  const isBackedUpToday = (lastDateStr === todayStr);
+
+  if (!lastBackupStr) {
+    banner.className = 'mb-4 p-3.5 rounded-xl border border-amber-300 bg-amber-50 text-xs flex flex-wrap items-center justify-between gap-3 shadow-sm transition';
+    if (icon) {
+      icon.className = 'w-9 h-9 rounded-lg bg-amber-200 text-amber-800 flex items-center justify-center shrink-0';
+      icon.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-lg"></i>';
+    }
+    title.innerHTML = `⚠️ Daily Cloud Backup Required (No Backup Recorded Yet)`;
+    desc.innerHTML = `Please run your first daily backup to Microsoft OneDrive. This saves all patient profiles, appointments, and test records to your company cloud folder.`;
+    if (actionBtn) {
+      actionBtn.className = 'bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5';
+      actionBtn.innerHTML = '<i class="fa-brands fa-microsoft"></i> Backup to OneDrive Now';
+    }
+    banner.classList.remove('hidden');
+  } else if (!isBackedUpToday) {
+    const lastDateFormatted = new Date(lastBackupStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    banner.className = 'mb-4 p-3.5 rounded-xl border border-amber-300 bg-amber-50 text-xs flex flex-wrap items-center justify-between gap-3 shadow-sm transition';
+    if (icon) {
+      icon.className = 'w-9 h-9 rounded-lg bg-amber-200 text-amber-800 flex items-center justify-center shrink-0';
+      icon.innerHTML = '<i class="fa-brands fa-microsoft text-lg"></i>';
+    }
+    title.innerHTML = `⚠️ Daily Backup Due for Today (${todayStr})`;
+    desc.innerHTML = `Last backup was performed on <b>${lastDateFormatted}</b> (${lastType} by ${lastUser}). Back up today's consults & appointments to sync with Area Manager.`;
+    if (actionBtn) {
+      actionBtn.className = 'bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5';
+      actionBtn.innerHTML = '<i class="fa-brands fa-microsoft"></i> Backup Today\'s Records (OneDrive)';
+    }
+    banner.classList.remove('hidden');
+  } else {
+    const timeFormatted = new Date(lastBackupStr).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    banner.className = 'mb-4 p-3 rounded-xl border border-emerald-200 bg-emerald-50/70 text-xs flex flex-wrap items-center justify-between gap-3 shadow-sm transition';
+    if (icon) {
+      icon.className = 'w-9 h-9 rounded-lg bg-emerald-200 text-emerald-800 flex items-center justify-center shrink-0';
+      icon.innerHTML = '<i class="fa-solid fa-cloud-arrow-up text-lg text-emerald-700"></i>';
+    }
+    title.innerHTML = `✅ Today's Cloud Backup Completed (${timeFormatted} today)`;
+    desc.innerHTML = `Saved to <b>OneDrive (${lastType})</b> by ${lastUser}. Synced with Area Manager & protected against local PC loss.`;
+    if (actionBtn) {
+      actionBtn.className = 'bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold text-xs px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5';
+      actionBtn.innerHTML = '<i class="fa-brands fa-microsoft"></i> Re-Backup to OneDrive';
+    }
+    banner.classList.remove('hidden');
+  }
+}
+
+function openOneDriveGuideModal() {
+  const modal = document.getElementById('oneDriveGuideModal');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeOneDriveGuideModal() {
+  const modal = document.getElementById('oneDriveGuideModal');
+  if (modal) modal.classList.add('hidden');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
