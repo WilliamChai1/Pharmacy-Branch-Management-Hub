@@ -87,25 +87,57 @@ circle[stroke-dashoffset] {
 
 /* ─── Print styles ─────────────────────────────────────────────────────────── */
 @media print {
-  body > *:not(#mainContent) { display: none !important; }
-  #mainHeader, #mainNav, #invResultPanel, #rosterResultPanel,
-  #auditDropZone, #auditProgress, #auditRunBtn,
-  #auditWABtn, #auditPrintBtn, .no-print { display: none !important; }
+  /* Hide all top chrome, headers, footers, auth, nav, and interactive widgets */
+  #authOverlay, #mainHeader, #mainNav, #mainFooter, .no-print,
+  #auditDropZone, #auditProgress, #auditRunBtn, #auditWABtn, #auditPrintBtn,
+  #auditVideoPreview,
+  #content-audit > div:not(#am-view-5s),
+  #am-view-5s > div:not(#auditReportContainer),
+  .inv-table-wrap {
+    display: none !important;
+  }
 
-  #auditReportContainer { display: block !important; }
-  #mainContent { padding: 0 !important; }
+  body > *:not(#mainContent) {
+    display: none !important;
+  }
 
-  .tab-content { display: none !important; }
-  #content-audit { display: block !important; }
+  .tab-content {
+    display: none !important;
+  }
+
+  #content-audit {
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  #am-view-5s {
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  #auditReportContainer {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+  }
+
+  #mainContent {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+  }
 
   h1, h2, h3, h4, h5 { break-after: avoid; }
   table { break-inside: avoid; }
   tr { break-inside: avoid; }
 
-  .shadow, .shadow-md, .shadow-xl { box-shadow: none !important; }
+  .shadow, .shadow-sm, .shadow-md, .shadow-xl { box-shadow: none !important; }
 
   @page {
-    margin: 1.5cm;
+    margin: 1.2cm;
     size: A4 portrait;
   }
 }

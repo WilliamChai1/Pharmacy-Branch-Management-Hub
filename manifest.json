@@ -1,12 +1,14 @@
 {
-  "name": "PMG Branch Operations & Management Hub",
+  "name": "PMG Pharmacy Branch Operations Hub",
   "short_name": "PMG Hub",
-  "description": "Retail pharmacy branch operations platform — Inventory, Roster, and 5S Audit tools.",
+  "description": "PMG Pharmacy Branch Operations, Inventory Replenish, 5S AI Walkthrough Auditor, Rostering, and Patient Care Management.",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#1e3a8a",
   "theme_color": "#1e3a8a",
-  "orientation": "any",
+  "categories": ["medical", "productivity", "business"],
   "icons": [
     {
       "src": "icons/icon-192.png",
@@ -20,7 +22,5 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ],
-  "categories": ["business", "productivity"],
-  "lang": "en-MY"
+  ]
 }

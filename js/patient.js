@@ -1024,6 +1024,13 @@ function showNewEncounterModal(patientId) {
   tempAttachedFiles = [];
   renderTempAttachedFiles();
 
+  // Reset AI Clinical Review panel & state
+  const aiPanel = document.getElementById('aiClinicalResultPanel');
+  if (aiPanel) aiPanel.classList.add('hidden');
+  const aiLoading = document.getElementById('aiClinicalLoading');
+  if (aiLoading) aiLoading.classList.add('hidden');
+  currentAiReviewResult = null;
+
   modal.classList.remove('hidden');
 }
 
@@ -2080,4 +2087,664 @@ function updateBackupStatusBadge() {
     badgeEl.className = 'text-[11px] font-semibold text-rose-700 bg-rose-50 px-2.5 py-1.5 rounded-lg border border-rose-200 flex items-center gap-1.5';
   }
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ─── BRANCH OPERATING HOURS & PHARMACIST SCHEDULES ────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+const BRANCH_SCHEDULES = {
+  'KS01': { name: 'Kota Sentosa (KS01)', open: '07:30', close: '21:30', pharmacist: 'Pharmacist William / Ting', phone: '60168334455' },
+  'BR02': { name: 'Branch 02 (BR02)',    open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
+  'BR03': { name: 'Branch 03 (BR03)',    open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
+  'BR04': { name: 'Branch 04 (BR04)',    open: '08:30', close: '21:30', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
+  'BR05': { name: 'Branch 05 (BR05)',    open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
+  'BR06': { name: 'Branch 06 (BR06)',    open: '07:30', close: '21:30', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ─── SHARE CUSTOMER BOOKING LINK MODAL (STAFF VIEW) ──────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+function openShareBookingModal() {
+  const modal = document.getElementById('shareBookingModal');
+  if (!modal) return;
+
+  const session = typeof getSession === 'function' ? getSession() : null;
+  const userBranch = (session && session.branch && session.branch !== 'ALL') ? session.branch : 'KS01';
+
+  const branchSelect = document.getElementById('shareBookingBranchSelect');
+  if (branchSelect) {
+    for (let opt of branchSelect.options) {
+      if (opt.value === userBranch || opt.text.includes(userBranch)) {
+        branchSelect.value = opt.value;
+        break;
+      }
+    }
+  }
+
+  updateShareBookingUrl();
+  modal.classList.remove('hidden');
+}
+
+function closeShareBookingModal() {
+  const modal = document.getElementById('shareBookingModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function updateShareBookingUrl() {
+  const branchSelect = document.getElementById('shareBookingBranchSelect');
+  const code = branchSelect ? branchSelect.value : 'KS01';
+  const info = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['KS01'];
+
+  const titleEl = document.getElementById('shareBookingHoursTitle');
+  const descEl  = document.getElementById('shareBookingHoursDetails');
+  if (titleEl) titleEl.textContent = `${info.name} Pharmacist Hours`;
+  if (descEl) {
+    descEl.innerHTML = `Consultation Hours: <b>${info.open} – ${info.close}</b> (Mon – Sun)<br>Duty Pharmacist: <b>${info.pharmacist}</b>`;
+  }
+
+  const baseUrl = window.location.origin + window.location.pathname;
+  const bookingUrl = `${baseUrl}?book=1&branch=${encodeURIComponent(code)}`;
+
+  const inputEl = document.getElementById('shareBookingUrlInput');
+  if (inputEl) inputEl.value = bookingUrl;
+}
+
+function copyShareBookingUrl() {
+  const inputEl = document.getElementById('shareBookingUrlInput');
+  if (!inputEl) return;
+  inputEl.select();
+  navigator.clipboard.writeText(inputEl.value).then(() => {
+    const textEl = document.getElementById('copyBookingBtnText');
+    if (textEl) {
+      textEl.textContent = 'Copied!';
+      setTimeout(() => { textEl.textContent = 'Copy'; }, 2000);
+    }
+  }).catch(() => {
+    alert('Link copied to clipboard: ' + inputEl.value);
+  });
+}
+
+function shareBookingViaWhatsApp() {
+  const inputEl = document.getElementById('shareBookingUrlInput');
+  const branchSelect = document.getElementById('shareBookingBranchSelect');
+  const code = branchSelect ? branchSelect.value : 'KS01';
+  const info = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['KS01'];
+  const bookingUrl = inputEl ? inputEl.value : '';
+
+  const msg = `Halo! Anda boleh tempah slot pemeriksaan kesihatan atau rundingan ahli farmasi di PMG Pharmacy (${info.name}) di pautan berikut:\n\n${bookingUrl}\n\nWaktu Perundingan: ${info.open} - ${info.close} setiap hari.\nJumpa anda nanti!`;
+
+  const waUrl = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  window.open(waUrl, '_blank');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ─── CUSTOMER SELF-SERVICE BOOKING VIEW (?book=1) ────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+let currentCustomerBooking = null;
+
+function initCustomerBooking(defaultBranchCode = 'KS01') {
+  const select = document.getElementById('custBranchSelect');
+  if (select) {
+    select.value = BRANCH_SCHEDULES[defaultBranchCode] ? defaultBranchCode : 'KS01';
+  }
+
+  const dateInput = document.getElementById('custBookDate');
+  if (dateInput) {
+    const today = new Date();
+    const minStr = today.toISOString().split('T')[0];
+    const maxDate = new Date();
+    maxDate.setDate(today.getDate() + 60);
+    const maxStr = maxDate.toISOString().split('T')[0];
+
+    dateInput.min = minStr;
+    dateInput.max = maxStr;
+    if (!dateInput.value) {
+      dateInput.value = minStr;
+    }
+  }
+
+  updateCustBookHours();
+}
+
+function updateCustBookHours() {
+  const select = document.getElementById('custBranchSelect');
+  const code = select ? select.value : 'KS01';
+  const info = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['KS01'];
+
+  const titleEl = document.getElementById('custBranchHoursTitle');
+  const descEl  = document.getElementById('custBranchHoursDesc');
+  if (titleEl) titleEl.textContent = `${info.name} Pharmacist Hours`;
+  if (descEl) {
+    descEl.innerHTML = `Operating Hours: <b>${info.open} – ${info.close}</b> (Mon – Sun)<br>Duty Pharmacist: <b>${info.pharmacist}</b>`;
+  }
+
+  const timeSelect = document.getElementById('custBookTime');
+  if (!timeSelect) return;
+
+  const [openH, openM] = info.open.split(':').map(Number);
+  const [closeH, closeM] = info.close.split(':').map(Number);
+  const openMinutes = openH * 60 + openM;
+  const closeMinutes = closeH * 60 + closeM;
+
+  let options = '';
+  for (let m = openMinutes; m <= closeMinutes - 30; m += 30) {
+    const hh = String(Math.floor(m / 60)).padStart(2, '0');
+    const mm = String(m % 60).padStart(2, '0');
+    const timeVal = `${hh}:${mm}`;
+
+    const hourNum = Math.floor(m / 60);
+    const ampm = hourNum >= 12 ? 'PM' : 'AM';
+    const displayHour = hourNum % 12 === 0 ? 12 : hourNum % 12;
+    const label = `${displayHour}:${mm} ${ampm}`;
+
+    options += `<option value="${timeVal}">${label} (${timeVal})</option>`;
+  }
+
+  timeSelect.innerHTML = options;
+}
+
+function handleCustomerBookingSubmit(e) {
+  e.preventDefault();
+
+  const branchCode = document.getElementById('custBranchSelect').value;
+  const branchInfo = BRANCH_SCHEDULES[branchCode] || BRANCH_SCHEDULES['KS01'];
+
+  const serviceEl = document.querySelector('input[name="custService"]:checked');
+  const service = serviceEl ? serviceEl.value : 'Comprehensive Health Screening';
+
+  const date = document.getElementById('custBookDate').value;
+  const time = document.getElementById('custBookTime').value;
+  const name = document.getElementById('custBookName').value.trim();
+  const phone = document.getElementById('custBookPhone').value.trim();
+  const ic = document.getElementById('custBookIc').value.trim();
+  const notes = document.getElementById('custBookNotes').value.trim();
+
+  if (!name || !phone || !date || !time) {
+    alert('Please fill in your name, phone number, date, and preferred time.');
+    return;
+  }
+
+  const bookingRef = 'PMG-BK-' + Math.floor(100000 + Math.random() * 900000);
+
+  const bookingData = {
+    id: bookingRef,
+    ref: bookingRef,
+    source: 'Customer Self-Service Portal',
+    branchCode,
+    branchName: branchInfo.name,
+    pharmacist: branchInfo.pharmacist,
+    service,
+    purpose: service,
+    date,
+    time,
+    status: 'Scheduled',
+    patientName: name,
+    patientPhone: phone,
+    patientIc: ic,
+    notes: notes || 'Booked via Online Customer Portal',
+    createdAt: new Date().toISOString()
+  };
+
+  currentCustomerBooking = bookingData;
+
+  // Save to customer bookings list in localStorage
+  let custBookings = [];
+  try {
+    custBookings = JSON.parse(localStorage.getItem('pmg_customer_bookings') || '[]');
+  } catch (_) { custBookings = []; }
+  custBookings.unshift(bookingData);
+  localStorage.setItem('pmg_customer_bookings', JSON.stringify(custBookings));
+
+  // Attach to patientsData (match phone or ic, else create entry)
+  const cleanPhone = phone.replace(/\D/g, '');
+  let patient = patientsData.find(p => (p.phone && p.phone.replace(/\D/g, '') === cleanPhone) || (ic && p.ic === ic));
+  if (patient) {
+    if (!patient.appointments) patient.appointments = [];
+    patient.appointments.unshift({
+      id: bookingRef,
+      date,
+      time,
+      service,
+      purpose: service,
+      pharmacist: branchInfo.pharmacist,
+      notes: `[Customer Online Booking] ${notes}`,
+      status: 'Scheduled',
+      createdAt: new Date().toISOString()
+    });
+    savePatientsData();
+  } else {
+    const newPatient = {
+      id: 'P-' + Date.now(),
+      name: name,
+      ic: ic || '',
+      phone: phone,
+      gender: 'Other',
+      dob: '',
+      age: '',
+      branch: branchInfo.name.split(' ')[0] || 'Kota Sentosa',
+      allergies: 'None recorded',
+      chronicConditions: ['Pending Consultation'],
+      medications: [],
+      encounters: [],
+      documents: [],
+      appointments: [
+        {
+          id: bookingRef,
+          date,
+          time,
+          service,
+          purpose: service,
+          pharmacist: branchInfo.pharmacist,
+          notes: `[Customer Online Booking] ${notes}`,
+          status: 'Scheduled',
+          createdAt: new Date().toISOString()
+        }
+      ],
+      createdAt: new Date().toISOString()
+    };
+    patientsData.unshift(newPatient);
+    savePatientsData();
+  }
+
+  // Render Confirmation Screen
+  document.getElementById('custConfirmRef').textContent = bookingRef;
+  document.getElementById('custConfirmName').textContent = name;
+  document.getElementById('custConfirmBranch').textContent = branchInfo.name;
+  document.getElementById('custConfirmDateTime').textContent = `${date} at ${time}`;
+  document.getElementById('custConfirmService').textContent = service;
+  document.getElementById('custConfirmPharmacist').textContent = branchInfo.pharmacist;
+
+  document.getElementById('customerBookingFormCard').classList.add('hidden');
+  document.getElementById('customerBookingSuccessCard').classList.remove('hidden');
+}
+
+function sendCustomerBookingWaConfirm() {
+  if (!currentCustomerBooking) return;
+  const b = currentCustomerBooking;
+  const msg = `*PMG Pharmacy Appointment Confirmation*\nRef: ${b.ref}\nName: ${b.patientName}\nBranch: ${b.branchName}\nDate: ${b.date}\nTime: ${b.time}\nService: ${b.service}\nPharmacist: ${b.pharmacist}\n\nThank you for choosing PMG Pharmacy. Please arrive 5-10 minutes early. For enquiries, contact our branch.`;
+
+  const cleanPhone = b.patientPhone.replace(/\D/g, '');
+  const targetPhone = cleanPhone.startsWith('0') ? '60' + cleanPhone.slice(1) : cleanPhone;
+  const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`;
+  window.open(waUrl, '_blank');
+}
+
+function resetCustomerBookingForm() {
+  document.getElementById('customerBookingForm').reset();
+  document.getElementById('customerBookingSuccessCard').classList.add('hidden');
+  document.getElementById('customerBookingFormCard').classList.remove('hidden');
+  initCustomerBooking('KS01');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ─── AI CLINICAL CASE REVIEW & HOUSE-BRAND OPTIMIZER (GEMINI 3.5) ─────────────
+// ═════════════════════════════════════════════════════════════════════════════
+let currentAiReviewResult = null;
+
+async function runAiClinicalReview() {
+  const apiKey = (localStorage.getItem('pmg_gemini_key') || '').trim();
+  if (!apiKey) {
+    alert('Gemini API Key is required for AI Clinical Case Review.\n\nPlease enter your API Key in the 5S Walkthrough Auditor tab, or load the setup link (index.html?setkey=YOUR_KEY).');
+    return;
+  }
+
+  const patientSelect = document.getElementById('encounterPatientSelect');
+  const patientId = patientSelect ? patientSelect.value : null;
+  const patient = patientsData.find(p => p.id === patientId) || {};
+
+  const cc = document.getElementById('encChiefComplaint')?.value.trim() || 'Routine health review';
+  const hpi = document.getElementById('encHpi')?.value.trim() || 'None reported';
+
+  const vitals = {
+    bpSys: document.getElementById('encBpSys')?.value || '',
+    bpDia: document.getElementById('encBpDia')?.value || '',
+    pulse: document.getElementById('encPulse')?.value || '',
+    spo2: document.getElementById('encSpo2')?.value || '',
+    weight: document.getElementById('encWeight')?.value || '',
+    height: document.getElementById('encHeight')?.value || '',
+    bmi: document.getElementById('encBmi')?.value || '',
+    tc: document.getElementById('encTc')?.value || '',
+    tg: document.getElementById('encTg')?.value || '',
+    hdl: document.getElementById('encHdl')?.value || '',
+    ldl: document.getElementById('encLdl')?.value || '',
+    ai: document.getElementById('encAi')?.value || '',
+    rchd: document.getElementById('encRchd')?.value || '',
+    glucose: document.getElementById('encGlucose')?.value || '',
+    glucoseType: document.getElementById('encGlucoseType')?.value || 'Fasting',
+    hba1c: document.getElementById('encHba1c')?.value || '',
+    ua: document.getElementById('encUa')?.value || '',
+    creatinine: document.getElementById('encCreatinine')?.value || '',
+    urea: document.getElementById('encUrea')?.value || '',
+    egfr: document.getElementById('encEgfr')?.value || '',
+    ast: document.getElementById('encAst')?.value || '',
+    alt: document.getElementById('encAlt')?.value || '',
+    alb: document.getElementById('encAlb')?.value || '',
+    vitD: document.getElementById('encVitD')?.value || '',
+    ferritin: document.getElementById('encFerritin')?.value || '',
+    rossmaxAct: document.getElementById('encRossmaxAct')?.value || '',
+    customPoctNotes: document.getElementById('encOtherTestsNotes')?.value || ''
+  };
+
+  const planMeds = document.getElementById('encPlanMeds')?.value.trim() || '';
+  const planSupps = document.getElementById('encPlanSupps')?.value.trim() || '';
+  const chronicMeds = (patient.medications || []).map(m => `${m.name} ${m.dose || ''} (${m.freq || ''})`).join(', ');
+  const fullMedsList = [chronicMeds, planMeds].filter(Boolean).join('; ');
+
+  const loadingEl = document.getElementById('aiClinicalLoading');
+  const loadingText = document.getElementById('aiClinicalLoadingText');
+  const resultPanel = document.getElementById('aiClinicalResultPanel');
+  const runBtn = document.getElementById('btnAiClinicalReview');
+
+  if (loadingEl) loadingEl.classList.remove('hidden');
+  if (loadingText) loadingText.textContent = `Analysing case with Gemini 3.5 Flash…`;
+  if (resultPanel) resultPanel.classList.add('hidden');
+  if (runBtn) runBtn.disabled = true;
+
+  const prompt = `You are an expert Clinical Pharmacist and Nutritional Specialist for PMG Pharmacy in Malaysia.
+Evaluate this patient consultation, POCT laboratory profile, and medication regimen.
+
+PATIENT PROFILE:
+Name: ${patient.name || 'Anonymous'}
+Age: ${patient.age || 'N/A'}, Gender: ${patient.gender || 'N/A'}
+Known Allergies: ${patient.allergies || 'None'}
+Chronic Conditions: ${(patient.chronicConditions || []).join(', ') || 'None noted'}
+Current Chronic Medications: ${chronicMeds || 'None listed'}
+
+CURRENT CONSULTATION (SOAP):
+Chief Complaint: ${cc}
+History of Present Illness: ${hpi}
+
+OBJECTIVE VITALS & POCT LAB READINGS:
+BP: ${vitals.bpSys && vitals.bpDia ? vitals.bpSys + '/' + vitals.bpDia + ' mmHg' : 'Not taken'}
+Pulse: ${vitals.pulse ? vitals.pulse + ' bpm' : 'N/A'}, SpO2: ${vitals.spo2 ? vitals.spo2 + '%' : 'N/A'}
+BMI: ${vitals.bmi || 'N/A'} (Weight: ${vitals.weight || 'N/A'} kg, Height: ${vitals.height || 'N/A'} cm)
+Blood Glucose: ${vitals.glucose ? vitals.glucose + ' mmol/L (' + vitals.glucoseType + ')' : 'N/A'}, HbA1c: ${vitals.hba1c ? vitals.hba1c + '%' : 'N/A'}
+Lipid Panel: TC: ${vitals.tc || 'N/A'} mmol/L, TG: ${vitals.tg || 'N/A'}, HDL: ${vitals.hdl || 'N/A'}, LDL: ${vitals.ldl || 'N/A'}, AI: ${vitals.ai || 'N/A'}, R-CHD: ${vitals.rchd || 'N/A'}
+Kidney Panel: Uric Acid: ${vitals.ua || 'N/A'} umol/L, Creatinine: ${vitals.creatinine || 'N/A'} umol/L, Urea: ${vitals.urea || 'N/A'} mmol/L, eGFR: ${vitals.egfr || 'N/A'}
+Liver Panel: AST: ${vitals.ast || 'N/A'} U/L, ALT: ${vitals.alt || 'N/A'} U/L, Albumin: ${vitals.alb || 'N/A'} g/L
+Specialty Tests: Vit D Home Kit: ${vitals.vitD || 'N/A'}, Ferritin Home Kit: ${vitals.ferritin || 'N/A'}, Rossmax ACT: ${vitals.rossmaxAct || 'N/A'}
+Other POCT Notes: ${vitals.customPoctNotes || 'None'}
+
+PRESCRIBED / PROPOSED MEDICATIONS:
+${fullMedsList || 'No prescription medications currently recorded'}
+
+CURRENT / PROPOSED SUPPLEMENTS:
+${planSupps || 'None recorded'}
+
+CRITICAL INSTRUCTIONS:
+1. DRUG-DRUG & DRUG-SUPPLEMENT INTERACTIONS:
+   - Identify any interactions between current/prescribed medications and proposed supplements.
+   - Severity: "none", "moderate", or "high". Explain mechanisms clearly.
+2. PMG HOUSE BRAND COMPANION SUPPLEMENT RECOMMENDATIONS:
+   - Recommend 2-4 companion supplements/nutraceuticals to counter drug-induced depletions (e.g. statin-induced CoQ10 depletion, metformin-induced B12 depletion) or optimize cardiovascular, metabolic, joint, or liver health based on their POCT readings.
+   - CRITICAL: Prioritize PMG House Brands:
+     * "JH Nutrition" (Alpha Gold, Systoright, Flexson, Livason, Nacous NAC, Eclipx, Immucol, Citazinc)
+     * "V-Infinity" (Neuright B-Complex+ALA, Fiono Omega-3 1200mg, Neoflex, Tygeres, Tyreps, Vtrox)
+     * "Nutribridge" (Glycoway, Lipicholin, Neo-D3, Opticlear, Q-Folix, Vitaglo, Zencool, Flexsure Gold)
+     * "Livemore" (Co-Q10 Plus, Gasmint, Ginoba, Methylcobalamin, Neo-D3, Neomega)
+     * Other PMG brands: Biowell, Lucentia, Dermisk, Axon
+3. CHRONOTHERAPY (BEST TIMING OF INTAKE):
+   - Categorize all medications and recommended supplements into:
+     * Morning (Breakfast)
+     * Afternoon (Lunch)
+     * Evening (Dinner)
+     * Bedtime (Night)
+   - State specific rationale (e.g., morning BP surge, fat solubility with food, statin cholesterol synthesis peak overnight).
+4. CLINICAL ASSESSMENT & PRE-DIAGNOSTIC:
+   - Concise pharmacist impression of current disease control and risk stratification.
+5. COUNSELLING & LIFESTYLE:
+   - 3 to 5 targeted, practical lifestyle and diet counselling pearls.
+
+RESPONSE MUST BE STRICTLY VALID JSON matching this structure:
+{
+  "interactionSummary": "none" | "moderate" | "high",
+  "interactionDetails": "string",
+  "houseBrands": [
+    {
+      "brand": "Livemore" | "JH Nutrition" | "V-Infinity" | "Nutribridge" | "PMG",
+      "product": "Product Name",
+      "indication": "Clinical rationale",
+      "dosage": "e.g. 1 capsule OD after breakfast"
+    }
+  ],
+  "chronotherapy": {
+    "morning": [ { "item": "Medication/Supplement", "note": "Reason" } ],
+    "afternoon": [ { "item": "Medication/Supplement", "note": "Reason" } ],
+    "evening": [ { "item": "Medication/Supplement", "note": "Reason" } ],
+    "bedtime": [ { "item": "Medication/Supplement", "note": "Reason" } ]
+  },
+  "assessmentSummary": "Concise summary",
+  "counsellingPoints": ["Point 1", "Point 2", "Point 3"]
+}`;
+
+  let parsed = null;
+  const primaryModel = typeof AUDIT_PRIMARY_MODEL !== 'undefined' ? AUDIT_PRIMARY_MODEL : 'gemini-3.5-flash';
+  const secondaryModel = typeof AUDIT_SECONDARY_MODEL !== 'undefined' ? AUDIT_SECONDARY_MODEL : 'gemini-3.5-flash-lite';
+  const models = [primaryModel, secondaryModel];
+
+  for (let m of models) {
+    try {
+      if (loadingText) loadingText.textContent = `Analysing case with ${m}…`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
+      const payload = {
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: prompt }]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 2048,
+          responseMimeType: "application/json"
+        }
+      };
+
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        console.warn(`[PMG AI Review] ${m} returned ${resp.status}:`, errText);
+        continue;
+      }
+
+      const data = await resp.json();
+      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      if (!rawText) continue;
+
+      const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+      parsed = JSON.parse(cleanJson);
+      if (parsed) break;
+    } catch (err) {
+      console.warn(`[PMG AI Review] Error with model ${m}:`, err);
+    }
+  }
+
+  if (loadingEl) loadingEl.classList.add('hidden');
+  if (runBtn) runBtn.disabled = false;
+
+  if (!parsed) {
+    alert('AI Clinical Case Review failed. Please check your Gemini API key and network connection.');
+    return;
+  }
+
+  currentAiReviewResult = parsed;
+  renderAiClinicalReview(parsed);
+}
+
+function renderAiClinicalReview(res) {
+  const panel = document.getElementById('aiClinicalResultPanel');
+  if (!panel) return;
+
+  // 1. Interaction Alert
+  const alertEl = document.getElementById('aiInteractionsAlert');
+  if (alertEl) {
+    const summary = (res.interactionSummary || 'none').toLowerCase();
+    if (summary === 'high') {
+      alertEl.className = 'rounded-lg p-2.5 text-xs bg-rose-50 border border-rose-200 text-rose-800';
+      alertEl.innerHTML = `
+        <div class="flex items-center gap-1.5 font-bold mb-0.5">
+          <i class="fa-solid fa-triangle-exclamation text-rose-600"></i> HIGH DRUG INTERACTION / CONTRAINDICATION DETECTED
+        </div>
+        <p class="text-[11px] leading-relaxed">${res.interactionDetails || 'High risk interaction identified between prescribed regimen.'}</p>
+      `;
+    } else if (summary === 'moderate') {
+      alertEl.className = 'rounded-lg p-2.5 text-xs bg-amber-50 border border-amber-200 text-amber-800';
+      alertEl.innerHTML = `
+        <div class="flex items-center gap-1.5 font-bold mb-0.5">
+          <i class="fa-solid fa-circle-exclamation text-amber-600"></i> MODERATE INTERACTION / MONITORING REQUIRED
+        </div>
+        <p class="text-[11px] leading-relaxed">${res.interactionDetails || 'Moderate interaction present. Monitor patient closely.'}</p>
+      `;
+    } else {
+      alertEl.className = 'rounded-lg p-2.5 text-xs bg-emerald-50 border border-emerald-200 text-emerald-800';
+      alertEl.innerHTML = `
+        <div class="flex items-center gap-1.5 font-bold mb-0.5">
+          <i class="fa-solid fa-circle-check text-emerald-600"></i> NO SIGNIFICANT INTERACTIONS DETECTED
+        </div>
+        <p class="text-[11px] leading-relaxed">${res.interactionDetails || 'The evaluated medication and supplement regimen is safe and free of high-risk contraindications.'}</p>
+      `;
+    }
+  }
+
+  // 2. House Brand Supplements
+  const houseBrandsEl = document.getElementById('aiHouseBrandsList');
+  if (houseBrandsEl) {
+    if (res.houseBrands && res.houseBrands.length) {
+      houseBrandsEl.innerHTML = res.houseBrands.map(item => {
+        let badgeColor = 'bg-purple-100 text-purple-800 border-purple-200';
+        const brandUpper = (item.brand || '').toUpperCase();
+        if (brandUpper.includes('JH')) badgeColor = 'bg-purple-100 text-purple-800 border-purple-200';
+        else if (brandUpper.includes('INFINITY')) badgeColor = 'bg-indigo-100 text-indigo-800 border-indigo-200';
+        else if (brandUpper.includes('NUTRI')) badgeColor = 'bg-teal-100 text-teal-800 border-teal-200';
+        else if (brandUpper.includes('LIVE')) badgeColor = 'bg-blue-100 text-blue-800 border-blue-200';
+
+        return `
+          <div class="p-2.5 rounded-lg border border-gray-100 bg-gray-50/60 hover:bg-gray-50 transition">
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <span class="font-bold text-gray-900">${item.product}</span>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded border ${badgeColor}">${item.brand}</span>
+            </div>
+            <p class="text-[11px] text-gray-600 mb-1">${item.indication}</p>
+            <p class="text-[11px] font-semibold text-purple-900"><i class="fa-solid fa-prescription mr-1 text-purple-600"></i>${item.dosage}</p>
+          </div>
+        `;
+      }).join('');
+    } else {
+      houseBrandsEl.innerHTML = '<p class="text-[11px] text-gray-500 italic">No specific companion supplements required for this case.</p>';
+    }
+  }
+
+  // 3. Chronotherapy Timing Grid
+  const timingGridEl = document.getElementById('aiTimingGrid');
+  if (timingGridEl) {
+    const slots = [
+      { key: 'morning',   label: 'Morning (Breakfast)', icon: 'fa-sun text-amber-500',   bg: 'bg-amber-50/50' },
+      { key: 'afternoon', label: 'Afternoon (Lunch)',   icon: 'fa-sun text-orange-500',  bg: 'bg-orange-50/50' },
+      { key: 'evening',   label: 'Evening (Dinner)',    icon: 'fa-cloud-sun text-indigo-500', bg: 'bg-indigo-50/50' },
+      { key: 'bedtime',   label: 'Bedtime (Night)',     icon: 'fa-moon text-blue-700',   bg: 'bg-blue-50/50' }
+    ];
+
+    const chrono = res.chronotherapy || {};
+    timingGridEl.innerHTML = slots.map(s => {
+      const items = chrono[s.key] || [];
+      return `
+        <div class="border border-gray-200 rounded-lg p-2.5 ${s.bg}">
+          <div class="font-bold text-[11px] text-gray-800 flex items-center gap-1.5 mb-1.5 pb-1 border-b border-gray-200">
+            <i class="fa-solid ${s.icon}"></i>
+            <span>${s.label}</span>
+          </div>
+          ${items.length ? items.map(it => `
+            <div class="mb-1.5 last:mb-0">
+              <span class="font-bold text-[11px] text-gray-900 block">${it.item}</span>
+              <span class="text-[10px] text-gray-500 block leading-tight">${it.note}</span>
+            </div>
+          `).join('') : '<span class="text-[10px] text-gray-400 italic">None scheduled</span>'}
+        </div>
+      `;
+    }).join('');
+  }
+
+  // 4. Assessment & Counselling
+  const assessEl = document.getElementById('aiAssessmentText');
+  if (assessEl) {
+    assessEl.textContent = res.assessmentSummary || 'Patient stable.';
+  }
+
+  const counselEl = document.getElementById('aiCounsellingList');
+  if (counselEl) {
+    const points = res.counsellingPoints || [];
+    if (points.length) {
+      counselEl.innerHTML = points.map(p => `<li>${p}</li>`).join('');
+    } else {
+      counselEl.innerHTML = '<li>Regular lifestyle maintenance and medication adherence.</li>';
+    }
+  }
+
+  panel.classList.remove('hidden');
+}
+
+function applyAiSupplements() {
+  if (!currentAiReviewResult || !currentAiReviewResult.houseBrands || !currentAiReviewResult.houseBrands.length) {
+    alert('No AI recommended supplements to apply.');
+    return;
+  }
+  const suppInput = document.getElementById('encPlanSupps');
+  if (!suppInput) return;
+
+  const newSupps = currentAiReviewResult.houseBrands.map(b => `${b.product} (${b.dosage})`).join(', ');
+  const existing = suppInput.value.trim();
+  if (existing) {
+    suppInput.value = `${existing}; ${newSupps}`;
+  } else {
+    suppInput.value = newSupps;
+  }
+  alert('✅ House Brand Supplements added to Plan of Action!');
+}
+
+function applyAiSchedule() {
+  if (!currentAiReviewResult || !currentAiReviewResult.chronotherapy) {
+    alert('No chronotherapy schedule available to apply.');
+    return;
+  }
+  const counselInput = document.getElementById('encPlanCounselling');
+  if (!counselInput) return;
+
+  const c = currentAiReviewResult.chronotherapy;
+  let lines = ['[Chronotherapy Timing of Intake]'];
+  if (c.morning && c.morning.length)   lines.push(`• Morning: ${c.morning.map(i => i.item + (i.note ? ' (' + i.note + ')' : '')).join(', ')}`);
+  if (c.afternoon && c.afternoon.length) lines.push(`• Afternoon: ${c.afternoon.map(i => i.item + (i.note ? ' (' + i.note + ')' : '')).join(', ')}`);
+  if (c.evening && c.evening.length)   lines.push(`• Evening: ${c.evening.map(i => i.item + (i.note ? ' (' + i.note + ')' : '')).join(', ')}`);
+  if (c.bedtime && c.bedtime.length)   lines.push(`• Bedtime: ${c.bedtime.map(i => i.item + (i.note ? ' (' + i.note + ')' : '')).join(', ')}`);
+
+  const scheduleText = lines.join('\n');
+  const existing = counselInput.value.trim();
+  if (existing) {
+    counselInput.value = `${existing}\n\n${scheduleText}`;
+  } else {
+    counselInput.value = scheduleText;
+  }
+  alert('✅ Chronotherapy schedule added to Counselling Plan!');
+}
+
+function applyAiAssessment() {
+  if (!currentAiReviewResult || !currentAiReviewResult.assessmentSummary) {
+    alert('No AI assessment summary available.');
+    return;
+  }
+  const preDiagInput = document.getElementById('encPreDiag');
+  if (!preDiagInput) return;
+
+  const existing = preDiagInput.value.trim();
+  if (existing) {
+    preDiagInput.value = `${existing}\n[AI Review]: ${currentAiReviewResult.assessmentSummary}`;
+  } else {
+    preDiagInput.value = currentAiReviewResult.assessmentSummary;
+  }
+  alert('✅ Clinical assessment applied to Pre-Diagnostic!');
+}
+
 

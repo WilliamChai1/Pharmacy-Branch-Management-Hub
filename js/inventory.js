@@ -55,26 +55,75 @@ function initInventory() {
 }
 
 // ─── FILE PARSING ─────────────────────────────────────────────────────────────
-function handleInventoryFile(file) {
+async function handleInventoryFile(file) {
   const statusEl = document.getElementById('invStatus');
-  if (statusEl) { statusEl.textContent = `Parsing: ${file.name}…`; statusEl.className = 'text-blue-600 text-sm mt-2'; }
+  if (statusEl) { statusEl.textContent = `Reading & scanning ${file.name}…`; statusEl.className = 'text-blue-600 text-sm mt-2'; }
 
-  Papa.parse(file, {
-    header: true,
-    skipEmptyLines: true,
-    complete(results) {
-      if (!results.data || results.data.length === 0) {
-        if (statusEl) statusEl.textContent = 'Error: CSV appears empty.';
-        return;
-      }
-      inventoryData = results.data;
-      recalcInventory();
-      if (statusEl) { statusEl.textContent = `✓ Loaded ${results.data.length} rows from ${file.name}`; statusEl.className = 'text-green-600 text-sm mt-2'; }
-    },
-    error(err) {
-      if (statusEl) { statusEl.textContent = `Parse error: ${err.message}`; statusEl.className = 'text-red-600 text-sm mt-2'; }
+  try {
+    let text = await file.text();
+    // Strip UTF-8 BOM if present
+    if (text.charCodeAt(0) === 0xFEFF) {
+      text = text.slice(1);
     }
-  });
+
+    // Split lines and locate the actual header row (skipping @@##Write Time or comment headers)
+    const rawLines = text.split(/\r?\n/);
+    let headerIdx = 0;
+    for (let i = 0; i < Math.min(rawLines.length, 30); i++) {
+      const lineTrim = rawLines[i].trim();
+      const lineLower = lineTrim.toLowerCase();
+      // Skip metadata or comment lines starting with @@, ##, or //
+      if (lineTrim.startsWith('@@') || lineTrim.startsWith('##') || lineTrim.startsWith('//')) {
+        continue;
+      }
+      // Check if line contains essential Xilnex / standard inventory headers
+      if ((lineLower.includes('item code') || lineLower.includes('item name') || lineLower.includes('stocktype') || lineLower.includes('preferred vendor') || lineLower.includes('quantity on hand')) && rawLines[i].includes(',')) {
+        headerIdx = i;
+        break;
+      }
+    }
+
+    const cleanCsvText = headerIdx > 0 ? rawLines.slice(headerIdx).join('\r\n') : text;
+
+    Papa.parse(cleanCsvText, {
+      header: true,
+      skipEmptyLines: true,
+      dynamicTyping: false,
+      complete(results) {
+        if (!results.data || results.data.length === 0) {
+          if (statusEl) statusEl.textContent = 'Error: CSV appears empty.';
+          return;
+        }
+
+        // Keep rows that have an Item Code or Item Name, skipping any accidental repeated headers
+        inventoryData = results.data.filter(r => {
+          const code = resolveCol(r, ['Item Code', 'Item_Code', 'ItemCode', 'SKU', 'itemcode', 'Code']).trim();
+          const name = resolveCol(r, ['Item Name', 'Item Description', 'Description', 'Desc', 'Name']).trim();
+          if (!code && !name) return false;
+          if (code.toLowerCase() === 'item code' || name.toLowerCase() === 'item name') return false;
+          return true;
+        });
+
+        recalcInventory();
+        populateVendorDropdown();
+        if (statusEl) {
+          statusEl.textContent = `✓ Successfully processed ${inventoryGrid.length} inventory items from ${file.name}`;
+          statusEl.className = 'text-green-600 font-semibold text-sm mt-2';
+        }
+      },
+      error(err) {
+        if (statusEl) {
+          statusEl.textContent = `Parse error: ${err.message}`;
+          statusEl.className = 'text-red-600 text-sm mt-2';
+        }
+      }
+    });
+  } catch (err) {
+    if (statusEl) {
+      statusEl.textContent = `File read error: ${err.message}`;
+      statusEl.className = 'text-red-600 text-sm mt-2';
+    }
+  }
 }
 
 // ─── COLUMN RESOLVER ─────────────────────────────────────────────────────────

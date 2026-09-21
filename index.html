@@ -6,6 +6,10 @@
   <title>PMG Branch Operations & Management Hub</title>
   <meta name="description" content="PMG Pharmacy Branch Operations & Management Hub — Inventory, Roster, and 5S Audit tools for retail pharmacy managers.">
   <meta name="theme-color" content="#1e3a8a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PMG Hub">
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
 
@@ -71,7 +75,19 @@
         <span>Sign In</span>
       </button>
       <p id="loginError" class="text-red-500 text-xs mt-3 text-center hidden"></p>
-      <p class="text-gray-400 text-xs text-center mt-4">
+      
+      <!-- PWA Install Prompt on Login -->
+      <div id="authPwaContainer" class="mt-3 pt-3 border-t border-gray-100 text-center">
+        <button id="authBtnPwaInstall" onclick="triggerPwaInstall()" type="button"
+          class="hidden w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-3 rounded-lg text-xs flex items-center justify-center gap-1.5 transition shadow-sm">
+          <i class="fa-solid fa-download"></i> 📱 Install PMG App to Phone / PC
+        </button>
+        <p id="iosInstallTip" class="hidden text-[11px] text-gray-500 mt-1">
+          📱 <b>iPhone / iPad:</b> Tap <b>Share</b> <i class="fa-solid fa-arrow-up-from-bracket"></i> then <b>Add to Home Screen</b> <i class="fa-solid fa-plus-square"></i>
+        </p>
+      </div>
+
+      <p class="text-gray-400 text-xs text-center mt-3">
         Branch Managers: use branch code + PIN<br>
         Area Manager: username <strong>am</strong> + AM PIN
       </p>
@@ -103,6 +119,11 @@
         class="text-gray-900 text-xs px-3 py-1.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
         <option value="">All Branches</option>
       </select>
+      <button id="btnPwaInstall" onclick="triggerPwaInstall()" type="button"
+        class="hidden bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-sm">
+        <i class="fa-solid fa-mobile-screen-button"></i>
+        <span>Install App</span>
+      </button>
       <button onclick="logout()"
         class="text-blue-200 hover:text-white text-xs flex items-center gap-1.5 border border-blue-700 hover:border-blue-500 px-3 py-1.5 rounded-lg transition">
         <i class="fa-solid fa-right-from-bracket"></i>
@@ -960,6 +981,10 @@
           class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm">
           <i class="fa-regular fa-calendar-plus"></i> Book Appt
         </button>
+        <button id="patientShareBookingBtn" type="button" onclick="openShareBookingModal()"
+          class="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Share customer self-booking link with branch working hours">
+          <i class="fa-solid fa-link"></i> Customer Booking Link
+        </button>
         <button id="patientExportExcelBtn" type="button"
           class="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm">
           <i class="fa-solid fa-file-excel"></i> Export Excel
@@ -1509,6 +1534,74 @@
           </div>
         </div>
 
+        <!-- AI Clinical Case Review & House-Brand Optimizer (Gemini 3.5 Flash / Flash-Lite) -->
+        <div class="bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 border border-purple-200 rounded-xl p-3.5">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <span class="font-bold text-purple-950 text-xs flex items-center gap-1.5">
+                <i class="fa-solid fa-brain text-purple-600"></i> AI Clinical Case Review & House-Brand Optimizer
+                <span class="bg-purple-100 text-purple-800 text-[10px] font-semibold px-2 py-0.5 rounded">Gemini 3.5</span>
+              </span>
+              <p class="text-[11px] text-purple-700 mt-0.5">Analyses patient vitals, POCT labs & meds to check drug interactions, recommend PMG House Brands (JH Nutrition, V-Infinity, Nutribridge, Livemore), and calculate chronotherapy dosing times.</p>
+            </div>
+            <button type="button" id="btnAiClinicalReview" onclick="runAiClinicalReview()"
+              class="px-3.5 py-1.5 bg-purple-700 hover:bg-purple-800 active:bg-purple-900 text-white rounded-lg text-xs font-bold transition shadow-sm flex items-center gap-1.5">
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              <span>Run AI Clinical Review</span>
+            </button>
+          </div>
+
+          <div id="aiClinicalLoading" class="hidden text-center py-4">
+            <div class="loader-sm border-purple-700 w-5 h-5 inline-block mr-2"></div>
+            <span class="text-xs text-purple-800 font-semibold" id="aiClinicalLoadingText">Analysing clinical profile with Gemini 3.5 Flash…</span>
+          </div>
+
+          <div id="aiClinicalResultPanel" class="hidden mt-3 pt-3 border-t border-purple-200 space-y-3">
+            <!-- 1. Interactions alert -->
+            <div id="aiInteractionsAlert" class="rounded-lg p-2.5 text-xs"></div>
+
+            <!-- 2. House brand recommendations -->
+            <div class="bg-white rounded-lg p-3 border border-purple-100">
+              <div class="flex items-center justify-between mb-2">
+                <h5 class="font-bold text-purple-900 text-xs flex items-center gap-1.5">
+                  <i class="fa-solid fa-pills text-purple-600"></i> PMG House Brand Supplement Recommendations
+                </h5>
+                <button type="button" onclick="applyAiSupplements()" class="text-[11px] bg-purple-100 hover:bg-purple-200 text-purple-800 font-bold px-2 py-0.5 rounded transition">
+                  <i class="fa-solid fa-arrow-down mr-1"></i> Apply to Plan
+                </button>
+              </div>
+              <div id="aiHouseBrandsList" class="space-y-1.5 text-xs"></div>
+            </div>
+
+            <!-- 3. Chronotherapy & Timing of Intake -->
+            <div class="bg-white rounded-lg p-3 border border-purple-100">
+              <div class="flex items-center justify-between mb-2">
+                <h5 class="font-bold text-indigo-900 text-xs flex items-center gap-1.5">
+                  <i class="fa-regular fa-clock text-indigo-600"></i> Chronotherapy: Recommended Timing of Intake
+                </h5>
+                <button type="button" onclick="applyAiSchedule()" class="text-[11px] bg-indigo-100 hover:bg-indigo-200 text-indigo-800 font-bold px-2 py-0.5 rounded transition">
+                  <i class="fa-solid fa-arrow-down mr-1"></i> Apply to Counselling
+                </button>
+              </div>
+              <div id="aiTimingGrid" class="grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs"></div>
+            </div>
+
+            <!-- 4. Clinical assessment & counselling -->
+            <div class="bg-white rounded-lg p-3 border border-purple-100">
+              <div class="flex items-center justify-between mb-1.5">
+                <h5 class="font-bold text-gray-800 text-xs flex items-center gap-1.5">
+                  <i class="fa-solid fa-notes-medical text-teal-600"></i> Clinical Assessment & Lifestyle Points
+                </h5>
+                <button type="button" onclick="applyAiAssessment()" class="text-[11px] bg-teal-100 hover:bg-teal-200 text-teal-800 font-bold px-2 py-0.5 rounded transition">
+                  <i class="fa-solid fa-arrow-down mr-1"></i> Apply Assessment
+                </button>
+              </div>
+              <p id="aiAssessmentText" class="text-xs text-gray-700 mb-2 italic"></p>
+              <ul id="aiCounsellingList" class="list-disc pl-4 text-xs text-gray-600 space-y-0.5"></ul>
+            </div>
+          </div>
+        </div>
+
         <!-- 4. PLAN OF ACTION -->
         <div class="border border-emerald-200 rounded-xl overflow-hidden">
           <div class="bg-emerald-50/80 px-4 py-2.5 font-bold text-emerald-900 flex items-center gap-2">
@@ -1773,6 +1866,75 @@
     </div>
   </div>
 
+  <!-- Modal 6: Share Customer Booking Link Modal -->
+  <div id="shareBookingModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-purple-100 animate-fade-in">
+      <div class="bg-gradient-to-r from-purple-700 to-indigo-800 p-5 text-white flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-base flex items-center gap-2">
+            <i class="fa-solid fa-link"></i> Customer Appointment Booking Link
+          </h3>
+          <p class="text-purple-200 text-xs mt-0.5">Send this link to patients so they can self-schedule their return TCA or health check.</p>
+        </div>
+        <button onclick="closeShareBookingModal()" class="text-purple-200 hover:text-white text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-4">
+        <!-- Branch Selector -->
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">Select Outlet / Branch:</label>
+          <select id="shareBookingBranchSelect" onchange="updateShareBookingUrl()" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-semibold focus:ring-2 focus:ring-purple-500 outline-none">
+            <option value="KS01">Kota Sentosa (KS01)</option>
+            <option value="BR02">Branch 02 (BR02)</option>
+            <option value="BR03">Branch 03 (BR03)</option>
+            <option value="BR04">Branch 04 (BR04)</option>
+            <option value="BR05">Branch 05 (BR05)</option>
+            <option value="BR06">Branch 06 (BR06)</option>
+          </select>
+        </div>
+
+        <!-- Branch Consultation Hours Banner -->
+        <div id="shareBookingHoursInfo" class="bg-purple-50 border border-purple-200 rounded-xl p-3 text-xs text-purple-900">
+          <div class="flex items-center gap-2 font-bold mb-1">
+            <i class="fa-regular fa-clock text-purple-700"></i>
+            <span id="shareBookingHoursTitle">Kota Sentosa Pharmacist Hours</span>
+          </div>
+          <p id="shareBookingHoursDetails" class="text-[11px] text-purple-800">
+            Consultation Hours: <b>07:30 AM – 09:30 PM</b> (Mon – Sun)<br>
+            Duty Pharmacist: <b>Pharmacist William / Ting</b>
+          </p>
+        </div>
+
+        <!-- Generated Link Input -->
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">Booking Portal Link:</label>
+          <div class="flex gap-2">
+            <input type="text" id="shareBookingUrlInput" readonly class="flex-1 bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs text-gray-700 font-mono select-all outline-none">
+            <button type="button" onclick="copyShareBookingUrl()" class="bg-gray-800 hover:bg-gray-900 text-white text-xs font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition">
+              <i class="fa-solid fa-copy"></i> <span id="copyBookingBtnText">Copy</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 1-Click WhatsApp Share -->
+        <div class="pt-2">
+          <button type="button" onclick="shareBookingViaWhatsApp()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 transition shadow-sm">
+            <i class="fa-brands fa-whatsapp text-base"></i>
+            <span>Share Link via WhatsApp to Patient</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-gray-50 px-6 py-3 border-t flex justify-end">
+        <button onclick="closeShareBookingModal()" class="px-4 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs font-bold">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
@@ -1781,6 +1943,222 @@
 <footer class="bg-white border-t border-gray-200 py-3 text-center text-xs text-gray-400 hidden" id="mainFooter">
   PMG Branch Operations & Management Hub · All data processed client-side · No external servers
 </footer>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     CUSTOMER SELF-SERVICE BOOKING PORTAL (?book=1 or ?action=book)
+══════════════════════════════════════════════════════════════════════════════ -->
+<div id="customerBookingView" class="hidden min-h-screen bg-gradient-to-b from-blue-50 via-slate-50 to-white text-gray-800">
+  <!-- Customer Header -->
+  <header class="bg-blue-900 text-white shadow-md">
+    <div class="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center border border-white/20">
+          <i class="fa-solid fa-notes-medical text-xl text-teal-300"></i>
+        </div>
+        <div>
+          <h1 class="text-base sm:text-lg font-bold tracking-tight">PMG Pharmacy · 预约健康咨询</h1>
+          <p class="text-xs text-blue-200">Patient Appointment & Health Screening Booking</p>
+        </div>
+      </div>
+      <div class="hidden sm:block text-right text-xs text-blue-200">
+        <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 mr-1.5"></span>Open Daily
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 py-6">
+    <!-- Booking Form Card -->
+    <div id="customerBookingFormCard" class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+      <div class="bg-gradient-to-r from-blue-800 to-indigo-900 px-6 py-4 text-white">
+        <h2 class="text-base font-bold flex items-center gap-2">
+          <i class="fa-regular fa-calendar-check text-emerald-400"></i> Schedule Your Pharmacy Appointment
+        </h2>
+        <p class="text-xs text-blue-200 mt-0.5">Please choose your branch, service, and convenient time slot below.</p>
+      </div>
+
+      <form id="customerBookingForm" onsubmit="handleCustomerBookingSubmit(event)" class="p-6 space-y-6">
+        <!-- Step 1: Branch Selection -->
+        <div class="space-y-2">
+          <label class="block text-xs font-bold text-gray-700 flex items-center gap-1.5">
+            <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">1</span>
+            Select PMG Pharmacy Branch
+          </label>
+          <select id="custBranchSelect" onchange="updateCustBookHours()" required
+            class="w-full border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none">
+            <option value="KS01">Kota Sentosa (KS01)</option>
+            <option value="BR02">Branch 02 (BR02)</option>
+            <option value="BR03">Branch 03 (BR03)</option>
+            <option value="BR04">Branch 04 (BR04)</option>
+            <option value="BR05">Branch 05 (BR05)</option>
+            <option value="BR06">Branch 06 (BR06)</option>
+          </select>
+          <div id="custBranchInfoBox" class="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-900">
+            <div class="flex items-center gap-2 font-bold mb-1">
+              <i class="fa-solid fa-clock text-blue-600"></i>
+              <span id="custBranchHoursTitle">Kota Sentosa Pharmacist Hours</span>
+            </div>
+            <p id="custBranchHoursDesc" class="text-[11px] text-blue-800">
+              Operating Hours: <b>07:30 AM – 09:30 PM</b> (Mon – Sun)<br>
+              Duty Pharmacist: <b>Pharmacist William / Ting</b>
+            </p>
+          </div>
+        </div>
+
+        <!-- Step 2: Service Type -->
+        <div class="space-y-2">
+          <label class="block text-xs font-bold text-gray-700 flex items-center gap-1.5">
+            <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">2</span>
+            Select Consultation / Health Service
+          </label>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5" id="custServiceOptions">
+            <label class="border border-gray-200 hover:border-blue-500 rounded-xl p-3 flex items-start gap-2.5 cursor-pointer transition bg-white has-[:checked]:bg-blue-50/70 has-[:checked]:border-blue-500 has-[:checked]:ring-1 has-[:checked]:ring-blue-500">
+              <input type="radio" name="custService" value="Comprehensive Health Screening" checked class="mt-0.5 text-blue-600 focus:ring-blue-500">
+              <div>
+                <span class="font-bold text-xs text-gray-900 block">🩸 Comprehensive Screening</span>
+                <span class="text-[11px] text-gray-500 block">BP, Glucose, Lipids, Uric Acid & Kidney markers</span>
+              </div>
+            </label>
+            <label class="border border-gray-200 hover:border-blue-500 rounded-xl p-3 flex items-start gap-2.5 cursor-pointer transition bg-white has-[:checked]:bg-blue-50/70 has-[:checked]:border-blue-500 has-[:checked]:ring-1 has-[:checked]:ring-blue-500">
+              <input type="radio" name="custService" value="Chronic Medication Review & Refill" class="mt-0.5 text-blue-600 focus:ring-blue-500">
+              <div>
+                <span class="font-bold text-xs text-gray-900 block">💊 Medication Review & Refill</span>
+                <span class="text-[11px] text-gray-500 block">Blood pressure, diabetes medication check & refill</span>
+              </div>
+            </label>
+            <label class="border border-gray-200 hover:border-blue-500 rounded-xl p-3 flex items-start gap-2.5 cursor-pointer transition bg-white has-[:checked]:bg-blue-50/70 has-[:checked]:border-blue-500 has-[:checked]:ring-1 has-[:checked]:ring-blue-500">
+              <input type="radio" name="custService" value="Airdoc AI Retinal Health Scan" class="mt-0.5 text-blue-600 focus:ring-blue-500">
+              <div>
+                <span class="font-bold text-xs text-gray-900 block">👁️ Airdoc AI Retinal Scan</span>
+                <span class="text-[11px] text-gray-500 block">Microvascular & diabetic retinopathy screening</span>
+              </div>
+            </label>
+            <label class="border border-gray-200 hover:border-blue-500 rounded-xl p-3 flex items-start gap-2.5 cursor-pointer transition bg-white has-[:checked]:bg-blue-50/70 has-[:checked]:border-blue-500 has-[:checked]:ring-1 has-[:checked]:ring-blue-500">
+              <input type="radio" name="custService" value="Supplement & Wellness Consultation" class="mt-0.5 text-blue-600 focus:ring-blue-500">
+              <div>
+                <span class="font-bold text-xs text-gray-900 block">🌿 Supplement & Wellness</span>
+                <span class="text-[11px] text-gray-500 block">Nutraceuticals, CoQ10, Joint, Liver & Gut health</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Step 3: Date & Time Picker -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="space-y-1.5">
+            <label class="block text-xs font-bold text-gray-700 flex items-center gap-1.5">
+              <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">3</span>
+              Select Date
+            </label>
+            <input type="date" id="custBookDate" required onchange="updateCustBookHours()"
+              class="w-full border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none">
+          </div>
+          <div class="space-y-1.5">
+            <label class="block text-xs font-bold text-gray-700 flex items-center gap-1.5">
+              <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">4</span>
+              Select Time Slot
+            </label>
+            <select id="custBookTime" required
+              class="w-full border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none">
+            </select>
+          </div>
+        </div>
+
+        <!-- Step 4: Customer Details -->
+        <div class="space-y-3 pt-2 border-t border-gray-100">
+          <label class="block text-xs font-bold text-gray-700 flex items-center gap-1.5">
+            <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">5</span>
+            Your Particulars
+          </label>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-semibold text-gray-600 mb-1">Full Name (姓名) *</label>
+              <input type="text" id="custBookName" required placeholder="e.g. Tan Ah Hock"
+                class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-gray-600 mb-1">WhatsApp Mobile Number (手机号码) *</label>
+              <input type="tel" id="custBookPhone" required placeholder="e.g. 012-8889999"
+                class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-semibold text-gray-600 mb-1">IC / Passport Number (身份证号 - Optional)</label>
+              <input type="text" id="custBookIc" placeholder="e.g. 750812-13-5567"
+                class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-gray-600 mb-1">Reason for Visit / Health Notes (备注)</label>
+              <input type="text" id="custBookNotes" placeholder="e.g. 3-month regular BP/Sugar check, refill statin"
+                class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+          </div>
+        </div>
+
+        <!-- Submit Button -->
+        <div class="pt-3">
+          <button type="submit" class="w-full bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white font-bold py-3 px-6 rounded-xl text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2">
+            <i class="fa-solid fa-calendar-check"></i>
+            <span>Confirm & Book Appointment</span>
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Booking Confirmation Card (Initially Hidden) -->
+    <div id="customerBookingSuccessCard" class="hidden bg-white rounded-2xl shadow-xl border border-emerald-200 overflow-hidden text-center p-8">
+      <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+        <i class="fa-solid fa-check"></i>
+      </div>
+      <h2 class="text-xl font-bold text-gray-900 mb-1">Appointment Confirmed!</h2>
+      <p class="text-xs text-gray-500 mb-6">Your appointment has been registered directly with our pharmacy team.</p>
+
+      <div class="bg-gray-50 rounded-xl p-5 text-left border border-gray-200 max-w-md mx-auto space-y-2.5 text-xs">
+        <div class="flex justify-between border-b pb-2">
+          <span class="text-gray-500">Booking Reference:</span>
+          <span id="custConfirmRef" class="font-mono font-bold text-blue-700">PMG-2026-0001</span>
+        </div>
+        <div class="flex justify-between border-b pb-2">
+          <span class="text-gray-500">Patient Name:</span>
+          <span id="custConfirmName" class="font-bold text-gray-800">-</span>
+        </div>
+        <div class="flex justify-between border-b pb-2">
+          <span class="text-gray-500">Branch:</span>
+          <span id="custConfirmBranch" class="font-bold text-gray-800">-</span>
+        </div>
+        <div class="flex justify-between border-b pb-2">
+          <span class="text-gray-500">Date & Time:</span>
+          <span id="custConfirmDateTime" class="font-bold text-emerald-700">-</span>
+        </div>
+        <div class="flex justify-between border-b pb-2">
+          <span class="text-gray-500">Service:</span>
+          <span id="custConfirmService" class="font-bold text-gray-800">-</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-500">Duty Pharmacist:</span>
+          <span id="custConfirmPharmacist" class="font-bold text-gray-800">-</span>
+        </div>
+      </div>
+
+      <div class="mt-6 flex flex-col sm:flex-row gap-3 justify-center max-w-md mx-auto">
+        <button type="button" id="custBtnWaConfirm" onclick="sendCustomerBookingWaConfirm()" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow transition">
+          <i class="fa-brands fa-whatsapp text-sm"></i>
+          <span>Save to My WhatsApp</span>
+        </button>
+        <button type="button" onclick="resetCustomerBookingForm()" class="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition">
+          Book Another
+        </button>
+      </div>
+    </div>
+
+    <!-- Staff login redirect -->
+    <div class="text-center mt-6">
+      <a href="index.html" class="text-xs text-blue-600 hover:underline">
+        <i class="fa-solid fa-lock text-[10px] mr-1"></i> PMG Staff / Area Manager Sign In
+      </a>
+    </div>
+  </main>
+</div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
      SCRIPTS (load order matters: data → auth → modules)
@@ -1828,8 +2206,72 @@ function switchAmSubTab(subtab) {
   }
 }
 
+// ─── PWA INSTALLATION SUPPORT ─────────────────────────────────────────────────
+let pmgDeferredPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  pmgDeferredPrompt = e;
+  const btnHdr  = document.getElementById('btnPwaInstall');
+  const btnAuth = document.getElementById('authBtnPwaInstall');
+  if (btnHdr)  btnHdr.classList.remove('hidden');
+  if (btnAuth) btnAuth.classList.remove('hidden');
+});
+
+function triggerPwaInstall() {
+  if (pmgDeferredPrompt) {
+    pmgDeferredPrompt.prompt();
+    pmgDeferredPrompt.userChoice.then((choice) => {
+      if (choice.outcome === 'accepted') {
+        console.log('[PMG Hub] PWA installation accepted');
+      }
+      pmgDeferredPrompt = null;
+      document.getElementById('btnPwaInstall')?.classList.add('hidden');
+      document.getElementById('authBtnPwaInstall')?.classList.add('hidden');
+    });
+  } else {
+    // Detect iOS
+    const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    if (isIos) {
+      const tip = document.getElementById('iosInstallTip');
+      if (tip) tip.classList.remove('hidden');
+      alert('To install on iPhone/iPad:\n1. Tap the Share button at the bottom of Safari (square with arrow)\n2. Tap "Add to Home Screen"');
+    } else {
+      alert('To install on Android / PC:\nClick your browser menu (⋮) and choose "Install App" or "Add to Home Screen".');
+    }
+  }
+}
+
 // ─── APP INIT ─────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  // Check URL parameters for 1-click Gemini API Key Configuration
+  const urlParams = new URLSearchParams(window.location.search);
+  const setKey = urlParams.get('setkey');
+  if (setKey) {
+    const cleanKey = setKey.trim();
+    localStorage.setItem('pmg_gemini_key', cleanKey);
+    const geminiInput = document.getElementById('geminiApiKey');
+    if (geminiInput) geminiInput.value = cleanKey;
+    // Wipe key from browser address bar immediately without reloading
+    const cleanUrl = window.location.origin + window.location.pathname;
+    window.history.replaceState({}, document.title, cleanUrl);
+    alert('✅ Gemini AI Key has been securely configured and saved to this device!');
+  }
+
+  // Check URL parameters for Customer Self-Booking Mode (?book=1 or ?action=book)
+  if (urlParams.get('book') === '1' || urlParams.get('action') === 'book') {
+    document.getElementById('authOverlay')?.classList.add('hidden');
+    document.getElementById('mainHeader')?.classList.add('hidden');
+    document.getElementById('mainNav')?.classList.add('hidden');
+    document.getElementById('mainContent')?.classList.add('hidden');
+    const custView = document.getElementById('customerBookingView');
+    if (custView) custView.classList.remove('hidden');
+    if (typeof initCustomerBooking === 'function') {
+      initCustomerBooking(urlParams.get('branch') || 'KS01');
+    }
+    return; // Exit staff app boot
+  }
+
   // Set default month for roster to current month
   const monthInput = document.getElementById('rosterMonth');
   if (monthInput) {
@@ -1858,8 +2300,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initPatientModule();
 
   // Fetch live data from Google Sheets (non-blocking background fetch).
-  // Auth works immediately from offline fallback while this loads.
-  // Once URLs are set in js/data.js → GOOGLE_SHEETS_CONFIG, this auto-syncs on every load.
   loadLiveSheetData();
 
   // Boot authentication
