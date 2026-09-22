@@ -564,7 +564,7 @@ function renderPatientModule() {
       BRANCHES.forEach(b => {
         const opt = document.createElement('option');
         opt.value = b.code;
-        opt.textContent = `${b.code} – ${b.name}`;
+        opt.textContent = b.code === 'KS01' ? 'Kota Sentosa' : `${b.code} – ${b.name}`;
         branchFilterEl.appendChild(opt);
       });
     }
@@ -577,7 +577,13 @@ function renderPatientModule() {
   const selectedBranch = branchFilterEl ? branchFilterEl.value : '';
 
   const filteredPatients = patientsData.filter(p => {
-    if (selectedBranch && p.branch !== selectedBranch) return false;
+    if (selectedBranch) {
+      const pBranchUpper = (p.branch || '').toUpperCase();
+      const selBranchUpper = selectedBranch.toUpperCase();
+      const match = (pBranchUpper === selBranchUpper) ||
+                    ((pBranchUpper === 'KS01' || pBranchUpper === 'KOTA SENTOSA') && (selBranchUpper === 'KS01' || selBranchUpper === 'KOTA SENTOSA'));
+      if (!match) return false;
+    }
     if (query) {
       const matchName = p.name.toLowerCase().includes(query);
       const matchIc = (p.ic || '').toLowerCase().includes(query);
@@ -661,9 +667,9 @@ function renderTodayQueue(items) {
   if (!tbody) return;
 
   if (!items.length) {
-    tbody.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-gray-400 text-sm">
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center py-10 text-gray-400 text-sm">
       <i class="fa-regular fa-calendar-check text-2xl mb-2 text-gray-300 block"></i>
-      No appointments scheduled for today. Click <b>"+ Book Appointment"</b> to schedule.
+      No appointments scheduled for today. Click <b>"+ Book Appt"</b> to schedule.
     </td></tr>`;
     return;
   }
@@ -671,12 +677,15 @@ function renderTodayQueue(items) {
   tbody.innerHTML = items.map(item => {
     const p = item.patient;
     const apt = item.appointment;
+    const isRefill = (apt.type === 'refill_extension' || (apt.purpose && apt.purpose.toLowerCase().includes('refill')));
     const isExtension = (apt.type === 'refill_extension' || apt.status === 'Pending Approval');
     const waMsg = buildWhatsAppMessage(p, apt);
     const waUrl = `https://wa.me/${formatPhoneForWa(p.phone)}?text=${encodeURIComponent(waMsg)}`;
-    const pharmBadge = apt.pharmacist
-      ? `<span class="inline-flex items-center gap-1 bg-purple-50 border border-purple-200 text-purple-700 text-[10px] font-semibold px-2 py-0.5 rounded ml-1.5"><i class="fa-solid fa-user-doctor text-[9px]"></i> ${escHtml(apt.pharmacist)}</span>`
-      : `<span class="inline-flex items-center gap-1 bg-gray-50 border border-gray-200 text-gray-500 text-[10px] font-medium px-2 py-0.5 rounded ml-1.5"><i class="fa-solid fa-user-doctor text-[9px]"></i> Duty Pharmacist</span>`;
+    const branchDisplay = (p.branch === 'KS01' || p.branch === 'KOTA SENTOSA') ? 'Kota Sentosa' : p.branch;
+
+    const purposeBadge = isRefill
+      ? `<span class="inline-block bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-lg">Refill 1 Month Supply</span>`
+      : `<span class="inline-block bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-lg">Visit</span>`;
 
     return `
       <tr class="hover:bg-blue-50/40 transition border-b border-gray-100">
@@ -685,18 +694,11 @@ function renderTodayQueue(items) {
           <button onclick="viewPatientProfile('${p.id}')" class="text-blue-700 hover:underline font-bold text-left block">
             ${p.name}
           </button>
-          <span class="text-[11px] text-gray-400">${p.phone} · ${p.branch}</span>
+          <span class="text-[11px] text-gray-400">${p.phone} · ${branchDisplay}</span>
         </td>
         <td class="px-4 py-3">
-          <span class="inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-0.5 rounded">
-            ${apt.purpose || 'Check-up'}
-          </span>
-          ${isExtension ? `<span class="inline-block bg-emerald-50 text-emerald-800 border border-emerald-300 text-[10px] font-bold px-1.5 py-0.5 rounded ml-1">Refill (+1 Mo)</span>` : ''}
-          ${pharmBadge}
-          ${apt.notes ? `<p class="text-[11px] text-gray-500 mt-0.5 italic truncate max-w-xs">${apt.notes}</p>` : ''}
-        </td>
-        <td class="px-4 py-3 text-xs text-gray-600">
-          ${(p.conditions || []).map(c => `<span class="inline-block bg-gray-100 text-gray-700 text-[10px] px-1.5 py-0.5 rounded mr-1">${c}</span>`).join('') || '—'}
+          ${purposeBadge}
+          ${apt.notes ? `<p class="text-[11px] text-gray-500 mt-1 italic truncate max-w-xs">${escHtml(apt.notes)}</p>` : ''}
         </td>
         <td class="px-4 py-3">
           ${isExtension ? `
@@ -744,7 +746,7 @@ function renderUpcomingQueue(items) {
   if (!tbody) return;
 
   if (!items.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="text-center py-10 text-gray-400 text-sm">
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center py-10 text-gray-400 text-sm">
       <i class="fa-regular fa-calendar text-2xl mb-2 text-gray-300 block"></i>
       No appointments in the next 7 days.
     </td></tr>`;
@@ -754,12 +756,15 @@ function renderUpcomingQueue(items) {
   tbody.innerHTML = items.map(item => {
     const p = item.patient;
     const apt = item.appointment;
+    const isRefill = (apt.type === 'refill_extension' || (apt.purpose && apt.purpose.toLowerCase().includes('refill')));
     const isExtension = (apt.type === 'refill_extension' || apt.status === 'Pending Approval');
     const waMsg = buildWhatsAppMessage(p, apt);
     const waUrl = `https://wa.me/${formatPhoneForWa(p.phone)}?text=${encodeURIComponent(waMsg)}`;
-    const pharmBadge = apt.pharmacist
-      ? `<span class="inline-flex items-center gap-1 bg-purple-50 border border-purple-200 text-purple-700 text-[10px] font-semibold px-2 py-0.5 rounded ml-1.5"><i class="fa-solid fa-user-doctor text-[9px]"></i> ${escHtml(apt.pharmacist)}</span>`
-      : `<span class="inline-flex items-center gap-1 bg-gray-50 border border-gray-200 text-gray-500 text-[10px] font-medium px-2 py-0.5 rounded ml-1.5"><i class="fa-solid fa-user-doctor text-[9px]"></i> Duty Pharmacist</span>`;
+    const branchDisplay = (p.branch === 'KS01' || p.branch === 'KOTA SENTOSA') ? 'Kota Sentosa' : p.branch;
+
+    const purposeBadge = isRefill
+      ? `<span class="inline-block bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-lg">Refill 1 Month Supply</span>`
+      : `<span class="inline-block bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-lg">Visit</span>`;
 
     return `
       <tr class="hover:bg-blue-50/40 transition border-b border-gray-100">
@@ -768,17 +773,10 @@ function renderUpcomingQueue(items) {
           <button onclick="viewPatientProfile('${p.id}')" class="text-blue-700 hover:underline font-bold text-left block">
             ${p.name}
           </button>
-          <span class="text-[11px] text-gray-400">${p.phone} · ${p.branch}</span>
+          <span class="text-[11px] text-gray-400">${p.phone} · ${branchDisplay}</span>
         </td>
         <td class="px-4 py-3">
-          <span class="inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-0.5 rounded">
-            ${apt.purpose || 'Check-up'}
-          </span>
-          ${isExtension ? `<span class="inline-block bg-emerald-50 text-emerald-800 border border-emerald-300 text-[10px] font-bold px-1.5 py-0.5 rounded ml-1">Refill (+1 Mo)</span>` : ''}
-          ${pharmBadge}
-        </td>
-        <td class="px-4 py-3 text-xs text-gray-600">
-          ${(p.conditions || []).join(', ') || '—'}
+          ${purposeBadge}
         </td>
         <td class="px-4 py-3">
           ${isExtension ? `
@@ -813,7 +811,7 @@ function renderOverdueQueue(items) {
   if (!tbody) return;
 
   if (!items.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="text-center py-10 text-gray-400 text-sm">
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center py-10 text-gray-400 text-sm">
       <i class="fa-regular fa-circle-check text-2xl mb-2 text-emerald-400 block"></i>
       Awesome! No overdue refills or missed appointments across this branch.
     </td></tr>`;
@@ -826,6 +824,7 @@ function renderOverdueQueue(items) {
     const med = item.medication;
     const waMsg = buildWhatsAppRecallMessage(p, item);
     const waUrl = `https://wa.me/${formatPhoneForWa(p.phone)}?text=${encodeURIComponent(waMsg)}`;
+    const branchDisplay = (p.branch === 'KS01' || p.branch === 'KOTA SENTOSA') ? 'Kota Sentosa' : p.branch;
 
     const dateStr = apt ? apt.date : (med ? med.nextRefillDate : '—');
     const details = apt ? (apt.purpose || 'Missed Appointment') : (med ? `${med.name} (Due: ${med.nextRefillDate})` : 'Overdue');
@@ -837,16 +836,13 @@ function renderOverdueQueue(items) {
           <button onclick="viewPatientProfile('${p.id}')" class="text-blue-700 hover:underline font-bold text-left block">
             ${p.name}
           </button>
-          <span class="text-[11px] text-gray-400">${p.phone} · ${p.branch}</span>
+          <span class="text-[11px] text-gray-400">${p.phone} · ${branchDisplay}</span>
         </td>
         <td class="px-4 py-3">
           <span class="inline-block bg-rose-100 text-rose-800 text-xs font-bold px-2 py-0.5 rounded">
             ${item.type}
           </span>
           <p class="text-xs text-gray-600 mt-0.5">${details}</p>
-        </td>
-        <td class="px-4 py-3 text-xs text-gray-600">
-          ${(p.conditions || []).join(', ') || '—'}
         </td>
         <td class="px-4 py-3">
           <span class="bg-rose-50 text-rose-700 text-xs font-bold px-2 py-0.5 rounded">Requires Follow-up</span>
@@ -867,7 +863,7 @@ function renderPatientDirectory(patients) {
   if (!tbody) return;
 
   if (!patients.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="text-center py-10 text-gray-400 text-sm">
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-gray-400 text-sm">
       No patients matching your search criteria. Click <b>"+ New Patient"</b> to register.
     </td></tr>`;
     return;
@@ -877,6 +873,7 @@ function renderPatientDirectory(patients) {
 
   tbody.innerHTML = patients.map(p => {
     const lastEnc = (p.encounters && p.encounters.length) ? p.encounters[0] : null;
+    const branchDisplay = (p.branch === 'KS01' || p.branch === 'KOTA SENTOSA') ? 'Kota Sentosa' : p.branch;
 
     // 1. Next Appointment / TCA Reminder Date
     const futureApts = (p.appointments || []).filter(a => a.status === 'Scheduled').sort((a, b) => a.date.localeCompare(b.date));
@@ -919,7 +916,7 @@ function renderPatientDirectory(patients) {
       `;
     }
 
-    // 2. Medication List
+    // 2. Medication List (with wrapping)
     let medsList = [];
     if (p.medications && p.medications.length) {
       medsList = p.medications.map(m => typeof m === 'string' ? m : `${m.name} ${m.dosage || ''}`.trim());
@@ -930,19 +927,19 @@ function renderPatientDirectory(patients) {
     let medsHtml = '<span class="text-xs text-gray-400 italic">None recorded</span>';
     if (medsList.length) {
       medsHtml = `
-        <div class="space-y-1 max-w-[240px]">
-          ${medsList.slice(0, 3).map(m => `
-            <div class="text-[11px] font-medium text-gray-800 truncate flex items-center gap-1.5" title="${escHtml(m)}">
-              <span class="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></span>
-              <span class="truncate">${escHtml(m)}</span>
+        <div class="space-y-1.5 min-w-[150px] max-w-[280px]">
+          ${medsList.slice(0, 4).map(m => `
+            <div class="text-[11px] font-semibold text-gray-800 flex items-start gap-1.5 break-words whitespace-normal leading-snug" title="${escHtml(m)}">
+              <span class="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0 mt-1"></span>
+              <span class="break-words">${escHtml(m)}</span>
             </div>
           `).join('')}
-          ${medsList.length > 3 ? `<span class="text-[10px] font-semibold text-blue-600 cursor-pointer block hover:underline" onclick="viewPatientProfile('${p.id}')">+${medsList.length - 3} more...</span>` : ''}
+          ${medsList.length > 4 ? `<span class="text-[10px] font-semibold text-blue-600 cursor-pointer block hover:underline" onclick="viewPatientProfile('${p.id}')">+${medsList.length - 4} more...</span>` : ''}
         </div>
       `;
     }
 
-    // 3. Supplement List
+    // 3. Supplement List (with word wrapping)
     let suppsList = [];
     if (lastEnc && lastEnc.planSupplements) {
       suppsList = lastEnc.planSupplements.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
@@ -953,22 +950,21 @@ function renderPatientDirectory(patients) {
     let suppsHtml = '<span class="text-xs text-gray-400 italic">None</span>';
     if (suppsList.length) {
       suppsHtml = `
-        <div class="space-y-1 max-w-[220px]">
-          ${suppsList.slice(0, 3).map(s => `
-            <div class="text-[11px] font-medium text-emerald-800 truncate flex items-center gap-1.5" title="${escHtml(s)}">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
-              <span class="truncate">${escHtml(s)}</span>
+        <div class="space-y-1.5 min-w-[150px] max-w-[280px]">
+          ${suppsList.slice(0, 4).map(s => `
+            <div class="text-[11px] font-semibold text-emerald-800 flex items-start gap-1.5 break-words whitespace-normal leading-snug" title="${escHtml(s)}">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mt-1"></span>
+              <span class="break-words">${escHtml(s)}</span>
             </div>
           `).join('')}
-          ${suppsList.length > 3 ? `<span class="text-[10px] font-semibold text-emerald-600 cursor-pointer block hover:underline" onclick="viewPatientProfile('${p.id}')">+${suppsList.length - 3} more...</span>` : ''}
+          ${suppsList.length > 4 ? `<span class="text-[10px] font-semibold text-emerald-600 cursor-pointer block hover:underline" onclick="viewPatientProfile('${p.id}')">+${suppsList.length - 4} more...</span>` : ''}
         </div>
       `;
     }
 
     return `
       <tr class="hover:bg-blue-50/40 transition border-b border-gray-100">
-        <td class="px-3 py-3 font-mono text-xs text-gray-500 font-semibold">${p.id}</td>
-        <td class="px-3 py-3">
+        <td class="px-4 py-3">
           <button onclick="viewPatientProfile('${p.id}')" class="text-blue-700 hover:underline font-bold text-left block">
             ${p.name}
           </button>
@@ -976,9 +972,9 @@ function renderPatientDirectory(patients) {
         </td>
         <td class="px-3 py-3 text-xs text-gray-700">${p.phone || '—'}</td>
         <td class="px-3 py-3">
-          <span class="bg-gray-100 text-gray-800 text-xs font-semibold px-2 py-0.5 rounded">${p.branch}</span>
+          <span class="bg-gray-100 text-gray-800 text-xs font-semibold px-2 py-0.5 rounded">${branchDisplay}</span>
         </td>
-        <td class="px-3 py-3">${reminderHtml}</td>
+        <td class="px-4 py-3">${reminderHtml}</td>
         <td class="px-4 py-3">${medsHtml}</td>
         <td class="px-4 py-3">${suppsHtml}</td>
         <td class="px-3 py-3 text-right whitespace-nowrap">
@@ -1141,7 +1137,8 @@ function getPatientSupplySummary(patient, lang) {
  */
 function getPatientSelfBookingUrl(patient) {
   const baseUrl = window.location.origin + window.location.pathname;
-  const branch = patient.branch || 'KS01';
+  let branch = patient.branch || 'KOTA SENTOSA';
+  if (branch === 'KS01') branch = 'KOTA SENTOSA';
   const name = patient.name || '';
   const phone = patient.phone || '';
   const ic = patient.ic || '';
@@ -1161,8 +1158,9 @@ function getPatientSelfBookingUrl(patient) {
  * Formatted with clean universal markdown and spacing (no broken symbols).
  */
 function buildPatientSupplyBookingMessage(patient) {
-  const branchCode = patient.branch || 'KS01';
-  const branchInfo = BRANCH_SCHEDULES[branchCode] || BRANCH_SCHEDULES['KS01'];
+  let branchCode = patient.branch || 'KOTA SENTOSA';
+  if (branchCode === 'KS01') branchCode = 'KOTA SENTOSA';
+  const branchInfo = BRANCH_SCHEDULES[branchCode] || BRANCH_SCHEDULES['KOTA SENTOSA'];
   const sched = typeof getPharmacistSchedule === 'function' ? getPharmacistSchedule(branchCode) : null;
   const branchName = sched ? (sched.branchName || branchInfo.name) : (branchInfo ? branchInfo.name : `PMG Pharmacy ${branchCode}`);
   const monTemplate = sched && sched.weeklyTemplate ? (sched.weeklyTemplate['1'] || sched.weeklyTemplate['0']) : null;
@@ -1180,68 +1178,11 @@ function buildPatientSupplyBookingMessage(patient) {
   const tcaReminderEn = patient.nextTcaDate ? `\n\n*Recommended Follow-up/Refill Date:* ${patient.nextTcaDate}${patient.nextTcaPurpose ? ' (' + patient.nextTcaPurpose + ')' : ''}` : '';
 
   if (lang === 'Chinese') {
-    return `您好 *${patientName}*，这里是 *PMG Pharmacy (${branchName})* 药剂关怀团队。
-
-${supplyText}${tcaReminderZh}
-
-为方便您妥善安排时间，我们特别为您开通了【线上自主预约与续药服务】。您可以直接点击下方专属链接进行选择：
-
-👉 *点击专属预约/续药链接：*
-${bookingUrl}
-
-----------------------------------------
-*您可以自主选择：*
-1. 预约到店面诊与健康检查
-2. 申请常备药物/保健品顺延 1 个月（需药剂师审核批准）
-----------------------------------------
-
-*营业时间：* ${openTime} – ${closeTime}（星期一至星期日）
-*分店：* PMG Pharmacy ${branchName}
-
-如果您有任何用药疑问，或需要我们提前备妥药物，欢迎直接回复此 WhatsApp。
-祝您身体健康，平安顺心！`;
+    return `您好 *${patientName}*，这里是 *${branchName}*（${openTime} - ${closeTime}）。\n\n${supplyText}${tcaReminderZh}\n\n为确保您的健康指标控制平稳并避免断药，我们建议您提前安排。\n\n👉 *您可以直接点击下方专属链接，选择适合您的时间到店面诊，或直接申请1个月慢病续药：*\n🔗 ${bookingUrl}\n\n如果您有任何用药疑问，或需要我们提前备妥药物，欢迎直接回复此 WhatsApp。\n\nPMG 药剂师团队祝您与家人身体健康！`;
   } else if (lang === 'Malay') {
-    return `Salam sejahtera *${patientName}*, ini adalah pesanan daripada pasukan farmasi *PMG Pharmacy (${branchName})*.
-
-${supplyText}${tcaReminderMy}
-
-Bagi memudahkan urusan anda tanpa perlu menunggu lama, kami menyediakan 【Sistem Tempahan Temujanji & Ulangan Ubat Kendiri Dalam Talian】. Anda boleh menekan pautan peribadi anda di bawah:
-
-👉 *Tekan pautan peribadi anda:*
-${bookingUrl}
-
-----------------------------------------
-*Pilihan Perkhidmatan Anda:*
-1. Tempah sesi temujanji dan semakan kesihatan di farmasi
-2. Mohon ulangan ubat/suplemen rutin dengan lanjutan tarikh 1 bulan (tertakluk kepada kelulusan ahli farmasi)
-----------------------------------------
-
-*Waktu Operasi:* ${openTime} – ${closeTime} (Setiap Hari)
-*Cawangan:* PMG Pharmacy ${branchName}
-
-Jika anda ada sebarang pertanyaan atau ingin kami sediakan ubat terlebih dahulu, sila balas mesej ini.
-Terima kasih dan semoga sentiasa sihat!`;
+    return `Salam sejahtera *${patientName}*, ini pesanan daripada *${branchName}* (${openTime} - ${closeTime}).\n\n${supplyText}${tcaReminderMy}\n\nBagi memastikan kesihatan anda kekal terkawal tanpa gangguan bekalan ubat, kami mencadangkan anda merancang lebih awal.\n\n👉 *Sila klik pautan peribadi di bawah untuk memilih masa temujanji atau memohon lanjutan bekalan ubat 1 bulan:*\n🔗 ${bookingUrl}\n\nSekiranya anda mempunyai sebarang pertanyaan mengenai ubat-ubatan, sila balas mesej ini.\n\nPasukan Farmasi PMG sentiasa sedia membantu!`;
   } else {
-    return `Hello *${patientName}*, this is the pharmacy care team from *PMG Pharmacy (${branchName})*.
-
-${supplyText}${tcaReminderEn}
-
-To help you plan ahead without waiting, we have provided an 【Online Self-Booking & Refill Portal】. Tap your personalized link below:
-
-👉 *Tap your personalized link:*
-${bookingUrl}
-
-----------------------------------------
-*Your Available Options:*
-1. Book an in-person consultation & routine health screening
-2. Request a 1-month refill extension for chronic meds & supplements (subject to pharmacist approval)
-----------------------------------------
-
-*Consultation Hours:* ${openTime} – ${closeTime} (Daily)
-*Branch:* PMG Pharmacy ${branchName}
-
-If you have any questions or need your medications packed in advance, simply reply to this message.
-Stay healthy and take care!`;
+    return `Dear *${patientName}*, warm greetings from *${branchName}* (${openTime} - ${closeTime}).\n\n${supplyText}${tcaReminderEn}\n\nTo ensure your health metrics stay in optimal control and prevent any medication disruption, we recommend planning ahead.\n\n👉 *You can click your personalized link below to select a convenient appointment time, or request a 1-month refill extension:*\n🔗 ${bookingUrl}\n\nIf you have any questions or would like us to prepare your medications in advance, feel free to reply directly.\n\nWishing you good health from your PMG Pharmacy team!`;
   }
 }
 
@@ -1275,12 +1216,12 @@ function sendPatientBookingWhatsApp(patientId) {
 }
 
 function buildWhatsAppMessage(patient, appointment) {
-  const branchName = patient.branch === 'KS01' ? 'PMG Pharmacy Kota Sentosa' : `PMG Pharmacy ${patient.branch}`;
+  const branchName = (patient.branch === 'KS01' || patient.branch === 'KOTA SENTOSA') ? 'PMG Pharmacy Kota Sentosa' : `PMG Pharmacy ${patient.branch}`;
   const lang = patient.language || 'English';
   const name = patient.name;
   const date = appointment.date;
-  const time = appointment.time || 'your scheduled time';
-  const purpose = appointment.purpose || 'Chronic Medication Refill & Health Review';
+  const time = appointment.time || '10:00';
+  const purpose = appointment.purpose || 'Follow-up Consultation';
 
   if (lang === 'Chinese') {
     return `您好 ${name}，这里是 ${branchName}。\n\n温馨提醒您，您预约的【${purpose}】时间为：\n📅 日期：${date}\n⏰ 时间：${time}\n\n请问需要我们提前为您准备好药物吗？如需调整时间，请随时回复我们。祝您身体健康！`;
@@ -1292,16 +1233,17 @@ function buildWhatsAppMessage(patient, appointment) {
 }
 
 function buildWhatsAppRecallMessage(patient, item) {
-  const branchName = patient.branch === 'KS01' ? 'PMG Pharmacy Kota Sentosa' : `PMG Pharmacy ${patient.branch}`;
+  const branchName = (patient.branch === 'KS01' || patient.branch === 'KOTA SENTOSA') ? 'PMG Pharmacy Kota Sentosa' : `PMG Pharmacy ${patient.branch}`;
   const lang = patient.language || 'English';
   const name = patient.name;
+  const bookingUrl = getPatientSelfBookingUrl(patient);
 
   if (lang === 'Chinese') {
-    return `您好 ${name}，这里是 ${branchName}。\n\n我们注意到您的长期慢病药物已经到期需要续药，为确保您的血压与血糖控制平稳，建议您尽快回来复查并补充药物。\n\n您可以在今天或明天方便的时间过来，我们已准备好为您服务！如有任何问题，欢迎随时联系我们。`;
+    return `您好 *${name}*，这里是 *${branchName}*。\n\n我们注意到您的长期慢病药物已到期 / 错过了近期的复查提醒。为确保您的血压、血糖与健康指标平稳控制，建议您尽快回来复查并补充药物。\n\n👉 *您可以直接点击下方专属链接，选择适合您的时间到店面诊，或直接申请1个月慢病续药：*\n🔗 ${bookingUrl}\n\n我们药剂师团队已准备好为您服务。如有任何疑问，欢迎随时联系我们！祝您身体健康！`;
   } else if (lang === 'Malay') {
-    return `Salam ${name}, ini peringatan mesra dari ${branchName}.\n\nBekalan ubat kronik anda telah tamat tempoh dan perlu diulang semula untuk memastikan tahap kesihatan anda kekal terkawal.\n\nSila datang ke cawangan kami pada masa lapang anda untuk pemeriksaan & pengambilan ubat. Terima kasih!`;
+    return `Salam *${name}*, ini peringatan mesra dari *${branchName}*.\n\nKami mendapati bekalan ubat kronik anda telah tamat tempoh / terlepas tarikh temujanji ulangan. Demi mengekalkan kawalan kesihatan yang baik, kami mencadangkan anda memperbaharui bekalan ubat anda secepat mungkin.\n\n👉 *Sila klik pautan peribadi di bawah untuk memilih masa temujanji atau memohon lanjutan bekalan ubat 1 bulan:*\n🔗 ${bookingUrl}\n\nAhli farmasi kami sedia membantu anda. Terima kasih dan kekal sihat!`;
   } else {
-    return `Hello ${name}, this is ${branchName}.\n\nWe noticed that your chronic medication supply is due for refill. Maintaining steady medication compliance is essential for your blood pressure and health control.\n\nPlease drop by our branch at your earliest convenience to review and collect your medication. Thank you!`;
+    return `Hello *${name}*, this is a friendly reminder from *${branchName}*.\n\nWe noticed that your chronic medication supply is overdue or you have missed your follow-up review. Maintaining steady medication compliance is essential for your long-term health control.\n\n👉 *You may click your personalized link below to select a convenient appointment time, or request a 1-month refill extension:*\n🔗 ${bookingUrl}\n\nOur pharmacy team is ready to assist you. Please let us know if you have any questions!`;
   }
 }
 
@@ -2071,6 +2013,18 @@ async function saveNewEncounter() {
   if (viewingPatientId === pId) {
     viewPatientProfile(pId);
   }
+
+  // Prompt pharmacist to send WhatsApp Consultation Summary with Google Review & Community links
+  setTimeout(() => {
+    if (p.phone) {
+      const sendWa = confirm(`✅ Consultation & POCT recorded successfully for ${p.name}!\n\nWould you like to send the Consultation Summary & Google 5-Star Review link to ${p.name} via WhatsApp now?`);
+      if (sendWa) {
+        const waSummary = buildConsultationWaSummary(p, newEnc);
+        const waUrl = `https://wa.me/${formatPhoneForWa(p.phone)}?text=${encodeURIComponent(waSummary)}`;
+        window.open(waUrl, '_blank');
+      }
+    }
+  }, 300);
 }
 
 // ─── BOOK APPOINTMENT MODAL ──────────────────────────────────────────────────
@@ -2616,7 +2570,7 @@ function promptAddMedication() {
 
 // ─── WHATSAPP CONSULTATION SUMMARY BUILDER ───────────────────────────────────
 function buildConsultationWaSummary(patient, enc) {
-  const branchName = patient.branch === 'KS01' ? 'PMG Pharmacy Kota Sentosa' : `PMG Pharmacy ${patient.branch}`;
+  const branchName = (patient.branch === 'KS01' || patient.branch === 'KOTA SENTOSA') ? 'PMG Pharmacy Kota Sentosa' : `PMG Pharmacy ${patient.branch}`;
   const lang = patient.language || 'English';
   const name = patient.name;
   const date = enc.date;
@@ -2624,6 +2578,11 @@ function buildConsultationWaSummary(patient, enc) {
   const v = enc.vitals || {};
   const g = enc.glycemicHeme || {};
   const l = enc.lipidPanel || {};
+
+  const googleReviewLink = 'https://g.page/r/CUU3ygRE9IC6EBM/review';
+  const waCommunityLink = 'https://chat.whatsapp.com/D1d7scuEzrQ15rwFndmSHr';
+  const personalFbLink = 'https://www.facebook.com/profile.php?id=61563952747645';
+  const outletFbLink = 'https://www.facebook.com/profile.php?id=61589640333203';
 
   if (lang === 'Chinese') {
     let msg = `尊敬的 ${name}，这是您于 ${date} 在【${branchName}】的健康咨询与检查报告小结：\n\n`;
@@ -2639,7 +2598,10 @@ function buildConsultationWaSummary(patient, enc) {
     if (enc.planSupplements) msg += `\n🌿 *保健品推荐：*\n${enc.planSupplements}\n`;
     if (enc.planCounselling) msg += `\n🗣️ *饮食与生活注意：*\n${enc.planCounselling}\n`;
 
-    msg += `\n祝您身体健康！如有任何用药疑问，欢迎随时联系我们。`;
+    msg += `\n🌟 *如果您对我们今天的健康咨询与检测服务满意，诚挚邀请您为我们留下 5 星好评支持：*\n⭐ 谷歌5星好评：${googleReviewLink}\n\n`;
+    msg += `👥 *欢迎加入我们的健康关怀 WhatsApp 社区（获取最新健康资讯与用药指导）：*\n👉 社区链接：${waCommunityLink}\n\n`;
+    msg += `📱 *关注我们获取更多保健知识：*\n• 药剂师主页：${personalFbLink}\n• PMG Kota Sentosa 专页：${outletFbLink}\n\n`;
+    msg += `祝您身体健康！如有任何用药疑问，欢迎随时联系我们。`;
     return msg;
   } else if (lang === 'Malay') {
     let msg = `Salam ${name}, ini adalah ringkasan konsultasi kesihatan anda pada ${date} di 【${branchName}】：\n\n`;
@@ -2654,7 +2616,10 @@ function buildConsultationWaSummary(patient, enc) {
     if (enc.planSupplements) msg += `\n🌿 *Suplemen Disyorkan:*\n${enc.planSupplements}\n`;
     if (enc.planCounselling) msg += `\n🗣️ *Nasihat Gaya Hidup:*\n${enc.planCounselling}\n`;
 
-    msg += `\nSemoga sihat selalu! Hubungi kami jika ada sebarang pertanyaan.`;
+    msg += `\n🌟 *Jika anda berpuas hati dengan perkhidmatan dan ujian kesihatan kami, sudilah berikan kami penilaian 5 bintang di Google:*\n⭐ Ulasan Google 5 Bintang: ${googleReviewLink}\n\n`;
+    msg += `👥 *Sertai Komuniti WhatsApp Kesihatan Kami (dapatkan tips kesihatan & nasihat ubatan terkini):*\n👉 Pautan Komuniti: ${waCommunityLink}\n\n`;
+    msg += `📱 *Ikuti kami di Facebook untuk info kesihatan harian:*\n• Profil Ahli Farmasi: ${personalFbLink}\n• Halaman PMG Kota Sentosa: ${outletFbLink}\n\n`;
+    msg += `Semoga sihat selalu! Hubungi kami jika ada sebarang pertanyaan.`;
     return msg;
   } else {
     let msg = `Dear ${name}, here is your health consultation summary from ${branchName} on ${date}:\n\n`;
@@ -2670,7 +2635,10 @@ function buildConsultationWaSummary(patient, enc) {
     if (enc.planSupplements) msg += `\n🌿 *Recommended Supplements:*\n${enc.planSupplements}\n`;
     if (enc.planCounselling) msg += `\n🗣️ *Lifestyle & Dietary Advice:*\n${enc.planCounselling}\n`;
 
-    msg += `\nStay healthy! Feel free to message us if you have any questions.`;
+    msg += `\n🌟 *If you are satisfied with our health consultation and testing service today, we would greatly appreciate your 5-star Google review:*\n⭐ Rate 5 Stars on Google: ${googleReviewLink}\n\n`;
+    msg += `👥 *Join our WhatsApp Health Community (for the latest health tips & updates):*\n👉 Community Link: ${waCommunityLink}\n\n`;
+    msg += `📱 *Follow us on Facebook for daily healthcare updates:*\n• Pharmacist Profile: ${personalFbLink}\n• PMG Kota Sentosa Page: ${outletFbLink}\n\n`;
+    msg += `Stay healthy! Feel free to message us if you have any questions.`;
     return msg;
   }
 }
@@ -3151,13 +3119,14 @@ function closeOneDriveGuideModal() {
 // ─── BRANCH OPERATING HOURS & DYNAMIC PHARMACIST SCHEDULES ───────────────────
 // ═════════════════════════════════════════════════════════════════════════════
 const BRANCH_SCHEDULES = {
-  'KS01':      { name: 'Kota Sentosa (KS01)', open: '07:30', close: '21:30', pharmacist: 'Pharmacist William / Ting', phone: '60168334455' },
-  'ASTANA':    { name: 'Astana (ASTANA)',     open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
-  'MALIHAH':   { name: 'Malihah (MALIHAH)',   open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
-  'METROCITY': { name: 'Metrocity (METROCITY)', open: '08:30', close: '21:30', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
-  'MJK':       { name: 'MJK (MJK)',           open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
-  'MOYAN':     { name: 'Moyan (MOYAN)',       open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
-  'SEMARIANG': { name: 'Semariang (SEMARIANG)', open: '07:30', close: '21:30', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
+  'KOTA SENTOSA': { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'Pharmacist William / Ting', phone: '60168334455' },
+  'KS01':         { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'Pharmacist William / Ting', phone: '60168334455' },
+  'ASTANA':       { name: 'Astana',       open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
+  'MALIHAH':      { name: 'Malihah',      open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
+  'METROCITY':    { name: 'Metrocity',    open: '08:30', close: '21:30', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
+  'MJK':          { name: 'MJK',          open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
+  'MOYAN':        { name: 'Moyan',        open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
+  'SEMARIANG':    { name: 'Semariang',    open: '07:30', close: '21:30', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
 };
 
 function escHtml(str) {
@@ -3406,13 +3375,20 @@ function shareBookingViaWhatsApp() {
 // ═════════════════════════════════════════════════════════════════════════════
 let currentCustomerBooking = null;
 
-function initCustomerBooking(defaultBranchCode = 'KS01') {
+function initCustomerBooking(defaultBranchCode = 'KOTA SENTOSA') {
   const urlParams = new URLSearchParams(window.location.search);
-  const branchParam = urlParams.get('branch') || defaultBranchCode;
+  let branchParam = urlParams.get('branch') || defaultBranchCode;
+  if (branchParam === 'KS01') branchParam = 'KOTA SENTOSA';
 
   const select = document.getElementById('custBranchSelect');
   if (select) {
-    select.value = BRANCH_SCHEDULES[branchParam] ? branchParam : 'KS01';
+    const validBranch = BRANCH_SCHEDULES[branchParam] ? branchParam : 'KOTA SENTOSA';
+    select.value = validBranch;
+    // Lock branch selector so customer cannot switch to another unconnected branch
+    select.disabled = true;
+    select.classList.add('bg-gray-100', 'cursor-not-allowed', 'opacity-90');
+    const lockNotice = document.getElementById('custBranchLockNotice');
+    if (lockNotice) lockNotice.classList.remove('hidden');
   }
 
   // Pre-fill Name, Phone, IC if passed via query params from WhatsApp link
@@ -3491,7 +3467,8 @@ function toggleBookingType(type) {
 
 function updateCustBookHours() {
   const branchSelect = document.getElementById('custBranchSelect');
-  const code = branchSelect ? branchSelect.value : 'KS01';
+  let code = branchSelect ? branchSelect.value : 'KOTA SENTOSA';
+  if (code === 'KS01') code = 'KOTA SENTOSA';
   const dateInput = document.getElementById('custBookDate');
   const dateStr = dateInput ? dateInput.value : '';
 
