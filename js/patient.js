@@ -1355,6 +1355,11 @@ function showNewEncounterModal(patientId) {
   if (document.getElementById('encTedaLink')) document.getElementById('encTedaLink').value = '';
   const tedaBtn = document.getElementById('openTedaLinkBtn');
   if (tedaBtn) tedaBtn.classList.add('hidden');
+  const tedaStatus = document.getElementById('tedaFetchStatus');
+  if (tedaStatus) { tedaStatus.textContent = ''; tedaStatus.className = 'text-[10px] text-amber-700 font-medium'; }
+  const tedaDetails = document.getElementById('encTedaDetailsBadge');
+  if (tedaDetails) tedaDetails.classList.add('hidden');
+  window._cachedTedaReport = null;
   removeAirdocFile();
   document.getElementById('encRossmaxAct').value = '';
 
@@ -1431,14 +1436,29 @@ function togglePanel(panelId) {
   if (icon) icon.classList.toggle('rotate-180');
 }
 
-// ─── TEDA LINK HELPERS ───────────────────────────────────────────────────────
+// ─── TEDA LINK & AUTO-DECRYPTION HELPERS ───────────────────────────────────────
+function extractTedaRid(urlOrText) {
+  if (!urlOrText) return '';
+  const match = urlOrText.match(/rid=([a-f0-9\-]{32,36})/i);
+  if (match) return match[1];
+  const rawMatch = urlOrText.match(/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
+  if (rawMatch) return rawMatch[1];
+  return '';
+}
+
 function checkTedaUrl(url) {
   const btn = document.getElementById('openTedaLinkBtn');
-  if (!btn) return;
-  if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
-    btn.classList.remove('hidden');
-  } else {
-    btn.classList.add('hidden');
+  if (btn) {
+    if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+      btn.classList.remove('hidden');
+    } else {
+      btn.classList.add('hidden');
+    }
+  }
+  const rid = extractTedaRid(url);
+  const statusEl = document.getElementById('tedaFetchStatus');
+  if (rid && statusEl && !window._cachedTedaReport) {
+    statusEl.textContent = 'Report ID detected. Click "Auto-Analyze Link" to load.';
   }
 }
 
@@ -1462,7 +1482,268 @@ function appendTedaTag(tag) {
   if (!current) {
     el.value = tag;
   } else if (!current.includes(tag)) {
-    el.value = `${current}, ${tag}`;
+    el.value = `${current}\n• ${tag}`;
+  }
+}
+
+// Protobuf wire format decoder for ReportResult message (field 1: data, field 2: key)
+function decodeTedaProtobuf(uint8) {
+  let pos = 0;
+  let cipherData = null;
+  let cipherKey = null;
+  while (pos < uint8.length) {
+    const tag = uint8[pos++];
+    const wireType = tag & 0x07;
+    const fieldNum = tag >> 3;
+    if (wireType !== 2) {
+      if (wireType === 0) { while ((uint8[pos++] & 0x80) !== 0); }
+      else if (wireType === 1) { pos += 8; }
+      else if (wireType === 5) { pos += 4; }
+      else throw new Error('Unsupported wire type: ' + wireType);
+      continue;
+    }
+    let len = 0, shift = 0;
+    while (true) {
+      const b = uint8[pos++];
+      len |= (b & 0x7f) << shift;
+      if ((b & 0x80) === 0) break;
+      shift += 7;
+    }
+    const bytes = uint8.subarray(pos, pos + len);
+    pos += len;
+    if (fieldNum === 1) cipherData = bytes;
+    else if (fieldNum === 2) cipherKey = bytes;
+  }
+  return { cipherData, cipherKey };
+}
+
+function u8ToCryptoJsWordArray(u8) {
+  const words = [];
+  for (let i = 0; i < u8.length; i++) {
+    words[i >>> 2] |= u8[i] << (24 - (i % 4) * 8);
+  }
+  return CryptoJS.lib.WordArray.create(words, u8.length);
+}
+
+function hexToUtf8String(hexStr) {
+  const cleanHex = hexStr.replace(/\s|0x/g, '');
+  const bytes = new Uint8Array(cleanHex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(cleanHex.substr(i * 2, 2), 16);
+  }
+  return new TextDecoder('utf-8').decode(bytes);
+}
+
+async function fetchAndDecryptTedaReport(rid) {
+  if (typeof CryptoJS === 'undefined') {
+    throw new Error('CryptoJS library is not loaded. Please ensure internet connectivity to load CryptoJS.');
+  }
+
+  const endpoint = `https://sg-app.qiaolz.com/report/result2?rid=${encodeURIComponent(rid)}&mac=&lang=&v=3.0.0`;
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      'Accept': '*/*'
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch TEDA report (HTTP ${response.status})`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+    throw new Error('Received empty response from TEDA server.');
+  }
+
+  const uint8 = new Uint8Array(arrayBuffer);
+  const { cipherData, cipherKey } = decodeTedaProtobuf(uint8);
+  if (!cipherData || !cipherKey) {
+    throw new Error('Invalid TEDA report payload structure.');
+  }
+
+  // Step 1: Decrypt inner key using AES-256-ECB with a0 (rid without dashes)
+  const a0Str = rid.replace(/-/g, '');
+  const a0Key = CryptoJS.enc.Utf8.parse(a0Str);
+  const keyWA = u8ToCryptoJsWordArray(cipherKey);
+  const decKeyRes = CryptoJS.AES.decrypt(
+    { ciphertext: keyWA },
+    a0Key,
+    { mode: CryptoJS.mode.ECB, padding: CryptoJS.pad.Pkcs7 }
+  );
+  const innerKeyStr = hexToUtf8String(decKeyRes.toString());
+
+  // Step 2: Decrypt data using DES-ECB with innerKeyStr
+  const dataWA = u8ToCryptoJsWordArray(cipherData);
+  const innerKeyWA = CryptoJS.enc.Utf8.parse(innerKeyStr);
+  const decDataRes = CryptoJS.DES.decrypt(
+    { ciphertext: dataWA },
+    innerKeyWA,
+    { mode: CryptoJS.mode.ECB, padding: CryptoJS.pad.Pkcs7 }
+  );
+  const reportJsonStr = hexToUtf8String(decDataRes.toString());
+  const reportWrapper = JSON.parse(reportJsonStr);
+  const r = reportWrapper.data || reportWrapper;
+
+  // Process & structure the clinical report
+  const structured = {
+    rid,
+    advice: r.advice || '',
+    immunityScore: r.score1 != null ? r.score1 : '',
+    healthScore: r.score2 != null ? r.score2 : '',
+    reportDate: r.timeStr || '',
+    zangfuSummary: '',
+    tizhiSummary: '',
+    jingluoSummary: '',
+    jizhuSummary: '',
+    subHealthZangfu: [],
+    subHealthTizhi: [],
+    blockedJingluo: [],
+    spinePressure: [],
+    raw: r
+  };
+
+  if (Array.isArray(r.itemList)) {
+    r.itemList.forEach(sec => {
+      if (sec.alias === 'zangfu') {
+        structured.zangfuSummary = sec.itemName || '';
+        if (sec.items) {
+          structured.subHealthZangfu = sec.items.filter(it => it.levelText === '亚健康' || it.score < 9);
+        }
+      } else if (sec.alias === 'qixue') {
+        structured.tizhiSummary = sec.itemName || '';
+        if (sec.items) {
+          structured.subHealthTizhi = sec.items.filter(it => it.levelText === '亚健康' || it.score < 9);
+        }
+      } else if (sec.alias === 'jingluo') {
+        structured.jingluoSummary = sec.itemName || '';
+        if (sec.items) {
+          structured.blockedJingluo = sec.items.filter(it => it.levelText === '亚健康' || it.score < 8.5);
+        }
+      } else if (sec.alias === 'jizhu') {
+        structured.jizhuSummary = sec.itemName || '';
+        if (sec.items) {
+          structured.spinePressure = sec.items.filter(it => it.score <= 7.4);
+        }
+      }
+    });
+  }
+
+  return structured;
+}
+
+async function autoAnalyzeTedaLink() {
+  const linkEl = document.getElementById('encTedaLink');
+  const rawUrl = linkEl ? linkEl.value.trim() : '';
+  const statusEl = document.getElementById('tedaFetchStatus');
+  const btn = document.getElementById('fetchTedaBtn');
+
+  const rid = extractTedaRid(rawUrl);
+  if (!rid) {
+    alert('Please paste a valid TEDA WellScan report link or Report ID (containing "rid=...").\n\nExample: https://sg-report.qiaolz.com/#/pages/reportTv/reportTvMain?rid=3d07d3b7-0267-43ca-8d6b-a350c39f8cdb&lang=');
+    if (linkEl) linkEl.focus();
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Decrypting...';
+  }
+  if (statusEl) {
+    statusEl.className = 'text-[10px] text-amber-700 font-medium';
+    statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Fetching & decrypting online report…';
+  }
+
+  try {
+    const report = await fetchAndDecryptTedaReport(rid);
+    window._cachedTedaReport = report;
+
+    // Build human-readable clinical summary for textarea
+    const lines = [];
+    lines.push(`【TEDA 中医脉诊经络健康评估 · 报告日期: ${report.reportDate || '最新'}】`);
+    if (report.immunityScore || report.healthScore) {
+      lines.push(`• 综合指数: 免疫力指数 ${report.immunityScore}分 | 健康指数 ${report.healthScore}分`);
+    }
+    if (report.advice) {
+      lines.push(`• 核心调理原则: ${report.advice}`);
+    }
+    if (report.subHealthZangfu.length > 0) {
+      const zfList = report.subHealthZangfu.map(it => `${it.name} ${it.score}分${it.wuxing ? `(${it.wuxing})` : ''}`).join('、');
+      lines.push(`• 脏腑辩证 (亚健康): ${zfList}`);
+    } else if (report.zangfuSummary) {
+      lines.push(`• 脏腑辩证: ${report.zangfuSummary}`);
+    }
+
+    if (report.subHealthTizhi.length > 0) {
+      const tzList = report.subHealthTizhi.map(it => `${it.name} ${it.score}分`).join('、');
+      lines.push(`• 气血体质 (偏颇): ${tzList}`);
+    } else if (report.tizhiSummary) {
+      lines.push(`• 气血体质: ${report.tizhiSummary}`);
+    }
+
+    if (report.blockedJingluo.length > 0) {
+      const jlList = report.blockedJingluo.map(it => `${it.name} ${it.score}分`).join('、');
+      lines.push(`• 经络淤堵: ${jlList}`);
+    } else if (report.jingluoSummary) {
+      lines.push(`• 经络状态: ${report.jingluoSummary}`);
+    }
+
+    if (report.spinePressure.length > 0) {
+      const spList = report.spinePressure.slice(0, 5).map(it => `${it.name} ${it.score}分`).join('、');
+      lines.push(`• 脊柱压力: ${spList}`);
+    }
+
+    const tedaTextEl = document.getElementById('encTeda');
+    if (tedaTextEl) {
+      tedaTextEl.value = lines.join('\n');
+    }
+
+    // Populate visual quick badges
+    const badgeContainer = document.getElementById('encTedaDetailsBadge');
+    const immunityBadge = document.getElementById('tedaImmunityBadge');
+    const principleBadge = document.getElementById('tedaPrincipleBadge');
+    const zangfuText = document.getElementById('tedaZangfuText');
+    const tizhiText = document.getElementById('tedaTizhiText');
+    const jingluoText = document.getElementById('tedaJingluoText');
+
+    if (badgeContainer) badgeContainer.classList.remove('hidden');
+    if (immunityBadge) {
+      const imm = report.immunityScore;
+      const color = imm < 60 ? 'text-rose-600' : (imm < 80 ? 'text-amber-600' : 'text-emerald-600');
+      immunityBadge.innerHTML = `Immunity: <span class="${color} font-black">${imm}</span>/100 · Health: <span class="font-black">${report.healthScore}</span>/100`;
+    }
+    if (principleBadge) {
+      principleBadge.textContent = report.advice ? (report.advice.match(/【(.*?)】/)?.[0] || '亚健康调理') : 'TEDA Verified';
+    }
+    if (zangfuText) {
+      zangfuText.textContent = report.subHealthZangfu.slice(0, 3).map(x => `${x.name} ${x.score}`).join(', ') || 'Normal';
+    }
+    if (tizhiText) {
+      tizhiText.textContent = report.subHealthTizhi.slice(0, 3).map(x => `${x.name} ${x.score}`).join(', ') || 'Balanced';
+    }
+    if (jingluoText) {
+      jingluoText.textContent = report.blockedJingluo.slice(0, 3).map(x => `${x.name} ${x.score}`).join(', ') || 'Smooth';
+    }
+
+    if (statusEl) {
+      statusEl.className = 'text-[10px] text-emerald-700 font-bold';
+      statusEl.innerHTML = '<i class="fa-solid fa-circle-check text-emerald-600"></i> Online Report Decrypted & Loaded';
+    }
+
+    checkTedaUrl(rawUrl);
+
+  } catch (err) {
+    console.error('[TEDA Auto-Analyze Error]', err);
+    if (statusEl) {
+      statusEl.className = 'text-[10px] text-rose-600 font-semibold';
+      statusEl.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> Decrypt failed: ${err.message}`;
+    }
+    alert(`Could not fetch or decrypt TEDA report:\n${err.message}\n\nPlease check your network or enter findings manually.`);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-bolt text-yellow-300"></i> Auto-Analyze Link';
+    }
   }
 }
 
@@ -3749,6 +4030,21 @@ async function runAiClinicalReview() {
     }
   }
 
+  // Check & Auto-Decrypt TEDA WellScan Online Report if link provided
+  let tedaDecryptedData = window._cachedTedaReport || null;
+  if (!tedaDecryptedData && tedaLink) {
+    const rid = extractTedaRid(tedaLink);
+    if (rid) {
+      try {
+        if (loadingText) loadingText.textContent = 'Decrypting & analyzing TEDA WellScan online report…';
+        tedaDecryptedData = await fetchAndDecryptTedaReport(rid);
+        window._cachedTedaReport = tedaDecryptedData;
+      } catch (err) {
+        console.warn('[PMG AI Review] TEDA on-the-fly fetch failed:', err);
+      }
+    }
+  }
+
   const airdocFilePromptText = selectedAirdocFile
     ? `ATTACHED RETINAL SCAN DOCUMENT: [Filename: "${selectedAirdocFile.name}", Size: ${formatFileSize(selectedAirdocFile.size)}].
 PLEASE INSPECT AND ANALYZE THE ATTACHED AIRDOC RETINAL REPORT MULTIMODALLY. Extract optic disc (CDR), microvascular status (arteriolar narrowing, AV nicking, hemorrhages, microaneurysms, hard exudates), hypertensive/diabetic retinopathy grading, and Airdoc AI cardiovascular risk score.`
@@ -3791,8 +4087,21 @@ Other POCT Notes: ${vitals.customPoctNotes || 'None'}
 SPECIALTY WELLNESS & DIAGNOSTIC SCANS:
 - TEDA TCM & Meridian Wellness Scan:
   * TEDA Link: ${tedaLink || 'None provided'}
+  ${tedaDecryptedData ? `
+  * DECRYPTED ONLINE TEDA WELLSCAN DATA (Live API Extraction):
+    - Report ID: ${tedaDecryptedData.rid}
+    - Report Date: ${tedaDecryptedData.reportDate || 'Recent'}
+    - Overall Immunity Score (免疫力指数): ${tedaDecryptedData.immunityScore}/100 | Overall Health Score (健康指数): ${tedaDecryptedData.healthScore}/100
+    - Core Conditioning Principle / Advice: ${tedaDecryptedData.advice || 'N/A'}
+    - Sub-health Zang-Fu Organs (脏腑辩证 亚健康): ${tedaDecryptedData.subHealthZangfu.map(z => `${z.name} ${z.score}分 (${z.wuxing || ''})`).join('; ') || (tedaDecryptedData.zangfuSummary || 'All organs normal')}
+    - Constitutional Disharmonies (气血津液体质): ${tedaDecryptedData.subHealthTizhi.map(t => `${t.name} ${t.score}分`).join('; ') || (tedaDecryptedData.tizhiSummary || 'Balanced')}
+    - Blocked / Sluggish Meridians (经络淤堵): ${tedaDecryptedData.blockedJingluo.map(j => `${j.name} ${j.score}分`).join('; ') || (tedaDecryptedData.jingluoSummary || 'Normal flow')}
+    - Spine Load / Pressure (脊柱负荷): ${tedaDecryptedData.spinePressure.map(s => `${s.name} ${s.score}分`).join('; ') || (tedaDecryptedData.jizhuSummary || 'Normal')}
+    - Pharmacist Additional Notes: ${tedaNotes || 'None'}
+  ` : `
   * TCM Findings & Meridians: ${tedaNotes || 'Not recorded'}
   *(Note: TEDA provides Traditional Chinese Medicine electro-meridian bio-resonance analysis evaluating: Qi balance [Qi deficiency, Qi stagnation], Yin & Yang harmony [Yin deficiency, Yang deficiency], 12 main Organ Meridians [Liver, Kidney, Spleen, Heart, Lung, Stomach], Dampness/Phlegm [湿气/痰湿], and vital energy flow.)
+  `}
 - Airdoc Retinal AI Scan:
   * ${airdocFilePromptText}
 
