@@ -3946,7 +3946,7 @@ function readFileAsBase64(file) {
 async function runAiClinicalReview() {
   const apiKey = (localStorage.getItem('pmg_gemini_key') || '').trim();
   if (!apiKey) {
-    alert('Gemini API Key is required for AI Clinical Case Review.\n\nPlease enter your API Key in the 5S Walkthrough Auditor tab, or load the setup link (index.html?setkey=YOUR_KEY).');
+    alert('API Key is required to auto generate clinical recommendations.\n\nPlease enter your API Key in the 5S Walkthrough Auditor tab, or load the setup link (index.html?setkey=YOUR_KEY).');
     return;
   }
 
@@ -4009,7 +4009,7 @@ async function runAiClinicalReview() {
   const runBtn = document.getElementById('btnAiClinicalReview');
 
   if (loadingEl) loadingEl.classList.remove('hidden');
-  if (loadingText) loadingText.textContent = `Preparing clinical case review…`;
+  if (loadingText) loadingText.textContent = `Generating clinical recommendations…`;
   if (resultPanel) resultPanel.classList.add('hidden');
   if (runBtn) runBtn.disabled = true;
 
@@ -4200,7 +4200,7 @@ RESPONSE MUST BE STRICTLY VALID JSON matching this structure:
 
   for (let m of models) {
     try {
-      if (loadingText) loadingText.textContent = `Analysing case with ${m}…`;
+      if (loadingText) loadingText.textContent = `Generating clinical recommendations…`;
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
 
       const requestParts = [{ text: prompt }];
@@ -4255,7 +4255,7 @@ RESPONSE MUST BE STRICTLY VALID JSON matching this structure:
   if (runBtn) runBtn.disabled = false;
 
   if (!parsed) {
-    alert('AI Clinical Case Review failed. Please check your Gemini API key and network connection.');
+    alert('Could not auto generate clinical recommendations. Please verify your API key and network connection.');
     return;
   }
 
