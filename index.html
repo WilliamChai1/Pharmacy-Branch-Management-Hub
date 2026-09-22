@@ -2459,7 +2459,14 @@
             <span>Active Branch:</span>
             <span id="syncModalBranchName" class="font-bold text-gray-800">—</span>
           </div>
+          <div class="flex items-center justify-between text-gray-600">
+            <span>Last Synced:</span>
+            <span id="syncModalLastSyncTime" class="font-semibold text-emerald-700">Ready to sync</span>
+          </div>
         </div>
+
+        <!-- Live Sync Progress & Result Feedback Banner -->
+        <div id="syncModalFeedback" class="hidden p-3 rounded-xl border text-xs transition"></div>
 
         <!-- 7 Branches Detected List -->
         <div class="p-4 bg-blue-50/70 border border-blue-200 rounded-xl">
@@ -2496,13 +2503,13 @@
           Disconnect Sync
         </button>
         <div class="flex items-center gap-2">
-          <button type="button" onclick="window.pmgOneDriveSync.syncWithOneDriveFolder(true); updateSyncModalInfo();"
-            class="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
-            <i class="fa-solid fa-arrows-rotate"></i> Sync Now
+          <button id="btnModalSyncNow" type="button" onclick="triggerManualSyncFromModal()"
+            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+            <i class="fa-solid fa-arrows-rotate"></i> <span>Sync Now</span>
           </button>
-          <button type="button" onclick="window.pmgOneDriveSync.connectFolder().then(() => updateSyncModalInfo())"
-            class="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
-            <i class="fa-solid fa-folder-open"></i> Link / Change Folder
+          <button type="button" onclick="window.pmgOneDriveSync.connectFolder().then(res => { updateSyncModalInfo(); if(res) triggerManualSyncFromModal(); })"
+            class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-gray-300">
+            <i class="fa-solid fa-folder-open text-blue-700"></i> <span>Link / Change Folder</span>
           </button>
         </div>
       </div>
