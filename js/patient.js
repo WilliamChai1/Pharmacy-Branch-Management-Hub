@@ -609,14 +609,14 @@ function renderPatientModule() {
       if (selectedPharm && !(apt.pharmacist || '').toLowerCase().includes(selectedPharm)) {
         return;
       }
-      const isPending = apt.status === 'Scheduled';
+      const isPending = (apt.status === 'Scheduled' || apt.status === 'Pending Approval');
       if (apt.date === todayStr && isPending) {
         todayAptCount++;
         todayList.push({ patient: p, appointment: apt });
       } else if (apt.date > todayStr && apt.date <= next7DaysStr && isPending) {
         dueIn7DaysCount++;
         upcomingList.push({ patient: p, appointment: apt });
-      } else if (apt.date < todayStr && (apt.status === 'Scheduled' || apt.status === 'Missed')) {
+      } else if (apt.date < todayStr && (apt.status === 'Scheduled' || apt.status === 'Missed' || apt.status === 'Pending Approval')) {
         overdueCount++;
         overdueList.push({ patient: p, appointment: apt, type: 'Missed Appointment' });
       }
@@ -671,6 +671,7 @@ function renderTodayQueue(items) {
   tbody.innerHTML = items.map(item => {
     const p = item.patient;
     const apt = item.appointment;
+    const isExtension = (apt.type === 'refill_extension' || apt.status === 'Pending Approval');
     const waMsg = buildWhatsAppMessage(p, apt);
     const waUrl = `https://wa.me/${formatPhoneForWa(p.phone)}?text=${encodeURIComponent(waMsg)}`;
     const pharmBadge = apt.pharmacist
@@ -690,6 +691,7 @@ function renderTodayQueue(items) {
           <span class="inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-0.5 rounded">
             ${apt.purpose || 'Check-up'}
           </span>
+          ${isExtension ? `<span class="inline-block bg-emerald-50 text-emerald-800 border border-emerald-300 text-[10px] font-bold px-1.5 py-0.5 rounded ml-1">Refill (+1 Mo)</span>` : ''}
           ${pharmBadge}
           ${apt.notes ? `<p class="text-[11px] text-gray-500 mt-0.5 italic truncate max-w-xs">${apt.notes}</p>` : ''}
         </td>
@@ -697,21 +699,35 @@ function renderTodayQueue(items) {
           ${(p.conditions || []).map(c => `<span class="inline-block bg-gray-100 text-gray-700 text-[10px] px-1.5 py-0.5 rounded mr-1">${c}</span>`).join('') || '—'}
         </td>
         <td class="px-4 py-3">
-          <span class="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded flex items-center gap-1 w-fit">
-            <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping inline-block"></span> Scheduled
-          </span>
+          ${isExtension ? `
+            <span class="bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold px-2 py-0.5 rounded-lg flex items-center gap-1 w-fit">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping inline-block"></span> Extension Pending
+            </span>
+          ` : `
+            <span class="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded flex items-center gap-1 w-fit">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping inline-block"></span> Scheduled
+            </span>
+          `}
         </td>
         <td class="px-4 py-3 text-right whitespace-nowrap">
+          ${isExtension ? `
+            <button onclick="approveRefillExtension('${p.id}', '${apt.id}')"
+              class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg inline-flex items-center gap-1 transition mr-1 shadow-sm"
+              title="Approve Refill & 1-Month Extension">
+              <i class="fa-solid fa-check"></i> Approve (+1 Mo)
+            </button>
+          ` : `
+            <button onclick="markAppointmentStatus('${p.id}', '${apt.id}', 'Completed')"
+              class="bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 transition mr-1"
+              title="Mark as Completed">
+              <i class="fa-solid fa-check"></i> Done
+            </button>
+          `}
           <a href="${waUrl}" target="_blank" rel="noopener"
             class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 transition mr-1"
             title="Send WhatsApp Reminder">
             <i class="fa-brands fa-whatsapp text-sm"></i> WhatsApp
           </a>
-          <button onclick="markAppointmentStatus('${p.id}', '${apt.id}', 'Completed')"
-            class="bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 transition mr-1"
-            title="Mark as Completed">
-            <i class="fa-solid fa-check"></i> Done
-          </button>
           <button onclick="markAppointmentStatus('${p.id}', '${apt.id}', 'Missed')"
             class="bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold px-2 py-1.5 rounded-lg inline-flex items-center gap-1 transition"
             title="Mark as Missed">
@@ -738,6 +754,7 @@ function renderUpcomingQueue(items) {
   tbody.innerHTML = items.map(item => {
     const p = item.patient;
     const apt = item.appointment;
+    const isExtension = (apt.type === 'refill_extension' || apt.status === 'Pending Approval');
     const waMsg = buildWhatsAppMessage(p, apt);
     const waUrl = `https://wa.me/${formatPhoneForWa(p.phone)}?text=${encodeURIComponent(waMsg)}`;
     const pharmBadge = apt.pharmacist
@@ -757,15 +774,29 @@ function renderUpcomingQueue(items) {
           <span class="inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-0.5 rounded">
             ${apt.purpose || 'Check-up'}
           </span>
+          ${isExtension ? `<span class="inline-block bg-emerald-50 text-emerald-800 border border-emerald-300 text-[10px] font-bold px-1.5 py-0.5 rounded ml-1">Refill (+1 Mo)</span>` : ''}
           ${pharmBadge}
         </td>
         <td class="px-4 py-3 text-xs text-gray-600">
           ${(p.conditions || []).join(', ') || '—'}
         </td>
         <td class="px-4 py-3">
-          <span class="bg-blue-50 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded">Scheduled</span>
+          ${isExtension ? `
+            <span class="bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold px-2 py-0.5 rounded-lg flex items-center gap-1 w-fit">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping inline-block"></span> Extension Pending
+            </span>
+          ` : `
+            <span class="bg-blue-50 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded">Scheduled</span>
+          `}
         </td>
         <td class="px-4 py-3 text-right whitespace-nowrap">
+          ${isExtension ? `
+            <button onclick="approveRefillExtension('${p.id}', '${apt.id}')"
+              class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg inline-flex items-center gap-1 transition mr-1 shadow-sm"
+              title="Approve Refill & 1-Month Extension">
+              <i class="fa-solid fa-check"></i> Approve (+1 Mo)
+            </button>
+          ` : ''}
           <a href="${waUrl}" target="_blank" rel="noopener"
             class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 transition"
             title="Send WhatsApp Reminder">
@@ -1114,7 +1145,6 @@ function getPatientSelfBookingUrl(patient) {
   const name = patient.name || '';
   const phone = patient.phone || '';
   const ic = patient.ic || '';
-  const service = 'Chronic Medication Review & Refill';
 
   const params = new URLSearchParams();
   params.set('book', '1');
@@ -1122,13 +1152,13 @@ function getPatientSelfBookingUrl(patient) {
   if (name) params.set('name', name);
   if (phone) params.set('phone', phone);
   if (ic) params.set('ic', ic);
-  params.set('service', service);
 
   return `${baseUrl}?${params.toString()}`;
 }
 
 /**
  * Constructs the complete multilingual WhatsApp booking message.
+ * Formatted with clean universal markdown and spacing (no broken symbols).
  */
 function buildPatientSupplyBookingMessage(patient) {
   const branchCode = patient.branch || 'KS01';
@@ -1145,16 +1175,73 @@ function buildPatientSupplyBookingMessage(patient) {
   const bookingUrl = getPatientSelfBookingUrl(patient);
   const patientName = patient.name || 'Pelanggan';
 
-  const tcaReminderZh = patient.nextTcaDate ? `\n\n🗓️ 建议复查/续药提醒日期：${patient.nextTcaDate}${patient.nextTcaPurpose ? '（' + patient.nextTcaPurpose + '）' : ''}` : '';
-  const tcaReminderMy = patient.nextTcaDate ? `\n\n🗓️ Cadangan Tarikh Temujanji Ulangan: ${patient.nextTcaDate}${patient.nextTcaPurpose ? ' (' + patient.nextTcaPurpose + ')' : ''}` : '';
-  const tcaReminderEn = patient.nextTcaDate ? `\n\n🗓️ Recommended Follow-up / Refill Date: ${patient.nextTcaDate}${patient.nextTcaPurpose ? ' (' + patient.nextTcaPurpose + ')' : ''}` : '';
+  const tcaReminderZh = patient.nextTcaDate ? `\n\n*建议复查/续药提醒日期：* ${patient.nextTcaDate}${patient.nextTcaPurpose ? ' (' + patient.nextTcaPurpose + ')' : ''}` : '';
+  const tcaReminderMy = patient.nextTcaDate ? `\n\n*Cadangan Tarikh Temujanji/Ulangan:* ${patient.nextTcaDate}${patient.nextTcaPurpose ? ' (' + patient.nextTcaPurpose + ')' : ''}` : '';
+  const tcaReminderEn = patient.nextTcaDate ? `\n\n*Recommended Follow-up/Refill Date:* ${patient.nextTcaDate}${patient.nextTcaPurpose ? ' (' + patient.nextTcaPurpose + ')' : ''}` : '';
 
   if (lang === 'Chinese') {
-    return `您好 ${patientName}，这里是 PMG Pharmacy（${branchName}）药剂团队。🌸\n\n${supplyText}${tcaReminderZh}\n\n为方便您妥善安排时间，我们特别为您开通了【顾客线上自主预约系统】。您可以直接点击下方专属链接，自主挑选最适合您的复查与取药时间：\n\n👉 点击预约专属链接：\n${bookingUrl}\n\n⏰ 药剂师驻店时间：${openTime} – ${closeTime}（星期一至星期日）\n👨‍⚕️ 驻店药剂师：${pharmacistName}\n\n如果您有任何药物疑问，或需要我们提前备妥药物，欢迎直接回复此信息。祝您身体健康，平安顺心！`;
+    return `您好 *${patientName}*，这里是 *PMG Pharmacy (${branchName})* 药剂关怀团队。
+
+${supplyText}${tcaReminderZh}
+
+为方便您妥善安排时间，我们特别为您开通了【线上自主预约与续药服务】。您可以直接点击下方专属链接进行选择：
+
+👉 *点击专属预约/续药链接：*
+${bookingUrl}
+
+----------------------------------------
+*您可以自主选择：*
+1. 预约到店面诊与健康检查
+2. 申请常备药物/保健品顺延 1 个月（需药剂师审核批准）
+----------------------------------------
+
+*营业时间：* ${openTime} – ${closeTime}（星期一至星期日）
+*分店：* PMG Pharmacy ${branchName}
+
+如果您有任何用药疑问，或需要我们提前备妥药物，欢迎直接回复此 WhatsApp。
+祝您身体健康，平安顺心！`;
   } else if (lang === 'Malay') {
-    return `Salam sejahtera ${patientName}, ini adalah pesanan daripada pasukan farmasi PMG Pharmacy (${branchName}). 🌸\n\n${supplyText}${tcaReminderMy}\n\nBagi memudahkan urusan anda tanpa perlu menunggu lama, kami menyediakan 【Sistem Tempahan Temujanji Kendiri Dalam Talian】. Anda boleh memilih sendiri tarikh dan masa yang paling sesuai untuk sesi semakan kesihatan dan ulangan ubat (refill):\n\n👉 Tekan pautan peribadi untuk pilih masa temujanji:\n${bookingUrl}\n\n⏰ Waktu Bertugas Ahli Farmasi: ${openTime} – ${closeTime} (Setiap Hari)\n👨‍⚕️ Ahli Farmasi Bertugas: ${pharmacistName}\n\nJika anda ada sebarang pertanyaan atau ingin kami sediakan ubat terlebih dahulu, sila balas mesej ini. Terima kasih dan semoga sentiasa sihat!`;
+    return `Salam sejahtera *${patientName}*, ini adalah pesanan daripada pasukan farmasi *PMG Pharmacy (${branchName})*.
+
+${supplyText}${tcaReminderMy}
+
+Bagi memudahkan urusan anda tanpa perlu menunggu lama, kami menyediakan 【Sistem Tempahan Temujanji & Ulangan Ubat Kendiri Dalam Talian】. Anda boleh menekan pautan peribadi anda di bawah:
+
+👉 *Tekan pautan peribadi anda:*
+${bookingUrl}
+
+----------------------------------------
+*Pilihan Perkhidmatan Anda:*
+1. Tempah sesi temujanji dan semakan kesihatan di farmasi
+2. Mohon ulangan ubat/suplemen rutin dengan lanjutan tarikh 1 bulan (tertakluk kepada kelulusan ahli farmasi)
+----------------------------------------
+
+*Waktu Operasi:* ${openTime} – ${closeTime} (Setiap Hari)
+*Cawangan:* PMG Pharmacy ${branchName}
+
+Jika anda ada sebarang pertanyaan atau ingin kami sediakan ubat terlebih dahulu, sila balas mesej ini.
+Terima kasih dan semoga sentiasa sihat!`;
   } else {
-    return `Hello ${patientName}, this is the pharmacy team from PMG Pharmacy (${branchName}). 🌸\n\n${supplyText}${tcaReminderEn}\n\nTo help you plan ahead without waiting, we have provided an 【Online Self-Booking Portal】. You can easily select your preferred date and time for your routine health review, pharmacist consultation, and medication refill:\n\n👉 Tap your personalized link to book your slot:\n${bookingUrl}\n\n⏰ Pharmacist Consultation Hours: ${openTime} – ${closeTime} (Daily)\n👨‍⚕️ Duty Pharmacist: ${pharmacistName}\n\nIf you have any questions or need your medications packed in advance, simply reply to this message. Stay healthy!`;
+    return `Hello *${patientName}*, this is the pharmacy care team from *PMG Pharmacy (${branchName})*.
+
+${supplyText}${tcaReminderEn}
+
+To help you plan ahead without waiting, we have provided an 【Online Self-Booking & Refill Portal】. Tap your personalized link below:
+
+👉 *Tap your personalized link:*
+${bookingUrl}
+
+----------------------------------------
+*Your Available Options:*
+1. Book an in-person consultation & routine health screening
+2. Request a 1-month refill extension for chronic meds & supplements (subject to pharmacist approval)
+----------------------------------------
+
+*Consultation Hours:* ${openTime} – ${closeTime} (Daily)
+*Branch:* PMG Pharmacy ${branchName}
+
+If you have any questions or need your medications packed in advance, simply reply to this message.
+Stay healthy and take care!`;
   }
 }
 
@@ -2064,8 +2151,8 @@ function viewPatientProfile(patientId) {
   document.getElementById('profName').textContent = p.name;
   document.getElementById('profMeta').textContent = `${p.gender}, ${p.age} yrs · IC: ${p.ic || '—'} · Phone: ${p.phone || '—'} · Branch: ${p.branch} · Language: ${p.language}`;
   document.getElementById('profConditions').innerHTML = (p.conditions || []).map(c => `
-    <span class="inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded-full">${c}</span>
-  `).join('') || '<span class="text-xs text-gray-400">None recorded</span>';
+    <span class="inline-block bg-blue-100 text-blue-800 text-sm font-bold px-3 py-1 rounded-xl">${c}</span>
+  `).join('') || '<span class="text-sm text-gray-400">None recorded</span>';
 
   document.getElementById('profAllergies').textContent = p.allergies || 'None known';
   document.getElementById('profNotes').textContent = p.notes || 'None';
@@ -2110,18 +2197,24 @@ function switchProfileTab(tab) {
   else if (tab === 'apts') renderProfileApts(p);
 }
 
-// Tab 1: Encounters History (SOAP & POCT)
-function renderProfileEncounters(p) {
+// Tab 1: Encounters History (SOAP & POCT) - Enlarged with In-SOAP Document Integration
+async function renderProfileEncounters(p) {
   const container = document.getElementById('profEncountersList');
   if (!container) return;
 
   if (!p.encounters || !p.encounters.length) {
-    container.innerHTML = `<div class="text-center py-10 text-gray-400 text-xs">
-      <i class="fa-regular fa-clipboard text-2xl mb-2 text-gray-300 block"></i>
+    container.innerHTML = `<div class="text-center py-12 text-gray-400 text-sm">
+      <i class="fa-regular fa-clipboard text-3xl mb-3 text-gray-300 block"></i>
       No clinical encounters recorded yet. Click <b>"Consult & POCT"</b> to begin an encounter.
     </div>`;
     return;
   }
+
+  // Pre-load all documents stored in IndexedDB for this patient
+  let allDocs = [];
+  try {
+    allDocs = await getPatientDocuments(p.id);
+  } catch (_) { allDocs = []; }
 
   container.innerHTML = p.encounters.map(enc => {
     const bpCls = (enc.vitals && enc.vitals.bpSys && enc.vitals.bpDia)
@@ -2131,71 +2224,125 @@ function renderProfileEncounters(p) {
     const waSummary = buildConsultationWaSummary(p, enc);
     const waUrl = `https://wa.me/${formatPhoneForWa(p.phone)}?text=${encodeURIComponent(waSummary)}`;
 
+    // Match attached documents: by encounterId OR by encounter date
+    const encDocs = (allDocs || []).filter(doc => (doc.encounterId && doc.encounterId === enc.id) || (doc.date && doc.date === enc.date));
+    const tedaUrl = (enc.specialtyScans && enc.specialtyScans.teda) ? enc.specialtyScans.teda : null;
+    const airdocPdf = (enc.specialtyScans && enc.specialtyScans.airdoc) ? enc.specialtyScans.airdoc : null;
+    const hasAttachments = (encDocs.length > 0) || tedaUrl || airdocPdf;
+
     return `
-      <div class="bg-white border border-gray-200 rounded-xl p-4 mb-4 shadow-sm">
-        <div class="flex items-center justify-between border-b pb-2 mb-3">
+      <div class="bg-white border-2 border-gray-200 rounded-3xl p-5 sm:p-7 mb-6 shadow-sm hover:border-blue-300 transition">
+        <div class="flex items-center justify-between border-b pb-3.5 mb-4 flex-wrap gap-2">
           <div>
-            <span class="text-xs font-bold text-gray-900">${enc.date}</span>
-            <span class="text-[11px] text-gray-400 ml-2">by ${enc.recordedBy}</span>
+            <span class="text-base sm:text-lg font-black text-gray-900">${enc.date}</span>
+            <span class="text-sm text-gray-500 font-semibold ml-2.5">by ${enc.recordedBy}</span>
           </div>
-          <div class="flex items-center gap-2">
-            <span class="px-2 py-0.5 rounded text-[11px] font-bold ${bpCls.badge}">
+          <div class="flex items-center gap-2.5 flex-wrap">
+            <span class="px-3 py-1 rounded-xl text-xs sm:text-sm font-black ${bpCls.badge}">
               BP ${enc.vitals ? enc.vitals.bpSys + '/' + enc.vitals.bpDia : '—'} mmHg (${bpCls.label})
             </span>
             <a href="${waUrl}" target="_blank" rel="noopener"
-              class="bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold px-2 py-1 rounded inline-flex items-center gap-1 transition"
+              class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold px-3.5 py-1.5 rounded-xl inline-flex items-center gap-1.5 transition shadow-xs"
               title="Send Consultation Summary via WhatsApp">
-              <i class="fa-brands fa-whatsapp"></i> WhatsApp Summary
+              <i class="fa-brands fa-whatsapp text-sm"></i> WhatsApp Summary
             </a>
           </div>
         </div>
 
         <!-- SOAP Breakdown -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm sm:text-base">
           <!-- Subjective -->
-          <div class="p-2.5 bg-blue-50/50 rounded-lg border border-blue-100">
-            <p class="font-bold text-blue-900 mb-1">📌 Chief Complaint & History (CC & HPI):</p>
-            <p class="text-gray-800 font-medium">${enc.chiefComplaint || '—'}</p>
-            ${enc.hpi ? `<p class="text-gray-600 mt-1 italic text-[11px]">${enc.hpi}</p>` : ''}
+          <div class="p-4 bg-blue-50/70 rounded-2xl border border-blue-100 shadow-xs">
+            <p class="font-extrabold text-blue-900 mb-1.5 flex items-center gap-1.5">
+              <span>📌</span> Chief Complaint & History (CC & HPI):
+            </p>
+            <p class="text-gray-900 font-semibold leading-relaxed">${enc.chiefComplaint || '—'}</p>
+            ${enc.hpi ? `<p class="text-gray-600 mt-2 italic text-xs sm:text-sm border-t border-blue-200/50 pt-1.5 leading-relaxed">${enc.hpi}</p>` : ''}
           </div>
 
           <!-- Pre-Diagnostic -->
-          <div class="p-2.5 bg-amber-50/60 rounded-lg border border-amber-100">
-            <p class="font-bold text-amber-900 mb-1">🔍 Pre-Diagnostic / Clinical Impression:</p>
-            <p class="text-gray-800">${enc.preDiagnostic || '—'}</p>
+          <div class="p-4 bg-amber-50/70 rounded-2xl border border-amber-200/80 shadow-xs">
+            <p class="font-extrabold text-amber-950 mb-1.5 flex items-center gap-1.5">
+              <span>🔍</span> Pre-Diagnostic / Clinical Impression:
+            </p>
+            <p class="text-gray-900 font-medium leading-relaxed">${enc.preDiagnostic || '—'}</p>
           </div>
         </div>
 
         <!-- Key POCT Results Pills -->
-        <div class="mt-3 flex flex-wrap gap-1.5 text-[11px]">
-          ${enc.vitals && enc.vitals.pulse ? `<span class="bg-gray-100 text-gray-700 px-2 py-0.5 rounded">Pulse: <b>${enc.vitals.pulse} bpm</b></span>` : ''}
-          ${enc.vitals && enc.vitals.spo2 ? `<span class="bg-gray-100 text-gray-700 px-2 py-0.5 rounded">SpO2: <b>${enc.vitals.spo2}%</b></span>` : ''}
-          ${enc.glycemicHeme && enc.glycemicHeme.glucose ? `<span class="bg-teal-50 text-teal-800 px-2 py-0.5 rounded">Glucose (${enc.glycemicHeme.glucoseType}): <b>${enc.glycemicHeme.glucose} mmol/L</b></span>` : ''}
-          ${enc.glycemicHeme && enc.glycemicHeme.hba1c ? `<span class="bg-purple-50 text-purple-800 px-2 py-0.5 rounded">HbA1c: <b>${enc.glycemicHeme.hba1c}%</b></span>` : ''}
-          ${enc.lipidPanel && enc.lipidPanel.tc ? `<span class="bg-blue-50 text-blue-800 px-2 py-0.5 rounded">TC: <b>${enc.lipidPanel.tc}</b> | HDL: <b>${enc.lipidPanel.hdl}</b> | AI: <b>${enc.lipidPanel.ai}</b></span>` : ''}
-          ${enc.kidneyPanel && enc.kidneyPanel.ua ? `<span class="bg-rose-50 text-rose-800 px-2 py-0.5 rounded">Uric Acid: <b>${enc.kidneyPanel.ua} umol/L</b></span>` : ''}
-          ${enc.kidneyPanel && enc.kidneyPanel.creatinine ? `<span class="bg-indigo-50 text-indigo-800 px-2 py-0.5 rounded">Creatinine: <b>${enc.kidneyPanel.creatinine}</b> | eGFR: <b>${enc.kidneyPanel.egfr}</b></span>` : ''}
-          ${enc.specialtyScans && enc.specialtyScans.vitD ? `<span class="px-2 py-0.5 rounded ${enc.specialtyScans.vitD === 'Sufficient' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}">Vit D: <b>${enc.specialtyScans.vitD}</b></span>` : ''}
-          ${enc.specialtyScans && enc.specialtyScans.ferritin ? `<span class="px-2 py-0.5 rounded ${enc.specialtyScans.ferritin === 'Sufficient' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}">Ferritin: <b>${enc.specialtyScans.ferritin}</b></span>` : ''}
-          ${enc.specialtyScans && enc.specialtyScans.rossmaxAct ? `<span class="bg-amber-50 text-amber-800 px-2 py-0.5 rounded">Rossmax ACT: <b>${enc.specialtyScans.rossmaxAct}</b></span>` : ''}
-          ${enc.specialtyScans && enc.specialtyScans.teda ? `<a href="${enc.specialtyScans.teda}" target="_blank" class="bg-cyan-50 text-cyan-800 hover:underline px-2 py-0.5 rounded inline-flex items-center gap-1 font-medium"><i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i> TEDA Scan Report</a>` : ''}
-          ${enc.specialtyScans && enc.specialtyScans.airdoc ? `<span class="bg-purple-50 text-purple-800 px-2 py-0.5 rounded inline-flex items-center gap-1"><i class="fa-solid fa-file-pdf text-red-500"></i> Airdoc AI: <b>${enc.specialtyScans.airdoc}</b></span>` : ''}
+        <div class="mt-4 flex flex-wrap gap-2 text-xs sm:text-sm">
+          ${enc.vitals && enc.vitals.pulse ? `<span class="bg-gray-100 text-gray-800 px-3 py-1 rounded-xl font-medium">Pulse: <b>${enc.vitals.pulse} bpm</b></span>` : ''}
+          ${enc.vitals && enc.vitals.spo2 ? `<span class="bg-gray-100 text-gray-800 px-3 py-1 rounded-xl font-medium">SpO2: <b>${enc.vitals.spo2}%</b></span>` : ''}
+          ${enc.glycemicHeme && enc.glycemicHeme.glucose ? `<span class="bg-teal-50 text-teal-900 border border-teal-200 px-3 py-1 rounded-xl font-medium">Glucose (${enc.glycemicHeme.glucoseType}): <b>${enc.glycemicHeme.glucose} mmol/L</b></span>` : ''}
+          ${enc.glycemicHeme && enc.glycemicHeme.hba1c ? `<span class="bg-purple-50 text-purple-900 border border-purple-200 px-3 py-1 rounded-xl font-medium">HbA1c: <b>${enc.glycemicHeme.hba1c}%</b></span>` : ''}
+          ${enc.lipidPanel && enc.lipidPanel.tc ? `<span class="bg-blue-50 text-blue-900 border border-blue-200 px-3 py-1 rounded-xl font-medium">TC: <b>${enc.lipidPanel.tc}</b> | HDL: <b>${enc.lipidPanel.hdl}</b> | AI: <b>${enc.lipidPanel.ai}</b></span>` : ''}
+          ${enc.kidneyPanel && enc.kidneyPanel.ua ? `<span class="bg-rose-50 text-rose-900 border border-rose-200 px-3 py-1 rounded-xl font-medium">Uric Acid: <b>${enc.kidneyPanel.ua} umol/L</b></span>` : ''}
+          ${enc.kidneyPanel && enc.kidneyPanel.creatinine ? `<span class="bg-indigo-50 text-indigo-900 border border-indigo-200 px-3 py-1 rounded-xl font-medium">Creatinine: <b>${enc.kidneyPanel.creatinine}</b> | eGFR: <b>${enc.kidneyPanel.egfr}</b></span>` : ''}
+          ${enc.specialtyScans && enc.specialtyScans.vitD ? `<span class="px-3 py-1 rounded-xl font-medium ${enc.specialtyScans.vitD === 'Sufficient' ? 'bg-emerald-50 text-emerald-900 border border-emerald-200' : 'bg-amber-50 text-amber-900 border border-amber-200'}">Vit D: <b>${enc.specialtyScans.vitD}</b></span>` : ''}
+          ${enc.specialtyScans && enc.specialtyScans.ferritin ? `<span class="px-3 py-1 rounded-xl font-medium ${enc.specialtyScans.ferritin === 'Sufficient' ? 'bg-emerald-50 text-emerald-900 border border-emerald-200' : 'bg-amber-50 text-amber-900 border border-amber-200'}">Ferritin: <b>${enc.specialtyScans.ferritin}</b></span>` : ''}
+          ${enc.specialtyScans && enc.specialtyScans.rossmaxAct ? `<span class="bg-amber-50 text-amber-900 border border-amber-200 px-3 py-1 rounded-xl font-medium">Rossmax ACT: <b>${enc.specialtyScans.rossmaxAct}</b></span>` : ''}
         </div>
+
+        <!-- Attached Lab Reports, Documents & Diagnostic Scans -->
+        ${hasAttachments ? `
+          <div class="mt-4 p-4 bg-slate-50 border-2 border-dashed border-blue-200 rounded-2xl">
+            <div class="flex items-center justify-between mb-2.5">
+              <span class="text-xs sm:text-sm font-extrabold text-blue-950 flex items-center gap-2">
+                <i class="fa-solid fa-paperclip text-blue-600 text-sm"></i>
+                <span>Attached Lab Reports & Scans (${encDocs.length + (tedaUrl ? 1 : 0) + (airdocPdf ? 1 : 0)} files):</span>
+              </span>
+            </div>
+            <div class="flex flex-wrap gap-2.5">
+              ${encDocs.map(doc => {
+                const isPdf = doc.type && doc.type.includes('pdf');
+                return `
+                  <div class="bg-white border border-blue-200 rounded-xl p-2.5 flex items-center gap-3 shadow-xs hover:border-blue-400 transition">
+                    <div class="w-8 h-8 rounded-lg ${isPdf ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'} flex items-center justify-center shrink-0">
+                      <i class="fa-solid ${isPdf ? 'fa-file-pdf' : 'fa-file-image'} text-base"></i>
+                    </div>
+                    <div class="text-left">
+                      <p class="text-xs font-bold text-gray-900 truncate max-w-[200px]" title="${escHtml(doc.name)}">${escHtml(doc.name)}</p>
+                      <p class="text-[10px] text-gray-500">${doc.date} · ${formatFileSize(doc.size)}</p>
+                    </div>
+                    <button onclick="previewDoc('${doc.id}')" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 transition ml-1 shadow-xs">
+                      <i class="fa-solid fa-eye text-[11px]"></i> View
+                    </button>
+                  </div>
+                `;
+              }).join('')}
+              ${tedaUrl ? `
+                <a href="${tedaUrl}" target="_blank" rel="noopener"
+                  class="bg-cyan-100 hover:bg-cyan-200 text-cyan-950 border border-cyan-300 text-xs sm:text-sm font-bold px-3.5 py-2 rounded-xl flex items-center gap-2 transition shadow-xs">
+                  <i class="fa-solid fa-arrow-up-right-from-square text-cyan-700"></i> Open TEDA Report
+                </a>
+              ` : ''}
+              ${airdocPdf ? `
+                <div class="bg-purple-100 text-purple-950 border border-purple-300 text-xs sm:text-sm font-bold px-3.5 py-2 rounded-xl flex items-center gap-2 shadow-xs">
+                  <i class="fa-solid fa-file-pdf text-red-600"></i> Airdoc AI Scan: ${escHtml(airdocPdf)}
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        ` : `
+          <div class="mt-3 text-xs text-gray-400 flex items-center gap-1.5 py-1.5 px-3 rounded-xl bg-gray-50 border border-dashed border-gray-200 w-fit font-medium">
+            <i class="fa-solid fa-paperclip text-gray-300"></i> No attached documents for this encounter
+          </div>
+        `}
 
         <!-- Other POCT / Screening Notes -->
         ${enc.customTests ? `
-          <div class="mt-2 text-[11px] bg-gray-50 p-2.5 rounded-lg border border-gray-200">
+          <div class="mt-3 text-xs sm:text-sm bg-gray-50 p-3 rounded-xl border border-gray-200">
             <span class="font-bold text-gray-700">Other POCT / Notes:</span>
-            <span class="ml-1.5 text-gray-800 font-medium">${typeof enc.customTests === 'string' ? enc.customTests : (Array.isArray(enc.customTests) ? enc.customTests.map(ct => `${ct.name}: ${ct.result} ${ct.unit}`).join(', ') : '')}</span>
+            <span class="ml-1.5 text-gray-900 font-medium">${typeof enc.customTests === 'string' ? enc.customTests : (Array.isArray(enc.customTests) ? enc.customTests.map(ct => `${ct.name}: ${ct.result} ${ct.unit}`).join(', ') : '')}</span>
           </div>
         ` : ''}
 
         <!-- Plan of Action -->
-        <div class="mt-3 pt-2 border-t text-xs space-y-1">
-          ${enc.planMedications ? `<p>💊 <b>Medications:</b> <span class="text-gray-700">${enc.planMedications}</span></p>` : ''}
-          ${enc.planSupplements ? `<p>🌿 <b>Supplements (Nutraceuticals):</b> <span class="text-emerald-700 font-semibold">${enc.planSupplements}</span></p>` : ''}
-          ${enc.planCounselling ? `<p>🗣️ <b>Counselling & Diet:</b> <span class="text-gray-600">${enc.planCounselling}</span></p>` : ''}
-          ${enc.referral ? `<p>🚨 <b>Referral:</b> <span class="text-rose-700 font-bold">${enc.referral}</span></p>` : ''}
+        <div class="mt-4 pt-3.5 border-t text-sm sm:text-base space-y-2">
+          ${enc.planMedications ? `<p class="leading-relaxed">💊 <b class="text-gray-900">Medications:</b> <span class="text-gray-800 font-medium">${enc.planMedications}</span></p>` : ''}
+          ${enc.planSupplements ? `<p class="leading-relaxed">🌿 <b class="text-emerald-900">Supplements (Nutraceuticals):</b> <span class="text-emerald-800 font-semibold">${enc.planSupplements}</span></p>` : ''}
+          ${enc.planCounselling ? `<p class="leading-relaxed">🗣️ <b class="text-gray-700">Counselling & Diet:</b> <span class="text-gray-700">${enc.planCounselling}</span></p>` : ''}
+          ${enc.referral ? `<p class="leading-relaxed">🚨 <b class="text-rose-700">Referral:</b> <span class="text-rose-700 font-bold">${enc.referral}</span></p>` : ''}
         </div>
       </div>
     `;
@@ -2208,7 +2355,7 @@ function renderProfileTrends(p) {
   if (!tbody) return;
 
   if (!p.encounters || !p.encounters.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="text-center py-6 text-gray-400 text-xs">No POCT records.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-gray-400 text-sm">No POCT records recorded yet.</td></tr>`;
     return;
   }
 
@@ -2220,18 +2367,18 @@ function renderProfileTrends(p) {
     const bpCls = (v.bpSys && v.bpDia) ? getBpClassification(v.bpSys, v.bpDia) : { badge: 'bg-gray-100 text-gray-500' };
 
     return `
-      <tr class="border-b border-gray-100 hover:bg-gray-50 text-xs">
-        <td class="px-3 py-2 font-semibold text-gray-900">${enc.date}</td>
-        <td class="px-3 py-2">
-          <span class="inline-block px-1.5 py-0.5 rounded ${bpCls.badge}">${v.bpSys || '—'}/${v.bpDia || '—'}</span>
-          <span class="text-[10px] text-gray-400">${v.pulse ? v.pulse + ' bpm' : ''}</span>
+      <tr class="border-b border-gray-100 hover:bg-gray-50 text-sm">
+        <td class="px-4 py-3 font-bold text-gray-900">${enc.date}</td>
+        <td class="px-4 py-3">
+          <span class="inline-block px-2.5 py-1 rounded-lg text-xs font-bold ${bpCls.badge}">${v.bpSys || '—'}/${v.bpDia || '—'}</span>
+          <span class="text-xs text-gray-500 font-medium ml-1">${v.pulse ? v.pulse + ' bpm' : ''}</span>
         </td>
-        <td class="px-3 py-2">${g.glucose ? `${g.glucose} (${g.glucoseType})` : '—'}</td>
-        <td class="px-3 py-2 font-semibold text-purple-700">${g.hba1c ? `${g.hba1c}%` : '—'}</td>
-        <td class="px-3 py-2">${l.tc ? `TC: ${l.tc} | HDL: ${l.hdl || '—'}` : '—'}</td>
-        <td class="px-3 py-2 font-mono text-blue-700">${l.ai ? l.ai : '—'}</td>
-        <td class="px-3 py-2 text-rose-700 font-semibold">${k.ua ? `${k.ua} umol/L` : '—'}</td>
-        <td class="px-3 py-2 text-indigo-700">${k.creatinine ? `${k.creatinine} (eGFR: ${k.egfr || '—'})` : '—'}</td>
+        <td class="px-4 py-3 font-semibold text-gray-800">${g.glucose ? `${g.glucose} (${g.glucoseType})` : '—'}</td>
+        <td class="px-4 py-3 font-bold text-purple-700">${g.hba1c ? `${g.hba1c}%` : '—'}</td>
+        <td class="px-4 py-3">${l.tc ? `TC: ${l.tc} | HDL: ${l.hdl || '—'}` : '—'}</td>
+        <td class="px-4 py-3 font-mono text-blue-700 font-bold">${l.ai ? l.ai : '—'}</td>
+        <td class="px-4 py-3 text-rose-700 font-bold">${k.ua ? `${k.ua} umol/L` : '—'}</td>
+        <td class="px-4 py-3 text-indigo-700 font-semibold">${k.creatinine ? `${k.creatinine} (eGFR: ${k.egfr || '—'})` : '—'}</td>
       </tr>
     `;
   }).join('');
@@ -2243,30 +2390,30 @@ function renderProfileMeds(p) {
   if (!tbody) return;
 
   if (!p.medications || !p.medications.length) {
-    tbody.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-gray-400 text-xs">No chronic medications listed.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-gray-400 text-sm">No chronic medications listed. Click "+ Add Medication" above to add.</td></tr>`;
     return;
   }
 
   tbody.innerHTML = p.medications.map(med => {
     const todayStr = getTodayDateString(0);
-    let dueBadge = 'bg-green-100 text-green-800';
+    let dueBadge = 'bg-green-100 text-green-800 font-bold';
     let dueLabel = med.nextRefillDate;
     if (med.nextRefillDate < todayStr) {
       dueBadge = 'bg-red-100 text-red-800 font-bold';
       dueLabel += ' (Overdue)';
     } else if (med.nextRefillDate <= getTodayDateString(7)) {
-      dueBadge = 'bg-amber-100 text-amber-800 font-semibold';
+      dueBadge = 'bg-amber-100 text-amber-800 font-bold';
       dueLabel += ' (Due Soon)';
     }
 
     return `
-      <tr class="border-b border-gray-100 hover:bg-gray-50 text-xs">
-        <td class="px-3 py-2 font-bold text-gray-900">${med.name}</td>
-        <td class="px-3 py-2 text-gray-600">${med.dosage}</td>
-        <td class="px-3 py-2 text-gray-500">${med.lastDispensed || '—'}</td>
-        <td class="px-3 py-2 text-gray-500">${med.supplyDays} days</td>
-        <td class="px-3 py-2">
-          <span class="inline-block px-2 py-0.5 rounded text-[11px] ${dueBadge}">${dueLabel}</span>
+      <tr class="border-b border-gray-100 hover:bg-gray-50 text-sm">
+        <td class="px-4 py-3 font-extrabold text-gray-900">${med.name}</td>
+        <td class="px-4 py-3 text-gray-700 font-medium">${med.dosage}</td>
+        <td class="px-4 py-3 text-gray-500">${med.lastDispensed || '—'}</td>
+        <td class="px-4 py-3 text-gray-600 font-medium">${med.supplyDays} days</td>
+        <td class="px-4 py-3">
+          <span class="inline-block px-2.5 py-1 rounded-lg text-xs ${dueBadge}">${dueLabel}</span>
         </td>
       </tr>
     `;
@@ -2395,33 +2542,42 @@ function renderProfileApts(p) {
   if (!tbody) return;
 
   if (!p.appointments || !p.appointments.length) {
-    tbody.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-gray-400 text-xs">No appointment history.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-gray-400 text-sm">No appointment or refill extension history.</td></tr>`;
     return;
   }
 
   tbody.innerHTML = p.appointments.map(apt => {
     let stBadge = 'bg-blue-100 text-blue-800';
-    if (apt.status === 'Completed') stBadge = 'bg-green-100 text-green-800';
+    if (apt.status === 'Completed' || apt.status === 'Approved') stBadge = 'bg-emerald-100 text-emerald-800 font-bold';
     if (apt.status === 'Missed') stBadge = 'bg-red-100 text-red-800';
+    if (apt.status === 'Pending Approval') stBadge = 'bg-amber-100 text-amber-900 border border-amber-300 font-bold animate-pulse';
+
+    const isRefillExtension = (apt.type === 'refill_extension' || (apt.purpose && apt.purpose.includes('Extension')) || apt.status === 'Pending Approval');
 
     return `
-      <tr class="border-b border-gray-100 hover:bg-gray-50 text-xs">
-        <td class="px-3 py-2 font-semibold text-gray-800">${apt.date} ${apt.time || ''}</td>
-        <td class="px-3 py-2 font-medium text-gray-900">
+      <tr class="border-b border-gray-100 hover:bg-gray-50 text-sm">
+        <td class="px-4 py-3.5 font-bold text-gray-900">${apt.date} <span class="text-xs text-gray-500 font-normal">(${apt.time || '—'})</span></td>
+        <td class="px-4 py-3.5 font-semibold text-gray-900">
           ${escHtml(apt.purpose || 'Check-up')}
-          ${apt.pharmacist ? `<span class="inline-flex items-center gap-1 bg-purple-50 border border-purple-200 text-purple-700 text-[10px] font-semibold px-1.5 py-0.5 rounded ml-1.5"><i class="fa-solid fa-user-doctor text-[9px]"></i> ${escHtml(apt.pharmacist)}</span>` : ''}
+          ${apt.pharmacist ? `<span class="inline-flex items-center gap-1 bg-purple-50 border border-purple-200 text-purple-700 text-xs font-bold px-2 py-0.5 rounded-lg ml-1.5"><i class="fa-solid fa-user-doctor text-[10px]"></i> ${escHtml(apt.pharmacist)}</span>` : ''}
+          ${isRefillExtension ? `<span class="inline-block bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-bold px-2.5 py-0.5 rounded-lg ml-1.5"><i class="fa-solid fa-pills mr-1"></i>Refill Extension</span>` : ''}
         </td>
-        <td class="px-3 py-2">
-          <span class="inline-block px-2 py-0.5 rounded text-[11px] font-semibold ${stBadge}">${apt.status}</span>
+        <td class="px-4 py-3.5">
+          <span class="inline-block px-2.5 py-1 rounded-lg text-xs font-bold ${stBadge}">${apt.status}</span>
         </td>
-        <td class="px-3 py-2 text-gray-500 italic">${apt.notes || '—'}</td>
-        <td class="px-3 py-2 text-right">
-          ${apt.status === 'Scheduled' ? `
+        <td class="px-4 py-3.5 text-gray-600 italic text-xs max-w-xs">${escHtml(apt.notes || '—')}</td>
+        <td class="px-4 py-3.5 text-right whitespace-nowrap">
+          ${(apt.status === 'Pending Approval' || (isRefillExtension && apt.status !== 'Approved' && apt.status !== 'Completed')) ? `
+            <button onclick="approveRefillExtension('${p.id}', '${apt.id}')"
+              class="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-3.5 py-1.5 rounded-xl text-xs transition shadow-sm flex items-center gap-1.5 ml-auto">
+              <i class="fa-solid fa-check text-sm"></i> Approve (+1 Mo)
+            </button>
+          ` : (apt.status === 'Scheduled' ? `
             <button onclick="markAppointmentStatus('${p.id}', '${apt.id}', 'Completed')"
-              class="text-green-700 hover:underline font-bold mr-2 text-[11px]">Mark Done</button>
+              class="text-green-700 hover:underline font-bold mr-3 text-xs">Mark Done</button>
             <button onclick="markAppointmentStatus('${p.id}', '${apt.id}', 'Missed')"
-              class="text-rose-700 hover:underline font-bold text-[11px]">Missed</button>
-          ` : '—'}
+              class="text-rose-700 hover:underline font-bold text-xs">Missed</button>
+          ` : '—')}
         </td>
       </tr>
     `;
@@ -3259,7 +3415,7 @@ function initCustomerBooking(defaultBranchCode = 'KS01') {
     select.value = BRANCH_SCHEDULES[branchParam] ? branchParam : 'KS01';
   }
 
-  // Pre-fill Name, Phone, IC, Service, Notes if passed via query params from WhatsApp link
+  // Pre-fill Name, Phone, IC if passed via query params from WhatsApp link
   const nameParam = urlParams.get('name');
   if (nameParam) {
     const nameInput = document.getElementById('custBookName');
@@ -3278,18 +3434,16 @@ function initCustomerBooking(defaultBranchCode = 'KS01') {
     if (icInput) icInput.value = icParam;
   }
 
-  const serviceParam = urlParams.get('service');
-  if (serviceParam) {
-    const radio = document.querySelector(`input[name="custService"][value="${serviceParam}"]`);
-    if (radio) {
-      radio.checked = true;
+  // Check booking type (in_person vs refill_extension)
+  const typeParam = urlParams.get('type') || urlParams.get('service');
+  if (typeParam && (typeParam.toLowerCase().includes('refill') || typeParam.toLowerCase().includes('extension'))) {
+    const refillRadio = document.querySelector('input[name="custBookingType"][value="refill_extension"]');
+    if (refillRadio) {
+      refillRadio.checked = true;
+      toggleBookingType('refill_extension');
     }
-  }
-
-  const notesParam = urlParams.get('notes');
-  if (notesParam) {
-    const notesInput = document.getElementById('custBookNotes');
-    if (notesInput) notesInput.value = notesParam;
+  } else {
+    toggleBookingType('in_person');
   }
 
   const dateInput = document.getElementById('custBookDate');
@@ -3310,6 +3464,31 @@ function initCustomerBooking(defaultBranchCode = 'KS01') {
   updateCustBookHours();
 }
 
+/**
+ * Toggles UI between In-Person Consultation and 1-Month Refill Extension Request
+ */
+function toggleBookingType(type) {
+  const timeContainer = document.getElementById('custTimeSlotContainer');
+  const refillNotice = document.getElementById('custRefillExtensionNotice');
+  const submitText = document.getElementById('custBookSubmitText');
+  const dateLabel = document.getElementById('custDateLabel');
+  const timeSelect = document.getElementById('custBookTime');
+
+  if (type === 'refill_extension') {
+    if (timeContainer) timeContainer.classList.add('hidden');
+    if (refillNotice) refillNotice.classList.remove('hidden');
+    if (submitText) submitText.textContent = 'Submit Refill & 1-Month Extension Request (提交续药与顺延申请)';
+    if (dateLabel) dateLabel.textContent = 'Select Expected Refill Date (选择预计取药日期)';
+    if (timeSelect) timeSelect.required = false;
+  } else {
+    if (timeContainer) timeContainer.classList.remove('hidden');
+    if (refillNotice) refillNotice.classList.add('hidden');
+    if (submitText) submitText.textContent = 'Confirm & Book Appointment (确认预约)';
+    if (dateLabel) dateLabel.textContent = 'Select Date (选择面诊日期)';
+    if (timeSelect) timeSelect.required = true;
+  }
+}
+
 function updateCustBookHours() {
   const branchSelect = document.getElementById('custBranchSelect');
   const code = branchSelect ? branchSelect.value : 'KS01';
@@ -3325,22 +3504,22 @@ function updateCustBookHours() {
   const submitBtn = document.getElementById('custBookSubmitBtn');
   const submitText = document.getElementById('custBookSubmitText');
 
-  if (titleEl) titleEl.textContent = `${schedForDate.branchName} Pharmacist Hours`;
+  if (titleEl) titleEl.textContent = `${schedForDate.branchName} Operating Hours`;
 
   if (descEl) {
     if (schedForDate.isClosed) {
       descEl.innerHTML = `<span class="text-rose-600 font-bold">⚠️ Pharmacist is closed / off on this date</span><br>Reason: <b>${escHtml(schedForDate.reason || 'Rest Day')}</b>`;
     } else {
-      descEl.innerHTML = `Operating Hours: <b>${schedForDate.open} – ${schedForDate.close}</b>${schedForDate.isOverride ? ' <span class="text-xs text-indigo-600 font-bold">(Special Shift)</span>' : ''}<br>Duty Pharmacist: <b>${escHtml(schedForDate.pharmacist)}</b>`;
+      descEl.innerHTML = `Operating Hours: <b>${schedForDate.open} – ${schedForDate.close}</b> (Mon – Sun)${schedForDate.isOverride ? ' <span class="text-xs text-indigo-600 font-bold">(Special Shift)</span>' : ''}`;
     }
   }
 
   if (schedForDate.isClosed) {
     // Banner warning
     if (bannerEl) {
-      bannerEl.className = 'rounded-xl p-3 text-xs font-semibold flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-800';
-      bannerEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-rose-600 text-sm"></i>
-        <span><b>Branch Pharmacist is OFF / Closed on ${dateStr}</b> (${escHtml(schedForDate.reason || 'Rest Day / Public Holiday')}). Please choose another date.</span>`;
+      bannerEl.className = 'rounded-2xl p-4 text-sm sm:text-base font-bold flex items-center gap-2.5 bg-rose-50 border border-rose-200 text-rose-800';
+      bannerEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-rose-600 text-base"></i>
+        <span><b>Branch is Closed on ${dateStr}</b> (${escHtml(schedForDate.reason || 'Rest Day / Public Holiday')}). Please choose another date.</span>`;
       bannerEl.classList.remove('hidden');
     }
 
@@ -3349,32 +3528,31 @@ function updateCustBookHours() {
       timeSelect.disabled = true;
     }
 
-    if (submitBtn) {
-      submitBtn.disabled = true;
-    }
-    if (submitText) {
-      submitText.textContent = `Branch Closed on Selected Date`;
-    }
+    if (submitBtn) submitBtn.disabled = true;
+    if (submitText) submitText.textContent = `Branch Closed on Selected Date`;
     return;
   }
 
   // Date is open!
   if (bannerEl) {
     if (schedForDate.isOverride) {
-      bannerEl.className = 'rounded-xl p-3 text-xs font-semibold flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-800';
-      bannerEl.innerHTML = `<i class="fa-solid fa-circle-info text-indigo-600 text-sm"></i>
-        <span><b>Special Hours for ${dateStr}:</b> Open ${schedForDate.open} – ${schedForDate.close} (${escHtml(schedForDate.reason || 'Special Shift')}) · Duty Pharmacist: <b>${escHtml(schedForDate.pharmacist)}</b></span>`;
+      bannerEl.className = 'rounded-2xl p-4 text-sm sm:text-base font-bold flex items-center gap-2.5 bg-indigo-50 border border-indigo-200 text-indigo-800';
+      bannerEl.innerHTML = `<i class="fa-solid fa-circle-info text-indigo-600 text-base"></i>
+        <span><b>Special Hours for ${dateStr}:</b> Open ${schedForDate.open} – ${schedForDate.close} (${escHtml(schedForDate.reason || 'Special Shift')})</span>`;
       bannerEl.classList.remove('hidden');
     } else {
       bannerEl.classList.add('hidden');
     }
   }
 
-  if (submitBtn) {
-    submitBtn.disabled = false;
-  }
+  if (submitBtn) submitBtn.disabled = false;
+
+  const bookingTypeEl = document.querySelector('input[name="custBookingType"]:checked');
+  const currentBookingType = bookingTypeEl ? bookingTypeEl.value : 'in_person';
   if (submitText) {
-    submitText.textContent = `Confirm & Book Appointment`;
+    submitText.textContent = (currentBookingType === 'refill_extension')
+      ? 'Submit Refill & 1-Month Extension Request (提交续药与顺延申请)'
+      : 'Confirm & Book Appointment (确认预约)';
   }
 
   if (!timeSelect) return;
@@ -3385,7 +3563,36 @@ function updateCustBookHours() {
   const openMinutes = openH * 60 + openM;
   const closeMinutes = closeH * 60 + closeM;
 
+  // Prevent time slot collisions: collect already-booked slots for this date and branch
+  const bookedTimes = new Set();
+
+  // A. From customer bookings in localStorage
+  let custBookings = [];
+  try {
+    custBookings = JSON.parse(localStorage.getItem('pmg_customer_bookings') || '[]');
+  } catch (_) { custBookings = []; }
+
+  custBookings.forEach(b => {
+    if ((b.branchCode === code || b.branchName === schedForDate.branchName) && b.date === dateStr && b.status !== 'Cancelled' && b.time && !b.time.includes('Anytime')) {
+      bookedTimes.add(b.time);
+    }
+  });
+
+  // B. From patientsData appointments
+  if (typeof patientsData !== 'undefined' && Array.isArray(patientsData)) {
+    patientsData.forEach(pt => {
+      if (!pt.branch || pt.branch === code || pt.branch === schedForDate.branchName) {
+        (pt.appointments || []).forEach(apt => {
+          if (apt.date === dateStr && apt.status !== 'Cancelled' && apt.status !== 'Missed' && apt.time && !apt.time.includes('Anytime')) {
+            bookedTimes.add(apt.time);
+          }
+        });
+      }
+    });
+  }
+
   let options = '';
+  let availableCount = 0;
   for (let m = openMinutes; m <= closeMinutes - 30; m += 30) {
     const hh = String(Math.floor(m / 60)).padStart(2, '0');
     const mm = String(m % 60).padStart(2, '0');
@@ -3396,11 +3603,17 @@ function updateCustBookHours() {
     const displayHour = hourNum % 12 === 0 ? 12 : hourNum % 12;
     const label = `${displayHour}:${mm} ${ampm}`;
 
-    options += `<option value="${timeVal}">${label} (${timeVal})</option>`;
+    const isBooked = bookedTimes.has(timeVal);
+    if (isBooked) {
+      options += `<option value="${timeVal}" disabled class="bg-gray-100 text-gray-400">⛔ ${label} (${timeVal}) - 已约满 (Fully Booked)</option>`;
+    } else {
+      availableCount++;
+      options += `<option value="${timeVal}">🟢 ${label} (${timeVal}) - 可预约 (Available)</option>`;
+    }
   }
 
-  if (!options) {
-    options = `<option value="">No slots available within hours</option>`;
+  if (availableCount === 0) {
+    options = `<option value="" disabled selected>⚠️ All consultation slots are fully booked for ${dateStr}. Please select another date.</option>` + options;
   }
 
   timeSelect.innerHTML = options;
@@ -3411,12 +3624,36 @@ function handleCustomerBookingSubmit(e) {
 
   const branchCode = document.getElementById('custBranchSelect').value;
   const date = document.getElementById('custBookDate').value;
-  const time = document.getElementById('custBookTime').value;
   const schedForDate = getPharmacistScheduleForDate(branchCode, date);
 
   if (schedForDate.isClosed) {
-    alert(`Sorry, the pharmacy is closed for consultation on ${date} (${schedForDate.reason || 'Rest Day / Public Holiday'}). Please select another date.`);
+    alert(`Sorry, the pharmacy is closed on ${date} (${schedForDate.reason || 'Rest Day / Public Holiday'}). Please select another date.`);
     return;
+  }
+
+  const bookingTypeEl = document.querySelector('input[name="custBookingType"]:checked');
+  const bookingType = bookingTypeEl ? bookingTypeEl.value : 'in_person';
+
+  let time = '';
+  let service = '';
+  let purpose = '';
+  let status = 'Scheduled';
+
+  if (bookingType === 'refill_extension') {
+    time = 'Anytime (Refill Collection)';
+    service = 'Refill Chronic Medication & Supplements (+1 Month Extension)';
+    purpose = '1-Month Refill Extension Request (Pending Approval)';
+    status = 'Pending Approval';
+  } else {
+    const timeSelect = document.getElementById('custBookTime');
+    time = timeSelect ? timeSelect.value : '';
+    if (!time) {
+      alert('Please select an available consultation time slot.');
+      return;
+    }
+    service = 'In-Person Consultation & Health Screening';
+    purpose = 'In-Person Consultation & Health Screening';
+    status = 'Scheduled';
   }
 
   const preferredPharmEl = document.getElementById('custPharmacistSelect');
@@ -3427,37 +3664,34 @@ function handleCustomerBookingSubmit(e) {
     pharmacist: preferredPharm
   };
 
-  const serviceEl = document.querySelector('input[name="custService"]:checked');
-  const service = serviceEl ? serviceEl.value : 'Comprehensive Health Screening';
-
   const name = document.getElementById('custBookName').value.trim();
   const phone = document.getElementById('custBookPhone').value.trim();
-  const ic = document.getElementById('custBookIc').value.trim();
-  const notes = document.getElementById('custBookNotes').value.trim();
+  const ic = document.getElementById('custBookIc') ? document.getElementById('custBookIc').value.trim() : '';
 
-  if (!name || !phone || !date || !time) {
-    alert('Please fill in your name, phone number, date, and preferred time.');
+  if (!name || !phone || !date) {
+    alert('Please fill in your name, phone number, and preferred date.');
     return;
   }
 
-  const bookingRef = 'PMG-BK-' + Math.floor(100000 + Math.random() * 900000);
+  const bookingRef = (bookingType === 'refill_extension' ? 'PMG-EXT-' : 'PMG-BK-') + Math.floor(100000 + Math.random() * 900000);
 
   const bookingData = {
     id: bookingRef,
     ref: bookingRef,
     source: 'Customer Self-Service Portal',
+    bookingType: bookingType,
     branchCode,
     branchName: branchInfo.name,
     pharmacist: branchInfo.pharmacist,
     service,
-    purpose: service,
+    purpose,
     date,
     time,
-    status: 'Scheduled',
+    status: status,
     patientName: name,
     patientPhone: phone,
     patientIc: ic,
-    notes: notes || 'Booked via Online Customer Portal',
+    notes: bookingType === 'refill_extension' ? 'Customer requested 1-Month Extension for Routine Meds/Supplements (Pending Approval)' : 'Booked via Online Customer Portal',
     createdAt: new Date().toISOString()
   };
 
@@ -3481,10 +3715,11 @@ function handleCustomerBookingSubmit(e) {
       date,
       time,
       service,
-      purpose: service,
+      purpose,
       pharmacist: branchInfo.pharmacist,
-      notes: `[Customer Online Booking] ${notes}`,
-      status: 'Scheduled',
+      status: status,
+      type: bookingType,
+      notes: bookingData.notes,
       createdAt: new Date().toISOString()
     });
     savePatientsData();
@@ -3499,7 +3734,7 @@ function handleCustomerBookingSubmit(e) {
       age: '',
       branch: branchInfo.name.split(' ')[0] || 'Kota Sentosa',
       allergies: 'None recorded',
-      chronicConditions: ['Pending Consultation'],
+      chronicConditions: [bookingType === 'refill_extension' ? 'Chronic Medication Refill' : 'Pending Consultation'],
       medications: [],
       encounters: [],
       documents: [],
@@ -3509,10 +3744,11 @@ function handleCustomerBookingSubmit(e) {
           date,
           time,
           service,
-          purpose: service,
+          purpose,
           pharmacist: branchInfo.pharmacist,
-          notes: `[Customer Online Booking] ${notes}`,
-          status: 'Scheduled',
+          status: status,
+          type: bookingType,
+          notes: bookingData.notes,
           createdAt: new Date().toISOString()
         }
       ],
@@ -3522,13 +3758,30 @@ function handleCustomerBookingSubmit(e) {
     savePatientsData();
   }
 
+  // Trigger OneDrive Sync
+  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveToOneDrive === 'function') {
+    window.pmgOneDriveSync.saveToOneDrive(patientsData);
+  }
+
   // Render Confirmation Screen
   document.getElementById('custConfirmRef').textContent = bookingRef;
   document.getElementById('custConfirmName').textContent = name;
   document.getElementById('custConfirmBranch').textContent = branchInfo.name;
-  document.getElementById('custConfirmDateTime').textContent = `${date} at ${time}`;
-  document.getElementById('custConfirmService').textContent = service;
-  document.getElementById('custConfirmPharmacist').textContent = branchInfo.pharmacist;
+  document.getElementById('custConfirmDateTime').textContent = (bookingType === 'refill_extension') ? `${date} (Expected Refill Collection)` : `${date} at ${time}`;
+  document.getElementById('custConfirmService').textContent = (bookingType === 'refill_extension') ? '1-Month Refill Extension (Pending Approval)' : service;
+
+  const confirmDateLabel = document.getElementById('custConfirmDateLabel');
+  if (confirmDateLabel) {
+    confirmDateLabel.textContent = (bookingType === 'refill_extension') ? 'Refill Date (预计取药):' : 'Date & Time (预约时间):';
+  }
+
+  if (bookingType === 'refill_extension') {
+    document.getElementById('custSuccessTitle').textContent = 'Extension Request Submitted!';
+    document.getElementById('custSuccessSubtitle').textContent = '您的慢病常备药物续药与【顺延 1 个月复诊】申请已提交。执业药剂师将在审核您的用药记录后予以批准，系统将自动更新您的下一次复诊提醒。';
+  } else {
+    document.getElementById('custSuccessTitle').textContent = 'Appointment Confirmed!';
+    document.getElementById('custSuccessSubtitle').textContent = '您的到店面诊预约已成功登记，我们期待为您服务。';
+  }
 
   document.getElementById('customerBookingFormCard').classList.add('hidden');
   document.getElementById('customerBookingSuccessCard').classList.remove('hidden');
@@ -3537,12 +3790,124 @@ function handleCustomerBookingSubmit(e) {
 function sendCustomerBookingWaConfirm() {
   if (!currentCustomerBooking) return;
   const b = currentCustomerBooking;
-  const msg = `*PMG Pharmacy Appointment Confirmation*\nRef: ${b.ref}\nName: ${b.patientName}\nBranch: ${b.branchName}\nDate: ${b.date}\nTime: ${b.time}\nService: ${b.service}\nPharmacist: ${b.pharmacist}\n\nThank you for choosing PMG Pharmacy. Please arrive 5-10 minutes early. For enquiries, contact our branch.`;
+  let msg = '';
+  if (b.bookingType === 'refill_extension' || (b.service && b.service.includes('Extension'))) {
+    msg = `*PMG Pharmacy - 慢病用药续订与顺延申请确认*
+
+编号: ${b.ref}
+顾客姓名: ${b.patientName}
+分店: ${b.branchName}
+申请类型: 常备药物与保健品续订 (+1 个月复诊顺延)
+预计取药日期: ${b.date}
+
+我们已收到您的续药申请。驻店药剂师将审核您的用药档案，批准后将为您自动顺延下一次复诊提醒日期并备齐药物。如有疑问，欢迎随时联系我们！祝您身体健康！`;
+  } else {
+    msg = `*PMG Pharmacy - 到店预约确认*
+
+编号: ${b.ref}
+顾客姓名: ${b.patientName}
+分店: ${b.branchName}
+预约日期: ${b.date}
+预约时段: ${b.time}
+服务项目: ${b.service}
+指定药剂师: ${b.pharmacist}
+
+感谢您选择 PMG Pharmacy。请提前 5-10 分钟到达。如需更改时间，欢迎回复此信息。祝您身体健康！`;
+  }
 
   const cleanPhone = b.patientPhone.replace(/\D/g, '');
   const targetPhone = cleanPhone.startsWith('0') ? '60' + cleanPhone.slice(1) : cleanPhone;
   const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`;
   window.open(waUrl, '_blank');
+}
+
+/**
+ * Pharmacist Action: Approves a customer's 1-Month Refill Extension request,
+ * extends the patient's Next TCA Reminder Date by 30 days, saves to storage, and syncs to OneDrive.
+ */
+function approveRefillExtension(patientId, appointmentId) {
+  const p = patientsData.find(pt => pt.id === patientId);
+  if (!p) {
+    alert('Patient record not found.');
+    return;
+  }
+
+  const apt = (p.appointments || []).find(a => a.id === appointmentId);
+
+  // Calculate new TCA date: 30 days from current TCA date (if in future) or from today
+  const today = new Date();
+  let baseDate = today;
+  if (p.nextTcaDate) {
+    const existingTca = new Date(p.nextTcaDate);
+    if (!isNaN(existingTca.getTime()) && existingTca > today) {
+      baseDate = existingTca;
+    }
+  }
+  const nextMonthDate = new Date(baseDate);
+  nextMonthDate.setDate(nextMonthDate.getDate() + 30);
+  const newTcaDateStr = nextMonthDate.toISOString().split('T')[0];
+
+  p.nextTcaDate = newTcaDateStr;
+  p.nextTcaPurpose = 'Approved 1-Month Refill Extension';
+
+  if (apt) {
+    apt.status = 'Approved';
+    apt.notes = (apt.notes || '') + ` [Approved on ${getTodayDateString(0)} - Next TCA set to ${newTcaDateStr}]`;
+  }
+
+  // Also update customer bookings list in localStorage if matching ref
+  try {
+    const custBookings = JSON.parse(localStorage.getItem('pmg_customer_bookings') || '[]');
+    const cb = custBookings.find(b => b.id === appointmentId || b.ref === appointmentId);
+    if (cb) {
+      cb.status = 'Approved';
+      localStorage.setItem('pmg_customer_bookings', JSON.stringify(custBookings));
+    }
+  } catch (_) {}
+
+  // Also shift medication refill dates by 30 days if present
+  if (Array.isArray(p.medications)) {
+    p.medications.forEach(med => {
+      if (med.nextRefillDate) {
+        const medDate = new Date(med.nextRefillDate);
+        if (!isNaN(medDate.getTime())) {
+          medDate.setDate(medDate.getDate() + 30);
+          med.nextRefillDate = medDate.toISOString().split('T')[0];
+        }
+      }
+    });
+  }
+
+  savePatientsData();
+
+  // Sync to OneDrive
+  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveToOneDrive === 'function') {
+    window.pmgOneDriveSync.saveToOneDrive(patientsData);
+  }
+
+  renderPatientModule();
+  if (viewingPatientId === p.id) {
+    viewPatientProfile(p.id);
+  }
+
+  // Offer to send WhatsApp confirmation to patient
+  const confirmWa = confirm(`✅ 1-Month Extension Approved!\n\nPatient: ${p.name}\nNew Next TCA Reminder: ${newTcaDateStr}\n\nWould you like to send WhatsApp confirmation to the patient now?`);
+  if (confirmWa) {
+    const waText = `您好 *${p.name}*，这里是 *PMG Pharmacy (${p.branch})* 药剂关怀团队。
+
+您的常规慢病药物与保健品续药及【顺延 1 个月复诊】申请已审核通过！
+
+🗓️ *更新后下一次复诊/随访提醒日期：* ${newTcaDateStr}
+💊 *常规用药与保健品：* 药剂师已为您备妥常规用药，您可在方便时间前往分店取药。
+
+如有任何用药疑问或需要安排送药服务，欢迎随时联系我们。祝您身体健康，生活顺心！`;
+
+    const cleanPhone = formatPhoneForWa(p.phone);
+    if (cleanPhone) {
+      const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(waText)}`;
+      window.open(waUrl, '_blank');
+    }
+  }
 }
 
 function resetCustomerBookingForm() {

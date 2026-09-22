@@ -1936,40 +1936,46 @@
   </div>
 
   <!-- Modal 4: Patient Full Profile & History with 5 Tabs -->
-  <div id="patientProfileModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 hidden">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[94vh] overflow-y-auto p-6">
-      <div class="flex items-start justify-between border-b pb-4 mb-3">
+  <div id="patientProfileModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-5 hidden">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[94vh] overflow-y-auto p-6 sm:p-8">
+      <div class="flex items-start justify-between border-b pb-5 mb-4">
         <div>
-          <div class="flex items-center gap-3">
-            <h3 id="profName" class="text-xl font-bold text-gray-900">—</h3>
-            <div id="profConditions" class="flex gap-1 flex-wrap"></div>
+          <div class="flex items-center gap-3 flex-wrap">
+            <h3 id="profName" class="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">—</h3>
+            <div id="profConditions" class="flex gap-2 flex-wrap"></div>
           </div>
-          <p id="profMeta" class="text-xs text-gray-500 mt-1">—</p>
-          <div class="flex gap-4 text-xs mt-2 text-gray-600">
-            <span><b>Allergies:</b> <span id="profAllergies" class="text-rose-700 font-semibold">—</span></span>
-            <span><b>Notes:</b> <span id="profNotes" class="italic">—</span></span>
+          <p id="profMeta" class="text-sm sm:text-base text-gray-600 font-medium mt-1.5 leading-relaxed">—</p>
+          <div class="flex flex-wrap gap-5 text-sm sm:text-base mt-2.5 text-gray-700 items-center">
+            <span class="flex items-center gap-1.5">
+              <b class="text-gray-800">Allergies:</b>
+              <span id="profAllergies" class="text-rose-700 font-bold bg-rose-50 border border-rose-200 px-2.5 py-0.5 rounded-lg">—</span>
+            </span>
+            <span class="flex items-center gap-1.5">
+              <b class="text-gray-800">Notes:</b>
+              <span id="profNotes" class="italic text-gray-700">—</span>
+            </span>
           </div>
         </div>
-        <button onclick="closePatientProfileModal()" class="text-gray-400 hover:text-gray-600 text-lg">
+        <button onclick="closePatientProfileModal()" class="text-gray-400 hover:text-gray-700 text-2xl p-2 transition">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
 
       <!-- Profile Tabs -->
-      <div class="flex border-b border-gray-200 mb-4 overflow-x-auto text-xs">
-        <button id="profTabBtn_encounters" onclick="switchProfileTab('encounters')" class="px-4 py-2.5 border-b-2 border-blue-700 text-blue-700 font-bold whitespace-nowrap flex items-center gap-1.5">
+      <div class="flex border-b border-gray-200 mb-5 overflow-x-auto text-sm sm:text-base font-bold">
+        <button id="profTabBtn_encounters" onclick="switchProfileTab('encounters')" class="px-5 py-3 border-b-2 border-blue-700 text-blue-700 font-bold whitespace-nowrap flex items-center gap-2 transition">
           <i class="fa-solid fa-notes-medical"></i> Consultations (SOAP)
         </button>
-        <button id="profTabBtn_trends" onclick="switchProfileTab('trends')" class="px-4 py-2.5 border-b-2 border-transparent text-gray-500 hover:text-gray-800 whitespace-nowrap flex items-center gap-1.5">
+        <button id="profTabBtn_trends" onclick="switchProfileTab('trends')" class="px-5 py-3 border-b-2 border-transparent text-gray-500 hover:text-gray-800 whitespace-nowrap flex items-center gap-2 transition">
           <i class="fa-solid fa-chart-line"></i> POCT Trends Table
         </button>
-        <button id="profTabBtn_meds" onclick="switchProfileTab('meds')" class="px-4 py-2.5 border-b-2 border-transparent text-gray-500 hover:text-gray-800 whitespace-nowrap flex items-center gap-1.5">
+        <button id="profTabBtn_meds" onclick="switchProfileTab('meds')" class="px-5 py-3 border-b-2 border-transparent text-gray-500 hover:text-gray-800 whitespace-nowrap flex items-center gap-2 transition">
           <i class="fa-solid fa-pills"></i> Chronic Meds & Refills
         </button>
-        <button id="profTabBtn_docs" onclick="switchProfileTab('docs')" class="px-4 py-2.5 border-b-2 border-transparent text-gray-500 hover:text-gray-800 whitespace-nowrap flex items-center gap-1.5">
+        <button id="profTabBtn_docs" onclick="switchProfileTab('docs')" class="px-5 py-3 border-b-2 border-transparent text-gray-500 hover:text-gray-800 whitespace-nowrap flex items-center gap-2 transition">
           <i class="fa-solid fa-file-medical"></i> Lab Reports & Docs
         </button>
-        <button id="profTabBtn_apts" onclick="switchProfileTab('apts')" class="px-4 py-2.5 border-b-2 border-transparent text-gray-500 hover:text-gray-800 whitespace-nowrap flex items-center gap-1.5">
+        <button id="profTabBtn_apts" onclick="switchProfileTab('apts')" class="px-5 py-3 border-b-2 border-transparent text-gray-500 hover:text-gray-800 whitespace-nowrap flex items-center gap-2 transition">
           <i class="fa-regular fa-calendar-check"></i> Appointments
         </button>
       </div>
@@ -1981,18 +1987,18 @@
 
       <!-- Tab 2: POCT Trends Table -->
       <div id="profTabView_trends" class="hidden">
-        <div class="overflow-x-auto border border-gray-200 rounded-xl">
+        <div class="overflow-x-auto border border-gray-200 rounded-2xl shadow-xs">
           <table class="w-full text-left">
-            <thead class="bg-gray-50 text-gray-600 text-[11px] border-b">
+            <thead class="bg-gray-100 text-gray-700 text-xs sm:text-sm font-bold border-b">
               <tr>
-                <th class="px-3 py-2">Date</th>
-                <th class="px-3 py-2">BP (mmHg)</th>
-                <th class="px-3 py-2">Glucose</th>
-                <th class="px-3 py-2">HbA1c</th>
-                <th class="px-3 py-2">Lipid Profile</th>
-                <th class="px-3 py-2">AI Index</th>
-                <th class="px-3 py-2">Uric Acid</th>
-                <th class="px-3 py-2">Creatinine</th>
+                <th class="px-4 py-3">Date</th>
+                <th class="px-4 py-3">BP (mmHg)</th>
+                <th class="px-4 py-3">Glucose</th>
+                <th class="px-4 py-3">HbA1c</th>
+                <th class="px-4 py-3">Lipid Profile</th>
+                <th class="px-4 py-3">AI Index</th>
+                <th class="px-4 py-3">Uric Acid</th>
+                <th class="px-4 py-3">Creatinine</th>
               </tr>
             </thead>
             <tbody id="profTrendsBody"></tbody>
@@ -2002,20 +2008,20 @@
 
       <!-- Tab 3: Chronic Medications & Refills -->
       <div id="profTabView_meds" class="hidden">
-        <div class="flex justify-end mb-2">
-          <button onclick="promptAddMedication()" class="text-blue-700 hover:text-blue-800 text-xs font-bold flex items-center gap-1">
+        <div class="flex justify-end mb-3">
+          <button onclick="promptAddMedication()" class="text-blue-700 hover:text-blue-800 text-sm font-bold flex items-center gap-1.5 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-200 transition">
             <i class="fa-solid fa-plus"></i> Add Medication
           </button>
         </div>
-        <div class="overflow-x-auto border border-gray-200 rounded-xl">
+        <div class="overflow-x-auto border border-gray-200 rounded-2xl shadow-xs">
           <table class="w-full text-left">
-            <thead class="bg-gray-50 text-gray-600 text-[11px] border-b">
+            <thead class="bg-gray-100 text-gray-700 text-xs sm:text-sm font-bold border-b">
               <tr>
-                <th class="px-3 py-2">Medication</th>
-                <th class="px-3 py-2">Dosage Instructions</th>
-                <th class="px-3 py-2">Last Dispensed</th>
-                <th class="px-3 py-2">Supply Days</th>
-                <th class="px-3 py-2">Next Refill Due</th>
+                <th class="px-4 py-3">Medication</th>
+                <th class="px-4 py-3">Dosage Instructions</th>
+                <th class="px-4 py-3">Last Dispensed</th>
+                <th class="px-4 py-3">Supply Days</th>
+                <th class="px-4 py-3">Next Refill Due</th>
               </tr>
             </thead>
             <tbody id="profMedsBody"></tbody>
@@ -2030,15 +2036,15 @@
 
       <!-- Tab 5: Appointments History -->
       <div id="profTabView_apts" class="hidden">
-        <div class="overflow-x-auto border border-gray-200 rounded-xl">
+        <div class="overflow-x-auto border border-gray-200 rounded-2xl shadow-xs">
           <table class="w-full text-left">
-            <thead class="bg-gray-50 text-gray-600 text-[11px] border-b">
+            <thead class="bg-gray-100 text-gray-700 text-xs sm:text-sm font-bold border-b">
               <tr>
-                <th class="px-3 py-2">Date & Time</th>
-                <th class="px-3 py-2">Purpose</th>
-                <th class="px-3 py-2">Status</th>
-                <th class="px-3 py-2">Notes</th>
-                <th class="px-3 py-2 text-right">Actions</th>
+                <th class="px-4 py-3">Date & Time</th>
+                <th class="px-4 py-3">Purpose & Request</th>
+                <th class="px-4 py-3">Status</th>
+                <th class="px-4 py-3">Notes</th>
+                <th class="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody id="profAptsBody"></tbody>
@@ -2532,223 +2538,226 @@
 <div id="customerBookingView" class="hidden min-h-screen bg-gradient-to-b from-blue-50 via-slate-50 to-white text-gray-800">
   <!-- Customer Header -->
   <header class="bg-blue-900 text-white shadow-md">
-    <div class="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center border border-white/20">
-          <i class="fa-solid fa-notes-medical text-xl text-teal-300"></i>
+    <div class="max-w-3xl mx-auto px-4 py-5 flex items-center justify-between">
+      <div class="flex items-center gap-3.5">
+        <div class="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center border border-white/20 shadow-inner">
+          <i class="fa-solid fa-notes-medical text-2xl text-teal-300"></i>
         </div>
         <div>
-          <h1 class="text-base sm:text-lg font-bold tracking-tight">PMG Pharmacy · 预约健康咨询</h1>
-          <p class="text-xs text-blue-200">Patient Appointment & Health Screening Booking</p>
+          <h1 class="text-xl sm:text-2xl font-black tracking-tight">PMG Pharmacy · 预约与续药服务</h1>
+          <p class="text-sm text-blue-200">Patient Care, Consultation & Medication Refill Portal</p>
         </div>
       </div>
-      <div class="hidden sm:block text-right text-xs text-blue-200">
-        <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 mr-1.5"></span>Open Daily
+      <div class="hidden sm:block text-right text-sm text-blue-200">
+        <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400 mr-1.5 animate-pulse"></span>天天营业 · Open Daily
       </div>
     </div>
   </header>
 
-  <main class="max-w-3xl mx-auto px-4 py-6">
+  <main class="max-w-3xl mx-auto px-4 py-8">
     <!-- Booking Form Card -->
-    <div id="customerBookingFormCard" class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-      <div class="bg-gradient-to-r from-blue-800 to-indigo-900 px-6 py-4 text-white">
-        <h2 class="text-base font-bold flex items-center gap-2">
-          <i class="fa-regular fa-calendar-check text-emerald-400"></i> Schedule Your Pharmacy Appointment
+    <div id="customerBookingFormCard" class="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden">
+      <div class="bg-gradient-to-r from-blue-800 to-indigo-900 px-6 sm:px-8 py-5 text-white">
+        <h2 class="text-lg sm:text-xl font-bold flex items-center gap-2.5">
+          <i class="fa-regular fa-calendar-check text-emerald-400 text-xl"></i> Schedule Appointment or Request Refill
         </h2>
-        <p class="text-xs text-blue-200 mt-0.5">Please choose your branch, service, and convenient time slot below.</p>
+        <p class="text-sm text-blue-100 mt-1">请在下方选择您的需求、分店与合适的时间（专为长者与慢病家属优化，清晰好选）。</p>
       </div>
 
-      <form id="customerBookingForm" onsubmit="handleCustomerBookingSubmit(event)" class="p-6 space-y-6">
+      <form id="customerBookingForm" onsubmit="handleCustomerBookingSubmit(event)" class="p-6 sm:p-8 space-y-7">
         <!-- Step 1: Branch Selection -->
-        <div class="space-y-2">
-          <label class="block text-xs font-bold text-gray-700 flex items-center gap-1.5">
-            <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">1</span>
-            Select PMG Pharmacy Branch
+        <div class="space-y-2.5">
+          <label class="block text-base sm:text-lg font-extrabold text-gray-900 flex items-center gap-2">
+            <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-black">1</span>
+            <span>Select PMG Pharmacy Branch (选择分店)</span>
           </label>
           <select id="custBranchSelect" onchange="updateCustBookHours()" required
-            class="w-full border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none">
+            class="w-full border-2 border-gray-300 rounded-2xl px-4 py-3.5 text-base sm:text-lg font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none bg-white">
             <option value="KS01">Kota Sentosa (KS01)</option>
-            <option value="BR02">Branch 02 (BR02)</option>
-            <option value="BR03">Branch 03 (BR03)</option>
-            <option value="BR04">Branch 04 (BR04)</option>
-            <option value="BR05">Branch 05 (BR05)</option>
-            <option value="BR06">Branch 06 (BR06)</option>
+            <option value="ASTANA">Astana (ASTANA)</option>
+            <option value="KOTA SENTOSA">Kota Sentosa (KOTA SENTOSA)</option>
+            <option value="MALIHAH">Malihah (MALIHAH)</option>
+            <option value="METROCITY">Metrocity (METROCITY)</option>
+            <option value="MJK">MJK (MJK)</option>
+            <option value="MOYAN">Moyan (MOYAN)</option>
+            <option value="SEMARIANG">Semariang (SEMARIANG)</option>
           </select>
-          <div id="custBranchInfoBox" class="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-900">
+          <div id="custBranchInfoBox" class="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm sm:text-base text-blue-900">
             <div class="flex items-center gap-2 font-bold mb-1">
-              <i class="fa-solid fa-clock text-blue-600"></i>
-              <span id="custBranchHoursTitle">Kota Sentosa Pharmacist Hours</span>
+              <i class="fa-solid fa-clock text-blue-600 text-base"></i>
+              <span id="custBranchHoursTitle">Kota Sentosa Operating Hours</span>
             </div>
-            <p id="custBranchHoursDesc" class="text-[11px] text-blue-800">
-              Operating Hours: <b>07:30 AM – 09:30 PM</b> (Mon – Sun)<br>
-              Duty Pharmacist: <b>Pharmacist William / Ting</b>
+            <p id="custBranchHoursDesc" class="text-sm sm:text-base text-blue-800 font-medium">
+              Operating Hours: <b>07:30 AM – 09:30 PM</b> (Mon – Sun)
             </p>
           </div>
         </div>
 
-        <!-- Step 2: Service Type -->
-        <div class="space-y-2">
-          <label class="block text-xs font-bold text-gray-700 flex items-center gap-1.5">
-            <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">2</span>
-            Select Consultation / Health Service
+        <!-- Step 2: Request Type (In-Person vs 1-Month Extension) -->
+        <div class="space-y-3">
+          <label class="block text-base sm:text-lg font-extrabold text-gray-900 flex items-center gap-2">
+            <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-black">2</span>
+            <span>Select Your Service (选择服务类型)</span>
           </label>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5" id="custServiceOptions">
-            <label class="border border-gray-200 hover:border-blue-500 rounded-xl p-3 flex items-start gap-2.5 cursor-pointer transition bg-white has-[:checked]:bg-blue-50/70 has-[:checked]:border-blue-500 has-[:checked]:ring-1 has-[:checked]:ring-blue-500">
-              <input type="radio" name="custService" value="Comprehensive Health Screening" checked class="mt-0.5 text-blue-600 focus:ring-blue-500">
-              <div>
-                <span class="font-bold text-xs text-gray-900 block">🩸 Comprehensive Screening</span>
-                <span class="text-[11px] text-gray-500 block">BP, Glucose, Lipids, Uric Acid & Kidney markers</span>
+          <div class="grid grid-cols-1 gap-3.5" id="custBookingTypeOptions">
+            <!-- Option 1: In-Person Consultation -->
+            <label class="border-2 border-gray-200 hover:border-blue-500 rounded-2xl p-4 sm:p-5 flex items-start gap-4 cursor-pointer transition bg-white has-[:checked]:bg-blue-50/80 has-[:checked]:border-blue-600 has-[:checked]:ring-2 has-[:checked]:ring-blue-400/50 shadow-xs">
+              <input type="radio" name="custBookingType" value="in_person" checked onchange="toggleBookingType('in_person')" class="mt-1 w-5 h-5 text-blue-600 focus:ring-blue-500">
+              <div class="flex-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="font-extrabold text-base sm:text-lg text-gray-900">🩺 预约到店面诊与健康检查</span>
+                  <span class="bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-0.5 rounded-full">In-Person Visit</span>
+                </div>
+                <p class="text-sm sm:text-base text-gray-600 mt-1">
+                  亲自到店与药剂师面谈、测量血压血糖或进行日常慢病全面健康筛查。
+                </p>
               </div>
             </label>
-            <label class="border border-gray-200 hover:border-blue-500 rounded-xl p-3 flex items-start gap-2.5 cursor-pointer transition bg-white has-[:checked]:bg-blue-50/70 has-[:checked]:border-blue-500 has-[:checked]:ring-1 has-[:checked]:ring-blue-500">
-              <input type="radio" name="custService" value="Chronic Medication Review & Refill" class="mt-0.5 text-blue-600 focus:ring-blue-500">
-              <div>
-                <span class="font-bold text-xs text-gray-900 block">💊 Medication Review & Refill</span>
-                <span class="text-[11px] text-gray-500 block">Blood pressure, diabetes medication check & refill</span>
-              </div>
-            </label>
-            <label class="border border-gray-200 hover:border-blue-500 rounded-xl p-3 flex items-start gap-2.5 cursor-pointer transition bg-white has-[:checked]:bg-blue-50/70 has-[:checked]:border-blue-500 has-[:checked]:ring-1 has-[:checked]:ring-blue-500">
-              <input type="radio" name="custService" value="Airdoc AI Retinal Health Scan" class="mt-0.5 text-blue-600 focus:ring-blue-500">
-              <div>
-                <span class="font-bold text-xs text-gray-900 block">👁️ Airdoc AI Retinal Scan</span>
-                <span class="text-[11px] text-gray-500 block">Microvascular & diabetic retinopathy screening</span>
-              </div>
-            </label>
-            <label class="border border-gray-200 hover:border-blue-500 rounded-xl p-3 flex items-start gap-2.5 cursor-pointer transition bg-white has-[:checked]:bg-blue-50/70 has-[:checked]:border-blue-500 has-[:checked]:ring-1 has-[:checked]:ring-blue-500">
-              <input type="radio" name="custService" value="Supplement & Wellness Consultation" class="mt-0.5 text-blue-600 focus:ring-blue-500">
-              <div>
-                <span class="font-bold text-xs text-gray-900 block">🌿 Supplement & Wellness</span>
-                <span class="text-[11px] text-gray-500 block">Nutraceuticals, CoQ10, Joint, Liver & Gut health</span>
+
+            <!-- Option 2: 1-Month Refill Extension Request -->
+            <label class="border-2 border-gray-200 hover:border-emerald-500 rounded-2xl p-4 sm:p-5 flex items-start gap-4 cursor-pointer transition bg-white has-[:checked]:bg-emerald-50/80 has-[:checked]:border-emerald-600 has-[:checked]:ring-2 has-[:checked]:ring-emerald-400/50 shadow-xs">
+              <input type="radio" name="custBookingType" value="refill_extension" onchange="toggleBookingType('refill_extension')" class="mt-1 w-5 h-5 text-emerald-600 focus:ring-emerald-500">
+              <div class="flex-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="font-extrabold text-base sm:text-lg text-emerald-950">💊 续订常备药物与保健品 (申请顺延复诊 1 个月)</span>
+                  <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-0.5 rounded-full">Refill & +1 Month Extension</span>
+                </div>
+                <p class="text-sm sm:text-base text-gray-600 mt-1">
+                  若目前血压血糖与健康状况稳定，申请直接备药续配，并将下一次复诊时间顺延 1 个月。
+                </p>
+                <div class="mt-2.5 inline-flex items-center gap-2 text-xs sm:text-sm font-bold text-emerald-800 bg-emerald-100/80 px-3 py-1.5 rounded-xl">
+                  <i class="fa-solid fa-circle-check text-emerald-600 text-sm"></i>
+                  <span>需经执业药剂师审核批准后生效，系统将自动更新下次提醒日期</span>
+                </div>
               </div>
             </label>
           </div>
         </div>
 
         <!-- Step 3: Preferred Pharmacist / Consultant -->
-        <div class="space-y-1.5" id="custPharmacistSection">
-          <label class="block text-xs font-bold text-gray-700 flex items-center justify-between">
-            <span class="flex items-center gap-1.5">
-              <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">3</span>
-              Preferred Pharmacist / Consultant (选择指定药剂师 - Optional)
+        <div class="space-y-2" id="custPharmacistSection">
+          <label class="block text-base sm:text-lg font-extrabold text-gray-900 flex items-center justify-between">
+            <span class="flex items-center gap-2">
+              <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-black">3</span>
+              <span>Preferred Pharmacist (选择指定药剂师)</span>
             </span>
-            <span class="text-[10px] text-gray-400 font-normal">Optional</span>
+            <span class="text-xs sm:text-sm text-gray-400 font-normal">Optional / 可选</span>
           </label>
           <select id="custPharmacistSelect"
-            class="w-full border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+            class="w-full border-2 border-gray-300 rounded-2xl px-4 py-3.5 text-base sm:text-lg font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none bg-white">
             <option value="">Any Available Pharmacist on Duty (随班执勤药剂师)</option>
             <option value="Pharmacist William Chai">Pharmacist William Chai (蔡药剂师)</option>
             <option value="Pharmacist Kenix Ling">Pharmacist Kenix Ling (林药剂师)</option>
           </select>
         </div>
 
-        <!-- Step 4: Date & Time Picker -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div class="space-y-1.5">
-            <label class="block text-xs font-bold text-gray-700 flex items-center gap-1.5">
-              <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">4</span>
-              Select Date
-            </label>
-            <input type="date" id="custBookDate" required onchange="updateCustBookHours()"
-              class="w-full border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none">
+        <!-- Step 4 & 5: Date & Time Picker Container -->
+        <div class="space-y-4" id="custDateTimeSection">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div class="space-y-2">
+              <label class="block text-base sm:text-lg font-extrabold text-gray-900 flex items-center gap-2">
+                <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-black">4</span>
+                <span id="custDateLabel">Select Date (选择日期)</span>
+              </label>
+              <input type="date" id="custBookDate" required onchange="updateCustBookHours()"
+                class="w-full border-2 border-gray-300 rounded-2xl px-4 py-3.5 text-base sm:text-lg font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+            <div class="space-y-2" id="custTimeSlotContainer">
+              <label class="block text-base sm:text-lg font-extrabold text-gray-900 flex items-center gap-2">
+                <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-black">5</span>
+                <span>Select Time Slot (选择时段)</span>
+              </label>
+              <select id="custBookTime" required
+                class="w-full border-2 border-gray-300 rounded-2xl px-4 py-3.5 text-base sm:text-lg font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none">
+              </select>
+            </div>
           </div>
-          <div class="space-y-1.5">
-            <label class="block text-xs font-bold text-gray-700 flex items-center gap-1.5">
-              <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">5</span>
-              Select Time Slot
-            </label>
-            <select id="custBookTime" required
-              class="w-full border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none">
-            </select>
+          <!-- Refill Extension info notice (shown when refill_extension is chosen) -->
+          <div id="custRefillExtensionNotice" class="hidden p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-sm sm:text-base text-emerald-900">
+            <i class="fa-solid fa-bell text-emerald-600 mr-1.5"></i>
+            <b>续药提醒：</b>药剂师将在审核您的用药记录后，将您的下一次复诊提醒自动顺延 1 个月，并提前备好药物供您到店领取。
           </div>
         </div>
 
         <!-- Date Override / Closed Alert Banner -->
-        <div id="custDateStatusBanner" class="hidden rounded-xl p-3 text-xs font-semibold flex items-center gap-2"></div>
+        <div id="custDateStatusBanner" class="hidden rounded-2xl p-4 text-sm sm:text-base font-bold flex items-center gap-2.5"></div>
 
         <!-- Step 6: Customer Details -->
-        <div class="space-y-3 pt-2 border-t border-gray-100">
-          <label class="block text-xs font-bold text-gray-700 flex items-center gap-1.5">
-            <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">6</span>
-            Your Particulars (顾客个人资料)
+        <div class="space-y-4 pt-4 border-t border-gray-100">
+          <label class="block text-base sm:text-lg font-extrabold text-gray-900 flex items-center gap-2">
+            <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-black">6</span>
+            <span>Your Particulars (顾客个人资料)</span>
           </label>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label class="block text-[11px] font-semibold text-gray-600 mb-1">Full Name (姓名) <span class="text-rose-500">*</span></label>
+              <label class="block text-sm sm:text-base font-bold text-gray-700 mb-1.5">Full Name (姓名) <span class="text-rose-500">*</span></label>
               <input type="text" id="custBookName" required placeholder="e.g. Tan Ah Kow"
-                class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+                class="w-full border-2 border-gray-300 rounded-2xl px-4 py-3.5 text-base sm:text-lg font-semibold text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none">
             </div>
             <div>
-              <label class="block text-[11px] font-semibold text-gray-600 mb-1">WhatsApp / Mobile Number (电话) <span class="text-rose-500">*</span></label>
+              <label class="block text-sm sm:text-base font-bold text-gray-700 mb-1.5">WhatsApp / Mobile Number (电话号码) <span class="text-rose-500">*</span></label>
               <input type="tel" id="custBookPhone" required placeholder="e.g. 016-8334455"
-                class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+                class="w-full border-2 border-gray-300 rounded-2xl px-4 py-3.5 text-base sm:text-lg font-semibold text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none">
             </div>
-            <div>
-              <label class="block text-[11px] font-semibold text-gray-600 mb-1">IC / Passport Number (身份证号 - Optional)</label>
+            <div class="sm:col-span-2">
+              <label class="block text-sm sm:text-base font-bold text-gray-700 mb-1.5">IC / Passport Number (身份证号 - Optional / 可选)</label>
               <input type="text" id="custBookIc" placeholder="e.g. 750812-13-5567"
-                class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
-            </div>
-            <div>
-              <label class="block text-[11px] font-semibold text-gray-600 mb-1">Reason for Visit / Health Notes (备注)</label>
-              <input type="text" id="custBookNotes" placeholder="e.g. 3-month regular BP/Sugar check, refill statin"
-                class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+                class="w-full border-2 border-gray-300 rounded-2xl px-4 py-3.5 text-base sm:text-lg font-semibold text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none">
             </div>
           </div>
         </div>
 
         <!-- Submit Button -->
-        <div class="pt-3">
-          <button type="submit" id="custBookSubmitBtn" class="w-full bg-blue-700 hover:bg-blue-800 active:bg-blue-900 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-xl text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2">
-            <i class="fa-solid fa-calendar-check"></i>
-            <span id="custBookSubmitText">Confirm & Book Appointment</span>
+        <div class="pt-4">
+          <button type="submit" id="custBookSubmitBtn" class="w-full bg-blue-700 hover:bg-blue-800 active:bg-blue-900 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black py-4 px-6 rounded-2xl text-base sm:text-lg shadow-lg transition flex items-center justify-center gap-2.5">
+            <i class="fa-solid fa-calendar-check text-xl"></i>
+            <span id="custBookSubmitText">Confirm & Book Appointment (确认预约)</span>
           </button>
         </div>
       </form>
     </div>
 
     <!-- Booking Confirmation Card (Initially Hidden) -->
-    <div id="customerBookingSuccessCard" class="hidden bg-white rounded-2xl shadow-xl border border-emerald-200 overflow-hidden text-center p-8">
-      <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+    <div id="customerBookingSuccessCard" class="hidden bg-white rounded-3xl shadow-xl border border-emerald-200 overflow-hidden text-center p-8 sm:p-10">
+      <div class="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl shadow-inner">
         <i class="fa-solid fa-check"></i>
       </div>
-      <h2 class="text-xl font-bold text-gray-900 mb-1">Appointment Confirmed!</h2>
-      <p class="text-xs text-gray-500 mb-6">Your appointment has been registered directly with our pharmacy team.</p>
+      <h2 class="text-2xl sm:text-3xl font-black text-gray-900 mb-2" id="custSuccessTitle">Request Confirmed!</h2>
+      <p class="text-sm sm:text-base text-gray-600 mb-6" id="custSuccessSubtitle">您的预约/续药申请已直接登记至我们的药剂系统。</p>
 
-      <div class="bg-gray-50 rounded-xl p-5 text-left border border-gray-200 max-w-md mx-auto space-y-2.5 text-xs">
-        <div class="flex justify-between border-b pb-2">
-          <span class="text-gray-500">Booking Reference:</span>
+      <div class="bg-gray-50 rounded-2xl p-6 text-left border border-gray-200 max-w-lg mx-auto space-y-3.5 text-sm sm:text-base">
+        <div class="flex justify-between border-b pb-2.5">
+          <span class="text-gray-500 font-medium">Reference Code (编号):</span>
           <span id="custConfirmRef" class="font-mono font-bold text-blue-700">PMG-2026-0001</span>
         </div>
-        <div class="flex justify-between border-b pb-2">
-          <span class="text-gray-500">Patient Name:</span>
-          <span id="custConfirmName" class="font-bold text-gray-800">-</span>
+        <div class="flex justify-between border-b pb-2.5">
+          <span class="text-gray-500 font-medium">Patient Name (姓名):</span>
+          <span id="custConfirmName" class="font-bold text-gray-900">-</span>
         </div>
-        <div class="flex justify-between border-b pb-2">
-          <span class="text-gray-500">Branch:</span>
-          <span id="custConfirmBranch" class="font-bold text-gray-800">-</span>
+        <div class="flex justify-between border-b pb-2.5">
+          <span class="text-gray-500 font-medium">Branch (分店):</span>
+          <span id="custConfirmBranch" class="font-bold text-gray-900">-</span>
         </div>
-        <div class="flex justify-between border-b pb-2">
-          <span class="text-gray-500">Date & Time:</span>
+        <div class="flex justify-between border-b pb-2.5">
+          <span class="text-gray-500 font-medium" id="custConfirmDateLabel">Date & Time:</span>
           <span id="custConfirmDateTime" class="font-bold text-emerald-700">-</span>
         </div>
-        <div class="flex justify-between border-b pb-2">
-          <span class="text-gray-500">Service:</span>
-          <span id="custConfirmService" class="font-bold text-gray-800">-</span>
-        </div>
         <div class="flex justify-between">
-          <span class="text-gray-500">Duty Pharmacist:</span>
-          <span id="custConfirmPharmacist" class="font-bold text-gray-800">-</span>
+          <span class="text-gray-500 font-medium">Request Type (类型):</span>
+          <span id="custConfirmService" class="font-bold text-gray-900">-</span>
         </div>
       </div>
 
-      <div class="mt-6 flex flex-col sm:flex-row gap-3 justify-center max-w-md mx-auto">
-        <button type="button" id="custBtnWaConfirm" onclick="sendCustomerBookingWaConfirm()" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow transition">
-          <i class="fa-brands fa-whatsapp text-sm"></i>
+      <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center max-w-lg mx-auto">
+        <button type="button" id="custBtnWaConfirm" onclick="sendCustomerBookingWaConfirm()" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 px-5 rounded-2xl text-sm sm:text-base flex items-center justify-center gap-2 shadow-md transition">
+          <i class="fa-brands fa-whatsapp text-lg"></i>
           <span>Save to My WhatsApp</span>
         </button>
-        <button type="button" onclick="resetCustomerBookingForm()" class="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition">
-          Book Another
+        <button type="button" onclick="resetCustomerBookingForm()" class="px-6 py-3.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-2xl text-sm sm:text-base transition">
+          Done
         </button>
       </div>
+    </div>
     </div>
 
     <!-- Staff login redirect -->
