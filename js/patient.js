@@ -1341,10 +1341,18 @@ function showNewEncounterModal(patientId) {
   document.getElementById('encHb').value = '';
   document.getElementById('encHct').value = '';
 
+  // BCA (Body Composition Analysis)
+  if (document.getElementById('encBodyFat')) document.getElementById('encBodyFat').value = '';
+  if (document.getElementById('encVisceralFat')) document.getElementById('encVisceralFat').value = '';
+  if (document.getElementById('encMuscleMass')) document.getElementById('encMuscleMass').value = '';
+  if (document.getElementById('encMetabolicAge')) document.getElementById('encMetabolicAge').value = '';
+  if (document.getElementById('encBmrWater')) document.getElementById('encBmrWater').value = '';
+
   // Specialty Scans
   document.getElementById('encVitD').value = '';
   document.getElementById('encFerritin').value = '';
   document.getElementById('encTeda').value = '';
+  if (document.getElementById('encTedaLink')) document.getElementById('encTedaLink').value = '';
   const tedaBtn = document.getElementById('openTedaLinkBtn');
   if (tedaBtn) tedaBtn.classList.add('hidden');
   removeAirdocFile();
@@ -1435,8 +1443,27 @@ function checkTedaUrl(url) {
 }
 
 function openTedaLink() {
-  const url = document.getElementById('encTeda').value.trim();
+  const linkEl = document.getElementById('encTedaLink');
+  let url = linkEl ? linkEl.value.trim() : '';
+  if (!url) {
+    const tedaEl = document.getElementById('encTeda');
+    const tedaVal = tedaEl ? tedaEl.value.trim() : '';
+    if (tedaVal.startsWith('http://') || tedaVal.startsWith('https://')) {
+      url = tedaVal;
+    }
+  }
   if (url) window.open(url, '_blank');
+}
+
+function appendTedaTag(tag) {
+  const el = document.getElementById('encTeda');
+  if (!el) return;
+  const current = el.value.trim();
+  if (!current) {
+    el.value = tag;
+  } else if (!current.includes(tag)) {
+    el.value = `${current}, ${tag}`;
+  }
 }
 
 // ─── AIRDOC RETINAL REPORT PDF HELPERS ───────────────────────────────────────
@@ -1593,6 +1620,13 @@ async function saveNewEncounter() {
       height: Number(document.getElementById('encHeight').value) || null,
       bmi: Number(document.getElementById('encBmi').value) || null
     },
+    bodyComposition: {
+      bodyFat: Number(document.getElementById('encBodyFat')?.value) || null,
+      visceralFat: Number(document.getElementById('encVisceralFat')?.value) || null,
+      muscleMass: Number(document.getElementById('encMuscleMass')?.value) || null,
+      metabolicAge: Number(document.getElementById('encMetabolicAge')?.value) || null,
+      bmrWater: document.getElementById('encBmrWater') ? document.getElementById('encBmrWater').value.trim() : ''
+    },
     lipidPanel: {
       tc: Number(document.getElementById('encTc').value) || null,
       tg: Number(document.getElementById('encTg').value) || null,
@@ -1623,6 +1657,7 @@ async function saveNewEncounter() {
       vitD: document.getElementById('encVitD').value || null,
       ferritin: document.getElementById('encFerritin').value || null,
       teda: document.getElementById('encTeda').value.trim() || null,
+      tedaLink: document.getElementById('encTedaLink') ? document.getElementById('encTedaLink').value.trim() : null,
       airdoc: selectedAirdocFile ? selectedAirdocFile.name : null,
       rossmaxAct: document.getElementById('encRossmaxAct').value.trim() || null
     },
@@ -3646,9 +3681,6 @@ async function runAiClinicalReview() {
     bpDia: document.getElementById('encBpDia')?.value || '',
     pulse: document.getElementById('encPulse')?.value || '',
     spo2: document.getElementById('encSpo2')?.value || '',
-    weight: document.getElementById('encWeight')?.value || '',
-    height: document.getElementById('encHeight')?.value || '',
-    bmi: document.getElementById('encBmi')?.value || '',
     tc: document.getElementById('encTc')?.value || '',
     tg: document.getElementById('encTg')?.value || '',
     hdl: document.getElementById('encHdl')?.value || '',
@@ -3667,10 +3699,23 @@ async function runAiClinicalReview() {
     alb: document.getElementById('encAlb')?.value || '',
     vitD: document.getElementById('encVitD')?.value || '',
     ferritin: document.getElementById('encFerritin')?.value || '',
-    teda: document.getElementById('encTeda')?.value.trim() || '',
     rossmaxAct: document.getElementById('encRossmaxAct')?.value.trim() || '',
     customPoctNotes: document.getElementById('encOtherTestsNotes')?.value.trim() || ''
   };
+
+  const bca = {
+    weight: document.getElementById('encWeight')?.value || '',
+    height: document.getElementById('encHeight')?.value || '',
+    bmi: document.getElementById('encBmi')?.value || '',
+    bodyFat: document.getElementById('encBodyFat')?.value || '',
+    visceralFat: document.getElementById('encVisceralFat')?.value || '',
+    muscleMass: document.getElementById('encMuscleMass')?.value || '',
+    metabolicAge: document.getElementById('encMetabolicAge')?.value || '',
+    bmrWater: document.getElementById('encBmrWater')?.value.trim() || ''
+  };
+
+  const tedaNotes = document.getElementById('encTeda')?.value.trim() || '';
+  const tedaLink = document.getElementById('encTedaLink')?.value.trim() || '';
 
   const planMeds = document.getElementById('encPlanMeds')?.value.trim() || '';
   const planSupps = document.getElementById('encPlanSupps')?.value.trim() || '';
@@ -3709,12 +3754,8 @@ async function runAiClinicalReview() {
 PLEASE INSPECT AND ANALYZE THE ATTACHED AIRDOC RETINAL REPORT MULTIMODALLY. Extract optic disc (CDR), microvascular status (arteriolar narrowing, AV nicking, hemorrhages, microaneurysms, hard exudates), hypertensive/diabetic retinopathy grading, and Airdoc AI cardiovascular risk score.`
     : 'No Airdoc scan file uploaded for this consultation.';
 
-  const tedaPromptText = vitals.teda
-    ? `TEDA SCAN DATA / NOTES: "${vitals.teda}". Analyze visceral fat rating, metabolic age, body fat %, muscle mass, and biological age indicators.`
-    : 'No TEDA scan link or body composition summary notes entered.';
-
   const prompt = `You are an expert Clinical Pharmacist and Nutritional Specialist for PMG Pharmacy in Malaysia.
-Evaluate this patient consultation, POCT laboratory profile, specialty scans (Airdoc Retinal AI & TEDA Body Composition), and medication regimen.
+Evaluate this patient consultation, POCT laboratory profile, specialty scans (Airdoc Retinal AI & TEDA TCM/Meridian Scan), Body Composition Analysis, and medication regimen.
 
 PATIENT PROFILE:
 Name: ${patient.name || 'Anonymous'}
@@ -3727,20 +3768,33 @@ CURRENT CONSULTATION (SOAP):
 Chief Complaint: ${cc}
 History of Present Illness: ${hpi}
 
-OBJECTIVE VITALS & POCT LAB READINGS:
+OBJECTIVE VITALS & ANTHROPOMETRY:
 BP: ${vitals.bpSys && vitals.bpDia ? vitals.bpSys + '/' + vitals.bpDia + ' mmHg' : 'Not taken'}
 Pulse: ${vitals.pulse ? vitals.pulse + ' bpm' : 'N/A'}, SpO2: ${vitals.spo2 ? vitals.spo2 + '%' : 'N/A'}
-BMI: ${vitals.bmi || 'N/A'} (Weight: ${vitals.weight || 'N/A'} kg, Height: ${vitals.height || 'N/A'} cm)
+Weight: ${bca.weight || 'N/A'} kg, Height: ${bca.height || 'N/A'} cm, BMI: ${bca.bmi || 'N/A'}
+
+BODY COMPOSITION ANALYSIS (BCA - Branch Analyzer):
+- Body Fat: ${bca.bodyFat ? bca.bodyFat + '%' : 'Not tested'}
+- Visceral Fat Rating: ${bca.visceralFat ? bca.visceralFat + ' (Rating scale: 1-9 Normal, 10-14 High, >=15 Very High / Severe)' : 'Not tested'}
+- Skeletal Muscle Mass: ${bca.muscleMass ? bca.muscleMass + ' kg' : 'Not tested'}
+- Metabolic / Biological Age: ${bca.metabolicAge ? bca.metabolicAge + ' yrs (Chronological Age: ' + (patient.age || 'N/A') + ' yrs)' : 'Not tested'}
+- BMR / Body Water: ${bca.bmrWater || 'Not recorded'}
+
+POCT LABORATORY READINGS:
 Blood Glucose: ${vitals.glucose ? vitals.glucose + ' mmol/L (' + vitals.glucoseType + ')' : 'N/A'}, HbA1c: ${vitals.hba1c ? vitals.hba1c + '%' : 'N/A'}
 Lipid Panel: TC: ${vitals.tc || 'N/A'} mmol/L, TG: ${vitals.tg || 'N/A'}, HDL: ${vitals.hdl || 'N/A'}, LDL: ${vitals.ldl || 'N/A'}, AI: ${vitals.ai || 'N/A'}, R-CHD: ${vitals.rchd || 'N/A'}
 Kidney Panel: Uric Acid: ${vitals.ua || 'N/A'} umol/L, Creatinine: ${vitals.creatinine || 'N/A'} umol/L, Urea: ${vitals.urea || 'N/A'} mmol/L, eGFR: ${vitals.egfr || 'N/A'}
 Liver Panel: AST: ${vitals.ast || 'N/A'} U/L, ALT: ${vitals.alt || 'N/A'} U/L, Albumin: ${vitals.alb || 'N/A'} g/L
-Specialty Tests: Vit D Home Kit: ${vitals.vitD || 'N/A'}, Ferritin Home Kit: ${vitals.ferritin || 'N/A'}, Rossmax ACT (Artery Condition): ${vitals.rossmaxAct || 'N/A'}
+Specialty Tests: Vit D: ${vitals.vitD || 'N/A'}, Ferritin: ${vitals.ferritin || 'N/A'}, Rossmax ACT (Artery Condition / Vascular Stiffness): ${vitals.rossmaxAct || 'N/A'}
 Other POCT Notes: ${vitals.customPoctNotes || 'None'}
 
-SPECIALTY WELLNESS & SCAN DATA:
-- Airdoc Retinal AI Scan: ${airdocFilePromptText}
-- TEDA Body Composition / Metabolic Scan: ${tedaPromptText}
+SPECIALTY WELLNESS & DIAGNOSTIC SCANS:
+- TEDA TCM & Meridian Wellness Scan:
+  * TEDA Link: ${tedaLink || 'None provided'}
+  * TCM Findings & Meridians: ${tedaNotes || 'Not recorded'}
+  *(Note: TEDA provides Traditional Chinese Medicine electro-meridian bio-resonance analysis evaluating: Qi balance [Qi deficiency, Qi stagnation], Yin & Yang harmony [Yin deficiency, Yang deficiency], 12 main Organ Meridians [Liver, Kidney, Spleen, Heart, Lung, Stomach], Dampness/Phlegm [湿气/痰湿], and vital energy flow.)
+- Airdoc Retinal AI Scan:
+  * ${airdocFilePromptText}
 
 PRESCRIBED / PROPOSED MEDICATIONS:
 ${fullMedsList || 'No prescription medications currently recorded'}
@@ -3749,21 +3803,38 @@ CURRENT / PROPOSED SUPPLEMENTS:
 ${planSupps || 'None recorded'}
 
 CRITICAL CLINICAL INSTRUCTIONS:
-1. AIRDOC RETINAL & TEDA METABOLIC MULTIMODAL SYNTHESIS:
-   - Retinal Microvascular Evaluation (Airdoc):
-     * If an Airdoc Retinal PDF document is attached as an inline part, visually and textually read the document.
-     * Report findings on: optic nerve / cup-to-disc ratio (CDR), retinal microvessels (arteriolar narrowing, AV nicking, microaneurysms, hemorrhages, exudates), hypertensive/diabetic retinopathy signs, and cardiovascular risk score.
-     * Correlate microvascular signs directly with systemic blood pressure and HbA1c control.
-     * If ocular microvascular stress or macular degradation is suspected, recommend PMG ocular supplements (e.g. Nutribridge Opticlear [Lutein, Zeaxanthin, Astaxanthin, Bilberry] or JH Nutrition Eclipx).
-   - Metabolic & Body Composition Evaluation (TEDA):
-     * Analyze visceral adiposity, biological/metabolic age vs chronological age, and skeletal muscle balance.
-     * Correlate visceral fat with lipid profile (TG/HDL ratio, atherogenic index), blood glucose, and liver enzymes (NAFLD/fatty liver risk).
-   - Holistic Vascular-Metabolic Correlation:
-     * Synthesize retinal microvasculature (Airdoc) + large artery stiffness (Rossmax ACT) + visceral fat / body composition (TEDA) + POCT blood biomarkers into a unified cardiovascular-metabolic risk assessment.
-2. DRUG-DRUG & DRUG-SUPPLEMENT INTERACTIONS:
+1. TEDA TCM & MERIDIAN WELLNESS SYNTHESIS:
+   - Evaluate the patient's TCM constitutional status:
+     * Qi Status: Identify Qi deficiency (气虚 - chronic fatigue, weak stamina, spontaneous sweating, poor immunity) or Qi stagnation (气滞 - emotional stress, hypochondriac distension, chest tightness).
+     * Yin/Yang Harmony: Identify Yin deficiency (阴虚 - night sweats, 5-palm heat, dry eyes/throat, hot flashes, borderline HTN) or Yang deficiency (阳虚 - cold intolerance, cold extremities, water retention, low metabolism).
+     * Organ Meridian Health: Identify affected meridians (Liver 肝经 for detox/stress/eyes, Kidney 肾经 for aging/stamina/bone, Spleen 脾经 for digestion/dampness/energy, Heart 心经 for sleep/palpitations, Lung 肺经 for respiratory).
+     * Dampness / Phlegm (湿气/痰湿): Screen for internal dampness predisposing to obesity, high triglycerides, and hyperuricemia.
+   - Integrative TCM Bridge: Correlate TCM findings with Western POCT labs (e.g. Spleen Qi deficiency & dampness aligning with elevated visceral fat/triglycerides; Kidney Yin deficiency aligning with arterial stiffness and hypertension; Liver heat aligning with elevated ALT and ocular redness).
+   - Recommend PMG House Brands with adaptogenic, cellular, or herbal properties (e.g. JH Nutrition Alpha Gold, Livason, Nutribridge Glycoway, Livemore CoQ10 Plus, Ginoba).
+
+2. BODY COMPOSITION ANALYSIS (BCA):
+   - Analyze Visceral Fat level vs. Skeletal Muscle Mass (assess sarcopenic obesity risk).
+   - Compare Metabolic Age to chronological age.
+   - Correlate visceral adiposity with Triglycerides/HDL ratio, fasting glucose, and NAFLD fatty liver risk.
+   - Formulate targeted lifestyle advice (protein balance, resistance exercise, visceral fat loss).
+
+3. AIRDOC RETINAL MICROVASCULAR & OPTIC EVALUATION:
+   - Multimodally inspect the attached Airdoc Retinal PDF report:
+     * Optic Disc & Cup-to-Disc ratio (CDR) for glaucoma risk.
+     * Retinal microvessels (arteriolar narrowing, AV nicking, hemorrhages, microaneurysms, hard exudates).
+     * Hypertensive & Diabetic Retinopathy signs.
+     * Cardiovascular / stroke risk score.
+   - Correlate retinal microvasculature with blood pressure and glycemic stability.
+   - Recommend PMG ocular antioxidants if indicated (e.g. Nutribridge Opticlear [Lutein, Zeaxanthin, Astaxanthin, Bilberry], JH Nutrition Eclipx).
+
+4. MULTI-SYSTEM INTEGRATIVE CLINICAL SYNTHESIS:
+   - Synthesize: Retinal Microvessels (Airdoc) + Large Artery Stiffness (Rossmax ACT) + Body Composition (Visceral Fat / Muscle) + TCM Energetic Constitution (TEDA Qi/Yin/Yang/Meridians) + POCT Laboratory Blood Readings into a unified, holistic health profile.
+
+5. DRUG-DRUG & DRUG-SUPPLEMENT INTERACTIONS:
    - Identify interactions between current/prescribed medications and proposed supplements.
    - Severity: "none", "moderate", or "high". Explain mechanisms clearly.
-3. PMG HOUSE BRAND COMPANION SUPPLEMENT RECOMMENDATIONS:
+
+6. PMG HOUSE BRAND COMPANION SUPPLEMENT RECOMMENDATIONS:
    - Recommend 2-4 companion supplements/nutraceuticals to counter drug-induced depletions (e.g. statin-induced CoQ10 depletion, metformin-induced B12 depletion) or optimize cardiovascular, retinal, metabolic, joint, or liver health based on their POCT readings.
    - CRITICAL: Prioritize PMG House Brands:
      * "JH Nutrition" (Alpha Gold, Systoright, Flexson, Livason, Nacous NAC, Eclipx, Immucol, Citazinc)
@@ -3771,30 +3842,35 @@ CRITICAL CLINICAL INSTRUCTIONS:
      * "Nutribridge" (Glycoway, Lipicholin, Neo-D3, Opticlear, Q-Folix, Vitaglo, Zencool, Flexsure Gold)
      * "Livemore" (Co-Q10 Plus, Gasmint, Ginoba, Methylcobalamin, Neo-D3, Neomega)
      * Other PMG brands: Biowell, Lucentia, Dermisk, Axon
-4. CHRONOTHERAPY (BEST TIMING OF INTAKE):
+
+7. CHRONOTHERAPY (BEST TIMING OF INTAKE):
    - Categorize all medications and recommended supplements into: Morning, Afternoon, Evening, Bedtime.
-   - State specific rationale (e.g., morning BP surge, fat solubility with food, statin cholesterol synthesis peak overnight).
-5. CLINICAL ASSESSMENT & PRE-DIAGNOSTIC:
+   - State specific rationale.
+
+8. CLINICAL ASSESSMENT & PRE-DIAGNOSTIC:
    - Concise pharmacist impression of current disease control and risk stratification.
-6. COUNSELLING & LIFESTYLE:
-   - 3 to 5 targeted, practical lifestyle and diet counselling pearls (including dietary advice for visceral fat or retinal health).
+
+9. COUNSELLING & LIFESTYLE:
+   - 3 to 5 targeted, practical lifestyle and diet counselling pearls (including dietary advice for visceral fat, dampness, or retinal health).
 
 RESPONSE MUST BE STRICTLY VALID JSON matching this structure:
 {
   "interactionSummary": "none" | "moderate" | "high",
   "interactionDetails": "string",
-  "airdocTedaSynthesis": {
+  "specialtySynthesis": {
     "airdocRetinalStatus": "e.g. Normal / Early Arteriolar Narrowing / Grade 1 Hypertensive Retinopathy / Glaucoma Risk / Not Attached",
     "airdocSummary": "Concise summary of retinal microvascular and optic findings from Airdoc (or note stating no scan was attached)",
-    "tedaMetabolicStatus": "e.g. Elevated Visceral Fat / Increased Metabolic Age / Balanced / Not Recorded",
-    "tedaSummary": "Concise summary of body composition, visceral adiposity and cellular health",
-    "multiSystemCorrelation": "Holistic clinical synthesis correlating retinal microvessels, arterial stiffness, visceral fat, and blood POCT labs"
+    "bcaStatus": "e.g. Optimal / Elevated Visceral Fat / Sarcopenic Risk / Metabolic Age +7 yrs / Not Tested",
+    "bcaSummary": "Concise summary of visceral fat, skeletal muscle mass, body fat %, and metabolic age",
+    "tedaTcmStatus": "e.g. Spleen Qi Deficiency with Dampness / Kidney Yin Weak / Liver Fire / Balanced / Not Recorded",
+    "tedaTcmSummary": "Concise summary of TCM Qi, Yin-Yang balance, meridian vitality, and dampness/phlegm",
+    "multiSystemCorrelation": "Holistic clinical synthesis correlating retinal microvessels, arterial stiffness, body composition, TCM meridian patterns, and blood POCT labs"
   },
   "houseBrands": [
     {
       "brand": "Livemore" | "JH Nutrition" | "V-Infinity" | "Nutribridge" | "PMG",
       "product": "Product Name",
-      "indication": "Clinical rationale (including eye microvasculature, statin companion, or metabolic support)",
+      "indication": "Clinical rationale (addressing drug depletions, metabolic health, ocular protection, or TCM constitutional support)",
       "dosage": "e.g. 1 capsule OD after breakfast"
     }
   ],
@@ -3913,19 +3989,16 @@ function renderAiClinicalReview(res) {
     }
   }
 
-  // 1.5. Airdoc Retinal & TEDA Metabolic Synthesis
+  // 1.5. Specialty Scans: Airdoc, Body Composition & TEDA TCM Synthesis
   const specPanel = document.getElementById('aiSpecialtyScansPanel');
   if (specPanel) {
-    const synth = res.airdocTedaSynthesis;
-    if (synth && (synth.airdocSummary || synth.tedaSummary || synth.multiSystemCorrelation)) {
+    const synth = res.specialtySynthesis || res.airdocTedaSynthesis;
+    if (synth && (synth.airdocSummary || synth.bcaSummary || synth.tedaTcmSummary || synth.tedaSummary || synth.multiSystemCorrelation)) {
       specPanel.classList.remove('hidden');
 
+      // Airdoc Retinal Card
       const airdocBadge = document.getElementById('aiAirdocStatusBadge');
       const airdocText = document.getElementById('aiAirdocSummaryText');
-      const tedaBadge = document.getElementById('aiTedaStatusBadge');
-      const tedaText = document.getElementById('aiTedaSummaryText');
-      const corrText = document.getElementById('aiMultiSystemCorrText');
-
       if (airdocBadge) {
         airdocBadge.textContent = synth.airdocRetinalStatus || 'Evaluated';
         const st = (synth.airdocRetinalStatus || '').toLowerCase();
@@ -3941,23 +4014,46 @@ function renderAiClinicalReview(res) {
         airdocText.textContent = synth.airdocSummary || 'No specific retinal findings reported.';
       }
 
+      // Body Composition (BCA) Card
+      const bcaBadge = document.getElementById('aiBcaStatusBadge');
+      const bcaText = document.getElementById('aiBcaSummaryText');
+      if (bcaBadge) {
+        bcaBadge.textContent = synth.bcaStatus || 'Evaluated';
+        const st = (synth.bcaStatus || '').toLowerCase();
+        if (st.includes('optimal') || st.includes('healthy') || st.includes('balanced')) {
+          bcaBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200';
+        } else if (st.includes('elevated') || st.includes('high') || st.includes('sarcopenic') || st.includes('+')) {
+          bcaBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200';
+        } else {
+          bcaBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200';
+        }
+      }
+      if (bcaText) {
+        bcaText.textContent = synth.bcaSummary || 'Visceral fat and muscle mass analyzed.';
+      }
+
+      // TEDA TCM & Meridian Card
+      const tedaBadge = document.getElementById('aiTedaStatusBadge');
+      const tedaText = document.getElementById('aiTedaSummaryText');
       if (tedaBadge) {
-        tedaBadge.textContent = synth.tedaMetabolicStatus || 'Evaluated';
-        const st = (synth.tedaMetabolicStatus || '').toLowerCase();
-        if (st.includes('healthy') || st.includes('balanced') || st.includes('optimal')) {
+        tedaBadge.textContent = synth.tedaTcmStatus || synth.tedaMetabolicStatus || 'Evaluated';
+        const st = (synth.tedaTcmStatus || synth.tedaMetabolicStatus || '').toLowerCase();
+        if (st.includes('balanced') || st.includes('harmonious') || st.includes('normal')) {
           tedaBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200';
-        } else if (st.includes('elevated') || st.includes('increased') || st.includes('stress') || st.includes('high')) {
-          tedaBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200';
+        } else if (st.includes('deficiency') || st.includes('stagnation') || st.includes('fire') || st.includes('damp') || st.includes('weak') || st.includes('stasis')) {
+          tedaBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200';
         } else {
           tedaBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200';
         }
       }
       if (tedaText) {
-        tedaText.textContent = synth.tedaSummary || 'No specific body composition findings reported.';
+        tedaText.textContent = synth.tedaTcmSummary || synth.tedaSummary || 'TCM meridian energy and Qi/Yin/Yang balance analyzed.';
       }
 
+      // Holistic Multi-System Correlation
+      const corrText = document.getElementById('aiMultiSystemCorrText');
       if (corrText) {
-        corrText.textContent = synth.multiSystemCorrelation || 'Retinal microvasculature, body composition, and arterial conditions correlated with POCT panel.';
+        corrText.textContent = synth.multiSystemCorrelation || 'Retinal microvasculature, body composition, TCM constitution, and arterial conditions correlated with POCT panel.';
       }
     } else {
       specPanel.classList.add('hidden');
@@ -4094,8 +4190,9 @@ function applyAiAssessment() {
 
   const existing = preDiagInput.value.trim();
   let aiText = `[AI Clinical Review]: ${currentAiReviewResult.assessmentSummary}`;
-  if (currentAiReviewResult.airdocTedaSynthesis?.multiSystemCorrelation) {
-    aiText += `\n[Vascular & Metabolic Synthesis]: ${currentAiReviewResult.airdocTedaSynthesis.multiSystemCorrelation}`;
+  const synth = currentAiReviewResult.specialtySynthesis || currentAiReviewResult.airdocTedaSynthesis;
+  if (synth?.multiSystemCorrelation) {
+    aiText += `\n[Integrative Health Synthesis]: ${synth.multiSystemCorrelation}`;
   }
 
   if (existing) {
