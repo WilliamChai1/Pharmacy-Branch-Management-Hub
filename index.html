@@ -1003,23 +1003,31 @@
           class="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm">
           <i class="fa-solid fa-file-excel"></i> Export Excel
         </button>
+        <!-- PMG OneDrive Folder Live Sync Button & Status Badge -->
+        <button id="patientOneDriveConnectBtn" type="button" onclick="window.pmgOneDriveSync.connectFolder()"
+          class="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Link directly to your branch folder or 'Patient care' folder in OneDrive for live auto-sync">
+          <i class="fa-solid fa-folder-open"></i> <span>Connect OneDrive Folder</span>
+        </button>
+        <span id="oneDriveLiveSyncBadge" onclick="openOneDriveSyncModal()"
+          class="cursor-pointer text-[11px] font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 px-3 py-1.5 rounded-lg border border-gray-300 flex items-center gap-1.5 transition shadow-xs" title="Click to view OneDrive Live Sync details or change branch folder">
+          <i id="oneDriveLiveSyncIcon" class="fa-brands fa-microsoft text-blue-600"></i>
+          <span id="oneDriveLiveSyncText">OneDrive: Connect Folder</span>
+        </span>
+
+        <!-- Fallback Manual Backup Buttons -->
         <button id="patientOneDriveBackupBtn" type="button" onclick="backupToOneDrive()"
-          class="bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Save encrypted daily backup directly to company Microsoft OneDrive">
-          <i class="fa-brands fa-microsoft"></i> Daily Backup (OneDrive)
+          class="bg-sky-600 hover:bg-sky-700 text-white text-xs font-medium px-2.5 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Save manual daily backup directly to company Microsoft OneDrive">
+          <i class="fa-brands fa-microsoft"></i> Manual Backup
         </button>
         <button id="patientBackupBtn" type="button" onclick="backupToPenDrive()"
           class="bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium px-2.5 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Download encrypted full patient & document backup to USB Drive (Alternative)">
           <i class="fa-solid fa-hard-drive"></i> USB Drive
         </button>
         <button id="patientRestoreBtn" type="button" onclick="document.getElementById('restoreBackupInput').click()"
-          class="bg-gray-700 hover:bg-gray-800 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Restore patient database and reports from OneDrive or USB backup">
+          class="bg-gray-700 hover:bg-gray-800 text-white text-xs font-medium px-2.5 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Restore patient database and reports from OneDrive or USB backup">
           <i class="fa-solid fa-file-import"></i> Restore Backup
         </button>
         <input type="file" id="restoreBackupInput" accept=".pmgbak,.json" class="hidden" onchange="handleRestoreBackupFile(event)">
-        <span id="backupStatusBadge" onclick="openOneDriveGuideModal()"
-          class="cursor-pointer text-[11px] font-semibold text-gray-500 bg-gray-100 hover:bg-gray-200 px-2.5 py-1.5 rounded-lg border border-gray-200 flex items-center gap-1.5 transition" title="Click to view OneDrive Daily Backup status & sharing instructions">
-          <i class="fa-brands fa-microsoft text-sky-600"></i> <span id="backupStatusText">OneDrive: Checking...</span>
-        </span>
       </div>
     </div>
 
@@ -2424,6 +2432,91 @@
     </div>
   </div>
 
+  <!-- Modal: PMG OneDrive Live Sync Manager -->
+  <div id="oneDriveSyncModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+      <!-- Header -->
+      <div class="bg-gradient-to-r from-blue-900 to-indigo-900 px-6 py-4 flex items-center justify-between text-white">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-sky-300 text-xl">
+            <i class="fa-brands fa-microsoft"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold">PMG OneDrive Live Sync Engine</h3>
+            <p class="text-xs text-blue-200">Multi-Branch Real-Time Clinical Folder Synchronization</p>
+          </div>
+        </div>
+        <button onclick="closeOneDriveSyncModal()" class="text-white/70 hover:text-white text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="p-6 space-y-4 text-xs overflow-y-auto max-h-[70vh]">
+        <!-- Current Status Box -->
+        <div class="p-4 bg-gray-50 border border-gray-200 rounded-xl space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-gray-700">Current Sync Status:</span>
+            <span id="syncModalStatusPill" class="px-2.5 py-1 rounded-full text-xs font-bold bg-gray-200 text-gray-700">Checking...</span>
+          </div>
+          <div class="flex items-center justify-between text-gray-600">
+            <span>Linked Folder:</span>
+            <span id="syncModalFolderName" class="font-mono font-bold text-blue-700 truncate max-w-[260px]">—</span>
+          </div>
+          <div class="flex items-center justify-between text-gray-600">
+            <span>Active Branch:</span>
+            <span id="syncModalBranchName" class="font-bold text-gray-800">—</span>
+          </div>
+        </div>
+
+        <!-- 7 Branches Detected List -->
+        <div class="p-4 bg-blue-50/70 border border-blue-200 rounded-xl">
+          <h4 class="font-bold text-blue-950 mb-1 flex items-center gap-1.5">
+            <i class="fa-solid fa-store text-blue-700"></i> Supported PMG Outlets (OneDrive Live Sync):
+          </h4>
+          <p class="text-gray-600 mb-2">Folder path: <code class="bg-blue-100/80 text-blue-900 px-1 py-0.5 rounded font-mono text-[11px]">OneDrive - Public Medicare Group Sdn Bhd > William (Pharmacist) > Patient care</code></p>
+          <div class="grid grid-cols-2 gap-1.5 text-[11px] font-semibold text-gray-700">
+            <span class="flex items-center gap-1"><i class="fa-solid fa-circle-check text-emerald-600 text-[10px]"></i> ASTANA</span>
+            <span class="flex items-center gap-1"><i class="fa-solid fa-circle-check text-emerald-600 text-[10px]"></i> KOTA SENTOSA</span>
+            <span class="flex items-center gap-1"><i class="fa-solid fa-circle-check text-emerald-600 text-[10px]"></i> MALIHAH</span>
+            <span class="flex items-center gap-1"><i class="fa-solid fa-circle-check text-emerald-600 text-[10px]"></i> METROCITY</span>
+            <span class="flex items-center gap-1"><i class="fa-solid fa-circle-check text-emerald-600 text-[10px]"></i> MJK</span>
+            <span class="flex items-center gap-1"><i class="fa-solid fa-circle-check text-emerald-600 text-[10px]"></i> MOYAN</span>
+            <span class="flex items-center gap-1"><i class="fa-solid fa-circle-check text-emerald-600 text-[10px]"></i> SEMARIANG</span>
+          </div>
+        </div>
+
+        <!-- Instructions -->
+        <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-xl space-y-1.5 text-amber-950">
+          <p class="font-bold flex items-center gap-1.5"><i class="fa-solid fa-circle-info text-amber-600"></i> How to Connect:</p>
+          <ul class="list-disc pl-4 space-y-1 text-gray-700">
+            <li><b>For Branch Pharmacists:</b> Click "Connect Folder" and choose your specific branch folder (e.g. <code>KOTA SENTOSA</code>).</li>
+            <li><b>For Area Manager William:</b> Choose the parent <code>Patient care</code> folder to monitor all 7 branches.</li>
+            <li>The browser remembers this folder. All clinical encounters auto-save silently without clicking backup!</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="bg-gray-50 px-6 py-4 border-t flex items-center justify-between flex-wrap gap-2">
+        <button type="button" onclick="window.pmgOneDriveSync.disconnectFolder(); updateSyncModalInfo();"
+          class="px-3 py-2 text-rose-600 hover:text-rose-800 text-xs font-semibold">
+          Disconnect Sync
+        </button>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="window.pmgOneDriveSync.syncWithOneDriveFolder(true); updateSyncModalInfo();"
+            class="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
+            <i class="fa-solid fa-arrows-rotate"></i> Sync Now
+          </button>
+          <button type="button" onclick="window.pmgOneDriveSync.connectFolder().then(() => updateSyncModalInfo())"
+            class="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+            <i class="fa-solid fa-folder-open"></i> Link / Change Folder
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
@@ -2677,6 +2770,7 @@
 <script src="js/audit.js"></script>
 <script src="js/scheduler.js"></script>
 <script src="js/db.js"></script>
+<script src="js/onedrive-sync.js"></script>
 <script src="js/patient.js"></script>
 
 <script>

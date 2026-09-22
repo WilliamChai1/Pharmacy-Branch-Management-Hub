@@ -318,6 +318,11 @@ function loadPatientsData() {
 
 function savePatientsData() {
   localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
+  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveToOneDrive === 'function') {
+    window.pmgOneDriveSync.saveToOneDrive(patientsData).catch(err => {
+      console.warn('[PMG OneDrive Sync] Auto-save error:', err);
+    });
+  }
 }
 
 // ─── EVENT LISTENERS ─────────────────────────────────────────────────────────
@@ -328,7 +333,14 @@ function setupPatientEventListeners() {
   });
 
   const branchFilter = document.getElementById('patientBranchFilter');
-  if (branchFilter) branchFilter.addEventListener('change', () => renderPatientModule());
+  if (branchFilter) {
+    branchFilter.addEventListener('change', () => {
+      if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.syncWithOneDriveFolder === 'function') {
+        window.pmgOneDriveSync.syncWithOneDriveFolder(true).catch(() => {});
+      }
+      renderPatientModule();
+    });
+  }
 
   const searchInput = document.getElementById('patientSearchInput');
   if (searchInput) searchInput.addEventListener('input', () => renderPatientModule());
@@ -2983,12 +2995,13 @@ function closeOneDriveGuideModal() {
 // ─── BRANCH OPERATING HOURS & DYNAMIC PHARMACIST SCHEDULES ───────────────────
 // ═════════════════════════════════════════════════════════════════════════════
 const BRANCH_SCHEDULES = {
-  'KS01': { name: 'Kota Sentosa (KS01)', open: '07:30', close: '21:30', pharmacist: 'Pharmacist William / Ting', phone: '60168334455' },
-  'BR02': { name: 'Branch 02 (BR02)',    open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
-  'BR03': { name: 'Branch 03 (BR03)',    open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
-  'BR04': { name: 'Branch 04 (BR04)',    open: '08:30', close: '21:30', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
-  'BR05': { name: 'Branch 05 (BR05)',    open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
-  'BR06': { name: 'Branch 06 (BR06)',    open: '07:30', close: '21:30', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
+  'KS01':      { name: 'Kota Sentosa (KS01)', open: '07:30', close: '21:30', pharmacist: 'Pharmacist William / Ting', phone: '60168334455' },
+  'ASTANA':    { name: 'Astana (ASTANA)',     open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
+  'MALIHAH':   { name: 'Malihah (MALIHAH)',   open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
+  'METROCITY': { name: 'Metrocity (METROCITY)', open: '08:30', close: '21:30', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
+  'MJK':       { name: 'MJK (MJK)',           open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
+  'MOYAN':     { name: 'Moyan (MOYAN)',       open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
+  'SEMARIANG': { name: 'Semariang (SEMARIANG)', open: '07:30', close: '21:30', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
 };
 
 function escHtml(str) {

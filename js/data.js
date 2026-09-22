@@ -30,12 +30,13 @@ const GOOGLE_SHEETS_CONFIG = {
 
 // ─── BRANCHES ────────────────────────────────────────────────────────────────
 const BRANCHES = [
-  { code: 'KS01', name: 'Kota Sentosa', startTime: '0730' },
-  { code: 'BR02', name: 'Branch 02',    startTime: '0800' },
-  { code: 'BR03', name: 'Branch 03',    startTime: '0800' },
-  { code: 'BR04', name: 'Branch 04',    startTime: '0830' },
-  { code: 'BR05', name: 'Branch 05',    startTime: '0800' },
-  { code: 'BR06', name: 'Branch 06',    startTime: '0730' },
+  { code: 'KS01',       name: 'Kota Sentosa', startTime: '0730' },
+  { code: 'ASTANA',     name: 'Astana',       startTime: '0800' },
+  { code: 'MALIHAH',    name: 'Malihah',      startTime: '0800' },
+  { code: 'METROCITY',  name: 'Metrocity',    startTime: '0830' },
+  { code: 'MJK',        name: 'MJK',          startTime: '0800' },
+  { code: 'MOYAN',      name: 'Moyan',        startTime: '0800' },
+  { code: 'SEMARIANG',  name: 'Semariang',    startTime: '0730' }
 ];
 
 // ─── USERS / CREDENTIALS (secure internal storage) ───────────────────────────
