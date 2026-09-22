@@ -1120,13 +1120,14 @@
         <table class="w-full text-xs text-left">
           <thead class="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200 uppercase tracking-wider text-[11px]">
             <tr>
-              <th class="px-4 py-3">ID</th>
-              <th class="px-4 py-3">Patient Name</th>
-              <th class="px-4 py-3">Phone</th>
-              <th class="px-4 py-3">Branch</th>
-              <th class="px-4 py-3">Conditions</th>
-              <th class="px-4 py-3">Latest BP</th>
-              <th class="px-4 py-3 text-right">Actions</th>
+              <th class="px-3 py-3">ID</th>
+              <th class="px-3 py-3">Patient Name</th>
+              <th class="px-3 py-3">Phone</th>
+              <th class="px-3 py-3">Branch</th>
+              <th class="px-3 py-3">Next Appt / Reminder Date</th>
+              <th class="px-4 py-3">Medication List</th>
+              <th class="px-4 py-3">Supplement List</th>
+              <th class="px-3 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody id="patientDirectoryBody" class="divide-y divide-gray-100"></tbody>
@@ -1648,14 +1649,20 @@
           </div>
           <div class="p-4 space-y-3 bg-white">
             <div>
-              <label class="block font-semibold text-gray-700 mb-1">💊 Medications (Rx / Dispensed)</label>
-              <input type="text" id="encPlanMeds" placeholder="e.g. Amlodipine 10mg OD morning, Metformin 500mg BD with meals"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none">
+              <label class="block font-semibold text-gray-700 mb-1 flex items-center justify-between">
+                <span>💊 Medications (Rx / Dispensed)</span>
+                <span class="text-[10px] text-gray-400 font-normal">Press Enter for one item per line</span>
+              </label>
+              <textarea id="encPlanMeds" rows="3" placeholder="e.g.&#10;Amlodipine 10mg OD (Morning)&#10;Metformin 500mg BD (With Meals)&#10;Perindopril 4mg OD"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none leading-relaxed font-sans"></textarea>
             </div>
             <div>
-              <label class="block font-semibold text-gray-700 mb-1">🌿 Companion Supplements (Nutraceuticals / House Brand)</label>
-              <input type="text" id="encPlanSupps" placeholder="e.g. CoQ10 100mg OD (statin companion), B-Complex (metformin companion), Omega-3 1200mg"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none">
+              <label class="block font-semibold text-gray-700 mb-1 flex items-center justify-between">
+                <span>🌿 Companion Supplements (Nutraceuticals / House Brand)</span>
+                <span class="text-[10px] text-gray-400 font-normal">Press Enter for one item per line</span>
+              </label>
+              <textarea id="encPlanSupps" rows="3" placeholder="e.g.&#10;CoQ10 100mg OD (Statin Companion)&#10;B-Complex OD (Metformin Companion)&#10;Omega-3 Fish Oil 1200mg OD"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none leading-relaxed font-sans"></textarea>
             </div>
             <div>
               <label class="block font-semibold text-gray-700 mb-1">🗣️ Patient Counselling & Lifestyle Advice</label>
@@ -1668,25 +1675,21 @@
                 class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none">
             </div>
 
-            <!-- Integrated Next TCA (Return Appointment) -->
+            <!-- Next TCA Date Reminder -->
             <div class="bg-indigo-50/80 border border-indigo-200 rounded-xl p-3.5 mt-2">
               <div class="flex items-center justify-between mb-2">
                 <span class="font-bold text-indigo-900 text-xs flex items-center gap-1.5">
-                  <i class="fa-regular fa-calendar-check text-indigo-600"></i> Next TCA (To Come Again / Return Appointment)
+                  <i class="fa-regular fa-bell text-indigo-600"></i> Next TCA Date Reminder (预计复诊/提醒日期)
                 </span>
-                <span class="text-[10px] text-indigo-700 font-semibold bg-indigo-100/80 px-2 py-0.5 rounded-md">Auto-books into Appointment Queue</span>
+                <span class="text-[10px] text-indigo-700 font-semibold bg-indigo-100/80 px-2 py-0.5 rounded-md">Customer self-books exact slot via link</span>
               </div>
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-[11px] text-gray-700 font-medium mb-0.5">TCA Date</label>
+                  <label class="block text-[11px] text-gray-700 font-medium mb-0.5">Next TCA Date Reminder</label>
                   <input type="date" id="encTcaDate" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white outline-none focus:ring-1 focus:ring-indigo-500">
                 </div>
                 <div>
-                  <label class="block text-[11px] text-gray-700 font-medium mb-0.5">Time Slot</label>
-                  <input type="time" id="encTcaTime" value="10:00" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white outline-none focus:ring-1 focus:ring-indigo-500">
-                </div>
-                <div>
-                  <label class="block text-[11px] text-gray-700 font-medium mb-0.5">Quick Intervals</label>
+                  <label class="block text-[11px] text-gray-700 font-medium mb-0.5">Quick Supply Intervals</label>
                   <div class="grid grid-cols-4 gap-1">
                     <button type="button" onclick="setQuickTca(14)" class="px-1 py-1.5 bg-white border border-indigo-200 hover:bg-indigo-100 rounded text-[11px] font-semibold text-indigo-700 transition text-center">+2 Wks</button>
                     <button type="button" onclick="setQuickTca(30)" class="px-1 py-1.5 bg-white border border-indigo-200 hover:bg-indigo-100 rounded text-[11px] font-semibold text-indigo-700 transition text-center">+1 Mo</button>
@@ -1696,7 +1699,7 @@
                 </div>
               </div>
               <div class="mt-2.5">
-                <label class="block text-[11px] text-gray-700 font-medium mb-0.5">TCA Purpose / Follow-up Notes</label>
+                <label class="block text-[11px] text-gray-700 font-medium mb-0.5">TCA Purpose / Reason to Return (复诊目的)</label>
                 <input type="text" id="encTcaPurpose" placeholder="e.g. Chronic Medication Refill & Repeat BP / Lipid Review" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white outline-none focus:ring-1 focus:ring-indigo-500">
               </div>
             </div>

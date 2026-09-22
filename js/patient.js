@@ -345,6 +345,41 @@ function setupPatientEventListeners() {
   const exportBtn = document.getElementById('patientExportExcelBtn');
   if (exportBtn) exportBtn.addEventListener('click', exportPatientDataToExcel);
 
+  // Auto-populate meds & supplements when selected patient in Encounter Modal changes
+  const pSel = document.getElementById('encounterPatientSelect');
+  if (pSel) {
+    pSel.addEventListener('change', (e) => {
+      const pId = e.target.value;
+      const p = patientsData.find(pt => pt.id === pId);
+      if (p) {
+        if (p.medications && p.medications.length) {
+          document.getElementById('encPlanMeds').value = p.medications.map(m => typeof m === 'string' ? m : `${m.name} ${m.dosage || ''}`.trim()).join('\n');
+        } else if (p.encounters && p.encounters.length && p.encounters[0].planMedications) {
+          document.getElementById('encPlanMeds').value = p.encounters[0].planMedications;
+        } else {
+          document.getElementById('encPlanMeds').value = '';
+        }
+
+        if (p.encounters && p.encounters.length && p.encounters[0].planSupplements) {
+          document.getElementById('encPlanSupps').value = p.encounters[0].planSupplements;
+        } else {
+          document.getElementById('encPlanSupps').value = '';
+        }
+
+        if (p.nextTcaDate) {
+          document.getElementById('encTcaDate').value = p.nextTcaDate;
+        } else {
+          document.getElementById('encTcaDate').value = '';
+        }
+        if (p.nextTcaPurpose) {
+          document.getElementById('encTcaPurpose').value = p.nextTcaPurpose;
+        } else {
+          document.getElementById('encTcaPurpose').value = 'Chronic Medication Refill & Health Review';
+        }
+      }
+    });
+  }
+
   // Auto-calculation listeners inside Encounter Modal
   setupEncounterAutoCalculations();
 }
@@ -789,38 +824,121 @@ function renderPatientDirectory(patients) {
   if (!tbody) return;
 
   if (!patients.length) {
-    tbody.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-gray-400 text-sm">
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center py-10 text-gray-400 text-sm">
       No patients matching your search criteria. Click <b>"+ New Patient"</b> to register.
     </td></tr>`;
     return;
   }
 
+  const todayStr = getTodayDateString(0);
+
   tbody.innerHTML = patients.map(p => {
     const lastEnc = (p.encounters && p.encounters.length) ? p.encounters[0] : null;
-    let bpDisplay = '—';
-    if (lastEnc && lastEnc.vitals && lastEnc.vitals.bpSys && lastEnc.vitals.bpDia) {
-      const cls = getBpClassification(lastEnc.vitals.bpSys, lastEnc.vitals.bpDia);
-      bpDisplay = `<span class="inline-block px-1.5 py-0.5 rounded text-[11px] ${cls.badge}">${lastEnc.vitals.bpSys}/${lastEnc.vitals.bpDia} mmHg</span>`;
+
+    // 1. Next Appointment / TCA Reminder Date
+    const futureApts = (p.appointments || []).filter(a => a.status === 'Scheduled').sort((a, b) => a.date.localeCompare(b.date));
+    const nextApt = futureApts.length ? futureApts[0] : null;
+
+    let reminderHtml = '<span class="text-xs text-gray-400 italic">None</span>';
+    if (nextApt) {
+      const isToday = (nextApt.date === todayStr);
+      const isPast = (nextApt.date < todayStr);
+      let badgeCls = 'bg-blue-50 text-blue-800 border-blue-200';
+      if (isToday) badgeCls = 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold';
+      else if (isPast) badgeCls = 'bg-rose-50 text-rose-800 border-rose-300 font-bold';
+
+      reminderHtml = `
+        <div class="space-y-0.5">
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border ${badgeCls}">
+            <i class="fa-regular fa-calendar-check text-[10px]"></i> ${nextApt.date} ${nextApt.time ? '· ' + nextApt.time : ''}
+          </span>
+          <p class="text-[10px] text-gray-500 truncate max-w-[170px]" title="${escHtml(nextApt.purpose || 'Appointment')}">
+            ${escHtml(nextApt.purpose || 'Appointment')}
+          </p>
+        </div>
+      `;
+    } else if (p.nextTcaDate) {
+      const isPast = (p.nextTcaDate < todayStr);
+      const isToday = (p.nextTcaDate === todayStr);
+      let badgeCls = 'bg-purple-50 text-purple-800 border-purple-200';
+      if (isToday) badgeCls = 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold';
+      else if (isPast) badgeCls = 'bg-amber-50 text-amber-800 border-amber-300 font-bold';
+
+      reminderHtml = `
+        <div class="space-y-0.5">
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border ${badgeCls}">
+            <i class="fa-regular fa-bell text-[10px]"></i> TCA: ${p.nextTcaDate}
+          </span>
+          <p class="text-[10px] text-gray-500 truncate max-w-[170px]" title="${escHtml(p.nextTcaPurpose || 'Follow-up Reminder')}">
+            ${escHtml(p.nextTcaPurpose || 'Follow-up Reminder')}
+          </p>
+        </div>
+      `;
+    }
+
+    // 2. Medication List
+    let medsList = [];
+    if (p.medications && p.medications.length) {
+      medsList = p.medications.map(m => typeof m === 'string' ? m : `${m.name} ${m.dosage || ''}`.trim());
+    } else if (lastEnc && lastEnc.planMedications) {
+      medsList = lastEnc.planMedications.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    }
+
+    let medsHtml = '<span class="text-xs text-gray-400 italic">None recorded</span>';
+    if (medsList.length) {
+      medsHtml = `
+        <div class="space-y-1 max-w-[240px]">
+          ${medsList.slice(0, 3).map(m => `
+            <div class="text-[11px] font-medium text-gray-800 truncate flex items-center gap-1.5" title="${escHtml(m)}">
+              <span class="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></span>
+              <span class="truncate">${escHtml(m)}</span>
+            </div>
+          `).join('')}
+          ${medsList.length > 3 ? `<span class="text-[10px] font-semibold text-blue-600 cursor-pointer block hover:underline" onclick="viewPatientProfile('${p.id}')">+${medsList.length - 3} more...</span>` : ''}
+        </div>
+      `;
+    }
+
+    // 3. Supplement List
+    let suppsList = [];
+    if (lastEnc && lastEnc.planSupplements) {
+      suppsList = lastEnc.planSupplements.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    } else if (p.supplements && p.supplements.length) {
+      suppsList = p.supplements.map(s => typeof s === 'string' ? s : s.name).filter(Boolean);
+    }
+
+    let suppsHtml = '<span class="text-xs text-gray-400 italic">None</span>';
+    if (suppsList.length) {
+      suppsHtml = `
+        <div class="space-y-1 max-w-[220px]">
+          ${suppsList.slice(0, 3).map(s => `
+            <div class="text-[11px] font-medium text-emerald-800 truncate flex items-center gap-1.5" title="${escHtml(s)}">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+              <span class="truncate">${escHtml(s)}</span>
+            </div>
+          `).join('')}
+          ${suppsList.length > 3 ? `<span class="text-[10px] font-semibold text-emerald-600 cursor-pointer block hover:underline" onclick="viewPatientProfile('${p.id}')">+${suppsList.length - 3} more...</span>` : ''}
+        </div>
+      `;
     }
 
     return `
       <tr class="hover:bg-blue-50/40 transition border-b border-gray-100">
-        <td class="px-4 py-3 font-mono text-xs text-gray-500 font-semibold">${p.id}</td>
-        <td class="px-4 py-3">
+        <td class="px-3 py-3 font-mono text-xs text-gray-500 font-semibold">${p.id}</td>
+        <td class="px-3 py-3">
           <button onclick="viewPatientProfile('${p.id}')" class="text-blue-700 hover:underline font-bold text-left block">
             ${p.name}
           </button>
           <span class="text-[11px] text-gray-400">${p.gender}, ${p.age} yrs · ${p.ic || 'No IC'}</span>
         </td>
-        <td class="px-4 py-3 text-xs text-gray-700">${p.phone || '—'}</td>
-        <td class="px-4 py-3">
+        <td class="px-3 py-3 text-xs text-gray-700">${p.phone || '—'}</td>
+        <td class="px-3 py-3">
           <span class="bg-gray-100 text-gray-800 text-xs font-semibold px-2 py-0.5 rounded">${p.branch}</span>
         </td>
-        <td class="px-4 py-3">
-          ${(p.conditions || []).map(c => `<span class="inline-block bg-blue-50 text-blue-700 text-[10px] font-medium px-1.5 py-0.5 rounded mr-1">${c}</span>`).join('') || '<span class="text-xs text-gray-400">None</span>'}
-        </td>
-        <td class="px-4 py-3 text-xs">${bpDisplay}</td>
-        <td class="px-4 py-3 text-right whitespace-nowrap">
+        <td class="px-3 py-3">${reminderHtml}</td>
+        <td class="px-4 py-3">${medsHtml}</td>
+        <td class="px-4 py-3">${suppsHtml}</td>
+        <td class="px-3 py-3 text-right whitespace-nowrap">
           <button onclick="viewPatientProfile('${p.id}')"
             class="bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 transition mr-1">
             <i class="fa-regular fa-folder-open"></i> Profile
@@ -1015,12 +1133,16 @@ function buildPatientSupplyBookingMessage(patient) {
   const bookingUrl = getPatientSelfBookingUrl(patient);
   const patientName = patient.name || 'Pelanggan';
 
+  const tcaReminderZh = patient.nextTcaDate ? `\n\n🗓️ 建议复查/续药提醒日期：${patient.nextTcaDate}${patient.nextTcaPurpose ? '（' + patient.nextTcaPurpose + '）' : ''}` : '';
+  const tcaReminderMy = patient.nextTcaDate ? `\n\n🗓️ Cadangan Tarikh Temujanji Ulangan: ${patient.nextTcaDate}${patient.nextTcaPurpose ? ' (' + patient.nextTcaPurpose + ')' : ''}` : '';
+  const tcaReminderEn = patient.nextTcaDate ? `\n\n🗓️ Recommended Follow-up / Refill Date: ${patient.nextTcaDate}${patient.nextTcaPurpose ? ' (' + patient.nextTcaPurpose + ')' : ''}` : '';
+
   if (lang === 'Chinese') {
-    return `您好 ${patientName}，这里是 PMG Pharmacy（${branchName}）药剂团队。🌸\n\n${supplyText}\n\n为方便您妥善安排时间，我们特别为您开通了【顾客线上自主预约系统】。您可以直接点击下方专属链接，自主挑选最适合您的复查与取药时间：\n\n👉 点击预约专属链接：\n${bookingUrl}\n\n⏰ 药剂师驻店时间：${openTime} – ${closeTime}（星期一至星期日）\n👨‍⚕️ 驻店药剂师：${pharmacistName}\n\n如果您有任何药物疑问，或需要我们提前备妥药物，欢迎直接回复此信息。祝您身体健康，平安顺心！`;
+    return `您好 ${patientName}，这里是 PMG Pharmacy（${branchName}）药剂团队。🌸\n\n${supplyText}${tcaReminderZh}\n\n为方便您妥善安排时间，我们特别为您开通了【顾客线上自主预约系统】。您可以直接点击下方专属链接，自主挑选最适合您的复查与取药时间：\n\n👉 点击预约专属链接：\n${bookingUrl}\n\n⏰ 药剂师驻店时间：${openTime} – ${closeTime}（星期一至星期日）\n👨‍⚕️ 驻店药剂师：${pharmacistName}\n\n如果您有任何药物疑问，或需要我们提前备妥药物，欢迎直接回复此信息。祝您身体健康，平安顺心！`;
   } else if (lang === 'Malay') {
-    return `Salam sejahtera ${patientName}, ini adalah pesanan daripada pasukan farmasi PMG Pharmacy (${branchName}). 🌸\n\n${supplyText}\n\nBagi memudahkan urusan anda tanpa perlu menunggu lama, kami menyediakan 【Sistem Tempahan Temujanji Kendiri Dalam Talian】. Anda boleh memilih sendiri tarikh dan masa yang paling sesuai untuk sesi semakan kesihatan dan ulangan ubat (refill):\n\n👉 Tekan pautan peribadi untuk pilih masa temujanji:\n${bookingUrl}\n\n⏰ Waktu Bertugas Ahli Farmasi: ${openTime} – ${closeTime} (Setiap Hari)\n👨‍⚕️ Ahli Farmasi Bertugas: ${pharmacistName}\n\nJika anda ada sebarang pertanyaan atau ingin kami sediakan ubat terlebih dahulu, sila balas mesej ini. Terima kasih dan semoga sentiasa sihat!`;
+    return `Salam sejahtera ${patientName}, ini adalah pesanan daripada pasukan farmasi PMG Pharmacy (${branchName}). 🌸\n\n${supplyText}${tcaReminderMy}\n\nBagi memudahkan urusan anda tanpa perlu menunggu lama, kami menyediakan 【Sistem Tempahan Temujanji Kendiri Dalam Talian】. Anda boleh memilih sendiri tarikh dan masa yang paling sesuai untuk sesi semakan kesihatan dan ulangan ubat (refill):\n\n👉 Tekan pautan peribadi untuk pilih masa temujanji:\n${bookingUrl}\n\n⏰ Waktu Bertugas Ahli Farmasi: ${openTime} – ${closeTime} (Setiap Hari)\n👨‍⚕️ Ahli Farmasi Bertugas: ${pharmacistName}\n\nJika anda ada sebarang pertanyaan atau ingin kami sediakan ubat terlebih dahulu, sila balas mesej ini. Terima kasih dan semoga sentiasa sihat!`;
   } else {
-    return `Hello ${patientName}, this is the pharmacy team from PMG Pharmacy (${branchName}). 🌸\n\n${supplyText}\n\nTo help you plan ahead without waiting, we have provided an 【Online Self-Booking Portal】. You can easily select your preferred date and time for your routine health review, pharmacist consultation, and medication refill:\n\n👉 Tap your personalized link to book your slot:\n${bookingUrl}\n\n⏰ Pharmacist Consultation Hours: ${openTime} – ${closeTime} (Daily)\n👨‍⚕️ Duty Pharmacist: ${pharmacistName}\n\nIf you have any questions or need your medications packed in advance, simply reply to this message. Stay healthy!`;
+    return `Hello ${patientName}, this is the pharmacy team from PMG Pharmacy (${branchName}). 🌸\n\n${supplyText}${tcaReminderEn}\n\nTo help you plan ahead without waiting, we have provided an 【Online Self-Booking Portal】. You can easily select your preferred date and time for your routine health review, pharmacist consultation, and medication refill:\n\n👉 Tap your personalized link to book your slot:\n${bookingUrl}\n\n⏰ Pharmacist Consultation Hours: ${openTime} – ${closeTime} (Daily)\n👨‍⚕️ Duty Pharmacist: ${pharmacistName}\n\nIf you have any questions or need your medications packed in advance, simply reply to this message. Stay healthy!`;
   }
 }
 
@@ -1235,10 +1357,32 @@ function showNewEncounterModal(patientId) {
   document.getElementById('encPlanCounselling').value = '';
   document.getElementById('encReferral').value = '';
 
-  // Next TCA (Return Appointment)
+  // Next TCA (Date Reminder)
   document.getElementById('encTcaDate').value = '';
-  document.getElementById('encTcaTime').value = '10:00';
+  const encTcaTimeEl = document.getElementById('encTcaTime');
+  if (encTcaTimeEl) encTcaTimeEl.value = '10:00';
   document.getElementById('encTcaPurpose').value = 'Chronic Medication Refill & Health Review';
+
+  // If patientId is provided, pre-fill medications & supplements if available
+  const pTarget = patientsData.find(pt => pt.id === patientId);
+  if (pTarget) {
+    if (pTarget.medications && pTarget.medications.length) {
+      document.getElementById('encPlanMeds').value = pTarget.medications.map(m => typeof m === 'string' ? m : `${m.name} ${m.dosage || ''}`.trim()).join('\n');
+    } else if (pTarget.encounters && pTarget.encounters.length && pTarget.encounters[0].planMedications) {
+      document.getElementById('encPlanMeds').value = pTarget.encounters[0].planMedications;
+    }
+
+    if (pTarget.encounters && pTarget.encounters.length && pTarget.encounters[0].planSupplements) {
+      document.getElementById('encPlanSupps').value = pTarget.encounters[0].planSupplements;
+    }
+
+    if (pTarget.nextTcaDate) {
+      document.getElementById('encTcaDate').value = pTarget.nextTcaDate;
+    }
+    if (pTarget.nextTcaPurpose) {
+      document.getElementById('encTcaPurpose').value = pTarget.nextTcaPurpose;
+    }
+  }
 
   // Reset other POCT notes & files
   const otherNotesEl = document.getElementById('encOtherTestsNotes');
@@ -1494,22 +1638,15 @@ async function saveNewEncounter() {
   if (!p.encounters) p.encounters = [];
   p.encounters.unshift(newEnc);
 
-  // Auto-book Next TCA (Return Appointment) if filled
+  // Next TCA Date Reminder (Customer will self-book exact date/time via portal link)
   const tcaDate = document.getElementById('encTcaDate').value;
   if (tcaDate) {
-    const tcaTime = document.getElementById('encTcaTime').value || '10:00';
     const tcaPurpose = document.getElementById('encTcaPurpose').value.trim() || 'Follow-up Consultation & Refill';
-    const newApt = {
-      id: 'APT-' + Date.now(),
-      date: tcaDate,
-      time: tcaTime,
-      purpose: tcaPurpose,
-      pharmacist: recorder,
-      status: 'Scheduled',
-      notes: 'Scheduled during consultation on ' + (document.getElementById('encDate').value || getTodayDateString(0))
-    };
-    if (!p.appointments) p.appointments = [];
-    p.appointments.unshift(newApt);
+    p.nextTcaDate = tcaDate;
+    p.nextTcaPurpose = tcaPurpose;
+    p.nextTcaRecordedBy = recorder;
+    newEnc.nextTcaDate = tcaDate;
+    newEnc.nextTcaPurpose = tcaPurpose;
   }
 
   savePatientsData();
@@ -3788,14 +3925,14 @@ function applyAiSupplements() {
   const suppInput = document.getElementById('encPlanSupps');
   if (!suppInput) return;
 
-  const newSupps = currentAiReviewResult.houseBrands.map(b => `${b.product} (${b.dosage})`).join(', ');
+  const newSupps = currentAiReviewResult.houseBrands.map(b => `${b.product} (${b.dosage})`).join('\n');
   const existing = suppInput.value.trim();
   if (existing) {
-    suppInput.value = `${existing}; ${newSupps}`;
+    suppInput.value = `${existing}\n${newSupps}`;
   } else {
     suppInput.value = newSupps;
   }
-  alert('✅ House Brand Supplements added to Plan of Action!');
+  alert('✅ House Brand Supplements added to Plan of Action (one item per line)!');
 }
 
 function applyAiSchedule() {
