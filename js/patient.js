@@ -3610,6 +3610,23 @@ function syncPharmacistHoursFromRoster() {
 // ═════════════════════════════════════════════════════════════════════════════
 let currentAiReviewResult = null;
 
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const res = reader.result;
+      if (typeof res === 'string') {
+        const base64 = res.includes(',') ? res.split(',')[1] : res;
+        resolve(base64);
+      } else {
+        reject(new Error('Failed to convert file to base64 string'));
+      }
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 async function runAiClinicalReview() {
   const apiKey = (localStorage.getItem('pmg_gemini_key') || '').trim();
   if (!apiKey) {
@@ -3650,8 +3667,9 @@ async function runAiClinicalReview() {
     alb: document.getElementById('encAlb')?.value || '',
     vitD: document.getElementById('encVitD')?.value || '',
     ferritin: document.getElementById('encFerritin')?.value || '',
-    rossmaxAct: document.getElementById('encRossmaxAct')?.value || '',
-    customPoctNotes: document.getElementById('encOtherTestsNotes')?.value || ''
+    teda: document.getElementById('encTeda')?.value.trim() || '',
+    rossmaxAct: document.getElementById('encRossmaxAct')?.value.trim() || '',
+    customPoctNotes: document.getElementById('encOtherTestsNotes')?.value.trim() || ''
   };
 
   const planMeds = document.getElementById('encPlanMeds')?.value.trim() || '';
@@ -3665,12 +3683,38 @@ async function runAiClinicalReview() {
   const runBtn = document.getElementById('btnAiClinicalReview');
 
   if (loadingEl) loadingEl.classList.remove('hidden');
-  if (loadingText) loadingText.textContent = `Analysing case with Gemini 3.5 Flash…`;
+  if (loadingText) loadingText.textContent = `Preparing clinical case review…`;
   if (resultPanel) resultPanel.classList.add('hidden');
   if (runBtn) runBtn.disabled = true;
 
+  // Process Airdoc Retinal PDF / Image for Multimodal Gemini Inspection
+  let airdocBase64 = null;
+  let airdocMimeType = 'application/pdf';
+  if (selectedAirdocFile) {
+    if (selectedAirdocFile.size > 15 * 1024 * 1024) {
+      alert('The attached Airdoc PDF exceeds 15MB. Analyzing based on file metadata and notes.');
+    } else {
+      try {
+        if (loadingText) loadingText.textContent = `Reading Airdoc Retinal AI report (${selectedAirdocFile.name})…`;
+        airdocMimeType = selectedAirdocFile.type || 'application/pdf';
+        airdocBase64 = await readFileAsBase64(selectedAirdocFile);
+      } catch (err) {
+        console.warn('[PMG AI Review] Could not encode Airdoc PDF for multimodal review:', err);
+      }
+    }
+  }
+
+  const airdocFilePromptText = selectedAirdocFile
+    ? `ATTACHED RETINAL SCAN DOCUMENT: [Filename: "${selectedAirdocFile.name}", Size: ${formatFileSize(selectedAirdocFile.size)}].
+PLEASE INSPECT AND ANALYZE THE ATTACHED AIRDOC RETINAL REPORT MULTIMODALLY. Extract optic disc (CDR), microvascular status (arteriolar narrowing, AV nicking, hemorrhages, microaneurysms, hard exudates), hypertensive/diabetic retinopathy grading, and Airdoc AI cardiovascular risk score.`
+    : 'No Airdoc scan file uploaded for this consultation.';
+
+  const tedaPromptText = vitals.teda
+    ? `TEDA SCAN DATA / NOTES: "${vitals.teda}". Analyze visceral fat rating, metabolic age, body fat %, muscle mass, and biological age indicators.`
+    : 'No TEDA scan link or body composition summary notes entered.';
+
   const prompt = `You are an expert Clinical Pharmacist and Nutritional Specialist for PMG Pharmacy in Malaysia.
-Evaluate this patient consultation, POCT laboratory profile, and medication regimen.
+Evaluate this patient consultation, POCT laboratory profile, specialty scans (Airdoc Retinal AI & TEDA Body Composition), and medication regimen.
 
 PATIENT PROFILE:
 Name: ${patient.name || 'Anonymous'}
@@ -3691,8 +3735,12 @@ Blood Glucose: ${vitals.glucose ? vitals.glucose + ' mmol/L (' + vitals.glucoseT
 Lipid Panel: TC: ${vitals.tc || 'N/A'} mmol/L, TG: ${vitals.tg || 'N/A'}, HDL: ${vitals.hdl || 'N/A'}, LDL: ${vitals.ldl || 'N/A'}, AI: ${vitals.ai || 'N/A'}, R-CHD: ${vitals.rchd || 'N/A'}
 Kidney Panel: Uric Acid: ${vitals.ua || 'N/A'} umol/L, Creatinine: ${vitals.creatinine || 'N/A'} umol/L, Urea: ${vitals.urea || 'N/A'} mmol/L, eGFR: ${vitals.egfr || 'N/A'}
 Liver Panel: AST: ${vitals.ast || 'N/A'} U/L, ALT: ${vitals.alt || 'N/A'} U/L, Albumin: ${vitals.alb || 'N/A'} g/L
-Specialty Tests: Vit D Home Kit: ${vitals.vitD || 'N/A'}, Ferritin Home Kit: ${vitals.ferritin || 'N/A'}, Rossmax ACT: ${vitals.rossmaxAct || 'N/A'}
+Specialty Tests: Vit D Home Kit: ${vitals.vitD || 'N/A'}, Ferritin Home Kit: ${vitals.ferritin || 'N/A'}, Rossmax ACT (Artery Condition): ${vitals.rossmaxAct || 'N/A'}
 Other POCT Notes: ${vitals.customPoctNotes || 'None'}
+
+SPECIALTY WELLNESS & SCAN DATA:
+- Airdoc Retinal AI Scan: ${airdocFilePromptText}
+- TEDA Body Composition / Metabolic Scan: ${tedaPromptText}
 
 PRESCRIBED / PROPOSED MEDICATIONS:
 ${fullMedsList || 'No prescription medications currently recorded'}
@@ -3700,39 +3748,53 @@ ${fullMedsList || 'No prescription medications currently recorded'}
 CURRENT / PROPOSED SUPPLEMENTS:
 ${planSupps || 'None recorded'}
 
-CRITICAL INSTRUCTIONS:
-1. DRUG-DRUG & DRUG-SUPPLEMENT INTERACTIONS:
-   - Identify any interactions between current/prescribed medications and proposed supplements.
+CRITICAL CLINICAL INSTRUCTIONS:
+1. AIRDOC RETINAL & TEDA METABOLIC MULTIMODAL SYNTHESIS:
+   - Retinal Microvascular Evaluation (Airdoc):
+     * If an Airdoc Retinal PDF document is attached as an inline part, visually and textually read the document.
+     * Report findings on: optic nerve / cup-to-disc ratio (CDR), retinal microvessels (arteriolar narrowing, AV nicking, microaneurysms, hemorrhages, exudates), hypertensive/diabetic retinopathy signs, and cardiovascular risk score.
+     * Correlate microvascular signs directly with systemic blood pressure and HbA1c control.
+     * If ocular microvascular stress or macular degradation is suspected, recommend PMG ocular supplements (e.g. Nutribridge Opticlear [Lutein, Zeaxanthin, Astaxanthin, Bilberry] or JH Nutrition Eclipx).
+   - Metabolic & Body Composition Evaluation (TEDA):
+     * Analyze visceral adiposity, biological/metabolic age vs chronological age, and skeletal muscle balance.
+     * Correlate visceral fat with lipid profile (TG/HDL ratio, atherogenic index), blood glucose, and liver enzymes (NAFLD/fatty liver risk).
+   - Holistic Vascular-Metabolic Correlation:
+     * Synthesize retinal microvasculature (Airdoc) + large artery stiffness (Rossmax ACT) + visceral fat / body composition (TEDA) + POCT blood biomarkers into a unified cardiovascular-metabolic risk assessment.
+2. DRUG-DRUG & DRUG-SUPPLEMENT INTERACTIONS:
+   - Identify interactions between current/prescribed medications and proposed supplements.
    - Severity: "none", "moderate", or "high". Explain mechanisms clearly.
-2. PMG HOUSE BRAND COMPANION SUPPLEMENT RECOMMENDATIONS:
-   - Recommend 2-4 companion supplements/nutraceuticals to counter drug-induced depletions (e.g. statin-induced CoQ10 depletion, metformin-induced B12 depletion) or optimize cardiovascular, metabolic, joint, or liver health based on their POCT readings.
+3. PMG HOUSE BRAND COMPANION SUPPLEMENT RECOMMENDATIONS:
+   - Recommend 2-4 companion supplements/nutraceuticals to counter drug-induced depletions (e.g. statin-induced CoQ10 depletion, metformin-induced B12 depletion) or optimize cardiovascular, retinal, metabolic, joint, or liver health based on their POCT readings.
    - CRITICAL: Prioritize PMG House Brands:
      * "JH Nutrition" (Alpha Gold, Systoright, Flexson, Livason, Nacous NAC, Eclipx, Immucol, Citazinc)
      * "V-Infinity" (Neuright B-Complex+ALA, Fiono Omega-3 1200mg, Neoflex, Tygeres, Tyreps, Vtrox)
      * "Nutribridge" (Glycoway, Lipicholin, Neo-D3, Opticlear, Q-Folix, Vitaglo, Zencool, Flexsure Gold)
      * "Livemore" (Co-Q10 Plus, Gasmint, Ginoba, Methylcobalamin, Neo-D3, Neomega)
      * Other PMG brands: Biowell, Lucentia, Dermisk, Axon
-3. CHRONOTHERAPY (BEST TIMING OF INTAKE):
-   - Categorize all medications and recommended supplements into:
-     * Morning (Breakfast)
-     * Afternoon (Lunch)
-     * Evening (Dinner)
-     * Bedtime (Night)
+4. CHRONOTHERAPY (BEST TIMING OF INTAKE):
+   - Categorize all medications and recommended supplements into: Morning, Afternoon, Evening, Bedtime.
    - State specific rationale (e.g., morning BP surge, fat solubility with food, statin cholesterol synthesis peak overnight).
-4. CLINICAL ASSESSMENT & PRE-DIAGNOSTIC:
+5. CLINICAL ASSESSMENT & PRE-DIAGNOSTIC:
    - Concise pharmacist impression of current disease control and risk stratification.
-5. COUNSELLING & LIFESTYLE:
-   - 3 to 5 targeted, practical lifestyle and diet counselling pearls.
+6. COUNSELLING & LIFESTYLE:
+   - 3 to 5 targeted, practical lifestyle and diet counselling pearls (including dietary advice for visceral fat or retinal health).
 
 RESPONSE MUST BE STRICTLY VALID JSON matching this structure:
 {
   "interactionSummary": "none" | "moderate" | "high",
   "interactionDetails": "string",
+  "airdocTedaSynthesis": {
+    "airdocRetinalStatus": "e.g. Normal / Early Arteriolar Narrowing / Grade 1 Hypertensive Retinopathy / Glaucoma Risk / Not Attached",
+    "airdocSummary": "Concise summary of retinal microvascular and optic findings from Airdoc (or note stating no scan was attached)",
+    "tedaMetabolicStatus": "e.g. Elevated Visceral Fat / Increased Metabolic Age / Balanced / Not Recorded",
+    "tedaSummary": "Concise summary of body composition, visceral adiposity and cellular health",
+    "multiSystemCorrelation": "Holistic clinical synthesis correlating retinal microvessels, arterial stiffness, visceral fat, and blood POCT labs"
+  },
   "houseBrands": [
     {
       "brand": "Livemore" | "JH Nutrition" | "V-Infinity" | "Nutribridge" | "PMG",
       "product": "Product Name",
-      "indication": "Clinical rationale",
+      "indication": "Clinical rationale (including eye microvasculature, statin companion, or metabolic support)",
       "dosage": "e.g. 1 capsule OD after breakfast"
     }
   ],
@@ -3755,16 +3817,27 @@ RESPONSE MUST BE STRICTLY VALID JSON matching this structure:
     try {
       if (loadingText) loadingText.textContent = `Analysing case with ${m}…`;
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
+
+      const requestParts = [{ text: prompt }];
+      if (airdocBase64) {
+        requestParts.push({
+          inlineData: {
+            mimeType: airdocMimeType,
+            data: airdocBase64
+          }
+        });
+      }
+
       const payload = {
         contents: [
           {
             role: 'user',
-            parts: [{ text: prompt }]
+            parts: requestParts
           }
         ],
         generationConfig: {
           temperature: 0.2,
-          maxOutputTokens: 2048,
+          maxOutputTokens: 2500,
           responseMimeType: "application/json"
         }
       };
@@ -3837,6 +3910,57 @@ function renderAiClinicalReview(res) {
         </div>
         <p class="text-[11px] leading-relaxed">${res.interactionDetails || 'The evaluated medication and supplement regimen is safe and free of high-risk contraindications.'}</p>
       `;
+    }
+  }
+
+  // 1.5. Airdoc Retinal & TEDA Metabolic Synthesis
+  const specPanel = document.getElementById('aiSpecialtyScansPanel');
+  if (specPanel) {
+    const synth = res.airdocTedaSynthesis;
+    if (synth && (synth.airdocSummary || synth.tedaSummary || synth.multiSystemCorrelation)) {
+      specPanel.classList.remove('hidden');
+
+      const airdocBadge = document.getElementById('aiAirdocStatusBadge');
+      const airdocText = document.getElementById('aiAirdocSummaryText');
+      const tedaBadge = document.getElementById('aiTedaStatusBadge');
+      const tedaText = document.getElementById('aiTedaSummaryText');
+      const corrText = document.getElementById('aiMultiSystemCorrText');
+
+      if (airdocBadge) {
+        airdocBadge.textContent = synth.airdocRetinalStatus || 'Evaluated';
+        const st = (synth.airdocRetinalStatus || '').toLowerCase();
+        if (st.includes('normal') || st.includes('clear')) {
+          airdocBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200';
+        } else if (st.includes('grade') || st.includes('narrowing') || st.includes('nicking') || st.includes('risk')) {
+          airdocBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200';
+        } else {
+          airdocBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200';
+        }
+      }
+      if (airdocText) {
+        airdocText.textContent = synth.airdocSummary || 'No specific retinal findings reported.';
+      }
+
+      if (tedaBadge) {
+        tedaBadge.textContent = synth.tedaMetabolicStatus || 'Evaluated';
+        const st = (synth.tedaMetabolicStatus || '').toLowerCase();
+        if (st.includes('healthy') || st.includes('balanced') || st.includes('optimal')) {
+          tedaBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200';
+        } else if (st.includes('elevated') || st.includes('increased') || st.includes('stress') || st.includes('high')) {
+          tedaBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200';
+        } else {
+          tedaBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200';
+        }
+      }
+      if (tedaText) {
+        tedaText.textContent = synth.tedaSummary || 'No specific body composition findings reported.';
+      }
+
+      if (corrText) {
+        corrText.textContent = synth.multiSystemCorrelation || 'Retinal microvasculature, body composition, and arterial conditions correlated with POCT panel.';
+      }
+    } else {
+      specPanel.classList.add('hidden');
     }
   }
 
@@ -3969,12 +4093,17 @@ function applyAiAssessment() {
   if (!preDiagInput) return;
 
   const existing = preDiagInput.value.trim();
-  if (existing) {
-    preDiagInput.value = `${existing}\n[AI Review]: ${currentAiReviewResult.assessmentSummary}`;
-  } else {
-    preDiagInput.value = currentAiReviewResult.assessmentSummary;
+  let aiText = `[AI Clinical Review]: ${currentAiReviewResult.assessmentSummary}`;
+  if (currentAiReviewResult.airdocTedaSynthesis?.multiSystemCorrelation) {
+    aiText += `\n[Vascular & Metabolic Synthesis]: ${currentAiReviewResult.airdocTedaSynthesis.multiSystemCorrelation}`;
   }
-  alert('✅ Clinical assessment applied to Pre-Diagnostic!');
+
+  if (existing) {
+    preDiagInput.value = `${existing}\n\n${aiText}`;
+  } else {
+    preDiagInput.value = aiText;
+  }
+  alert('✅ Clinical assessment & multi-system synthesis applied to Pre-Diagnostic!');
 }
 
 
