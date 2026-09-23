@@ -1061,6 +1061,11 @@
           class="px-5 py-3 text-xs font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-800 flex items-center gap-2 transition whitespace-nowrap">
           <i class="fa-solid fa-address-book"></i> Patient Directory
         </button>
+        <button id="patientSubTabBtn_schedule" type="button"
+          class="px-5 py-3 text-xs font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-800 flex items-center gap-2 transition whitespace-nowrap">
+          <i class="fa-solid fa-user-clock text-indigo-600"></i> Pharmacist Schedule & Bookings
+          <span id="scheduleBadgeCount" class="bg-indigo-100 text-indigo-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold ml-1">0</span>
+        </button>
       </div>
 
       <!-- Tab View 1: Today's Queue -->
@@ -1127,6 +1132,109 @@
           </thead>
           <tbody id="patientDirectoryBody" class="divide-y divide-gray-100"></tbody>
         </table>
+      </div>
+
+      <!-- Tab View 5: Pharmacist Schedule & Bookings -->
+      <div id="patientView_schedule" class="hidden p-4 sm:p-5">
+        <!-- Schedule View Top Bar & Overview -->
+        <div class="bg-gradient-to-r from-indigo-50/90 via-blue-50/80 to-purple-50/70 border border-indigo-200 rounded-2xl p-4 sm:p-5 mb-5 shadow-xs">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h4 class="text-sm sm:text-base font-extrabold text-indigo-950 flex items-center gap-2">
+                <i class="fa-solid fa-user-clock text-indigo-600"></i> Pharmacist Consultation Roster & Bookings
+              </h4>
+              <p class="text-xs text-indigo-800/80 mt-1">
+                View booked appointment slots by duty pharmacist. If your working shift changes, easily reschedule slots and notify customers via WhatsApp with their personalized booking link.
+              </p>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap shrink-0">
+              <button type="button" onclick="openManageHoursModal()"
+                class="bg-white hover:bg-gray-50 text-indigo-700 border border-indigo-300 font-bold text-xs px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5">
+                <i class="fa-solid fa-calendar-gear text-indigo-600"></i> Working Hours & Overrides
+              </button>
+              <button type="button" onclick="showNewAppointmentModal()"
+                class="bg-indigo-700 hover:bg-indigo-800 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5">
+                <i class="fa-solid fa-calendar-plus"></i> + New Appointment
+              </button>
+            </div>
+          </div>
+
+          <!-- KPI Summary Strip -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-4 border-t border-indigo-200/60">
+            <div class="bg-white/90 rounded-xl p-3 border border-indigo-100 shadow-xs">
+              <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Upcoming Bookings</span>
+              <span id="schedKpiUpcoming" class="text-xl font-black text-indigo-700">0</span>
+            </div>
+            <div class="bg-white/90 rounded-xl p-3 border border-indigo-100 shadow-xs">
+              <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Today's Slots</span>
+              <span id="schedKpiToday" class="text-xl font-black text-emerald-600">0</span>
+            </div>
+            <div class="bg-white/90 rounded-xl p-3 border border-indigo-100 shadow-xs">
+              <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Pending Approval</span>
+              <span id="schedKpiPending" class="text-xl font-black text-amber-600">0</span>
+            </div>
+            <div class="bg-white/90 rounded-xl p-3 border border-indigo-100 shadow-xs">
+              <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Completed</span>
+              <span id="schedKpiCompleted" class="text-xl font-black text-gray-600">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filter Controls -->
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4 bg-gray-50/80 p-3 rounded-xl border border-gray-200 text-xs">
+          <div class="flex flex-wrap items-center gap-2.5 flex-1">
+            <div class="flex items-center gap-1.5">
+              <label class="font-bold text-gray-700 whitespace-nowrap"><i class="fa-solid fa-user-doctor text-indigo-600 mr-1"></i> Pharmacist:</label>
+              <select id="schedFilterPharmacist" onchange="renderPharmacistScheduleTab()" class="border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-semibold outline-none text-xs">
+                <option value="">All Pharmacists</option>
+              </select>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <label class="font-bold text-gray-700 whitespace-nowrap"><i class="fa-regular fa-calendar text-indigo-600 mr-1"></i> Timeframe:</label>
+              <select id="schedFilterTimeframe" onchange="renderPharmacistScheduleTab()" class="border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-medium outline-none text-xs">
+                <option value="upcoming" selected>Upcoming (From Today)</option>
+                <option value="today">Today Only</option>
+                <option value="next7">Next 7 Days</option>
+                <option value="all">All Dates (Including Past)</option>
+              </select>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <label class="font-bold text-gray-700 whitespace-nowrap"><i class="fa-solid fa-list-check text-indigo-600 mr-1"></i> Status:</label>
+              <select id="schedFilterStatus" onchange="renderPharmacistScheduleTab()" class="border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-medium outline-none text-xs">
+                <option value="active" selected>Active (Scheduled & Pending)</option>
+                <option value="all">All Statuses</option>
+                <option value="Scheduled">Scheduled Only</option>
+                <option value="Pending Approval">Pending Approval Only</option>
+                <option value="Completed">Completed Only</option>
+                <option value="Missed">Missed Only</option>
+              </select>
+            </div>
+          </div>
+          <div class="w-full sm:w-64">
+            <div class="relative">
+              <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-gray-400"></i>
+              <input type="text" id="schedSearchInput" oninput="renderPharmacistScheduleTab()" placeholder="Search patient, phone..."
+                class="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-lg text-xs outline-none focus:ring-1 focus:ring-indigo-500 bg-white">
+            </div>
+          </div>
+        </div>
+
+        <!-- Schedule Bookings Table -->
+        <div class="border border-gray-200 rounded-xl overflow-hidden shadow-xs">
+          <table class="w-full text-xs text-left">
+            <thead class="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200 uppercase tracking-wider text-[11px]">
+              <tr>
+                <th class="px-4 py-3">Date & Time Slot</th>
+                <th class="px-4 py-3">Duty Pharmacist</th>
+                <th class="px-4 py-3">Patient</th>
+                <th class="px-4 py-3">Purpose & Details</th>
+                <th class="px-4 py-3">Status</th>
+                <th class="px-4 py-3 text-right">Shift / Reschedule Actions</th>
+              </tr>
+            </thead>
+            <tbody id="schedBookingsBody" class="divide-y divide-gray-100"></tbody>
+          </table>
+        </div>
       </div>
 
     </div>
@@ -1915,6 +2023,121 @@
         <button onclick="saveNewAppointment()" class="px-5 py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg text-xs font-bold shadow-sm">
           Save Appointment
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Reschedule Appointment / Pharmacist Shift Change -->
+  <div id="rescheduleAppointmentModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[92vh]">
+      <div class="flex items-center justify-between px-6 py-4 border-b bg-gradient-to-r from-indigo-700 to-blue-700 text-white">
+        <h3 class="text-sm font-bold flex items-center gap-2">
+          <i class="fa-solid fa-calendar-pen text-indigo-200"></i> Reschedule Appointment / Shift Change
+        </h3>
+        <button onclick="closeRescheduleModal()" class="text-indigo-200 hover:text-white text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-4 text-xs overflow-y-auto flex-1">
+        <!-- Hidden input trackers -->
+        <input type="hidden" id="reschedPatientId">
+        <input type="hidden" id="reschedAppointmentId">
+
+        <!-- Patient & Slot Summary Box -->
+        <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 space-y-1.5">
+          <div class="flex items-center justify-between">
+            <span class="font-extrabold text-indigo-950 text-sm" id="reschedPatientName">—</span>
+            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-200/70 text-indigo-900" id="reschedPatientBranch">—</span>
+          </div>
+          <div class="text-gray-600 flex items-center gap-2 flex-wrap text-[11px]">
+            <span><i class="fa-solid fa-phone text-indigo-600"></i> <span id="reschedPatientPhone">—</span></span>
+            <span>&bull;</span>
+            <span><i class="fa-regular fa-clock text-indigo-600"></i> Current Slot: <b id="reschedOriginalSlot" class="text-indigo-900">—</b></span>
+          </div>
+        </div>
+
+        <!-- Reschedule Form Inputs -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">New Date *</label>
+            <input type="date" id="reschedNewDate" onchange="updateRescheduleMessagePreview()"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
+          </div>
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">New Time Slot *</label>
+            <input type="time" id="reschedNewTime" onchange="updateRescheduleMessagePreview()"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
+          </div>
+        </div>
+
+        <!-- Quick Slot Buttons -->
+        <div>
+          <label class="block text-[11px] font-semibold text-gray-500 mb-1">Quick Select Common Time Slots:</label>
+          <div class="flex flex-wrap gap-1.5">
+            <button type="button" onclick="setReschedQuickTime('09:00')" class="px-2 py-1 bg-gray-100 hover:bg-indigo-50 hover:text-indigo-700 rounded text-[11px] font-medium border border-gray-200 transition">09:00 AM</button>
+            <button type="button" onclick="setReschedQuickTime('10:00')" class="px-2 py-1 bg-gray-100 hover:bg-indigo-50 hover:text-indigo-700 rounded text-[11px] font-medium border border-gray-200 transition">10:00 AM</button>
+            <button type="button" onclick="setReschedQuickTime('11:00')" class="px-2 py-1 bg-gray-100 hover:bg-indigo-50 hover:text-indigo-700 rounded text-[11px] font-medium border border-gray-200 transition">11:00 AM</button>
+            <button type="button" onclick="setReschedQuickTime('14:30')" class="px-2 py-1 bg-gray-100 hover:bg-indigo-50 hover:text-indigo-700 rounded text-[11px] font-medium border border-gray-200 transition">02:30 PM</button>
+            <button type="button" onclick="setReschedQuickTime('16:00')" class="px-2 py-1 bg-gray-100 hover:bg-indigo-50 hover:text-indigo-700 rounded text-[11px] font-medium border border-gray-200 transition">04:00 PM</button>
+            <button type="button" onclick="setReschedQuickTime('17:30')" class="px-2 py-1 bg-gray-100 hover:bg-indigo-50 hover:text-indigo-700 rounded text-[11px] font-medium border border-gray-200 transition">05:30 PM</button>
+            <button type="button" onclick="setReschedQuickTime('19:30')" class="px-2 py-1 bg-gray-100 hover:bg-indigo-50 hover:text-indigo-700 rounded text-[11px] font-medium border border-gray-200 transition">07:30 PM</button>
+          </div>
+        </div>
+
+        <!-- Attending Pharmacist -->
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Attending Pharmacist (Responsible Pharmacist) *</label>
+          <select id="reschedPharmacist" onchange="updateRescheduleMessagePreview()"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none">
+            <option value="William Chai (Pharmacist)">William Chai (Pharmacist)</option>
+            <option value="Kenix Ling (Pharmacist)">Kenix Ling (Pharmacist)</option>
+            <option value="Ting Kwang Yu (BM)">Ting Kwang Yu (BM)</option>
+            <option value="Duty Pharmacist">Duty Pharmacist</option>
+          </select>
+        </div>
+
+        <!-- Shift Change / Reschedule Reason -->
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Reason for Rescheduling / Shift Change</label>
+          <input type="text" id="reschedReason" oninput="updateRescheduleMessagePreview()"
+            placeholder="e.g. Pharmacist duty shift changed, Public holiday adjustment, Emergency duty cover"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none">
+        </div>
+
+        <!-- Message Language Selector & Live WhatsApp Preview -->
+        <div class="border-t border-gray-200 pt-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="font-bold text-gray-700 flex items-center gap-1.5">
+              <i class="fa-brands fa-whatsapp text-emerald-600 text-sm"></i> WhatsApp Message Preview
+            </label>
+            <div class="flex items-center gap-2">
+              <span class="text-[11px] text-gray-500 font-semibold">Language:</span>
+              <select id="reschedLanguageSelect" onchange="updateRescheduleMessagePreview()" class="border border-gray-300 rounded px-2 py-0.5 text-[11px] font-bold bg-white">
+                <option value="Chinese">中文 (Chinese)</option>
+                <option value="Malay">Bahasa Melayu</option>
+                <option value="English">English</option>
+              </select>
+            </div>
+          </div>
+          <div id="reschedMessagePreview" class="bg-gray-50 border border-gray-200 rounded-xl p-3 text-[11px] font-mono text-gray-800 whitespace-pre-wrap max-h-40 overflow-y-auto select-all">
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-6 py-3.5 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+        <button type="button" onclick="closeRescheduleModal()" class="px-3.5 py-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-100 transition">
+          Close
+        </button>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="saveReschedule(false)" class="px-4 py-2 border border-indigo-600 text-indigo-700 hover:bg-indigo-50 rounded-lg text-xs font-bold transition flex items-center gap-1.5">
+            <i class="fa-solid fa-floppy-disk"></i> Save Only
+          </button>
+          <button type="button" onclick="saveReschedule(true)" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-sm flex items-center gap-1.5">
+            <i class="fa-brands fa-whatsapp text-sm"></i> Save & WhatsApp Customer
+          </button>
+        </div>
       </div>
     </div>
   </div>

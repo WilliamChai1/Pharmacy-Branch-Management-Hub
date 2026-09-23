@@ -30,6 +30,18 @@
     'SEMARIANG': 'SEMARIANG'
   };
 
+  // Reverse mapping from folder name to storage branch code
+  const FOLDER_BRANCH_CODE_MAP = {
+    'KOTA SENTOSA': 'KS01',
+    'KS01': 'KS01',
+    'ASTANA': 'ASTANA',
+    'MALIHAH': 'MALIHAH',
+    'METROCITY': 'METROCITY',
+    'MJK': 'MJK',
+    'MOYAN': 'MOYAN',
+    'SEMARIANG': 'SEMARIANG'
+  };
+
   class OneDriveSyncEngine {
     constructor() {
       this.rootHandle = null;
@@ -403,6 +415,49 @@
           const writtenFile = await fileHandle.getFile();
           this.lastKnownModified = writtenFile.lastModified;
 
+          // Step F: Bidirectional sync of schedule_settings.json (working hours & overrides)
+          try {
+            const bCode = FOLDER_BRANCH_CODE_MAP[branchName] || branchName;
+            let cloudSched = null;
+            try {
+              const schedHandle = await dirHandle.getFileHandle('schedule_settings.json', { create: false });
+              const sFile = await schedHandle.getFile();
+              const sText = await sFile.text();
+              if (sText && sText.trim()) {
+                const parsed = JSON.parse(sText);
+                cloudSched = parsed.schedule || parsed;
+                if (parsed.lastUpdated && !cloudSched.lastUpdated) {
+                  cloudSched.lastUpdated = parsed.lastUpdated;
+                }
+              }
+            } catch (_) {}
+
+            const localRaw = localStorage.getItem(`pmg_pharmacist_schedule_${bCode}`);
+            const localSched = localRaw ? JSON.parse(localRaw) : null;
+
+            if (cloudSched && (!localSched || (cloudSched.lastUpdated || '') > (localSched.lastUpdated || ''))) {
+              // Remote OneDrive schedule is newer: update local localStorage
+              localStorage.setItem(`pmg_pharmacist_schedule_${bCode}`, JSON.stringify(cloudSched));
+              console.log(`[PMG OneDrive Sync] Pulled newer schedule from OneDrive for ${bCode}`);
+            } else if (localSched && (!cloudSched || (localSched.lastUpdated || '') > (cloudSched.lastUpdated || ''))) {
+              // Local schedule is newer: upload to OneDrive
+              const schedPayload = {
+                branch: branchName,
+                branchCode: bCode,
+                lastUpdated: localSched.lastUpdated || nowIso,
+                updatedBy: localSched.updatedBy || session?.displayName || 'Pharmacist',
+                schedule: localSched
+              };
+              const schedHandle = await dirHandle.getFileHandle('schedule_settings.json', { create: true });
+              const sw = await schedHandle.createWritable();
+              await sw.write(JSON.stringify(schedPayload, null, 2));
+              await sw.close();
+              console.log(`[PMG OneDrive Sync] Uploaded local schedule to OneDrive for ${bCode}`);
+            }
+          } catch (schedSyncErr) {
+            console.warn(`[PMG OneDrive Sync] Schedule sync warning for ${branchName}:`, schedSyncErr);
+          }
+
           totalMergedPatients += mergedBranchPatients.length;
           syncedBranches.push(branchName);
         }
@@ -510,6 +565,41 @@
       }
     }
 
+    // ─── SAVE SCHEDULE CONFIG TO ONEDRIVE ────────────────────────────────────
+    async saveScheduleToOneDrive(branchCode, scheduleObj) {
+      if (!this.rootHandle || this.mode === 'DISCONNECTED') return false;
+      const bFolder = BRANCH_FOLDER_MAP[(branchCode || '').toUpperCase()] || this.activeBranchFolder || 'KOTA SENTOSA';
+      const bCode = FOLDER_BRANCH_CODE_MAP[bFolder] || branchCode || 'KS01';
+      const dirHandle = await this._getTargetBranchDirectoryHandle(bFolder);
+      if (!dirHandle) return false;
+
+      try {
+        const hasPerm = await this._verifyPermission(this.rootHandle, true, false);
+        if (!hasPerm) return false;
+
+        const session = typeof getSession === 'function' ? getSession() : null;
+        const nowIso = new Date().toISOString();
+
+        const payload = {
+          branch: bFolder,
+          branchCode: bCode,
+          lastUpdated: scheduleObj.lastUpdated || nowIso,
+          updatedBy: scheduleObj.updatedBy || session?.displayName || 'Pharmacist',
+          schedule: scheduleObj
+        };
+
+        const fileHandle = await dirHandle.getFileHandle('schedule_settings.json', { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(JSON.stringify(payload, null, 2));
+        await writable.close();
+        console.log(`[PMG OneDrive Sync] Saved schedule_settings.json to OneDrive for ${bFolder}`);
+        return true;
+      } catch (err) {
+        console.warn(`[PMG OneDrive Sync] Could not save schedule to OneDrive for ${bFolder}:`, err);
+        return false;
+      }
+    }
+
     // ─── LOAD & MERGE FROM ONEDRIVE (BACKGROUND WATCHER) ─────────────────────
     async syncWithOneDriveFolder(force = false) {
       if (!this.rootHandle || this.mode === 'DISCONNECTED') return false;
@@ -536,6 +626,25 @@
         }
 
         const file = await fileHandle.getFile();
+
+        // Also check and sync schedule_settings.json in background if present
+        try {
+          const bCode = FOLDER_BRANCH_CODE_MAP[targetBranch] || targetBranch;
+          const schedHandle = await dirHandle.getFileHandle('schedule_settings.json', { create: false });
+          const sFile = await schedHandle.getFile();
+          const sText = await sFile.text();
+          if (sText && sText.trim()) {
+            const parsed = JSON.parse(sText);
+            const cloudSched = parsed.schedule || parsed;
+            const remoteTime = parsed.lastUpdated || cloudSched.lastUpdated || '';
+            const localRaw = localStorage.getItem(`pmg_pharmacist_schedule_${bCode}`);
+            const localSched = localRaw ? JSON.parse(localRaw) : null;
+            if (!localSched || (remoteTime && remoteTime > (localSched.lastUpdated || ''))) {
+              localStorage.setItem(`pmg_pharmacist_schedule_${bCode}`, JSON.stringify(cloudSched));
+              console.log(`[PMG OneDrive Sync] Auto-updated schedule for ${bCode} from OneDrive`);
+            }
+          }
+        } catch (_) {}
 
         // If file modified timestamp is not newer and not forced, skip reading
         if (!force && file.lastModified <= this.lastKnownModified) {

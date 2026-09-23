@@ -327,7 +327,7 @@ function savePatientsData() {
 
 // ─── EVENT LISTENERS ─────────────────────────────────────────────────────────
 function setupPatientEventListeners() {
-  ['today', 'upcoming', 'overdue', 'all'].forEach(tab => {
+  ['today', 'upcoming', 'overdue', 'all', 'schedule'].forEach(tab => {
     const btn = document.getElementById(`patientSubTabBtn_${tab}`);
     if (btn) btn.addEventListener('click', () => switchPatientSubTab(tab));
   });
@@ -398,7 +398,7 @@ function setupPatientEventListeners() {
 
 function switchPatientSubTab(tab) {
   activePatientSubTab = tab;
-  ['today', 'upcoming', 'overdue', 'all'].forEach(t => {
+  ['today', 'upcoming', 'overdue', 'all', 'schedule'].forEach(t => {
     const btn = document.getElementById(`patientSubTabBtn_${t}`);
     const view = document.getElementById(`patientView_${t}`);
     if (btn) {
@@ -657,6 +657,7 @@ function renderPatientModule() {
   renderUpcomingQueue(upcomingList);
   renderOverdueQueue(overdueList);
   renderPatientDirectory(filteredPatients);
+  renderPharmacistScheduleTab(filteredPatients);
   updateBackupStatusBadge();
   updateDailyBackupBanner();
 }
@@ -1263,6 +1264,508 @@ function markAppointmentStatus(patientId, appointmentId, newStatus) {
   }
 }
 
+// ─── PHARMACIST SCHEDULE & BOOKINGS ROSTER ───────────────────────────────────
+
+function getFormattedDateWithDay(dateStr) {
+  if (!dateStr) return '—';
+  try {
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  } catch (_) {
+    return dateStr;
+  }
+}
+
+function renderPharmacistScheduleTab(patientsList) {
+  const tbody = document.getElementById('schedBookingsBody');
+  if (!tbody) return;
+
+  const pts = patientsList || (typeof patientsData !== 'undefined' ? patientsData : []);
+  const todayStr = getTodayDateString(0);
+  const tomorrowStr = getTodayDateString(1);
+  const next7DaysStr = getTodayDateString(7);
+
+  // 1. Gather all bookings across patients
+  const allBookings = [];
+  const pharmacistNames = new Set([
+    'William Chai (Pharmacist)',
+    'Kenix Ling (Pharmacist)',
+    'Ting Kwang Yu (BM)',
+    'Duty Pharmacist'
+  ]);
+
+  pts.forEach(p => {
+    (p.appointments || []).forEach(apt => {
+      if (!apt.id) apt.id = 'APT-' + Math.random().toString(36).substring(2, 9);
+      if (apt.pharmacist) pharmacistNames.add(apt.pharmacist);
+      allBookings.push({ patient: p, appointment: apt });
+    });
+  });
+
+  // 2. Populate Pharmacist dropdown filters if empty or updated
+  const pharmFilterEl = document.getElementById('schedFilterPharmacist');
+  if (pharmFilterEl) {
+    const currentVal = pharmFilterEl.value;
+    const sortedPharms = Array.from(pharmacistNames).filter(Boolean).sort();
+    let optHtml = '<option value="">All Pharmacists</option>';
+    sortedPharms.forEach(ph => {
+      optHtml += `<option value="${escHtml(ph)}" ${currentVal === ph ? 'selected' : ''}>${escHtml(ph)}</option>`;
+    });
+    pharmFilterEl.innerHTML = optHtml;
+  }
+
+  // Also keep modal pharmacist selector populated
+  const reschedPharmEl = document.getElementById('reschedPharmacist');
+  if (reschedPharmEl && reschedPharmEl.options.length <= 4) {
+    const sortedPharms = Array.from(pharmacistNames).filter(Boolean).sort();
+    let mOpts = '';
+    sortedPharms.forEach(ph => {
+      mOpts += `<option value="${escHtml(ph)}">${escHtml(ph)}</option>`;
+    });
+    reschedPharmEl.innerHTML = mOpts;
+  }
+
+  // 3. Compute High-Level KPIs (Across current branch patients)
+  let kpiUpcoming = 0;
+  let kpiToday = 0;
+  let kpiPending = 0;
+  let kpiCompleted = 0;
+
+  allBookings.forEach(({ appointment: apt }) => {
+    const isAct = (apt.status === 'Scheduled' || apt.status === 'Pending Approval');
+    if (apt.date >= todayStr && isAct) kpiUpcoming++;
+    if (apt.date === todayStr && isAct) kpiToday++;
+    if (apt.status === 'Pending Approval') kpiPending++;
+    if (apt.status === 'Completed' || apt.status === 'Approved') kpiCompleted++;
+  });
+
+  const kpiUpEl = document.getElementById('schedKpiUpcoming');
+  const kpiToEl = document.getElementById('schedKpiToday');
+  const kpiPeEl = document.getElementById('schedKpiPending');
+  const kpiCoEl = document.getElementById('schedKpiCompleted');
+  const badgeCountEl = document.getElementById('scheduleBadgeCount');
+
+  if (kpiUpEl) kpiUpEl.textContent = kpiUpcoming;
+  if (kpiToEl) kpiToEl.textContent = kpiToday;
+  if (kpiPeEl) kpiPeEl.textContent = kpiPending;
+  if (kpiCoEl) kpiCoEl.textContent = kpiCompleted;
+  if (badgeCountEl) badgeCountEl.textContent = kpiUpcoming;
+
+  // 4. Apply Active Filters
+  const selPharm = pharmFilterEl ? pharmFilterEl.value.trim().toLowerCase() : '';
+  const selTimeframe = document.getElementById('schedFilterTimeframe')?.value || 'upcoming';
+  const selStatus = document.getElementById('schedFilterStatus')?.value || 'active';
+  const query = (document.getElementById('schedSearchInput')?.value || '').toLowerCase().trim();
+
+  const filteredBookings = allBookings.filter(({ patient: p, appointment: apt }) => {
+    // Pharmacist filter
+    if (selPharm && !(apt.pharmacist || '').toLowerCase().includes(selPharm)) {
+      return false;
+    }
+
+    // Timeframe filter
+    if (selTimeframe === 'today') {
+      if (apt.date !== todayStr) return false;
+    } else if (selTimeframe === 'next7') {
+      if (apt.date < todayStr || apt.date > next7DaysStr) return false;
+    } else if (selTimeframe === 'upcoming') {
+      if (apt.date < todayStr) return false;
+    }
+
+    // Status filter
+    if (selStatus === 'active') {
+      if (apt.status !== 'Scheduled' && apt.status !== 'Pending Approval') return false;
+    } else if (selStatus !== 'all') {
+      if (apt.status !== selStatus) return false;
+    }
+
+    // Search query filter
+    if (query) {
+      const matchPName = (p.name || '').toLowerCase().includes(query);
+      const matchPhone = (p.phone || '').includes(query);
+      const matchIc = (p.ic || '').toLowerCase().includes(query);
+      const matchPurp = (apt.purpose || '').toLowerCase().includes(query);
+      const matchNotes = (apt.notes || '').toLowerCase().includes(query);
+      const matchPharm = (apt.pharmacist || '').toLowerCase().includes(query);
+      if (!matchPName && !matchPhone && !matchIc && !matchPurp && !matchNotes && !matchPharm) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  // 5. Sort chronologically: Date ascending, then Time ascending
+  filteredBookings.sort((a, b) => {
+    const cmpDate = (a.appointment.date || '').localeCompare(b.appointment.date || '');
+    if (cmpDate !== 0) return cmpDate;
+    return (a.appointment.time || '').localeCompare(b.appointment.time || '');
+  });
+
+  // 6. Render Bookings Table
+  if (!filteredBookings.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" class="text-center py-12 text-gray-400 text-xs italic">
+          <i class="fa-regular fa-calendar-xmark text-2xl text-gray-300 block mb-2"></i>
+          No pharmacist consultation bookings match the selected filters.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = filteredBookings.map(({ patient: p, appointment: apt }) => {
+    const isToday = apt.date === todayStr;
+    const isTomorrow = apt.date === tomorrowStr;
+
+    let dateBadge = '';
+    if (isToday) {
+      dateBadge = '<span class="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full ml-1.5 shadow-2xs">TODAY</span>';
+    } else if (isTomorrow) {
+      dateBadge = '<span class="bg-blue-100 text-blue-800 text-[10px] font-black px-2 py-0.5 rounded-full ml-1.5 shadow-2xs">TOMORROW</span>';
+    }
+
+    let statusClass = 'bg-blue-50 text-blue-700 border-blue-200';
+    if (apt.status === 'Completed' || apt.status === 'Approved') statusClass = 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold';
+    if (apt.status === 'Pending Approval') statusClass = 'bg-amber-50 text-amber-900 border-amber-300 font-bold animate-pulse';
+    if (apt.status === 'Missed') statusClass = 'bg-rose-50 text-rose-800 border-rose-200';
+
+    let cleanPhone = (p.phone || '').replace(/\D/g, '');
+    if (cleanPhone.startsWith('0')) cleanPhone = '60' + cleanPhone.slice(1);
+
+    const isRefill = (apt.type === 'refill_extension' || (apt.purpose && apt.purpose.includes('Refill')) || (apt.purpose && apt.purpose.includes('Supply')));
+
+    return `
+      <tr class="hover:bg-indigo-50/40 transition text-xs">
+        <!-- Date & Time Slot -->
+        <td class="px-4 py-3.5 whitespace-nowrap">
+          <div class="font-extrabold text-gray-900 text-xs flex items-center">
+            <span>${getFormattedDateWithDay(apt.date)}</span>
+            ${dateBadge}
+          </div>
+          <div class="text-indigo-700 font-bold text-xs mt-1 flex items-center gap-1.5">
+            <i class="fa-regular fa-clock text-[11px]"></i>
+            <span>${escHtml(apt.time || '10:00')}</span>
+          </div>
+        </td>
+
+        <!-- Duty Pharmacist -->
+        <td class="px-4 py-3.5 whitespace-nowrap">
+          <span class="inline-flex items-center gap-1.5 bg-purple-50 border border-purple-200 text-purple-900 font-bold px-2.5 py-1 rounded-xl text-xs shadow-2xs">
+            <i class="fa-solid fa-user-doctor text-purple-600 text-xs"></i>
+            <span>${escHtml(apt.pharmacist || 'Duty Pharmacist')}</span>
+          </span>
+        </td>
+
+        <!-- Patient Details -->
+        <td class="px-4 py-3.5">
+          <button type="button" onclick="viewPatientProfile('${p.id}')"
+            class="font-black text-blue-700 hover:text-blue-900 hover:underline text-xs text-left block">
+            ${escHtml(p.name)}
+          </button>
+          <div class="flex items-center gap-1.5 mt-0.5 flex-wrap text-[11px]">
+            ${cleanPhone ? `
+              <a href="https://wa.me/${cleanPhone}" target="_blank" rel="noopener"
+                class="text-emerald-700 font-bold hover:underline inline-flex items-center gap-1">
+                <i class="fa-brands fa-whatsapp text-emerald-600"></i> ${escHtml(p.phone || '—')}
+              </a>
+            ` : `<span class="text-gray-400">No phone</span>`}
+            <span class="text-gray-400 font-semibold">&bull; ${escHtml(p.branch || 'Branch')}</span>
+          </div>
+        </td>
+
+        <!-- Purpose & Details -->
+        <td class="px-4 py-3.5">
+          <div class="font-semibold text-gray-900 flex items-center gap-1.5 flex-wrap">
+            <span>${escHtml(apt.purpose || 'Chronic Consultation')}</span>
+            ${isRefill ? '<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-md">Refill Supply</span>' : ''}
+          </div>
+          ${apt.notes ? `<div class="text-[11px] text-gray-500 italic mt-0.5 line-clamp-1">${escHtml(apt.notes)}</div>` : ''}
+        </td>
+
+        <!-- Status -->
+        <td class="px-4 py-3.5 whitespace-nowrap">
+          <span class="inline-block px-2.5 py-1 rounded-lg text-xs font-semibold border ${statusClass}">
+            ${apt.status || 'Scheduled'}
+          </span>
+        </td>
+
+        <!-- Shift & Reschedule Actions -->
+        <td class="px-4 py-3.5 text-right whitespace-nowrap">
+          <div class="inline-flex items-center gap-1.5">
+            <!-- Reschedule / Shift Change -->
+            <button type="button" onclick="openRescheduleModal('${p.id}', '${apt.id}')"
+              class="bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 px-2.5 py-1.5 rounded-lg font-bold text-xs transition shadow-2xs flex items-center gap-1.5"
+              title="Change appointment date/time or switch duty pharmacist">
+              <i class="fa-solid fa-calendar-pen text-indigo-600"></i>
+              <span>Reschedule</span>
+            </button>
+
+            <!-- WhatsApp Customer Notice -->
+            <button type="button" onclick="openRescheduleModal('${p.id}', '${apt.id}', true)"
+              class="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-1.5 rounded-lg font-bold text-xs transition shadow-2xs flex items-center gap-1.5"
+              title="Send WhatsApp shift adjustment notice with booking link">
+              <i class="fa-brands fa-whatsapp text-emerald-600 text-sm"></i>
+              <span>WhatsApp</span>
+            </button>
+
+            <!-- Quick Mark Done (if active) -->
+            ${(apt.status === 'Scheduled' || apt.status === 'Pending Approval') ? `
+              <button type="button" onclick="markAppointmentStatus('${p.id}', '${apt.id}', 'Completed')"
+                class="text-gray-400 hover:text-emerald-700 p-1.5 rounded-lg hover:bg-emerald-50 transition" title="Mark Consultation Completed">
+                <i class="fa-solid fa-circle-check text-sm"></i>
+              </button>
+            ` : ''}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// ─── RESCHEDULE & SHIFT CHANGE MODAL LOGIC ───────────────────────────────────
+
+function openRescheduleModal(patientId, appointmentId, directWa = false) {
+  const modal = document.getElementById('rescheduleAppointmentModal');
+  if (!modal) return;
+
+  const p = patientsData.find(pt => pt.id === patientId);
+  if (!p) {
+    alert('Patient record not found.');
+    return;
+  }
+
+  const apt = (p.appointments || []).find(a => a.id === appointmentId);
+  if (!apt) {
+    alert('Appointment record not found.');
+    return;
+  }
+
+  // Populate hidden keys
+  document.getElementById('reschedPatientId').value = patientId;
+  document.getElementById('reschedAppointmentId').value = appointmentId;
+
+  // Populate Summary
+  document.getElementById('reschedPatientName').textContent = p.name;
+  document.getElementById('reschedPatientPhone').textContent = p.phone || 'No phone number';
+  document.getElementById('reschedPatientBranch').textContent = p.branch || 'Branch';
+  document.getElementById('reschedOriginalSlot').textContent = `${apt.date} (${apt.time || '10:00'}) · ${apt.pharmacist || 'Pharmacist'}`;
+
+  // Populate Inputs
+  document.getElementById('reschedNewDate').value = apt.date || getTodayDateString(1);
+  document.getElementById('reschedNewTime').value = apt.time || '10:00';
+
+  const pharmSel = document.getElementById('reschedPharmacist');
+  if (pharmSel) {
+    if (apt.pharmacist) {
+      let matched = false;
+      for (let i = 0; i < pharmSel.options.length; i++) {
+        if (pharmSel.options[i].value.toLowerCase().includes(apt.pharmacist.toLowerCase())) {
+          pharmSel.selectedIndex = i;
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        pharmSel.add(new Option(apt.pharmacist, apt.pharmacist, true, true));
+      }
+    }
+  }
+
+  document.getElementById('reschedReason').value = '';
+
+  const langSel = document.getElementById('reschedLanguageSelect');
+  if (langSel) {
+    langSel.value = typeof getPatientLanguageByRace === 'function' ? getPatientLanguageByRace(p) : 'Chinese';
+  }
+
+  updateRescheduleMessagePreview();
+  modal.classList.remove('hidden');
+
+  if (directWa) {
+    setTimeout(() => {
+      document.getElementById('reschedMessagePreview')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 150);
+  }
+}
+
+function closeRescheduleModal() {
+  const modal = document.getElementById('rescheduleAppointmentModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function setReschedQuickTime(timeStr) {
+  const timeInput = document.getElementById('reschedNewTime');
+  if (timeInput) {
+    timeInput.value = timeStr;
+    updateRescheduleMessagePreview();
+  }
+}
+
+function buildRescheduleWhatsAppMessage(patient, originalApt, newDate, newTime, newPharm, reason, lang) {
+  const patientName = patient?.name || 'Pelanggan';
+  let branchCode = patient?.branch || 'KOTA SENTOSA';
+  if (branchCode === 'KS01') branchCode = 'KOTA SENTOSA';
+  const branchInfo = BRANCH_SCHEDULES[branchCode] || BRANCH_SCHEDULES['KOTA SENTOSA'];
+  const sched = typeof getPharmacistSchedule === 'function' ? getPharmacistSchedule(branchCode) : null;
+  const branchName = sched ? (sched.branchName || branchInfo.name) : (branchInfo ? branchInfo.name : `PMG Pharmacy ${branchCode}`);
+  const dutyPharm = newPharm || originalApt?.pharmacist || (sched ? sched.defaultPharmacist : 'Duty Pharmacist');
+  const bookingUrl = typeof getPatientSelfBookingUrl === 'function' ? getPatientSelfBookingUrl(patient) : window.location.href;
+
+  const origSlot = originalApt ? `${originalApt.date} (${originalApt.time || '10:00'})` : '原定时间';
+  const reasonText = reason ? reason.trim() : '';
+
+  if (lang === 'Chinese') {
+    return `您好 *${patientName}*，这里是 *PMG Pharmacy (${branchName})*。
+
+由于药剂师执勤排班调动（Shift Adjustment）${reasonText ? '（' + reasonText + '）' : ''}，您原定于 *${origSlot}* 的咨询/续药预约需要改期。
+
+现为您调整安排至：
+📅 *新预约日期：* ${newDate}
+⏰ *新预约时间：* ${newTime}
+👨‍⚕️ *主理药剂师：* ${dutyPharm}
+
+如以上新时间方便您，请回复确认即可。
+若此时间对您不便，您也可以点击以下专属预约链接，自行选择最方便您的日期与时间：
+🔗 ${bookingUrl}
+
+给您带来不便，我们深表歉意！感谢您的理解与支持。
+祝您身体健康！
+*PMG Pharmacy*`;
+  } else if (lang === 'Malay') {
+    return `Salam sejahtera *${patientName}*, kami dari *PMG Pharmacy (${branchName})*.
+
+Harap maklum bahawa disebabkan perubahan jadual syif ahli farmasi kami (Shift Adjustment)${reasonText ? ' (' + reasonText + ')' : ''}, temujanji rundingan kesihatan/ulangan ubat anda yang asal pada *${origSlot}* perlu dijadualkan semula.
+
+Kami cadangkan tarikh & masa baharu seperti berikut:
+📅 *Tarikh Baharu:* ${newDate}
+⏰ *Masa Baharu:* ${newTime}
+👨‍⚕️ *Ahli Farmasi Bertugas:* ${dutyPharm}
+
+Sekiranya masa ini sesuai, sila balas mesej ini untuk pengesahan.
+Jika masa ini kurang sesuai, anda juga boleh klik pautan khas di bawah untuk memilih sendiri tarikh & masa yang paling mudah untuk anda:
+🔗 ${bookingUrl}
+
+Kami memohon maaf atas sebarang kesulitan. Terima kasih atas pemahaman anda!
+Semoga sihat sejahtera,
+*PMG Pharmacy*`;
+  } else {
+    // English
+    return `Hello *${patientName}*, this is *PMG Pharmacy (${branchName})*.
+
+Please be informed that due to a pharmacist duty shift adjustment${reasonText ? ' (' + reasonText + ')' : ''}, your consultation/refill appointment originally scheduled on *${origSlot}* needs to be rescheduled.
+
+We have updated your tentative slot to:
+📅 *New Date:* ${newDate}
+⏰ *New Time:* ${newTime}
+👨‍⚕️ *Duty Pharmacist:* ${dutyPharm}
+
+If this updated time works for you, simply reply to confirm.
+If you prefer a different slot, you can easily choose a convenient date and time using your personal booking link below:
+🔗 ${bookingUrl}
+
+We sincerely apologize for any inconvenience caused and appreciate your kind understanding.
+Best regards,
+*PMG Pharmacy*`;
+  }
+}
+
+function updateRescheduleMessagePreview() {
+  const previewEl = document.getElementById('reschedMessagePreview');
+  if (!previewEl) return;
+
+  const pId = document.getElementById('reschedPatientId')?.value;
+  const aptId = document.getElementById('reschedAppointmentId')?.value;
+  const p = patientsData.find(pt => pt.id === pId);
+  const apt = p?.appointments?.find(a => a.id === aptId);
+
+  const newDate = document.getElementById('reschedNewDate')?.value || getTodayDateString(1);
+  const newTime = document.getElementById('reschedNewTime')?.value || '10:00';
+  const newPharm = document.getElementById('reschedPharmacist')?.value || 'Duty Pharmacist';
+  const reason = document.getElementById('reschedReason')?.value || '';
+  const lang = document.getElementById('reschedLanguageSelect')?.value || 'Chinese';
+
+  const msg = buildRescheduleWhatsAppMessage(p, apt, newDate, newTime, newPharm, reason, lang);
+  previewEl.textContent = msg;
+}
+
+function saveReschedule(sendWhatsApp = false) {
+  const pId = document.getElementById('reschedPatientId')?.value;
+  const aptId = document.getElementById('reschedAppointmentId')?.value;
+  const p = patientsData.find(pt => pt.id === pId);
+  if (!p) {
+    alert('Patient record not found.');
+    return;
+  }
+
+  const apt = (p.appointments || []).find(a => a.id === aptId);
+  if (!apt) {
+    alert('Appointment record not found.');
+    return;
+  }
+
+  const newDate = document.getElementById('reschedNewDate')?.value;
+  const newTime = document.getElementById('reschedNewTime')?.value;
+  const newPharm = document.getElementById('reschedPharmacist')?.value;
+  const reason = document.getElementById('reschedReason')?.value?.trim();
+  const lang = document.getElementById('reschedLanguageSelect')?.value || 'Chinese';
+
+  if (!newDate) {
+    alert('Please choose a valid new appointment date.');
+    return;
+  }
+  if (!newTime) {
+    alert('Please enter a valid appointment time slot.');
+    return;
+  }
+
+  // Update appointment fields
+  const oldSlot = `${apt.date} ${apt.time || ''}`;
+  apt.date = newDate;
+  apt.time = newTime;
+  if (newPharm) apt.pharmacist = newPharm;
+
+  if (reason) {
+    apt.notes = (apt.notes ? apt.notes + ' · ' : '') + `[Rescheduled from ${oldSlot}: ${reason}]`;
+  } else {
+    apt.notes = (apt.notes ? apt.notes + ' · ' : '') + `[Rescheduled from ${oldSlot}]`;
+  }
+
+  if (apt.status !== 'Completed') {
+    apt.status = 'Scheduled';
+  }
+
+  // Persist patient record
+  savePatientsData();
+
+  if (sendWhatsApp) {
+    let cleanPhone = (p.phone || '').replace(/\D/g, '');
+    if (cleanPhone.startsWith('0')) cleanPhone = '60' + cleanPhone.slice(1);
+
+    if (!cleanPhone) {
+      alert('This patient does not have a recorded phone number for WhatsApp.');
+    } else {
+      const msg = buildRescheduleWhatsAppMessage(p, { date: oldSlot.split(' ')[0], time: oldSlot.split(' ')[1], pharmacist: apt.pharmacist }, newDate, newTime, newPharm, reason, lang);
+      const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+      window.open(waUrl, '_blank');
+    }
+  }
+
+  closeRescheduleModal();
+  renderPatientModule();
+
+  if (typeof showPmgToast === 'function') {
+    showPmgToast(`✅ Appointment for ${p.name} rescheduled to ${newDate} (${newTime})`, 'success');
+  } else {
+    alert(`Appointment for ${p.name} rescheduled to ${newDate} (${newTime}) successfully!`);
+  }
+}
+
+function whatsappRescheduleCustomer(patientId, appointmentId) {
+  openRescheduleModal(patientId, appointmentId, true);
+}
+
 // ─── NEW PATIENT MODAL ───────────────────────────────────────────────────────
 function showNewPatientModal() {
   const modal = document.getElementById('patientNewModal');
@@ -1774,12 +2277,26 @@ async function autoAnalyzeTedaLink() {
     checkTedaUrl(rawUrl);
 
   } catch (err) {
-    console.error('[TEDA Auto-Analyze Error]', err);
+    console.warn('[TEDA Auto-Analyze Notice]', err);
     if (statusEl) {
-      statusEl.className = 'text-[10px] text-rose-600 font-semibold';
-      statusEl.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> Decrypt failed: ${err.message}`;
+      statusEl.className = 'text-[11px] text-amber-900 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-300 font-medium leading-tight';
+      statusEl.innerHTML = `
+        <div class="flex items-center gap-1.5 text-emerald-700 font-bold mb-0.5">
+          <i class="fa-solid fa-circle-check text-emerald-600"></i> TEDA Link Attached &amp; Saved (ID: <code>${rid.slice(0, 8)}...</code>)
+        </div>
+        <div class="text-[10px] text-gray-600">
+          Due to server anti-hotlinking, click <b>"Open TEDA Report"</b> to view in full TV mode, or tap quick TCM tags below.
+        </div>
+      `;
     }
-    alert(`Could not fetch or decrypt TEDA report:\n${err.message}\n\nPlease check your network or enter findings manually.`);
+
+    // Pre-fill encounter notes with the report link so it is permanently recorded
+    const tedaTextEl = document.getElementById('encTeda');
+    if (tedaTextEl && !tedaTextEl.value.trim()) {
+      tedaTextEl.value = `【TEDA 中医脉诊经络健康评估】\n• 报告编号: ${rid}\n• 在线报告链接: ${rawUrl}`;
+    }
+
+    checkTedaUrl(rawUrl);
   } finally {
     if (btn) {
       btn.disabled = false;
@@ -2180,7 +2697,9 @@ async function renderProfileEncounters(p) {
 
     // Match attached documents: by encounterId OR by encounter date
     const encDocs = (allDocs || []).filter(doc => (doc.encounterId && doc.encounterId === enc.id) || (doc.date && doc.date === enc.date));
-    const tedaUrl = (enc.specialtyScans && enc.specialtyScans.teda) ? enc.specialtyScans.teda : null;
+    const rawTedaLink = enc.specialtyScans?.tedaLink || (enc.specialtyScans?.teda && enc.specialtyScans.teda.startsWith('http') ? enc.specialtyScans.teda : null);
+    const tedaUrl = rawTedaLink || null;
+    const tedaNotes = (enc.specialtyScans && enc.specialtyScans.teda && !enc.specialtyScans.teda.startsWith('http')) ? enc.specialtyScans.teda : null;
     const airdocPdf = (enc.specialtyScans && enc.specialtyScans.airdoc) ? enc.specialtyScans.airdoc : null;
     const hasAttachments = (encDocs.length > 0) || tedaUrl || airdocPdf;
 
@@ -2237,6 +2756,16 @@ async function renderProfileEncounters(p) {
           ${enc.specialtyScans && enc.specialtyScans.rossmaxAct ? `<span class="bg-amber-50 text-amber-900 border border-amber-200 px-3 py-1 rounded-xl font-medium">Rossmax ACT: <b>${enc.specialtyScans.rossmaxAct}</b></span>` : ''}
         </div>
 
+        <!-- TEDA TCM & Meridian Assessment Text (if recorded) -->
+        ${tedaNotes ? `
+          <div class="mt-3.5 p-3.5 bg-amber-50/70 border border-amber-200 rounded-2xl text-xs sm:text-sm text-amber-950">
+            <p class="font-extrabold text-amber-900 mb-1 flex items-center gap-1.5">
+              <i class="fa-solid fa-yin-yang text-amber-700"></i> TEDA TCM & Meridian Assessment:
+            </p>
+            <p class="text-gray-800 whitespace-pre-line leading-relaxed font-medium">${escHtml(tedaNotes)}</p>
+          </div>
+        ` : ''}
+
         <!-- Attached Lab Reports, Documents & Diagnostic Scans -->
         ${hasAttachments ? `
           <div class="mt-4 p-4 bg-slate-50 border-2 border-dashed border-blue-200 rounded-2xl">
@@ -2266,8 +2795,10 @@ async function renderProfileEncounters(p) {
               }).join('')}
               ${tedaUrl ? `
                 <a href="${tedaUrl}" target="_blank" rel="noopener"
-                  class="bg-cyan-100 hover:bg-cyan-200 text-cyan-950 border border-cyan-300 text-xs sm:text-sm font-bold px-3.5 py-2 rounded-xl flex items-center gap-2 transition shadow-xs">
-                  <i class="fa-solid fa-arrow-up-right-from-square text-cyan-700"></i> Open TEDA Report
+                  class="bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 text-xs sm:text-sm font-bold px-3.5 py-2 rounded-xl flex items-center gap-2 transition shadow-xs"
+                  title="Open live TEDA WellScan online report in new window">
+                  <i class="fa-solid fa-yin-yang text-amber-700 text-sm"></i>
+                  <span>Open TEDA Report (${extractTedaRid(tedaUrl) ? extractTedaRid(tedaUrl).slice(0, 8) + '...' : 'Online'})</span>
                 </a>
               ` : ''}
               ${airdocPdf ? `
@@ -2594,8 +3125,6 @@ function buildConsultationWaSummary(patient, enc) {
     if (l.tc) msg += `• 总胆固醇：${l.tc} mmol/L | AI指数：${l.ai || '—'}\n`;
 
     if (enc.preDiagnostic) msg += `\n🔍 *药剂师评估：*\n${enc.preDiagnostic}\n`;
-    if (enc.planMedications) msg += `\n💊 *用药建议：*\n${enc.planMedications}\n`;
-    if (enc.planSupplements) msg += `\n🌿 *保健品推荐：*\n${enc.planSupplements}\n`;
     if (enc.planCounselling) msg += `\n🗣️ *饮食与生活注意：*\n${enc.planCounselling}\n`;
 
     msg += `\n🌟 *如果您对我们今天的健康咨询与检测服务满意，诚挚邀请您为我们留下 5 星好评支持：*\n⭐ 谷歌5星好评：${googleReviewLink}\n\n`;
@@ -2612,8 +3141,6 @@ function buildConsultationWaSummary(patient, enc) {
     if (l.tc) msg += `• Kolesterol: ${l.tc} mmol/L\n`;
 
     if (enc.preDiagnostic) msg += `\n🔍 *Penilaian Ahli Farmasi:*\n${enc.preDiagnostic}\n`;
-    if (enc.planMedications) msg += `\n💊 *Ubat-ubatan:*\n${enc.planMedications}\n`;
-    if (enc.planSupplements) msg += `\n🌿 *Suplemen Disyorkan:*\n${enc.planSupplements}\n`;
     if (enc.planCounselling) msg += `\n🗣️ *Nasihat Gaya Hidup:*\n${enc.planCounselling}\n`;
 
     msg += `\n🌟 *Jika anda berpuas hati dengan perkhidmatan dan ujian kesihatan kami, sudilah berikan kami penilaian 5 bintang di Google:*\n⭐ Ulasan Google 5 Bintang: ${googleReviewLink}\n\n`;
@@ -2631,8 +3158,6 @@ function buildConsultationWaSummary(patient, enc) {
     if (l.tc) msg += `• Total Cholesterol: ${l.tc} mmol/L (AI: ${l.ai || '—'})\n`;
 
     if (enc.preDiagnostic) msg += `\n🔍 *Pharmacist Clinical Impression:*\n${enc.preDiagnostic}\n`;
-    if (enc.planMedications) msg += `\n💊 *Medications:*\n${enc.planMedications}\n`;
-    if (enc.planSupplements) msg += `\n🌿 *Recommended Supplements:*\n${enc.planSupplements}\n`;
     if (enc.planCounselling) msg += `\n🗣️ *Lifestyle & Dietary Advice:*\n${enc.planCounselling}\n`;
 
     msg += `\n🌟 *If you are satisfied with our health consultation and testing service today, we would greatly appreciate your 5-star Google review:*\n⭐ Rate 5 Stars on Google: ${googleReviewLink}\n\n`;
@@ -3188,11 +3713,24 @@ function getPharmacistSchedule(branchCode) {
 }
 
 /**
- * Saves schedule config to localStorage.
+ * Saves schedule config to localStorage and automatically syncs to PMG OneDrive folder.
  */
 function savePharmacistSchedule(branchCode, scheduleObj) {
   const code = branchCode || 'KS01';
+  if (!scheduleObj) return;
+
+  const nowIso = new Date().toISOString();
+  scheduleObj.lastUpdated = nowIso;
+  scheduleObj.updatedBy = (typeof getSession === 'function' ? getSession()?.displayName : 'Pharmacist') || 'Pharmacist';
+
   localStorage.setItem(`pmg_pharmacist_schedule_${code}`, JSON.stringify(scheduleObj));
+
+  // Sync to OneDrive branch folder if linked
+  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveScheduleToOneDrive === 'function') {
+    window.pmgOneDriveSync.saveScheduleToOneDrive(code, scheduleObj).catch(err => {
+      console.warn('[PMG OneDrive Sync] Auto-save schedule warning:', err);
+    });
+  }
 }
 
 /**
