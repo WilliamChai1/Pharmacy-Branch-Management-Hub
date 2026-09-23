@@ -1266,6 +1266,38 @@ function markAppointmentStatus(patientId, appointmentId, newStatus) {
 
 // ─── PHARMACIST SCHEDULE & BOOKINGS ROSTER ───────────────────────────────────
 
+let currentSchedViewMode = 'booked'; // 'booked' or 'reminders'
+
+function switchSchedViewMode(mode) {
+  currentSchedViewMode = mode;
+  const btnBooked = document.getElementById('schedTabBtn_booked');
+  const btnRemind = document.getElementById('schedTabBtn_reminders');
+  const secBooked = document.getElementById('schedSection_booked');
+  const secRemind = document.getElementById('schedSection_reminders');
+
+  if (mode === 'booked') {
+    if (btnBooked) {
+      btnBooked.className = 'px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs bg-white text-indigo-900 flex items-center gap-2';
+    }
+    if (btnRemind) {
+      btnRemind.className = 'px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 hover:text-gray-900 transition flex items-center gap-2';
+    }
+    if (secBooked) secBooked.classList.remove('hidden');
+    if (secRemind) secRemind.classList.add('hidden');
+  } else {
+    if (btnBooked) {
+      btnBooked.className = 'px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 hover:text-gray-900 transition flex items-center gap-2';
+    }
+    if (btnRemind) {
+      btnRemind.className = 'px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs bg-white text-amber-900 flex items-center gap-2';
+    }
+    if (secBooked) secBooked.classList.add('hidden');
+    if (secRemind) secRemind.classList.remove('hidden');
+  }
+
+  renderPharmacistScheduleTab();
+}
+
 function getFormattedDateWithDay(dateStr) {
   if (!dateStr) return '—';
   try {
@@ -1277,15 +1309,18 @@ function getFormattedDateWithDay(dateStr) {
 }
 
 function renderPharmacistScheduleTab(patientsList) {
-  const tbody = document.getElementById('schedBookingsBody');
-  if (!tbody) return;
+  const tbodyBooked = document.getElementById('schedBookingsBody');
+  const tbodyRemind = document.getElementById('schedRemindersBody');
+  if (!tbodyBooked && !tbodyRemind) return;
 
   const pts = patientsList || (typeof patientsData !== 'undefined' ? patientsData : []);
   const todayStr = getTodayDateString(0);
   const tomorrowStr = getTodayDateString(1);
   const next7DaysStr = getTodayDateString(7);
 
-  // 1. Gather all bookings across patients
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PART 1: CUSTOMER BOOKED APPOINTMENTS (Confirmed Slots with Time & Pharmacist)
+  // ═══════════════════════════════════════════════════════════════════════════
   const allBookings = [];
   const pharmacistNames = new Set([
     'William Chai (Pharmacist)',
@@ -1302,7 +1337,7 @@ function renderPharmacistScheduleTab(patientsList) {
     });
   });
 
-  // 2. Populate Pharmacist dropdown filters if empty or updated
+  // Populate Pharmacist filter dropdown
   const pharmFilterEl = document.getElementById('schedFilterPharmacist');
   if (pharmFilterEl) {
     const currentVal = pharmFilterEl.value;
@@ -1314,7 +1349,7 @@ function renderPharmacistScheduleTab(patientsList) {
     pharmFilterEl.innerHTML = optHtml;
   }
 
-  // Also keep modal pharmacist selector populated
+  // Populate modal pharmacist dropdown
   const reschedPharmEl = document.getElementById('reschedPharmacist');
   if (reschedPharmEl && reschedPharmEl.options.length <= 4) {
     const sortedPharms = Array.from(pharmacistNames).filter(Boolean).sort();
@@ -1325,7 +1360,7 @@ function renderPharmacistScheduleTab(patientsList) {
     reschedPharmEl.innerHTML = mOpts;
   }
 
-  // 3. Compute High-Level KPIs (Across current branch patients)
+  // Compute Booked KPIs
   let kpiUpcoming = 0;
   let kpiToday = 0;
   let kpiPending = 0;
@@ -1344,184 +1379,451 @@ function renderPharmacistScheduleTab(patientsList) {
   const kpiPeEl = document.getElementById('schedKpiPending');
   const kpiCoEl = document.getElementById('schedKpiCompleted');
   const badgeCountEl = document.getElementById('scheduleBadgeCount');
+  const countBookedBadge = document.getElementById('schedCountBookedBadge');
 
   if (kpiUpEl) kpiUpEl.textContent = kpiUpcoming;
   if (kpiToEl) kpiToEl.textContent = kpiToday;
   if (kpiPeEl) kpiPeEl.textContent = kpiPending;
   if (kpiCoEl) kpiCoEl.textContent = kpiCompleted;
   if (badgeCountEl) badgeCountEl.textContent = kpiUpcoming;
+  if (countBookedBadge) countBookedBadge.textContent = kpiUpcoming;
 
-  // 4. Apply Active Filters
-  const selPharm = pharmFilterEl ? pharmFilterEl.value.trim().toLowerCase() : '';
-  const selTimeframe = document.getElementById('schedFilterTimeframe')?.value || 'upcoming';
-  const selStatus = document.getElementById('schedFilterStatus')?.value || 'active';
-  const query = (document.getElementById('schedSearchInput')?.value || '').toLowerCase().trim();
+  // Filter Booked Appointments
+  if (tbodyBooked) {
+    const selPharm = pharmFilterEl ? pharmFilterEl.value.trim().toLowerCase() : '';
+    const selTimeframe = document.getElementById('schedFilterTimeframe')?.value || 'upcoming';
+    const selStatus = document.getElementById('schedFilterStatus')?.value || 'active';
+    const query = (document.getElementById('schedSearchInput')?.value || '').toLowerCase().trim();
 
-  const filteredBookings = allBookings.filter(({ patient: p, appointment: apt }) => {
-    // Pharmacist filter
-    if (selPharm && !(apt.pharmacist || '').toLowerCase().includes(selPharm)) {
-      return false;
-    }
+    const filteredBookings = allBookings.filter(({ patient: p, appointment: apt }) => {
+      if (selPharm && !(apt.pharmacist || '').toLowerCase().includes(selPharm)) return false;
 
-    // Timeframe filter
-    if (selTimeframe === 'today') {
-      if (apt.date !== todayStr) return false;
-    } else if (selTimeframe === 'next7') {
-      if (apt.date < todayStr || apt.date > next7DaysStr) return false;
-    } else if (selTimeframe === 'upcoming') {
-      if (apt.date < todayStr) return false;
-    }
-
-    // Status filter
-    if (selStatus === 'active') {
-      if (apt.status !== 'Scheduled' && apt.status !== 'Pending Approval') return false;
-    } else if (selStatus !== 'all') {
-      if (apt.status !== selStatus) return false;
-    }
-
-    // Search query filter
-    if (query) {
-      const matchPName = (p.name || '').toLowerCase().includes(query);
-      const matchPhone = (p.phone || '').includes(query);
-      const matchIc = (p.ic || '').toLowerCase().includes(query);
-      const matchPurp = (apt.purpose || '').toLowerCase().includes(query);
-      const matchNotes = (apt.notes || '').toLowerCase().includes(query);
-      const matchPharm = (apt.pharmacist || '').toLowerCase().includes(query);
-      if (!matchPName && !matchPhone && !matchIc && !matchPurp && !matchNotes && !matchPharm) {
-        return false;
+      if (selTimeframe === 'today') {
+        if (apt.date !== todayStr) return false;
+      } else if (selTimeframe === 'next7') {
+        if (apt.date < todayStr || apt.date > next7DaysStr) return false;
+      } else if (selTimeframe === 'upcoming') {
+        if (apt.date < todayStr) return false;
       }
+
+      if (selStatus === 'active') {
+        if (apt.status !== 'Scheduled' && apt.status !== 'Pending Approval') return false;
+      } else if (selStatus !== 'all') {
+        if (apt.status !== selStatus) return false;
+      }
+
+      if (query) {
+        const matchPName = (p.name || '').toLowerCase().includes(query);
+        const matchPhone = (p.phone || '').includes(query);
+        const matchIc = (p.ic || '').toLowerCase().includes(query);
+        const matchPurp = (apt.purpose || '').toLowerCase().includes(query);
+        const matchNotes = (apt.notes || '').toLowerCase().includes(query);
+        const matchPharm = (apt.pharmacist || '').toLowerCase().includes(query);
+        if (!matchPName && !matchPhone && !matchIc && !matchPurp && !matchNotes && !matchPharm) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    filteredBookings.sort((a, b) => {
+      const cmpDate = (a.appointment.date || '').localeCompare(b.appointment.date || '');
+      if (cmpDate !== 0) return cmpDate;
+      return (a.appointment.time || '').localeCompare(b.appointment.time || '');
+    });
+
+    if (!filteredBookings.length) {
+      tbodyBooked.innerHTML = `
+        <tr>
+          <td colspan="6" class="text-center py-12 text-gray-400 text-xs italic">
+            <i class="fa-regular fa-calendar-xmark text-2xl text-gray-300 block mb-2"></i>
+            No confirmed customer bookings match the selected filters.
+          </td>
+        </tr>
+      `;
+    } else {
+      tbodyBooked.innerHTML = filteredBookings.map(({ patient: p, appointment: apt }) => {
+        const isToday = apt.date === todayStr;
+        const isTomorrow = apt.date === tomorrowStr;
+
+        let dateBadge = '';
+        if (isToday) {
+          dateBadge = '<span class="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full ml-1.5 shadow-2xs">TODAY</span>';
+        } else if (isTomorrow) {
+          dateBadge = '<span class="bg-blue-100 text-blue-800 text-[10px] font-black px-2 py-0.5 rounded-full ml-1.5 shadow-2xs">TOMORROW</span>';
+        }
+
+        let statusClass = 'bg-blue-50 text-blue-700 border-blue-200';
+        if (apt.status === 'Completed' || apt.status === 'Approved') statusClass = 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold';
+        if (apt.status === 'Pending Approval') statusClass = 'bg-amber-50 text-amber-900 border-amber-300 font-bold animate-pulse';
+        if (apt.status === 'Missed') statusClass = 'bg-rose-50 text-rose-800 border-rose-200';
+
+        let cleanPhone = (p.phone || '').replace(/\D/g, '');
+        if (cleanPhone.startsWith('0')) cleanPhone = '60' + cleanPhone.slice(1);
+
+        const isRefill = (apt.type === 'refill_extension' || (apt.purpose && apt.purpose.includes('Refill')) || (apt.purpose && apt.purpose.includes('Supply')));
+
+        return `
+          <tr class="hover:bg-indigo-50/40 transition text-xs">
+            <!-- Booked Date & Time Slot -->
+            <td class="px-4 py-3.5 whitespace-nowrap">
+              <div class="font-extrabold text-gray-900 text-xs flex items-center">
+                <span>${getFormattedDateWithDay(apt.date)}</span>
+                ${dateBadge}
+              </div>
+              <div class="text-indigo-700 font-bold text-xs mt-1 flex items-center gap-1.5">
+                <i class="fa-regular fa-clock text-[11px]"></i>
+                <span>${escHtml(apt.time || '10:00')}</span>
+              </div>
+            </td>
+
+            <!-- Duty Pharmacist -->
+            <td class="px-4 py-3.5 whitespace-nowrap">
+              <span class="inline-flex items-center gap-1.5 bg-purple-50 border border-purple-200 text-purple-900 font-bold px-2.5 py-1 rounded-xl text-xs shadow-2xs">
+                <i class="fa-solid fa-user-doctor text-purple-600 text-xs"></i>
+                <span>${escHtml(apt.pharmacist || 'Duty Pharmacist')}</span>
+              </span>
+            </td>
+
+            <!-- Patient Details -->
+            <td class="px-4 py-3.5">
+              <button type="button" onclick="viewPatientProfile('${p.id}')"
+                class="font-black text-blue-700 hover:text-blue-900 hover:underline text-xs text-left block">
+                ${escHtml(p.name)}
+              </button>
+              <div class="flex items-center gap-1.5 mt-0.5 flex-wrap text-[11px]">
+                ${cleanPhone ? `
+                  <a href="https://wa.me/${cleanPhone}" target="_blank" rel="noopener"
+                    class="text-emerald-700 font-bold hover:underline inline-flex items-center gap-1">
+                    <i class="fa-brands fa-whatsapp text-emerald-600"></i> ${escHtml(p.phone || '—')}
+                  </a>
+                ` : `<span class="text-gray-400">No phone</span>`}
+                <span class="text-gray-400 font-semibold">&bull; ${escHtml(p.branch || 'Branch')}</span>
+              </div>
+            </td>
+
+            <!-- Purpose & Details -->
+            <td class="px-4 py-3.5">
+              <div class="font-semibold text-gray-900 flex items-center gap-1.5 flex-wrap">
+                <span>${escHtml(apt.purpose || 'Chronic Consultation')}</span>
+                ${isRefill ? '<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-md">Refill Supply</span>' : ''}
+              </div>
+              ${apt.notes ? `<div class="text-[11px] text-gray-500 italic mt-0.5 line-clamp-1">${escHtml(apt.notes)}</div>` : ''}
+            </td>
+
+            <!-- Status -->
+            <td class="px-4 py-3.5 whitespace-nowrap">
+              <span class="inline-block px-2.5 py-1 rounded-lg text-xs font-semibold border ${statusClass}">
+                ${apt.status || 'Scheduled'}
+              </span>
+            </td>
+
+            <!-- Actions: Reschedule vs WhatsApp Reminder -->
+            <td class="px-4 py-3.5 text-right whitespace-nowrap">
+              <div class="inline-flex items-center gap-2">
+                <!-- Reschedule / Shift Change Button (Opens Modal) -->
+                <button type="button" onclick="openRescheduleModal('${p.id}', '${apt.id}')"
+                  class="bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 px-2.5 py-1.5 rounded-lg font-bold text-xs transition shadow-2xs flex items-center gap-1.5"
+                  title="Shift change or appointment rescheduling">
+                  <i class="fa-solid fa-calendar-pen text-indigo-600"></i>
+                  <span>Reschedule</span>
+                </button>
+
+                <!-- WhatsApp Routine Appointment Reminder (Direct WhatsApp Chat) -->
+                <button type="button" onclick="sendDirectAppointmentReminderWa('${p.id}', '${apt.id}')"
+                  class="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-1.5 rounded-lg font-bold text-xs transition shadow-2xs flex items-center gap-1.5"
+                  title="Send confirmed appointment reminder directly to customer on WhatsApp">
+                  <i class="fa-brands fa-whatsapp text-emerald-600 text-sm"></i>
+                  <span>WhatsApp Reminder</span>
+                </button>
+
+                <!-- Quick Mark Done (if active) -->
+                ${(apt.status === 'Scheduled' || apt.status === 'Pending Approval') ? `
+                  <button type="button" onclick="markAppointmentStatus('${p.id}', '${apt.id}', 'Completed')"
+                    class="text-gray-400 hover:text-emerald-700 p-1.5 rounded-lg hover:bg-emerald-50 transition" title="Mark Consultation Completed">
+                    <i class="fa-solid fa-circle-check text-sm"></i>
+                  </button>
+                ` : ''}
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PART 2: APPOINTMENT REMINDER DATES (Next TCA in SOAP & Medication Refill Due)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const reminderItems = [];
+  let remindTotal = 0;
+  let remindToday = 0;
+  let remindNext7 = 0;
+  let remindOverdue = 0;
+
+  pts.forEach(p => {
+    const bookedApt = (p.appointments || []).find(a => a.date >= todayStr && (a.status === 'Scheduled' || a.status === 'Pending Approval'));
+    const isBooked = !!bookedApt;
+
+    // 1. Next TCA Date from Consult & POCT / SOAP
+    if (p.nextTcaDate) {
+      const isPast = p.nextTcaDate < todayStr;
+      const isTod = p.nextTcaDate === todayStr;
+      const isSoon = p.nextTcaDate > todayStr && p.nextTcaDate <= next7DaysStr;
+
+      remindTotal++;
+      if (isTod) remindToday++;
+      if (isSoon) remindNext7++;
+      if (isPast) remindOverdue++;
+
+      reminderItems.push({
+        patient: p,
+        date: p.nextTcaDate,
+        purpose: p.nextTcaPurpose || 'Follow-up Consultation & Refill',
+        source: p.nextTcaRecordedBy ? `Consultation SOAP (by ${p.nextTcaRecordedBy})` : 'Consultation SOAP Assessment',
+        type: 'tca',
+        isBooked,
+        bookedSlot: bookedApt ? `${bookedApt.date} (${bookedApt.time || '10:00'})` : null
+      });
     }
 
-    return true;
+    // 2. Chronic medication refill due dates
+    (p.medications || []).forEach(med => {
+      if (med.nextRefillDate && med.nextRefillDate !== p.nextTcaDate) {
+        const isPast = med.nextRefillDate < todayStr;
+        const isTod = med.nextRefillDate === todayStr;
+        const isSoon = med.nextRefillDate > todayStr && med.nextRefillDate <= next7DaysStr;
+
+        const alreadyIn = reminderItems.some(r => r.patient.id === p.id && r.date === med.nextRefillDate);
+        if (!alreadyIn) {
+          remindTotal++;
+          if (isTod) remindToday++;
+          if (isSoon) remindNext7++;
+          if (isPast) remindOverdue++;
+
+          reminderItems.push({
+            patient: p,
+            date: med.nextRefillDate,
+            purpose: `Refill Due: ${med.name} (${med.dosage || ''})`,
+            source: 'Chronic Medication Supply Tracking',
+            type: 'med_refill',
+            isBooked,
+            bookedSlot: bookedApt ? `${bookedApt.date} (${bookedApt.time || '10:00'})` : null
+          });
+        }
+      }
+    });
   });
 
-  // 5. Sort chronologically: Date ascending, then Time ascending
-  filteredBookings.sort((a, b) => {
-    const cmpDate = (a.appointment.date || '').localeCompare(b.appointment.date || '');
-    if (cmpDate !== 0) return cmpDate;
-    return (a.appointment.time || '').localeCompare(b.appointment.time || '');
-  });
+  // Update Reminders KPIs & Badges
+  const rKpiTotal = document.getElementById('remindKpiTotal');
+  const rKpiToday = document.getElementById('remindKpiToday');
+  const rKpiNext7 = document.getElementById('remindKpiNext7');
+  const rKpiOverdue = document.getElementById('remindKpiOverdue');
+  const countRemindBadge = document.getElementById('schedCountRemindersBadge');
 
-  // 6. Render Bookings Table
-  if (!filteredBookings.length) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="6" class="text-center py-12 text-gray-400 text-xs italic">
-          <i class="fa-regular fa-calendar-xmark text-2xl text-gray-300 block mb-2"></i>
-          No pharmacist consultation bookings match the selected filters.
-        </td>
-      </tr>
-    `;
+  if (rKpiTotal) rKpiTotal.textContent = remindTotal;
+  if (rKpiToday) rKpiToday.textContent = remindToday;
+  if (rKpiNext7) rKpiNext7.textContent = remindNext7;
+  if (rKpiOverdue) rKpiOverdue.textContent = remindOverdue;
+  if (countRemindBadge) countRemindBadge.textContent = remindTotal;
+
+  // Render Reminders Table
+  if (tbodyRemind) {
+    const selRTimeframe = document.getElementById('remindFilterTimeframe')?.value || 'upcoming';
+    const selRBooking = document.getElementById('remindFilterBookingStatus')?.value || 'unbooked';
+    const rQuery = (document.getElementById('remindSearchInput')?.value || '').toLowerCase().trim();
+
+    const filteredReminders = reminderItems.filter(item => {
+      if (selRTimeframe === 'today') {
+        if (item.date !== todayStr) return false;
+      } else if (selRTimeframe === 'next7') {
+        if (item.date < todayStr || item.date > next7DaysStr) return false;
+      } else if (selRTimeframe === 'overdue') {
+        if (item.date >= todayStr) return false;
+      } else if (selRTimeframe === 'upcoming') {
+        if (item.date < todayStr) return false;
+      }
+
+      if (selRBooking === 'unbooked') {
+        if (item.isBooked) return false;
+      } else if (selRBooking === 'booked') {
+        if (!item.isBooked) return false;
+      }
+
+      if (rQuery) {
+        const p = item.patient;
+        const matchName = (p.name || '').toLowerCase().includes(rQuery);
+        const matchPhone = (p.phone || '').includes(rQuery);
+        const matchIc = (p.ic || '').toLowerCase().includes(rQuery);
+        const matchPurp = (item.purpose || '').toLowerCase().includes(rQuery);
+        if (!matchName && !matchPhone && !matchIc && !matchPurp) return false;
+      }
+
+      return true;
+    });
+
+    filteredReminders.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+    if (!filteredReminders.length) {
+      tbodyRemind.innerHTML = `
+        <tr>
+          <td colspan="5" class="text-center py-12 text-gray-400 text-xs italic">
+            <i class="fa-regular fa-bell-slash text-2xl text-gray-300 block mb-2"></i>
+            No appointment reminder dates match the selected filters.
+          </td>
+        </tr>
+      `;
+    } else {
+      tbodyRemind.innerHTML = filteredReminders.map(item => {
+        const p = item.patient;
+        const isPast = item.date < todayStr;
+        const isToday = item.date === todayStr;
+
+        let dateBadge = '';
+        if (isToday) {
+          dateBadge = '<span class="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full ml-1.5 shadow-2xs">DUE TODAY</span>';
+        } else if (isPast) {
+          dateBadge = '<span class="bg-rose-100 text-rose-800 text-[10px] font-black px-2 py-0.5 rounded-full ml-1.5 shadow-2xs">OVERDUE</span>';
+        }
+
+        let cleanPhone = (p.phone || '').replace(/\D/g, '');
+        if (cleanPhone.startsWith('0')) cleanPhone = '60' + cleanPhone.slice(1);
+
+        let bookingStatusHtml = item.isBooked
+          ? `<span class="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold px-2.5 py-1 rounded-xl"><i class="fa-solid fa-circle-check text-emerald-600"></i> Slot Booked: ${escHtml(item.bookedSlot || '')}</span>`
+          : `<span class="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-300 text-amber-900 text-[11px] font-bold px-2.5 py-1 rounded-xl"><i class="fa-regular fa-clock text-amber-600"></i> No Slot Booked Yet</span>`;
+
+        return `
+          <tr class="hover:bg-amber-50/40 transition text-xs">
+            <!-- Reminder Date -->
+            <td class="px-4 py-3.5 whitespace-nowrap">
+              <div class="font-extrabold text-gray-900 text-xs flex items-center">
+                <span>${getFormattedDateWithDay(item.date)}</span>
+                ${dateBadge}
+              </div>
+              <div class="text-[11px] font-mono text-gray-500 mt-0.5">${item.date}</div>
+            </td>
+
+            <!-- Patient Details -->
+            <td class="px-4 py-3.5">
+              <button type="button" onclick="viewPatientProfile('${p.id}')"
+                class="font-black text-blue-700 hover:text-blue-900 hover:underline text-xs text-left block">
+                ${escHtml(p.name)}
+              </button>
+              <div class="flex items-center gap-1.5 mt-0.5 flex-wrap text-[11px]">
+                ${cleanPhone ? `
+                  <a href="https://wa.me/${cleanPhone}" target="_blank" rel="noopener"
+                    class="text-emerald-700 font-bold hover:underline inline-flex items-center gap-1">
+                    <i class="fa-brands fa-whatsapp text-emerald-600"></i> ${escHtml(p.phone || '—')}
+                  </a>
+                ` : `<span class="text-gray-400">No phone</span>`}
+                <span class="text-gray-400 font-semibold">&bull; ${escHtml(p.branch || 'Branch')}</span>
+              </div>
+            </td>
+
+            <!-- Purpose & Source -->
+            <td class="px-4 py-3.5">
+              <div class="font-bold text-gray-900">${escHtml(item.purpose)}</div>
+              <div class="text-[11px] text-gray-500 mt-0.5 italic">${escHtml(item.source)}</div>
+            </td>
+
+            <!-- Booking Status -->
+            <td class="px-4 py-3.5 whitespace-nowrap">
+              ${bookingStatusHtml}
+            </td>
+
+            <!-- Actions -->
+            <td class="px-4 py-3.5 text-right whitespace-nowrap">
+              <div class="inline-flex items-center gap-2">
+                <!-- Send WhatsApp Booking Link -->
+                <button type="button" onclick="sendReminderBookingLinkWa('${p.id}')"
+                  class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs transition shadow-2xs flex items-center gap-1.5"
+                  title="Send WhatsApp invitation with customer self-booking link">
+                  <i class="fa-brands fa-whatsapp text-sm"></i>
+                  <span>Send Booking Link</span>
+                </button>
+
+                <!-- Book Confirmed Slot Directly -->
+                <button type="button" onclick="showNewAppointmentModalWithDate('${p.id}', '${item.date}')"
+                  class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-2.5 py-1.5 rounded-lg font-bold text-xs transition shadow-2xs flex items-center gap-1"
+                  title="Book a confirmed time slot directly for this patient">
+                  <i class="fa-solid fa-calendar-plus text-indigo-600"></i>
+                  <span>Book Slot</span>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
+}
+
+// ─── DIRECT REMINDER & BOOKING LINK ACTIONS ──────────────────────────────────
+
+function sendDirectAppointmentReminderWa(patientId, appointmentId) {
+  const p = patientsData.find(pt => pt.id === patientId);
+  if (!p) return;
+  const apt = (p.appointments || []).find(a => a.id === appointmentId);
+  if (!apt) return;
+
+  let cleanPhone = (p.phone || '').replace(/\D/g, '');
+  if (cleanPhone.startsWith('0')) cleanPhone = '60' + cleanPhone.slice(1);
+  if (!cleanPhone) {
+    alert('This patient does not have a recorded phone number for WhatsApp.');
     return;
   }
 
-  tbody.innerHTML = filteredBookings.map(({ patient: p, appointment: apt }) => {
-    const isToday = apt.date === todayStr;
-    const isTomorrow = apt.date === tomorrowStr;
+  let branchCode = p.branch || 'KOTA SENTOSA';
+  if (branchCode === 'KS01') branchCode = 'KOTA SENTOSA';
+  const branchInfo = BRANCH_SCHEDULES[branchCode] || BRANCH_SCHEDULES['KOTA SENTOSA'];
+  const sched = typeof getPharmacistSchedule === 'function' ? getPharmacistSchedule(branchCode) : null;
+  const branchName = sched ? (sched.branchName || branchInfo.name) : (branchInfo ? branchInfo.name : `PMG Pharmacy ${branchCode}`);
+  const dutyPharm = apt.pharmacist || (sched ? sched.defaultPharmacist : 'Duty Pharmacist');
+  const bookingUrl = typeof getPatientSelfBookingUrl === 'function' ? getPatientSelfBookingUrl(p) : window.location.href;
 
-    let dateBadge = '';
-    if (isToday) {
-      dateBadge = '<span class="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full ml-1.5 shadow-2xs">TODAY</span>';
-    } else if (isTomorrow) {
-      dateBadge = '<span class="bg-blue-100 text-blue-800 text-[10px] font-black px-2 py-0.5 rounded-full ml-1.5 shadow-2xs">TOMORROW</span>';
-    }
+  const lang = typeof getPatientLanguageByRace === 'function' ? getPatientLanguageByRace(p) : 'Chinese';
+  let msg = '';
 
-    let statusClass = 'bg-blue-50 text-blue-700 border-blue-200';
-    if (apt.status === 'Completed' || apt.status === 'Approved') statusClass = 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold';
-    if (apt.status === 'Pending Approval') statusClass = 'bg-amber-50 text-amber-900 border-amber-300 font-bold animate-pulse';
-    if (apt.status === 'Missed') statusClass = 'bg-rose-50 text-rose-800 border-rose-200';
+  if (lang === 'Chinese') {
+    msg = `您好 *${p.name}*，这里是 *PMG Pharmacy (${branchName})* 的温馨预约提醒。\n\n您在我们药剂行已预订了健康咨询/续药服务：\n📅 *预约日期：* ${apt.date}\n⏰ *预约时间：* ${apt.time || '10:00'}\n👨‍⚕️ *主理药剂师：* ${dutyPharm}\n\n期待您的到来！如需更改时间或查看预约详情，也可使用您的专属链接：\n🔗 ${bookingUrl}\n\n祝您身体健康！\n*PMG Pharmacy*`;
+  } else if (lang === 'Malay') {
+    msg = `Salam sejahtera *${p.name}*, ini adalah peringatan mesra temujanji daripada *PMG Pharmacy (${branchName})*.\n\nAnda mempunyai temujanji rundingan kesihatan/ulangan ubat yang telah disahkan:\n📅 *Tarikh:* ${apt.date}\n⏰ *Masa:* ${apt.time || '10:00'}\n👨‍⚕️ *Ahli Farmasi Bertugas:* ${dutyPharm}\n\nKami menantikan kedatangan anda. Jika perlu membuat sebarang penukaran, anda juga boleh menggunakan pautan peribadi anda di sini:\n🔗 ${bookingUrl}\n\nSemoga sihat sejahtera,\n*PMG Pharmacy*`;
+  } else {
+    msg = `Hello *${p.name}*, this is a friendly appointment reminder from *PMG Pharmacy (${branchName})*.\n\nYou have a confirmed consultation/refill appointment scheduled:\n📅 *Date:* ${apt.date}\n⏰ *Time:* ${apt.time || '10:00'}\n👨‍⚕️ *Duty Pharmacist:* ${dutyPharm}\n\nWe look forward to seeing you! If you need to make changes, you can also access your personal booking portal here:\n🔗 ${bookingUrl}\n\nBest regards,\n*PMG Pharmacy*`;
+  }
 
-    let cleanPhone = (p.phone || '').replace(/\D/g, '');
-    if (cleanPhone.startsWith('0')) cleanPhone = '60' + cleanPhone.slice(1);
+  const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+  window.open(waUrl, '_blank');
+}
 
-    const isRefill = (apt.type === 'refill_extension' || (apt.purpose && apt.purpose.includes('Refill')) || (apt.purpose && apt.purpose.includes('Supply')));
+function sendReminderBookingLinkWa(patientId) {
+  const p = patientsData.find(pt => pt.id === patientId);
+  if (!p) return;
 
-    return `
-      <tr class="hover:bg-indigo-50/40 transition text-xs">
-        <!-- Date & Time Slot -->
-        <td class="px-4 py-3.5 whitespace-nowrap">
-          <div class="font-extrabold text-gray-900 text-xs flex items-center">
-            <span>${getFormattedDateWithDay(apt.date)}</span>
-            ${dateBadge}
-          </div>
-          <div class="text-indigo-700 font-bold text-xs mt-1 flex items-center gap-1.5">
-            <i class="fa-regular fa-clock text-[11px]"></i>
-            <span>${escHtml(apt.time || '10:00')}</span>
-          </div>
-        </td>
+  let cleanPhone = (p.phone || '').replace(/\D/g, '');
+  if (cleanPhone.startsWith('0')) cleanPhone = '60' + cleanPhone.slice(1);
+  if (!cleanPhone) {
+    alert('This patient does not have a recorded phone number for WhatsApp.');
+    return;
+  }
 
-        <!-- Duty Pharmacist -->
-        <td class="px-4 py-3.5 whitespace-nowrap">
-          <span class="inline-flex items-center gap-1.5 bg-purple-50 border border-purple-200 text-purple-900 font-bold px-2.5 py-1 rounded-xl text-xs shadow-2xs">
-            <i class="fa-solid fa-user-doctor text-purple-600 text-xs"></i>
-            <span>${escHtml(apt.pharmacist || 'Duty Pharmacist')}</span>
-          </span>
-        </td>
+  const msg = typeof buildPatientSupplyBookingMessage === 'function'
+    ? buildPatientSupplyBookingMessage(p)
+    : `Hello ${p.name}, please click this link to book your consultation appointment: ${getPatientSelfBookingUrl(p)}`;
 
-        <!-- Patient Details -->
-        <td class="px-4 py-3.5">
-          <button type="button" onclick="viewPatientProfile('${p.id}')"
-            class="font-black text-blue-700 hover:text-blue-900 hover:underline text-xs text-left block">
-            ${escHtml(p.name)}
-          </button>
-          <div class="flex items-center gap-1.5 mt-0.5 flex-wrap text-[11px]">
-            ${cleanPhone ? `
-              <a href="https://wa.me/${cleanPhone}" target="_blank" rel="noopener"
-                class="text-emerald-700 font-bold hover:underline inline-flex items-center gap-1">
-                <i class="fa-brands fa-whatsapp text-emerald-600"></i> ${escHtml(p.phone || '—')}
-              </a>
-            ` : `<span class="text-gray-400">No phone</span>`}
-            <span class="text-gray-400 font-semibold">&bull; ${escHtml(p.branch || 'Branch')}</span>
-          </div>
-        </td>
+  const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+  window.open(waUrl, '_blank');
+}
 
-        <!-- Purpose & Details -->
-        <td class="px-4 py-3.5">
-          <div class="font-semibold text-gray-900 flex items-center gap-1.5 flex-wrap">
-            <span>${escHtml(apt.purpose || 'Chronic Consultation')}</span>
-            ${isRefill ? '<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-md">Refill Supply</span>' : ''}
-          </div>
-          ${apt.notes ? `<div class="text-[11px] text-gray-500 italic mt-0.5 line-clamp-1">${escHtml(apt.notes)}</div>` : ''}
-        </td>
-
-        <!-- Status -->
-        <td class="px-4 py-3.5 whitespace-nowrap">
-          <span class="inline-block px-2.5 py-1 rounded-lg text-xs font-semibold border ${statusClass}">
-            ${apt.status || 'Scheduled'}
-          </span>
-        </td>
-
-        <!-- Shift & Reschedule Actions -->
-        <td class="px-4 py-3.5 text-right whitespace-nowrap">
-          <div class="inline-flex items-center gap-1.5">
-            <!-- Reschedule / Shift Change -->
-            <button type="button" onclick="openRescheduleModal('${p.id}', '${apt.id}')"
-              class="bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 px-2.5 py-1.5 rounded-lg font-bold text-xs transition shadow-2xs flex items-center gap-1.5"
-              title="Change appointment date/time or switch duty pharmacist">
-              <i class="fa-solid fa-calendar-pen text-indigo-600"></i>
-              <span>Reschedule</span>
-            </button>
-
-            <!-- WhatsApp Customer Notice -->
-            <button type="button" onclick="openRescheduleModal('${p.id}', '${apt.id}', true)"
-              class="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-1.5 rounded-lg font-bold text-xs transition shadow-2xs flex items-center gap-1.5"
-              title="Send WhatsApp shift adjustment notice with booking link">
-              <i class="fa-brands fa-whatsapp text-emerald-600 text-sm"></i>
-              <span>WhatsApp</span>
-            </button>
-
-            <!-- Quick Mark Done (if active) -->
-            ${(apt.status === 'Scheduled' || apt.status === 'Pending Approval') ? `
-              <button type="button" onclick="markAppointmentStatus('${p.id}', '${apt.id}', 'Completed')"
-                class="text-gray-400 hover:text-emerald-700 p-1.5 rounded-lg hover:bg-emerald-50 transition" title="Mark Consultation Completed">
-                <i class="fa-solid fa-circle-check text-sm"></i>
-              </button>
-            ` : ''}
-          </div>
-        </td>
-      </tr>
-    `;
-  }).join('');
+function showNewAppointmentModalWithDate(patientId, defaultDate) {
+  showNewAppointmentModal(patientId);
+  if (defaultDate) {
+    const dInput = document.getElementById('aptDate');
+    if (dInput) dInput.value = defaultDate;
+  }
 }
 
 // ─── RESCHEDULE & SHIFT CHANGE MODAL LOGIC ───────────────────────────────────

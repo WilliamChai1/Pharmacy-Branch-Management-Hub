@@ -1136,104 +1136,213 @@
 
       <!-- Tab View 5: Pharmacist Schedule & Bookings -->
       <div id="patientView_schedule" class="hidden p-4 sm:p-5">
-        <!-- Schedule View Top Bar & Overview -->
-        <div class="bg-gradient-to-r from-indigo-50/90 via-blue-50/80 to-purple-50/70 border border-indigo-200 rounded-2xl p-4 sm:p-5 mb-5 shadow-xs">
-          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <!-- Top Toolbar & View Mode Switcher -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4 border-b border-gray-200">
+          <!-- View Toggle Switcher -->
+          <div class="inline-flex p-1.5 bg-gray-200/80 rounded-2xl border border-gray-300 shadow-2xs">
+            <button type="button" id="schedTabBtn_booked" onclick="switchSchedViewMode('booked')"
+              class="px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs bg-white text-indigo-900 flex items-center gap-2">
+              <i class="fa-solid fa-calendar-check text-indigo-600"></i>
+              <span>Customer Booked Appointments</span>
+              <span id="schedCountBookedBadge" class="bg-indigo-100 text-indigo-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold">0</span>
+            </button>
+            <button type="button" id="schedTabBtn_reminders" onclick="switchSchedViewMode('reminders')"
+              class="px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 hover:text-gray-900 transition flex items-center gap-2">
+              <i class="fa-regular fa-bell text-amber-600"></i>
+              <span>Appointment Reminder Dates (TCA / Refill)</span>
+              <span id="schedCountRemindersBadge" class="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">0</span>
+            </button>
+          </div>
+
+          <div class="flex items-center gap-2 flex-wrap">
+            <button type="button" onclick="openManageHoursModal()"
+              class="bg-white hover:bg-gray-50 text-indigo-700 border border-indigo-300 font-bold text-xs px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5">
+              <i class="fa-solid fa-calendar-gear text-indigo-600"></i> Working Hours & Overrides
+            </button>
+            <button type="button" onclick="showNewAppointmentModal()"
+              class="bg-indigo-700 hover:bg-indigo-800 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5">
+              <i class="fa-solid fa-calendar-plus"></i> + New Appointment
+            </button>
+          </div>
+        </div>
+
+        <!-- ══════════════════════════════════════════════════════════════════
+             PART 1: CUSTOMER BOOKED APPOINTMENTS (Confirmed Slots)
+        ══════════════════════════════════════════════════════════════════ -->
+        <div id="schedSection_booked">
+          <!-- Overview Card -->
+          <div class="bg-gradient-to-r from-indigo-50/90 via-blue-50/80 to-purple-50/70 border border-indigo-200 rounded-2xl p-4 sm:p-5 mb-5 shadow-xs">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h4 class="text-sm sm:text-base font-extrabold text-indigo-950 flex items-center gap-2">
+                  <i class="fa-solid fa-calendar-check text-indigo-600"></i> Confirmed Customer Bookings
+                </h4>
+                <p class="text-xs text-indigo-800/80 mt-1">
+                  Active consultation appointments with confirmed dates & times. If your working shift changes, use <b>Reschedule</b> to adjust the slot and send a polite shift change notice. To send a routine reminder before the visit, use <b>WhatsApp Reminder</b>.
+                </p>
+              </div>
+            </div>
+
+            <!-- KPI Summary Strip -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-4 border-t border-indigo-200/60">
+              <div class="bg-white/90 rounded-xl p-3 border border-indigo-100 shadow-xs">
+                <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Upcoming Bookings</span>
+                <span id="schedKpiUpcoming" class="text-xl font-black text-indigo-700">0</span>
+              </div>
+              <div class="bg-white/90 rounded-xl p-3 border border-indigo-100 shadow-xs">
+                <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Today's Slots</span>
+                <span id="schedKpiToday" class="text-xl font-black text-emerald-600">0</span>
+              </div>
+              <div class="bg-white/90 rounded-xl p-3 border border-indigo-100 shadow-xs">
+                <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Pending Approval</span>
+                <span id="schedKpiPending" class="text-xl font-black text-amber-600">0</span>
+              </div>
+              <div class="bg-white/90 rounded-xl p-3 border border-indigo-100 shadow-xs">
+                <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Completed</span>
+                <span id="schedKpiCompleted" class="text-xl font-black text-gray-600">0</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Filter Controls -->
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-4 bg-gray-50/80 p-3 rounded-xl border border-gray-200 text-xs">
+            <div class="flex flex-wrap items-center gap-2.5 flex-1">
+              <div class="flex items-center gap-1.5">
+                <label class="font-bold text-gray-700 whitespace-nowrap"><i class="fa-solid fa-user-doctor text-indigo-600 mr-1"></i> Pharmacist:</label>
+                <select id="schedFilterPharmacist" onchange="renderPharmacistScheduleTab()" class="border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-semibold outline-none text-xs">
+                  <option value="">All Pharmacists</option>
+                </select>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <label class="font-bold text-gray-700 whitespace-nowrap"><i class="fa-regular fa-calendar text-indigo-600 mr-1"></i> Timeframe:</label>
+                <select id="schedFilterTimeframe" onchange="renderPharmacistScheduleTab()" class="border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-medium outline-none text-xs">
+                  <option value="upcoming" selected>Upcoming (From Today)</option>
+                  <option value="today">Today Only</option>
+                  <option value="next7">Next 7 Days</option>
+                  <option value="all">All Dates (Including Past)</option>
+                </select>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <label class="font-bold text-gray-700 whitespace-nowrap"><i class="fa-solid fa-list-check text-indigo-600 mr-1"></i> Status:</label>
+                <select id="schedFilterStatus" onchange="renderPharmacistScheduleTab()" class="border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-medium outline-none text-xs">
+                  <option value="active" selected>Active (Scheduled & Pending)</option>
+                  <option value="all">All Statuses</option>
+                  <option value="Scheduled">Scheduled Only</option>
+                  <option value="Pending Approval">Pending Approval Only</option>
+                  <option value="Completed">Completed Only</option>
+                  <option value="Missed">Missed Only</option>
+                </select>
+              </div>
+            </div>
+            <div class="w-full sm:w-64">
+              <div class="relative">
+                <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-gray-400"></i>
+                <input type="text" id="schedSearchInput" oninput="renderPharmacistScheduleTab()" placeholder="Search patient, phone..."
+                  class="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-lg text-xs outline-none focus:ring-1 focus:ring-indigo-500 bg-white">
+              </div>
+            </div>
+          </div>
+
+          <!-- Schedule Bookings Table -->
+          <div class="border border-gray-200 rounded-xl overflow-hidden shadow-xs">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200 uppercase tracking-wider text-[11px]">
+                <tr>
+                  <th class="px-4 py-3">Booked Date & Time</th>
+                  <th class="px-4 py-3">Duty Pharmacist</th>
+                  <th class="px-4 py-3">Patient Details</th>
+                  <th class="px-4 py-3">Purpose & Details</th>
+                  <th class="px-4 py-3">Status</th>
+                  <th class="px-4 py-3 text-right">Actions (Reschedule / WhatsApp)</th>
+                </tr>
+              </thead>
+              <tbody id="schedBookingsBody" class="divide-y divide-gray-100"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ══════════════════════════════════════════════════════════════════
+             PART 2: APPOINTMENT REMINDER DATES (Next TCA & Refill Due Dates)
+        ══════════════════════════════════════════════════════════════════ -->
+        <div id="schedSection_reminders" class="hidden">
+          <!-- Overview Card -->
+          <div class="bg-gradient-to-r from-amber-50/90 via-orange-50/70 to-yellow-50/60 border border-amber-200 rounded-2xl p-4 sm:p-5 mb-5 shadow-xs">
             <div>
-              <h4 class="text-sm sm:text-base font-extrabold text-indigo-950 flex items-center gap-2">
-                <i class="fa-solid fa-user-clock text-indigo-600"></i> Pharmacist Consultation Roster & Bookings
+              <h4 class="text-sm sm:text-base font-extrabold text-amber-950 flex items-center gap-2">
+                <i class="fa-regular fa-bell text-amber-600"></i> Appointment Reminder Dates (Follow-up TCA & Chronic Refills)
               </h4>
-              <p class="text-xs text-indigo-800/80 mt-1">
-                View booked appointment slots by duty pharmacist. If your working shift changes, easily reschedule slots and notify customers via WhatsApp with their personalized booking link.
+              <p class="text-xs text-amber-900/80 mt-1">
+                These dates were recorded during Consult & POCT (Next TCA Date in SOAP) or chronic medication refill tracking. Customers have <b>not yet booked a confirmed time slot</b>. Click <b>"Send Booking Link"</b> to invite them to self-book via WhatsApp, or click <b>"Book Slot"</b> to lock in a confirmed appointment immediately.
               </p>
             </div>
-            <div class="flex items-center gap-2 flex-wrap shrink-0">
-              <button type="button" onclick="openManageHoursModal()"
-                class="bg-white hover:bg-gray-50 text-indigo-700 border border-indigo-300 font-bold text-xs px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5">
-                <i class="fa-solid fa-calendar-gear text-indigo-600"></i> Working Hours & Overrides
-              </button>
-              <button type="button" onclick="showNewAppointmentModal()"
-                class="bg-indigo-700 hover:bg-indigo-800 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5">
-                <i class="fa-solid fa-calendar-plus"></i> + New Appointment
-              </button>
+
+            <!-- KPI Summary Strip for Reminders -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-4 border-t border-amber-200/60">
+              <div class="bg-white/90 rounded-xl p-3 border border-amber-100 shadow-xs">
+                <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Total Reminders</span>
+                <span id="remindKpiTotal" class="text-xl font-black text-amber-700">0</span>
+              </div>
+              <div class="bg-white/90 rounded-xl p-3 border border-amber-100 shadow-xs">
+                <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Due Today</span>
+                <span id="remindKpiToday" class="text-xl font-black text-emerald-600">0</span>
+              </div>
+              <div class="bg-white/90 rounded-xl p-3 border border-amber-100 shadow-xs">
+                <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Due in 7 Days</span>
+                <span id="remindKpiNext7" class="text-xl font-black text-indigo-700">0</span>
+              </div>
+              <div class="bg-white/90 rounded-xl p-3 border border-amber-100 shadow-xs">
+                <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Overdue</span>
+                <span id="remindKpiOverdue" class="text-xl font-black text-rose-600">0</span>
+              </div>
             </div>
           </div>
 
-          <!-- KPI Summary Strip -->
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-4 border-t border-indigo-200/60">
-            <div class="bg-white/90 rounded-xl p-3 border border-indigo-100 shadow-xs">
-              <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Upcoming Bookings</span>
-              <span id="schedKpiUpcoming" class="text-xl font-black text-indigo-700">0</span>
+          <!-- Filter Controls for Reminders -->
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-4 bg-gray-50/80 p-3 rounded-xl border border-gray-200 text-xs">
+            <div class="flex flex-wrap items-center gap-2.5 flex-1">
+              <div class="flex items-center gap-1.5">
+                <label class="font-bold text-gray-700 whitespace-nowrap"><i class="fa-regular fa-calendar text-amber-600 mr-1"></i> Timeframe:</label>
+                <select id="remindFilterTimeframe" onchange="renderPharmacistScheduleTab()" class="border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-medium outline-none text-xs">
+                  <option value="upcoming" selected>Upcoming Reminders (From Today)</option>
+                  <option value="today">Due Today Only</option>
+                  <option value="next7">Due in Next 7 Days</option>
+                  <option value="overdue">Overdue Reminders Only</option>
+                  <option value="all">All Reminder Dates</option>
+                </select>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <label class="font-bold text-gray-700 whitespace-nowrap"><i class="fa-solid fa-filter text-amber-600 mr-1"></i> Booking Status:</label>
+                <select id="remindFilterBookingStatus" onchange="renderPharmacistScheduleTab()" class="border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-medium outline-none text-xs">
+                  <option value="unbooked" selected>Needs Booking (No Slot Yet)</option>
+                  <option value="all">All Reminder Records</option>
+                  <option value="booked">Already Booked Slot</option>
+                </select>
+              </div>
             </div>
-            <div class="bg-white/90 rounded-xl p-3 border border-indigo-100 shadow-xs">
-              <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Today's Slots</span>
-              <span id="schedKpiToday" class="text-xl font-black text-emerald-600">0</span>
-            </div>
-            <div class="bg-white/90 rounded-xl p-3 border border-indigo-100 shadow-xs">
-              <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Pending Approval</span>
-              <span id="schedKpiPending" class="text-xl font-black text-amber-600">0</span>
-            </div>
-            <div class="bg-white/90 rounded-xl p-3 border border-indigo-100 shadow-xs">
-              <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Completed</span>
-              <span id="schedKpiCompleted" class="text-xl font-black text-gray-600">0</span>
+            <div class="w-full sm:w-64">
+              <div class="relative">
+                <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-gray-400"></i>
+                <input type="text" id="remindSearchInput" oninput="renderPharmacistScheduleTab()" placeholder="Search patient, phone, IC..."
+                  class="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-lg text-xs outline-none focus:ring-1 focus:ring-amber-500 bg-white">
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- Filter Controls -->
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-4 bg-gray-50/80 p-3 rounded-xl border border-gray-200 text-xs">
-          <div class="flex flex-wrap items-center gap-2.5 flex-1">
-            <div class="flex items-center gap-1.5">
-              <label class="font-bold text-gray-700 whitespace-nowrap"><i class="fa-solid fa-user-doctor text-indigo-600 mr-1"></i> Pharmacist:</label>
-              <select id="schedFilterPharmacist" onchange="renderPharmacistScheduleTab()" class="border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-semibold outline-none text-xs">
-                <option value="">All Pharmacists</option>
-              </select>
-            </div>
-            <div class="flex items-center gap-1.5">
-              <label class="font-bold text-gray-700 whitespace-nowrap"><i class="fa-regular fa-calendar text-indigo-600 mr-1"></i> Timeframe:</label>
-              <select id="schedFilterTimeframe" onchange="renderPharmacistScheduleTab()" class="border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-medium outline-none text-xs">
-                <option value="upcoming" selected>Upcoming (From Today)</option>
-                <option value="today">Today Only</option>
-                <option value="next7">Next 7 Days</option>
-                <option value="all">All Dates (Including Past)</option>
-              </select>
-            </div>
-            <div class="flex items-center gap-1.5">
-              <label class="font-bold text-gray-700 whitespace-nowrap"><i class="fa-solid fa-list-check text-indigo-600 mr-1"></i> Status:</label>
-              <select id="schedFilterStatus" onchange="renderPharmacistScheduleTab()" class="border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-medium outline-none text-xs">
-                <option value="active" selected>Active (Scheduled & Pending)</option>
-                <option value="all">All Statuses</option>
-                <option value="Scheduled">Scheduled Only</option>
-                <option value="Pending Approval">Pending Approval Only</option>
-                <option value="Completed">Completed Only</option>
-                <option value="Missed">Missed Only</option>
-              </select>
-            </div>
+          <!-- Reminders Table -->
+          <div class="border border-gray-200 rounded-xl overflow-hidden shadow-xs">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200 uppercase tracking-wider text-[11px]">
+                <tr>
+                  <th class="px-4 py-3">Reminder Date</th>
+                  <th class="px-4 py-3">Patient Details</th>
+                  <th class="px-4 py-3">Reminder Purpose & Source</th>
+                  <th class="px-4 py-3">Booking Status</th>
+                  <th class="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="schedRemindersBody" class="divide-y divide-gray-100"></tbody>
+            </table>
           </div>
-          <div class="w-full sm:w-64">
-            <div class="relative">
-              <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-gray-400"></i>
-              <input type="text" id="schedSearchInput" oninput="renderPharmacistScheduleTab()" placeholder="Search patient, phone..."
-                class="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-lg text-xs outline-none focus:ring-1 focus:ring-indigo-500 bg-white">
-            </div>
-          </div>
-        </div>
-
-        <!-- Schedule Bookings Table -->
-        <div class="border border-gray-200 rounded-xl overflow-hidden shadow-xs">
-          <table class="w-full text-xs text-left">
-            <thead class="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200 uppercase tracking-wider text-[11px]">
-              <tr>
-                <th class="px-4 py-3">Date & Time Slot</th>
-                <th class="px-4 py-3">Duty Pharmacist</th>
-                <th class="px-4 py-3">Patient</th>
-                <th class="px-4 py-3">Purpose & Details</th>
-                <th class="px-4 py-3">Status</th>
-                <th class="px-4 py-3 text-right">Shift / Reschedule Actions</th>
-              </tr>
-            </thead>
-            <tbody id="schedBookingsBody" class="divide-y divide-gray-100"></tbody>
-          </table>
         </div>
       </div>
 
