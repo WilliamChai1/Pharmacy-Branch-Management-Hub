@@ -2068,10 +2068,56 @@ function whatsappRescheduleCustomer(patientId, appointmentId) {
   openRescheduleModal(patientId, appointmentId, true);
 }
 
-// ─── NEW PATIENT MODAL ───────────────────────────────────────────────────────
+// ─── MALAYSIAN IC AUTO AGE & GENDER PARSER ──────────────────────────────────
+function onPatientIcInput(icVal) {
+  if (!icVal) return;
+  const clean = String(icVal).replace(/\D/g, '');
+  if (clean.length >= 6) {
+    const yy = parseInt(clean.substring(0, 2), 10);
+    const mm = parseInt(clean.substring(2, 4), 10);
+    const dd = parseInt(clean.substring(4, 6), 10);
+
+    if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentYY = currentYear % 100;
+      const birthYear = (yy > currentYY) ? (1900 + yy) : (2000 + yy);
+
+      let age = currentYear - birthYear;
+      if (now.getMonth() < (mm - 1) || (now.getMonth() === (mm - 1) && now.getDate() < dd)) {
+        age--;
+      }
+
+      if (age >= 0 && age <= 130) {
+        const ageInput = document.getElementById('newPatientAge');
+        if (ageInput) ageInput.value = age;
+      }
+    }
+  }
+
+  // Detect gender from 12th digit (last digit of Malaysian MyKad)
+  if (clean.length >= 12) {
+    const lastDigit = parseInt(clean.charAt(11), 10);
+    const genderSel = document.getElementById('newPatientGender');
+    if (genderSel && !isNaN(lastDigit)) {
+      genderSel.value = (lastDigit % 2 === 1) ? 'Male' : 'Female';
+    }
+  }
+}
+
+// ─── NEW / EDIT PATIENT MODAL ────────────────────────────────────────────────
+let editingPatientId = null;
+
 function showNewPatientModal() {
+  editingPatientId = null;
   const modal = document.getElementById('patientNewModal');
   if (!modal) return;
+
+  const titleEl = document.getElementById('patientNewModalTitle');
+  if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-user-plus text-blue-700"></i> Register New Patient Profile';
+
+  const saveBtn = document.getElementById('patientNewModalSaveBtn');
+  if (saveBtn) saveBtn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-1"></i> Save Patient Profile';
 
   document.getElementById('newPatientName').value = '';
   document.getElementById('newPatientIc').value = '';
@@ -2093,9 +2139,53 @@ function showNewPatientModal() {
   modal.classList.remove('hidden');
 }
 
+function editPatientProfile(patientId) {
+  const p = patientsData.find(pt => pt.id === patientId);
+  if (!p) return;
+
+  editingPatientId = patientId;
+  const modal = document.getElementById('patientNewModal');
+  if (!modal) return;
+
+  const titleEl = document.getElementById('patientNewModalTitle');
+  if (titleEl) titleEl.innerHTML = `<i class="fa-solid fa-user-pen text-amber-600"></i> Edit Patient Profile (${escHtml(p.name)})`;
+
+  const saveBtn = document.getElementById('patientNewModalSaveBtn');
+  if (saveBtn) saveBtn.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Update Profile';
+
+  document.getElementById('newPatientName').value = p.name || '';
+  document.getElementById('newPatientIc').value = p.ic || '';
+  document.getElementById('newPatientPhone').value = p.phone || '';
+  document.getElementById('newPatientGender').value = p.gender || 'Male';
+  document.getElementById('newPatientAge').value = p.age || '';
+  document.getElementById('newPatientRace').value = p.race || 'Chinese';
+  document.getElementById('newPatientLanguage').value = p.language || 'Chinese';
+  document.getElementById('newPatientAllergies').value = p.allergies || '';
+  document.getElementById('newPatientNotes').value = p.notes || '';
+
+  const branchSel = document.getElementById('newPatientBranch');
+  if (branchSel && p.branch) branchSel.value = p.branch;
+
+  const pConds = Array.isArray(p.conditions) ? p.conditions : (Array.isArray(p.chronicConditions) ? p.chronicConditions : []);
+  document.querySelectorAll('.patient-cond-cb').forEach(cb => {
+    cb.checked = pConds.includes(cb.value);
+  });
+
+  modal.classList.remove('hidden');
+}
+
+function editCurrentPatientProfile() {
+  if (typeof viewingPatientId !== 'undefined' && viewingPatientId) {
+    editPatientProfile(viewingPatientId);
+  } else {
+    alert('No patient profile currently open.');
+  }
+}
+
 function closeNewPatientModal() {
   const modal = document.getElementById('patientNewModal');
   if (modal) modal.classList.add('hidden');
+  editingPatientId = null;
 }
 
 function saveNewPatient() {
@@ -2109,20 +2199,64 @@ function saveNewPatient() {
   const conditions = [];
   document.querySelectorAll('.patient-cond-cb:checked').forEach(cb => conditions.push(cb.value));
 
+  const ic = document.getElementById('newPatientIc').value.trim();
+  const gender = document.getElementById('newPatientGender').value;
+  const age = Number(document.getElementById('newPatientAge').value) || 0;
+  const race = document.getElementById('newPatientRace').value;
+  const language = document.getElementById('newPatientLanguage').value;
+  const branch = document.getElementById('newPatientBranch').value || 'KS01';
+  const allergies = document.getElementById('newPatientAllergies').value.trim();
+  const notes = document.getElementById('newPatientNotes').value.trim();
+
+  if (editingPatientId) {
+    const p = patientsData.find(pt => pt.id === editingPatientId);
+    if (p) {
+      p.name = name;
+      p.ic = ic;
+      p.phone = phone;
+      p.gender = gender;
+      p.age = age;
+      p.race = race;
+      p.language = language;
+      p.branch = branch;
+      p.conditions = conditions;
+      p.chronicConditions = conditions;
+      p.allergies = allergies;
+      p.notes = notes;
+      p.updatedAt = new Date().toISOString();
+
+      savePatientsData();
+      closeNewPatientModal();
+      renderPatientModule();
+
+      const profModal = document.getElementById('patientProfileModal');
+      if (profModal && !profModal.classList.contains('hidden')) {
+        viewPatientProfile(p.id);
+      }
+      if (typeof showPmgToast === 'function') {
+        showPmgToast(`✅ Profile for ${p.name} updated successfully!`, 'success');
+      } else {
+        alert(`Profile for ${p.name} updated successfully!`);
+      }
+      editingPatientId = null;
+      return;
+    }
+  }
+
   const newId = 'PT-' + (1000 + patientsData.length + 1);
   const newPatient = {
     id: newId,
     name,
-    ic: document.getElementById('newPatientIc').value.trim(),
+    ic,
     phone,
-    gender: document.getElementById('newPatientGender').value,
-    age: Number(document.getElementById('newPatientAge').value) || 0,
-    race: document.getElementById('newPatientRace').value,
-    language: document.getElementById('newPatientLanguage').value,
-    branch: document.getElementById('newPatientBranch').value || 'KS01',
+    gender,
+    age,
+    race,
+    language,
+    branch,
     conditions,
-    allergies: document.getElementById('newPatientAllergies').value.trim(),
-    notes: document.getElementById('newPatientNotes').value.trim(),
+    allergies,
+    notes,
     createdAt: getTodayDateString(0),
     encounters: [],
     medications: [],
@@ -2133,15 +2267,32 @@ function saveNewPatient() {
   savePatientsData();
   closeNewPatientModal();
   renderPatientModule();
+  if (typeof showPmgToast === 'function') {
+    showPmgToast(`✅ Patient ${newPatient.name} registered!`, 'success');
+  }
 }
 
 // ─── CLINICAL ENCOUNTER (SOAP + POCT) MODAL ──────────────────────────────────
+let editingEncounterId = null;
+
 function showNewEncounterModal(patientId) {
+  editingEncounterId = null;
   const modal = document.getElementById('patientEncounterModal');
   if (!modal) return;
 
+  const titleEl = document.getElementById('patientEncounterModalTitle');
+  if (titleEl) {
+    titleEl.innerHTML = '<i class="fa-solid fa-notes-medical text-teal-600"></i> Pharmacist Clinical Encounter & POCT Suite';
+  }
+
+  const saveBtn = document.getElementById('encModalSaveBtn');
+  if (saveBtn) {
+    saveBtn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-1.5"></i> Save Clinical Encounter';
+  }
+
   const selectEl = document.getElementById('encounterPatientSelect');
   if (selectEl) {
+    selectEl.disabled = false;
     selectEl.innerHTML = patientsData.map(p => `
       <option value="${p.id}" ${patientId === p.id ? 'selected' : ''}>${p.name} (${p.branch} · ${p.phone || 'No phone'})</option>
     `).join('');
@@ -2151,6 +2302,7 @@ function showNewEncounterModal(patientId) {
   document.getElementById('encDate').value = getTodayDateString(0);
   document.getElementById('encChiefComplaint').value = '';
   document.getElementById('encHpi').value = '';
+  if (document.getElementById('encMedicalHistory')) document.getElementById('encMedicalHistory').value = '';
 
   // Vitals
   document.getElementById('encBpSys').value = '';
@@ -2207,6 +2359,8 @@ function showNewEncounterModal(patientId) {
   if (tedaDetails) tedaDetails.classList.add('hidden');
   window._cachedTedaReport = null;
   removeAirdocFile();
+  removeCgmFile();
+  removeZentalogFile();
   document.getElementById('encRossmaxAct').value = '';
 
   // Plan
@@ -2222,9 +2376,22 @@ function showNewEncounterModal(patientId) {
   if (encTcaTimeEl) encTcaTimeEl.value = '10:00';
   document.getElementById('encTcaPurpose').value = 'Chronic Medication Refill & Health Review';
 
-  // If patientId is provided, pre-fill medications & supplements if available
+  // If patientId is provided, pre-fill medications & supplements & medical history if available
   const pTarget = patientsData.find(pt => pt.id === patientId);
   if (pTarget) {
+    if (document.getElementById('encMedicalHistory')) {
+      if (pTarget.medicalHistory) {
+        document.getElementById('encMedicalHistory').value = pTarget.medicalHistory;
+      } else {
+        const histParts = [];
+        const pConds = Array.isArray(pTarget.conditions) ? pTarget.conditions : (Array.isArray(pTarget.chronicConditions) ? pTarget.chronicConditions : []);
+        if (pConds.length) histParts.push('Chronic Illnesses: ' + pConds.join(', '));
+        if (pTarget.allergies) histParts.push('Allergies: ' + pTarget.allergies);
+        if (pTarget.notes) histParts.push('Notes: ' + pTarget.notes);
+        if (histParts.length) document.getElementById('encMedicalHistory').value = histParts.join('\n');
+      }
+    }
+
     if (pTarget.medications && pTarget.medications.length) {
       document.getElementById('encPlanMeds').value = pTarget.medications.map(m => typeof m === 'string' ? m : `${m.name} ${m.dosage || ''}`.trim()).join('\n');
     } else if (pTarget.encounters && pTarget.encounters.length && pTarget.encounters[0].planMedications) {
@@ -2259,9 +2426,169 @@ function showNewEncounterModal(patientId) {
   modal.classList.remove('hidden');
 }
 
+function prefillMedicalHistoryFromProfile() {
+  const patientSelect = document.getElementById('encounterPatientSelect');
+  if (!patientSelect) return;
+  const patientId = patientSelect.value;
+  const p = patientsData.find(pt => pt.id === patientId);
+  if (!p) {
+    if (typeof showPmgToast === 'function') showPmgToast('No patient selected', 'warning');
+    return;
+  }
+  const histEl = document.getElementById('encMedicalHistory');
+  if (!histEl) return;
+
+  if (p.medicalHistory) {
+    histEl.value = p.medicalHistory;
+    if (typeof showPmgToast === 'function') showPmgToast('Synced medical history from profile', 'success');
+    return;
+  }
+
+  const parts = [];
+  const pConds = Array.isArray(p.conditions) ? p.conditions : (Array.isArray(p.chronicConditions) ? p.chronicConditions : []);
+  if (pConds && pConds.length) parts.push('Chronic Illnesses: ' + pConds.join(', '));
+  if (p.allergies) parts.push('Allergies: ' + p.allergies);
+  if (p.notes) parts.push('Notes: ' + p.notes);
+
+  if (parts.length) {
+    histEl.value = parts.join('\n');
+    if (typeof showPmgToast === 'function') showPmgToast('Synced medical history from profile', 'success');
+  } else {
+    if (typeof showPmgToast === 'function') showPmgToast('No medical history or conditions recorded in profile yet', 'info');
+  }
+}
+
+function editEncounterRecord(patientId, encounterId) {
+  const p = patientsData.find(pt => pt.id === patientId);
+  if (!p || !p.encounters) return;
+  const enc = p.encounters.find(e => e.id === encounterId);
+  if (!enc) return;
+
+  editingEncounterId = encounterId;
+  const modal = document.getElementById('patientEncounterModal');
+  if (!modal) return;
+
+  const titleEl = document.getElementById('patientEncounterModalTitle');
+  if (titleEl) {
+    titleEl.innerHTML = `<i class="fa-solid fa-pen-to-square text-amber-600"></i> Edit Clinical Encounter (SOAP) · ${enc.date}`;
+  }
+  const saveBtn = document.getElementById('encModalSaveBtn');
+  if (saveBtn) {
+    saveBtn.innerHTML = '<i class="fa-solid fa-check mr-1.5"></i> Update Clinical Encounter';
+  }
+
+  const selectEl = document.getElementById('encounterPatientSelect');
+  if (selectEl) {
+    selectEl.innerHTML = `<option value="${p.id}" selected>${p.name} (${p.branch} · ${p.phone || 'No phone'})</option>`;
+    selectEl.disabled = true;
+  }
+
+  // Pre-fill fields
+  document.getElementById('encDate').value = enc.date || getTodayDateString(0);
+  document.getElementById('encChiefComplaint').value = enc.chiefComplaint || '';
+  document.getElementById('encHpi').value = enc.hpi || '';
+  if (document.getElementById('encMedicalHistory')) {
+    document.getElementById('encMedicalHistory').value = enc.medicalHistory || p.medicalHistory || '';
+  }
+
+  // Vitals
+  const v = enc.vitals || {};
+  document.getElementById('encBpSys').value = v.bpSys ?? '';
+  document.getElementById('encBpDia').value = v.bpDia ?? '';
+  document.getElementById('encPulse').value = v.pulse ?? '';
+  document.getElementById('encSpo2').value = v.spo2 ?? '';
+  document.getElementById('encWeight').value = v.weight ?? '';
+  document.getElementById('encHeight').value = v.height ?? '';
+  document.getElementById('encBmi').value = v.bmi ?? '';
+
+  // Body Composition
+  const b = enc.bodyComposition || {};
+  if (document.getElementById('encBodyFat')) document.getElementById('encBodyFat').value = b.bodyFat ?? '';
+  if (document.getElementById('encVisceralFat')) document.getElementById('encVisceralFat').value = b.visceralFat ?? '';
+  if (document.getElementById('encMuscleMass')) document.getElementById('encMuscleMass').value = b.muscleMass ?? '';
+  if (document.getElementById('encMetabolicAge')) document.getElementById('encMetabolicAge').value = b.metabolicAge ?? '';
+  if (document.getElementById('encBmrWater')) document.getElementById('encBmrWater').value = b.bmrWater || '';
+
+  // Lipid
+  const l = enc.lipidPanel || {};
+  document.getElementById('encTc').value = l.tc ?? '';
+  document.getElementById('encTg').value = l.tg ?? '';
+  document.getElementById('encHdl').value = l.hdl ?? '';
+  document.getElementById('encLdl').value = l.ldl ?? '';
+  document.getElementById('encAi').value = l.ai ?? '';
+  document.getElementById('encRchd').value = l.rChd ?? '';
+
+  // Liver
+  const liv = enc.liverPanel || {};
+  document.getElementById('encAst').value = liv.ast ?? '';
+  document.getElementById('encAlt').value = liv.alt ?? '';
+  document.getElementById('encAlb').value = liv.alb ?? '';
+
+  // Kidney
+  const k = enc.kidneyPanel || {};
+  document.getElementById('encUa').value = k.ua ?? '';
+  document.getElementById('encCreatinine').value = k.creatinine ?? '';
+  document.getElementById('encUrea').value = k.urea ?? '';
+  document.getElementById('encEgfr').value = k.egfr ?? '';
+
+  // Glycemic & Heme
+  const g = enc.glycemicHeme || {};
+  document.getElementById('encGlucose').value = g.glucose ?? '';
+  if (g.glucoseType) document.getElementById('encGlucoseType').value = g.glucoseType;
+  document.getElementById('encHba1c').value = g.hba1c ?? '';
+  document.getElementById('encHb').value = g.hb ?? '';
+  document.getElementById('encHct').value = g.hct ?? '';
+
+  // Specialty
+  const sp = enc.specialtyScans || {};
+  document.getElementById('encVitD').value = sp.vitD || '';
+  document.getElementById('encFerritin').value = sp.ferritin || '';
+  document.getElementById('encTeda').value = sp.teda || '';
+  if (document.getElementById('encTedaLink')) {
+    document.getElementById('encTedaLink').value = sp.tedaLink || (sp.teda && sp.teda.startsWith('http') ? sp.teda : '');
+  }
+  document.getElementById('encRossmaxAct').value = sp.rossmaxAct || '';
+
+  removeAirdocFile();
+  removeCgmFile();
+  removeZentalogFile();
+
+  if (sp.airdoc) {
+    const badgeEl = document.getElementById('encAirdocBadge');
+    if (badgeEl) badgeEl.innerHTML = `<span class="text-indigo-700 font-bold">Saved: ${escHtml(sp.airdoc)}</span>`;
+  }
+  if (sp.cgm) {
+    const badgeEl = document.getElementById('encCgmBadge');
+    if (badgeEl) badgeEl.innerHTML = `<span class="text-teal-700 font-bold">Saved: ${escHtml(sp.cgm)}</span>`;
+  }
+  if (sp.zentalog) {
+    const badgeEl = document.getElementById('encZentalogBadge');
+    if (badgeEl) badgeEl.innerHTML = `<span class="text-amber-700 font-bold">Saved: ${escHtml(sp.zentalog)}</span>`;
+  }
+
+  // Plan
+  document.getElementById('encPreDiag').value = enc.preDiagnostic || '';
+  document.getElementById('encPlanMeds').value = enc.planMedications || '';
+  document.getElementById('encPlanSupps').value = enc.planSupplements || '';
+  document.getElementById('encPlanCounselling').value = enc.planCounselling || '';
+  document.getElementById('encReferral').value = enc.referral || '';
+
+  // Next TCA
+  document.getElementById('encTcaDate').value = enc.nextTcaDate || '';
+  document.getElementById('encTcaPurpose').value = enc.nextTcaPurpose || 'Chronic Medication Refill & Health Review';
+
+  tempAttachedFiles = [];
+  renderTempAttachedFiles();
+
+  modal.classList.remove('hidden');
+}
+
 function closeEncounterModal() {
   const modal = document.getElementById('patientEncounterModal');
   if (modal) modal.classList.add('hidden');
+  editingEncounterId = null;
+  const selectEl = document.getElementById('encounterPatientSelect');
+  if (selectEl) selectEl.disabled = false;
 }
 
 // Quick-fill Chief Complaint Chip
@@ -2454,22 +2781,22 @@ async function fetchAndDecryptTedaReport(rid) {
       if (sec.alias === 'zangfu') {
         structured.zangfuSummary = sec.itemName || '';
         if (sec.items) {
-          structured.subHealthZangfu = sec.items.filter(it => it.levelText === '亚健康' || it.score < 9);
+          structured.subHealthZangfu = sec.items.filter(it => it.levelText === '亚健康' || (it.score != null && it.score < 7.0));
         }
       } else if (sec.alias === 'qixue') {
         structured.tizhiSummary = sec.itemName || '';
         if (sec.items) {
-          structured.subHealthTizhi = sec.items.filter(it => it.levelText === '亚健康' || it.score < 9);
+          structured.subHealthTizhi = sec.items.filter(it => it.levelText === '亚健康' || (it.score != null && it.score < 7.0));
         }
       } else if (sec.alias === 'jingluo') {
         structured.jingluoSummary = sec.itemName || '';
         if (sec.items) {
-          structured.blockedJingluo = sec.items.filter(it => it.levelText === '亚健康' || it.score < 8.5);
+          structured.blockedJingluo = sec.items.filter(it => it.levelText === '亚健康' || (it.score != null && it.score < 7.0));
         }
       } else if (sec.alias === 'jizhu') {
         structured.jizhuSummary = sec.itemName || '';
         if (sec.items) {
-          structured.spinePressure = sec.items.filter(it => it.score <= 7.4);
+          structured.spinePressure = sec.items.filter(it => (it.score != null && it.score < 7.0));
         }
       }
     });
@@ -2508,7 +2835,9 @@ async function autoAnalyzeTedaLink() {
     const lines = [];
     lines.push(`【TEDA 中医脉诊经络健康评估 · 报告日期: ${report.reportDate || '最新'}】`);
     if (report.immunityScore || report.healthScore) {
-      lines.push(`• 综合指数: 免疫力指数 ${report.immunityScore}分 | 健康指数 ${report.healthScore}分`);
+      const immVal = Number(report.immunityScore);
+      const immNote = (!isNaN(immVal) && immVal < 50) ? '【亚健康/偏低，需强化免疫】' : '【正常/良好】';
+      lines.push(`• 综合指数: 免疫力指数 ${report.immunityScore}分 ${immNote} | 健康指数 ${report.healthScore}分`);
     }
     if (report.advice) {
       lines.push(`• 核心调理原则: ${report.advice}`);
@@ -2554,9 +2883,11 @@ async function autoAnalyzeTedaLink() {
 
     if (badgeContainer) badgeContainer.classList.remove('hidden');
     if (immunityBadge) {
-      const imm = report.immunityScore;
-      const color = imm < 60 ? 'text-rose-600' : (imm < 80 ? 'text-amber-600' : 'text-emerald-600');
-      immunityBadge.innerHTML = `Immunity: <span class="${color} font-black">${imm}</span>/100 · Health: <span class="font-black">${report.healthScore}</span>/100`;
+      const imm = Number(report.immunityScore);
+      const isSuboptimal = !isNaN(imm) && imm < 50;
+      const color = isSuboptimal ? 'text-rose-600' : 'text-emerald-600';
+      const label = isSuboptimal ? '(亚健康/偏低)' : '(良好/正常)';
+      immunityBadge.innerHTML = `Immunity: <span class="${color} font-black">${report.immunityScore}</span>/100 ${label} · Health: <span class="font-black">${report.healthScore}</span>/100`;
     }
     if (principleBadge) {
       principleBadge.textContent = report.advice ? (report.advice.match(/【(.*?)】/)?.[0] || '亚健康调理') : 'TEDA Verified';
@@ -2629,6 +2960,60 @@ function removeAirdocFile() {
   const badgeEl = document.getElementById('encAirdocBadge');
   if (badgeEl) badgeEl.textContent = 'No PDF selected';
   const removeBtn = document.getElementById('encAirdocRemoveBtn');
+  if (removeBtn) removeBtn.classList.add('hidden');
+}
+
+// ─── CGM (CONTINUOUS GLUCOSE MONITORING) PDF HELPERS ───────────────────────
+let selectedCgmFile = null;
+
+function handleCgmFile(files) {
+  if (!files || !files[0]) return;
+  selectedCgmFile = files[0];
+  const nameEl = document.getElementById('encCgmFileName');
+  const badgeEl = document.getElementById('encCgmBadge');
+  const removeBtn = document.getElementById('encCgmRemoveBtn');
+
+  if (nameEl) nameEl.textContent = `${selectedCgmFile.name} (${formatFileSize(selectedCgmFile.size)})`;
+  if (badgeEl) badgeEl.innerHTML = '<span class="text-teal-700 font-bold">CGM PDF Ready</span>';
+  if (removeBtn) removeBtn.classList.remove('hidden');
+}
+
+function removeCgmFile() {
+  selectedCgmFile = null;
+  const fileInput = document.getElementById('encCgmPdf');
+  if (fileInput) fileInput.value = '';
+  const nameEl = document.getElementById('encCgmFileName');
+  if (nameEl) nameEl.textContent = '';
+  const badgeEl = document.getElementById('encCgmBadge');
+  if (badgeEl) badgeEl.textContent = 'No PDF selected';
+  const removeBtn = document.getElementById('encCgmRemoveBtn');
+  if (removeBtn) removeBtn.classList.add('hidden');
+}
+
+// ─── ZENTALOG DIET & HOME LOG PDF HELPERS ──────────────────────────────────
+let selectedZentalogFile = null;
+
+function handleZentalogFile(files) {
+  if (!files || !files[0]) return;
+  selectedZentalogFile = files[0];
+  const nameEl = document.getElementById('encZentalogFileName');
+  const badgeEl = document.getElementById('encZentalogBadge');
+  const removeBtn = document.getElementById('encZentalogRemoveBtn');
+
+  if (nameEl) nameEl.textContent = `${selectedZentalogFile.name} (${formatFileSize(selectedZentalogFile.size)})`;
+  if (badgeEl) badgeEl.innerHTML = '<span class="text-amber-700 font-bold">Zentalog PDF Ready</span>';
+  if (removeBtn) removeBtn.classList.remove('hidden');
+}
+
+function removeZentalogFile() {
+  selectedZentalogFile = null;
+  const fileInput = document.getElementById('encZentalogPdf');
+  if (fileInput) fileInput.value = '';
+  const nameEl = document.getElementById('encZentalogFileName');
+  if (nameEl) nameEl.textContent = '';
+  const badgeEl = document.getElementById('encZentalogBadge');
+  if (badgeEl) badgeEl.textContent = 'No PDF selected';
+  const removeBtn = document.getElementById('encZentalogRemoveBtn');
   if (removeBtn) removeBtn.classList.add('hidden');
 }
 
@@ -2746,68 +3131,182 @@ async function saveNewEncounter() {
     }
   }
 
+  // Save CGM PDF into IndexedDB if attached
+  if (selectedCgmFile) {
+    try {
+      const savedCgm = await savePatientDocument(pId, selectedCgmFile, 'CGM Glucose Report (' + document.getElementById('encDate').value + ')');
+      attachedDocIds.push({ id: savedCgm.id, name: '[CGM Report] ' + savedCgm.name, size: savedCgm.size });
+    } catch (err) {
+      console.error('Error saving CGM PDF to IndexedDB:', err);
+    }
+  }
+
+  // Save Zentalog PDF into IndexedDB if attached
+  if (selectedZentalogFile) {
+    try {
+      const savedZenta = await savePatientDocument(pId, selectedZentalogFile, 'Zentalog Diet & Home Report (' + document.getElementById('encDate').value + ')');
+      attachedDocIds.push({ id: savedZenta.id, name: '[Zentalog Report] ' + savedZenta.name, size: savedZenta.size });
+    } catch (err) {
+      console.error('Error saving Zentalog PDF to IndexedDB:', err);
+    }
+  }
+
+  const encDateVal = document.getElementById('encDate').value || getTodayDateString(0);
+  const chiefComplaintVal = document.getElementById('encChiefComplaint').value.trim();
+  const hpiVal = document.getElementById('encHpi').value.trim();
+  const medHistoryVal = document.getElementById('encMedicalHistory') ? document.getElementById('encMedicalHistory').value.trim() : '';
+  if (medHistoryVal) {
+    p.medicalHistory = medHistoryVal;
+  }
+
+  const vitalsObj = {
+    bpSys: Number(document.getElementById('encBpSys').value) || null,
+    bpDia: Number(document.getElementById('encBpDia').value) || null,
+    pulse: Number(document.getElementById('encPulse').value) || null,
+    spo2: Number(document.getElementById('encSpo2').value) || null,
+    weight: Number(document.getElementById('encWeight').value) || null,
+    height: Number(document.getElementById('encHeight').value) || null,
+    bmi: Number(document.getElementById('encBmi').value) || null
+  };
+
+  const bcaObj = {
+    bodyFat: Number(document.getElementById('encBodyFat')?.value) || null,
+    visceralFat: Number(document.getElementById('encVisceralFat')?.value) || null,
+    muscleMass: Number(document.getElementById('encMuscleMass')?.value) || null,
+    metabolicAge: Number(document.getElementById('encMetabolicAge')?.value) || null,
+    bmrWater: document.getElementById('encBmrWater') ? document.getElementById('encBmrWater').value.trim() : ''
+  };
+
+  const lipidObj = {
+    tc: Number(document.getElementById('encTc').value) || null,
+    tg: Number(document.getElementById('encTg').value) || null,
+    hdl: Number(document.getElementById('encHdl').value) || null,
+    ldl: Number(document.getElementById('encLdl').value) || null,
+    ai: Number(document.getElementById('encAi').value) || null,
+    rChd: Number(document.getElementById('encRchd').value) || null
+  };
+
+  const liverObj = {
+    ast: Number(document.getElementById('encAst').value) || null,
+    alt: Number(document.getElementById('encAlt').value) || null,
+    alb: Number(document.getElementById('encAlb').value) || null
+  };
+
+  const kidneyObj = {
+    ua: Number(document.getElementById('encUa').value) || null,
+    creatinine: Number(document.getElementById('encCreatinine').value) || null,
+    urea: Number(document.getElementById('encUrea').value) || null,
+    egfr: Number(document.getElementById('encEgfr').value) || null
+  };
+
+  const glycemicObj = {
+    glucose: Number(document.getElementById('encGlucose').value) || null,
+    glucoseType: document.getElementById('encGlucoseType').value,
+    hba1c: Number(document.getElementById('encHba1c').value) || null,
+    hb: Number(document.getElementById('encHb').value) || null,
+    hct: Number(document.getElementById('encHct').value) || null
+  };
+
+  const specialtyObj = {
+    vitD: document.getElementById('encVitD').value || null,
+    ferritin: document.getElementById('encFerritin').value || null,
+    teda: document.getElementById('encTeda').value.trim() || null,
+    tedaLink: document.getElementById('encTedaLink') ? document.getElementById('encTedaLink').value.trim() : null,
+    airdoc: selectedAirdocFile ? selectedAirdocFile.name : null,
+    cgm: selectedCgmFile ? selectedCgmFile.name : null,
+    zentalog: selectedZentalogFile ? selectedZentalogFile.name : null,
+    rossmaxAct: document.getElementById('encRossmaxAct').value.trim() || null
+  };
+
+  const customTestsVal = document.getElementById('encOtherTestsNotes') ? document.getElementById('encOtherTestsNotes').value.trim() : '';
+  const preDiagVal = document.getElementById('encPreDiag').value.trim();
+  const planMedsVal = document.getElementById('encPlanMeds').value.trim();
+  const planSuppsVal = document.getElementById('encPlanSupps').value.trim();
+  const planCounsellingVal = document.getElementById('encPlanCounselling').value.trim();
+  const referralVal = document.getElementById('encReferral').value.trim();
+
+  // If in Edit Mode for an existing encounter
+  if (editingEncounterId) {
+    if (!p.encounters) p.encounters = [];
+    const targetEnc = p.encounters.find(e => e.id === editingEncounterId);
+    if (targetEnc) {
+      targetEnc.date = encDateVal;
+      targetEnc.lastUpdatedBy = recorder;
+      targetEnc.lastUpdatedAt = new Date().toISOString();
+      targetEnc.chiefComplaint = chiefComplaintVal;
+      targetEnc.hpi = hpiVal;
+      targetEnc.medicalHistory = medHistoryVal;
+      targetEnc.vitals = vitalsObj;
+      targetEnc.bodyComposition = bcaObj;
+      targetEnc.lipidPanel = lipidObj;
+      targetEnc.liverPanel = liverObj;
+      targetEnc.kidneyPanel = kidneyObj;
+      targetEnc.glycemicHeme = glycemicObj;
+
+      // Preserve previously attached diagnostic filenames if not re-uploaded
+      if (!specialtyObj.airdoc && targetEnc.specialtyScans?.airdoc) specialtyObj.airdoc = targetEnc.specialtyScans.airdoc;
+      if (!specialtyObj.cgm && targetEnc.specialtyScans?.cgm) specialtyObj.cgm = targetEnc.specialtyScans.cgm;
+      if (!specialtyObj.zentalog && targetEnc.specialtyScans?.zentalog) specialtyObj.zentalog = targetEnc.specialtyScans.zentalog;
+      targetEnc.specialtyScans = specialtyObj;
+
+      targetEnc.customTests = customTestsVal;
+      targetEnc.preDiagnostic = preDiagVal;
+      targetEnc.planMedications = planMedsVal;
+      targetEnc.planSupplements = planSuppsVal;
+      targetEnc.planCounselling = planCounsellingVal;
+      targetEnc.referral = referralVal;
+      if (attachedDocIds.length) {
+        targetEnc.attachedDocs = (targetEnc.attachedDocs || []).concat(attachedDocIds);
+      }
+
+      const tcaDate = document.getElementById('encTcaDate').value;
+      if (tcaDate) {
+        const tcaPurpose = document.getElementById('encTcaPurpose').value.trim() || 'Follow-up Consultation & Refill';
+        p.nextTcaDate = tcaDate;
+        p.nextTcaPurpose = tcaPurpose;
+        p.nextTcaRecordedBy = recorder;
+        targetEnc.nextTcaDate = tcaDate;
+        targetEnc.nextTcaPurpose = tcaPurpose;
+      }
+
+      savePatientsData();
+      closeEncounterModal();
+      renderPatientModule();
+
+      if (viewingPatientId === pId) {
+        viewPatientProfile(pId);
+      }
+
+      if (typeof showPmgToast === 'function') {
+        showPmgToast('✅ Consultation record updated successfully!', 'success');
+      } else {
+        alert('Consultation record updated successfully!');
+      }
+      editingEncounterId = null;
+      return;
+    }
+  }
+
   const newEnc = {
     id: 'ENC-' + Date.now(),
-    date: document.getElementById('encDate').value || getTodayDateString(0),
+    date: encDateVal,
     recordedBy: recorder,
-    chiefComplaint: document.getElementById('encChiefComplaint').value.trim(),
-    hpi: document.getElementById('encHpi').value.trim(),
-    vitals: {
-      bpSys: Number(document.getElementById('encBpSys').value) || null,
-      bpDia: Number(document.getElementById('encBpDia').value) || null,
-      pulse: Number(document.getElementById('encPulse').value) || null,
-      spo2: Number(document.getElementById('encSpo2').value) || null,
-      weight: Number(document.getElementById('encWeight').value) || null,
-      height: Number(document.getElementById('encHeight').value) || null,
-      bmi: Number(document.getElementById('encBmi').value) || null
-    },
-    bodyComposition: {
-      bodyFat: Number(document.getElementById('encBodyFat')?.value) || null,
-      visceralFat: Number(document.getElementById('encVisceralFat')?.value) || null,
-      muscleMass: Number(document.getElementById('encMuscleMass')?.value) || null,
-      metabolicAge: Number(document.getElementById('encMetabolicAge')?.value) || null,
-      bmrWater: document.getElementById('encBmrWater') ? document.getElementById('encBmrWater').value.trim() : ''
-    },
-    lipidPanel: {
-      tc: Number(document.getElementById('encTc').value) || null,
-      tg: Number(document.getElementById('encTg').value) || null,
-      hdl: Number(document.getElementById('encHdl').value) || null,
-      ldl: Number(document.getElementById('encLdl').value) || null,
-      ai: Number(document.getElementById('encAi').value) || null,
-      rChd: Number(document.getElementById('encRchd').value) || null
-    },
-    liverPanel: {
-      ast: Number(document.getElementById('encAst').value) || null,
-      alt: Number(document.getElementById('encAlt').value) || null,
-      alb: Number(document.getElementById('encAlb').value) || null
-    },
-    kidneyPanel: {
-      ua: Number(document.getElementById('encUa').value) || null,
-      creatinine: Number(document.getElementById('encCreatinine').value) || null,
-      urea: Number(document.getElementById('encUrea').value) || null,
-      egfr: Number(document.getElementById('encEgfr').value) || null
-    },
-    glycemicHeme: {
-      glucose: Number(document.getElementById('encGlucose').value) || null,
-      glucoseType: document.getElementById('encGlucoseType').value,
-      hba1c: Number(document.getElementById('encHba1c').value) || null,
-      hb: Number(document.getElementById('encHb').value) || null,
-      hct: Number(document.getElementById('encHct').value) || null
-    },
-    specialtyScans: {
-      vitD: document.getElementById('encVitD').value || null,
-      ferritin: document.getElementById('encFerritin').value || null,
-      teda: document.getElementById('encTeda').value.trim() || null,
-      tedaLink: document.getElementById('encTedaLink') ? document.getElementById('encTedaLink').value.trim() : null,
-      airdoc: selectedAirdocFile ? selectedAirdocFile.name : null,
-      rossmaxAct: document.getElementById('encRossmaxAct').value.trim() || null
-    },
-    customTests: document.getElementById('encOtherTestsNotes') ? document.getElementById('encOtherTestsNotes').value.trim() : '',
-    preDiagnostic: document.getElementById('encPreDiag').value.trim(),
-    planMedications: document.getElementById('encPlanMeds').value.trim(),
-    planSupplements: document.getElementById('encPlanSupps').value.trim(),
-    planCounselling: document.getElementById('encPlanCounselling').value.trim(),
-    referral: document.getElementById('encReferral').value.trim(),
+    chiefComplaint: chiefComplaintVal,
+    hpi: hpiVal,
+    medicalHistory: medHistoryVal,
+    vitals: vitalsObj,
+    bodyComposition: bcaObj,
+    lipidPanel: lipidObj,
+    liverPanel: liverObj,
+    kidneyPanel: kidneyObj,
+    glycemicHeme: glycemicObj,
+    specialtyScans: specialtyObj,
+    customTests: customTestsVal,
+    preDiagnostic: preDiagVal,
+    planMedications: planMedsVal,
+    planSupplements: planSuppsVal,
+    planCounselling: planCounsellingVal,
+    referral: referralVal,
     attachedDocs: attachedDocIds
   };
 
@@ -2970,6 +3469,24 @@ function switchProfileTab(tab) {
   else if (tab === 'apts') renderProfileApts(p);
 }
 
+function formatPlanListHtml(text, type = 'med') {
+  if (!text) return '';
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  if (!lines.length) return '';
+  const dotColor = type === 'supp' ? 'text-emerald-600' : 'text-blue-600';
+  const textColor = type === 'supp' ? 'text-emerald-950' : 'text-gray-900';
+  return `
+    <div class="mt-1 space-y-1">
+      ${lines.map(line => `
+        <div class="flex items-start gap-2 text-xs sm:text-sm ${textColor}">
+          <span class="${dotColor} font-black mt-0.5">•</span>
+          <span class="font-semibold leading-relaxed">${escHtml(line)}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
 // Tab 1: Encounters History (SOAP & POCT) - Enlarged with In-SOAP Document Integration
 async function renderProfileEncounters(p) {
   const container = document.getElementById('profEncountersList');
@@ -3003,7 +3520,9 @@ async function renderProfileEncounters(p) {
     const tedaUrl = rawTedaLink || null;
     const tedaNotes = (enc.specialtyScans && enc.specialtyScans.teda && !enc.specialtyScans.teda.startsWith('http')) ? enc.specialtyScans.teda : null;
     const airdocPdf = (enc.specialtyScans && enc.specialtyScans.airdoc) ? enc.specialtyScans.airdoc : null;
-    const hasAttachments = (encDocs.length > 0) || tedaUrl || airdocPdf;
+    const cgmPdf = (enc.specialtyScans && enc.specialtyScans.cgm) ? enc.specialtyScans.cgm : null;
+    const zentalogPdf = (enc.specialtyScans && enc.specialtyScans.zentalog) ? enc.specialtyScans.zentalog : null;
+    const hasAttachments = (encDocs.length > 0) || tedaUrl || airdocPdf || cgmPdf || zentalogPdf;
 
     return `
       <div class="bg-white border-2 border-gray-200 rounded-3xl p-5 sm:p-7 mb-6 shadow-sm hover:border-blue-300 transition">
@@ -3016,6 +3535,11 @@ async function renderProfileEncounters(p) {
             <span class="px-3 py-1 rounded-xl text-xs sm:text-sm font-black ${bpCls.badge}">
               BP ${enc.vitals ? enc.vitals.bpSys + '/' + enc.vitals.bpDia : '—'} mmHg (${bpCls.label})
             </span>
+            <button onclick="editEncounterRecord('${p.id}', '${enc.id}')"
+              class="bg-amber-500 hover:bg-amber-600 text-white text-xs sm:text-sm font-bold px-3.5 py-1.5 rounded-xl inline-flex items-center gap-1.5 transition shadow-xs"
+              title="Edit / Update this consultation record">
+              <i class="fa-solid fa-pen-to-square text-sm"></i> Edit Record
+            </button>
             <a href="${waUrl}" target="_blank" rel="noopener"
               class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold px-3.5 py-1.5 rounded-xl inline-flex items-center gap-1.5 transition shadow-xs"
               title="Send Consultation Summary via WhatsApp">
@@ -3042,6 +3566,15 @@ async function renderProfileEncounters(p) {
             </p>
             <p class="text-gray-900 font-medium leading-relaxed">${enc.preDiagnostic || '—'}</p>
           </div>
+
+          ${enc.medicalHistory ? `
+            <div class="md:col-span-2 p-3 bg-indigo-50/60 rounded-xl border border-indigo-100 text-xs sm:text-sm">
+              <span class="font-extrabold text-indigo-950 flex items-center gap-1.5 mb-0.5">
+                <i class="fa-solid fa-file-medical text-indigo-600"></i> Past Medical & Health History:
+              </span>
+              <p class="text-gray-800 whitespace-pre-line leading-relaxed font-medium">${escHtml(enc.medicalHistory)}</p>
+            </div>
+          ` : ''}
         </div>
 
         <!-- Key POCT Results Pills -->
@@ -3074,7 +3607,7 @@ async function renderProfileEncounters(p) {
             <div class="flex items-center justify-between mb-2.5">
               <span class="text-xs sm:text-sm font-extrabold text-blue-950 flex items-center gap-2">
                 <i class="fa-solid fa-paperclip text-blue-600 text-sm"></i>
-                <span>Attached Lab Reports & Scans (${encDocs.length + (tedaUrl ? 1 : 0) + (airdocPdf ? 1 : 0)} files):</span>
+                <span>Attached Lab Reports & Scans (${encDocs.length + (tedaUrl ? 1 : 0) + (airdocPdf ? 1 : 0) + (cgmPdf ? 1 : 0) + (zentalogPdf ? 1 : 0)} files):</span>
               </span>
             </div>
             <div class="flex flex-wrap gap-2.5">
@@ -3105,7 +3638,17 @@ async function renderProfileEncounters(p) {
               ` : ''}
               ${airdocPdf ? `
                 <div class="bg-purple-100 text-purple-950 border border-purple-300 text-xs sm:text-sm font-bold px-3.5 py-2 rounded-xl flex items-center gap-2 shadow-xs">
-                  <i class="fa-solid fa-file-pdf text-red-600"></i> Airdoc AI Scan: ${escHtml(airdocPdf)}
+                  <i class="fa-solid fa-file-pdf text-red-600"></i> Airdoc Retinal: ${escHtml(airdocPdf)}
+                </div>
+              ` : ''}
+              ${cgmPdf ? `
+                <div class="bg-teal-100 text-teal-950 border border-teal-300 text-xs sm:text-sm font-bold px-3.5 py-2 rounded-xl flex items-center gap-2 shadow-xs">
+                  <i class="fa-solid fa-chart-area text-teal-700"></i> CGM Report: ${escHtml(cgmPdf)}
+                </div>
+              ` : ''}
+              ${zentalogPdf ? `
+                <div class="bg-amber-100 text-amber-950 border border-amber-300 text-xs sm:text-sm font-bold px-3.5 py-2 rounded-xl flex items-center gap-2 shadow-xs">
+                  <i class="fa-solid fa-apple-whole text-amber-700"></i> Zentalog: ${escHtml(zentalogPdf)}
                 </div>
               ` : ''}
             </div>
@@ -3125,11 +3668,36 @@ async function renderProfileEncounters(p) {
         ` : ''}
 
         <!-- Plan of Action -->
-        <div class="mt-4 pt-3.5 border-t text-sm sm:text-base space-y-2">
-          ${enc.planMedications ? `<p class="leading-relaxed">💊 <b class="text-gray-900">Medications:</b> <span class="text-gray-800 font-medium">${enc.planMedications}</span></p>` : ''}
-          ${enc.planSupplements ? `<p class="leading-relaxed">🌿 <b class="text-emerald-900">Supplements (Nutraceuticals):</b> <span class="text-emerald-800 font-semibold">${enc.planSupplements}</span></p>` : ''}
-          ${enc.planCounselling ? `<p class="leading-relaxed">🗣️ <b class="text-gray-700">Counselling & Diet:</b> <span class="text-gray-700">${enc.planCounselling}</span></p>` : ''}
-          ${enc.referral ? `<p class="leading-relaxed">🚨 <b class="text-rose-700">Referral:</b> <span class="text-rose-700 font-bold">${enc.referral}</span></p>` : ''}
+        <div class="mt-4 pt-3.5 border-t text-sm sm:text-base space-y-3">
+          ${enc.planMedications ? `
+            <div class="p-3 bg-gray-50/80 rounded-xl border border-gray-200">
+              <span class="font-extrabold text-gray-900 flex items-center gap-1.5 text-xs sm:text-sm">
+                <span>💊</span> <span>Medications (Prescription / Refills):</span>
+              </span>
+              ${formatPlanListHtml(enc.planMedications, 'med')}
+            </div>
+          ` : ''}
+          ${enc.planSupplements ? `
+            <div class="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200">
+              <span class="font-extrabold text-emerald-900 flex items-center gap-1.5 text-xs sm:text-sm">
+                <span>🌿</span> <span>Companion Supplements (Nutraceuticals):</span>
+              </span>
+              ${formatPlanListHtml(enc.planSupplements, 'supp')}
+            </div>
+          ` : ''}
+          ${enc.planCounselling ? `
+            <div class="p-3 bg-amber-50/60 rounded-xl border border-amber-200">
+              <span class="font-extrabold text-amber-950 flex items-center gap-1.5 text-xs sm:text-sm">
+                <span>🗣️</span> <span>Patient Counselling & Lifestyle Advice:</span>
+              </span>
+              <p class="text-xs sm:text-sm text-gray-800 leading-relaxed font-medium mt-1 whitespace-pre-line">${escHtml(enc.planCounselling)}</p>
+            </div>
+          ` : ''}
+          ${enc.referral ? `
+            <div class="text-xs sm:text-sm text-gray-700">
+              <span class="font-bold text-gray-900">🚨 Referral / Follow-up:</span> <span class="font-medium">${escHtml(enc.referral)}</span>
+            </div>
+          ` : ''}
         </div>
       </div>
     `;
@@ -5225,6 +5793,40 @@ async function runAiClinicalReview() {
     }
   }
 
+  // Process CGM Continuous Glucose Monitoring PDF for Multimodal Gemini Inspection
+  let cgmBase64 = null;
+  let cgmMimeType = 'application/pdf';
+  if (selectedCgmFile) {
+    if (selectedCgmFile.size > 15 * 1024 * 1024) {
+      alert('The attached CGM PDF exceeds 15MB. Analyzing based on file metadata and notes.');
+    } else {
+      try {
+        if (loadingText) loadingText.textContent = `Reading CGM Report (${selectedCgmFile.name})…`;
+        cgmMimeType = selectedCgmFile.type || 'application/pdf';
+        cgmBase64 = await readFileAsBase64(selectedCgmFile);
+      } catch (err) {
+        console.warn('[PMG AI Review] Could not encode CGM PDF for multimodal review:', err);
+      }
+    }
+  }
+
+  // Process Zentalog Diet, Exercise & Home Log PDF for Multimodal Gemini Inspection
+  let zentalogBase64 = null;
+  let zentalogMimeType = 'application/pdf';
+  if (selectedZentalogFile) {
+    if (selectedZentalogFile.size > 15 * 1024 * 1024) {
+      alert('The attached Zentalog PDF exceeds 15MB. Analyzing based on file metadata and notes.');
+    } else {
+      try {
+        if (loadingText) loadingText.textContent = `Reading Zentalog Report (${selectedZentalogFile.name})…`;
+        zentalogMimeType = selectedZentalogFile.type || 'application/pdf';
+        zentalogBase64 = await readFileAsBase64(selectedZentalogFile);
+      } catch (err) {
+        console.warn('[PMG AI Review] Could not encode Zentalog PDF for multimodal review:', err);
+      }
+    }
+  }
+
   // Check & Auto-Decrypt TEDA WellScan Online Report if link provided
   let tedaDecryptedData = window._cachedTedaReport || null;
   if (!tedaDecryptedData && tedaLink) {
@@ -5245,14 +5847,27 @@ async function runAiClinicalReview() {
 PLEASE INSPECT AND ANALYZE THE ATTACHED AIRDOC RETINAL REPORT MULTIMODALLY. Extract optic disc (CDR), microvascular status (arteriolar narrowing, AV nicking, hemorrhages, microaneurysms, hard exudates), hypertensive/diabetic retinopathy grading, and Airdoc AI cardiovascular risk score.`
     : 'No Airdoc scan file uploaded for this consultation.';
 
+  const cgmFilePromptText = selectedCgmFile
+    ? `ATTACHED CONTINUOUS GLUCOSE MONITORING (CGM) DOCUMENT: [Filename: "${selectedCgmFile.name}", Size: ${formatFileSize(selectedCgmFile.size)}].
+PLEASE INSPECT AND ANALYZE THE ATTACHED CGM REPORT MULTIMODALLY. Extract Time-in-Range (TIR % between 3.9 - 10.0 mmol/L), Time Below Range (TBR % hypoglycemia < 3.9 mmol/L), Time Above Range (TAR % hyperglycemia > 10.0 mmol/L), Glucose Management Indicator (GMI / estimated HbA1c), Glycemic Variability (%CV target <= 36%), nocturnal hypoglycemic dips, and mealtime glycemic excursions.`
+    : 'No CGM report file uploaded for this consultation.';
+
+  const zentalogFilePromptText = selectedZentalogFile
+    ? `ATTACHED ZENTALOG DIET, EXERCISE & HOME LOG DOCUMENT: [Filename: "${selectedZentalogFile.name}", Size: ${formatFileSize(selectedZentalogFile.size)}].
+PLEASE INSPECT AND ANALYZE THE ATTACHED ZENTALOG REPORT MULTIMODALLY. Extract dietary macronutrient triggers (carbohydrate spikes, late-night dinners, ultra-processed food intake), physical activity/step patterns, and home blood pressure/glucose patterns.`
+    : 'No Zentalog report file uploaded for this consultation.';
+
+  const medHistoryText = document.getElementById('encMedicalHistory')?.value.trim() || patient.medicalHistory || 'None noted';
+
   const prompt = `You are an expert Clinical Pharmacist and Nutritional Specialist for PMG Pharmacy in Malaysia.
-Evaluate this patient consultation, POCT laboratory profile, specialty scans (Airdoc Retinal AI & TEDA TCM/Meridian Scan), Body Composition Analysis, and medication regimen.
+Evaluate this patient consultation, POCT laboratory profile, specialty scans (Airdoc Retinal AI, Continuous Glucose Monitoring [CGM], Zentalog Diet & Lifestyle Log, and TEDA TCM/Meridian Scan), Body Composition Analysis, and medication regimen.
 
 PATIENT PROFILE:
 Name: ${patient.name || 'Anonymous'}
 Age: ${patient.age || 'N/A'}, Gender: ${patient.gender || 'N/A'}
 Known Allergies: ${patient.allergies || 'None'}
-Chronic Conditions: ${(patient.chronicConditions || []).join(', ') || 'None noted'}
+Chronic Conditions: ${(patient.chronicConditions || patient.conditions || []).join(', ') || 'None noted'}
+Medical History (PMHx, Surgeries, Illnesses): ${medHistoryText}
 Current Chronic Medications: ${chronicMeds || 'None listed'}
 
 CURRENT CONSULTATION (SOAP):
@@ -5286,19 +5901,23 @@ SPECIALTY WELLNESS & DIAGNOSTIC SCANS:
   * DECRYPTED ONLINE TEDA WELLSCAN DATA (Live API Extraction):
     - Report ID: ${tedaDecryptedData.rid}
     - Report Date: ${tedaDecryptedData.reportDate || 'Recent'}
-    - Overall Immunity Score (免疫力指数): ${tedaDecryptedData.immunityScore}/100 | Overall Health Score (健康指数): ${tedaDecryptedData.healthScore}/100
+    - Overall Immunity Score (免疫力指数): ${tedaDecryptedData.immunityScore}/100 [TEDA standard: score < 50 is suboptimal/low immunity, >= 50 is normal/good] | Overall Health Score (健康指数): ${tedaDecryptedData.healthScore}/100
     - Core Conditioning Principle / Advice: ${tedaDecryptedData.advice || 'N/A'}
-    - Sub-health Zang-Fu Organs (脏腑辩证 亚健康): ${tedaDecryptedData.subHealthZangfu.map(z => `${z.name} ${z.score}分 (${z.wuxing || ''})`).join('; ') || (tedaDecryptedData.zangfuSummary || 'All organs normal')}
-    - Constitutional Disharmonies (气血津液体质): ${tedaDecryptedData.subHealthTizhi.map(t => `${t.name} ${t.score}分`).join('; ') || (tedaDecryptedData.tizhiSummary || 'Balanced')}
-    - Blocked / Sluggish Meridians (经络淤堵): ${tedaDecryptedData.blockedJingluo.map(j => `${j.name} ${j.score}分`).join('; ') || (tedaDecryptedData.jingluoSummary || 'Normal flow')}
-    - Spine Load / Pressure (脊柱负荷): ${tedaDecryptedData.spinePressure.map(s => `${s.name} ${s.score}分`).join('; ') || (tedaDecryptedData.jizhuSummary || 'Normal')}
+    - Sub-health Zang-Fu Organs (脏腑辩证 亚健康 [score < 7.0]): ${tedaDecryptedData.subHealthZangfu.map(z => `${z.name} ${z.score}分 (${z.wuxing || ''})`).join('; ') || (tedaDecryptedData.zangfuSummary || 'All organs normal')}
+    - Constitutional Disharmonies (气血津液体质 [score < 7.0]): ${tedaDecryptedData.subHealthTizhi.map(t => `${t.name} ${t.score}分`).join('; ') || (tedaDecryptedData.tizhiSummary || 'Balanced')}
+    - Blocked / Sluggish Meridians (经络淤堵 [score < 7.0]): ${tedaDecryptedData.blockedJingluo.map(j => `${j.name} ${j.score}分`).join('; ') || (tedaDecryptedData.jingluoSummary || 'Normal flow')}
+    - Spine Load / Pressure (脊柱负荷 [score < 7.0]): ${tedaDecryptedData.spinePressure.map(s => `${s.name} ${s.score}分`).join('; ') || (tedaDecryptedData.jizhuSummary || 'Normal')}
     - Pharmacist Additional Notes: ${tedaNotes || 'None'}
   ` : `
   * TCM Findings & Meridians: ${tedaNotes || 'Not recorded'}
-  *(Note: TEDA provides Traditional Chinese Medicine electro-meridian bio-resonance analysis evaluating: Qi balance [Qi deficiency, Qi stagnation], Yin & Yang harmony [Yin deficiency, Yang deficiency], 12 main Organ Meridians [Liver, Kidney, Spleen, Heart, Lung, Stomach], Dampness/Phlegm [湿气/痰湿], and vital energy flow.)
+  *(Note: TEDA evaluates: Qi balance [Qi deficiency, Qi stagnation], Yin & Yang harmony, 12 Organ Meridians, Dampness/Phlegm [湿气/痰湿]. Benchmark: score < 7.0 is suboptimal, score >= 7.0 is normal/good; Immunity score < 50 is suboptimal, >= 50 is good.)
   `}
 - Airdoc Retinal AI Scan:
   * ${airdocFilePromptText}
+- Continuous Glucose Monitoring (CGM):
+  * ${cgmFilePromptText}
+- Zentalog Diet, Exercise & Home Log:
+  * ${zentalogFilePromptText}
 
 PRESCRIBED / PROPOSED MEDICATIONS:
 ${fullMedsList || 'No prescription medications currently recorded'}
@@ -5307,39 +5926,29 @@ CURRENT / PROPOSED SUPPLEMENTS:
 ${planSupps || 'None recorded'}
 
 CRITICAL CLINICAL INSTRUCTIONS:
-1. TEDA TCM & MERIDIAN WELLNESS SYNTHESIS:
-   - Evaluate the patient's TCM constitutional status:
-     * Qi Status: Identify Qi deficiency (气虚 - chronic fatigue, weak stamina, spontaneous sweating, poor immunity) or Qi stagnation (气滞 - emotional stress, hypochondriac distension, chest tightness).
-     * Yin/Yang Harmony: Identify Yin deficiency (阴虚 - night sweats, 5-palm heat, dry eyes/throat, hot flashes, borderline HTN) or Yang deficiency (阳虚 - cold intolerance, cold extremities, water retention, low metabolism).
-     * Organ Meridian Health: Identify affected meridians (Liver 肝经 for detox/stress/eyes, Kidney 肾经 for aging/stamina/bone, Spleen 脾经 for digestion/dampness/energy, Heart 心经 for sleep/palpitations, Lung 肺经 for respiratory).
-     * Dampness / Phlegm (湿气/痰湿): Screen for internal dampness predisposing to obesity, high triglycerides, and hyperuricemia.
-   - Integrative TCM Bridge: Correlate TCM findings with Western POCT labs (e.g. Spleen Qi deficiency & dampness aligning with elevated visceral fat/triglycerides; Kidney Yin deficiency aligning with arterial stiffness and hypertension; Liver heat aligning with elevated ALT and ocular redness).
-   - Recommend PMG House Brands with adaptogenic, cellular, or herbal properties (e.g. JH Nutrition Alpha Gold, Livason, Nutribridge Glycoway, Livemore CoQ10 Plus, Ginoba).
+1. TEDA TCM & MERIDIAN WELLNESS BENCHMARKS & SYNTHESIS:
+   - TEDA Benchmark Rules:
+     * Component / organ / meridian / spine scores < 7.0 are SUBOPTIMAL (亚健康 / 偏低 / 淤堵) and warrant intervention.
+     * Scores >= 7.0 are GOOD / NORMAL.
+     * Overall Immunity Index < 50 is SUBOPTIMAL / LOW IMMUNITY (需提升免疫); >= 50 is NORMAL / HEALTHY.
+   - Synthesize Qi status (deficiency vs stagnation), Yin/Yang balance, dampness/phlegm (湿气), and organ meridians (Liver, Kidney, Spleen, Heart, Lung).
+   - Correlate TCM findings with Western POCT labs (e.g. Spleen Qi deficiency & dampness with visceral fat/triglycerides; Kidney Yin deficiency with arterial stiffness and hypertension).
 
-2. BODY COMPOSITION ANALYSIS (BCA):
-   - Analyze Visceral Fat level vs. Skeletal Muscle Mass (assess sarcopenic obesity risk).
-   - Compare Metabolic Age to chronological age.
-   - Correlate visceral adiposity with Triglycerides/HDL ratio, fasting glucose, and NAFLD fatty liver risk.
-   - Formulate targeted lifestyle advice (protein balance, resistance exercise, visceral fat loss).
+2. CONTINUOUS GLUCOSE MONITORING (CGM) & ZENTALOG DIET/LIFESTYLE INTEGRATION:
+   - If CGM report is attached: inspect TIR (Time-in-Range), TBR (hypoglycemia risk), TAR (hyperglycemia spikes), %CV (glycemic variability target <= 36%), and nocturnal dips.
+   - If Zentalog is attached: correlate mealtime carbohydrate surges, late-night dinners, and exercise/step deficits directly with CGM excursions and blood lipid/glucose readings.
 
 3. AIRDOC RETINAL MICROVASCULAR & OPTIC EVALUATION:
-   - Multimodally inspect the attached Airdoc Retinal PDF report:
-     * Optic Disc & Cup-to-Disc ratio (CDR) for glaucoma risk.
-     * Retinal microvessels (arteriolar narrowing, AV nicking, hemorrhages, microaneurysms, hard exudates).
-     * Hypertensive & Diabetic Retinopathy signs.
-     * Cardiovascular / stroke risk score.
-   - Correlate retinal microvasculature with blood pressure and glycemic stability.
-   - Recommend PMG ocular antioxidants if indicated (e.g. Nutribridge Opticlear [Lutein, Zeaxanthin, Astaxanthin, Bilberry], JH Nutrition Eclipx).
+   - Inspect cup-to-disc ratio (CDR), retinal microvessels (arteriolar narrowing, AV nicking, hemorrhages, microaneurysms, hard exudates), hypertensive/diabetic retinopathy signs, and cardiovascular risk.
 
 4. MULTI-SYSTEM INTEGRATIVE CLINICAL SYNTHESIS:
-   - Synthesize: Retinal Microvessels (Airdoc) + Large Artery Stiffness (Rossmax ACT) + Body Composition (Visceral Fat / Muscle) + TCM Energetic Constitution (TEDA Qi/Yin/Yang/Meridians) + POCT Laboratory Blood Readings into a unified, holistic health profile.
+   - Integrate Retinal Microvasculature (Airdoc) + Glycemic Dynamics (CGM) + Lifestyle Triggers (Zentalog) + Artery Stiffness (Rossmax ACT) + Body Composition (Visceral Fat / Muscle) + TCM Energetic Constitution (TEDA) + POCT Laboratory Blood Readings into a unified, holistic health profile.
 
 5. DRUG-DRUG & DRUG-SUPPLEMENT INTERACTIONS:
-   - Identify interactions between current/prescribed medications and proposed supplements.
-   - Severity: "none", "moderate", or "high". Explain mechanisms clearly.
+   - Identify interactions between medications and proposed supplements ("none", "moderate", or "high").
 
 6. PMG HOUSE BRAND COMPANION SUPPLEMENT RECOMMENDATIONS:
-   - Recommend 2-4 companion supplements/nutraceuticals to counter drug-induced depletions (e.g. statin-induced CoQ10 depletion, metformin-induced B12 depletion) or optimize cardiovascular, retinal, metabolic, joint, or liver health based on their POCT readings.
+   - Recommend 2-4 companion supplements/nutraceuticals to counter drug-induced depletions (e.g. statin-induced CoQ10 depletion, metformin-induced B12 depletion) or optimize metabolic, cardiovascular, retinal, or joint health.
    - CRITICAL: Prioritize PMG House Brands:
      * "JH Nutrition" (Alpha Gold, Systoright, Flexson, Livason, Nacous NAC, Eclipx, Immucol, Citazinc)
      * "V-Infinity" (Neuright B-Complex+ALA, Fiono Omega-3 1200mg, Neoflex, Tygeres, Tyreps, Vtrox)
@@ -5348,14 +5957,13 @@ CRITICAL CLINICAL INSTRUCTIONS:
      * Other PMG brands: Biowell, Lucentia, Dermisk, Axon
 
 7. CHRONOTHERAPY (BEST TIMING OF INTAKE):
-   - Categorize all medications and recommended supplements into: Morning, Afternoon, Evening, Bedtime.
-   - State specific rationale.
+   - Categorize all medications and recommended supplements into: Morning, Afternoon, Evening, Bedtime with precise scientific rationale.
 
 8. CLINICAL ASSESSMENT & PRE-DIAGNOSTIC:
-   - Concise pharmacist impression of current disease control and risk stratification.
+   - Concise pharmacist impression of current disease control and risk stratification. Avoid words like "AI", formulate as professional clinical impression.
 
 9. COUNSELLING & LIFESTYLE:
-   - 3 to 5 targeted, practical lifestyle and diet counselling pearls (including dietary advice for visceral fat, dampness, or retinal health).
+   - 3 to 5 targeted, practical lifestyle and dietary counselling pearls.
 
 RESPONSE MUST BE STRICTLY VALID JSON matching this structure:
 {
@@ -5364,11 +5972,15 @@ RESPONSE MUST BE STRICTLY VALID JSON matching this structure:
   "specialtySynthesis": {
     "airdocRetinalStatus": "e.g. Normal / Early Arteriolar Narrowing / Grade 1 Hypertensive Retinopathy / Glaucoma Risk / Not Attached",
     "airdocSummary": "Concise summary of retinal microvascular and optic findings from Airdoc (or note stating no scan was attached)",
+    "cgmStatus": "e.g. Optimal TIR 82% / High Glycemic Variability (CV 41%) / Post-prandial Excursions / Not Attached",
+    "cgmSummary": "Concise summary of CGM metrics (TIR %, TAR %, TBR %, GMI, %CV, nocturnal dips)",
+    "zentalogStatus": "e.g. High Carb Spikes & Low Activity / Good Compliance / Sedentary / Not Attached",
+    "zentalogSummary": "Concise summary of diet, exercise, and home monitoring patterns",
     "bcaStatus": "e.g. Optimal / Elevated Visceral Fat / Sarcopenic Risk / Metabolic Age +7 yrs / Not Tested",
     "bcaSummary": "Concise summary of visceral fat, skeletal muscle mass, body fat %, and metabolic age",
     "tedaTcmStatus": "e.g. Spleen Qi Deficiency with Dampness / Kidney Yin Weak / Liver Fire / Balanced / Not Recorded",
-    "tedaTcmSummary": "Concise summary of TCM Qi, Yin-Yang balance, meridian vitality, and dampness/phlegm",
-    "multiSystemCorrelation": "Holistic clinical synthesis correlating retinal microvessels, arterial stiffness, body composition, TCM meridian patterns, and blood POCT labs"
+    "tedaTcmSummary": "Concise summary of TCM Qi, Yin-Yang balance, meridian vitality, and dampness/phlegm (adhering to score < 7.0 suboptimal, immunity < 50 suboptimal)",
+    "multiSystemCorrelation": "Holistic clinical synthesis correlating retinal microvessels, arterial stiffness, CGM glycemic variability, Zentalog lifestyle patterns, body composition, TCM meridian patterns, and blood POCT labs"
   },
   "houseBrands": [
     {
@@ -5404,6 +6016,22 @@ RESPONSE MUST BE STRICTLY VALID JSON matching this structure:
           inlineData: {
             mimeType: airdocMimeType,
             data: airdocBase64
+          }
+        });
+      }
+      if (cgmBase64) {
+        requestParts.push({
+          inlineData: {
+            mimeType: cgmMimeType,
+            data: cgmBase64
+          }
+        });
+      }
+      if (zentalogBase64) {
+        requestParts.push({
+          inlineData: {
+            mimeType: zentalogMimeType,
+            data: zentalogBase64
           }
         });
       }
@@ -5493,11 +6121,11 @@ function renderAiClinicalReview(res) {
     }
   }
 
-  // 1.5. Specialty Scans: Airdoc, Body Composition & TEDA TCM Synthesis
+  // 1.5. Specialty Scans: Airdoc, CGM, Zentalog, Body Composition & TEDA TCM Synthesis
   const specPanel = document.getElementById('aiSpecialtyScansPanel');
   if (specPanel) {
     const synth = res.specialtySynthesis || res.airdocTedaSynthesis;
-    if (synth && (synth.airdocSummary || synth.bcaSummary || synth.tedaTcmSummary || synth.tedaSummary || synth.multiSystemCorrelation)) {
+    if (synth && (synth.airdocSummary || synth.cgmSummary || synth.zentalogSummary || synth.bcaSummary || synth.tedaTcmSummary || synth.tedaSummary || synth.multiSystemCorrelation)) {
       specPanel.classList.remove('hidden');
 
       // Airdoc Retinal Card
@@ -5516,6 +6144,42 @@ function renderAiClinicalReview(res) {
       }
       if (airdocText) {
         airdocText.textContent = synth.airdocSummary || 'No specific retinal findings reported.';
+      }
+
+      // CGM Card
+      const cgmBadge = document.getElementById('aiCgmStatusBadge');
+      const cgmText = document.getElementById('aiCgmSummaryText');
+      if (cgmBadge) {
+        cgmBadge.textContent = synth.cgmStatus || 'Evaluated';
+        const st = (synth.cgmStatus || '').toLowerCase();
+        if (st.includes('optimal') || st.includes('good') || st.includes('normal')) {
+          cgmBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-teal-100 text-teal-800 border border-teal-200';
+        } else if (st.includes('high') || st.includes('variability') || st.includes('spike') || st.includes('tbr') || st.includes('tar')) {
+          cgmBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200';
+        } else {
+          cgmBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200';
+        }
+      }
+      if (cgmText) {
+        cgmText.textContent = synth.cgmSummary || 'CGM continuous glucose metrics evaluated.';
+      }
+
+      // Zentalog Card
+      const zentaBadge = document.getElementById('aiZentalogStatusBadge');
+      const zentaText = document.getElementById('aiZentalogSummaryText');
+      if (zentaBadge) {
+        zentaBadge.textContent = synth.zentalogStatus || 'Evaluated';
+        const st = (synth.zentalogStatus || '').toLowerCase();
+        if (st.includes('optimal') || st.includes('good') || st.includes('balanced') || st.includes('compliant')) {
+          zentaBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200';
+        } else if (st.includes('high') || st.includes('sedentary') || st.includes('spike') || st.includes('late')) {
+          zentaBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200';
+        } else {
+          zentaBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200';
+        }
+      }
+      if (zentaText) {
+        zentaText.textContent = synth.zentalogSummary || 'Dietary triggers, exercise, and home logs analyzed.';
       }
 
       // Body Composition (BCA) Card
@@ -5557,18 +6221,18 @@ function renderAiClinicalReview(res) {
       // Holistic Multi-System Correlation
       const corrText = document.getElementById('aiMultiSystemCorrText');
       if (corrText) {
-        corrText.textContent = synth.multiSystemCorrelation || 'Retinal microvasculature, body composition, TCM constitution, and arterial conditions correlated with POCT panel.';
+        corrText.textContent = synth.multiSystemCorrelation || 'Retinal microvasculature, CGM glycemic dynamics, Zentalog diet, body composition, TCM constitution, and arterial conditions correlated with POCT panel.';
       }
     } else {
       specPanel.classList.add('hidden');
     }
   }
 
-  // 2. House Brand Supplements
+  // 2. House Brand Supplements with Selection Checkboxes & Individual Add Buttons
   const houseBrandsEl = document.getElementById('aiHouseBrandsList');
   if (houseBrandsEl) {
     if (res.houseBrands && res.houseBrands.length) {
-      houseBrandsEl.innerHTML = res.houseBrands.map(item => {
+      houseBrandsEl.innerHTML = res.houseBrands.map((item, idx) => {
         let badgeColor = 'bg-purple-100 text-purple-800 border-purple-200';
         const brandUpper = (item.brand || '').toUpperCase();
         if (brandUpper.includes('JH')) badgeColor = 'bg-purple-100 text-purple-800 border-purple-200';
@@ -5577,50 +6241,34 @@ function renderAiClinicalReview(res) {
         else if (brandUpper.includes('LIVE')) badgeColor = 'bg-blue-100 text-blue-800 border-blue-200';
 
         return `
-          <div class="p-2.5 rounded-lg border border-gray-100 bg-gray-50/60 hover:bg-gray-50 transition">
-            <div class="flex items-center justify-between gap-2 mb-1">
-              <span class="font-bold text-gray-900">${item.product}</span>
-              <span class="text-[10px] font-bold px-2 py-0.5 rounded border ${badgeColor}">${item.brand}</span>
+          <div class="p-3 rounded-xl border border-gray-200 bg-white hover:border-purple-300 hover:shadow-xs transition">
+            <div class="flex items-start justify-between gap-2 mb-1">
+              <label class="flex items-center gap-2 cursor-pointer font-bold text-gray-900 text-xs sm:text-sm">
+                <input type="checkbox" class="ai-supp-cb w-4 h-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500 cursor-pointer" data-idx="${idx}" onchange="onSuppSelectionChange()" checked>
+                <span>${escHtml(item.product)}</span>
+              </label>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded border ${badgeColor}">${escHtml(item.brand)}</span>
+                <button type="button" onclick="applySingleAiSupplement(${idx})" class="text-xs bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold px-2 py-0.5 rounded-lg transition" title="Add this item to Plan">
+                  <i class="fa-solid fa-plus text-[10px]"></i> Add
+                </button>
+              </div>
             </div>
-            <p class="text-[11px] text-gray-600 mb-1">${item.indication}</p>
-            <p class="text-[11px] font-semibold text-purple-900"><i class="fa-solid fa-prescription mr-1 text-purple-600"></i>${item.dosage}</p>
+            <p class="text-xs text-gray-600 ml-6 mb-1">${escHtml(item.indication)}</p>
+            <p class="text-xs font-semibold text-purple-900 ml-6 flex items-center gap-1.5">
+              <i class="fa-solid fa-prescription text-purple-600 text-[11px]"></i>
+              <span>${escHtml(item.dosage)}</span>
+            </p>
           </div>
         `;
       }).join('');
     } else {
-      houseBrandsEl.innerHTML = '<p class="text-[11px] text-gray-500 italic">No specific companion supplements required for this case.</p>';
+      houseBrandsEl.innerHTML = '<p class="text-xs text-gray-500 italic p-3">No specific companion supplements required for this case.</p>';
     }
   }
 
-  // 3. Chronotherapy Timing Grid
-  const timingGridEl = document.getElementById('aiTimingGrid');
-  if (timingGridEl) {
-    const slots = [
-      { key: 'morning',   label: 'Morning (Breakfast)', icon: 'fa-sun text-amber-500',   bg: 'bg-amber-50/50' },
-      { key: 'afternoon', label: 'Afternoon (Lunch)',   icon: 'fa-sun text-orange-500',  bg: 'bg-orange-50/50' },
-      { key: 'evening',   label: 'Evening (Dinner)',    icon: 'fa-cloud-sun text-indigo-500', bg: 'bg-indigo-50/50' },
-      { key: 'bedtime',   label: 'Bedtime (Night)',     icon: 'fa-moon text-blue-700',   bg: 'bg-blue-50/50' }
-    ];
-
-    const chrono = res.chronotherapy || {};
-    timingGridEl.innerHTML = slots.map(s => {
-      const items = chrono[s.key] || [];
-      return `
-        <div class="border border-gray-200 rounded-lg p-2.5 ${s.bg}">
-          <div class="font-bold text-[11px] text-gray-800 flex items-center gap-1.5 mb-1.5 pb-1 border-b border-gray-200">
-            <i class="fa-solid ${s.icon}"></i>
-            <span>${s.label}</span>
-          </div>
-          ${items.length ? items.map(it => `
-            <div class="mb-1.5 last:mb-0">
-              <span class="font-bold text-[11px] text-gray-900 block">${it.item}</span>
-              <span class="text-[10px] text-gray-500 block leading-tight">${it.note}</span>
-            </div>
-          `).join('') : '<span class="text-[10px] text-gray-400 italic">None scheduled</span>'}
-        </div>
-      `;
-    }).join('');
-  }
+  // 3. Chronotherapy Timing Grid (Dynamic Based on Selected Supplements)
+  updateChronotherapyView();
 
   // 4. Assessment & Counselling
   const assessEl = document.getElementById('aiAssessmentText');
@@ -5632,7 +6280,7 @@ function renderAiClinicalReview(res) {
   if (counselEl) {
     const points = res.counsellingPoints || [];
     if (points.length) {
-      counselEl.innerHTML = points.map(p => `<li>${p}</li>`).join('');
+      counselEl.innerHTML = points.map(p => `<li>${escHtml(p)}</li>`).join('');
     } else {
       counselEl.innerHTML = '<li>Regular lifestyle maintenance and medication adherence.</li>';
     }
@@ -5641,38 +6289,148 @@ function renderAiClinicalReview(res) {
   panel.classList.remove('hidden');
 }
 
+// ─── SELECTABLE HOUSE BRAND SUPPLEMENTS HELPERS ─────────────────────────────
+function toggleAllAiSupplements(checked) {
+  document.querySelectorAll('.ai-supp-cb').forEach(cb => {
+    cb.checked = checked;
+  });
+  onSuppSelectionChange();
+}
+
+function onSuppSelectionChange() {
+  updateChronotherapyView();
+}
+
+function applySingleAiSupplement(idx) {
+  if (!currentAiReviewResult || !currentAiReviewResult.houseBrands || !currentAiReviewResult.houseBrands[idx]) return;
+  const item = currentAiReviewResult.houseBrands[idx];
+  const suppInput = document.getElementById('encPlanSupps');
+  if (!suppInput) return;
+
+  const line = `${item.product} (${item.dosage})`;
+  const existing = suppInput.value.trim();
+  if (existing) {
+    suppInput.value = `${existing}\n${line}`;
+  } else {
+    suppInput.value = line;
+  }
+  if (typeof showPmgToast === 'function') {
+    showPmgToast(`✅ Added ${item.product} to Plan`, 'success');
+  } else {
+    alert(`Added ${item.product} to Plan`);
+  }
+}
+
 function applyAiSupplements() {
   if (!currentAiReviewResult || !currentAiReviewResult.houseBrands || !currentAiReviewResult.houseBrands.length) {
-    alert('No AI recommended supplements to apply.');
+    alert('No recommended supplements available to apply.');
+    return;
+  }
+  const checkedBoxes = Array.from(document.querySelectorAll('.ai-supp-cb:checked'));
+  if (!checkedBoxes.length) {
+    alert('Please select at least one supplement checkbox to apply to your plan.');
     return;
   }
   const suppInput = document.getElementById('encPlanSupps');
   if (!suppInput) return;
 
-  const newSupps = currentAiReviewResult.houseBrands.map(b => `${b.product} (${b.dosage})`).join('\n');
+  const selectedItems = checkedBoxes.map(cb => {
+    const idx = parseInt(cb.dataset.idx, 10);
+    return currentAiReviewResult.houseBrands[idx];
+  }).filter(Boolean);
+
+  const newSupps = selectedItems.map(b => `${b.product} (${b.dosage})`).join('\n');
   const existing = suppInput.value.trim();
   if (existing) {
     suppInput.value = `${existing}\n${newSupps}`;
   } else {
     suppInput.value = newSupps;
   }
-  alert('✅ House Brand Supplements added to Plan of Action (one item per line)!');
+  if (typeof showPmgToast === 'function') {
+    showPmgToast(`✅ Added ${selectedItems.length} selected supplement(s) to Plan!`, 'success');
+  } else {
+    alert(`✅ Added ${selectedItems.length} selected supplement(s) to Plan!`);
+  }
+}
+
+// ─── DYNAMIC CHRONOTHERAPY HELPERS ──────────────────────────────────────────
+function getActiveChronotherapy() {
+  if (!currentAiReviewResult || !currentAiReviewResult.chronotherapy) return {};
+  const c = currentAiReviewResult.chronotherapy;
+  const houseBrands = currentAiReviewResult.houseBrands || [];
+  const uncheckedProductNames = [];
+
+  document.querySelectorAll('.ai-supp-cb').forEach(cb => {
+    if (!cb.checked) {
+      const idx = parseInt(cb.dataset.idx, 10);
+      if (houseBrands[idx] && houseBrands[idx].product) {
+        uncheckedProductNames.push(houseBrands[idx].product.toLowerCase().trim());
+      }
+    }
+  });
+
+  const filterSlot = (items) => {
+    if (!items || !Array.isArray(items)) return [];
+    return items.filter(it => {
+      const itemLower = (it.item || '').toLowerCase().trim();
+      const isUnchecked = uncheckedProductNames.some(pName => itemLower.includes(pName) || pName.includes(itemLower));
+      return !isUnchecked;
+    });
+  };
+
+  return {
+    morning: filterSlot(c.morning),
+    afternoon: filterSlot(c.afternoon),
+    evening: filterSlot(c.evening),
+    bedtime: filterSlot(c.bedtime)
+  };
+}
+
+function updateChronotherapyView() {
+  const timingGridEl = document.getElementById('aiTimingGrid');
+  if (!timingGridEl) return;
+
+  const slots = [
+    { key: 'morning',   label: 'Morning (Breakfast)', icon: 'fa-sun text-amber-500',   bg: 'bg-amber-50/50' },
+    { key: 'afternoon', label: 'Afternoon (Lunch)',   icon: 'fa-sun text-orange-500',  bg: 'bg-orange-50/50' },
+    { key: 'evening',   label: 'Evening (Dinner)',    icon: 'fa-cloud-sun text-indigo-500', bg: 'bg-indigo-50/50' },
+    { key: 'bedtime',   label: 'Bedtime (Night)',     icon: 'fa-moon text-blue-700',   bg: 'bg-blue-50/50' }
+  ];
+
+  const chrono = getActiveChronotherapy();
+  timingGridEl.innerHTML = slots.map(s => {
+    const items = chrono[s.key] || [];
+    return `
+      <div class="border border-gray-200 rounded-lg p-2.5 ${s.bg}">
+        <div class="font-bold text-[11px] text-gray-800 flex items-center gap-1.5 mb-1.5 pb-1 border-b border-gray-200">
+          <i class="fa-solid ${s.icon}"></i>
+          <span>${s.label}</span>
+        </div>
+        ${items.length ? items.map(it => `
+          <div class="mb-1.5 last:mb-0">
+            <span class="font-bold text-[11px] text-gray-900 block">${escHtml(it.item)}</span>
+            <span class="text-[10px] text-gray-500 block leading-tight">${escHtml(it.note || '')}</span>
+          </div>
+        `).join('') : '<span class="text-[10px] text-gray-400 italic">None scheduled</span>'}
+      </div>
+    `;
+  }).join('');
 }
 
 function applyAiSchedule() {
-  if (!currentAiReviewResult || !currentAiReviewResult.chronotherapy) {
-    alert('No chronotherapy schedule available to apply.');
+  const chrono = getActiveChronotherapy();
+  if (!chrono.morning?.length && !chrono.afternoon?.length && !chrono.evening?.length && !chrono.bedtime?.length) {
+    alert('No scheduled items in the chronotherapy plan to apply.');
     return;
   }
   const counselInput = document.getElementById('encPlanCounselling');
   if (!counselInput) return;
 
-  const c = currentAiReviewResult.chronotherapy;
   let lines = ['[Chronotherapy Timing of Intake]'];
-  if (c.morning && c.morning.length)   lines.push(`• Morning: ${c.morning.map(i => i.item + (i.note ? ' (' + i.note + ')' : '')).join(', ')}`);
-  if (c.afternoon && c.afternoon.length) lines.push(`• Afternoon: ${c.afternoon.map(i => i.item + (i.note ? ' (' + i.note + ')' : '')).join(', ')}`);
-  if (c.evening && c.evening.length)   lines.push(`• Evening: ${c.evening.map(i => i.item + (i.note ? ' (' + i.note + ')' : '')).join(', ')}`);
-  if (c.bedtime && c.bedtime.length)   lines.push(`• Bedtime: ${c.bedtime.map(i => i.item + (i.note ? ' (' + i.note + ')' : '')).join(', ')}`);
+  if (chrono.morning && chrono.morning.length)     lines.push(`• Morning: ${chrono.morning.map(i => i.item + (i.note ? ' (' + i.note + ')' : '')).join(', ')}`);
+  if (chrono.afternoon && chrono.afternoon.length) lines.push(`• Afternoon: ${chrono.afternoon.map(i => i.item + (i.note ? ' (' + i.note + ')' : '')).join(', ')}`);
+  if (chrono.evening && chrono.evening.length)     lines.push(`• Evening: ${chrono.evening.map(i => i.item + (i.note ? ' (' + i.note + ')' : '')).join(', ')}`);
+  if (chrono.bedtime && chrono.bedtime.length)     lines.push(`• Bedtime: ${chrono.bedtime.map(i => i.item + (i.note ? ' (' + i.note + ')' : '')).join(', ')}`);
 
   const scheduleText = lines.join('\n');
   const existing = counselInput.value.trim();
@@ -5681,30 +6439,270 @@ function applyAiSchedule() {
   } else {
     counselInput.value = scheduleText;
   }
-  alert('✅ Chronotherapy schedule added to Counselling Plan!');
+  if (typeof showPmgToast === 'function') {
+    showPmgToast('✅ Chronotherapy schedule added to Counselling Plan!', 'success');
+  } else {
+    alert('✅ Chronotherapy schedule added to Counselling Plan!');
+  }
 }
 
 function applyAiAssessment() {
   if (!currentAiReviewResult || !currentAiReviewResult.assessmentSummary) {
-    alert('No AI assessment summary available.');
+    alert('No assessment summary available.');
     return;
   }
   const preDiagInput = document.getElementById('encPreDiag');
   if (!preDiagInput) return;
 
   const existing = preDiagInput.value.trim();
-  let aiText = `[AI Clinical Review]: ${currentAiReviewResult.assessmentSummary}`;
+  let impressionText = `[Clinical Impression]: ${currentAiReviewResult.assessmentSummary}`;
   const synth = currentAiReviewResult.specialtySynthesis || currentAiReviewResult.airdocTedaSynthesis;
   if (synth?.multiSystemCorrelation) {
-    aiText += `\n[Integrative Health Synthesis]: ${synth.multiSystemCorrelation}`;
+    impressionText += `\n[Integrative Health Synthesis]: ${synth.multiSystemCorrelation}`;
   }
 
   if (existing) {
-    preDiagInput.value = `${existing}\n\n${aiText}`;
+    preDiagInput.value = `${existing}\n\n${impressionText}`;
   } else {
-    preDiagInput.value = aiText;
+    preDiagInput.value = impressionText;
   }
-  alert('✅ Clinical assessment & multi-system synthesis applied to Pre-Diagnostic!');
+  if (typeof showPmgToast === 'function') {
+    showPmgToast('✅ Clinical impression applied to Pre-Diagnostic!', 'success');
+  } else {
+    alert('✅ Clinical impression applied to Pre-Diagnostic!');
+  }
 }
 
+// ─── CHRONOTHERAPY WHATSAPP SHARING & IMAGE EXPORT ──────────────────────────
+function shareChronotherapyWa() {
+  const chrono = getActiveChronotherapy();
+  const patientSelect = document.getElementById('encounterPatientSelect');
+  const patientId = patientSelect ? patientSelect.value : null;
+  const patient = patientsData.find(p => p.id === patientId);
+  if (!patient || !patient.phone) {
+    alert('Please select a patient with a valid phone number to share via WhatsApp.');
+    return;
+  }
 
+  const lang = patient.language || 'Chinese';
+  const name = patient.name;
+  const branchName = (patient.branch === 'KS01' || patient.branch === 'KOTA SENTOSA') ? 'PMG Pharmacy Kota Sentosa' : `PMG Pharmacy ${patient.branch}`;
+
+  let msg = '';
+  if (lang === 'Chinese') {
+    msg += `尊敬的 ${name}，这是【${branchName}】药剂师为您定制的每日最佳服药与保健品时间表（时间治疗学 Chronotherapy）：\n\n`;
+    if (chrono.morning?.length) {
+      msg += `🌅 *早晨（早餐后 / 晨起）：*\n${chrono.morning.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+    }
+    if (chrono.afternoon?.length) {
+      msg += `☀️ *中午（午餐后）：*\n${chrono.afternoon.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+    }
+    if (chrono.evening?.length) {
+      msg += `🌇 *傍晚（晚餐后）：*\n${chrono.evening.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+    }
+    if (chrono.bedtime?.length) {
+      msg += `🌙 *睡前：*\n${chrono.bedtime.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+    }
+    msg += `💡 *温馨提示：* 按时规律服用可达最佳吸收效果并减少肠胃不适。如有任何用药疑问，欢迎随时联系 PMG 药剂师！`;
+  } else if (lang === 'Malay') {
+    msg += `Salam ${name}, ini adalah jadual masa pengambilan ubat & suplemen harian anda dari 【${branchName}】 (Kronoterapi):\n\n`;
+    if (chrono.morning?.length) {
+      msg += `🌅 *Pagi (Selepas Sarapan):*\n${chrono.morning.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+    }
+    if (chrono.afternoon?.length) {
+      msg += `☀️ *Tengah Hari (Selepas Makan Tengah Hari):*\n${chrono.afternoon.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+    }
+    if (chrono.evening?.length) {
+      msg += `🌇 *Petang / Malam (Selepas Makan Malam):*\n${chrono.evening.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+    }
+    if (chrono.bedtime?.length) {
+      msg += `🌙 *Sebelum Tidur:*\n${chrono.bedtime.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+    }
+    msg += `💡 *Peringatan Mesra:* Ambil mengikut jadual untuk penyerapan optimum dan mengurangkan kesan sampingan. Hubungi ahli farmasi PMG jika ada soalan!`;
+  } else {
+    msg += `Dear ${name}, here is your personalized daily medication and supplement timing schedule from ${branchName} (Chronotherapy):\n\n`;
+    if (chrono.morning?.length) {
+      msg += `🌅 *Morning (After Breakfast):*\n${chrono.morning.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+    }
+    if (chrono.afternoon?.length) {
+      msg += `☀️ *Afternoon (After Lunch):*\n${chrono.afternoon.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+    }
+    if (chrono.evening?.length) {
+      msg += `🌇 *Evening (After Dinner):*\n${chrono.evening.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+    }
+    if (chrono.bedtime?.length) {
+      msg += `🌙 *Bedtime:*\n${chrono.bedtime.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+    }
+    msg += `💡 *Pharmacist Tip:* Taking items at recommended optimal times maximizes clinical absorption and minimizes gastrointestinal upset. Feel free to reach out with any questions!`;
+  }
+
+  const waUrl = `https://wa.me/${formatPhoneForWa(patient.phone)}?text=${encodeURIComponent(msg)}`;
+  window.open(waUrl, '_blank');
+}
+
+function downloadChronotherapyImage() {
+  const chrono = getActiveChronotherapy();
+  const patientSelect = document.getElementById('encounterPatientSelect');
+  const patientId = patientSelect ? patientSelect.value : null;
+  const patient = patientsData.find(p => p.id === patientId) || { name: 'Customer', branch: 'KS01' };
+  const session = typeof getSession === 'function' ? getSession() : null;
+  const pharmacist = session ? session.displayName : 'PMG Pharmacist';
+  const encDate = document.getElementById('encDate')?.value || getTodayDateString(0);
+  const branchName = (patient.branch === 'KS01' || patient.branch === 'KOTA SENTOSA') ? 'PMG Pharmacy Kota Sentosa' : `PMG Pharmacy ${patient.branch}`;
+
+  const slots = [
+    { title: 'Morning (早晨 / Breakfast)', icon: '☀️', color: '#b45309', bg: '#fffbeb', border: '#fde68a', items: chrono.morning || [] },
+    { title: 'Afternoon (中午 / Lunch)', icon: '🌤️', color: '#c2410c', bg: '#fff7ed', border: '#fed7aa', items: chrono.afternoon || [] },
+    { title: 'Evening (傍晚 / Dinner)', icon: '🌇', color: '#4338ca', bg: '#eef2ff', border: '#c7d2fe', items: chrono.evening || [] },
+    { title: 'Bedtime (睡前 / Night)', icon: '🌙', color: '#1e40af', bg: '#eff6ff', border: '#bfdbfe', items: chrono.bedtime || [] }
+  ];
+
+  const totalItems = slots.reduce((acc, s) => acc + s.items.length, 0);
+  if (totalItems === 0) {
+    alert('No scheduled medications or supplements in the chronotherapy plan to export.');
+    return;
+  }
+
+  const canvas = document.getElementById('chronoCanvas') || document.createElement('canvas');
+  const width = 1200;
+  const maxItemsPerSlot = Math.max(...slots.map(s => s.items.length), 2);
+  const cardHeight = Math.max(340, 110 + maxItemsPerSlot * 65);
+  const height = 240 + cardHeight + 110;
+
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+
+  // Background
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(0, 0, width, height);
+
+  // Top Banner
+  const gradient = ctx.createLinearGradient(0, 0, width, 0);
+  gradient.addColorStop(0, '#1e3a8a');
+  gradient.addColorStop(1, '#0284c7');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, 140);
+
+  // Top Title
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 34px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText('PMG PHARMACY · CHRONOTHERAPY SCHEDULE', 50, 60);
+
+  ctx.fillStyle = '#bae6fd';
+  ctx.font = '600 19px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText('Personalized Medication & Supplement Timing (时间治疗学服药指南)', 50, 98);
+
+  // Patient Info Bar
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.06)';
+  ctx.shadowBlur = 10;
+  ctx.shadowOffsetY = 4;
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(50, 160, width - 100, 56, 12);
+  } else {
+    ctx.rect(50, 160, width - 100, 56);
+  }
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+
+  ctx.fillStyle = '#334155';
+  ctx.font = 'bold 16px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText(`Patient: ${patient.name}`, 75, 195);
+  ctx.fillText(`Date: ${encDate}`, 430, 195);
+  ctx.fillText(`Pharmacist: ${pharmacist}`, 680, 195);
+  ctx.fillText(`Branch: ${branchName}`, 940, 195);
+
+  // 4 Slot Cards
+  const cardWidth = 260;
+  const gap = 16;
+  const startX = 50;
+  const startY = 240;
+
+  slots.forEach((s, idx) => {
+    const x = startX + idx * (cardWidth + gap);
+    const y = startY;
+
+    // Card background
+    ctx.fillStyle = s.bg;
+    ctx.strokeStyle = s.border;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') {
+      ctx.roundRect(x, y, cardWidth, cardHeight, 14);
+    } else {
+      ctx.rect(x, y, cardWidth, cardHeight);
+    }
+    ctx.fill();
+    ctx.stroke();
+
+    // Card Header Bar
+    ctx.fillStyle = s.color;
+    ctx.font = 'bold 17px "Segoe UI", system-ui, sans-serif';
+    ctx.fillText(`${s.icon} ${s.title}`, x + 14, y + 36);
+
+    // Divider line
+    ctx.strokeStyle = s.border;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 14, y + 48);
+    ctx.lineTo(x + cardWidth - 14, y + 48);
+    ctx.stroke();
+
+    // Items
+    let itemY = y + 78;
+    if (s.items.length === 0) {
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = 'italic 15px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText('None scheduled', x + 20, itemY);
+    } else {
+      s.items.forEach(it => {
+        // Bullet dot
+        ctx.fillStyle = s.color;
+        ctx.beginPath();
+        ctx.arc(x + 20, itemY - 5, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Item name
+        ctx.fillStyle = '#0f172a';
+        ctx.font = 'bold 15px "Segoe UI", system-ui, sans-serif';
+        const itemName = it.item.length > 23 ? it.item.substring(0, 21) + '...' : it.item;
+        ctx.fillText(itemName, x + 30, itemY);
+
+        // Note / Dosage
+        if (it.note) {
+          ctx.fillStyle = '#64748b';
+          ctx.font = '13px "Segoe UI", system-ui, sans-serif';
+          const itemNote = it.note.length > 27 ? it.note.substring(0, 25) + '...' : it.note;
+          ctx.fillText(itemNote, x + 30, itemY + 20);
+          itemY += 52;
+        } else {
+          itemY += 40;
+        }
+      });
+    }
+  });
+
+  // Footer Bar
+  const footerY = height - 45;
+  ctx.fillStyle = '#64748b';
+  ctx.font = '500 15px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('PMG Pharmacy Healthcare Group · Caring for your health every moment · PMG 关爱您的健康每一刻', width / 2, footerY);
+  ctx.textAlign = 'left';
+
+  // Export & Download
+  const link = document.createElement('a');
+  link.download = `PMG_Chronotherapy_${patient.name.replace(/\s+/g, '_')}_${encDate}.png`;
+  link.href = canvas.toDataURL('image/png');
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  if (typeof showPmgToast === 'function') {
+    showPmgToast('✅ Chronotherapy schedule card downloaded successfully! You can send this picture to your customer on WhatsApp.', 'success');
+  } else {
+    alert('✅ Chronotherapy schedule image downloaded successfully!');
+  }
+}
