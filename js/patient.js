@@ -4597,6 +4597,15 @@ function closeOneDriveGuideModal() {
 // ═════════════════════════════════════════════════════════════════════════════
 // ─── BRANCH OPERATING HOURS & DYNAMIC PHARMACIST SCHEDULES ───────────────────
 // ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Google Apps Script Web App URL for live pharmacist schedule sync.
+ * Pharmacist edits in "Manage Working Hours" → pushed to Google Sheets.
+ * Customer opens booking link → fetches latest schedule from Google Sheets.
+ * No patient data is ever sent here — working hours only.
+ */
+const PMG_SCHEDULE_API_URL = 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+
 const BRANCH_SCHEDULES = {
   'Kota Sentosa': { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', phone: '60168334455' },
   'KOTA SENTOSA': { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', phone: '60168334455' },
@@ -4867,7 +4876,80 @@ function savePharmacistSchedule(branchCode, scheduleObj) {
       console.warn('[PMG OneDrive Sync] Auto-save schedule warning:', err);
     });
   }
+
+  // Push to Google Sheets for live cross-device customer booking availability
+  pushScheduleToSheets(code, scheduleObj);
 }
+
+/**
+ * Asynchronously pushes pharmacist schedule to Google Sheets.
+ * Called every time a pharmacist saves working hours — no patient data involved.
+ */
+async function pushScheduleToSheets(branchCode, scheduleObj) {
+  if (!PMG_SCHEDULE_API_URL || !scheduleObj) return;
+  try {
+    const session = typeof getSession === 'function' ? getSession() : null;
+    const payload = {
+      branch: branchCode,
+      schedule: scheduleObj,
+      updatedBy: (session && session.displayName) || scheduleObj.updatedBy || 'Pharmacist'
+    };
+    const res = await fetch(PMG_SCHEDULE_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) {
+      console.log(`[PMG Sheets] ✅ Schedule pushed for ${branchCode} at ${data.lastUpdated}`);
+    } else {
+      console.warn('[PMG Sheets] Push warning:', data.error);
+    }
+  } catch (err) {
+    console.warn('[PMG Sheets] Could not push schedule to Google Sheets (offline?):', err.message);
+    // Graceful: localStorage + &sch= URL param still serve as fallback
+  }
+}
+
+/**
+ * Asynchronously fetches the latest pharmacist schedule from Google Sheets.
+ * Saves result into localStorage as a cache so subsequent page calls are instant.
+ * Called when a customer opens the self-booking link.
+ */
+async function fetchScheduleFromSheets(branchCode) {
+  if (!PMG_SCHEDULE_API_URL) return null;
+  try {
+    const url = `${PMG_SCHEDULE_API_URL}?branch=${encodeURIComponent(branchCode)}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000); // 6 sec timeout
+    const res = await fetch(url, { method: 'GET', signal: controller.signal });
+    clearTimeout(timeout);
+    const data = await res.json();
+    if (data.success && data.schedule) {
+      // Cache to localStorage (directly, no re-push to Sheets)
+      const code = normalizeBranchCode(branchCode);
+      const jsonStr = JSON.stringify(data.schedule);
+      localStorage.setItem(`pmg_pharmacist_schedule_${code}`, jsonStr);
+      if (code === 'Kota Sentosa') {
+        localStorage.setItem('pmg_pharmacist_schedule_KOTA SENTOSA', jsonStr);
+        localStorage.setItem('pmg_pharmacist_schedule_KS01', jsonStr);
+      }
+      console.log(`[PMG Sheets] ✅ Fetched live schedule for ${branchCode} (last updated: ${data.lastUpdated})`);
+      return data.schedule;
+    }
+    console.warn('[PMG Sheets] No schedule found in Sheets for:', branchCode);
+    return null;
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      console.warn('[PMG Sheets] Fetch timed out — using cached/URL schedule fallback.');
+    } else {
+      console.warn('[PMG Sheets] Fetch error:', err.message);
+    }
+    return null;
+  }
+}
+
+
 
 /**
  * Resolves the effective schedule for a specific date (YYYY-MM-DD):
@@ -5059,19 +5141,50 @@ function shareBookingViaWhatsApp() {
 // ═════════════════════════════════════════════════════════════════════════════
 let currentCustomerBooking = null;
 
-function initCustomerBooking(defaultBranchCode = 'Kota Sentosa') {
+async function initCustomerBooking(defaultBranchCode = 'Kota Sentosa') {
   const urlParams = new URLSearchParams(window.location.search);
   let branchParam = normalizeBranchCode(urlParams.get('branch') || defaultBranchCode);
 
-  // Unpack and persist schedule from URL if provided (cross-device support for customer smartphones)
-  const schParam = urlParams.get('sch');
-  if (schParam) {
-    const unpacked = unpackScheduleFromUrl(schParam, branchParam);
-    if (unpacked) {
-      savePharmacistSchedule(unpacked.branchCode || branchParam, unpacked);
+  // ── Step 1: Show loading state immediately ────────────────────────────────
+  const timeSelect = document.getElementById('custBookTime');
+  const submitBtn  = document.getElementById('custBookSubmitBtn');
+  const descEl     = document.getElementById('custBranchHoursDesc');
+  if (timeSelect) {
+    timeSelect.innerHTML = '<option value="">⏳ Loading available time slots...</option>';
+    timeSelect.disabled = true;
+  }
+  if (submitBtn) submitBtn.disabled = true;
+  if (descEl) descEl.innerHTML = '<span class="text-blue-600 animate-pulse">⏳ Fetching latest pharmacist schedule...</span>';
+
+  // ── Step 2: Fetch live schedule from Google Sheets (primary source) ────────
+  let fetchedFromSheets = false;
+  try {
+    const sheetsSchedule = await fetchScheduleFromSheets(branchParam);
+    if (sheetsSchedule) {
+      fetchedFromSheets = true;
+    }
+  } catch (_) { /* network issue, fall through */ }
+
+  // ── Step 3: Fallback to &sch= URL param if Sheets fetch failed ────────────
+  if (!fetchedFromSheets) {
+    const schParam = urlParams.get('sch');
+    if (schParam) {
+      const unpacked = unpackScheduleFromUrl(schParam, branchParam);
+      if (unpacked) {
+        // Cache locally without re-pushing to Sheets (customer device)
+        const code = normalizeBranchCode(unpacked.branchCode || branchParam);
+        const jsonStr = JSON.stringify(unpacked);
+        localStorage.setItem(`pmg_pharmacist_schedule_${code}`, jsonStr);
+        if (code === 'Kota Sentosa') {
+          localStorage.setItem('pmg_pharmacist_schedule_KOTA SENTOSA', jsonStr);
+          localStorage.setItem('pmg_pharmacist_schedule_KS01', jsonStr);
+        }
+        console.log('[PMG Customer Booking] Schedule loaded from &sch= URL param (offline fallback).');
+      }
     }
   }
 
+  // ── Step 4: Set up branch selector ────────────────────────────────────────
   const select = document.getElementById('custBranchSelect');
   if (select) {
     select.value = branchParam;
@@ -5090,7 +5203,7 @@ function initCustomerBooking(defaultBranchCode = 'Kota Sentosa') {
     if (lockNotice) lockNotice.classList.remove('hidden');
   }
 
-  // Pre-fill Name, Phone, IC if passed via query params from WhatsApp link
+  // ── Step 5: Pre-fill Name, Phone, IC from query params ────────────────────
   const nameParam = urlParams.get('name');
   if (nameParam) {
     const nameInput = document.getElementById('custBookName');
@@ -5109,7 +5222,7 @@ function initCustomerBooking(defaultBranchCode = 'Kota Sentosa') {
     if (icInput) icInput.value = icParam;
   }
 
-  // Check booking type (in_person vs refill_extension)
+  // ── Step 6: Set booking type (in_person vs refill_extension) ──────────────
   const typeParam = urlParams.get('type') || urlParams.get('service');
   if (typeParam && (typeParam.toLowerCase().includes('refill') || typeParam.toLowerCase().includes('extension'))) {
     const refillRadio = document.querySelector('input[name="custBookingType"][value="refill_extension"]');
@@ -5121,6 +5234,7 @@ function initCustomerBooking(defaultBranchCode = 'Kota Sentosa') {
     toggleBookingType('in_person');
   }
 
+  // ── Step 7: Set date picker bounds ────────────────────────────────────────
   const dateInput = document.getElementById('custBookDate');
   if (dateInput) {
     const today = new Date();
@@ -5136,6 +5250,7 @@ function initCustomerBooking(defaultBranchCode = 'Kota Sentosa') {
     }
   }
 
+  // ── Step 8: Render time slots using the resolved schedule ─────────────────
   updateCustBookHours();
 }
 
