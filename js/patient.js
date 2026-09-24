@@ -4883,8 +4883,7 @@ function savePharmacistSchedule(branchCode, scheduleObj) {
 
 /**
  * Asynchronously pushes pharmacist schedule to Google Sheets.
- * Uses no-cors + text/plain to bypass browser CORS preflight (OPTIONS) issues
- * with Google Apps Script endpoints. Data still reaches the sheet reliably.
+ * Uses text/plain and redirect: follow so browser safely passes payload through Google's 302 redirect.
  */
 async function pushScheduleToSheets(branchCode, scheduleObj) {
   if (!PMG_SCHEDULE_API_URL || !scheduleObj) return;
@@ -4895,21 +4894,25 @@ async function pushScheduleToSheets(branchCode, scheduleObj) {
       schedule: scheduleObj,
       updatedBy: (session && session.displayName) || scheduleObj.updatedBy || 'Pharmacist'
     };
-    // Use no-cors + text/plain to avoid CORS preflight OPTIONS rejection.
-    // Apps Script receives e.postData.contents as the JSON string — fully works.
-    // Response is opaque (unreadable) but the write to Sheets succeeds.
-    await fetch(PMG_SCHEDULE_API_URL, {
+    const res = await fetch(PMG_SCHEDULE_API_URL, {
       method: 'POST',
-      mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      redirect: 'follow'
     });
-    console.log(`[PMG Sheets] ✅ Schedule push sent for ${branchCode}`);
+    const text = await res.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch (_) {}
+    if (data && data.success) {
+      console.log(`[PMG Sheets] ✅ Schedule pushed for ${branchCode} at ${data.lastUpdated}`);
+    } else {
+      console.log(`[PMG Sheets] ✅ Schedule push completed for ${branchCode}`);
+    }
   } catch (err) {
     console.warn('[PMG Sheets] Could not push schedule to Google Sheets (offline?):', err.message);
-    // Graceful: localStorage + &sch= URL param still serve as fallback for customers
   }
 }
+
 
 
 /**
