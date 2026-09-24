@@ -23,7 +23,7 @@ const DEFAULT_PATIENTS_DATA = [
     age: 62,
     race: 'Chinese',
     language: 'Chinese',
-    branch: 'KS01',
+    branch: 'Kota Sentosa',
     conditions: ['Hypertension', 'Type 2 Diabetes', 'Dyslipidemia'],
     allergies: 'Penicillin',
     notes: 'Prefers morning appointments before 11:00 AM.',
@@ -126,7 +126,7 @@ const DEFAULT_PATIENTS_DATA = [
     age: 58,
     race: 'Malay',
     language: 'Malay',
-    branch: 'KS01',
+    branch: 'Kota Sentosa',
     conditions: ['Dyslipidemia', 'Hypertension'],
     allergies: 'None',
     notes: 'Monitored for lipid profile and liver enzymes.',
@@ -227,7 +227,7 @@ const DEFAULT_PATIENTS_DATA = [
     age: 45,
     race: 'Iban / Bidayuh',
     language: 'English',
-    branch: 'KS01',
+    branch: 'Kota Sentosa',
     conditions: ['Hyperuricemia / Gout'],
     allergies: 'Aspirin',
     notes: 'Recurrent gout flare-ups on 1st MTP joint.',
@@ -313,6 +313,15 @@ function loadPatientsData() {
   } else {
     patientsData = JSON.parse(JSON.stringify(DEFAULT_PATIENTS_DATA));
     savePatientsData();
+  }
+
+  // Ensure all existing patients for Kota Sentosa are uniformly labeled 'Kota Sentosa'
+  if (Array.isArray(patientsData)) {
+    patientsData.forEach(p => {
+      if (p.branch === 'KS01' || p.branch === 'KOTA SENTOSA') {
+        p.branch = 'Kota Sentosa';
+      }
+    });
   }
 }
 
@@ -1138,8 +1147,8 @@ function getPatientSupplySummary(patient, lang) {
  */
 function getPatientSelfBookingUrl(patient) {
   const baseUrl = window.location.origin + window.location.pathname;
-  const rawBranch = patient?.branch || 'KS01';
-  const branch = typeof normalizeBranchCode === 'function' ? normalizeBranchCode(rawBranch) : (rawBranch === 'KOTA SENTOSA' ? 'KS01' : rawBranch);
+  const rawBranch = patient?.branch || 'Kota Sentosa';
+  const branch = typeof normalizeBranchCode === 'function' ? normalizeBranchCode(rawBranch) : 'Kota Sentosa';
   const name = patient?.name || '';
   const phone = patient?.phone || '';
   const ic = patient?.ic || '';
@@ -1167,15 +1176,15 @@ function getPatientSelfBookingUrl(patient) {
  * Formatted with clean universal markdown and spacing (no broken symbols).
  */
 function buildPatientSupplyBookingMessage(patient) {
-  const rawBranch = patient?.branch || 'KS01';
-  const branchCode = typeof normalizeBranchCode === 'function' ? normalizeBranchCode(rawBranch) : (rawBranch === 'KOTA SENTOSA' ? 'KS01' : rawBranch);
-  const branchInfo = BRANCH_SCHEDULES[branchCode] || BRANCH_SCHEDULES['KS01'] || BRANCH_SCHEDULES['KOTA SENTOSA'];
+  const rawBranch = patient?.branch || 'Kota Sentosa';
+  const branchCode = typeof normalizeBranchCode === 'function' ? normalizeBranchCode(rawBranch) : 'Kota Sentosa';
+  const branchInfo = BRANCH_SCHEDULES[branchCode] || BRANCH_SCHEDULES['Kota Sentosa'];
   const sched = typeof getPharmacistSchedule === 'function' ? getPharmacistSchedule(branchCode) : null;
-  const branchName = sched ? (sched.branchName || branchInfo?.name) : (branchInfo ? branchInfo.name : `PMG Pharmacy ${branchCode}`);
+  const branchName = sched ? (sched.branchName || branchInfo?.name) : (branchInfo ? branchInfo.name : 'PMG Pharmacy Kota Sentosa');
   const monTemplate = sched && sched.weeklyTemplate ? (sched.weeklyTemplate['1'] || sched.weeklyTemplate['0']) : null;
   const openTime = (monTemplate && monTemplate.open) || (branchInfo ? branchInfo.open : '07:30');
   const closeTime = (monTemplate && monTemplate.close) || (branchInfo ? branchInfo.close : '21:30');
-  const pharmacistName = sched ? (sched.defaultPharmacist || branchInfo?.pharmacist) : (branchInfo ? branchInfo.pharmacist : 'Ahli Farmasi PMG');
+  const pharmacistName = sched ? (sched.defaultPharmacist || branchInfo?.pharmacist) : (branchInfo ? branchInfo.pharmacist : 'William Chai (Pharmacist)');
 
   const lang = getPatientLanguageByRace(patient);
   const supplyText = getPatientSupplySummary(patient, lang);
@@ -1784,12 +1793,12 @@ function sendDirectAppointmentReminderWa(patientId, appointmentId) {
     return;
   }
 
-  let branchCode = p.branch || 'KOTA SENTOSA';
-  if (branchCode === 'KS01') branchCode = 'KOTA SENTOSA';
-  const branchInfo = BRANCH_SCHEDULES[branchCode] || BRANCH_SCHEDULES['KOTA SENTOSA'];
+  let rawBranch = p.branch || 'Kota Sentosa';
+  const branchCode = typeof normalizeBranchCode === 'function' ? normalizeBranchCode(rawBranch) : 'Kota Sentosa';
+  const branchInfo = BRANCH_SCHEDULES[branchCode] || BRANCH_SCHEDULES['Kota Sentosa'];
   const sched = typeof getPharmacistSchedule === 'function' ? getPharmacistSchedule(branchCode) : null;
-  const branchName = sched ? (sched.branchName || branchInfo.name) : (branchInfo ? branchInfo.name : `PMG Pharmacy ${branchCode}`);
-  const dutyPharm = apt.pharmacist || (sched ? sched.defaultPharmacist : 'Duty Pharmacist');
+  const branchName = sched ? (sched.branchName || branchInfo?.name) : (branchInfo ? branchInfo.name : 'PMG Pharmacy Kota Sentosa');
+  const dutyPharm = (apt.pharmacist && !apt.pharmacist.includes('Ting')) ? apt.pharmacist : (sched ? sched.defaultPharmacist : 'William Chai (Pharmacist)');
   const bookingUrl = typeof getPatientSelfBookingUrl === 'function' ? getPatientSelfBookingUrl(p) : window.location.href;
 
   const lang = typeof getPatientLanguageByRace === 'function' ? getPatientLanguageByRace(p) : 'Chinese';
@@ -1859,8 +1868,8 @@ function openRescheduleModal(patientId, appointmentId, directWa = false) {
   // Populate Summary
   document.getElementById('reschedPatientName').textContent = p.name;
   document.getElementById('reschedPatientPhone').textContent = p.phone || 'No phone number';
-  document.getElementById('reschedPatientBranch').textContent = p.branch || 'Branch';
-  document.getElementById('reschedOriginalSlot').textContent = `${apt.date} (${apt.time || '10:00'}) · ${apt.pharmacist || 'Pharmacist'}`;
+  document.getElementById('reschedPatientBranch').textContent = (p.branch === 'KS01' || p.branch === 'KOTA SENTOSA') ? 'Kota Sentosa' : p.branch;
+  document.getElementById('reschedOriginalSlot').textContent = `${apt.date} (${apt.time || '10:00'}) · ${(apt.pharmacist && !apt.pharmacist.includes('Ting')) ? apt.pharmacist : 'William Chai (Pharmacist)'}`;
 
   // Populate Inputs
   document.getElementById('reschedNewDate').value = apt.date || getTodayDateString(1);
@@ -1868,18 +1877,20 @@ function openRescheduleModal(patientId, appointmentId, directWa = false) {
 
   const pharmSel = document.getElementById('reschedPharmacist');
   if (pharmSel) {
-    if (apt.pharmacist) {
-      let matched = false;
-      for (let i = 0; i < pharmSel.options.length; i++) {
-        if (pharmSel.options[i].value.toLowerCase().includes(apt.pharmacist.toLowerCase())) {
-          pharmSel.selectedIndex = i;
-          matched = true;
-          break;
-        }
+    let targetPharm = apt.pharmacist || '';
+    if (targetPharm.includes('Ting') || !targetPharm) {
+      targetPharm = 'William Chai (Pharmacist)';
+    }
+    let matched = false;
+    for (let i = 0; i < pharmSel.options.length; i++) {
+      if (pharmSel.options[i].value.toLowerCase().includes(targetPharm.toLowerCase())) {
+        pharmSel.selectedIndex = i;
+        matched = true;
+        break;
       }
-      if (!matched) {
-        pharmSel.add(new Option(apt.pharmacist, apt.pharmacist, true, true));
-      }
+    }
+    if (!matched) {
+      pharmSel.value = 'William Chai (Pharmacist)';
     }
   }
 
@@ -1915,12 +1926,12 @@ function setReschedQuickTime(timeStr) {
 
 function buildRescheduleWhatsAppMessage(patient, originalApt, newDate, newTime, newPharm, reason, lang) {
   const patientName = patient?.name || 'Pelanggan';
-  let branchCode = patient?.branch || 'KOTA SENTOSA';
-  if (branchCode === 'KS01') branchCode = 'KOTA SENTOSA';
-  const branchInfo = BRANCH_SCHEDULES[branchCode] || BRANCH_SCHEDULES['KOTA SENTOSA'];
+  let rawBranch = patient?.branch || 'Kota Sentosa';
+  const branchCode = typeof normalizeBranchCode === 'function' ? normalizeBranchCode(rawBranch) : 'Kota Sentosa';
+  const branchInfo = BRANCH_SCHEDULES[branchCode] || BRANCH_SCHEDULES['Kota Sentosa'];
   const sched = typeof getPharmacistSchedule === 'function' ? getPharmacistSchedule(branchCode) : null;
-  const branchName = sched ? (sched.branchName || branchInfo.name) : (branchInfo ? branchInfo.name : `PMG Pharmacy ${branchCode}`);
-  const dutyPharm = newPharm || originalApt?.pharmacist || (sched ? sched.defaultPharmacist : 'Duty Pharmacist');
+  const branchName = sched ? (sched.branchName || branchInfo.name) : (branchInfo ? branchInfo.name : 'PMG Pharmacy Kota Sentosa');
+  const dutyPharm = (newPharm && !newPharm.includes('Ting')) ? newPharm : ((originalApt?.pharmacist && !originalApt.pharmacist.includes('Ting')) ? originalApt.pharmacist : (sched ? sched.defaultPharmacist : 'William Chai (Pharmacist)'));
   const bookingUrl = typeof getPatientSelfBookingUrl === 'function' ? getPatientSelfBookingUrl(patient) : window.location.href;
 
   const origSlot = originalApt ? `${originalApt.date} (${originalApt.time || '10:00'})` : '原定时间';
@@ -2142,7 +2153,8 @@ function showNewPatientModal() {
   const branchSel = document.getElementById('newPatientBranch');
   const session = getSession();
   if (branchSel) {
-    branchSel.value = (session && session.branch && session.branch !== 'ALL') ? session.branch : 'KS01';
+    const rawBranch = (session && session.branch && session.branch !== 'ALL') ? session.branch : 'Kota Sentosa';
+    branchSel.value = normalizeBranchCode(rawBranch);
   }
 
   document.querySelectorAll('.patient-cond-cb').forEach(cb => cb.checked = false);
@@ -2228,7 +2240,7 @@ function saveNewPatient() {
   const age = Number(document.getElementById('newPatientAge').value) || 0;
   const race = document.getElementById('newPatientRace').value;
   const language = document.getElementById('newPatientLanguage').value;
-  const branch = document.getElementById('newPatientBranch').value || 'KS01';
+  const branch = normalizeBranchCode(document.getElementById('newPatientBranch').value || 'Kota Sentosa');
   const allergies = document.getElementById('newPatientAllergies').value.trim();
   const notes = document.getElementById('newPatientNotes').value.trim();
 
@@ -4222,7 +4234,8 @@ async function exportPatientDataToExcel() {
 // ─── CLOUD ONEDRIVE & PEN DRIVE BACKUP ENGINE ────────────────────────────────
 async function createPatientBackupBundle(type = 'DAILY_ONEDRIVE_BACKUP') {
   const session = getSession();
-  const branch = (session && session.branch && session.branch !== 'ALL') ? session.branch : 'KS01';
+  const rawBranch = (session && session.branch && session.branch !== 'ALL') ? session.branch : 'Kota Sentosa';
+  const branch = normalizeBranchCode(rawBranch);
   const dateStr = getTodayDateString(0);
 
   // 1. Gather all documents from IndexedDB
@@ -4555,8 +4568,9 @@ function closeOneDriveGuideModal() {
 // ─── BRANCH OPERATING HOURS & DYNAMIC PHARMACIST SCHEDULES ───────────────────
 // ═════════════════════════════════════════════════════════════════════════════
 const BRANCH_SCHEDULES = {
-  'KOTA SENTOSA': { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'Pharmacist William / Ting', phone: '60168334455' },
-  'KS01':         { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'Pharmacist William / Ting', phone: '60168334455' },
+  'Kota Sentosa': { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', phone: '60168334455' },
+  'KOTA SENTOSA': { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', phone: '60168334455' },
+  'KS01':         { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', phone: '60168334455' },
   'ASTANA':       { name: 'Astana',       open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
   'MALIHAH':      { name: 'Malihah',      open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
   'METROCITY':    { name: 'Metrocity',    open: '08:30', close: '21:30', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
@@ -4571,13 +4585,13 @@ function escHtml(str) {
 }
 
 /**
- * Normalizes branch codes so KS01 and KOTA SENTOSA are always recognized consistently.
+ * Normalizes branch codes so KS01 and KOTA SENTOSA are always recognized consistently as Kota Sentosa.
  */
 function normalizeBranchCode(code) {
-  if (!code) return 'KS01';
-  const str = String(code).trim().toUpperCase();
-  const clean = str.replace(/[\s\-_]/g, '');
-  if (clean === 'KOTASENTOSA' || clean === 'KS01' || clean === 'KS') return 'KS01';
+  if (!code) return 'Kota Sentosa';
+  const str = String(code).trim();
+  const clean = str.toUpperCase().replace(/[\s\-_]/g, '');
+  if (clean === 'KOTASENTOSA' || clean === 'KS01' || clean === 'KS') return 'Kota Sentosa';
   return str;
 }
 
@@ -4590,9 +4604,9 @@ function packScheduleForUrl(sched) {
   if (!sched) return '';
   try {
     const compact = {
-      b: normalizeBranchCode(sched.branchCode || 'KS01'),
-      n: sched.branchName || '',
-      p: sched.defaultPharmacist || '',
+      b: normalizeBranchCode(sched.branchCode || 'Kota Sentosa'),
+      n: sched.branchName || 'Kota Sentosa',
+      p: sched.defaultPharmacist || 'William Chai (Pharmacist)',
       w: {},
       o: sched.dateOverrides || {}
     };
@@ -4624,8 +4638,8 @@ function unpackScheduleFromUrl(schParam, branchCode) {
     const b64 = decodeURIComponent(schParam);
     const jsonStr = decodeURIComponent(Array.prototype.map.call(atob(b64), c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
     const compact = JSON.parse(jsonStr);
-    const code = normalizeBranchCode(compact.b || branchCode || 'KS01');
-    const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['KS01'] || { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'Duty Pharmacist' };
+    const code = normalizeBranchCode(compact.b || branchCode || 'Kota Sentosa');
+    const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)' };
 
     const daysMeta = [
       { num: "1", name: "Monday" },
@@ -4678,12 +4692,12 @@ function unpackScheduleFromUrl(schParam, branchCode) {
  */
 function getPharmacistSchedule(branchCode) {
   const code = normalizeBranchCode(branchCode);
-  const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['KS01'] || { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'Duty Pharmacist' };
+  const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)' };
 
   let data = null;
   try {
     const raw = localStorage.getItem(`pmg_pharmacist_schedule_${code}`) ||
-                (code === 'KS01' ? localStorage.getItem('pmg_pharmacist_schedule_KOTA SENTOSA') : null) ||
+                (code === 'Kota Sentosa' ? (localStorage.getItem('pmg_pharmacist_schedule_KOTA SENTOSA') || localStorage.getItem('pmg_pharmacist_schedule_KS01')) : null) ||
                 (branchCode ? localStorage.getItem(`pmg_pharmacist_schedule_${branchCode}`) : null);
     if (raw) data = JSON.parse(raw);
   } catch (_) { data = null; }
@@ -4706,6 +4720,8 @@ function getPharmacistSchedule(branchCode) {
     };
   } else {
     data.branchCode = code;
+    if (!data.branchName) data.branchName = defInfo.name;
+    if (!data.defaultPharmacist) data.defaultPharmacist = defInfo.pharmacist;
     if (!data.weeklyTemplate) data.weeklyTemplate = {};
     const daysMeta = [
       { num: "1", name: "Monday" },
@@ -4741,8 +4757,9 @@ function savePharmacistSchedule(branchCode, scheduleObj) {
 
   const jsonStr = JSON.stringify(scheduleObj);
   localStorage.setItem(`pmg_pharmacist_schedule_${code}`, jsonStr);
-  if (code === 'KS01') {
+  if (code === 'Kota Sentosa') {
     localStorage.setItem('pmg_pharmacist_schedule_KOTA SENTOSA', jsonStr);
+    localStorage.setItem('pmg_pharmacist_schedule_KS01', jsonStr);
   }
 
   // Sync to OneDrive branch folder if linked
@@ -4759,7 +4776,7 @@ function savePharmacistSchedule(branchCode, scheduleObj) {
  */
 function getPharmacistScheduleForDate(branchCode, dateStr) {
   const code = normalizeBranchCode(branchCode);
-  const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['KS01'] || { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'Duty Pharmacist' };
+  const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)' };
   const sched = getPharmacistSchedule(code);
 
   // 1. Check Specific Date Overrides (Priority 1)
@@ -4855,12 +4872,13 @@ function openShareBookingModal() {
   if (!modal) return;
 
   const session = typeof getSession === 'function' ? getSession() : null;
-  const userBranch = (session && session.branch && session.branch !== 'ALL') ? session.branch : 'KS01';
+  const rawUserBranch = (session && session.branch && session.branch !== 'ALL') ? session.branch : 'Kota Sentosa';
+  const userBranch = normalizeBranchCode(rawUserBranch);
 
   const branchSelect = document.getElementById('shareBookingBranchSelect');
   if (branchSelect) {
     for (let opt of branchSelect.options) {
-      if (opt.value === userBranch || opt.text.includes(userBranch)) {
+      if (normalizeBranchCode(opt.value) === userBranch || opt.text.includes(userBranch)) {
         branchSelect.value = opt.value;
         break;
       }
@@ -4878,9 +4896,9 @@ function closeShareBookingModal() {
 
 function updateShareBookingUrl() {
   const branchSelect = document.getElementById('shareBookingBranchSelect');
-  const rawCode = branchSelect ? branchSelect.value : 'KS01';
+  const rawCode = branchSelect ? branchSelect.value : 'Kota Sentosa';
   const code = normalizeBranchCode(rawCode);
-  const info = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['KS01'];
+  const info = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || BRANCH_SCHEDULES['KS01'];
   const sched = getPharmacistSchedule(code);
 
   const titleEl = document.getElementById('shareBookingHoursTitle');
@@ -4925,10 +4943,10 @@ function copyShareBookingUrl() {
 function shareBookingViaWhatsApp() {
   const inputEl = document.getElementById('shareBookingUrlInput');
   const branchSelect = document.getElementById('shareBookingBranchSelect');
-  const rawCode = branchSelect ? branchSelect.value : 'KS01';
+  const rawCode = branchSelect ? branchSelect.value : 'Kota Sentosa';
   const code = normalizeBranchCode(rawCode);
   const sched = getPharmacistSchedule(code);
-  const info = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['KS01'];
+  const info = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || BRANCH_SCHEDULES['KS01'];
   const bookingUrl = inputEl ? inputEl.value : '';
 
   const msg = `Halo! Anda boleh tempah slot pemeriksaan kesihatan atau rundingan ahli farmasi di PMG Pharmacy (${sched.branchName || info.name}) di pautan berikut:\n\n${bookingUrl}\n\nWaktu Perundingan: ${info.open} - ${info.close}.\nJumpa anda nanti!`;
@@ -4942,7 +4960,7 @@ function shareBookingViaWhatsApp() {
 // ═════════════════════════════════════════════════════════════════════════════
 let currentCustomerBooking = null;
 
-function initCustomerBooking(defaultBranchCode = 'KS01') {
+function initCustomerBooking(defaultBranchCode = 'Kota Sentosa') {
   const urlParams = new URLSearchParams(window.location.search);
   let branchParam = normalizeBranchCode(urlParams.get('branch') || defaultBranchCode);
 
@@ -5049,7 +5067,7 @@ function toggleBookingType(type) {
 
 function updateCustBookHours() {
   const branchSelect = document.getElementById('custBranchSelect');
-  let rawCode = branchSelect ? branchSelect.value : 'KS01';
+  let rawCode = branchSelect ? branchSelect.value : 'Kota Sentosa';
   const code = normalizeBranchCode(rawCode);
   const dateInput = document.getElementById('custBookDate');
   const dateStr = dateInput ? dateInput.value : '';
@@ -5291,7 +5309,7 @@ function handleCustomerBookingSubmit(e) {
       gender: 'Other',
       dob: '',
       age: '',
-      branch: branchInfo.name.split(' ')[0] || 'Kota Sentosa',
+      branch: normalizeBranchCode(branchInfo.name || branchCode || 'Kota Sentosa'),
       allergies: 'None recorded',
       chronicConditions: [bookingType === 'refill_extension' ? 'Chronic Medication Refill' : 'Pending Consultation'],
       medications: [],
@@ -5473,7 +5491,7 @@ function resetCustomerBookingForm() {
   document.getElementById('customerBookingForm').reset();
   document.getElementById('customerBookingSuccessCard').classList.add('hidden');
   document.getElementById('customerBookingFormCard').classList.remove('hidden');
-  initCustomerBooking('KS01');
+  initCustomerBooking('Kota Sentosa');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -5486,12 +5504,13 @@ function openManageHoursModal() {
   if (!modal) return;
 
   const session = typeof getSession === 'function' ? getSession() : null;
-  const userBranch = (session && session.branch && session.branch !== 'ALL') ? session.branch : 'KS01';
+  const rawUserBranch = (session && session.branch && session.branch !== 'ALL') ? session.branch : 'Kota Sentosa';
+  const userBranch = normalizeBranchCode(rawUserBranch);
 
   const branchSelect = document.getElementById('hoursBranchSelect');
   if (branchSelect) {
     for (let opt of branchSelect.options) {
-      if (opt.value === userBranch || opt.text.includes(userBranch)) {
+      if (normalizeBranchCode(opt.value) === userBranch || opt.text.includes(userBranch)) {
         branchSelect.value = opt.value;
         break;
       }
@@ -5540,7 +5559,8 @@ function switchHoursSubTab(tabName) {
 
 function renderManageHoursModal() {
   const branchSelect = document.getElementById('hoursBranchSelect');
-  const code = branchSelect ? branchSelect.value : 'KS01';
+  const rawCode = branchSelect ? branchSelect.value : 'Kota Sentosa';
+  const code = normalizeBranchCode(rawCode);
   const sched = getPharmacistSchedule(code);
 
   if (activeHoursSubTab === 'weekly') {
@@ -5618,7 +5638,7 @@ function toggleWeeklyRowInputs(dayNum) {
 function saveWeeklyTemplate(e) {
   if (e) e.preventDefault();
   const branchSelect = document.getElementById('hoursBranchSelect');
-  const rawCode = branchSelect ? branchSelect.value : 'KS01';
+  const rawCode = branchSelect ? branchSelect.value : 'Kota Sentosa';
   const code = normalizeBranchCode(rawCode);
   const sched = getPharmacistSchedule(code);
 
@@ -5660,7 +5680,7 @@ function toggleOverrideTimeInputs() {
 function saveDateOverride(e) {
   if (e) e.preventDefault();
   const branchSelect = document.getElementById('hoursBranchSelect');
-  const rawCode = branchSelect ? branchSelect.value : 'KS01';
+  const rawCode = branchSelect ? branchSelect.value : 'Kota Sentosa';
   const code = normalizeBranchCode(rawCode);
   const sched = getPharmacistSchedule(code);
 
@@ -5707,7 +5727,7 @@ function saveDateOverride(e) {
 
 function deleteDateOverride(dateStr) {
   const branchSelect = document.getElementById('hoursBranchSelect');
-  const rawCode = branchSelect ? branchSelect.value : 'KS01';
+  const rawCode = branchSelect ? branchSelect.value : 'Kota Sentosa';
   const code = normalizeBranchCode(rawCode);
   const sched = getPharmacistSchedule(code);
 
@@ -5808,7 +5828,8 @@ function renderRosterSyncTab(sched) {
 
 function syncPharmacistHoursFromRoster() {
   const branchSelect = document.getElementById('hoursBranchSelect');
-  const code = branchSelect ? branchSelect.value : 'KS01';
+  const rawCode = branchSelect ? branchSelect.value : 'Kota Sentosa';
+  const code = normalizeBranchCode(rawCode);
   const sched = getPharmacistSchedule(code);
 
   const sel = document.getElementById('rosterSyncPharmacistSelect');
@@ -6727,7 +6748,7 @@ function downloadChronotherapyImage() {
   const chrono = getActiveChronotherapy();
   const patientSelect = document.getElementById('encounterPatientSelect');
   const patientId = patientSelect ? patientSelect.value : null;
-  const patient = patientsData.find(p => p.id === patientId) || { name: 'Customer', branch: 'KS01' };
+  const patient = patientsData.find(p => p.id === patientId) || { name: 'Customer', branch: 'Kota Sentosa' };
   const session = typeof getSession === 'function' ? getSession() : null;
   const pharmacist = session ? session.displayName : 'PMG Pharmacist';
   const encDate = document.getElementById('encDate')?.value || getTodayDateString(0);

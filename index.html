@@ -1405,7 +1405,7 @@
           <div>
             <label class="block font-semibold text-gray-700 mb-1">Branch</label>
             <select id="newPatientBranch" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none font-semibold text-gray-800">
-              <option value="KS01">Kota Sentosa</option>
+              <option value="Kota Sentosa">Kota Sentosa</option>
               <option value="ASTANA">Astana</option>
               <option value="MALIHAH">Malihah</option>
               <option value="METROCITY">Metrocity</option>
@@ -2212,7 +2212,6 @@
           <select id="aptPharmacist" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none">
             <option value="William Chai (Pharmacist)">William Chai (Pharmacist)</option>
             <option value="Kenix Ling (Pharmacist)">Kenix Ling (Pharmacist)</option>
-            <option value="Ting Kwang Yu (BM)">Ting Kwang Yu (BM)</option>
             <option value="Duty Pharmacist">Duty Pharmacist</option>
           </select>
         </div>
@@ -2300,7 +2299,6 @@
             class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none">
             <option value="William Chai (Pharmacist)">William Chai (Pharmacist)</option>
             <option value="Kenix Ling (Pharmacist)">Kenix Ling (Pharmacist)</option>
-            <option value="Ting Kwang Yu (BM)">Ting Kwang Yu (BM)</option>
             <option value="Duty Pharmacist">Duty Pharmacist</option>
           </select>
         </div>
@@ -2516,7 +2514,7 @@
         <div>
           <label class="block text-xs font-bold text-gray-700 mb-1">Select Outlet / Branch:</label>
           <select id="shareBookingBranchSelect" onchange="updateShareBookingUrl()" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-semibold focus:ring-2 focus:ring-purple-500 outline-none">
-            <option value="KS01">Kota Sentosa</option>
+            <option value="Kota Sentosa">Kota Sentosa</option>
             <option value="ASTANA">Astana</option>
             <option value="MALIHAH">Malihah</option>
             <option value="METROCITY">Metrocity</option>
@@ -2534,7 +2532,7 @@
           </div>
           <p id="shareBookingHoursDetails" class="text-[11px] text-purple-800">
             Consultation Hours: <b>07:30 AM – 09:30 PM</b> (Mon – Sun)<br>
-            Duty Pharmacist: <b>Pharmacist William / Ting</b>
+            Duty Pharmacist: <b>William Chai (Pharmacist)</b>
           </p>
         </div>
 
@@ -2593,7 +2591,7 @@
         <div class="flex items-center gap-2">
           <label class="text-xs font-bold text-gray-700">Branch:</label>
           <select id="hoursBranchSelect" onchange="renderManageHoursModal()" class="border border-gray-300 rounded-lg px-3 py-1.5 text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none">
-            <option value="KS01">Kota Sentosa</option>
+            <option value="Kota Sentosa">Kota Sentosa</option>
             <option value="ASTANA">Astana</option>
             <option value="MALIHAH">Malihah</option>
             <option value="METROCITY">Metrocity</option>
@@ -3000,8 +2998,7 @@
           </label>
           <select id="custBranchSelect" onchange="updateCustBookHours()" required
             class="w-full border-2 border-gray-300 rounded-2xl px-4 py-3.5 text-base sm:text-lg font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-            <option value="KS01">Kota Sentosa</option>
-            <option value="KOTA SENTOSA" class="hidden">Kota Sentosa</option>
+            <option value="Kota Sentosa">Kota Sentosa</option>
             <option value="ASTANA">Astana</option>
             <option value="MALIHAH">Malihah</option>
             <option value="METROCITY">Metrocity</option>
@@ -3308,7 +3305,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const custView = document.getElementById('customerBookingView');
     if (custView) custView.classList.remove('hidden');
     if (typeof initCustomerBooking === 'function') {
-      initCustomerBooking(urlParams.get('branch') || 'KS01');
+      initCustomerBooking(urlParams.get('branch') || 'Kota Sentosa');
     }
     return; // Exit staff app boot
   }
