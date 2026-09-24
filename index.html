@@ -1355,7 +1355,7 @@
   ══════════════════════════════════════════════════════════════════════════════ -->
 
   <!-- Modal 1: New Patient Registration -->
-  <div id="patientNewModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 hidden">
+  <div id="patientNewModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 hidden" style="z-index: 60;">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
       <div class="flex items-center justify-between border-b pb-3 mb-4">
         <h3 id="patientNewModalTitle" class="text-base font-bold text-gray-900 flex items-center gap-2">
@@ -1473,7 +1473,7 @@
   </div>
 
   <!-- Modal 2: Pharmacist Clinical Encounter & Comprehensive POCT Suite -->
-  <div id="patientEncounterModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 hidden">
+  <div id="patientEncounterModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 hidden" style="z-index: 60;">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto p-6">
       <div class="flex items-center justify-between border-b pb-3 mb-4">
         <div>
@@ -2173,7 +2173,7 @@
   </div>
 
   <!-- Modal 3: Book Appointment -->
-  <div id="patientAptModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 hidden">
+  <div id="patientAptModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 hidden" style="z-index: 60;">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
       <div class="flex items-center justify-between border-b pb-3 mb-4">
         <h3 class="text-base font-bold text-gray-900 flex items-center gap-2">
@@ -2236,7 +2236,7 @@
   </div>
 
   <!-- Modal: Reschedule Appointment / Pharmacist Shift Change -->
-  <div id="rescheduleAppointmentModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 hidden">
+  <div id="rescheduleAppointmentModal" class="fixed inset-0 z-[65] flex items-center justify-center bg-black/50 p-4 hidden" style="z-index: 65;">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[92vh]">
       <div class="flex items-center justify-between px-6 py-4 border-b bg-gradient-to-r from-indigo-700 to-blue-700 text-white">
         <h3 class="text-sm font-bold flex items-center gap-2">
@@ -2479,7 +2479,7 @@
   </div>
 
   <!-- Modal 5: Document Preview Modal -->
-  <div id="patientDocPreviewModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 hidden">
+  <div id="patientDocPreviewModal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4 hidden" style="z-index: 70;">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-hidden flex flex-col">
       <div class="flex items-center justify-between p-4 border-b bg-gray-50">
         <h4 id="docPreviewTitle" class="font-bold text-gray-800 text-sm truncate">Document Preview</h4>
@@ -2497,7 +2497,7 @@
   </div>
 
   <!-- Modal 6: Share Customer Booking Link Modal -->
-  <div id="shareBookingModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 hidden">
+  <div id="shareBookingModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 hidden" style="z-index: 60;">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-purple-100 animate-fade-in">
       <div class="bg-gradient-to-r from-purple-700 to-indigo-800 p-5 text-white flex items-center justify-between">
         <div>
@@ -2574,7 +2574,7 @@
   </div>
 
   <!-- Modal 7: Pharmacist Operating Hours & Shift Manager Modal -->
-  <div id="manageHoursModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 hidden">
+  <div id="manageHoursModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 hidden" style="z-index: 60;">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden border border-indigo-100 animate-fade-in">
       <div class="bg-gradient-to-r from-indigo-800 via-blue-800 to-indigo-900 p-4 sm:p-5 text-white flex items-center justify-between">
         <div>
@@ -3000,7 +3000,8 @@
           </label>
           <select id="custBranchSelect" onchange="updateCustBookHours()" required
             class="w-full border-2 border-gray-300 rounded-2xl px-4 py-3.5 text-base sm:text-lg font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-            <option value="KOTA SENTOSA">Kota Sentosa</option>
+            <option value="KS01">Kota Sentosa</option>
+            <option value="KOTA SENTOSA" class="hidden">Kota Sentosa</option>
             <option value="ASTANA">Astana</option>
             <option value="MALIHAH">Malihah</option>
             <option value="METROCITY">Metrocity</option>
