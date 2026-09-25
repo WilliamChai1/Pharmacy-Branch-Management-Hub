@@ -707,6 +707,199 @@ const DEFAULT_PATIENTS_DATA = [
         notes: 'Review weight, InBody metrics, and dietary adherence.'
       }
     ]
+  },
+  {
+    id: 'PT-330514',
+    name: 'Jackson Ling',
+    ic: '',
+    phone: '+601133051439',
+    gender: 'Male',
+    age: 42,
+    race: 'Chinese',
+    language: 'Chinese',
+    branch: 'Kota Sentosa',
+    conditions: ['Type 2 Diabetes Mellitus', 'Obesity (Class II)', 'Insulin Resistance', 'Pre-Hypertension'],
+    allergies: 'None known',
+    notes: 'Imported from Lark customer base. Medical Hx: T. Metformin 1000mg BD, T. Gliclazide 120mg BD. Severe insulin resistance ("sugar jam"), monitored with Continuous Glucose Monitoring (CGM) and weight tracking.',
+    createdAt: '2026-09-09',
+    nextTcaDate: '2026-10-01',
+    nextTcaPurpose: 'CGM Sensor Removal & Glycemic Review',
+    nextTcaRecordedBy: 'William Chai (Pharmacist)',
+    encounters: [
+      {
+        id: 'ENC-JL-02',
+        date: '2026-09-24',
+        recordedBy: 'William Chai (Pharmacist)',
+        chiefComplaint: 'CGM Review & Weight Management Follow-up',
+        hpi: 'Follow-up visit 2 weeks post-CGM sensor attachment. Patient reports adherence to supplements. Body weight showing steady reduction (107.0 kg -> 106.5 kg).',
+        vitals: {
+          bpSys: null,
+          bpDia: null,
+          pulse: null,
+          spo2: null,
+          weight: 106.5,
+          height: 172,
+          bmi: 36.0
+        },
+        bodyComposition: {
+          bodyFat: 36.8,
+          fatMass: 39.2,
+          visceralFat: 14,
+          subcutaneousFat: null,
+          subcutaneousFatMass: null,
+          musclePercent: 28.5,
+          muscleMass: 30.4,
+          bmr: 1980,
+          bmrWater: ''
+        },
+        lipidPanel: { tc: null, tg: null, hdl: null, ldl: null, ai: null, rChd: null },
+        liverPanel: { ast: null, alt: null, alb: null },
+        kidneyPanel: { ua: null, creatinine: null, urea: null, egfr: null },
+        glycemicHeme: {
+          glucose: null,
+          glucoseType: 'Random',
+          hba1c: null,
+          hb: null,
+          hct: null
+        },
+        specialtyScans: {
+          vitD: null,
+          ferritin: null,
+          teda: null,
+          tedaLink: null,
+          airdoc: null,
+          rossmaxAct: null,
+          cgm: 'Attached (Jackson Ling_2026-09-24 14_02.pdf)',
+          zentalog: 'Attached (Zentalog_Clinical_Report_Jackson_Ling (1).pdf)'
+        },
+        customTests: [],
+        preDiagnostic: 'Type 2 Diabetes Mellitus with Insulin Resistance ("sugar jam"). Body weight reducing: 107.0kg -> 106.5kg (-0.5kg in 2 weeks). Glycemic variability monitored via CGM.',
+        planMedications: 'CGM continuous monitoring.\nT. Chia seed 1 serving OD.\nT. Glycoway 1 tab BD x 1 month (glucose metabolism).\nT. Systoright 1 tab BD x 1 month (insulin sensitizer & vascular support).\nT. Lipofit 1 tab BD x 1 month (metabolic lipid clearance).\nT. Livason 2 cap BD x 1 month (liver detox & fatty liver support).\nOmma Apple Cider 1 tbsp diluted.',
+        planSupplements: 'Chia seed, Omma apple cider',
+        planCounselling: 'Advised continued low glycemic index diet, portion control, avoiding sugary beverages and refined carbs. Regular brisk walking.',
+        referral: 'Review on 01.10.2026 for CGM sensor removal & comprehensive glucose report analysis.',
+        nextTcaDate: '2026-10-01',
+        nextTcaPurpose: 'CGM Sensor Removal & Glycemic Review',
+        attachedDocs: [
+          { name: 'Zentalog_Clinical_Report_Jackson_Ling (1).pdf', type: 'application/pdf', size: '2.4 MB' },
+          { name: 'Jackson Ling_2026-09-24 14_02.pdf', type: 'application/pdf', size: '1.8 MB' }
+        ]
+      },
+      {
+        id: 'ENC-JL-01',
+        date: '2026-09-09',
+        recordedBy: 'William Chai (Pharmacist)',
+        chiefComplaint: 'Initial Diabetes Consultation, Glucose Jam Assessment & CGM Attachment',
+        hpi: 'Patient has known T2DM on Metformin 1000mg BD and Gliclazide 120mg BD. Home fasting glucose frequently > 10 mmol/L despite medications. Intermediate Fbg tested at pharmacy: 7.0 mmol/L. Claims past blood report showed urine negative for glucose. Patient states feeling lethargic.',
+        vitals: {
+          bpSys: 132,
+          bpDia: 84,
+          pulse: 78,
+          spo2: 98,
+          weight: 107.0,
+          height: 172,
+          bmi: 36.2
+        },
+        bodyComposition: {
+          bodyFat: 37.2,
+          fatMass: 39.8,
+          visceralFat: 15,
+          subcutaneousFat: null,
+          subcutaneousFatMass: null,
+          musclePercent: 28.1,
+          muscleMass: 30.1,
+          bmr: 1990,
+          bmrWater: ''
+        },
+        lipidPanel: { tc: null, tg: null, hdl: null, ldl: null, ai: null, rChd: null },
+        liverPanel: { ast: null, alt: null, alb: null },
+        kidneyPanel: { ua: null, creatinine: null, urea: null, egfr: null },
+        glycemicHeme: {
+          glucose: 7.0,
+          glucoseType: 'Fasting',
+          hba1c: null,
+          hb: null,
+          hct: null
+        },
+        specialtyScans: {
+          vitD: null,
+          ferritin: null,
+          teda: null,
+          tedaLink: null,
+          airdoc: null,
+          rossmaxAct: null
+        },
+        customTests: [],
+        preDiagnostic: 'Uncontrolled Type 2 Diabetes with prominent insulin resistance ("sugar jam"), Class II Obesity (BMI 36.2), Pre-hypertension (BP 132/84).',
+        planMedications: 'Attached Continuous Glucose Monitor (CGM).\nT. Fibolac 1 sachet OD x 1 month (satiety & prebiotic fiber).\nT. Aslene 1 tab BD (noon & night) x 2 weeks.\nT. Chia seed.\nT. Glycoway 1 tab BD x 1 month.\nT. Systoright 1 tab BD x 1 month.\nT. Lipofit 1 tab BD x 1 month.\nT. Bectamin Zinc 1 tab BD x 1 month.\nOmma Apple Cider 1 tablespoon.',
+        planSupplements: 'Chia seed, Omma apple cider',
+        planCounselling: 'Educated on dietary glucose spikes, avoiding snacking between meals to reduce insulin surge. Instructions on CGM sensor care.',
+        referral: 'Follow-up visit on 01.10.2026.',
+        nextTcaDate: '2026-10-01',
+        nextTcaPurpose: 'T2DM Follow-up & Weight Review',
+        attachedDocs: []
+      }
+    ],
+    medications: [
+      {
+        id: 'MED-JL-01',
+        name: 'Metformin 1000mg',
+        dosage: '1 tab BD (With meals)',
+        lastDispensed: '2026-09-24',
+        supplyDays: 30,
+        nextRefillDate: '2026-10-24'
+      },
+      {
+        id: 'MED-JL-02',
+        name: 'Gliclazide 120mg',
+        dosage: '1 tab BD (With meals)',
+        lastDispensed: '2026-09-24',
+        supplyDays: 30,
+        nextRefillDate: '2026-10-24'
+      },
+      {
+        id: 'MED-JL-03',
+        name: 'Glycoway',
+        dosage: '1 tab BD',
+        lastDispensed: '2026-09-24',
+        supplyDays: 30,
+        nextRefillDate: '2026-10-24'
+      },
+      {
+        id: 'MED-JL-04',
+        name: 'Systoright',
+        dosage: '1 tab BD',
+        lastDispensed: '2026-09-24',
+        supplyDays: 30,
+        nextRefillDate: '2026-10-24'
+      },
+      {
+        id: 'MED-JL-05',
+        name: 'Lipofit',
+        dosage: '1 tab BD',
+        lastDispensed: '2026-09-24',
+        supplyDays: 30,
+        nextRefillDate: '2026-10-24'
+      },
+      {
+        id: 'MED-JL-06',
+        name: 'Livason',
+        dosage: '2 cap BD',
+        lastDispensed: '2026-09-24',
+        supplyDays: 30,
+        nextRefillDate: '2026-10-24'
+      }
+    ],
+    appointments: [
+      {
+        id: 'APT-JL-01',
+        date: '2026-10-01',
+        time: '10:00',
+        purpose: 'CGM Sensor Removal & Glycemic Review',
+        status: 'Scheduled',
+        notes: 'Review CGM ambulatory glucose profile (AGP), evaluate time-in-range (TIR), and check weight change.'
+      }
+    ]
   }
 ];
 
@@ -749,15 +942,44 @@ function loadPatientsData() {
       }
     });
 
-    // Auto-merge any default patient profiles (e.g. Liew Pay Sze) if not yet in user localStorage
+    // Auto-merge any default patient profiles (e.g. Liew Pay Sze, Jackson Ling) if not yet in user localStorage
     DEFAULT_PATIENTS_DATA.forEach(defPt => {
-      const exists = patientsData.some(p => {
+      const idx = patientsData.findIndex(p => {
         const icA = String(p.ic || '').replace(/\D/g, '');
         const icB = String(defPt.ic || '').replace(/\D/g, '');
-        return (icA && icB && icA === icB) || p.id === defPt.id;
+        const phoneA = String(p.phone || '').replace(/\D/g, '');
+        const phoneB = String(defPt.phone || '').replace(/\D/g, '');
+        const nameA = String(p.name || '').trim().toLowerCase();
+        const nameB = String(defPt.name || '').trim().toLowerCase();
+        return (icA && icB && icA === icB) || 
+               (phoneA && phoneB && phoneA === phoneB) || 
+               (nameA && nameB && nameA === nameB) || 
+               p.id === defPt.id;
       });
-      if (!exists) {
+      if (idx === -1) {
         patientsData.push(JSON.parse(JSON.stringify(defPt)));
+      } else {
+        // Upgrade existing patient if default has more clinical visits or enriched fields
+        if (!patientsData[idx].encounters || patientsData[idx].encounters.length < defPt.encounters.length) {
+          patientsData[idx].encounters = JSON.parse(JSON.stringify(defPt.encounters));
+        }
+        if (defPt.medications && (!patientsData[idx].medications || !patientsData[idx].medications.length)) {
+          patientsData[idx].medications = JSON.parse(JSON.stringify(defPt.medications));
+        }
+        if (defPt.appointments && (!patientsData[idx].appointments || !patientsData[idx].appointments.length)) {
+          patientsData[idx].appointments = JSON.parse(JSON.stringify(defPt.appointments));
+        }
+        if (defPt.nextTcaDate && (!patientsData[idx].nextTcaDate || patientsData[idx].nextTcaDate < defPt.nextTcaDate)) {
+          patientsData[idx].nextTcaDate = defPt.nextTcaDate;
+          patientsData[idx].nextTcaPurpose = defPt.nextTcaPurpose;
+          patientsData[idx].nextTcaRecordedBy = defPt.nextTcaRecordedBy;
+        }
+        if (defPt.conditions && (!patientsData[idx].conditions || !patientsData[idx].conditions.length)) {
+          patientsData[idx].conditions = JSON.parse(JSON.stringify(defPt.conditions));
+        }
+        if (defPt.notes && (!patientsData[idx].notes || patientsData[idx].notes.length < defPt.notes.length)) {
+          patientsData[idx].notes = defPt.notes;
+        }
       }
     });
   }
@@ -5068,25 +5290,134 @@ function closeLarkImportModal() {
   pendingLarkPatients = [];
 }
 
-function handleLarkImportFile(event) {
+/**
+ * Extracts plain text and markdown tables from DOCX files in the browser using JSZip.
+ */
+async function extractDocxText(fileOrBuffer) {
+  if (typeof JSZip === 'undefined') {
+    throw new Error('JSZip library is not available. Please ensure your browser has loaded the JSZip script.');
+  }
+
+  const zip = await JSZip.loadAsync(fileOrBuffer);
+  const docFile = zip.file('word/document.xml');
+  if (!docFile) {
+    throw new Error('word/document.xml not found inside DOCX archive.');
+  }
+
+  const xml = await docFile.async('text');
+
+  // Convert OpenXML tables into clean markdown table format (| col1 | col2 |)
+  let processed = xml.replace(/<w:tbl[\s>][\s\S]*?<\/w:tbl>/g, (tblXml) => {
+    const rows = tblXml.match(/<w:tr[\s>][\s\S]*?<\/w:tr>/g) || [];
+    const rowLines = rows.map(trXml => {
+      const cells = trXml.match(/<w:tc[\s>][\s\S]*?<\/w:tc>/g) || [];
+      const cellTexts = cells.map(tcXml => {
+        let pTexts = [];
+        const ps = tcXml.match(/<w:p[\s>][\s\S]*?<\/w:p>/g) || [tcXml];
+        ps.forEach(pXml => {
+          let line = pXml
+            .replace(/<w:br[^>]*\/>/gi, '\n')
+            .replace(/<w:tab[^>]*\/>/gi, ' ')
+            .replace(/<[^>]+>/g, '');
+          line = line
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&apos;/g, "'");
+          if (line.trim()) pTexts.push(line.trim());
+        });
+        return pTexts.join(' ');
+      });
+      return '| ' + cellTexts.join(' | ') + ' |';
+    });
+    return '\n' + rowLines.join('\n') + '\n';
+  });
+
+  // Process remaining paragraphs outside tables
+  processed = processed
+    .replace(/<w:p[\s>][\s\S]*?<\/w:p>/g, (pXml) => {
+      let line = pXml
+        .replace(/<w:br[^>]*\/>/gi, '\n')
+        .replace(/<w:tab[^>]*\/>/gi, '\t')
+        .replace(/<[^>]+>/g, '');
+      return '\n' + line;
+    })
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+
+  return processed
+    .split('\n')
+    .map(l => l.trimEnd())
+    .filter((l, idx, arr) => l !== '' || (idx > 0 && arr[idx - 1] !== ''))
+    .join('\n')
+    .trim();
+}
+
+async function handleLarkImportFile(event) {
   const file = event.target.files && event.target.files[0];
   if (!file) return;
 
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const text = e.target.result;
-    const txtArea = document.getElementById('larkImportText');
-    if (txtArea) txtArea.value = text;
-    previewLarkImport();
-  };
-  reader.readAsText(file);
-  event.target.value = '';
+  const txtArea = document.getElementById('larkImportText');
+  const countBadge = document.getElementById('larkParseCountBadge');
+
+  if (countBadge) countBadge.innerHTML = '<span class="text-blue-600 font-bold"><i class="fa-solid fa-spinner fa-spin mr-1"></i>Reading & extracting file...</span>';
+
+  try {
+    const isDocx = file.name.toLowerCase().endsWith('.docx') || 
+                   file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+    // Peek first 4 bytes to check for ZIP / PK header
+    let isZip = false;
+    try {
+      const slice = await file.slice(0, 4).arrayBuffer();
+      const bytes = new Uint8Array(slice);
+      isZip = (bytes[0] === 0x50 && bytes[1] === 0x4B); // 'PK'
+    } catch (e) {
+      // slice not supported, rely on isDocx
+    }
+
+    if (isDocx || isZip) {
+      const buffer = await file.arrayBuffer();
+      const extractedText = await extractDocxText(buffer);
+      if (txtArea) txtArea.value = extractedText;
+      if (typeof showExpiryToast === 'function') {
+        showExpiryToast(`✅ Extracted Word document: ${file.name}`);
+      }
+      previewLarkImport();
+    } else {
+      // Plain text, markdown, csv, json
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target.result;
+        if (txtArea) txtArea.value = text;
+        previewLarkImport();
+      };
+      reader.readAsText(file);
+    }
+  } catch (err) {
+    console.error('[Lark Import File Error]:', err);
+    alert('Failed to extract file contents: ' + err.message + '\n\nPlease ensure it is a valid Lark Word (.docx) or text document.');
+    if (countBadge) countBadge.textContent = '';
+  } finally {
+    event.target.value = '';
+  }
 }
 
 function previewLarkImport() {
   const text = document.getElementById('larkImportText')?.value.trim();
   if (!text) {
     alert('Please paste Lark patient text or load a file first.');
+    return;
+  }
+
+  // Detect accidental pasting of raw binary DOCX file contents
+  if (text.startsWith('PK\x03\x04') || text.includes('[Content_Types].xml') || text.includes('_rels/.rels')) {
+    alert('⚠️ The input appears to be raw binary DOCX file contents.\n\nPlease click "Load from File (.docx / .txt / .md)" above to upload your Word document directly, and the system will automatically convert and extract all patient details!');
     return;
   }
 
@@ -5099,7 +5430,7 @@ function previewLarkImport() {
   const confirmBtn = document.getElementById('larkConfirmImportBtn');
 
   if (!pendingLarkPatients.length) {
-    alert('Could not find valid patient records in the pasted text. Please verify the format.');
+    alert('Could not find valid patient records in the text. Please verify the format or upload the .docx file directly.');
     return;
   }
 
@@ -5109,6 +5440,8 @@ function previewLarkImport() {
   if (cardsContainer) {
     cardsContainer.innerHTML = pendingLarkPatients.map((p, idx) => {
       const latestEnc = p.encounters?.[0];
+      const upcomingTca = p.nextTcaDate || latestEnc?.nextTcaDate;
+      const upcomingPurpose = p.nextTcaPurpose || latestEnc?.nextTcaPurpose || 'Follow-up';
       return `
         <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl hover:border-blue-300 transition">
           <div class="flex items-center justify-between flex-wrap gap-1 mb-1">
@@ -5136,12 +5469,17 @@ function previewLarkImport() {
                 Latest TC: ${latestEnc.lipidPanel.tc} mmol/L
               </span>
             ` : ''}
-            ${latestEnc?.nextTcaDate ? `
+            ${upcomingTca ? `
               <span class="bg-purple-50 text-purple-800 border border-purple-200 px-2 py-0.5 rounded font-bold">
-                ⏰ TCA: ${latestEnc.nextTcaDate} (${escHtml(latestEnc.nextTcaPurpose || 'Follow-up')})
+                ⏰ TCA: ${upcomingTca} (${escHtml(upcomingPurpose)})
               </span>
             ` : ''}
           </div>
+          ${p.conditions?.length ? `
+            <div class="mt-1.5 flex gap-1 flex-wrap">
+              ${p.conditions.map(c => `<span class="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100">${escHtml(c)}</span>`).join('')}
+            </div>
+          ` : ''}
         </div>
       `;
     }).join('');
@@ -5163,7 +5501,14 @@ function confirmLarkImport() {
     const existingIdx = patientsData.findIndex(p => {
       const icA = String(p.ic || '').replace(/\D/g, '');
       const icB = String(newPt.ic || '').replace(/\D/g, '');
-      return (icA && icB && icA === icB) || (p.name.trim().toLowerCase() === newPt.name.trim().toLowerCase());
+      const phoneA = String(p.phone || '').replace(/\D/g, '');
+      const phoneB = String(newPt.phone || '').replace(/\D/g, '');
+      const nameA = String(p.name || '').trim().toLowerCase();
+      const nameB = String(newPt.name || '').trim().toLowerCase();
+      return (icA && icB && icA === icB) || 
+             (phoneA && phoneB && phoneA === phoneB) || 
+             (nameA && nameB && nameA === nameB) || 
+             (p.id === newPt.id);
     });
 
     if (existingIdx >= 0) {
@@ -5179,9 +5524,14 @@ function confirmLarkImport() {
       if (newPt.nextTcaDate) {
         existingPt.nextTcaDate = newPt.nextTcaDate;
         existingPt.nextTcaPurpose = newPt.nextTcaPurpose;
+        existingPt.nextTcaRecordedBy = newPt.nextTcaRecordedBy || existingPt.nextTcaRecordedBy;
       }
       if (newPt.medications?.length) existingPt.medications = newPt.medications;
       if (newPt.phone) existingPt.phone = newPt.phone;
+      if (newPt.conditions?.length) {
+        const set = new Set([...(existingPt.conditions || []), ...newPt.conditions]);
+        existingPt.conditions = Array.from(set);
+      }
       updatedCount++;
     } else {
       patientsData.unshift(newPt);
@@ -5195,7 +5545,7 @@ function confirmLarkImport() {
 
   const firstPt = pendingLarkPatients[0];
   if (firstPt) {
-    const matched = patientsData.find(p => p.name === firstPt.name || p.ic === firstPt.ic);
+    const matched = patientsData.find(p => p.name === firstPt.name || p.phone === firstPt.phone || (p.ic && p.ic === firstPt.ic));
     if (matched) viewPatientProfile(matched.id);
   }
 
@@ -5235,9 +5585,9 @@ function parseMultipleLarkCustomers(rawText, defaultBranch = 'Kota Sentosa') {
 function parseLarkCustomer(text, defaultBranch = 'Kota Sentosa') {
   const clean = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-  // Helper regex table extractor
+  // Helper regex table extractor (supports multi-line within cell)
   const getTableVal = (key) => {
-    const rx = new RegExp(`\\|\\s*${key}\\s*\\|\\s*([^|\\n]+?)\\s*\\|`, 'i');
+    const rx = new RegExp(`\\|\\s*${key}\\s*\\|\\s*([\\s\\S]*?)\\s*\\|`, 'i');
     const m = clean.match(rx);
     return m ? m[1].trim() : '';
   };
@@ -5258,14 +5608,18 @@ function parseLarkCustomer(text, defaultBranch = 'Kota Sentosa') {
 
   let rawPhone = getTableVal('Tel') || getTableVal('Phone');
   let formattedPhone = rawPhone;
-  if (rawPhone.startsWith('60')) formattedPhone = '+' + rawPhone;
-  else if (rawPhone.startsWith('01')) formattedPhone = '+6' + rawPhone;
+  if (rawPhone && rawPhone.startsWith('60')) formattedPhone = '+' + rawPhone;
+  else if (rawPhone && rawPhone.startsWith('01')) formattedPhone = '+6' + rawPhone;
 
   let age = parseInt(getTableVal('Age'), 10);
   if (isNaN(age) && rawIc && rawIc.length >= 6) {
     const yr = parseInt(rawIc.slice(0, 2), 10);
     const fullYr = yr < 30 ? 2000 + yr : 1900 + yr;
     age = new Date().getFullYear() - fullYr;
+  }
+  if (isNaN(age) || !age) {
+    const ageM = clean.match(/\b(\d{2})\s*(?:yo|y\/o|years? old|岁)\b/i);
+    age = ageM ? parseInt(ageM[1], 10) : 42;
   }
 
   const genderRaw = getTableVal('Gender').toLowerCase();
@@ -5291,9 +5645,9 @@ function parseLarkCustomer(text, defaultBranch = 'Kota Sentosa') {
     matches.push({ index: m.index, dateStr: m[1].trim() });
   }
 
-  // Pre-extract patient height if recorded anywhere in text
-  const globalHtMatch = clean.match(/(?:Ht|Height)[:：\s]*([\d\.]+)/i);
-  const commonHeight = globalHtMatch ? parseFloat(globalHtMatch[1]) : 149;
+  // Pre-extract patient height using word boundary to avoid matching words like Attachment
+  const globalHtMatch = clean.match(/\b(?:Ht|Height)[:：\s]*(\d{2,3}(?:\.\d+)?)/i);
+  const commonHeight = globalHtMatch ? parseFloat(globalHtMatch[1]) : (gender === 'Female' ? 152 : 172);
 
   const encounters = [];
 
@@ -5303,7 +5657,6 @@ function parseLarkCustomer(text, defaultBranch = 'Kota Sentosa') {
     const endIndex = (i + 1 < matches.length) ? matches[i + 1].index : clean.length;
     const block = clean.slice(startIndex, endIndex);
 
-    // Normalize glued numbers and words (e.g. 5.84HDL -> 5.84 HDL)
     const normBlock = block.replace(/([0-9\.]+)([A-Za-z])/g, '$1 $2').replace(/([A-Za-z])([0-9])/g, '$1 $2');
 
     // Date formatting to YYYY-MM-DD
@@ -5318,12 +5671,12 @@ function parseLarkCustomer(text, defaultBranch = 'Kota Sentosa') {
     }
 
     const getBlockVal = (key) => {
-      const rx = new RegExp(`\\|\\s*${key}\\s*\\|\\s*([^|\\n]+?)\\s*\\|`, 'i');
+      const rx = new RegExp(`\\|\\s*${key}\\s*\\|\\s*([\\s\\S]*?)\\s*\\|`, 'i');
       const bm = normBlock.match(rx);
       return bm ? bm[1].trim() : '';
     };
 
-    const assessment = (getBlockVal('Assessment') || normBlock).replace(/([0-9\.]+)([A-Za-z])/g, '$1 $2');
+    const assessment = (getBlockVal('Assessment') || normBlock);
     const plan = getBlockVal('Plan') || '';
     let nextVisitRaw = getBlockVal('Next visit') || (normBlock.match(/Next visit[:：]?\s*([^\n|]+)/i)?.[1] || '');
     if (!nextVisitRaw && normBlock.includes('⏰')) {
@@ -5332,16 +5685,29 @@ function parseLarkCustomer(text, defaultBranch = 'Kota Sentosa') {
     }
     const attendedBy = getBlockVal('Attended by') || 'William Chai (Pharmacist)';
 
+    // Attachment files (e.g. [Zentalog_Clinical_Report.pdf])
+    const attachBlock = getBlockVal('Attachment') || (normBlock.match(/Attachment[:：]?\s*([^\n|]+)/i)?.[1] || '');
+    const attachedDocs = [];
+    const docMatches = attachBlock.match(/\[([^\]]+)\]/g);
+    if (docMatches) {
+      docMatches.forEach(dm => {
+        const docName = dm.replace(/[\[\]]/g, '').trim().replace(/\.\s+pdf$/i, '.pdf');
+        if (docName) {
+          attachedDocs.push({ name: docName, type: 'application/pdf', size: 'Document' });
+        }
+      });
+    }
+
     // Extract Vitals
     const bpMatch = assessment.match(/BP[:：\s]*(\d{2,3})\s*[\/x]\s*(\d{2,3})/i);
     const pulseMatch = assessment.match(/(?:PR|Pulse)[:：\s]*(\d{2,3})/i);
     const spo2Match = assessment.match(/SpO2[:：\s]*(\d{2,3})/i);
     const bwMatch = assessment.match(/(?:BW|Weight)[:：\s]*([\d\.]+)/i);
-    const htMatch = assessment.match(/(?:Ht|Height)[:：\s]*([\d\.]+)/i);
+    const htMatch = assessment.match(/\b(?:Ht|Height)[:：\s]*(\d{2,3}(?:\.\d+)?)/i);
     const bmiMatch = assessment.match(/BMI[:：\s]*([\d\.]+)/i);
 
     const bpSys = bpMatch ? parseInt(bpMatch[1], 10) : null;
-    const bpDia = bpMatch ? parseInt(bpMatch[2], 10) : null;
+    const bpDia = bpMatch ? parseInt(bpDia[2], 10) : null;
     const pulse = pulseMatch ? parseInt(pulseMatch[1], 10) : null;
     const spo2 = spo2Match ? parseInt(spo2Match[1], 10) : null;
     const weight = bwMatch ? parseFloat(bwMatch[1]) : null;
@@ -5409,7 +5775,7 @@ function parseLarkCustomer(text, defaultBranch = 'Kota Sentosa') {
       id: 'ENC-' + Date.now().toString(36) + '-' + (i + 1),
       date: isoDate,
       recordedBy: attendedBy.includes('William') ? 'William Chai (Pharmacist)' : attendedBy,
-      chiefComplaint: (i === 0) ? 'Initial Health Screening & Baseline Lipid Assessment' : 'Chronic Health & POCT Follow-up Review',
+      chiefComplaint: (i === 0 && matches.length === 1) ? 'Initial Health Screening & Baseline Review' : ((i === matches.length - 1) ? 'Initial Consultation & Health Assessment' : 'Chronic Health & Follow-up Review'),
       hpi: `Lark transferred consultation history on ${isoDate}.`,
       vitals: {
         bpSys,
@@ -5445,7 +5811,7 @@ function parseLarkCustomer(text, defaultBranch = 'Kota Sentosa') {
       kidneyPanel: { ua: null, creatinine: null, urea: null, egfr: null },
       glycemicHeme: {
         glucose,
-        glucoseType: 'Fasting',
+        glucoseType: assessment.toLowerCase().includes('fbg') ? 'Fasting' : 'Random',
         hba1c: null,
         hb: null,
         hct: null
@@ -5453,16 +5819,17 @@ function parseLarkCustomer(text, defaultBranch = 'Kota Sentosa') {
       specialtyScans: {
         teda: tedaUrlM ? tedaUrlM[1] : (normBlock.includes('Teda failed') ? 'TEDA scan attempted (failed)' : null),
         tedaLink: tedaUrlM ? tedaUrlM[1] : null,
-        rossmaxAct: actM ? actM[1] : null
+        rossmaxAct: actM ? actM[1] : null,
+        cgm: normBlock.toLowerCase().includes('cgm') ? 'Continuous Glucose Monitoring' : null
       },
-      preDiagnostic: tc && tc > 5.2 ? 'Dyslipidemia monitored via POCT lipid profile.' : '',
+      preDiagnostic: assessment.replace(/BP:.*?PR\s*\d+/i, '').replace(/BW:.*?kg/i, '').trim() || (tc && tc > 5.2 ? 'Dyslipidemia monitored via POCT lipid profile.' : ''),
       planMedications: plan.replace(/\s{2,}/g, '\n').trim(),
       planSupplements: '',
       planCounselling: '',
       referral: nextTcaDate ? `Review on ${nextTcaDate} for ${nextTcaPurpose || 'consultation'}` : '',
       nextTcaDate: nextTcaDate || null,
       nextTcaPurpose: nextTcaPurpose || null,
-      attachedDocs: []
+      attachedDocs
     });
   }
 
@@ -5471,47 +5838,84 @@ function parseLarkCustomer(text, defaultBranch = 'Kota Sentosa') {
 
   const latestEnc = encounters[0] || {};
 
+  // Condition detection
+  const condSet = new Set();
+  const allText = (clean + ' ' + notesArr.join(' ')).toLowerCase();
+  if (allText.includes('met') || allText.includes('gliclazide') || allText.includes('diabetes') || allText.includes('sugar jam') || allText.includes('cgm') || allText.includes('fbg')) {
+    condSet.add('Type 2 Diabetes Mellitus');
+  }
+  if (allText.includes('obess') || allText.includes('obese') || allText.includes('weight') || allText.includes('bw: 10')) {
+    condSet.add('Obesity / Weight Management');
+  }
+  if (allText.includes('hypertens') || allText.includes('bp: 13') || allText.includes('bp: 14')) {
+    condSet.add('Hypertension');
+  }
+  if (allText.includes('tc:') || allText.includes('lipid') || allText.includes('cholesterol') || allText.includes('dyslipidemia')) {
+    condSet.add('Dyslipidemia');
+  }
+  if (allText.includes('uric') || allText.includes('gout')) {
+    condSet.add('Hyperuricemia / Gout');
+  }
+  if (condSet.size === 0) condSet.add('General Health Review');
+  const conditions = Array.from(condSet);
+
+  // Look for any upcoming TCA date across all encounters
+  let upcomingTcaDate = null;
+  let upcomingTcaPurpose = null;
+  let upcomingRecordedBy = null;
+  for (const enc of encounters) {
+    if (enc.nextTcaDate) {
+      if (!upcomingTcaDate || enc.nextTcaDate > upcomingTcaDate) {
+        upcomingTcaDate = enc.nextTcaDate;
+        upcomingTcaPurpose = enc.nextTcaPurpose || 'Follow-up Review';
+        upcomingRecordedBy = enc.recordedBy;
+      }
+    }
+  }
+
+  const patientId = 'PT-' + (formattedIc ? formattedIc.replace(/\D/g, '').slice(-6) : (rawPhone ? rawPhone.replace(/\D/g, '').slice(-6) : Date.now().toString(36)));
+
   const patientObj = {
-    id: 'PT-' + (formattedIc ? formattedIc.replace(/\D/g, '').slice(-6) : Date.now().toString(36)),
+    id: patientId,
     name: name,
-    ic: formattedIc,
-    phone: formattedPhone,
+    ic: formattedIc || '',
+    phone: formattedPhone || '',
     gender: gender,
-    age: age || 24,
+    age: age,
     race: race,
     language: race === 'Chinese' ? 'Chinese' : 'English',
     branch: defaultBranch,
-    conditions: ['Dyslipidemia', 'Weight Management'],
+    conditions: conditions,
     allergies: allergies,
     notes: notesArr.join('; ') || 'Imported from Lark customer base.',
-    createdAt: encounters.length ? encounters[encounters.length - 1].date : '2026-01-06',
+    createdAt: encounters.length ? encounters[encounters.length - 1].date : getTodayDateString(0),
     encounters: encounters,
     medications: latestEnc.planMedications ? [
       {
         id: 'MED-' + Date.now().toString(36) + '-1',
-        name: 'Lipofit',
-        dosage: '1 tab BD (With meals)',
-        lastDispensed: latestEnc.date || '2026-09-25',
+        name: conditions.includes('Type 2 Diabetes Mellitus') ? 'Metformin 1000mg' : 'Lipofit',
+        dosage: conditions.includes('Type 2 Diabetes Mellitus') ? '1 tab BD (With meals)' : '1 tab BD (With meals)',
+        lastDispensed: latestEnc.date || getTodayDateString(0),
         supplyDays: 30,
-        nextRefillDate: '2026-10-25'
+        nextRefillDate: getTodayDateString(30)
       }
     ] : [],
-    appointments: latestEnc.nextTcaDate ? [
+    appointments: upcomingTcaDate ? [
       {
         id: 'APT-' + Date.now().toString(36) + '-1',
-        date: latestEnc.nextTcaDate,
+        date: upcomingTcaDate,
         time: '10:00',
-        purpose: latestEnc.nextTcaPurpose || 'Follow-up Review',
+        purpose: upcomingTcaPurpose || 'Follow-up Review',
         status: 'Scheduled',
-        notes: 'Imported follow-up appointment from Lark consultation record.'
+        notes: 'Follow-up appointment imported from Lark consultation record.'
       }
     ] : []
   };
 
-  if (latestEnc.nextTcaDate) {
-    patientObj.nextTcaDate = latestEnc.nextTcaDate;
-    patientObj.nextTcaPurpose = latestEnc.nextTcaPurpose || 'Follow-up Review';
-    patientObj.nextTcaRecordedBy = latestEnc.recordedBy || 'William Chai (Pharmacist)';
+  if (upcomingTcaDate) {
+    patientObj.nextTcaDate = upcomingTcaDate;
+    patientObj.nextTcaPurpose = upcomingTcaPurpose || 'Follow-up Review';
+    patientObj.nextTcaRecordedBy = upcomingRecordedBy || 'William Chai (Pharmacist)';
   }
 
   return patientObj;

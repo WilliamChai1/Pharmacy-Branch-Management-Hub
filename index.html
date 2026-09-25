@@ -1421,19 +1421,19 @@
             </select>
           </div>
           <div class="flex items-center gap-2">
-            <label class="cursor-pointer text-xs bg-white hover:bg-slate-50 text-blue-700 border border-blue-300 px-3 py-1 rounded-lg font-bold transition flex items-center gap-1.5 shadow-2xs">
-              <i class="fa-solid fa-folder-open text-blue-600"></i> Load from File (.txt / .md)
-              <input type="file" id="larkImportFileInput" accept=".txt,.md,.csv,.json" class="hidden" onchange="handleLarkImportFile(event)">
+            <label class="cursor-pointer text-xs bg-white hover:bg-slate-50 text-blue-700 border border-blue-300 px-3 py-1 rounded-lg font-bold transition flex items-center gap-1.5 shadow-2xs" title="Upload Lark exported Word document (.docx) or text file">
+              <i class="fa-solid fa-file-word text-blue-600"></i> Load from File (.docx / .txt / .md)
+              <input type="file" id="larkImportFileInput" accept=".docx,.doc,.txt,.md,.csv,.json,application/vnd.openxmlformats-officedocument.wordprocessingml.document" class="hidden" onchange="handleLarkImportFile(event)">
             </label>
           </div>
         </div>
 
         <div>
           <div class="flex justify-between items-center mb-1">
-            <label class="block font-bold text-gray-700">Paste Lark Customer Record(s):</label>
-            <span class="text-[11px] text-gray-400">Supports single or multi-patient Lark records</span>
+            <label class="block font-bold text-gray-700">Paste Lark Customer Record(s) or Upload .docx:</label>
+            <span class="text-[11px] text-gray-400">Supports Word (.docx), text, and multi-patient exports</span>
           </div>
-          <textarea id="larkImportText" rows="9" placeholder="Paste Lark patient info here... e.g.:
+          <textarea id="larkImportText" rows="9" placeholder="Paste Lark patient info here or click 'Load from File (.docx / .txt)' above to upload a Lark Word export document directly... e.g.:
 Liew Pay Sze 0412
 Essential info
 | Name | Liew Pay Sze |
