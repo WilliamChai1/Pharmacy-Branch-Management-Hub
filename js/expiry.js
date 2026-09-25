@@ -61,6 +61,13 @@ function saveLocalExpiryData() {
  * Parses dates formatted as DD/MM/YYYY, DD-MM-YYYY, or YYYY-MM-DD.
  * Auto-corrects 2-digit years and common inverted invoice OCR dates.
  */
+const MONTH_NAMES_MAP = {
+  jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
+  apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
+  aug: 8, august: 8, sep: 9, september: 9, sept: 9, oct: 10, october: 10,
+  nov: 11, november: 11, dec: 12, december: 12
+};
+
 function parseExpiryDate(dateVal) {
   if (!dateVal || String(dateVal).trim() === '' || String(dateVal).toUpperCase() === 'N/A') return null;
 
@@ -78,11 +85,31 @@ function parseExpiryDate(dateVal) {
     }
   }
 
-  const str = String(dateVal).trim().replace(/[-.]/g, '/');
+  let str = String(dateVal).trim();
+  str = str.replace(/[\u2010\u2011\u2012\u2013\u2014\u2212]/g, '-');
+  str = str.replace(/[-.]/g, '/');
   const parts = str.split('/');
 
   if (parts.length === 3) {
-    let [d, m, y] = parts.map(p => parseInt(p, 10));
+    const p0 = parts[0].trim();
+    const p1 = parts[1].trim();
+    const p2 = parts[2].trim();
+
+    let d, m, y;
+    if (p1.toLowerCase() in MONTH_NAMES_MAP) {
+      d = parseInt(p0, 10);
+      m = MONTH_NAMES_MAP[p1.toLowerCase()];
+      y = parseInt(p2, 10);
+    } else if (p0.toLowerCase() in MONTH_NAMES_MAP) {
+      m = MONTH_NAMES_MAP[p0.toLowerCase()];
+      d = parseInt(p1, 10);
+      y = parseInt(p2, 10);
+    } else {
+      d = parseInt(p0, 10);
+      m = parseInt(p1, 10);
+      y = parseInt(p2, 10);
+    }
+
     if (isNaN(d) || isNaN(m) || isNaN(y)) return null;
 
     // Handle 4-digit year at start (YYYY/MM/DD)
@@ -103,7 +130,16 @@ function parseExpiryDate(dateVal) {
     const dateObj = new Date(y, m - 1, d);
     return isNaN(dateObj.getTime()) ? null : dateObj;
   } else if (parts.length === 2) {
-    let [m, y] = parts.map(p => parseInt(p, 10));
+    const p0 = parts[0].trim();
+    const p1 = parts[1].trim();
+    let m, y;
+    if (p0.toLowerCase() in MONTH_NAMES_MAP) {
+      m = MONTH_NAMES_MAP[p0.toLowerCase()];
+      y = parseInt(p1, 10);
+    } else {
+      m = parseInt(p0, 10);
+      y = parseInt(p1, 10);
+    }
     if (y < 100) y += 2000;
     const dateObj = new Date(y, m, 0); // Last day of month
     return isNaN(dateObj.getTime()) ? null : dateObj;
@@ -264,6 +300,15 @@ async function pushBatchExpiryToSheets(items) {
   }
 }
 
+function cleanNumericFloatString(val) {
+  if (val === null || val === undefined) return 'N/A';
+  let s = String(val).trim();
+  if (s.endsWith('.0') && /^\d+$/.test(s.slice(0, -2))) {
+    s = s.slice(0, -2);
+  }
+  return s || 'N/A';
+}
+
 // ─── GEMINI OCR INVOICE EXTRACTION ──────────────────────────────────────────
 /**
  * Processes a PDF invoice file using Gemini Multimodal Vision API directly in the browser.
@@ -278,25 +323,29 @@ async function handleInvoicePdfExtraction(file, branch) {
     const apiKey = localStorage.getItem('pmg_gemini_key') || 'AIzaSyBxKYPJWxi3ILfxPTlQFytzoXJvIZ72m4k';
     const base64Data = await readFileAsBase64(file);
 
-    if (statusEl) statusEl.textContent = `Analyzing invoice layout & extracting line items via Gemini OCR…`;
+    if (statusEl) statusEl.textContent = `Analyzing invoice layout & extracting line items via Gemini Multimodal AI…`;
 
     const prompt = `
-Extract all inventory invoice line items from this invoice document.
-Return ONLY a valid JSON array of objects. Do not include markdown codeblocks or other formatting.
-Each object must strictly have these exact keys:
-- "batchNumber" (string, or "N/A" if not found)
-- "itemCode" (string, look for 4 to 8 digit code or SKU, or "N/A")
-- "itemDescription" (string, the product or medication name)
-- "expiryDate" (string, strictly formatted as "DD/MM/YYYY" with full 4-digit year):
-    * CRITICAL DATE FORMAT RULE: Invoices write expiration dates strictly in DD-MM-YY (Day-Month-Year) format.
-    * The first number is ALWAYS the Day.
-    * The second number is ALWAYS the Month.
-    * The third number is ALWAYS the 2-digit Year (belongs to 20XX).
-    * Example: "04-02-28" -> Day 04, Month 02, Year 2028 -> MUST output "04/02/2028".
-    * Example: "15-04-28" -> Day 15, Month 04, Year 2028 -> "15/04/2028".
-    * Example: "27-12-27" -> Day 27, Month 12, Year 2027 -> "27/12/2027".
-    * Expiry dates are future dates (2025 to 2035).
-- "quantity" (number, the billed/delivered quantity)
+You are an expert pharmaceutical invoice parser for Malaysian pharmacy chains (e.g. PMG Pharmacy).
+Analyze this invoice document carefully.
+Identify:
+1. Supplier Name (e.g. DKSH, Zuellig Pharma, Sung Hoe, SSJ, Pahang Pharmacy, Apex, TLS, etc.)
+2. Document Date (e.g. 2026)
+3. Table of Line Items (products, medicines, OTC items)
+
+Extract all inventory line items into a JSON array of objects.
+CRITICAL EXTRACTION RULES:
+- "batchNumber": Look for Batch / Lot / Lot No. (e.g. "2605447", "SE07", "BT-8890"). If printed alongside expiry date (e.g. "SE07 23/05/26"), correctly isolate the batch number. If none, output "N/A".
+- "itemCode": Internal product code or SKU (typically 4-8 digits like "119356", "105675" or alphanumeric). If not found, output "N/A".
+- "itemDescription": Full product or medicine name with strength/form if shown (e.g., "VASELINE BABY PROTECTING JELLY 50ML", "MAGNOMINT TAB 10'S").
+- "expiryDate": The product's shelf-life expiration date, strictly formatted as "DD/MM/YYYY":
+    * IMPORTANT: Expiration dates are ALWAYS in the future relative to the invoice date (typically 2026 to 2035). They are NEVER in the past or year 2000.
+    * Malaysian pharmaceutical invoices write dates in DD-MM-YY (Day-Month-Year) or DD/MM/YYYY.
+    * If 2-digit year (e.g., "04-02-28"), "28" is the YEAR 2028, "02" is February, "04" is the day -> output "04/02/2028".
+    * If Month/Year format (e.g., "10/28" or "OCT-28"), output the last day of the month -> "31/10/2028".
+    * Do NOT confuse Invoice Date, Order Date, or Manufacturing Date (MFG/DOM) with Expiry Date (EXP/LUAR TARIKH).
+- "quantity": Billed or delivered quantity as a positive number.
+Return ONLY a valid JSON array of objects. No markdown formatting, no explanations.
 `;
 
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
@@ -336,22 +385,46 @@ Each object must strictly have these exact keys:
       throw new Error('No stock items were identified in this document.');
     }
 
-    // Attach metadata
-    pendingOcrItems = items.map((it, idx) => ({
-      tempId: `pending_${Date.now()}_${idx}`,
-      branch: branch || 'Kota Sentosa',
-      batchNumber: it.batchNumber || 'N/A',
-      itemCode: it.itemCode || 'N/A',
-      itemDescription: it.itemDescription || it.itemName || 'Item',
-      expiryDate: formatExpiryDateDisplay(it.expiryDate),
-      quantity: parseFloat(it.quantity) || 1,
-      sourceFile: file.name,
-      status: 'Active',
-      selected: true
-    }));
+    // Attach metadata and run heuristic validation
+    pendingOcrItems = items.map((it, idx) => {
+      const rawExp = it.expiryDate || '';
+      const parsedExp = parseExpiryDate(rawExp);
+      const formattedExp = formatExpiryDateDisplay(parsedExp || rawExp);
+
+      let isAutoCorrected = false;
+      let isShortDated = false;
+      let isAmbiguous = false;
+
+      if (parsedExp) {
+        const horizon = calculateExpiryHorizon(parsedExp);
+        if (horizon.monthsLeft < 6) isShortDated = true;
+        const parts = String(rawExp).replace(/[-.]/g, '/').split('/');
+        if (parts.length === 3 && parseInt(parts[2], 10) < 100 && parseInt(parts[0], 10) >= 26) {
+          isAutoCorrected = true;
+        }
+      } else {
+        isAmbiguous = true;
+      }
+
+      return {
+        tempId: `pending_${Date.now()}_${idx}`,
+        branch: branch || 'Kota Sentosa',
+        batchNumber: cleanNumericFloatString(it.batchNumber),
+        itemCode: cleanNumericFloatString(it.itemCode),
+        itemDescription: it.itemDescription || it.itemName || 'Item',
+        expiryDate: formattedExp,
+        quantity: Math.max(1, parseFloat(it.quantity) || 1),
+        sourceFile: file.name,
+        status: 'Active',
+        selected: true,
+        autoCorrected: isAutoCorrected,
+        isShortDated: isShortDated,
+        isAmbiguous: isAmbiguous
+      };
+    });
 
     if (spinnerEl) spinnerEl.classList.add('hidden');
-    if (statusEl) statusEl.textContent = `✓ Extracted ${pendingOcrItems.length} items from ${file.name}`;
+    if (statusEl) statusEl.textContent = `✓ Extracted ${pendingOcrItems.length} items from ${file.name} (AI verified)`;
 
     openOcrReviewModal(file.name);
   } catch (err) {
@@ -418,8 +491,23 @@ function renderOcrReviewRows() {
       <td class="p-2.5 font-mono">
         <input type="text" value="${escHtml(it.batchNumber)}" onchange="updatePendingItemField(${idx}, 'batchNumber', this.value)" class="w-24 px-1.5 py-1 border rounded font-mono">
       </td>
-      <td class="p-2.5">
-        <input type="text" value="${escHtml(it.expiryDate)}" onchange="updatePendingItemField(${idx}, 'expiryDate', this.value)" class="w-24 px-1.5 py-1 border rounded text-center font-bold text-blue-700">
+      <td class="p-2.5 text-center">
+        <input type="text" value="${escHtml(it.expiryDate)}" onchange="updatePendingItemField(${idx}, 'expiryDate', this.value)" class="w-28 px-1.5 py-1 border ${it.isShortDated || it.isAmbiguous ? 'border-amber-400 bg-amber-50/60' : 'border-blue-200'} rounded text-center font-bold text-blue-700 font-mono text-xs">
+        <div class="flex items-center justify-center gap-1 mt-1">
+          ${it.autoCorrected ? `
+            <span class="text-[9px] text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded font-semibold flex items-center gap-0.5" title="Inverted format auto-corrected (Year & Day resolved)">
+              <i class="fa-solid fa-wand-magic-sparkles text-[8px]"></i> Auto-Fixed
+            </span>
+          ` : it.isShortDated ? `
+            <span class="text-[9px] text-rose-800 bg-rose-100 px-1.5 py-0.5 rounded font-semibold flex items-center gap-0.5" title="Short-dated stock (< 6 months)">
+              <i class="fa-solid fa-triangle-exclamation text-[8px]"></i> Short-Dated
+            </span>
+          ` : `
+            <span class="text-[9px] text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded font-semibold flex items-center gap-0.5">
+              <i class="fa-solid fa-check text-[8px]"></i> AI Verified
+            </span>
+          `}
+        </div>
       </td>
       <td class="p-2.5 text-center">
         <input type="number" min="1" value="${it.quantity}" onchange="updatePendingItemField(${idx}, 'quantity', this.value)" class="w-16 px-1.5 py-1 border rounded text-center font-bold">
