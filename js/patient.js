@@ -5707,7 +5707,7 @@ function parseLarkCustomer(text, defaultBranch = 'Kota Sentosa') {
     const bmiMatch = assessment.match(/BMI[:：\s]*([\d\.]+)/i);
 
     const bpSys = bpMatch ? parseInt(bpMatch[1], 10) : null;
-    const bpDia = bpMatch ? parseInt(bpDia[2], 10) : null;
+    const bpDia = bpMatch ? parseInt(bpMatch[2], 10) : null;
     const pulse = pulseMatch ? parseInt(pulseMatch[1], 10) : null;
     const spo2 = spo2Match ? parseInt(spo2Match[1], 10) : null;
     const weight = bwMatch ? parseFloat(bwMatch[1]) : null;
