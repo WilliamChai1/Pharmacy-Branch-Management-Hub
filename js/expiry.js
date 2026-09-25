@@ -94,8 +94,8 @@ function parseExpiryDate(dateVal) {
 
   let str = String(dateVal).trim();
   str = str.replace(/[\u2010\u2011\u2012\u2013\u2014\u2212]/g, '-');
-  str = str.replace(/[-.]/g, '/');
-  const parts = str.split('/');
+  str = str.replace(/[-.\s]+/g, '/');
+  const parts = str.split('/').filter(p => p.length > 0);
 
   if (parts.length === 3) {
     const p0 = parts[0].trim();
@@ -124,15 +124,20 @@ function parseExpiryDate(dateVal) {
       const temp = d; d = y; y = temp;
     }
 
-    // Auto-fix inverted dates (e.g. 28/02/2004 from invoice format 04-02-28)
-    if (y <= 2025 && d >= 26 && d <= 35) {
-      const correctedYear = 2000 + d;
-      const correctedDay = (y >= 2001 && y <= 2025) ? (y - 2000) : 1;
-      d = correctedDay;
-      y = correctedYear;
-    } else if (y < 100) {
+    // Normalize 2-digit year first (e.g. 26 -> 2026, 27 -> 2027)
+    if (y < 100) {
       y += 2000;
     }
+
+    // Auto-fix inverted dates (e.g. 28/02/2004 from invoice format 04-02-28)
+    if (y >= 2000 && y <= 2024 && d >= 26 && d <= 35) {
+      const correctedYear = 2000 + d;
+      const correctedDay = (y >= 2001 && y <= 2024) ? (y - 2000) : 1;
+      d = correctedDay;
+      y = correctedYear;
+    }
+
+    if (m < 1 || m > 12 || d < 1 || d > 31) return null;
 
     const dateObj = new Date(y, m - 1, d);
     return isNaN(dateObj.getTime()) ? null : dateObj;
@@ -143,11 +148,22 @@ function parseExpiryDate(dateVal) {
     if (p0.toLowerCase() in MONTH_NAMES_MAP) {
       m = MONTH_NAMES_MAP[p0.toLowerCase()];
       y = parseInt(p1, 10);
+    } else if (p1.toLowerCase() in MONTH_NAMES_MAP) {
+      m = MONTH_NAMES_MAP[p1.toLowerCase()];
+      y = parseInt(p0, 10);
     } else {
-      m = parseInt(p0, 10);
-      y = parseInt(p1, 10);
+      const n0 = parseInt(p0, 10);
+      const n1 = parseInt(p1, 10);
+      if (n0 > 1000) {
+        y = n0;
+        m = n1;
+      } else {
+        m = n0;
+        y = n1;
+      }
     }
     if (y < 100) y += 2000;
+    if (isNaN(m) || isNaN(y) || m < 1 || m > 12) return null;
     const dateObj = new Date(y, m, 0); // Last day of month
     return isNaN(dateObj.getTime()) ? null : dateObj;
   }
@@ -254,18 +270,29 @@ async function syncExpiryFromSheets(showPrompt = true) {
 }
 
 /**
- * Pushes updated quantity or clearance status to Google Sheets.
+ * Pushes updated quantity, expiry date, or clearance status to Google Sheets.
  */
-async function pushExpiryUpdateToSheets(rowId, quantity, status) {
+async function pushExpiryUpdateToSheets(rowId, quantity, status, expiryDate = null, extraFields = {}) {
   try {
     const session = typeof getSession === 'function' ? getSession() : null;
+    const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
     const payload = {
-      action: status === 'Cleared' ? 'mark_cleared' : 'update_qty',
+      action: status === 'Cleared' ? 'mark_cleared' : (expiryDate ? 'update_item' : 'update_qty'),
       rowId: rowId,
+      branch: item?.branch || extraFields.branch || '',
+      itemCode: item?.itemCode || extraFields.itemCode || '',
+      itemDescription: item?.itemDescription || extraFields.itemDescription || '',
+      batchNumber: item?.batchNumber || extraFields.batchNumber || '',
       quantity: quantity,
       status: status,
       updatedBy: session?.displayName || 'Pharmacist'
     };
+    if (expiryDate) {
+      payload.expiryDate = expiryDate;
+    }
+    if (extraFields.itemDescription) payload.itemDescription = extraFields.itemDescription;
+    if (extraFields.batchNumber) payload.batchNumber = extraFields.batchNumber;
+    if (extraFields.itemCode) payload.itemCode = extraFields.itemCode;
 
     await fetch(PMG_EXPIRY_API_URL, {
       method: 'POST',
@@ -273,7 +300,7 @@ async function pushExpiryUpdateToSheets(rowId, quantity, status) {
       body: JSON.stringify(payload),
       redirect: 'follow'
     });
-    console.log(`[PMG Expiry] ✅ Update pushed for row ${rowId}: Qty=${quantity}, Status=${status}`);
+    console.log(`[PMG Expiry] ✅ Update pushed for row ${rowId}: Qty=${quantity}, Status=${status}, Expiry=${expiryDate || 'unchanged'}`);
   } catch (err) {
     console.warn('[PMG Expiry] Update push failed:', err);
   }
@@ -602,9 +629,42 @@ async function confirmOcrBatchInsert() {
   showExpiryToast(ok ? `✅ Saved ${selectedItems.length} items to Google Sheet (${targetBranch})!` : `Saved locally (Sheet update in progress).`);
 }
 
-// ─── QUANTITY EDITING & CLEARANCE ───────────────────────────────────────────
+// ─── EXPIRY DATE & QUANTITY EDITING & CLEARANCE ─────────────────────────────
+/**
+ * Updates an item's expiry date inline from the table or modal.
+ * Validates with parseExpiryDate, re-calculates horizons, updates KPIs, and syncs to Sheets.
+ */
+function updateExpiryItemDate(rowId, newDateStr, inputEl) {
+  const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
+  if (!item) return;
+
+  const parsed = parseExpiryDate(newDateStr);
+  if (!parsed) {
+    alert(`⚠️ Invalid expiry date "${newDateStr}". Please enter a valid date (e.g. DD/MM/YYYY, MM/YYYY, or MM/YY).`);
+    if (inputEl) {
+      inputEl.value = formatExpiryDateDisplay(item.expiryDate);
+    }
+    return;
+  }
+
+  const formattedDate = formatExpiryDateDisplay(parsed);
+  const oldDate = formatExpiryDateDisplay(item.expiryDate);
+  if (formattedDate === oldDate) {
+    if (inputEl) inputEl.value = formattedDate;
+    return;
+  }
+
+  item.expiryDate = formattedDate;
+  item.lastUpdated = new Date().toISOString();
+
+  saveLocalExpiryData();
+  renderExpiryUI();
+  pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate);
+  showExpiryToast(`✅ Expiry date updated to ${formattedDate} (${item.itemDescription || item.itemCode})`);
+}
+
 function updateExpiryItemQuantity(rowId, newQty) {
-  const item = expiryItems.find(it => it.rowId === rowId);
+  const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
   if (!item) return;
 
   const val = parseFloat(newQty);
@@ -619,23 +679,23 @@ function updateExpiryItemQuantity(rowId, newQty) {
 
   saveLocalExpiryData();
   renderExpiryUI();
-  pushExpiryUpdateToSheets(rowId, item.quantity, item.status);
+  pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate);
 }
 
 function markExpiryItemCleared(rowId) {
-  const item = expiryItems.find(it => it.rowId === rowId);
+  const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
   if (!item) return;
 
   item.status = 'Cleared';
   item.quantity = 0;
   saveLocalExpiryData();
   renderExpiryUI();
-  pushExpiryUpdateToSheets(rowId, 0, 'Cleared');
+  pushExpiryUpdateToSheets(item.rowId, 0, 'Cleared', item.expiryDate);
   showExpiryToast(`✅ Marked ${item.itemDescription || item.itemCode} as Cleared!`);
 }
 
 function reactivateExpiryItem(rowId) {
-  const item = expiryItems.find(it => it.rowId === rowId);
+  const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
   if (!item) return;
 
   const qtyStr = prompt(`Enter restored quantity for ${item.itemDescription || item.itemCode}:`, '1');
@@ -646,8 +706,83 @@ function reactivateExpiryItem(rowId) {
   item.quantity = qty;
   saveLocalExpiryData();
   renderExpiryUI();
-  pushExpiryUpdateToSheets(rowId, item.quantity, 'Active');
+  pushExpiryUpdateToSheets(item.rowId, item.quantity, 'Active', item.expiryDate);
   showExpiryToast(`Restored item with quantity ${qty}.`);
+}
+
+function openEditExpiryItemModal(rowId) {
+  const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
+  if (!item) return;
+
+  const modal = document.getElementById('expiryEditModal');
+  if (!modal) return;
+
+  const editRowId = document.getElementById('editRowId');
+  const editBranch = document.getElementById('editBranch');
+  const editItemCode = document.getElementById('editItemCode');
+  const editItemDesc = document.getElementById('editItemDesc');
+  const editBatch = document.getElementById('editBatch');
+  const editQty = document.getElementById('editQty');
+  const editExpiry = document.getElementById('editExpiry');
+
+  if (editRowId) editRowId.value = item.rowId;
+  if (editBranch) editBranch.value = item.branch || 'Kota Sentosa';
+  if (editItemCode) editItemCode.value = item.itemCode || '';
+  if (editItemDesc) editItemDesc.value = item.itemDescription || '';
+  if (editBatch) editBatch.value = item.batchNumber || '';
+  if (editQty) editQty.value = item.quantity;
+  if (editExpiry) editExpiry.value = formatExpiryDateDisplay(item.expiryDate);
+
+  modal.classList.remove('hidden');
+}
+
+function closeEditExpiryItemModal() {
+  const modal = document.getElementById('expiryEditModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function handleEditExpiryItemSubmit(e) {
+  e.preventDefault();
+  const rowId = document.getElementById('editRowId')?.value;
+  const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
+  if (!item) return;
+
+  const branch = document.getElementById('editBranch')?.value;
+  const itemCode = document.getElementById('editItemCode')?.value.trim();
+  const itemDescription = document.getElementById('editItemDesc')?.value.trim();
+  const batchNumber = document.getElementById('editBatch')?.value.trim();
+  const qtyVal = parseFloat(document.getElementById('editQty')?.value);
+  const expiryRaw = document.getElementById('editExpiry')?.value.trim();
+
+  const parsed = parseExpiryDate(expiryRaw);
+  if (!parsed) {
+    alert(`⚠️ Invalid expiry date "${expiryRaw}". Please enter a valid date (e.g. DD/MM/YYYY, MM/YYYY, or MM/YY).`);
+    return;
+  }
+
+  const formattedDate = formatExpiryDateDisplay(parsed);
+  item.branch = branch;
+  item.itemCode = itemCode;
+  item.itemDescription = itemDescription;
+  item.batchNumber = batchNumber;
+  item.quantity = isNaN(qtyVal) ? item.quantity : qtyVal;
+  item.expiryDate = formattedDate;
+  if (item.quantity === 0) item.status = 'Cleared';
+  else if (item.status === 'Cleared' && item.quantity > 0) item.status = 'Active';
+  item.lastUpdated = new Date().toISOString();
+
+  saveLocalExpiryData();
+  renderExpiryUI();
+  closeEditExpiryItemModal();
+
+  pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate, {
+    branch: item.branch,
+    itemCode: item.itemCode,
+    itemDescription: item.itemDescription,
+    batchNumber: item.batchNumber
+  });
+
+  showExpiryToast(`✅ Saved changes for ${item.itemDescription || item.itemCode}`);
 }
 
 // ─── FILTERING & UI RENDERING ────────────────────────────────────────────────
@@ -790,7 +925,19 @@ function renderExpiryTable() {
           <div class="text-[10px] text-gray-400 font-mono mt-0.5">Batch: ${escHtml(it.batchNumber || 'N/A')} · File: ${escHtml(it.sourceFile || 'Direct')}</div>
         </td>
         <td class="p-3 text-xs font-bold text-center whitespace-nowrap">
-          <span class="font-mono text-gray-900">${formatExpiryDateDisplay(it.expiryDate)}</span>
+          ${isCleared ? `
+            <span class="font-mono text-gray-400">${formatExpiryDateDisplay(it.expiryDate)}</span>
+          ` : `
+            <div class="inline-flex items-center gap-1.5 bg-white border border-slate-200 hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 rounded-lg px-2 py-1 shadow-2xs transition group" title="Click to edit expiry date (e.g. DD/MM/YYYY or MM/YYYY)">
+              <i class="fa-regular fa-calendar-days text-[11px] text-slate-400 group-hover:text-blue-500 transition"></i>
+              <input type="text"
+                value="${formatExpiryDateDisplay(it.expiryDate)}"
+                placeholder="DD/MM/YYYY"
+                onchange="updateExpiryItemDate(${it.rowId}, this.value, this)"
+                onkeydown="if(event.key==='Enter') this.blur()"
+                class="w-24 text-center font-mono font-bold text-xs text-slate-800 focus:text-blue-900 focus:outline-none bg-transparent">
+            </div>
+          `}
         </td>
         <td class="p-3 text-center whitespace-nowrap">
           <span class="text-xs px-2.5 py-1 rounded-full ${badgeClass}">
@@ -823,11 +970,18 @@ function renderExpiryTable() {
               <i class="fa-solid fa-rotate-left mr-1"></i>Restore
             </button>
           ` : `
-            <button onclick="markExpiryItemCleared(${it.rowId})"
-              class="px-2.5 py-1 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg transition"
-              title="Click when stock is fully sold or cleared">
-              <i class="fa-solid fa-check mr-1 text-emerald-600"></i>Done Clear
-            </button>
+            <div class="inline-flex items-center gap-1.5">
+              <button onclick="markExpiryItemCleared(${it.rowId})"
+                class="px-2.5 py-1 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg transition"
+                title="Click when stock is fully sold or cleared">
+                <i class="fa-solid fa-check mr-1 text-emerald-600"></i>Done Clear
+              </button>
+              <button onclick="openEditExpiryItemModal(${it.rowId})"
+                class="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                title="Edit item details (Description, Batch, Expiry, Qty)">
+                <i class="fa-solid fa-pen-to-square text-xs"></i>
+              </button>
+            </div>
           `}
         </td>
       </tr>

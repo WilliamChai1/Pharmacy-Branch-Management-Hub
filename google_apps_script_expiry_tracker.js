@@ -151,19 +151,44 @@ function doPost(e) {
       return buildResponse({ success: true, message: 'Monthly tabs rebuilt.' });
     }
 
-    // ── ACTION: UPDATE QTY / MARK CLEARED ──
-    if (action === 'update_qty' || action === 'mark_cleared') {
+    // ── ACTION: UPDATE QTY / MARK CLEARED / UPDATE EXPIRY / UPDATE ITEM ──
+    if (action === 'update_qty' || action === 'mark_cleared' || action === 'update_expiry' || action === 'update_item') {
       const rowId = parseInt(payload.rowId, 10);
       const newQty = payload.quantity !== undefined ? parseFloat(payload.quantity) : null;
+      const newExp = payload.expiryDate ? formatDate(payload.expiryDate) : null;
+      const newCode = payload.itemCode ? String(payload.itemCode).trim() : null;
+      const newDesc = payload.itemDescription ? String(payload.itemDescription).trim() : null;
+      const newBatch = payload.batchNumber ? String(payload.batchNumber).trim() : null;
       const newStatus = action === 'mark_cleared' ? 'Cleared' : (payload.status || 'Active');
 
-      if (rowId > 1 && rowId <= sheet.getLastRow()) {
-        if (newQty !== null) sheet.getRange(rowId, 6).setValue(newQty);
-        sheet.getRange(rowId, 8).setValue(newStatus);
-        sheet.getRange(rowId, 9).setValue(now);
-        sheet.getRange(rowId, 10).setValue(updatedBy);
+      let targetRow = (rowId > 1 && rowId <= sheet.getLastRow()) ? rowId : 0;
+
+      // Fallback: search for row by Item Code + Batch + Branch if rowId is out of bounds
+      if (targetRow === 0 && (payload.itemCode || payload.batchNumber)) {
+        const data = sheet.getDataRange().getValues();
+        for (let i = 1; i < data.length; i++) {
+          const r = data[i];
+          const matchCode = !payload.itemCode || String(r[2]).trim().toUpperCase() === String(payload.itemCode).trim().toUpperCase();
+          const matchBatch = !payload.batchNumber || String(r[1]).trim().toUpperCase() === String(payload.batchNumber).trim().toUpperCase();
+          const matchBranch = !payload.branch || String(r[0]).trim().toLowerCase() === String(payload.branch).trim().toLowerCase();
+          if (matchCode && matchBatch && matchBranch) {
+            targetRow = i + 1;
+            break;
+          }
+        }
+      }
+
+      if (targetRow > 1) {
+        if (newCode !== null && newCode !== '') sheet.getRange(targetRow, 3).setValue(newCode);
+        if (newDesc !== null && newDesc !== '') sheet.getRange(targetRow, 4).setValue(newDesc);
+        if (newBatch !== null && newBatch !== '') sheet.getRange(targetRow, 2).setValue(newBatch);
+        if (newExp !== null && newExp !== '') sheet.getRange(targetRow, 5).setValue(newExp);
+        if (newQty !== null && !isNaN(newQty)) sheet.getRange(targetRow, 6).setValue(newQty);
+        sheet.getRange(targetRow, 8).setValue(newStatus);
+        sheet.getRange(targetRow, 9).setValue(now);
+        sheet.getRange(targetRow, 10).setValue(updatedBy);
         if (!payload.skipDistribution) distributeToMonthlyTabs(ss);
-        return buildResponse({ success: true, rowId: rowId, status: newStatus });
+        return buildResponse({ success: true, rowId: targetRow, status: newStatus, expiryDate: newExp, quantity: newQty });
       }
     }
 
