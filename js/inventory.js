@@ -4,6 +4,7 @@
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let inventoryData = [];  // Raw parsed rows from Xilnex CSV
 let inventoryGrid = [];  // Calculated rows
+let interBranchTransfers = []; // List of near-expiry clearance items transferred from sister branches
 
 // ─── PARAMETERS (user-editable) ──────────────────────────────────────────────
 function getParams() {
@@ -192,6 +193,13 @@ function showDownloadSuccess(btnId, msg) {
 // ─── CALCULATION ENGINE ───────────────────────────────────────────────────────
 function recalcInventory() {
   const p = getParams();
+
+  // Cross-reference with near-expiry stock from all branches (< 12 months)
+  const shortDatedMap = (typeof getShortDatedStockForReplenishment === 'function')
+    ? getShortDatedStockForReplenishment(12)
+    : {};
+  let totalClearanceOffersCount = 0;
+
   inventoryGrid = inventoryData
     .filter(row => Object.values(row).some(v => v && String(v).trim()))
     .map((row, idx) => {
@@ -216,6 +224,13 @@ function recalcInventory() {
       const suggestedOrder = (ip <= rop && ads > 0 && isActive) ? Math.ceil(targetMax - ip) : 0;
       const daysCover      = ads > 0 ? Math.round(soh / ads) : 9999;
 
+      // Match clearance offers from sister branches
+      const cleanCode = String(itemCode || '').trim().toUpperCase();
+      const clearanceOffers = shortDatedMap[cleanCode] || [];
+      if (clearanceOffers.length > 0 && suggestedOrder > 0) {
+        totalClearanceOffersCount++;
+      }
+
       return {
         itemCode, desc, vendorCode, nonFunctionalField1, orderGroup, uom, isActive,
         salesQty, soh, onOrder,
@@ -224,8 +239,23 @@ function recalcInventory() {
         suggestedOrder: Math.max(0, suggestedOrder),
         daysCover: Math.min(daysCover, 9999),
         approvedQty: Math.max(0, suggestedOrder),
+        clearanceOffers: clearanceOffers,
+        transferredQty: 0,
+        transferredFrom: ''
       };
     });
+
+  // Update clearance alert banner
+  const alertBanner = document.getElementById('invClearanceAlertBanner');
+  const countBadge  = document.getElementById('invClearanceCountBadge');
+  if (alertBanner) {
+    if (totalClearanceOffersCount > 0) {
+      alertBanner.classList.remove('hidden');
+      if (countBadge) countBadge.textContent = `${totalClearanceOffersCount} SKUs to Clear`;
+    } else {
+      alertBanner.classList.add('hidden');
+    }
+  }
 
   populateVendorDropdown();
   renderInventoryGrid();
@@ -333,7 +363,32 @@ function renderInventoryGrid() {
 
     return `<tr class="${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 border-b border-gray-100">
       <td class="px-3 py-2 text-xs font-mono text-gray-700">${escHtml(row.itemCode)}</td>
-      <td class="px-3 py-2 text-xs text-gray-800 max-w-xs truncate" title="${escHtml(row.desc)}">${escHtml(row.desc)}</td>
+      <td class="px-3 py-2 text-xs text-gray-800 max-w-sm" title="${escHtml(row.desc)}">
+        <div class="font-medium">${escHtml(row.desc)}</div>
+        ${row.clearanceOffers && row.clearanceOffers.length > 0 ? `
+          <div class="mt-1 flex flex-col gap-1">
+            ${row.clearanceOffers.map(off => `
+              <div class="flex items-center justify-between gap-2 p-1 rounded bg-amber-50 border border-amber-200 text-[10px] text-amber-900">
+                <span>
+                  ⚡ <b class="text-amber-950 font-bold">${escHtml(off.branch)}</b> has <b>${off.quantity} pcs</b> (Exp: ${off.expiryDate}, ${off.horizonLabel})
+                </span>
+                ${row.transferredQty > 0 && row.transferredFrom === off.branch ? `
+                  <div class="flex items-center gap-1">
+                    <span class="bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">✓ Transferring ${row.transferredQty} pcs</span>
+                    <button type="button" onclick="cancelClearanceTransfer(${idx})" class="text-rose-600 hover:underline font-semibold ml-1">Cancel</button>
+                  </div>
+                ` : `
+                  <button type="button" onclick="applyClearanceTransfer(${idx}, '${escHtml(off.branch)}', ${off.quantity}, '${off.expiryDate}', '${escHtml(off.batchNumber || 'N/A')}')"
+                    class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-2 py-0.5 rounded text-[10px] transition shadow-xs shrink-0"
+                    title="Transfer short-dated stock from sister branch instead of ordering new stock">
+                    🤝 Help Clear (${Math.min(row.approvedQty || row.suggestedOrder, off.quantity)})
+                  </button>
+                `}
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+      </td>
       <td class="px-3 py-2 text-xs text-center text-gray-600">
         <div class="truncate max-w-[150px] mx-auto font-medium" title="${escHtml(row.vendorCode)}">${escHtml(row.vendorCode)}</div>
         ${row.nonFunctionalField1 ? `<span class="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${isSSJ ? 'bg-purple-100 text-purple-700 border border-purple-200' : 'bg-gray-100 text-gray-600'}">${escHtml(row.nonFunctionalField1)}</span>` : ''}
@@ -346,7 +401,7 @@ function renderInventoryGrid() {
       <td class="px-3 py-2 text-xs text-right font-semibold ${needReorder ? 'text-blue-700' : 'text-gray-300'}">${row.suggestedOrder || '–'}</td>
       <td class="px-3 py-2 text-xs text-center">
         <input type="number" min="0" value="${row.approvedQty}"
-          class="w-20 border border-gray-300 rounded px-1 py-0.5 text-center text-xs focus:ring-1 focus:ring-blue-400 focus:border-blue-400"
+          class="w-20 border border-gray-300 rounded px-1 py-0.5 text-center text-xs focus:ring-1 focus:ring-blue-400 focus:border-blue-400 font-bold"
           onchange="updateApprovedQtyByFilter(${idx}, this.value)">
       </td>
     </tr>`;
@@ -356,6 +411,130 @@ function renderInventoryGrid() {
     tbody.innerHTML = `<tr><td colspan="10" class="text-center py-10 text-gray-400 text-sm">No SKUs match the current filter.</td></tr>`;
   }
 }
+
+// ─── INTER-BRANCH CLEARANCE TRANSFER LOGIC ──────────────────────────────────
+function getRowByFilteredIdx(filteredIdx) {
+  const searchQ        = (document.getElementById('invSearch')?.value || '').toLowerCase();
+  const selectedVendor = document.getElementById('invVendorFilter')?.value || '';
+  const onlyReorder    = document.getElementById('invFilterReorder')?.checked || false;
+  let count = 0;
+  for (let i = 0; i < inventoryGrid.length; i++) {
+    const row = inventoryGrid[i];
+    if (selectedVendor && row.vendorCode !== selectedVendor && row.orderGroup !== selectedVendor) continue;
+    if (onlyReorder && row.approvedQty === 0 && row.suggestedOrder === 0) continue;
+    if (searchQ && !row.itemCode.toLowerCase().includes(searchQ) && !row.desc.toLowerCase().includes(searchQ)) continue;
+    if (count === filteredIdx) return row;
+    count++;
+  }
+  return null;
+}
+
+function applyClearanceTransfer(filteredIdx, fromBranch, availableQty, expiryDate, batchNumber) {
+  const row = getRowByFilteredIdx(filteredIdx);
+  if (!row) return;
+
+  const currentOrder = row.approvedQty;
+  if (currentOrder <= 0) {
+    alert('This SKU currently has 0 order quantity.');
+    return;
+  }
+
+  const transferQty = Math.min(currentOrder, availableQty);
+  row.approvedQty = currentOrder - transferQty;
+  row.transferredQty = transferQty;
+  row.transferredFrom = fromBranch;
+
+  const existingIdx = interBranchTransfers.findIndex(t => t.itemCode === row.itemCode && t.fromBranch === fromBranch);
+  const transferRecord = {
+    itemCode: row.itemCode,
+    desc: row.desc,
+    fromBranch: fromBranch,
+    toBranch: (typeof getSession === 'function' && getSession()?.branch) || 'This Branch',
+    quantity: transferQty,
+    expiryDate: expiryDate,
+    batchNumber: batchNumber,
+    timestamp: new Date().toISOString()
+  };
+
+  if (existingIdx >= 0) {
+    interBranchTransfers[existingIdx] = transferRecord;
+  } else {
+    interBranchTransfers.push(transferRecord);
+  }
+
+  updateInventoryKPIs();
+  renderInventoryGrid();
+
+  const exportBtn = document.getElementById('btnExportTransfers');
+  if (exportBtn) exportBtn.classList.remove('hidden');
+
+  alert(`🤝 Clearance Applied!\n\n${transferQty} units of ${row.desc} will be transferred from ${fromBranch} instead of ordered from supplier.\n\nSupplier order reduced from ${currentOrder} to ${row.approvedQty}.`);
+}
+
+function cancelClearanceTransfer(filteredIdx) {
+  const row = getRowByFilteredIdx(filteredIdx);
+  if (!row) return;
+
+  row.approvedQty += row.transferredQty;
+  const removedFrom = row.transferredFrom;
+  row.transferredQty = 0;
+  row.transferredFrom = '';
+
+  interBranchTransfers = interBranchTransfers.filter(t => !(t.itemCode === row.itemCode && t.fromBranch === removedFrom));
+
+  const exportBtn = document.getElementById('btnExportTransfers');
+  if (exportBtn && interBranchTransfers.length === 0) {
+    exportBtn.classList.add('hidden');
+  }
+
+  updateInventoryKPIs();
+  renderInventoryGrid();
+}
+
+async function exportInterBranchTransferSheet() {
+  if (interBranchTransfers.length === 0) {
+    alert('No inter-branch clearance transfers have been applied.');
+    return;
+  }
+
+  if (typeof ExcelJS === 'undefined') {
+    alert('ExcelJS engine not ready.');
+    return;
+  }
+
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Clearance_Transfers');
+  sheet.columns = [
+    { header: 'Item Code', key: 'code', width: 16 },
+    { header: 'Item Description', key: 'desc', width: 36 },
+    { header: 'Transfer From (Clearing Branch)', key: 'from', width: 28 },
+    { header: 'Transfer To (Requesting Branch)', key: 'to', width: 28 },
+    { header: 'Transfer Qty', key: 'qty', width: 14 },
+    { header: 'Expiry Date', key: 'expiry', width: 16 },
+    { header: 'Batch Number', key: 'batch', width: 18 }
+  ];
+
+  sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD97706' } }; // Amber
+
+  interBranchTransfers.forEach(t => {
+    sheet.addRow({
+      code: t.itemCode,
+      desc: t.desc,
+      from: t.fromBranch,
+      to: t.toBranch,
+      qty: t.quantity,
+      expiry: t.expiryDate,
+      batch: t.batchNumber
+    });
+  });
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const dateStr = new Date().toISOString().split('T')[0];
+  saveAs(blob, `PMG_InterBranch_Clearance_Transfers_${dateStr}.xlsx`);
+}
+
 
 function updateApprovedQtyByFilter(filteredIdx, val) {
   const searchQ        = (document.getElementById('invSearch')?.value || '').toLowerCase();

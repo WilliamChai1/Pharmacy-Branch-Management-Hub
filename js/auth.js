@@ -69,6 +69,15 @@ function applyRoleUI(session) {
     const bObj = BRANCHES.find(b => b.name === session.branch || b.code === session.branch);
     if (bObj) rosterBranchInput.value = bObj.code;
   }
+
+  // Pre-fill stock expiry branch filter
+  const expBranchFilter = document.getElementById('expiryBranchFilter');
+  if (expBranchFilter && session.branch && session.branch !== 'ALL') {
+    expBranchFilter.value = session.branch;
+    if (typeof activeExpiryFilter !== 'undefined') {
+      activeExpiryFilter.branch = session.branch;
+    }
+  }
 }
 
 // ─── LOGIN HANDLER ────────────────────────────────────────────────────────────

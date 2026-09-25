@@ -164,6 +164,12 @@
         <span>Area Manager Suite</span>
         <span class="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-medium">AM Only</span>
       </button>
+      <button onclick="switchTab('expiry')" id="tab-expiry"
+        class="tab-btn whitespace-nowrap py-3.5 px-4 border-b-2 text-sm flex items-center gap-2">
+        <i class="fa-solid fa-calendar-xmark text-sm text-rose-600"></i>
+        <span>Stock Expiry Tracker</span>
+        <span class="text-xs bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded font-bold">HQ KPI</span>
+      </button>
     </div>
   </div>
 </nav>
@@ -252,6 +258,28 @@
         <div class="kpi-card green rounded-xl p-4 shadow-sm border border-gray-200">
           <p class="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Order Units</p>
           <p id="kpiTotalUnits" class="text-3xl font-bold text-green-700 mt-1">0</p>
+        </div>
+      <!-- Sister Branch Near-Expiry Stock Clearance Alert Banner -->
+      <div id="invClearanceAlertBanner" class="hidden mb-4 rounded-xl p-4 bg-amber-50 border-2 border-amber-300 text-amber-900 shadow-sm animate-in fade-in duration-200">
+        <div class="flex items-start justify-between gap-3 flex-wrap sm:flex-nowrap">
+          <div class="flex items-start gap-3">
+            <div class="w-9 h-9 rounded-lg bg-amber-200 text-amber-900 flex items-center justify-center shrink-0 text-lg shadow-inner">
+              <i class="fa-solid fa-hand-holding-dollar"></i>
+            </div>
+            <div>
+              <h4 class="font-black text-sm text-amber-950 flex items-center gap-2">
+                <span>Sister Branch Clearance Opportunities Detected!</span>
+                <span id="invClearanceCountBadge" class="bg-amber-200 text-amber-900 px-2.5 py-0.5 rounded-full text-xs font-black">0 SKUs</span>
+              </h4>
+              <p class="text-xs text-amber-800 mt-1 leading-relaxed">
+                Sister branches have short-dated stock (&le; 12 months) for SKUs you are about to reorder. You can choose to help clear their stock instead of purchasing from suppliers!
+              </p>
+            </div>
+          </div>
+          <button type="button" id="btnExportTransfers" onclick="exportInterBranchTransferSheet()"
+            class="hidden shrink-0 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition">
+            <i class="fa-solid fa-file-excel text-amber-200"></i> Export Transfers
+          </button>
         </div>
       </div>
 
@@ -2944,8 +2972,318 @@
             <i class="fa-solid fa-folder-open text-blue-700"></i> <span>Link / Change Folder</span>
           </button>
         </div>
+  <!-- ─────────────────────────────────────────────────────────────────────────
+       MODULE 5: STOCK EXPIRY TRACKER & OCR EXTRACTION ENGINE
+  ───────────────────────────────────────────────────────────────────────────── -->
+  <div id="content-expiry" class="tab-content hidden">
+
+    <!-- Module Header -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-5">
+      <div class="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <div class="w-8 h-8 bg-rose-100 rounded-lg flex items-center justify-center">
+              <i class="fa-solid fa-calendar-xmark text-rose-600"></i>
+            </div>
+            <h2 class="text-lg font-bold text-gray-900">Stock Expiry & Clearance Management Hub</h2>
+            <span class="text-xs bg-rose-100 text-rose-800 font-bold px-2.5 py-0.5 rounded-full border border-rose-200">HQ 9-Month KPI</span>
+          </div>
+          <p class="text-gray-500 text-sm">
+            AI OCR invoice extraction, near-expiry stock tracking across all branches, 1-click clearance, and direct cross-branch replenishment linkage.
+          </p>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button type="button" id="expirySyncBtn" onclick="syncExpiryFromSheets(true)"
+            class="px-3.5 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg border border-slate-300 transition flex items-center gap-1.5 shadow-xs">
+            <i class="fa-solid fa-arrows-rotate text-sm"></i> Sync Sheet
+          </button>
+          <button type="button" id="expiryExportBtn" onclick="exportHqExpiryExcel()"
+            class="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition flex items-center gap-2 shadow-sm">
+            <i class="fa-solid fa-file-excel text-emerald-200 text-sm"></i> Export HQ Monthly Report (Excel)
+          </button>
+        </div>
       </div>
     </div>
+
+    <!-- KPI Horizon Overview -->
+    <div class="grid grid-cols-2 sm:grid-cols-5 gap-3.5 mb-5">
+      <div class="kpi-card rounded-xl p-4 shadow-sm border border-gray-200 bg-white">
+        <p class="text-[11px] text-rose-700 uppercase font-bold tracking-wider flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span> Critical (&lt; 3 Mos)
+        </p>
+        <p id="expiryKpiCritical" class="text-2xl font-black text-rose-600 mt-1">0</p>
+      </div>
+      <div class="kpi-card rounded-xl p-4 shadow-sm border border-gray-200 bg-white">
+        <p class="text-[11px] text-amber-700 uppercase font-bold tracking-wider">Urgent (3 - 6 Mos)</p>
+        <p id="expiryKpiUrgent" class="text-2xl font-black text-amber-600 mt-1">0</p>
+      </div>
+      <div class="kpi-card rounded-xl p-4 shadow-sm border border-rose-300 bg-rose-50/40">
+        <p class="text-[11px] text-rose-900 uppercase font-black tracking-wider flex items-center justify-between">
+          <span>HQ KPI (&lt; 9 Mos)</span>
+          <i class="fa-solid fa-bullseye text-rose-500"></i>
+        </p>
+        <p id="expiryKpi9m" class="text-2xl font-black text-rose-800 mt-1">0</p>
+      </div>
+      <div class="kpi-card rounded-xl p-4 shadow-sm border border-gray-200 bg-white">
+        <p class="text-[11px] text-blue-700 uppercase font-bold tracking-wider">Monitor (9 - 12 Mos)</p>
+        <p id="expiryKpi12m" class="text-2xl font-black text-blue-700 mt-1">0</p>
+      </div>
+      <div class="kpi-card rounded-xl p-4 shadow-sm border border-gray-200 bg-white col-span-2 sm:col-span-1">
+        <p class="text-[11px] text-emerald-700 uppercase font-bold tracking-wider flex items-center gap-1">
+          <i class="fa-solid fa-circle-check text-emerald-500"></i> Done Cleared
+        </p>
+        <p id="expiryKpiCleared" class="text-2xl font-black text-emerald-600 mt-1">0</p>
+      </div>
+    </div>
+
+    <!-- Ingestion & Action Zone -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
+      <!-- PDF Dropzone Card -->
+      <div class="md:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
+            <i class="fa-solid fa-file-invoice text-rose-500"></i> Extract Expiry Dates from Invoice PDF (Gemini OCR)
+          </h3>
+          <span class="text-[11px] text-gray-400">PDF, PNG, JPG</span>
+        </div>
+        <div id="expiryDropZone"
+          class="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-500 hover:bg-blue-50/30 transition cursor-pointer bg-slate-50/50">
+          <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-2 text-blue-600 text-xl">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+          </div>
+          <p class="text-sm font-bold text-gray-700">Drag & drop your OCR invoice document PDF here</p>
+          <p class="text-xs text-gray-400 mt-0.5">or click to browse — Gemini AI will extract batch #, item code, description, and expiry dates</p>
+          <input type="file" id="expiryFileInput" accept=".pdf,image/*" class="hidden">
+        </div>
+        <div class="flex items-center justify-between mt-2.5">
+          <div class="flex items-center gap-2">
+            <span id="expiryOcrSpinner" class="hidden"><i class="fa-solid fa-circle-notch fa-spin text-blue-600 text-xs"></i></span>
+            <span id="expiryOcrStatus" class="text-xs text-gray-500">Ready to upload invoice document.</span>
+          </div>
+          <button type="button" onclick="openQuickAddExpiryModal()" class="text-xs text-blue-600 hover:text-blue-800 font-bold hover:underline flex items-center gap-1">
+            <i class="fa-solid fa-plus-circle"></i> + Quick Add Single Item
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Sync & HQ Info Card -->
+      <div class="bg-gradient-to-br from-slate-900 to-blue-950 text-white rounded-xl shadow-sm p-5 flex flex-col justify-between">
+        <div>
+          <div class="flex items-center gap-2 mb-2">
+            <i class="fa-solid fa-cloud-bolt text-teal-400"></i>
+            <h4 class="text-sm font-bold text-white">Live Multi-Branch Expiry Cloud</h4>
+          </div>
+          <p class="text-xs text-blue-200 leading-relaxed mb-3">
+            All branches under your management share this live stock expiry database. Every invoice uploaded automatically syncs to your Google Sheet and feeds into the Replenishment Engine.
+          </p>
+          <div class="text-[11px] text-blue-300/90 space-y-1">
+            <div>• <b>HQ KPI:</b> At least 9 months advance notice.</div>
+            <div>• <b>Stock Clearance:</b> Adjust remaining qty or mark cleared anytime.</div>
+            <div>• <b>Smart Ordering:</b> Suggests transfers before buying from vendors.</div>
+          </div>
+        </div>
+        <div class="mt-4 pt-3 border-t border-blue-800 flex justify-between items-center text-xs">
+          <span class="text-teal-300 font-mono text-[11px]"><i class="fa-solid fa-shield-halved mr-1"></i>Google Apps Script Connected</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter & Search Controls Bar -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4 flex flex-wrap gap-3 items-center justify-between">
+      <div class="flex items-center gap-3 flex-wrap">
+        <!-- Branch Selector -->
+        <div>
+          <select id="expiryBranchFilter" class="border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold bg-white outline-none focus:ring-1 focus:ring-blue-400">
+            <option value="">All Branches (AM Overview)</option>
+            <option value="Kota Sentosa">Kota Sentosa</option>
+            <option value="Astana">Astana</option>
+            <option value="Malihah">Malihah</option>
+            <option value="Metrocity">Metrocity</option>
+            <option value="MJK">MJK</option>
+            <option value="Moyan">Moyan</option>
+            <option value="Semariang">Semariang</option>
+          </select>
+        </div>
+
+        <!-- Horizon Filter -->
+        <div>
+          <select id="expiryHorizonFilter" class="border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold bg-white outline-none focus:ring-1 focus:ring-blue-400 text-rose-700">
+            <option value="9months">Within 9 Months (HQ KPI Target)</option>
+            <option value="12months">Within 12 Months (All Clearance)</option>
+            <option value="critical">Critical Only (&lt; 6 Months)</option>
+            <option value="all">All Monitored Stock (Any Expiry)</option>
+            <option value="cleared">Cleared Stock Archive</option>
+          </select>
+        </div>
+
+        <!-- Search Input -->
+        <div class="relative">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+          <input id="expirySearchInput" type="text" placeholder="Search SKU, name, or batch…"
+            class="pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-xs focus:ring-1 focus:ring-blue-400 outline-none w-56">
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <span id="expiryFilteredCount" class="text-xs text-gray-400 font-bold">0 items</span>
+      </div>
+    </div>
+
+    <!-- Stock Expiry Table Grid -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-slate-900 text-white text-[11px] font-bold uppercase tracking-wider">
+              <th class="p-3">Branch</th>
+              <th class="p-3">Item Code</th>
+              <th class="p-3">Item Description</th>
+              <th class="p-3 text-center">Expiry Date</th>
+              <th class="p-3 text-center">Horizon / Urgency</th>
+              <th class="p-3 text-center">Remaining Qty</th>
+              <th class="p-3 text-center">Status</th>
+              <th class="p-3 text-center">Action</th>
+            </tr>
+          </thead>
+          <tbody id="expiryTableTbody" class="divide-y divide-gray-100 text-sm">
+            <!-- Rendered dynamically -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ─── OCR REVIEW MODAL ────────────────────────────────────────────────────── -->
+  <div id="expiryOcrModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs hidden p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in duration-150">
+      <div class="bg-gradient-to-r from-blue-900 to-indigo-900 text-white px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <i class="fa-solid fa-file-circle-check text-teal-300 text-lg"></i>
+          <div>
+            <h3 class="font-bold text-base">Review Extracted Invoice Line Items</h3>
+            <p id="expiryOcrFileName" class="text-xs text-blue-200 font-mono">Invoice.pdf</p>
+          </div>
+        </div>
+        <button onclick="closeOcrReviewModal()" class="text-white/80 hover:text-white text-lg p-1">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="p-4 bg-blue-50/60 border-b border-blue-100 flex items-center justify-between gap-4 flex-wrap">
+        <div class="flex items-center gap-2 text-xs">
+          <label class="font-bold text-gray-700">Assign to Branch:</label>
+          <select id="expiryOcrBranchSelect" class="border border-gray-300 rounded px-2.5 py-1 text-xs font-bold bg-white">
+            <option value="Kota Sentosa">Kota Sentosa</option>
+            <option value="Astana">Astana</option>
+            <option value="Malihah">Malihah</option>
+            <option value="Metrocity">Metrocity</option>
+            <option value="MJK">MJK</option>
+            <option value="Moyan">Moyan</option>
+            <option value="Semariang">Semariang</option>
+          </select>
+        </div>
+        <p class="text-xs text-gray-500">
+          Verify item details and dates before committing. Click fields to edit if needed.
+        </p>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-4">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-gray-100 text-gray-600 text-xs font-bold uppercase">
+              <th class="p-2 text-center w-10">Select</th>
+              <th class="p-2 w-24">Item Code</th>
+              <th class="p-2">Description</th>
+              <th class="p-2 w-28">Batch #</th>
+              <th class="p-2 w-28 text-center">Expiry (DD/MM/YYYY)</th>
+              <th class="p-2 w-20 text-center">Qty</th>
+              <th class="p-2 text-center w-12">Del</th>
+            </tr>
+          </thead>
+          <tbody id="expiryOcrTbody"></tbody>
+        </table>
+      </div>
+
+      <div class="p-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+        <button onclick="closeOcrReviewModal()" class="px-4 py-2 text-xs font-bold text-gray-600 hover:text-gray-800">
+          Cancel
+        </button>
+        <button id="expiryOcrCommitBtn" onclick="confirmOcrBatchInsert()"
+          class="px-5 py-2.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md transition flex items-center gap-2">
+          <i class="fa-solid fa-cloud-arrow-up"></i> Confirm & Save to Google Sheet
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── QUICK ADD SINGLE ITEM MODAL ────────────────────────────────────────── -->
+  <div id="expiryQuickAddModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs hidden p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in duration-150">
+      <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+        <h3 class="font-bold text-sm flex items-center gap-2">
+          <i class="fa-solid fa-plus-circle text-teal-400"></i> Quick Add Near-Expiry Stock
+        </h3>
+        <button onclick="closeQuickAddExpiryModal()" class="text-white/80 hover:text-white p-1">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <form id="expiryQuickAddForm" onsubmit="handleQuickAddSubmit(event)" class="p-6 space-y-4 text-xs">
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Branch</label>
+          <select id="qaBranch" class="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white font-bold">
+            <option value="Kota Sentosa">Kota Sentosa</option>
+            <option value="Astana">Astana</option>
+            <option value="Malihah">Malihah</option>
+            <option value="Metrocity">Metrocity</option>
+            <option value="MJK">MJK</option>
+            <option value="Moyan">Moyan</option>
+            <option value="Semariang">Semariang</option>
+          </select>
+        </div>
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Item Code / SKU</label>
+          <input id="qaItemCode" type="text" placeholder="e.g. 100234" required
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 font-mono font-bold">
+        </div>
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Item Description / Product Name</label>
+          <input id="qaItemDesc" type="text" placeholder="e.g. Paracetamol 500mg Tab" required
+            class="w-full border border-gray-300 rounded-lg px-3 py-2">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">Batch Number</label>
+            <input id="qaBatch" type="text" placeholder="e.g. B12345"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 font-mono">
+          </div>
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">Quantity</label>
+            <input id="qaQty" type="number" min="1" value="1" required
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 font-bold text-center">
+          </div>
+        </div>
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Expiry Date (DD/MM/YYYY)</label>
+          <input id="qaExpiry" type="text" placeholder="DD/MM/YYYY e.g. 15/09/2026" required
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 font-bold text-blue-700 font-mono text-center">
+        </div>
+
+        <div class="flex justify-end gap-2 pt-3 border-t">
+          <button type="button" onclick="closeQuickAddExpiryModal()" class="px-4 py-2 font-bold text-gray-600 hover:text-gray-800">
+            Cancel
+          </button>
+          <button type="submit" class="px-5 py-2 font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm">
+            Save Item
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ─── FLOATING EXPIRY TOAST NOTIFICATION ─────────────────────────────────── -->
+  <div id="expiryToast" class="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl text-xs font-bold flex items-center gap-2 transition-all duration-300 opacity-0 hidden border border-slate-700">
   </div>
 
 </main>
@@ -3209,6 +3547,7 @@
 <script src="js/db.js"></script>
 <script src="js/onedrive-sync.js"></script>
 <script src="js/patient.js"></script>
+<script src="js/expiry.js"></script>
 
 <script>
 // ─── TAB SWITCHER ─────────────────────────────────────────────────────────────
@@ -3223,6 +3562,9 @@ function switchTab(tab) {
 
   if (tab === 'patient' && typeof renderPatientModule === 'function') {
     renderPatientModule();
+  }
+  if (tab === 'expiry' && typeof renderExpiryUI === 'function') {
+    renderExpiryUI();
   }
 }
 
@@ -3336,6 +3678,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initAudit();
   initScheduler();
   initPatientModule();
+  initExpiryModule();
 
   // Fetch live data from Google Sheets (non-blocking background fetch).
   loadLiveSheetData();
