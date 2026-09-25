@@ -6,6 +6,13 @@ const PMG_EXPIRY_API_URL = 'https://script.google.com/macros/s/AKfycbyp0uv8uw2ck
 const EXPIRY_STORAGE_KEY = 'pmg_stock_expiry_data';
 const MONTH_NAMES = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
+// ─── DUAL-TIER GEMINI AI CONFIGURATION ───────────────────────────────────────
+// Primary: gemini-3.5-flash-lite (fast, cost-efficient, specialized for invoice OCR)
+// Secondary: gemini-3.5-flash (higher multi-category reasoning fallback)
+const EXPIRY_OCR_PRIMARY_MODEL   = 'gemini-3.5-flash-lite';
+const EXPIRY_OCR_SECONDARY_MODEL = 'gemini-3.5-flash';
+const PMG_GLOBAL_FALLBACK_KEY    = 'AIzaSyBxKYPJWxi3ILfxPTlQFytzoXJvIZ72m4k';
+
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let expiryItems = [];
 let pendingOcrItems = [];
@@ -320,7 +327,7 @@ async function handleInvoicePdfExtraction(file, branch) {
   if (spinnerEl) spinnerEl.classList.remove('hidden');
 
   try {
-    const apiKey = localStorage.getItem('pmg_gemini_key') || 'AIzaSyBxKYPJWxi3ILfxPTlQFytzoXJvIZ72m4k';
+    const apiKey = (localStorage.getItem('pmg_gemini_key') || '').trim() || PMG_GLOBAL_FALLBACK_KEY;
     const base64Data = await readFileAsBase64(file);
 
     if (statusEl) statusEl.textContent = `Analyzing invoice layout & extracting line items via Gemini Multimodal AI…`;
@@ -348,41 +355,59 @@ CRITICAL EXTRACTION RULES:
 Return ONLY a valid JSON array of objects. No markdown formatting, no explanations.
 `;
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    const payload = {
-      contents: [{
-        parts: [
-          { text: prompt },
-          {
-            inlineData: {
-              mimeType: file.type || 'application/pdf',
-              data: base64Data
-            }
+    const modelsToTry = [EXPIRY_OCR_PRIMARY_MODEL, EXPIRY_OCR_SECONDARY_MODEL];
+    let items = null;
+    let successfulModel = '';
+    let lastError = null;
+
+    for (const model of modelsToTry) {
+      try {
+        if (statusEl) statusEl.textContent = `Analyzing invoice with ${model}…`;
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const payload = {
+          contents: [{
+            parts: [
+              { text: prompt },
+              {
+                inlineData: {
+                  mimeType: file.type || 'application/pdf',
+                  data: base64Data
+                }
+              }
+            ]
+          }],
+          generationConfig: {
+            response_mime_type: "application/json"
           }
-        ]
-      }],
-      generationConfig: {
-        response_mime_type: "application/json"
+        };
+
+        const res = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const resData = await res.json();
+        if (resData.error || !resData.candidates || resData.candidates.length === 0) {
+          throw new Error(resData.error?.message || `Model ${model} returned empty response.`);
+        }
+
+        const rawText = resData.candidates[0].content.parts[0].text;
+        const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+        const parsed = JSON.parse(cleanJson);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          items = parsed;
+          successfulModel = model;
+          break;
+        }
+      } catch (err) {
+        console.warn(`[PMG Expiry] ${model} attempt failed:`, err);
+        lastError = err;
       }
-    };
-
-    const res = await fetch(geminiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    const resData = await res.json();
-    if (resData.error || !resData.candidates || resData.candidates.length === 0) {
-      throw new Error(resData.error?.message || 'Gemini could not parse this document.');
     }
 
-    const rawText = resData.candidates[0].content.parts[0].text;
-    const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-    const items = JSON.parse(cleanJson);
-
-    if (!Array.isArray(items) || items.length === 0) {
-      throw new Error('No stock items were identified in this document.');
+    if (!items || items.length === 0) {
+      throw lastError || new Error('No stock items were identified in this document.');
     }
 
     // Attach metadata and run heuristic validation
@@ -424,7 +449,7 @@ Return ONLY a valid JSON array of objects. No markdown formatting, no explanatio
     });
 
     if (spinnerEl) spinnerEl.classList.add('hidden');
-    if (statusEl) statusEl.textContent = `✓ Extracted ${pendingOcrItems.length} items from ${file.name} (AI verified)`;
+    if (statusEl) statusEl.textContent = `✓ Extracted ${pendingOcrItems.length} items from ${file.name} (via ${successfulModel})`;
 
     openOcrReviewModal(file.name);
   } catch (err) {
@@ -1102,3 +1127,20 @@ async function handleQuickAddSubmit(e) {
   document.getElementById('expiryQuickAddForm')?.reset();
   showExpiryToast(`✅ Added ${itemDescription} to Stock Expiry Tracker!`);
 }
+
+// ─── API KEY MANAGEMENT HELPER ───────────────────────────────────────────────
+function promptUpdateGeminiKey() {
+  const current = localStorage.getItem('pmg_gemini_key') || '';
+  const newKey = prompt('🔑 Google Gemini API Key:\n(Leave blank to use the built-in system key)', current);
+  if (newKey !== null) {
+    const trimmed = newKey.trim();
+    if (trimmed) {
+      localStorage.setItem('pmg_gemini_key', trimmed);
+      showExpiryToast('✅ Custom Gemini API key saved!');
+    } else {
+      localStorage.removeItem('pmg_gemini_key');
+      showExpiryToast('✅ Using built-in default system Gemini API key.');
+    }
+  }
+}
+window.promptUpdateGeminiKey = promptUpdateGeminiKey;

@@ -3046,11 +3046,19 @@
     <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
       <!-- PDF Dropzone Card -->
       <div class="md:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-        <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
           <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
-            <i class="fa-solid fa-file-invoice text-rose-500"></i> Extract Expiry Dates from Invoice PDF (Gemini OCR)
+            <i class="fa-solid fa-file-invoice text-rose-500"></i> Extract Expiry Dates from Invoice PDF
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+              <i class="fa-solid fa-wand-magic-sparkles text-amber-500"></i> Gemini 3.5 AI
+            </span>
           </h3>
-          <span class="text-[11px] text-gray-400">PDF, PNG, JPG</span>
+          <div class="flex items-center gap-2">
+            <span class="text-[11px] text-gray-400">PDF, PNG, JPG</span>
+            <button type="button" onclick="promptUpdateGeminiKey()" class="text-[10px] text-blue-700 hover:text-blue-900 font-bold hover:underline flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 border border-blue-200" title="Click to configure custom Gemini API key (optional)">
+              <i class="fa-solid fa-key text-[9px]"></i> API Key
+            </button>
+          </div>
         </div>
         <div id="expiryDropZone"
           class="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-500 hover:bg-blue-50/30 transition cursor-pointer bg-slate-50/50">
