@@ -282,6 +282,431 @@ const DEFAULT_PATIENTS_DATA = [
         notes: 'Check UA level and assess joint recovery.'
       }
     ]
+  },
+  {
+    id: 'PT-130412',
+    name: 'Liew Pay Sze',
+    ic: '021127-13-0412',
+    phone: '+601125029622',
+    gender: 'Female',
+    age: 24,
+    race: 'Chinese',
+    language: 'Chinese',
+    branch: 'Kota Sentosa',
+    conditions: ['Dyslipidemia', 'Weight Management'],
+    allergies: 'None known',
+    notes: 'Imported from Lark customer base. Monitored for body composition, lipid profile, and liver enzymes.',
+    createdAt: '2026-01-06',
+    nextTcaDate: '2026-10-20',
+    nextTcaPurpose: 'Review BW (Weight & Body Composition Analysis)',
+    nextTcaRecordedBy: 'William Chai (Pharmacist)',
+    encounters: [
+      {
+        id: 'ENC-LPS-08',
+        date: '2026-09-25',
+        recordedBy: 'William Chai (Pharmacist)',
+        chiefComplaint: 'Weight Management & Body Composition Review',
+        hpi: 'Patient on active weight management and lipid tracking regimen. BMI 37.3.',
+        vitals: {
+          bpSys: null,
+          bpDia: null,
+          pulse: null,
+          spo2: null,
+          weight: 82.9,
+          height: 149,
+          bmi: 37.3
+        },
+        bodyComposition: {
+          bodyFat: 50,
+          fatMass: 41.5,
+          visceralFat: 9.8,
+          subcutaneousFat: 31,
+          subcutaneousFatMass: 25.7,
+          musclePercent: null,
+          muscleMass: null,
+          bmr: 1956,
+          bmrWater: 'BMR: 1956 kcal | Sub Fat: 31% (25.7kg) | Visceral Fat: 9.8'
+        },
+        lipidPanel: {
+          tc: 4.31,
+          tg: 0.92,
+          hdl: 1.24,
+          ldl: 2.65,
+          ai: 2.4,
+          rChd: 3.4
+        },
+        liverPanel: { ast: null, alt: null, alb: null },
+        kidneyPanel: { ua: null, creatinine: null, urea: null, egfr: null },
+        glycemicHeme: {
+          glucose: 5.4,
+          glucoseType: 'Fasting',
+          hba1c: null,
+          hb: null,
+          hct: null
+        },
+        specialtyScans: {
+          teda: null,
+          tedaLink: null,
+          rossmaxAct: null
+        },
+        customTests: '',
+        preDiagnostic: 'Obesity Class II (BMI 37.3) with well-controlled lipid profile (TC 4.31, LDL 2.65, TG 0.92).',
+        planMedications: 'Lipofit 1/1 BD x 1 month\nFibolac 1/1 ON x 1 month',
+        planSupplements: 'Chia Seed\nApple cider TDS',
+        planCounselling: 'Advised calorie deficit, high fiber intake with Fibolac, and daily hydration.',
+        referral: 'Review on 20.10.2026 for body weight & body composition check.',
+        nextTcaDate: '2026-10-20',
+        nextTcaPurpose: 'Review BW',
+        attachedDocs: []
+      },
+      {
+        id: 'ENC-LPS-07',
+        date: '2026-07-25',
+        recordedBy: 'William Chai (Pharmacist)',
+        chiefComplaint: 'InBody Body Composition & Lipid Profile Review',
+        hpi: 'Comprehensive body composition scan and lipid monitoring.',
+        vitals: {
+          bpSys: 137,
+          bpDia: 97,
+          pulse: 91,
+          weight: 80.5,
+          height: 149,
+          bmi: 36.3,
+          spo2: null
+        },
+        bodyComposition: {
+          bodyFat: 50,
+          fatMass: 40.3,
+          musclePercent: 18.8,
+          muscleMass: 15.1,
+          proteinPercent: 15,
+          proteinMass: 12.1,
+          visceralFat: null,
+          bmr: null,
+          bmrWater: 'Fat: 50% (40.3kg) | Muscle: 18.8% (15.1kg) | Protein: 15% (12.1kg)'
+        },
+        lipidPanel: {
+          tc: 5.14,
+          tg: 0.73,
+          hdl: 1.38,
+          ldl: 3.42,
+          ai: 2.7,
+          rChd: 3.7
+        },
+        liverPanel: { ast: null, alt: null, alb: null },
+        kidneyPanel: { ua: null, creatinine: null, urea: null, egfr: null },
+        glycemicHeme: {
+          glucose: 5.6,
+          glucoseType: 'Fasting',
+          hba1c: null,
+          hb: null,
+          hct: null
+        },
+        specialtyScans: { teda: null, tedaLink: null, rossmaxAct: null },
+        preDiagnostic: 'Obesity Class II (BMI 36.3) with improved lipid control.',
+        planMedications: 'T. Lipofit 1/1 BD x 1 month\nT. Bectamin zinc 1/1 OD x 1 month',
+        planSupplements: 'Protein Shake banana',
+        planCounselling: 'High protein nutrition support with banana protein shake.',
+        referral: 'Review on 20.08.2026 for BW and InBody analysis.',
+        nextTcaDate: '2026-08-20',
+        nextTcaPurpose: 'BW, inbody analysis',
+        attachedDocs: []
+      },
+      {
+        id: 'ENC-LPS-06',
+        date: '2026-06-19',
+        recordedBy: 'William Chai (Pharmacist)',
+        chiefComplaint: 'Follow-up Consultation & Refill',
+        hpi: 'Patient compliant with Lipofit and companion supplements.',
+        vitals: {
+          bpSys: 132,
+          bpDia: 98,
+          pulse: 94,
+          weight: 78.0,
+          height: 149,
+          bmi: 35.1,
+          spo2: null
+        },
+        bodyComposition: { bodyFat: null, visceralFat: null, muscleMass: null, metabolicAge: null, bmrWater: '' },
+        lipidPanel: {
+          tc: 5.16,
+          tg: 0.63,
+          hdl: 1.57,
+          ldl: 3.30,
+          ai: 2.2,
+          rChd: 3.2
+        },
+        liverPanel: { ast: null, alt: null, alb: null },
+        kidneyPanel: { ua: null, creatinine: null, urea: null, egfr: null },
+        glycemicHeme: {
+          glucose: 5.0,
+          glucoseType: 'Fasting',
+          hba1c: null,
+          hb: null,
+          hct: null
+        },
+        specialtyScans: { teda: null, tedaLink: null, rossmaxAct: null },
+        preDiagnostic: 'Dyslipidemia showing positive response (TC 5.16, HDL 1.57).',
+        planMedications: 'T. Lipofit 1/1 BD x 1 month\nT. Bectamin zinc 1/1 OD x 1 month\nT. Coq plus 1/1 OD x 1 month',
+        planSupplements: '',
+        planCounselling: '',
+        referral: 'Review on 15.07.2026 for WFR lipidscan and TEDA.',
+        nextTcaDate: '2026-07-15',
+        nextTcaPurpose: 'WFR lipidscan, TEDA',
+        attachedDocs: []
+      },
+      {
+        id: 'ENC-LPS-05',
+        date: '2026-05-09',
+        recordedBy: 'William Chai (Pharmacist)',
+        chiefComplaint: 'Monthly Lipidscan Assessment',
+        hpi: 'Routine monthly lipid scan and TEDA wellness analysis.',
+        vitals: {
+          bpSys: 117,
+          bpDia: 115,
+          pulse: 92,
+          weight: 80.0,
+          height: 149,
+          bmi: 36.0,
+          spo2: null
+        },
+        bodyComposition: { bodyFat: null, visceralFat: null, muscleMass: null, metabolicAge: null, bmrWater: '' },
+        lipidPanel: {
+          tc: 5.85,
+          tg: 1.06,
+          hdl: 1.34,
+          ldl: 4.03,
+          ai: 3.3,
+          rChd: 4.3
+        },
+        liverPanel: { ast: null, alt: null, alb: null },
+        kidneyPanel: { ua: null, creatinine: null, urea: null, egfr: null },
+        glycemicHeme: {
+          glucose: 5.0,
+          glucoseType: 'Fasting',
+          hba1c: null,
+          hb: null,
+          hct: null
+        },
+        specialtyScans: {
+          teda: 'https://sg-report.qiaolz.com/#/pages/reportTv/reportTvMain?rid=ecb47dfb-2b11-4aee-9a2f-40c1a6b3b225&lang=',
+          tedaLink: 'https://sg-report.qiaolz.com/#/pages/reportTv/reportTvMain?rid=ecb47dfb-2b11-4aee-9a2f-40c1a6b3b225&lang=',
+          rossmaxAct: null
+        },
+        preDiagnostic: 'Mild dyslipidemia rebound (TC 5.85). Normal fasting glucose (5.0).',
+        planMedications: 'T. Lipofit 1/1 BD x 1 month\nT. Bectamin zinc 1/1 OD x 1 month\nT. Coq plus 1/1 OD x 1 month',
+        planSupplements: '',
+        planCounselling: 'Advised 1 month after WFR lipidscan, BP, TEDA.',
+        referral: 'Review on 07.06.2026 for follow-up.',
+        nextTcaDate: '2026-06-07',
+        nextTcaPurpose: 'Lipidscan, BP, TEDA follow-up',
+        attachedDocs: []
+      },
+      {
+        id: 'ENC-LPS-04',
+        date: '2026-04-10',
+        recordedBy: 'William Chai (Pharmacist)',
+        chiefComplaint: 'Monthly Review & Vascular Risk Assessment',
+        hpi: 'Vascular assessment, SpO2, and lipid panel check.',
+        vitals: {
+          bpSys: 129,
+          bpDia: 104,
+          pulse: 99,
+          weight: 80.0,
+          height: 149,
+          bmi: 36.0,
+          spo2: 97
+        },
+        bodyComposition: { bodyFat: null, visceralFat: null, muscleMass: null, metabolicAge: null, bmrWater: '' },
+        lipidPanel: {
+          tc: 5.33,
+          tg: 1.08,
+          hdl: 1.31,
+          ldl: 3.52,
+          ai: 3.0,
+          rChd: 4.0
+        },
+        liverPanel: { ast: null, alt: null, alb: null },
+        kidneyPanel: { ua: null, creatinine: null, urea: null, egfr: null },
+        glycemicHeme: {
+          glucose: 5.5,
+          glucoseType: 'Fasting',
+          hba1c: null,
+          hb: null,
+          hct: null
+        },
+        specialtyScans: {
+          rossmaxAct: '1',
+          teda: 'https://sg-report.qiaolz.com/#/pages/reportTv/reportTvMain?rid=e8c4d82b-445f-4175-864a-5f41f6cad9c3&lang=',
+          tedaLink: 'https://sg-report.qiaolz.com/#/pages/reportTv/reportTvMain?rid=e8c4d82b-445f-4175-864a-5f41f6cad9c3&lang='
+        },
+        preDiagnostic: 'Pre-hypertension with borderline diastolic BP and ACT 1 vascular status.',
+        planMedications: 'T. Tyreps 1/1 BD x 1 month\nT. Lipofit 1/1 BD x 1 month\nT. Bectamin zinc 1/1 OD x 1 month',
+        planSupplements: '',
+        planCounselling: '',
+        referral: 'Review on 07.05.2026.',
+        nextTcaDate: '2026-05-07',
+        nextTcaPurpose: 'Monthly Review & Refill',
+        attachedDocs: []
+      },
+      {
+        id: 'ENC-LPS-03',
+        date: '2026-03-12',
+        recordedBy: 'William Chai (Pharmacist)',
+        chiefComplaint: 'Comprehensive Health & Liver/Lipid Profile Review',
+        hpi: 'Liver enzymes, lipid ratio, and repeated BP measurement.',
+        vitals: {
+          bpSys: 141,
+          bpDia: 105,
+          pulse: 85,
+          weight: 78.8,
+          height: 149,
+          bmi: 35.5,
+          spo2: null
+        },
+        bodyComposition: { bodyFat: null, visceralFat: null, muscleMass: null, metabolicAge: null, bmrWater: '2nd BP: 117/87 PR 82' },
+        lipidPanel: {
+          tc: 6.16,
+          tg: 0.85,
+          hdl: 1.24,
+          ldl: 4.53,
+          ai: 3.97,
+          rChd: 4.97
+        },
+        liverPanel: {
+          alt: 46,
+          ast: 33,
+          alb: 4.83
+        },
+        kidneyPanel: { ua: null, creatinine: null, urea: null, egfr: null },
+        glycemicHeme: {
+          glucose: 5.3,
+          glucoseType: 'Fasting',
+          hba1c: null,
+          hb: null,
+          hct: null
+        },
+        specialtyScans: {
+          teda: 'https://sg-report.qiaolz.com/#/pages/reportTv/reportTvMain?rid=6c74e0c8-6014-4482-82c9-ff6376381542&lang=',
+          tedaLink: 'https://sg-report.qiaolz.com/#/pages/reportTv/reportTvMain?rid=6c74e0c8-6014-4482-82c9-ff6376381542&lang=',
+          rossmaxAct: null
+        },
+        preDiagnostic: 'Elevated TC (6.16) and LDL (4.53) with mild ALT elevation (46). AST/ALT ratio 0.7.',
+        planMedications: 'T. Tyreps 1/1 BD x 1 month\nT. Lipofit 1/1 BD x 1 month\nT. Bectamin zinc 1/1 OD x 1 month',
+        planSupplements: '',
+        planCounselling: '',
+        referral: 'Review on 06.04.2026.',
+        nextTcaDate: '2026-04-06',
+        nextTcaPurpose: 'Follow-up Consultation & Refill',
+        attachedDocs: []
+      },
+      {
+        id: 'ENC-LPS-02',
+        date: '2026-02-07',
+        recordedBy: 'William Chai (Pharmacist)',
+        chiefComplaint: 'Follow-up Lipid & TEDA Review',
+        hpi: 'Lipid tracking follow-up. TEDA connection failed.',
+        vitals: { bpSys: null, bpDia: null, pulse: null, spo2: null, weight: null, height: 149, bmi: null },
+        bodyComposition: { bodyFat: null, visceralFat: null, muscleMass: null, metabolicAge: null, bmrWater: '' },
+        lipidPanel: {
+          tc: 5.84,
+          tg: 0.94,
+          hdl: 1.43,
+          ldl: 3.98,
+          ai: 3.0,
+          rChd: 4.0
+        },
+        liverPanel: { ast: null, alt: null, alb: null },
+        kidneyPanel: { ua: null, creatinine: null, urea: null, egfr: null },
+        glycemicHeme: {
+          glucose: 4.7,
+          glucoseType: 'Fasting',
+          hba1c: null,
+          hb: null,
+          hct: null
+        },
+        specialtyScans: {
+          teda: 'TEDA scan attempted (failed)',
+          tedaLink: null,
+          rossmaxAct: null
+        },
+        preDiagnostic: 'Improving lipid panel (TC 5.84 from 6.59).',
+        planMedications: '',
+        planSupplements: '',
+        planCounselling: 'Teda and wfr follow-up scheduled.',
+        referral: 'Review on 03.03.2026 for TEDA and WFR.',
+        nextTcaDate: '2026-03-03',
+        nextTcaPurpose: 'TEDA and WFR review',
+        attachedDocs: []
+      },
+      {
+        id: 'ENC-LPS-01',
+        date: '2026-01-06',
+        recordedBy: 'William Chai (Pharmacist)',
+        chiefComplaint: 'Initial Health Screening & Baseline Lipid Assessment',
+        hpi: 'Baseline health screening with POCT lipid panel and TEDA scan.',
+        vitals: { bpSys: null, bpDia: null, pulse: null, spo2: null, weight: null, height: 149, bmi: null },
+        bodyComposition: { bodyFat: null, visceralFat: null, muscleMass: null, metabolicAge: null, bmrWater: '' },
+        lipidPanel: {
+          tc: 6.59,
+          tg: 1.42,
+          hdl: 1.42,
+          ldl: 4.52,
+          ai: 3.64,
+          rChd: 4.64
+        },
+        liverPanel: { ast: null, alt: null, alb: null },
+        kidneyPanel: { ua: null, creatinine: null, urea: null, egfr: null },
+        glycemicHeme: {
+          glucose: 5.1,
+          glucoseType: 'Fasting',
+          hba1c: null,
+          hb: null,
+          hct: null
+        },
+        specialtyScans: {
+          teda: 'https://sg-report.qiaolz.com/#/pages/reportTv/reportTvMain?rid=e3e9890c-2e38-4035-9355-477c61ce45e7&lang=',
+          tedaLink: 'https://sg-report.qiaolz.com/#/pages/reportTv/reportTvMain?rid=e3e9890c-2e38-4035-9355-477c61ce45e7&lang=',
+          rossmaxAct: null
+        },
+        preDiagnostic: 'Elevated total cholesterol (6.59) and LDL (4.52). Initiated Livason.',
+        planMedications: 'T. Livason 1/1 BD x 1 month',
+        planSupplements: '',
+        planCounselling: '',
+        referral: 'Review on 02.02.2026 for TEDA follow-up.',
+        nextTcaDate: '2026-02-02',
+        nextTcaPurpose: 'TEDA Follow-up Review',
+        attachedDocs: []
+      }
+    ],
+    medications: [
+      {
+        id: 'MED-LPS-1',
+        name: 'Lipofit',
+        dosage: '1 tab BD (With meals)',
+        lastDispensed: '2026-09-25',
+        supplyDays: 30,
+        nextRefillDate: '2026-10-25'
+      },
+      {
+        id: 'MED-LPS-2',
+        name: 'Fibolac',
+        dosage: '1 sachet ON',
+        lastDispensed: '2026-09-25',
+        supplyDays: 30,
+        nextRefillDate: '2026-10-25'
+      }
+    ],
+    appointments: [
+      {
+        id: 'APT-LPS-1',
+        date: '2026-10-20',
+        time: '10:00',
+        purpose: 'Review BW (Weight & Body Composition Analysis)',
+        status: 'Scheduled',
+        notes: 'Review weight, InBody metrics, and dietary adherence.'
+      }
+    ]
   }
 ];
 
@@ -321,6 +746,18 @@ function loadPatientsData() {
       const bUpper = String(p.branch || '').toUpperCase().replace(/[\s\-_\(\)\[\]]/g, '');
       if (!p.branch || bUpper.includes('SENTOSA') || bUpper.includes('KS01') || bUpper === 'KS' || bUpper === 'ALL' || bUpper === 'ALLBRANCHES') {
         p.branch = 'Kota Sentosa';
+      }
+    });
+
+    // Auto-merge any default patient profiles (e.g. Liew Pay Sze) if not yet in user localStorage
+    DEFAULT_PATIENTS_DATA.forEach(defPt => {
+      const exists = patientsData.some(p => {
+        const icA = String(p.ic || '').replace(/\D/g, '');
+        const icB = String(defPt.ic || '').replace(/\D/g, '');
+        return (icA && icB && icA === icB) || p.id === defPt.id;
+      });
+      if (!exists) {
+        patientsData.push(JSON.parse(JSON.stringify(defPt)));
       }
     });
   }
@@ -4592,6 +5029,492 @@ function openOneDriveGuideModal() {
 function closeOneDriveGuideModal() {
   const modal = document.getElementById('oneDriveGuideModal');
   if (modal) modal.classList.add('hidden');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ─── LARK CUSTOMER BASE IMPORT & MIGRATION ENGINE ────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+
+let pendingLarkPatients = [];
+
+function openLarkImportModal() {
+  const modal = document.getElementById('patientLarkImportModal');
+  if (!modal) return;
+
+  const currentBranch = document.getElementById('patientBranchFilter')?.value || 'Kota Sentosa';
+  const branchSelect = document.getElementById('larkImportBranch');
+  if (branchSelect && currentBranch) {
+    branchSelect.value = currentBranch;
+  }
+
+  // Reset state
+  pendingLarkPatients = [];
+  const previewArea = document.getElementById('larkImportPreviewArea');
+  if (previewArea) previewArea.classList.add('hidden');
+  const badge = document.getElementById('larkParseCountBadge');
+  if (badge) badge.textContent = '';
+  const confirmBtn = document.getElementById('larkConfirmImportBtn');
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.className = 'px-5 py-2.5 text-xs font-bold bg-gray-300 text-gray-500 cursor-not-allowed rounded-xl transition flex items-center gap-2 shadow-sm';
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function closeLarkImportModal() {
+  const modal = document.getElementById('patientLarkImportModal');
+  if (modal) modal.classList.add('hidden');
+  pendingLarkPatients = [];
+}
+
+function handleLarkImportFile(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target.result;
+    const txtArea = document.getElementById('larkImportText');
+    if (txtArea) txtArea.value = text;
+    previewLarkImport();
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function previewLarkImport() {
+  const text = document.getElementById('larkImportText')?.value.trim();
+  if (!text) {
+    alert('Please paste Lark patient text or load a file first.');
+    return;
+  }
+
+  const branch = document.getElementById('larkImportBranch')?.value || 'Kota Sentosa';
+  pendingLarkPatients = parseMultipleLarkCustomers(text, branch);
+
+  const previewArea = document.getElementById('larkImportPreviewArea');
+  const cardsContainer = document.getElementById('larkImportPreviewCards');
+  const badge = document.getElementById('larkParseCountBadge');
+  const confirmBtn = document.getElementById('larkConfirmImportBtn');
+
+  if (!pendingLarkPatients.length) {
+    alert('Could not find valid patient records in the pasted text. Please verify the format.');
+    return;
+  }
+
+  if (badge) badge.textContent = `Found ${pendingLarkPatients.length} patient profile(s)`;
+  if (previewArea) previewArea.classList.remove('hidden');
+
+  if (cardsContainer) {
+    cardsContainer.innerHTML = pendingLarkPatients.map((p, idx) => {
+      const latestEnc = p.encounters?.[0];
+      return `
+        <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl hover:border-blue-300 transition">
+          <div class="flex items-center justify-between flex-wrap gap-1 mb-1">
+            <span class="font-extrabold text-blue-900 text-sm flex items-center gap-1.5">
+              <i class="fa-solid fa-user text-blue-700"></i> ${escHtml(p.name)}
+            </span>
+            <span class="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full">${escHtml(p.branch)}</span>
+          </div>
+          <div class="text-[11px] text-gray-600 space-x-2">
+            <span>IC: <b>${escHtml(p.ic || 'N/A')}</b></span>
+            <span>• Tel: <b>${escHtml(p.phone || 'N/A')}</b></span>
+            <span>• ${p.gender}, ${p.age} yrs (${p.race})</span>
+          </div>
+          <div class="mt-2 flex items-center gap-2 flex-wrap text-[11px]">
+            <span class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded font-bold">
+              <i class="fa-solid fa-clipboard-list mr-1"></i>${p.encounters.length} Clinical Visits
+            </span>
+            ${latestEnc?.vitals?.weight ? `
+              <span class="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded font-medium">
+                Latest BW: ${latestEnc.vitals.weight}kg (BMI: ${latestEnc.vitals.bmi || '—'})
+              </span>
+            ` : ''}
+            ${latestEnc?.lipidPanel?.tc ? `
+              <span class="bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded font-medium">
+                Latest TC: ${latestEnc.lipidPanel.tc} mmol/L
+              </span>
+            ` : ''}
+            ${latestEnc?.nextTcaDate ? `
+              <span class="bg-purple-50 text-purple-800 border border-purple-200 px-2 py-0.5 rounded font-bold">
+                ⏰ TCA: ${latestEnc.nextTcaDate} (${escHtml(latestEnc.nextTcaPurpose || 'Follow-up')})
+              </span>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  if (confirmBtn) {
+    confirmBtn.disabled = false;
+    confirmBtn.className = 'px-5 py-2.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md transition flex items-center gap-2 cursor-pointer';
+  }
+}
+
+function confirmLarkImport() {
+  if (!pendingLarkPatients || !pendingLarkPatients.length) return;
+
+  let addedCount = 0;
+  let updatedCount = 0;
+
+  pendingLarkPatients.forEach(newPt => {
+    const existingIdx = patientsData.findIndex(p => {
+      const icA = String(p.ic || '').replace(/\D/g, '');
+      const icB = String(newPt.ic || '').replace(/\D/g, '');
+      return (icA && icB && icA === icB) || (p.name.trim().toLowerCase() === newPt.name.trim().toLowerCase());
+    });
+
+    if (existingIdx >= 0) {
+      // Merge encounters without duplicating by date
+      const existingPt = patientsData[existingIdx];
+      const existingDates = new Set((existingPt.encounters || []).map(e => e.date));
+      newPt.encounters.forEach(enc => {
+        if (!existingDates.has(enc.date)) {
+          existingPt.encounters.push(enc);
+        }
+      });
+      existingPt.encounters.sort((a, b) => b.date.localeCompare(a.date));
+      if (newPt.nextTcaDate) {
+        existingPt.nextTcaDate = newPt.nextTcaDate;
+        existingPt.nextTcaPurpose = newPt.nextTcaPurpose;
+      }
+      if (newPt.medications?.length) existingPt.medications = newPt.medications;
+      if (newPt.phone) existingPt.phone = newPt.phone;
+      updatedCount++;
+    } else {
+      patientsData.unshift(newPt);
+      addedCount++;
+    }
+  });
+
+  savePatientsData();
+  closeLarkImportModal();
+  renderPatientModule();
+
+  const firstPt = pendingLarkPatients[0];
+  if (firstPt) {
+    const matched = patientsData.find(p => p.name === firstPt.name || p.ic === firstPt.ic);
+    if (matched) viewPatientProfile(matched.id);
+  }
+
+  showExpiryToast(`✅ Imported ${addedCount + updatedCount} Lark patient(s) successfully!`);
+}
+
+/**
+ * Parses multiple Lark customer records from concatenated text or export files.
+ */
+function parseMultipleLarkCustomers(rawText, defaultBranch = 'Kota Sentosa') {
+  if (!rawText || !rawText.trim()) return [];
+  const clean = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  // Check if multiple patients exist by looking for "Essential info" occurrences or "| Name"
+  const splitRegex = /(?=(?:^[^\n|]+\d{2,4}\s*\nEssential info|(?:\n|^)Essential info))/mi;
+  const chunks = clean.split(splitRegex).map(c => c.trim()).filter(c => c.length > 20);
+
+  if (chunks.length <= 1) {
+    const nameMatches = clean.match(/\|\s*Name\s*\|/gi);
+    if (nameMatches && nameMatches.length > 1) {
+      const nameSplitRegex = /(?=(?:^|\n)[^\n|]*\n?\|\s*Name\s*\|)/mi;
+      const subChunks = clean.split(nameSplitRegex).map(c => c.trim()).filter(c => c.length > 20);
+      if (subChunks.length > 1) {
+        return subChunks.map(chunk => parseLarkCustomer(chunk, defaultBranch)).filter(Boolean);
+      }
+    }
+    const single = parseLarkCustomer(clean, defaultBranch);
+    return single ? [single] : [];
+  }
+
+  return chunks.map(chunk => parseLarkCustomer(chunk, defaultBranch)).filter(Boolean);
+}
+
+/**
+ * Parses a single Lark customer text record into a structured PMG Patient object.
+ */
+function parseLarkCustomer(text, defaultBranch = 'Kota Sentosa') {
+  const clean = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  // Helper regex table extractor
+  const getTableVal = (key) => {
+    const rx = new RegExp(`\\|\\s*${key}\\s*\\|\\s*([^|\\n]+?)\\s*\\|`, 'i');
+    const m = clean.match(rx);
+    return m ? m[1].trim() : '';
+  };
+
+  // 1. Demographics
+  let name = getTableVal('Name');
+  if (!name) {
+    const firstLine = clean.split('\n')[0].trim();
+    name = firstLine.replace(/\s+\d{4}$/, '').trim();
+  }
+  if (!name) name = 'Lark Patient';
+
+  let rawIc = getTableVal('IC');
+  let formattedIc = rawIc;
+  if (/^\d{12}$/.test(rawIc)) {
+    formattedIc = `${rawIc.slice(0, 6)}-${rawIc.slice(6, 8)}-${rawIc.slice(8)}`;
+  }
+
+  let rawPhone = getTableVal('Tel') || getTableVal('Phone');
+  let formattedPhone = rawPhone;
+  if (rawPhone.startsWith('60')) formattedPhone = '+' + rawPhone;
+  else if (rawPhone.startsWith('01')) formattedPhone = '+6' + rawPhone;
+
+  let age = parseInt(getTableVal('Age'), 10);
+  if (isNaN(age) && rawIc && rawIc.length >= 6) {
+    const yr = parseInt(rawIc.slice(0, 2), 10);
+    const fullYr = yr < 30 ? 2000 + yr : 1900 + yr;
+    age = new Date().getFullYear() - fullYr;
+  }
+
+  const genderRaw = getTableVal('Gender').toLowerCase();
+  const gender = genderRaw.includes('female') ? 'Female' : 'Male';
+
+  let race = getTableVal('Ethinic') || getTableVal('Ethnic') || getTableVal('Race') || 'Chinese';
+  race = race.charAt(0).toUpperCase() + race.slice(1).toLowerCase();
+
+  const drugAllergy = getTableVal('Drug allergy') || 'None known';
+  const allergies = (drugAllergy === '-' || drugAllergy === '') ? 'None known' : drugAllergy;
+
+  const medHistory = getTableVal('Medical hx');
+  const medicationHistory = getTableVal('Medication hx');
+  const notesArr = [];
+  if (medHistory && medHistory !== '-') notesArr.push(`Medical Hx: ${medHistory}`);
+  if (medicationHistory && medicationHistory !== '-') notesArr.push(`Meds Hx: ${medicationHistory}`);
+
+  // 2. Encounters Extraction
+  const visitRegex = /(?:Date(?:\s+visit)?[:：]\s*([0-9\.\-/]+))/gi;
+  const matches = [];
+  let m;
+  while ((m = visitRegex.exec(clean)) !== null) {
+    matches.push({ index: m.index, dateStr: m[1].trim() });
+  }
+
+  // Pre-extract patient height if recorded anywhere in text
+  const globalHtMatch = clean.match(/(?:Ht|Height)[:：\s]*([\d\.]+)/i);
+  const commonHeight = globalHtMatch ? parseFloat(globalHtMatch[1]) : 149;
+
+  const encounters = [];
+
+  for (let i = 0; i < matches.length; i++) {
+    const cur = matches[i];
+    const startIndex = cur.index;
+    const endIndex = (i + 1 < matches.length) ? matches[i + 1].index : clean.length;
+    const block = clean.slice(startIndex, endIndex);
+
+    // Normalize glued numbers and words (e.g. 5.84HDL -> 5.84 HDL)
+    const normBlock = block.replace(/([0-9\.]+)([A-Za-z])/g, '$1 $2').replace(/([A-Za-z])([0-9])/g, '$1 $2');
+
+    // Date formatting to YYYY-MM-DD
+    let isoDate = cur.dateStr;
+    const dp = cur.dateStr.replace(/[-/]/g, '.').split('.');
+    if (dp.length === 3) {
+      const d = dp[0].padStart(2, '0');
+      const mo = dp[1].padStart(2, '0');
+      let yr = dp[2];
+      if (yr.length === 2) yr = '20' + yr;
+      isoDate = `${yr}-${mo}-${d}`;
+    }
+
+    const getBlockVal = (key) => {
+      const rx = new RegExp(`\\|\\s*${key}\\s*\\|\\s*([^|\\n]+?)\\s*\\|`, 'i');
+      const bm = normBlock.match(rx);
+      return bm ? bm[1].trim() : '';
+    };
+
+    const assessment = (getBlockVal('Assessment') || normBlock).replace(/([0-9\.]+)([A-Za-z])/g, '$1 $2');
+    const plan = getBlockVal('Plan') || '';
+    let nextVisitRaw = getBlockVal('Next visit') || (normBlock.match(/Next visit[:：]?\s*([^\n|]+)/i)?.[1] || '');
+    if (!nextVisitRaw && normBlock.includes('⏰')) {
+      const clockMatch = normBlock.match(/([^\n]*⏰[^\n]*)/);
+      if (clockMatch) nextVisitRaw = clockMatch[1];
+    }
+    const attendedBy = getBlockVal('Attended by') || 'William Chai (Pharmacist)';
+
+    // Extract Vitals
+    const bpMatch = assessment.match(/BP[:：\s]*(\d{2,3})\s*[\/x]\s*(\d{2,3})/i);
+    const pulseMatch = assessment.match(/(?:PR|Pulse)[:：\s]*(\d{2,3})/i);
+    const spo2Match = assessment.match(/SpO2[:：\s]*(\d{2,3})/i);
+    const bwMatch = assessment.match(/(?:BW|Weight)[:：\s]*([\d\.]+)/i);
+    const htMatch = assessment.match(/(?:Ht|Height)[:：\s]*([\d\.]+)/i);
+    const bmiMatch = assessment.match(/BMI[:：\s]*([\d\.]+)/i);
+
+    const bpSys = bpMatch ? parseInt(bpMatch[1], 10) : null;
+    const bpDia = bpMatch ? parseInt(bpMatch[2], 10) : null;
+    const pulse = pulseMatch ? parseInt(pulseMatch[1], 10) : null;
+    const spo2 = spo2Match ? parseInt(spo2Match[1], 10) : null;
+    const weight = bwMatch ? parseFloat(bwMatch[1]) : null;
+    const height = htMatch ? parseFloat(htMatch[1]) : commonHeight;
+    let bmi = bmiMatch ? parseFloat(bmiMatch[1]) : null;
+    if (!bmi && weight && height) {
+      const hm = height / 100;
+      bmi = +(weight / (hm * hm)).toFixed(1);
+    }
+
+    // Extract Lipids
+    const tcM = assessment.match(/\bTC[:：\s]*([\d\.]+)/i);
+    const tgM = assessment.match(/\bTG[:：\s]*([\d\.]+)/i);
+    const hdlM = assessment.match(/\bHDL[:：\s]*([\d\.]+)/i);
+    const ldlM = assessment.match(/\bLDL[:：\s]*([\d\.]+)/i);
+    const aiM = assessment.match(/\bAI[:：\s]*([\d\.]+)/i);
+    const rchdM = assessment.match(/(?:R-?CHD|CHD)[:：\s]*([\d\.]+)/i);
+
+    const tc = tcM ? parseFloat(tcM[1]) : null;
+    const tg = tgM ? parseFloat(tgM[1]) : null;
+    const hdl = hdlM ? parseFloat(hdlM[1]) : null;
+    const ldl = ldlM ? parseFloat(ldlM[1]) : null;
+    let ai = aiM ? parseFloat(aiM[1]) : null;
+    let rChd = rchdM ? parseFloat(rchdM[1]) : null;
+    if (!ai && tc && hdl) ai = +((tc - hdl) / hdl).toFixed(2);
+    if (!rChd && tc && hdl) rChd = +(tc / hdl).toFixed(2);
+
+    // Extract Glycemic
+    const gluM = assessment.match(/(?:Glu|Fbg|Glucose)[:：\s]*([\d\.]+)/i);
+    const glucose = gluM ? parseFloat(gluM[1]) : null;
+
+    // Extract Liver
+    const altM = assessment.match(/\bALT[:：\s]*([\d\.]+)/i);
+    const astM = assessment.match(/\bAST[:：\s]*([\d\.]+)/i);
+    const albM = assessment.match(/\bALB[:：\s]*([\d\.]+)/i);
+
+    // Extract Body Composition
+    const fatPctM = assessment.match(/\bFat%?[:：\s]*([\d\.]+)%/i);
+    const fatMassM = assessment.match(/Fat mass[:：\s]*([\d\.]+)/i);
+    const musclePctM = assessment.match(/Muscle%?[:：\s]*([\d\.]+)%/i);
+    const muscleMassM = assessment.match(/Muscle mass[:：\s]*([\d\.]+)/i);
+    const viscM = assessment.match(/Visceral fat[:：\s]*([\d\.]+)/i);
+    const bmrM = assessment.match(/BMR[:：\s]*([\d\.]+)/i);
+
+    // Specialty / TEDA
+    const tedaUrlM = normBlock.match(/(https:\/\/sg-report\.qiaolz\.com[^\s|]+)/i);
+    const actM = assessment.match(/\bACT[:：\s]*(\d+)/i);
+
+    // TCA Parse
+    let nextTcaDate = '';
+    let nextTcaPurpose = '';
+    if (nextVisitRaw) {
+      const dMatch = nextVisitRaw.match(/(\d{4}-\d{2}-\d{2})|(\d{2}\.\d{2}\.\d{4})/);
+      if (dMatch) {
+        if (dMatch[1]) nextTcaDate = dMatch[1];
+        else {
+          const p = dMatch[2].split('.');
+          nextTcaDate = `${p[2]}-${p[1]}-${p[0]}`;
+        }
+        nextTcaPurpose = nextVisitRaw.replace(/⏰?\d{4}-\d{2}-\d{2}/, '').replace(/⏰?\d{2}\.\d{2}\.\d{4}/, '').replace(/\d{2}:\d{2}/, '').replace(/[⏰|]/g, '').trim();
+      }
+    }
+
+    encounters.push({
+      id: 'ENC-' + Date.now().toString(36) + '-' + (i + 1),
+      date: isoDate,
+      recordedBy: attendedBy.includes('William') ? 'William Chai (Pharmacist)' : attendedBy,
+      chiefComplaint: (i === 0) ? 'Initial Health Screening & Baseline Lipid Assessment' : 'Chronic Health & POCT Follow-up Review',
+      hpi: `Lark transferred consultation history on ${isoDate}.`,
+      vitals: {
+        bpSys,
+        bpDia,
+        pulse,
+        spo2,
+        weight,
+        height,
+        bmi
+      },
+      bodyComposition: {
+        bodyFat: fatPctM ? parseFloat(fatPctM[1]) : null,
+        fatMass: fatMassM ? parseFloat(fatMassM[1]) : null,
+        musclePercent: musclePctM ? parseFloat(musclePctM[1]) : null,
+        muscleMass: muscleMassM ? parseFloat(muscleMassM[1]) : null,
+        visceralFat: viscM ? parseFloat(viscM[1]) : null,
+        bmr: bmrM ? parseFloat(bmrM[1]) : null,
+        bmrWater: ''
+      },
+      lipidPanel: {
+        tc,
+        tg,
+        hdl,
+        ldl,
+        ai,
+        rChd
+      },
+      liverPanel: {
+        alt: altM ? parseFloat(altM[1]) : null,
+        ast: astM ? parseFloat(astM[1]) : null,
+        alb: albM ? parseFloat(albM[1]) : null
+      },
+      kidneyPanel: { ua: null, creatinine: null, urea: null, egfr: null },
+      glycemicHeme: {
+        glucose,
+        glucoseType: 'Fasting',
+        hba1c: null,
+        hb: null,
+        hct: null
+      },
+      specialtyScans: {
+        teda: tedaUrlM ? tedaUrlM[1] : (normBlock.includes('Teda failed') ? 'TEDA scan attempted (failed)' : null),
+        tedaLink: tedaUrlM ? tedaUrlM[1] : null,
+        rossmaxAct: actM ? actM[1] : null
+      },
+      preDiagnostic: tc && tc > 5.2 ? 'Dyslipidemia monitored via POCT lipid profile.' : '',
+      planMedications: plan.replace(/\s{2,}/g, '\n').trim(),
+      planSupplements: '',
+      planCounselling: '',
+      referral: nextTcaDate ? `Review on ${nextTcaDate} for ${nextTcaPurpose || 'consultation'}` : '',
+      nextTcaDate: nextTcaDate || null,
+      nextTcaPurpose: nextTcaPurpose || null,
+      attachedDocs: []
+    });
+  }
+
+  // Sort encounters descending (newest first)
+  encounters.sort((a, b) => b.date.localeCompare(a.date));
+
+  const latestEnc = encounters[0] || {};
+
+  const patientObj = {
+    id: 'PT-' + (formattedIc ? formattedIc.replace(/\D/g, '').slice(-6) : Date.now().toString(36)),
+    name: name,
+    ic: formattedIc,
+    phone: formattedPhone,
+    gender: gender,
+    age: age || 24,
+    race: race,
+    language: race === 'Chinese' ? 'Chinese' : 'English',
+    branch: defaultBranch,
+    conditions: ['Dyslipidemia', 'Weight Management'],
+    allergies: allergies,
+    notes: notesArr.join('; ') || 'Imported from Lark customer base.',
+    createdAt: encounters.length ? encounters[encounters.length - 1].date : '2026-01-06',
+    encounters: encounters,
+    medications: latestEnc.planMedications ? [
+      {
+        id: 'MED-' + Date.now().toString(36) + '-1',
+        name: 'Lipofit',
+        dosage: '1 tab BD (With meals)',
+        lastDispensed: latestEnc.date || '2026-09-25',
+        supplyDays: 30,
+        nextRefillDate: '2026-10-25'
+      }
+    ] : [],
+    appointments: latestEnc.nextTcaDate ? [
+      {
+        id: 'APT-' + Date.now().toString(36) + '-1',
+        date: latestEnc.nextTcaDate,
+        time: '10:00',
+        purpose: latestEnc.nextTcaPurpose || 'Follow-up Review',
+        status: 'Scheduled',
+        notes: 'Imported follow-up appointment from Lark consultation record.'
+      }
+    ] : []
+  };
+
+  if (latestEnc.nextTcaDate) {
+    patientObj.nextTcaDate = latestEnc.nextTcaDate;
+    patientObj.nextTcaPurpose = latestEnc.nextTcaPurpose || 'Follow-up Review';
+    patientObj.nextTcaRecordedBy = latestEnc.recordedBy || 'William Chai (Pharmacist)';
+  }
+
+  return patientObj;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

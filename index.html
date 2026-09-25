@@ -1013,6 +1013,10 @@
           class="bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm">
           <i class="fa-solid fa-user-plus"></i> New Patient
         </button>
+        <button id="patientLarkImportBtn" type="button" onclick="openLarkImportModal()"
+          class="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Import Lark Patient Profile & Historical Visits">
+          <i class="fa-solid fa-file-import text-amber-200"></i> Import from Lark
+        </button>
         <button id="patientNewAptBtn" type="button"
           class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm">
           <i class="fa-regular fa-calendar-plus"></i> Book Appt
@@ -1383,6 +1387,93 @@
   <!-- ═══════════════════════════════════════════════════════════════════════════
        PATIENT MODALS
   ══════════════════════════════════════════════════════════════════════════════ -->
+
+  <!-- Modal 0: Lark Customer Base Importer -->
+  <div id="patientLarkImportModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 hidden" style="z-index: 60;">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in duration-150">
+      <div class="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-amber-400/20 text-amber-300 flex items-center justify-center text-base font-bold">
+            <i class="fa-solid fa-file-import"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">Transfer & Import Lark Customer Base</h3>
+            <p class="text-xs text-blue-200">Paste Lark patient profiles, consult notes, POCT labs & TEDA links</p>
+          </div>
+        </div>
+        <button onclick="closeLarkImportModal()" class="text-white/80 hover:text-white text-lg p-1">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="p-5 overflow-y-auto space-y-4 text-xs flex-1">
+        <div class="flex items-center justify-between gap-3 flex-wrap bg-blue-50/80 p-3 rounded-xl border border-blue-200">
+          <div class="flex items-center gap-2">
+            <label class="font-bold text-blue-950">Assign to Branch:</label>
+            <select id="larkImportBranch" class="border border-gray-300 rounded-lg px-2.5 py-1 text-xs font-bold bg-white">
+              <option value="Kota Sentosa">Kota Sentosa</option>
+              <option value="Astana">Astana</option>
+              <option value="Malihah">Malihah</option>
+              <option value="Metrocity">Metrocity</option>
+              <option value="MJK">MJK</option>
+              <option value="Moyan">Moyan</option>
+              <option value="Semariang">Semariang</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="cursor-pointer text-xs bg-white hover:bg-slate-50 text-blue-700 border border-blue-300 px-3 py-1 rounded-lg font-bold transition flex items-center gap-1.5 shadow-2xs">
+              <i class="fa-solid fa-folder-open text-blue-600"></i> Load from File (.txt / .md)
+              <input type="file" id="larkImportFileInput" accept=".txt,.md,.csv,.json" class="hidden" onchange="handleLarkImportFile(event)">
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex justify-between items-center mb-1">
+            <label class="block font-bold text-gray-700">Paste Lark Customer Record(s):</label>
+            <span class="text-[11px] text-gray-400">Supports single or multi-patient Lark records</span>
+          </div>
+          <textarea id="larkImportText" rows="9" placeholder="Paste Lark patient info here... e.g.:
+Liew Pay Sze 0412
+Essential info
+| Name | Liew Pay Sze |
+| IC | 021127130412 |
+| Tel | 601125029622 |
+...
+Date visit: 06.01.2026
+| Assessment | TC: 6.59 TG: 1.42 HDL: 1.42 LDL: 4.52 Glu: 5.1 ... |
+| Plan | T. Livason 1/1 BD ... |
+| Next visit | ⏰2026-02-02 07:00 TEDA |"
+            class="w-full border border-gray-300 rounded-xl p-3 font-mono text-xs focus:ring-2 focus:ring-blue-500 outline-none leading-relaxed bg-slate-50/50"></textarea>
+        </div>
+
+        <div class="flex items-center justify-between">
+          <button type="button" onclick="previewLarkImport()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs">
+            <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i> Parse & Preview Records
+          </button>
+          <span id="larkParseCountBadge" class="text-xs text-gray-500 font-medium"></span>
+        </div>
+
+        <!-- Preview Container -->
+        <div id="larkImportPreviewArea" class="hidden space-y-3 pt-2 border-t">
+          <h4 class="font-bold text-gray-800 text-xs flex items-center gap-1.5">
+            <i class="fa-solid fa-clipboard-check text-emerald-600"></i> Parsed Patients Preview:
+          </h4>
+          <div id="larkImportPreviewCards" class="space-y-3 max-h-60 overflow-y-auto pr-1"></div>
+        </div>
+      </div>
+
+      <div class="p-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+        <button type="button" onclick="closeLarkImportModal()" class="px-4 py-2 text-xs font-bold text-gray-600 hover:text-gray-800">
+          Cancel
+        </button>
+        <button id="larkConfirmImportBtn" type="button" onclick="confirmLarkImport()" disabled
+          class="px-5 py-2.5 text-xs font-bold bg-gray-300 text-gray-500 cursor-not-allowed rounded-xl transition flex items-center gap-2 shadow-sm">
+          <i class="fa-solid fa-cloud-arrow-down"></i> Confirm & Import into PMG Hub
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- Modal 1: New Patient Registration -->
   <div id="patientNewModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 hidden" style="z-index: 60;">
