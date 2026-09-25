@@ -14,6 +14,8 @@ let activeExpiryFilter = {
   horizon: '9months', // '9months', '12months', 'critical', 'all', 'cleared'
   search: ''
 };
+let expiryCurrentPage = 1;
+const EXPIRY_PAGE_SIZE = 100;
 
 // ─── INITIALIZATION ───────────────────────────────────────────────────────────
 function initExpiryModule() {
@@ -30,9 +32,19 @@ function loadLocalExpiryData() {
     if (raw) {
       expiryItems = JSON.parse(raw);
     }
+    // If local storage is empty or only had small preliminary test items, seed with full Kota Sentosa master dataset
+    if ((!expiryItems || expiryItems.length < 500) && Array.isArray(window.PMG_SEED_EXPIRY_DATA) && window.PMG_SEED_EXPIRY_DATA.length > 0) {
+      console.log(`[PMG Expiry] Preloading ${window.PMG_SEED_EXPIRY_DATA.length} master seed records for Kota Sentosa...`);
+      expiryItems = window.PMG_SEED_EXPIRY_DATA;
+      saveLocalExpiryData();
+    }
   } catch (e) {
     console.warn('[PMG Expiry] Error reading local expiry data:', e);
-    expiryItems = [];
+    if (Array.isArray(window.PMG_SEED_EXPIRY_DATA)) {
+      expiryItems = window.PMG_SEED_EXPIRY_DATA;
+    } else {
+      expiryItems = [];
+    }
   }
 }
 
@@ -162,29 +174,34 @@ async function syncExpiryFromSheets(showPrompt = true) {
   try {
     const url = `${PMG_EXPIRY_API_URL}?branch=all`;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
+    const timeout = setTimeout(() => controller.abort(), 30000);
     const res = await fetch(url, { method: 'GET', signal: controller.signal });
     clearTimeout(timeout);
 
     const data = await res.json();
     if (data.success && Array.isArray(data.items)) {
-      expiryItems = data.items.map((it, idx) => ({
-        ...it,
-        rowId: it.rowId || (idx + 2),
-        quantity: parseFloat(it.quantity) || 0,
-        status: it.status || 'Active'
-      }));
-      saveLocalExpiryData();
-      renderExpiryUI();
-      if (showPrompt) {
-        showExpiryToast(`✅ Synced ${expiryItems.length} items live from Google Sheets!`);
+      const isDummyOnly = data.items.length > 0 && data.items.every(it => String(it.batchNumber || '').startsWith('TEST-'));
+      if (!isDummyOnly && (data.items.length >= expiryItems.length || expiryItems.length === 0)) {
+        expiryItems = data.items.map((it, idx) => ({
+          ...it,
+          rowId: it.rowId || (idx + 2),
+          quantity: parseFloat(it.quantity) || 0,
+          status: it.status || 'Active'
+        }));
+        saveLocalExpiryData();
+        renderExpiryUI();
+        if (showPrompt) {
+          showExpiryToast(`✅ Synced ${expiryItems.length} items live from Google Sheets!`);
+        }
+      } else if (showPrompt) {
+        showExpiryToast(`✅ Local database active with ${expiryItems.length} items.`);
       }
     } else {
       if (showPrompt) showExpiryToast(`⚠️ Sync failed: ${data.error || 'Unknown error'}`);
     }
   } catch (err) {
     console.warn('[PMG Expiry] Sync error:', err);
-    if (showPrompt) showExpiryToast(`⚠️ Could not connect to Google Sheets (using local cache).`);
+    if (showPrompt) showExpiryToast(`⚠️ Could not connect to Google Sheets (using local cache of ${expiryItems.length} items).`);
   } finally {
     if (btn) {
       btn.disabled = false;
@@ -616,7 +633,25 @@ function renderExpiryTable() {
     return;
   }
 
-  tbody.innerHTML = items.map((it, idx) => {
+  const totalItems = items.length;
+  const maxDisplay = expiryCurrentPage * EXPIRY_PAGE_SIZE;
+  const displayedItems = items.slice(0, maxDisplay);
+
+  const paginationCount = document.getElementById('expiryPaginationCount');
+  const loadMoreBtn = document.getElementById('expiryLoadMoreBtn');
+  if (paginationCount) {
+    paginationCount.textContent = `Showing 1–${Math.min(totalItems, displayedItems.length)} of ${totalItems} items`;
+  }
+  if (loadMoreBtn) {
+    if (totalItems > maxDisplay) {
+      loadMoreBtn.classList.remove('hidden');
+      loadMoreBtn.innerHTML = `<i class="fa-solid fa-angles-down"></i> Load More (${Math.min(EXPIRY_PAGE_SIZE, totalItems - maxDisplay)} more)`;
+    } else {
+      loadMoreBtn.classList.add('hidden');
+    }
+  }
+
+  tbody.innerHTML = displayedItems.map((it, idx) => {
     const h = calculateExpiryHorizon(it.expiryDate);
     const isCleared = it.status === 'Cleared' || it.quantity === 0;
 
@@ -685,6 +720,11 @@ function renderExpiryTable() {
       </tr>
     `;
   }).join('');
+}
+
+function loadMoreExpiryRows() {
+  expiryCurrentPage++;
+  renderExpiryTable();
 }
 
 // ─── EXPORT TO EXCEL (MATCHING PICTURE 3 & HQ KPI 9-MONTH FORMAT) ────────────
@@ -866,6 +906,7 @@ function setupExpiryEventListeners() {
   if (branchSelect) {
     branchSelect.addEventListener('change', e => {
       activeExpiryFilter.branch = e.target.value;
+      expiryCurrentPage = 1;
       renderExpiryUI();
     });
   }
@@ -874,6 +915,7 @@ function setupExpiryEventListeners() {
   if (horizonSelect) {
     horizonSelect.addEventListener('change', e => {
       activeExpiryFilter.horizon = e.target.value;
+      expiryCurrentPage = 1;
       renderExpiryUI();
     });
   }
@@ -882,6 +924,7 @@ function setupExpiryEventListeners() {
   if (searchInput) {
     searchInput.addEventListener('input', e => {
       activeExpiryFilter.search = e.target.value;
+      expiryCurrentPage = 1;
       renderExpiryUI();
     });
   }

@@ -3156,6 +3156,14 @@
           </tbody>
         </table>
       </div>
+      <div id="expiryPaginationBar" class="p-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-xs text-gray-600">
+        <span id="expiryPaginationCount" class="font-medium">Showing items</span>
+        <div class="flex items-center gap-2">
+          <button id="expiryLoadMoreBtn" onclick="loadMoreExpiryRows()" class="hidden px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-100 text-blue-700 font-bold rounded-lg shadow-2xs transition flex items-center gap-1.5">
+            <i class="fa-solid fa-angles-down"></i> Load More
+          </button>
+        </div>
+      </div>
     </div>
 
   </div>
@@ -3553,6 +3561,7 @@
 <script src="js/db.js"></script>
 <script src="js/onedrive-sync.js"></script>
 <script src="js/patient.js"></script>
+<script src="js/seed_expiry_data.js"></script>
 <script src="js/expiry.js"></script>
 
 <script>
