@@ -2,8 +2,10 @@
 'use strict';
 
 // ─── DUAL-TIER GEMINI CONFIGURATION ───────────────────────────────────────────
-const SCHEDULER_PRIMARY_MODEL   = 'gemini-3.5-flash';
-const SCHEDULER_SECONDARY_MODEL = 'gemini-3.5-flash-lite';
+// Primary: Gemini Flash-Lite (gemini-2.0-flash-lite) — Fast, efficient, generous quota
+// Secondary: Gemini Flash (gemini-2.5-flash) — Complex multi-constraint reasoning
+const SCHEDULER_PRIMARY_MODEL   = 'gemini-2.0-flash-lite';
+const SCHEDULER_SECONDARY_MODEL = 'gemini-2.5-flash';
 
 // ─── 2026 GAZETTED PUBLIC HOLIDAYS (SARAWAK & MALAYSIA NATIONAL) ──────────────
 // Chai Yee Sian (William) follows all National & Sarawak Gazetted Public Holidays.
@@ -649,28 +651,27 @@ async function generateTimetable() {
 
   try {
     if (apiKey) {
-      if (statusText) statusText.textContent = `Querying ${SCHEDULER_PRIMARY_MODEL} with M/N shift balance & pharmacist rules…`;
-      
       let aiResult = null;
-      try {
-        aiResult = await callSchedulerGemini(SCHEDULER_PRIMARY_MODEL, branchVal, monthVal, totalDays, apiKey);
-        if (modelBadge) {
-          modelBadge.textContent = '⚡ Gemini 3.5 Flash';
-          modelBadge.className = 'text-xs font-semibold px-2.5 py-1 rounded bg-green-100 text-green-800 border border-green-200';
-        }
-      } catch (tier1Err) {
-        console.warn(`[PMG Scheduler] Tier 1 (${SCHEDULER_PRIMARY_MODEL}) failed:`, tier1Err.message);
-        if (statusText) statusText.textContent = `Failing over to ${SCHEDULER_SECONDARY_MODEL}…`;
+      const schedulerCandidateModels = [
+        { code: SCHEDULER_PRIMARY_MODEL,   name: 'Gemini Flash-Lite' },
+        { code: SCHEDULER_SECONDARY_MODEL, name: 'Gemini 2.5 Flash' },
+        { code: 'gemini-2.0-flash',        name: 'Gemini 2.0 Flash' },
+        { code: 'gemini-1.5-flash',        name: 'Gemini 1.5 Flash' }
+      ];
 
+      for (const m of schedulerCandidateModels) {
         try {
-          aiResult = await callSchedulerGemini(SCHEDULER_SECONDARY_MODEL, branchVal, monthVal, totalDays, apiKey);
-          if (modelBadge) {
-            modelBadge.textContent = '🛡️ Gemini 3.5 Flash-Lite (Fallback)';
-            modelBadge.className = 'text-xs font-semibold px-2.5 py-1 rounded bg-amber-100 text-amber-800 border border-amber-200';
+          if (statusText) statusText.textContent = `Querying ${m.name} with M/N shift balance & pharmacist rules…`;
+          aiResult = await callSchedulerGemini(m.code, branchVal, monthVal, totalDays, apiKey);
+          if (aiResult && aiResult.days && aiResult.days.length > 0) {
+            if (modelBadge) {
+              modelBadge.textContent = `⚡ ${m.name}`;
+              modelBadge.className = 'text-xs font-semibold px-2.5 py-1 rounded bg-green-100 text-green-800 border border-green-200';
+            }
+            break;
           }
-        } catch (tier2Err) {
-          console.warn(`[PMG Scheduler] Tier 2 (${SCHEDULER_SECONDARY_MODEL}) failed:`, tier2Err.message);
-          throw tier2Err;
+        } catch (tierErr) {
+          console.warn(`[PMG Scheduler] Model ${m.name} failed:`, tierErr.message);
         }
       }
 

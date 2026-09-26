@@ -7,10 +7,10 @@ const EXPIRY_STORAGE_KEY = 'pmg_stock_expiry_data';
 const MONTH_NAMES = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
 // ─── DUAL-TIER GEMINI AI CONFIGURATION ───────────────────────────────────────
-// Primary: gemini-3.5-flash-lite (fast, cost-efficient, specialized for invoice OCR)
-// Secondary: gemini-3.5-flash (higher multi-category reasoning fallback)
-const EXPIRY_OCR_PRIMARY_MODEL   = 'gemini-3.5-flash-lite';
-const EXPIRY_OCR_SECONDARY_MODEL = 'gemini-3.5-flash';
+// Primary: gemini-2.0-flash-lite (fast, cost-efficient, specialized for invoice OCR)
+// Secondary: gemini-2.5-flash (higher multi-category reasoning fallback)
+const EXPIRY_OCR_PRIMARY_MODEL   = 'gemini-2.0-flash-lite';
+const EXPIRY_OCR_SECONDARY_MODEL = 'gemini-2.5-flash';
 const PMG_GLOBAL_FALLBACK_KEY    = 'AIzaSyBxKYPJWxi3ILfxPTlQFytzoXJvIZ72m4k';
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
@@ -382,7 +382,7 @@ CRITICAL EXTRACTION RULES:
 Return ONLY a valid JSON array of objects. No markdown formatting, no explanations.
 `;
 
-    const modelsToTry = [EXPIRY_OCR_PRIMARY_MODEL, EXPIRY_OCR_SECONDARY_MODEL];
+    const modelsToTry = [EXPIRY_OCR_PRIMARY_MODEL, EXPIRY_OCR_SECONDARY_MODEL, 'gemini-2.0-flash', 'gemini-1.5-flash'];
     let items = null;
     let successfulModel = '';
     let lastError = null;

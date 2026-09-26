@@ -99,9 +99,16 @@ rebuildLookups(); // Build from fallback data immediately
 // Called once on app boot. Silently falls back to static data if fetch fails.
 async function loadLiveSheetData() {
   const indicator = document.getElementById('liveDataIndicator');
-  const setIndicator = (msg, colour) => {
-    if (indicator) { indicator.textContent = msg; indicator.className = `text-xs px-2 py-0.5 rounded ${colour}`; }
+  const setIndicator = (msg, colour, titleMsg = '') => {
+    if (indicator) {
+      indicator.textContent = msg;
+      indicator.className = `text-xs px-2.5 py-1 rounded cursor-pointer transition hover:opacity-85 shadow-xs font-semibold ${colour}`;
+      if (titleMsg) indicator.title = titleMsg;
+      else indicator.title = 'Rymnet Staff Google Sheet Sync status. Click to refresh sync.';
+    }
   };
+
+  setIndicator('🔄 Syncing staff sheet…', 'bg-blue-100 text-blue-700');
 
   let loadedAnything = false;
 
@@ -117,7 +124,7 @@ async function loadLiveSheetData() {
   // ── Load Staff sheet ──────────────────────────────────────────────────────
   if (GOOGLE_SHEETS_CONFIG.staffCSV) {
     try {
-      const resp = await fetchWithTimeout(GOOGLE_SHEETS_CONFIG.staffCSV, 5000);
+      const resp = await fetchWithTimeout(GOOGLE_SHEETS_CONFIG.staffCSV, 12000);
       if (resp.ok) {
         const text   = await resp.text();
         const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
@@ -149,7 +156,7 @@ async function loadLiveSheetData() {
   // ── Load Branches sheet (optional) ───────────────────────────────────────
   if (GOOGLE_SHEETS_CONFIG.branchCSV) {
     try {
-      const resp = await fetchWithTimeout(GOOGLE_SHEETS_CONFIG.branchCSV, 5000);
+      const resp = await fetchWithTimeout(GOOGLE_SHEETS_CONFIG.branchCSV, 12000);
       if (resp.ok) {
         const text   = await resp.text();
         const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
@@ -166,11 +173,11 @@ async function loadLiveSheetData() {
   }
 
   if (loadedAnything) {
-    setIndicator('🟢 Live data synced', 'bg-green-100 text-green-700');
+    setIndicator('🟢 Staff Sheet Synced', 'bg-green-100 text-green-700', 'Google Sheets Staff Roster is live & synced. Click to re-sync.');
   } else if (GOOGLE_SHEETS_CONFIG.usersCSV || GOOGLE_SHEETS_CONFIG.staffCSV) {
-    setIndicator('🟡 Offline — using cached data', 'bg-amber-100 text-amber-700');
+    setIndicator('🟡 Staff Sheet (Cached)', 'bg-amber-100 text-amber-700', 'Using local cached staff roster. Patient database & hub are active. Click to retry Google Sheets sync.');
   } else {
-    setIndicator('📋 Offline mode (no sheet linked)', 'bg-gray-100 text-gray-500');
+    setIndicator('📋 Staff Sheet (Default)', 'bg-gray-100 text-gray-500', 'No remote Google Sheet linked. Using local staff database.');
   }
 }
 

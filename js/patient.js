@@ -3313,8 +3313,17 @@ function editEncounterRecord(patientId, encounterId) {
   document.getElementById('encVitD').value = sp.vitD || '';
   document.getElementById('encFerritin').value = sp.ferritin || '';
   document.getElementById('encTeda').value = sp.teda || '';
+  let extractedTedaLink = sp.tedaLink || '';
+  if (!extractedTedaLink && sp.teda) {
+    const urlMatch = sp.teda.match(/(https?:\/\/[^\s"'<>]+)/i);
+    if (urlMatch) extractedTedaLink = urlMatch[1];
+  }
+  extractedTedaLink = normalizeTedaUrl(extractedTedaLink);
+
   if (document.getElementById('encTedaLink')) {
-    document.getElementById('encTedaLink').value = sp.tedaLink || (sp.teda && sp.teda.startsWith('http') ? sp.teda : '');
+    document.getElementById('encTedaLink').value = extractedTedaLink;
+    document.getElementById('encTedaLink').title = extractedTedaLink;
+    checkTedaUrl(extractedTedaLink);
   }
   document.getElementById('encRossmaxAct').value = sp.rossmaxAct || '';
 
@@ -3386,39 +3395,79 @@ function togglePanel(panelId) {
 }
 
 // ─── TEDA LINK & AUTO-DECRYPTION HELPERS ───────────────────────────────────────
+function normalizeTedaUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return '';
+  let url = rawUrl.trim();
+  url = url.replace(/q112\.com/gi, 'qiaolz.com');
+  url = url.replace(/qialz\.com/gi, 'qiaolz.com');
+  return url;
+}
+
 function extractTedaRid(urlOrText) {
   if (!urlOrText) return '';
-  const match = urlOrText.match(/rid=([a-f0-9\-]{32,36})/i);
+  const normalized = normalizeTedaUrl(urlOrText);
+  const match = normalized.match(/rid=([a-f0-9\-]{32,36})/i);
   if (match) return match[1];
-  const rawMatch = urlOrText.match(/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
+  const rawMatch = normalized.match(/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
   if (rawMatch) return rawMatch[1];
   return '';
 }
 
 function checkTedaUrl(url) {
+  const normUrl = normalizeTedaUrl(url);
   const btn = document.getElementById('openTedaLinkBtn');
   if (btn) {
-    if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+    if (normUrl && (normUrl.startsWith('http://') || normUrl.startsWith('https://'))) {
       btn.classList.remove('hidden');
     } else {
       btn.classList.add('hidden');
     }
   }
-  const rid = extractTedaRid(url);
+
+  const rid = extractTedaRid(normUrl);
   const statusEl = document.getElementById('tedaFetchStatus');
-  if (rid && statusEl && !window._cachedTedaReport) {
-    statusEl.textContent = 'Report ID detected. Click "Auto-Analyze Link" to load.';
+  const verifiedBanner = document.getElementById('tedaUrlVerifiedBanner');
+  const verifiedRidEl = document.getElementById('tedaVerifiedRid');
+
+  if (verifiedBanner) {
+    if (rid) {
+      verifiedBanner.classList.remove('hidden');
+      if (verifiedRidEl) verifiedRidEl.textContent = rid;
+    } else {
+      verifiedBanner.classList.add('hidden');
+    }
   }
+
+  const linkEl = document.getElementById('encTedaLink');
+  if (linkEl && normUrl) {
+    linkEl.title = normUrl;
+  }
+
+  if (rid && statusEl && !window._cachedTedaReport) {
+    statusEl.innerHTML = '<span class="text-emerald-700 font-semibold"><i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i> Valid TEDA Report ID detected. Click "Auto-Analyze Link" to interpret.</span>';
+  }
+}
+
+function copyTedaFullUrl() {
+  const linkEl = document.getElementById('encTedaLink');
+  const url = linkEl ? normalizeTedaUrl(linkEl.value) : '';
+  if (!url) return;
+  navigator.clipboard.writeText(url).then(() => {
+    if (typeof showToast === 'function') showToast('TEDA Link copied to clipboard!');
+    else alert('TEDA Link copied to clipboard!');
+  }).catch(() => {
+    alert('Full TEDA Link:\n' + url);
+  });
 }
 
 function openTedaLink() {
   const linkEl = document.getElementById('encTedaLink');
-  let url = linkEl ? linkEl.value.trim() : '';
+  let url = linkEl ? normalizeTedaUrl(linkEl.value.trim()) : '';
   if (!url) {
     const tedaEl = document.getElementById('encTeda');
     const tedaVal = tedaEl ? tedaEl.value.trim() : '';
     if (tedaVal.startsWith('http://') || tedaVal.startsWith('https://')) {
-      url = tedaVal;
+      url = normalizeTedaUrl(tedaVal);
     }
   }
   if (url) window.open(url, '_blank');
@@ -3884,9 +3933,9 @@ RESPONSE MUST BE STRICTLY VALID JSON (no markdown fences outside):
   "jingluoSummary": "脾经、肝经气血运行迟缓"
 }`;
 
-      const primaryModel = typeof AUDIT_PRIMARY_MODEL !== 'undefined' ? AUDIT_PRIMARY_MODEL : 'gemini-3.5-flash';
-      const secondaryModel = typeof AUDIT_SECONDARY_MODEL !== 'undefined' ? AUDIT_SECONDARY_MODEL : 'gemini-3.5-flash-lite';
-      const models = [primaryModel, secondaryModel, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+      const primaryModel = typeof AUDIT_PRIMARY_MODEL !== 'undefined' ? AUDIT_PRIMARY_MODEL : 'gemini-2.0-flash-lite';
+      const secondaryModel = typeof AUDIT_SECONDARY_MODEL !== 'undefined' ? AUDIT_SECONDARY_MODEL : 'gemini-2.5-flash';
+      const models = [primaryModel, secondaryModel, 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
       for (const m of models) {
         try {
@@ -8460,9 +8509,9 @@ RESPONSE MUST BE STRICTLY VALID JSON matching this structure:
 }`;
 
   let parsed = null;
-  const primaryModel = typeof AUDIT_PRIMARY_MODEL !== 'undefined' ? AUDIT_PRIMARY_MODEL : 'gemini-3.5-flash';
-  const secondaryModel = typeof AUDIT_SECONDARY_MODEL !== 'undefined' ? AUDIT_SECONDARY_MODEL : 'gemini-3.5-flash-lite';
-  const models = [primaryModel, secondaryModel];
+  const primaryModel = typeof AUDIT_PRIMARY_MODEL !== 'undefined' ? AUDIT_PRIMARY_MODEL : 'gemini-2.0-flash-lite';
+  const secondaryModel = typeof AUDIT_SECONDARY_MODEL !== 'undefined' ? AUDIT_SECONDARY_MODEL : 'gemini-2.5-flash';
+  const models = [primaryModel, secondaryModel, 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
   for (let m of models) {
     try {

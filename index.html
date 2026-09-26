@@ -116,7 +116,7 @@
     <!-- Right controls -->
     <div class="flex items-center gap-3 flex-wrap">
       <span id="loggedInUser" class="text-blue-200 text-xs font-medium bg-blue-800 px-3 py-1 rounded-full"></span>
-      <span id="liveDataIndicator" class="text-xs px-2 py-0.5 rounded bg-blue-800 text-blue-300">⏳ Syncing…</span>
+      <span id="liveDataIndicator" onclick="loadLiveSheetData()" class="text-xs px-2.5 py-1 rounded bg-blue-800 text-blue-200 cursor-pointer hover:opacity-85 transition font-semibold" title="Rymnet Staff Google Sheet Sync status. Click to refresh sync.">⏳ Syncing…</span>
       <!-- AM-only: branch switcher -->
       <select id="branchSelector" style="display:none"
         class="text-gray-900 text-xs px-3 py-1.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
@@ -800,9 +800,10 @@
             </div>
             <p id="geminiKeyStatus" class="text-[11px] mt-1 text-gray-500"></p>
             <div class="flex items-center gap-1.5 mt-2 text-[11px] text-gray-500 flex-wrap">
-              <span class="font-semibold text-gray-700"><i class="fa-solid fa-layer-group text-amber-600 mr-1"></i>Tier:</span>
-              <span class="bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded">Primary: Gemini 3.5 Flash</span>
-              <span class="bg-gray-100 text-gray-700 font-semibold px-2 py-0.5 rounded">Secondary: Gemini 3.5 Flash-Lite</span>
+              <span class="font-semibold text-gray-700"><i class="fa-solid fa-layer-group text-amber-600 mr-1"></i>Active Tiers:</span>
+              <span class="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded flex items-center gap-1"><i class="fa-solid fa-bolt text-emerald-600"></i>Primary: Flash-Lite (gemini-2.0-flash-lite)</span>
+              <span class="bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded flex items-center gap-1"><i class="fa-solid fa-brain text-blue-600"></i>Secondary: Flash (gemini-2.5-flash)</span>
+              <span class="bg-gray-100 text-gray-600 font-medium px-2 py-0.5 rounded">Fallback: 1.5-Flash</span>
             </div>
           </div>
           <div>
@@ -1915,13 +1916,32 @@ Date visit: 06.01.2026
                     <div>
                       <label class="block text-xs font-semibold text-gray-600 mb-1">TEDA Web Report Link (e.g. qiaolz.com / reportTv / reportTvMain)</label>
                       <div class="flex items-center gap-2">
-                        <input type="text" id="encTedaLink" oninput="checkTedaUrl(this.value)" placeholder="Paste TEDA link: e.g. https://sg-report.qiaolz.com/#/pages/reportTv/reportTvMain?rid=..." class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-xs sm:text-sm outline-none bg-white font-mono">
+                        <input type="text" id="encTedaLink" oninput="checkTedaUrl(this.value)" placeholder="Paste TEDA link: e.g. https://sg-report.qiaolz.com/#/pages/reportTv/reportTvMain?rid=..." class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-xs sm:text-sm outline-none bg-white text-gray-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500">
                         <button type="button" id="fetchTedaBtn" onclick="autoAnalyzeTedaLink()" class="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs sm:text-sm font-bold transition flex items-center gap-1.5 shadow-xs whitespace-nowrap">
                           <i class="fa-solid fa-bolt text-yellow-300"></i> Auto-Analyze Link
                         </button>
                         <button type="button" id="viewTedaTvBtn" onclick="openTedaTvModal()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-xs sm:text-sm font-bold transition flex items-center gap-1.5 shadow-xs whitespace-nowrap" title="View interactive TEDA TV Report">
                           <i class="fa-solid fa-tv text-amber-600"></i> View TV
                         </button>
+                      </div>
+                      <!-- Verified TEDA Link Ribbon with Full RID & Quick Copy -->
+                      <div id="tedaUrlVerifiedBanner" class="hidden mt-1.5 p-2 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between gap-2 text-xs text-emerald-900">
+                        <div class="flex items-center gap-1.5 overflow-hidden">
+                          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 whitespace-nowrap">
+                            <i class="fa-solid fa-circle-check mr-1"></i> Verified TEDA Report
+                          </span>
+                          <span class="font-mono text-[11px] text-emerald-800 truncate" title="Report ID">
+                            RID: <b id="tedaVerifiedRid"></b>
+                          </span>
+                        </div>
+                        <div class="flex items-center gap-1 shrink-0">
+                          <button type="button" onclick="copyTedaFullUrl()" class="px-2 py-0.5 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded text-[10px] font-medium transition flex items-center gap-1" title="Copy full URL to clipboard">
+                            <i class="fa-regular fa-copy"></i> Copy Link
+                          </button>
+                          <button type="button" onclick="openTedaLink()" class="px-2 py-0.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[10px] font-medium transition flex items-center gap-1" title="Open in browser">
+                            <i class="fa-solid fa-arrow-up-right-from-square"></i> Open
+                          </button>
+                        </div>
                       </div>
                     </div>
 
