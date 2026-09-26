@@ -1610,14 +1610,22 @@ Date visit: 06.01.2026
 
       <div class="space-y-4 text-xs">
         <!-- Patient & Date Header -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
           <div>
             <label class="block font-bold text-xs sm:text-sm text-gray-700 mb-1">Select Patient *</label>
-            <select id="encounterPatientSelect" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm sm:text-base font-semibold bg-white outline-none"></select>
+            <select id="encounterPatientSelect" onchange="onEncounterPatientChange()" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm sm:text-base font-semibold bg-white outline-none"></select>
           </div>
           <div>
             <label class="block font-bold text-xs sm:text-sm text-gray-700 mb-1">Encounter Date</label>
             <input type="date" id="encDate" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm sm:text-base font-semibold bg-white outline-none">
+          </div>
+          <div>
+            <label class="block font-bold text-xs sm:text-sm text-gray-700 mb-1">Preferred WhatsApp Language</label>
+            <select id="encWaLanguage" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm sm:text-base font-semibold bg-white outline-none">
+              <option value="English">English</option>
+              <option value="Chinese">Chinese (中文)</option>
+              <option value="Malay">Bahasa Melayu</option>
+            </select>
           </div>
         </div>
 
@@ -1910,6 +1918,9 @@ Date visit: 06.01.2026
                         <input type="text" id="encTedaLink" oninput="checkTedaUrl(this.value)" placeholder="Paste TEDA link: e.g. https://sg-report.qiaolz.com/#/pages/reportTv/reportTvMain?rid=..." class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-xs sm:text-sm outline-none bg-white font-mono">
                         <button type="button" id="fetchTedaBtn" onclick="autoAnalyzeTedaLink()" class="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs sm:text-sm font-bold transition flex items-center gap-1.5 shadow-xs whitespace-nowrap">
                           <i class="fa-solid fa-bolt text-yellow-300"></i> Auto-Analyze Link
+                        </button>
+                        <button type="button" id="viewTedaTvBtn" onclick="openTedaTvModal()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-xs sm:text-sm font-bold transition flex items-center gap-1.5 shadow-xs whitespace-nowrap" title="View interactive TEDA TV Report">
+                          <i class="fa-solid fa-tv text-amber-600"></i> View TV
                         </button>
                       </div>
                     </div>
@@ -2289,6 +2300,37 @@ Date visit: 06.01.2026
         <button id="encModalSaveBtn" onclick="saveNewEncounter()" class="px-6 py-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-sm font-bold shadow-sm flex items-center gap-2">
           <i class="fa-solid fa-floppy-disk"></i> Save Clinical Encounter
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: TEDA WellScan Live TV Report Viewer -->
+  <div id="tedaTvModal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-2 sm:p-5 hidden" style="z-index: 70;">
+    <div class="bg-slate-900 rounded-3xl shadow-2xl w-full max-w-5xl h-[92vh] flex flex-col overflow-hidden border border-slate-700">
+      <div class="flex items-center justify-between px-5 py-3 bg-slate-800 border-b border-slate-700 text-white shrink-0">
+        <div class="flex items-center gap-3">
+          <span class="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-base">
+            <i class="fa-solid fa-tv"></i>
+          </span>
+          <div>
+            <h4 class="font-bold text-sm text-slate-100 flex items-center gap-2">
+              <span>TEDA WellScan Live Report</span>
+              <span id="tedaTvModalRidBadge" class="text-[11px] bg-slate-700 text-amber-300 px-2.5 py-0.5 rounded font-mono"></span>
+            </h4>
+            <p class="text-[11px] text-slate-400">Interactive Meridian Radar &amp; Zang-Fu Wellness Analysis</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <a id="tedaTvExternalLink" href="#" target="_blank" rel="noopener" class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1.5 rounded-xl font-semibold transition flex items-center gap-1.5">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i> Open in New Tab
+          </a>
+          <button onclick="closeTedaTvModal()" class="text-slate-400 hover:text-white text-xl p-1.5 transition">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+      <div class="flex-1 bg-slate-950 relative">
+        <iframe id="tedaTvIframe" src="" class="w-full h-full border-0" allow="fullscreen"></iframe>
       </div>
     </div>
   </div>
