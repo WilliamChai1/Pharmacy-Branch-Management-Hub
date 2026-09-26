@@ -3933,9 +3933,10 @@ RESPONSE MUST BE STRICTLY VALID JSON (no markdown fences outside):
   "jingluoSummary": "脾经、肝经气血运行迟缓"
 }`;
 
-      const primaryModel = typeof AUDIT_PRIMARY_MODEL !== 'undefined' ? AUDIT_PRIMARY_MODEL : 'gemini-2.0-flash-lite';
-      const secondaryModel = typeof AUDIT_SECONDARY_MODEL !== 'undefined' ? AUDIT_SECONDARY_MODEL : 'gemini-2.5-flash';
-      const models = [primaryModel, secondaryModel, 'gemini-2.0-flash', 'gemini-1.5-flash'];
+      const primaryModel = typeof AUDIT_PRIMARY_MODEL !== 'undefined' ? AUDIT_PRIMARY_MODEL : 'gemini-3.5-flash-lite';
+      const secondaryModel = typeof AUDIT_SECONDARY_MODEL !== 'undefined' ? AUDIT_SECONDARY_MODEL : 'gemini-3.5-flash';
+      const tertiaryModel = typeof AUDIT_TERTIARY_MODEL !== 'undefined' ? AUDIT_TERTIARY_MODEL : 'gemini-3.1-flash-lite';
+      const models = [primaryModel, secondaryModel, tertiaryModel, 'gemini-2.5-flash', 'gemini-1.5-flash'];
 
       for (const m of models) {
         try {
@@ -8509,9 +8510,10 @@ RESPONSE MUST BE STRICTLY VALID JSON matching this structure:
 }`;
 
   let parsed = null;
-  const primaryModel = typeof AUDIT_PRIMARY_MODEL !== 'undefined' ? AUDIT_PRIMARY_MODEL : 'gemini-2.0-flash-lite';
-  const secondaryModel = typeof AUDIT_SECONDARY_MODEL !== 'undefined' ? AUDIT_SECONDARY_MODEL : 'gemini-2.5-flash';
-  const models = [primaryModel, secondaryModel, 'gemini-2.0-flash', 'gemini-1.5-flash'];
+  const primaryModel = typeof AUDIT_PRIMARY_MODEL !== 'undefined' ? AUDIT_PRIMARY_MODEL : 'gemini-3.5-flash-lite';
+  const secondaryModel = typeof AUDIT_SECONDARY_MODEL !== 'undefined' ? AUDIT_SECONDARY_MODEL : 'gemini-3.5-flash';
+  const tertiaryModel = typeof AUDIT_TERTIARY_MODEL !== 'undefined' ? AUDIT_TERTIARY_MODEL : 'gemini-3.1-flash-lite';
+  const models = [primaryModel, secondaryModel, tertiaryModel, 'gemini-2.5-flash', 'gemini-1.5-flash'];
 
   for (let m of models) {
     try {

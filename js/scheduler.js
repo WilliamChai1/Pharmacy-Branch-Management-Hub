@@ -1,11 +1,13 @@
 // js/scheduler.js — Module 3: AM AI Smart Timetable & Roster Generator
 'use strict';
 
-// ─── DUAL-TIER GEMINI CONFIGURATION ───────────────────────────────────────────
-// Primary: Gemini Flash-Lite (gemini-2.0-flash-lite) — Fast, efficient, generous quota
-// Secondary: Gemini Flash (gemini-2.5-flash) — Complex multi-constraint reasoning
-const SCHEDULER_PRIMARY_MODEL   = 'gemini-2.0-flash-lite';
-const SCHEDULER_SECONDARY_MODEL = 'gemini-2.5-flash';
+// ─── MULTI-TIER GEMINI CONFIGURATION ───────────────────────────────────────────
+// Primary: Gemini 3.5 Flash-Lite (gemini-3.5-flash-lite — 500 RPD)
+// Secondary: Gemini 3.5 Flash (gemini-3.5-flash — 20 RPD)
+// Tertiary: Gemini 3.1 Flash-Lite (gemini-3.1-flash-lite — 500 RPD)
+const SCHEDULER_PRIMARY_MODEL   = 'gemini-3.5-flash-lite';
+const SCHEDULER_SECONDARY_MODEL = 'gemini-3.5-flash';
+const SCHEDULER_TERTIARY_MODEL  = 'gemini-3.1-flash-lite';
 
 // ─── 2026 GAZETTED PUBLIC HOLIDAYS (SARAWAK & MALAYSIA NATIONAL) ──────────────
 // Chai Yee Sian (William) follows all National & Sarawak Gazetted Public Holidays.
@@ -653,9 +655,10 @@ async function generateTimetable() {
     if (apiKey) {
       let aiResult = null;
       const schedulerCandidateModels = [
-        { code: SCHEDULER_PRIMARY_MODEL,   name: 'Gemini Flash-Lite' },
-        { code: SCHEDULER_SECONDARY_MODEL, name: 'Gemini 2.5 Flash' },
-        { code: 'gemini-2.0-flash',        name: 'Gemini 2.0 Flash' },
+        { code: SCHEDULER_PRIMARY_MODEL,   name: 'Gemini 3.5 Flash-Lite (Primary: 500 RPD)' },
+        { code: SCHEDULER_SECONDARY_MODEL, name: 'Gemini 3.5 Flash (Secondary: 20 RPD)' },
+        { code: SCHEDULER_TERTIARY_MODEL,  name: 'Gemini 3.1 Flash-Lite (Backup: 500 RPD)' },
+        { code: 'gemini-2.5-flash',        name: 'Gemini 2.5 Flash' },
         { code: 'gemini-1.5-flash',        name: 'Gemini 1.5 Flash' }
       ];
 
