@@ -575,10 +575,13 @@
           </td>
           <td class="py-3 px-4 text-right whitespace-nowrap">
             <div class="flex items-center justify-end gap-1.5">
-              <button onclick="openPrintDoModal('${ret.id}')" class="px-2.5 py-1.5 text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold rounded-lg border border-blue-200 transition flex items-center gap-1" title="View & Print PMG Delivery Order">
+              <button onclick="pmgReturns.openPrintDoModal('${ret.id}')" class="px-2.5 py-1.5 text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold rounded-lg border border-blue-200 transition flex items-center gap-1" title="View & Print PMG Delivery Order">
                 <i class="fa-solid fa-print"></i> <span>DO Form</span>
               </button>
-              <button onclick="openUploadSignedDoModal('${ret.id}')" class="px-2 py-1.5 text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 font-semibold rounded-lg border border-slate-300 transition" title="Upload Signed DO Proof to OneDrive">
+              <button onclick="pmgReturns.openPrintCartonLabelModal('${ret.id}')" class="px-2.5 py-1.5 text-xs bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold rounded-lg border border-amber-300 transition flex items-center gap-1" title="Print Big Box / Carton Shipping Labels for Transporter">
+                <i class="fa-solid fa-tags"></i> <span>Box Labels</span>
+              </button>
+              <button onclick="pmgReturns.openUploadSignedDoModal('${ret.id}')" class="px-2 py-1.5 text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 font-semibold rounded-lg border border-slate-300 transition" title="Upload Signed DO Proof to OneDrive">
                 <i class="fa-solid fa-cloud-arrow-up"></i>
               </button>
               <button onclick="openSettleCnModal('${ret.id}')" class="px-2 py-1.5 text-xs bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-semibold rounded-lg border border-emerald-300 transition" title="Settle Credit Note & Key Xilnex">
@@ -631,6 +634,15 @@
     document.getElementById('nrCompanyName').value = branchInfo.companyName;
     document.getElementById('nrCompanyAddress').value = branchInfo.address;
     document.getElementById('nrSupplier').value = '';
+    
+    // Reset destination fields
+    const presetEl = document.getElementById('nrDestPreset');
+    if (presetEl) presetEl.value = '';
+    document.getElementById('nrDestCompany').value = '';
+    document.getElementById('nrDestAddress').value = '';
+    document.getElementById('nrDestAttn').value = '';
+    document.getElementById('nrDestPhone').value = '';
+
     document.getElementById('nrDoNumber').value = generateNextDoNumber(branchInfo.name);
     document.getElementById('nrDate').value = formatTodayDateForDo();
     document.getElementById('nrVerifiedBy').value = getCurrentUserDisplayName();
@@ -655,6 +667,21 @@
     document.getElementById('nrCompanyName').value = branchInfo.companyName;
     document.getElementById('nrCompanyAddress').value = branchInfo.address;
     document.getElementById('nrDoNumber').value = generateNextDoNumber(branchName);
+  }
+
+  function onDestPresetChanged(presetName) {
+    if (!presetName || presetName === 'CUSTOM') return;
+    const preset = DESTINATION_PRESETS.find(p => p.name === presetName || p.companyName === presetName);
+    if (preset) {
+      document.getElementById('nrDestCompany').value = preset.companyName;
+      document.getElementById('nrDestAddress').value = preset.address;
+      document.getElementById('nrDestAttn').value = preset.attn || '';
+      document.getElementById('nrDestPhone').value = preset.phone || '';
+      const supplierInput = document.getElementById('nrSupplier');
+      if (supplierInput && !supplierInput.value.trim()) {
+        supplierInput.value = preset.name;
+      }
+    }
   }
 
   function generateNextDoNumber(branchName) {
@@ -840,8 +867,19 @@
     const verifiedBy = document.getElementById('nrVerifiedBy').value.trim();
     const remarks = document.getElementById('nrRemarks').value.trim();
 
+    // Destination Details
+    const destCompany = document.getElementById('nrDestCompany').value.trim();
+    const destAddress = document.getElementById('nrDestAddress').value.trim();
+    const destAttn = document.getElementById('nrDestAttn').value.trim();
+    const destPhone = document.getElementById('nrDestPhone').value.trim();
+
     if (!companyName || !doNumber || !date) {
       alert('Please fill in Company Name, DO Number, and Date.');
+      return;
+    }
+
+    if (!destCompany || !destAddress) {
+      alert('Please fill in Destination Company Name and Destination Address (Where should the transporter deliver to?).');
       return;
     }
 
@@ -870,7 +908,11 @@
       companyName: companyName,
       companyAddress: companyAddress,
       date: date,
-      supplier: supplier || 'General Supplier',
+      supplier: supplier || destCompany || 'General Supplier',
+      destCompany: destCompany,
+      destAddress: destAddress,
+      destAttn: destAttn,
+      destPhone: destPhone,
       totalCartons: totalCartons,
       status: 'pending_pickup',
       verifiedBy: verifiedBy || getCurrentUserDisplayName(),
@@ -927,7 +969,7 @@
     }).join('');
 
     // Fill blank rows to mimic standard full-sheet DO appearance
-    const blankRowsCount = Math.max(0, 10 - (ret.items || []).length);
+    const blankRowsCount = Math.max(0, 8 - (ret.items || []).length);
     let blankRowsHtml = '';
     for (let i = 0; i < blankRowsCount; i++) {
       blankRowsHtml += `
@@ -947,8 +989,21 @@
         <div style="font-weight: 900; font-size: 15px; text-transform: uppercase;">${escapeHtml(ret.companyName)}</div>
         <div style="font-size: 12px; font-weight: 600; text-transform: uppercase; max-width: 600px;">${escapeHtml(ret.companyAddress)}</div>
         
+        <!-- Deliver To / Destination Section -->
+        <div style="margin-top: 10px; margin-bottom: 10px; padding: 8px 12px; background: #fafafa; border: 1.5px solid #000; border-radius: 4px;">
+          <div style="font-size: 10px; font-weight: 900; color: #555; text-transform: uppercase; letter-spacing: 0.5px;">DELIVER TO / DESTINATION:</div>
+          <div style="font-size: 14px; font-weight: 900; color: #000; margin-top: 2px; text-transform: uppercase;">${escapeHtml(ret.destCompany || ret.supplier || 'N/A')}</div>
+          <div style="font-size: 11px; font-weight: 600; color: #222; text-transform: uppercase; margin-top: 1px;">${escapeHtml(ret.destAddress || '')}</div>
+          ${(ret.destAttn || ret.destPhone) ? `
+            <div style="font-size: 11px; font-weight: bold; color: #333; margin-top: 3px; display: flex; gap: 15px; flex-wrap: wrap;">
+              ${ret.destAttn ? `<span><b>Attn:</b> ${escapeHtml(ret.destAttn)}</span>` : ''}
+              ${ret.destPhone ? `<span><b>Tel:</b> ${escapeHtml(ret.destPhone)}</span>` : ''}
+            </div>
+          ` : ''}
+        </div>
+
         <!-- Metadata -->
-        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 14px; margin-bottom: 6px; font-weight: bold; font-size: 13px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 6px; margin-bottom: 6px; font-weight: bold; font-size: 13px;">
           <div>DO: <span style="font-family: monospace; font-size: 14px;">${escapeHtml(ret.doNumber)}</span></div>
           <div>Date: <span>${escapeHtml(ret.date)}</span></div>
         </div>
@@ -981,7 +1036,7 @@
         </div>
 
         <!-- Signatures Handover Box -->
-        <div style="display: flex; justify-content: space-between; margin-top: 45px; font-size: 12px;">
+        <div style="display: flex; justify-content: space-between; margin-top: 35px; font-size: 12px;">
           <div style="width: 250px;">
             <div style="border-bottom: 1px solid #000; height: 35px;"></div>
             <div style="font-weight: bold; margin-top: 4px;">Verified by:</div>
@@ -997,7 +1052,7 @@
         </div>
 
         <!-- Footer Notice -->
-        <div style="margin-top: 30px; font-size: 10px; color: #777; border-top: 1px solid #ddd; padding-top: 4px; display: flex; justify-content: space-between;">
+        <div style="margin-top: 25px; font-size: 10px; color: #777; border-top: 1px solid #ddd; padding-top: 4px; display: flex; justify-content: space-between;">
           <span>PMG Pharmacy System Generated DO · Auto-Archived in Company OneDrive</span>
           <span>Proof required for credit note claim</span>
         </div>
@@ -1040,6 +1095,140 @@
       </head>
       <body>
         ${printArea.outerHTML}
+        <script>
+          window.onload = function() {
+            window.print();
+            setTimeout(function() { window.frameElement.remove(); }, 1500);
+          };
+        <\/script>
+      </body>
+      </html>
+    `);
+    doc.close();
+  }
+
+  // ─── MODAL 2B: LARGE BOX / CARTON SHIPPING LABELS GENERATOR ──────────────────
+  let activeReturnForLabels = null;
+
+  function openPrintCartonLabelModal(returnId) {
+    const id = returnId || (activeReturnForDo ? activeReturnForDo.id : null);
+    const ret = returnsData.find(r => r.id === id);
+    if (!ret) return;
+    activeReturnForLabels = ret;
+
+    const modal = document.getElementById('printCartonLabelModal');
+    const container = document.getElementById('printCartonLabelsContainer');
+    if (!modal || !container) return;
+
+    const totalCartons = Math.max(1, ret.totalCartons || 1);
+    const prnList = Array.from(new Set((ret.items || []).map(i => i.prnNumber).filter(Boolean))).join(', ');
+
+    // Generate big labels for all cartons
+    let labelsHtml = '';
+    for (let c = 1; c <= totalCartons; c++) {
+      labelsHtml += `
+        <div class="carton-shipping-box" style="page-break-after: always; width: 100%; max-width: 780px; margin: 0 auto 30px auto; border: 4px solid #000; padding: 22px; font-family: Arial, sans-serif; background: #fff; box-sizing: border-box; box-shadow: 0 4px 10px rgba(0,0,0,0.08);">
+          <!-- Top Header -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3.5px solid #000; padding-bottom: 12px; margin-bottom: 16px;">
+            <div style="font-size: 20px; font-weight: 900; letter-spacing: 1px;">🚚 CARTON SHIPPING / DELIVERY LABEL</div>
+            <div style="font-size: 15px; font-weight: 900; background: #000; color: #fff; padding: 5px 12px; border-radius: 4px;">PMG PHARMACY</div>
+          </div>
+
+          <!-- DESTINATION (SHIP TO) - EXTRA LARGE AND HIGH CONTRAST -->
+          <div style="border: 3.5px solid #000; padding: 18px; background: #fafafa; margin-bottom: 18px;">
+            <div style="font-size: 13px; font-weight: 900; text-transform: uppercase; color: #444; letter-spacing: 1.5px; border-bottom: 2px dashed #999; padding-bottom: 5px; margin-bottom: 10px;">
+              SHIP TO / DELIVER TO (DESTINATION):
+            </div>
+            <div style="font-size: 28px; font-weight: 900; color: #000; line-height: 1.2; text-transform: uppercase; margin-bottom: 8px;">
+              ${escapeHtml(ret.destCompany || ret.supplier || 'N/A')}
+            </div>
+            <div style="font-size: 16px; font-weight: 700; color: #111; line-height: 1.35; text-transform: uppercase;">
+              ${escapeHtml(ret.destAddress || 'PLEASE CONTACT SENDER FOR WAREHOUSE ADDRESS')}
+            </div>
+            ${(ret.destAttn || ret.destPhone) ? `
+              <div style="margin-top: 12px; padding-top: 10px; border-top: 2px dashed #999; font-size: 16px; font-weight: 900; display: flex; gap: 25px; flex-wrap: wrap;">
+                ${ret.destAttn ? `<div>ATTN: <span style="font-size: 18px; text-decoration: underline;">${escapeHtml(ret.destAttn)}</span></div>` : ''}
+                ${ret.destPhone ? `<div>TEL: <span style="font-size: 18px; font-family: monospace;">${escapeHtml(ret.destPhone)}</span></div>` : ''}
+              </div>
+            ` : ''}
+          </div>
+
+          <!-- SENDER & CARTON BADGE ROW -->
+          <div style="display: flex; gap: 16px; margin-bottom: 16px;">
+            <!-- SENDER (FROM) -->
+            <div style="flex: 1.2; border: 2.5px solid #000; padding: 14px; background: #fff;">
+              <div style="font-size: 11px; font-weight: 900; text-transform: uppercase; color: #444; border-bottom: 1.5px solid #bbb; padding-bottom: 4px; margin-bottom: 6px;">
+                SENDER (FROM):
+              </div>
+              <div style="font-size: 15px; font-weight: 900; text-transform: uppercase;">${escapeHtml(ret.companyName)}</div>
+              <div style="font-size: 12px; font-weight: 600; text-transform: uppercase; margin-top: 4px; color: #222;">${escapeHtml(ret.companyAddress)}</div>
+              <div style="font-size: 12px; font-weight: bold; margin-top: 6px; color: #000;">BRANCH PIC: ${escapeHtml(ret.verifiedBy || 'Branch Pharmacist')}</div>
+            </div>
+
+            <!-- GIGANTIC CARTON IDENTIFIER BADGE -->
+            <div style="flex: 1; border: 4px solid #000; background: #f4f4f4; padding: 12px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+              <div style="font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 1.5px; color: #333;">CARTON IDENTIFIER</div>
+              <div style="font-size: 38px; font-weight: 900; color: #000; line-height: 1.05; margin: 6px 0;">
+                CARTON ${c} OF ${totalCartons}
+              </div>
+              <div style="font-size: 12px; font-weight: 900; background: #000; color: #fff; padding: 3px 10px; border-radius: 4px;">
+                TOTAL ${totalCartons} CARTON(S)
+              </div>
+            </div>
+          </div>
+
+          <!-- SHIPMENT METADATA BAR -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border: 2.5px solid #000; padding: 10px 16px; font-size: 14px; font-weight: 900; margin-bottom: 14px; background: #fff;">
+            <div>DO NO: <span style="font-family: monospace; font-size: 16px; color: #0d47a1;">${escapeHtml(ret.doNumber)}</span></div>
+            <div>DATE: <span>${escapeHtml(ret.date)}</span></div>
+            <div>PRN REF: <span style="font-family: monospace;">${prnList || 'N/A'}</span></div>
+          </div>
+
+          <!-- SPECIAL HANDLING WARNING -->
+          <div style="border: 2.5px dashed #d32f2f; background: #fff5f5; color: #b71c1c; padding: 10px; text-align: center; font-weight: 900; font-size: 14px; letter-spacing: 0.5px;">
+            ⚠️ PHARMACEUTICAL RETURN GOODS · HANDLE WITH CARE · KEEP DRY · DO NOT DROP ⚠️
+          </div>
+        </div>
+      `;
+    }
+
+    container.innerHTML = labelsHtml;
+    modal.classList.remove('hidden');
+  }
+
+  function closePrintCartonLabelModal() {
+    document.getElementById('printCartonLabelModal')?.classList.add('hidden');
+  }
+
+  function executePrintCartonLabels() {
+    const container = document.getElementById('printCartonLabelsContainer');
+    if (!container) return;
+
+    const printFrame = document.createElement('iframe');
+    printFrame.style.position = 'fixed';
+    printFrame.style.right = '0';
+    printFrame.style.bottom = '0';
+    printFrame.style.width = '0';
+    printFrame.style.height = '0';
+    printFrame.style.border = '0';
+    document.body.appendChild(printFrame);
+
+    const doc = printFrame.contentWindow.document;
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>PMG_Carton_Labels_${activeReturnForLabels ? activeReturnForLabels.doNumber : 'Cartons'}</title>
+        <style>
+          @page { size: A4 landscape; margin: 10mm; }
+          body { margin: 0; padding: 0; font-family: Arial, sans-serif; background: #fff; }
+          .carton-shipping-box { page-break-after: always; }
+          .carton-shipping-box:last-child { page-break-after: avoid; }
+        </style>
+      </head>
+      <body>
+        ${container.innerHTML}
         <script>
           window.onload = function() {
             window.print();
@@ -1292,6 +1481,7 @@
     openNewModal: openNewReturnModal,
     closeNewModal: closeNewReturnModal,
     onNrBranchChanged: onNrBranchChanged,
+    onDestPresetChanged: onDestPresetChanged,
     addDraftItemRow: addDraftItemRow,
     removeDraftItemRow: removeDraftItemRow,
     updateDraftItem: updateDraftItem,
@@ -1300,6 +1490,10 @@
     openPrintDoModal: openPrintDoModal,
     closePrintDoModal: closePrintDoModal,
     executePrintDo: executePrintDo,
+    openPrintCartonLabelModal: openPrintCartonLabelModal,
+    closePrintCartonLabelModal: closePrintCartonLabelModal,
+    executePrintCartonLabels: executePrintCartonLabels,
+    getActiveReturnId: () => (activeReturnForDo ? activeReturnForDo.id : null),
     openUploadSignedDoModal: openUploadSignedDoModal,
     closeUploadSignedDoModal: closeUploadSignedDoModal,
     handleUsdFileSelected: handleUsdFileSelected,

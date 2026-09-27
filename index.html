@@ -3840,20 +3840,69 @@ Date visit: 06.01.2026
             </div>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-            <div>
-              <label class="block font-semibold text-gray-700 mb-1">Registered Company Name</label>
-              <input type="text" id="nrCompanyName" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-gray-800 bg-white uppercase">
-            </div>
-            <div>
-              <label class="block font-semibold text-gray-700 mb-1">Supplier / Vendor Name</label>
-              <input type="text" id="nrSupplier" placeholder="e.g. DKSH, Sandoz, Intas, Apex..." class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white">
-            </div>
+          <div class="mt-3">
+            <label class="block font-semibold text-gray-700 mb-1">Registered Company Name</label>
+            <input type="text" id="nrCompanyName" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-gray-800 bg-white uppercase">
           </div>
 
           <div class="mt-3">
-            <label class="block font-semibold text-gray-700 mb-1">Registered Company Address</label>
+            <label class="block font-semibold text-gray-700 mb-1">Registered Company Address (Sender)</label>
             <input type="text" id="nrCompanyAddress" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs text-gray-600 bg-white uppercase">
+          </div>
+        </div>
+
+        <!-- Delivery Destination (Ship To) Details -->
+        <div class="bg-teal-50/50 border border-teal-200 rounded-xl p-4">
+          <div class="flex items-center justify-between mb-2.5">
+            <div class="text-[11px] font-bold text-teal-900 uppercase tracking-wider">
+              <i class="fa-solid fa-location-dot text-teal-600 mr-1"></i> Delivery Destination (Ship To / Transporter Drop-Off)
+            </div>
+            <div class="text-[11px] text-teal-700">
+              Select preset or type custom address
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">Preset Supplier / Warehouse</label>
+              <select id="nrDestPreset" onchange="pmgReturns.onDestPresetChanged(this.value)" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white outline-none focus:ring-2 focus:ring-teal-500">
+                <option value="">-- Choose Supplier Preset or Custom --</option>
+                <option value="SSJ PHARMA SDN BHD">SSJ PHARMA SDN BHD (Demak Laut, Kuching)</option>
+                <option value="DKSH MALAYSIA SDN BHD">DKSH MALAYSIA SDN BHD (Demak Laut, Kuching)</option>
+                <option value="ZUELLIG PHARMA SDN BHD">ZUELLIG PHARMA SDN BHD (Pending, Kuching)</option>
+                <option value="APEX PHARMACY MARKETING SDN BHD">APEX PHARMACY MARKETING (Demak Laut)</option>
+                <option value="SUNWARD PHARMACEUTICAL (M) SDN BHD">SUNWARD PHARMACEUTICAL (Kuching)</option>
+                <option value="DUOPHARMA (M) SENDIRIAN BERHAD">DUOPHARMA (M) SENDIRIAN BERHAD</option>
+                <option value="KOTRA PHARMA (M) SDN BHD">KOTRA PHARMA (M) SDN BHD</option>
+                <option value="PHARMANIAGA LOGISTICS SDN BHD">PHARMANIAGA LOGISTICS SDN BHD</option>
+                <option value="PMG CENTRAL WAREHOUSE / HQ">PMG CENTRAL DISTRIBUTION WAREHOUSE / HQ</option>
+                <option value="CUSTOM">Custom / Other Destination...</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">Destination Company Name *</label>
+              <input type="text" id="nrDestCompany" placeholder="e.g. SSJ PHARMA SDN BHD" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-gray-800 bg-white uppercase">
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="block font-semibold text-gray-700 mb-1">Delivery Destination Address *</label>
+            <input type="text" id="nrDestAddress" placeholder="e.g. LOT 1374, BLOCK 7, MUARA TEBAS LAND DISTRICT, DEMAK LAUT INDUSTRIAL PARK, 93050 KUCHING, SARAWAK." class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs text-gray-700 bg-white uppercase">
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">Attention To (Optional)</label>
+              <input type="text" id="nrDestAttn" placeholder="e.g. Returns Dept / Mr. Tan" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white">
+            </div>
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">Destination Phone Number (Optional)</label>
+              <input type="text" id="nrDestPhone" placeholder="e.g. 082-432888 / 012-3456789" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white">
+            </div>
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">Brand / Supplier Code (Optional)</label>
+              <input type="text" id="nrSupplier" placeholder="e.g. Intas / Sandoz" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white">
+            </div>
           </div>
         </div>
 
@@ -3937,6 +3986,9 @@ Date visit: 06.01.2026
           <h3 class="font-bold text-sm">Official PMG Delivery Order (DO)</h3>
         </div>
         <div class="flex items-center gap-2">
+          <button type="button" onclick="pmgReturns.openPrintCartonLabelModal(pmgReturns.getActiveReturnId())" class="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow transition" title="Print Big Box / Carton Shipping Labels for Transporter">
+            <i class="fa-solid fa-tags"></i> <span>Box Labels</span>
+          </button>
           <button type="button" onclick="pmgReturns.executePrintDo()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow transition">
             <i class="fa-solid fa-print"></i> Print DO (A4)
           </button>
@@ -4090,6 +4142,46 @@ Date visit: 06.01.2026
         </button>
         <button type="button" onclick="pmgReturns.submitSettleCn()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs shadow transition flex items-center gap-1.5">
           <i class="fa-solid fa-check"></i> Complete & Settle
+        </button>
+    </div>
+  </div>
+
+  <!-- MODAL 5: PRINT BOX / CARTON SHIPPING LABELS -->
+  <div id="printCartonLabelModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[95vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <!-- Modal Header -->
+      <div class="bg-slate-900 text-white px-6 py-3.5 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center text-slate-950">
+            <i class="fa-solid fa-tags"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-sm text-white">Carton Shipping Labels (Transporter Box Labelling)</h3>
+            <p class="text-amber-200 text-[11px]">Big, high-visibility box stickers for delivery drivers and destination warehouses.</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="pmgReturns.executePrintCartonLabels()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-black px-4 py-1.5 rounded-lg flex items-center gap-1.5 shadow transition">
+            <i class="fa-solid fa-print"></i> Print Labels (A4)
+          </button>
+          <button type="button" onclick="pmgReturns.closePrintCartonLabelModal()" class="text-white/70 hover:text-white text-lg p-1">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Printable Document Container -->
+      <div class="p-6 overflow-y-auto flex-grow bg-slate-100 flex justify-center">
+        <div id="printCartonLabelsContainer" class="w-full flex flex-col items-center">
+          <!-- Big Carton Labels Injected Here -->
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="bg-white px-6 py-3 border-t border-gray-200 flex justify-between items-center text-xs shrink-0">
+        <span class="text-gray-500 font-medium">Paste one label firmly on top or side of each carton box before transporter collection.</span>
+        <button type="button" onclick="pmgReturns.closePrintCartonLabelModal()" class="px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg transition">
+          Close
         </button>
       </div>
     </div>
