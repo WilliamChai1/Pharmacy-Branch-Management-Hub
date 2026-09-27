@@ -28,19 +28,15 @@ const GOOGLE_SHEETS_CONFIG = {
   branchCSV: '',   // ✅ Paste published Branches CSV URL here (optional)
 };
 
-// ─── BRANCHES ────────────────────────────────────────────────────────────────
+// ─── BRANCHES (The 7 Outlets Managed by Area Manager) ───────────────────────
 const BRANCHES = [
-  { code: 'KS01',       name: 'Kota Sentosa', startTime: '0730', companyName: 'PMG PHARMACY (KOTA SENTOSA) SDN BHD', address: 'NO. 102 & 103, GROUND FLOOR, SENTOSA PARADE, 7TH MILE, JALAN PENRISSEN, 93250 KUCHING, SARAWAK.' },
-  { code: 'LUNDU',      name: 'Lundu',        startTime: '0800', companyName: 'PMG PHARMACY (LUNDU) SDN BHD',        address: 'NO.20, LUNDU BAZAAR, PEKAN LUNDU, 94500, SARAWAK.' },
-  { code: 'ASTANA',     name: 'Astana',       startTime: '0800', companyName: 'PMG PHARMACY (ASTANA) SDN BHD',       address: 'SUBLOT 12, GROUND FLOOR, ASTANA COMMERCIAL CENTRE, JALAN ASTANA, 93050 PETRA JAYA, KUCHING, SARAWAK.' },
-  { code: 'MALIHAH',    name: 'Malihah',      startTime: '0800', companyName: 'PMG PHARMACY (MALIHAH) SDN BHD',      address: 'SUBLOT 7, GROUND FLOOR, MALIHAH COMMERCIAL CENTRE, JALAN MATANG, 93050 KUCHING, SARAWAK.' },
-  { code: 'METROCITY',  name: 'Metrocity',    startTime: '0830', companyName: 'PMG PHARMACY (METROCITY) SDN BHD',    address: 'UNIT 21, METROCITY COMMERCIAL CENTRE, JALAN MATANG, 93050 KUCHING, SARAWAK.' },
-  { code: 'MJK',        name: 'MJK',          startTime: '0800', companyName: 'PMG PHARMACY (MJK) SDN BHD',          address: 'GROUND FLOOR, MEDAN JAYA COMMERCIAL CENTRE, 93050 KUCHING, SARAWAK.' },
-  { code: 'MOYAN',      name: 'Moyan',        startTime: '0800', companyName: 'PMG PHARMACY (MOYAN) SDN BHD',        address: 'SUBLOT 15, MOYAN SQUARE, JALAN BATU KAWA-MATANG, 93250 KUCHING, SARAWAK.' },
-  { code: 'SEMARIANG',  name: 'Semariang',    startTime: '0730', companyName: 'PMG PHARMACY (SEMARIANG) SDN BHD',    address: 'SUBLOT 8, BANDAR BARU SEMARIANG, JALAN SULTAN TENGAH, 93050 KUCHING, SARAWAK.' },
-  { code: 'MATANG',     name: 'Matang',       startTime: '0800', companyName: 'PMG PHARMACY (MATANG JAYA) SDN BHD',  address: 'SUBLOT 5, MATANG JAYA COMMERCIAL CENTRE, JALAN MATANG, 93050 KUCHING, SARAWAK.' },
-  { code: 'BDC',        name: 'BDC',          startTime: '0800', companyName: 'PMG PHARMACY (BDC) SDN BHD',          address: 'GROUND FLOOR, BDC COMMERCIAL CENTRE, 93350 KUCHING, SARAWAK.' },
-  { code: 'SERIAN',     name: 'Serian',       startTime: '0800', companyName: 'PMG PHARMACY (SERIAN) SDN BHD',       address: 'NO. 45, GROUND FLOOR, SERIAN BAZAAR, 94700 SERIAN, SARAWAK.' }
+  { code: 'MATANG JAYA',  name: 'Matang Jaya',   startTime: '0800', companyName: 'PMG PHARMACY (MATANG JAYA) SDN BHD',  address: 'SUBLOT 5, MATANG JAYA COMMERCIAL CENTRE, JALAN MATANG, 93050 KUCHING, SARAWAK.' },
+  { code: 'SUNGAI MOYAN', name: 'Sungai Moyan',  startTime: '0800', companyName: 'PMG PHARMACY (SUNGAI MOYAN) SDN BHD', address: 'SUBLOT 15, MOYAN SQUARE, JALAN BATU KAWA-MATANG, 93250 KUCHING, SARAWAK.' },
+  { code: 'MALIHAH',      name: 'Malihah',       startTime: '0800', companyName: 'PMG PHARMACY (MALIHAH) SDN BHD',      address: 'SUBLOT 7, GROUND FLOOR, MALIHAH COMMERCIAL CENTRE, JALAN MATANG, 93050 KUCHING, SARAWAK.' },
+  { code: 'METROCITY',    name: 'Metrocity',     startTime: '0830', companyName: 'PMG PHARMACY (METROCITY) SDN BHD',    address: 'UNIT 21, METROCITY COMMERCIAL CENTRE, JALAN MATANG, 93050 KUCHING, SARAWAK.' },
+  { code: 'ASTANA',       name: 'Astana',        startTime: '0800', companyName: 'PMG PHARMACY (ASTANA) SDN BHD',       address: 'SUBLOT 12, GROUND FLOOR, ASTANA COMMERCIAL CENTRE, JALAN ASTANA, 93050 PETRA JAYA, KUCHING, SARAWAK.' },
+  { code: 'SAMARIANG',    name: 'Samariang',     startTime: '0730', companyName: 'PMG PHARMACY (SAMARIANG) SDN BHD',    address: 'SUBLOT 8, BANDAR BARU SAMARIANG, JALAN SULTAN TENGAH, 93050 KUCHING, SARAWAK.' },
+  { code: 'KS01',         name: 'Kota Sentosa',  startTime: '0730', companyName: 'PMG PHARMACY (KOTA SENTOSA) SDN BHD', address: 'NO. 102 & 103, GROUND FLOOR, SENTOSA PARADE, 7TH MILE, JALAN PENRISSEN, 93250 KUCHING, SARAWAK.' }
 ];
 
 // ─── USERS / CREDENTIALS (secure internal storage) ───────────────────────────

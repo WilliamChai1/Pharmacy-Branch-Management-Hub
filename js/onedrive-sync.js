@@ -7,51 +7,73 @@
   const STORE_NAME = 'handles';
   const HANDLE_KEY = 'pmg_onedrive_root_handle';
 
-  // Recognized branch folders created in PMG OneDrive
+  // Recognized branch folders created in PMG OneDrive (Strictly the 7 Outlets Managed by AM)
   const KNOWN_BRANCH_FOLDERS = [
-    'ASTANA',
-    'KOTA SENTOSA',
-    'LUNDU',
+    'MATANG JAYA',
+    'SUNGAI MOYAN',
     'MALIHAH',
-    'MATANG',
     'METROCITY',
-    'MJK',
-    'MOYAN',
-    'SEMARIANG',
-    'BDC',
-    'SERIAN'
+    'ASTANA',
+    'SAMARIANG',
+    'KOTA SENTOSA'
   ];
 
-  // Mapping between branch codes and OneDrive folder names
+  // Mapping between branch codes/aliases and official OneDrive folder names
   const BRANCH_FOLDER_MAP = {
+    // Matang Jaya
+    'MATANG JAYA': 'MATANG JAYA',
+    'MATANG': 'MATANG JAYA',
+    'MJ01': 'MATANG JAYA',
+    'PMG PHARMACY (MATANG JAYA) SDN BHD': 'MATANG JAYA',
+    'PMG PHARMACY MATANG JAYA': 'MATANG JAYA',
+
+    // Sungai Moyan
+    'SUNGAI MOYAN': 'SUNGAI MOYAN',
+    'MOYAN': 'SUNGAI MOYAN',
+    'PMG PHARMACY (SUNGAI MOYAN) SDN BHD': 'SUNGAI MOYAN',
+    'PMG PHARMACY SUNGAI MOYAN': 'SUNGAI MOYAN',
+
+    // Malihah
+    'MALIHAH': 'MALIHAH',
+    'PMG PHARMACY (MALIHAH) SDN BHD': 'MALIHAH',
+    'PMG PHARMACY MALIHAH': 'MALIHAH',
+
+    // Metrocity
+    'METROCITY': 'METROCITY',
+    'PMG PHARMACY (METROCITY) SDN BHD': 'METROCITY',
+    'PMG PHARMACY METROCITY': 'METROCITY',
+
+    // Astana
+    'ASTANA': 'ASTANA',
+    'PMG PHARMACY (ASTANA) SDN BHD': 'ASTANA',
+    'PMG PHARMACY ASTANA': 'ASTANA',
+
+    // Samariang
+    'SAMARIANG': 'SAMARIANG',
+    'SEMARIANG': 'SAMARIANG',
+    'PMG PHARMACY (SAMARIANG) SDN BHD': 'SAMARIANG',
+    'PMG PHARMACY SAMARIANG': 'SAMARIANG',
+
+    // Kota Sentosa
     'KS01': 'KOTA SENTOSA',
     'KOTA SENTOSA': 'KOTA SENTOSA',
-    'LUNDU': 'LUNDU',
-    'ASTANA': 'ASTANA',
-    'MALIHAH': 'MALIHAH',
-    'MATANG': 'MATANG',
-    'METROCITY': 'METROCITY',
-    'MJK': 'MJK',
-    'MOYAN': 'MOYAN',
-    'SEMARIANG': 'SEMARIANG',
-    'BDC': 'BDC',
-    'SERIAN': 'SERIAN'
+    'PMG PHARMACY (KOTA SENTOSA) SDN BHD': 'KOTA SENTOSA',
+    'PMG PHARMACY KOTA SENTOSA': 'KOTA SENTOSA'
   };
 
   // Reverse mapping from folder name to storage branch code
   const FOLDER_BRANCH_CODE_MAP = {
-    'KOTA SENTOSA': 'KS01',
-    'KS01': 'KS01',
-    'LUNDU': 'LUNDU',
-    'ASTANA': 'ASTANA',
+    'MATANG JAYA': 'MATANG JAYA',
+    'MATANG': 'MATANG JAYA',
+    'SUNGAI MOYAN': 'SUNGAI MOYAN',
+    'MOYAN': 'SUNGAI MOYAN',
     'MALIHAH': 'MALIHAH',
-    'MATANG': 'MATANG',
     'METROCITY': 'METROCITY',
-    'MJK': 'MJK',
-    'MOYAN': 'MOYAN',
-    'SEMARIANG': 'SEMARIANG',
-    'BDC': 'BDC',
-    'SERIAN': 'SERIAN'
+    'ASTANA': 'ASTANA',
+    'SAMARIANG': 'SAMARIANG',
+    'SEMARIANG': 'SAMARIANG',
+    'KOTA SENTOSA': 'KS01',
+    'KS01': 'KS01'
   };
 
   class OneDriveSyncEngine {
@@ -258,9 +280,13 @@
           for await (const [name, entry] of handle.entries()) {
             if (entry.kind === 'directory') {
               const upper = name.trim().toUpperCase();
-              if (KNOWN_BRANCH_FOLDERS.includes(upper)) {
-                this.branchSubHandles[upper] = entry;
-                detectedSubfolders.push(upper);
+              const canonical = BRANCH_FOLDER_MAP[upper] || (KNOWN_BRANCH_FOLDERS.includes(upper) ? upper : null);
+              if (canonical && KNOWN_BRANCH_FOLDERS.includes(canonical)) {
+                this.branchSubHandles[canonical] = entry;
+                this.branchSubHandles[upper] = entry; // Also store raw handle
+                if (!detectedSubfolders.includes(canonical)) {
+                  detectedSubfolders.push(canonical);
+                }
               }
             }
           }
@@ -274,12 +300,13 @@
         this.mode = 'PARENT';
         this.activeBranchFolder = this._resolveCurrentBranchName();
         this._updateBadge('CONNECTED', `OneDrive: Live (All 7 Outlets)`);
-      } else if (KNOWN_BRANCH_FOLDERS.includes(folderName)) {
+      } else if (KNOWN_BRANCH_FOLDERS.includes(folderName) || BRANCH_FOLDER_MAP[folderName]) {
         // Connected directly to a branch folder (e.g. "KOTA SENTOSA")
+        const canonical = BRANCH_FOLDER_MAP[folderName] || folderName;
         this.mode = 'BRANCH';
-        this.activeBranchFolder = folderName;
-        this.branchSubHandles[folderName] = handle;
-        this._updateBadge('CONNECTED', `OneDrive: Live (${folderName})`);
+        this.activeBranchFolder = canonical;
+        this.branchSubHandles[canonical] = handle;
+        this._updateBadge('CONNECTED', `OneDrive: Live (${canonical})`);
       } else {
         // Custom or unmapped folder name
         this.mode = 'BRANCH';
@@ -308,12 +335,20 @@
       const pBranch = (p.branch || '').trim().toUpperCase();
       const target = (targetBranchName || '').trim().toUpperCase();
       if (pBranch === target) return true;
-      if ((pBranch === 'KS01' || pBranch === 'KOTA SENTOSA') && (target === 'KS01' || target === 'KOTA SENTOSA')) return true;
-      return false;
+      const pCanon = BRANCH_FOLDER_MAP[pBranch] || pBranch;
+      const tCanon = BRANCH_FOLDER_MAP[target] || target;
+      return pCanon === tCanon;
     }
 
     async _getTargetBranchDirectoryHandle(branchFolderName) {
-      const targetName = (branchFolderName || this._resolveCurrentBranchName()).toUpperCase();
+      const rawName = (branchFolderName || this._resolveCurrentBranchName()).toUpperCase();
+      const targetName = BRANCH_FOLDER_MAP[rawName] || rawName;
+
+      // STRICT PROTECTION: Never create or access folders outside the 7 managed outlets!
+      if (!KNOWN_BRANCH_FOLDERS.includes(targetName)) {
+        console.warn(`[PMG OneDrive Sync] Blocked folder creation for unmanaged branch: "${rawName}"`);
+        return null;
+      }
 
       if (this.mode === 'PARENT') {
         if (this.branchSubHandles[targetName]) {

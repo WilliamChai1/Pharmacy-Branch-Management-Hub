@@ -81,64 +81,8 @@
     }
   ];
 
-  // ─── INITIAL SEED DATA (Includes User's Sample) ────────────────────────────────
-  const SEED_RETURNS = [
-    {
-      id: 'ret-lnd-2609-001',
-      doNumber: 'DO-LND-2609-001',
-      branch: 'Lundu',
-      branchCode: 'LUNDU',
-      companyName: 'PMG PHARMACY (LUNDU) SDN BHD',
-      companyAddress: 'NO.20, LUNDU BAZAAR, PEKAN LUNDU, 94500, SARAWAK.',
-      date: '29.06.2026',
-      supplier: 'SSJ PHARMA SDN BHD',
-      destCompany: 'SSJ PHARMA SDN BHD',
-      destAddress: 'LOT 1374, BLOCK 7, MUARA TEBAS LAND DISTRICT, DEMAK LAUT INDUSTRIAL PARK, 93050 KUCHING, SARAWAK.',
-      destAttn: 'Returns Dept / Mr. Tan',
-      destPhone: '082-432888',
-      totalCartons: 1,
-      status: 'awaiting_cn', // 'pending_pickup', 'awaiting_cn', 'completed'
-      verifiedBy: 'Branch Pharmacist',
-      pickupBy: 'Transporter (Lian Ping Express)',
-      pickupDate: '29.06.2026',
-      signedProof: {
-        fileName: 'DO_LND_2609_001_Signed_Proof.pdf',
-        path: 'LUNDU/2026/06 - June/Returns_DO/SSJ_PHARMA/DO_LND_2609_001_Signed_Proof.pdf',
-        timestamp: '2026-06-29T10:15:00.000Z'
-      },
-      cnNumber: '',
-      cnAmount: 0,
-      cnDate: '',
-      xilnexKeyed: false,
-      xilnexKeyedDate: '',
-      xilnexKeyedBy: '',
-      remarks: 'Returned near-expiry stock approved by sales rep.',
-      items: [
-        {
-          cartonNo: 1,
-          itemCode: '103366',
-          itemDescription: "FINAINTAS 5MG TAB 10'S - INTAS",
-          quantity: 2,
-          uom: 'BOX',
-          prnNumber: 'PRN-LND-0412',
-          reason: 'Near Expiry',
-          batchNo: 'FT2401',
-          expiryDate: '2026-08'
-        },
-        {
-          cartonNo: 1,
-          itemCode: '140075',
-          itemDescription: "DABIGATRAN 150MG CAP 3X10'S - SANDOZ",
-          quantity: 1,
-          uom: 'BOX',
-          prnNumber: 'PRN-LND-0412',
-          reason: 'Near Expiry',
-          batchNo: 'DB2409',
-          expiryDate: '2026-08'
-        }
-      ]
-    }
-  ];
+  // ─── INITIAL SEED DATA ────────────────────────────────────────────────────────
+  const SEED_RETURNS = [];
 
   // ─── INDEXEDDB HELPERS ────────────────────────────────────────────────────────
   function openDatabase() {
@@ -166,7 +110,7 @@
     try {
       const db = await openDatabase();
       const hasSeeded = localStorage.getItem('pmg_returns_seeded') === 'true';
-      const deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_returns') || '["ret-ks-2609-002"]');
+      const deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_returns') || '["ret-ks-2609-002", "ret-lnd-2609-001"]');
 
       return new Promise((resolve) => {
         const tx = db.transaction(DB_STORE_NAME, 'readonly');
@@ -305,8 +249,8 @@
       }
     }
     return {
-      name: bName || 'Lundu',
-      code: 'LND',
+      name: bName || 'Kota Sentosa',
+      code: 'KS01',
       companyName: `PMG PHARMACY (${bName.toUpperCase()}) SDN BHD`,
       address: 'SARAWAK, MALAYSIA.'
     };

@@ -45,7 +45,7 @@ function applyRoleUI(session) {
     BRANCHES.forEach(b => {
       const opt = document.createElement('option');
       opt.value = b.code;
-      opt.textContent = `${b.code} – ${b.name}`;
+      opt.textContent = (b.code && b.code !== b.name && b.code.length <= 5) ? `${b.code} – ${b.name}` : b.name;
       headerBranchSelector.appendChild(opt);
     });
 

@@ -7070,15 +7070,24 @@ function parseLarkCustomer(text, defaultBranch = 'Kota Sentosa') {
 const PMG_SCHEDULE_API_URL = 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
 
 const BRANCH_SCHEDULES = {
-  'Kota Sentosa': { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', phone: '60168334455' },
-  'KOTA SENTOSA': { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', phone: '60168334455' },
-  'KS01':         { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', phone: '60168334455' },
-  'ASTANA':       { name: 'Astana',       open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
-  'MALIHAH':      { name: 'Malihah',      open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
-  'METROCITY':    { name: 'Metrocity',    open: '08:30', close: '21:30', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
-  'MJK':          { name: 'MJK',          open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
-  'MOYAN':        { name: 'Moyan',        open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
-  'SEMARIANG':    { name: 'Semariang',    open: '07:30', close: '21:30', pharmacist: 'Duty Pharmacist', phone: '60123456789' },
+  'Kota Sentosa':  { name: 'Kota Sentosa',  open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', phone: '60168334455' },
+  'KOTA SENTOSA':  { name: 'Kota Sentosa',  open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', phone: '60168334455' },
+  'KS01':          { name: 'Kota Sentosa',  open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', phone: '60168334455' },
+  'MATANG JAYA':   { name: 'Matang Jaya',   open: '08:00', close: '21:00', pharmacist: 'Amy Chai (Pharmacist)',     phone: '60123456789' },
+  'Matang Jaya':   { name: 'Matang Jaya',   open: '08:00', close: '21:00', pharmacist: 'Amy Chai (Pharmacist)',     phone: '60123456789' },
+  'MATANG':        { name: 'Matang Jaya',   open: '08:00', close: '21:00', pharmacist: 'Amy Chai (Pharmacist)',     phone: '60123456789' },
+  'SUNGAI MOYAN':  { name: 'Sungai Moyan',  open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789' },
+  'Sungai Moyan':  { name: 'Sungai Moyan',  open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789' },
+  'MOYAN':         { name: 'Sungai Moyan',  open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789' },
+  'MALIHAH':       { name: 'Malihah',       open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789' },
+  'Malihah':       { name: 'Malihah',       open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789' },
+  'METROCITY':     { name: 'Metrocity',     open: '08:30', close: '21:30', pharmacist: 'Duty Pharmacist',           phone: '60123456789' },
+  'Metrocity':     { name: 'Metrocity',     open: '08:30', close: '21:30', pharmacist: 'Duty Pharmacist',           phone: '60123456789' },
+  'ASTANA':        { name: 'Astana',        open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789' },
+  'Astana':        { name: 'Astana',        open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789' },
+  'SAMARIANG':     { name: 'Samariang',     open: '07:30', close: '21:30', pharmacist: 'Duty Pharmacist',           phone: '60123456789' },
+  'Samariang':     { name: 'Samariang',     open: '07:30', close: '21:30', pharmacist: 'Duty Pharmacist',           phone: '60123456789' },
+  'SEMARIANG':     { name: 'Samariang',     open: '07:30', close: '21:30', pharmacist: 'Duty Pharmacist',           phone: '60123456789' }
 };
 
 function escHtml(str) {
