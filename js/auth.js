@@ -48,6 +48,15 @@ function applyRoleUI(session) {
       opt.textContent = `${b.code} – ${b.name}`;
       headerBranchSelector.appendChild(opt);
     });
+
+    const savedGlobalBranch = localStorage.getItem('pmg_global_branch');
+    if (savedGlobalBranch) {
+      headerBranchSelector.value = savedGlobalBranch;
+    }
+
+    headerBranchSelector.onchange = (e) => {
+      setGlobalActiveBranch(e.target.value);
+    };
   }
 
   // Update header user display
@@ -78,7 +87,100 @@ function applyRoleUI(session) {
       activeExpiryFilter.branch = session.branch;
     }
   }
+
+  // Apply saved global branch if AM
+  if (isAM) {
+    const saved = localStorage.getItem('pmg_global_branch');
+    if (saved) {
+      setTimeout(() => setGlobalActiveBranch(saved), 300);
+    }
+  }
 }
+
+// ─── GLOBAL ACTIVE BRANCH SYNCHRONIZATION ────────────────────────────────────
+function setGlobalActiveBranch(branchCodeOrName) {
+  const inputStr = (branchCodeOrName || '').trim();
+  const inputUpper = inputStr.toUpperCase();
+
+  let bObj = null;
+  if (typeof BRANCHES !== 'undefined' && Array.isArray(BRANCHES)) {
+    bObj = BRANCHES.find(b => b.code.toUpperCase() === inputUpper || b.name.toUpperCase() === inputUpper);
+  }
+
+  const branchCode = bObj ? bObj.code : (inputUpper === 'ALL' || !inputStr ? '' : inputStr);
+  const branchName = bObj ? bObj.name : (inputUpper === 'ALL' || !inputStr ? '' : inputStr);
+
+  // 1. Top Header Selector
+  const headerSel = document.getElementById('branchSelector');
+  if (headerSel && headerSel.value !== branchCode) {
+    headerSel.value = branchCode;
+  }
+
+  // 2. Patient Care & Appointments (Module 3)
+  const patientSel = document.getElementById('patientBranchFilter');
+  if (patientSel) {
+    patientSel.value = branchCode;
+    if (typeof renderPatientModule === 'function') {
+      renderPatientModule();
+    }
+  }
+
+  // 3. AI Smart Timetable Generator (Area Manager Suite)
+  const schedulerSel = document.getElementById('schedulerBranchSelect');
+  if (schedulerSel) {
+    if (branchCode) {
+      schedulerSel.value = branchCode;
+    }
+    if (typeof loadTeammates === 'function') {
+      loadTeammates(schedulerSel.value || 'KS01');
+    }
+  }
+
+  // 4. Stock Expiry Tracker (Module 5)
+  const expirySel = document.getElementById('expiryBranchFilter');
+  if (expirySel) {
+    expirySel.value = branchName;
+    if (typeof activeExpiryFilter !== 'undefined') {
+      activeExpiryFilter.branch = branchName;
+      if (typeof renderExpiryUI === 'function') {
+        renderExpiryUI();
+      }
+    }
+    if (typeof updateAccountsShareUi === 'function') {
+      updateAccountsShareUi(branchName || 'Kota Sentosa');
+    }
+  }
+
+  // 5. Credit Note & Returns Tracker (Module 6)
+  const returnsSel = document.getElementById('returnsBranchFilter');
+  if (returnsSel) {
+    returnsSel.value = branchName;
+    if (window.pmgReturns && typeof window.pmgReturns.render === 'function') {
+      window.pmgReturns.render();
+    } else if (typeof renderReturnsUI === 'function') {
+      renderReturnsUI();
+    }
+  }
+
+  // 6. OneDrive Sync Active Branch
+  if (window.pmgOneDriveSync) {
+    if (branchName) {
+      window.pmgOneDriveSync.activeBranchFolder = branchName.toUpperCase();
+    }
+    if (typeof updateSyncModalInfo === 'function') {
+      updateSyncModalInfo();
+    }
+  }
+
+  // Persist choice for Area Manager
+  localStorage.setItem('pmg_global_branch', branchCode);
+
+  const displayName = branchName ? `${branchCode} – ${branchName}` : 'All Branches (AM Overview)';
+  if (typeof showExpiryToast === 'function') {
+    showExpiryToast(`Switched active view to: ${displayName}`);
+  }
+}
+window.setGlobalActiveBranch = setGlobalActiveBranch;
 
 // ─── LOGIN HANDLER ────────────────────────────────────────────────────────────
 async function login() {
