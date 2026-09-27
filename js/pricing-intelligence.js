@@ -15,6 +15,7 @@
       code: '104322',
       name: "JANUMET XR 100/1000MG TAB 28'S",
       brand: 'MSD',
+      supplier: 'Zuellig Pharma',
       costPrice: 98.50,
       standardSp: 118.00,
       currentBranchSp: 118.00,
@@ -31,6 +32,7 @@
       code: '101684',
       name: "NORVASC 5MG TAB 30'S",
       brand: 'Pfizer / Viatris',
+      supplier: 'Zuellig Pharma',
       costPrice: 36.00,
       standardSp: 48.00,
       currentBranchSp: 48.00,
@@ -47,6 +49,7 @@
       code: '105112',
       name: "FORXIGA 10MG TAB 28'S",
       brand: 'AstraZeneca',
+      supplier: 'DKSH',
       costPrice: 125.00,
       standardSp: 148.00,
       currentBranchSp: 149.00,
@@ -63,6 +66,7 @@
       code: '102219',
       name: "LIPITOR 20MG TAB 30'S",
       brand: 'Pfizer / Viatris',
+      supplier: 'Zuellig Pharma',
       costPrice: 82.00,
       standardSp: 105.00,
       currentBranchSp: 106.00,
@@ -79,6 +83,7 @@
       code: '101340',
       name: "GLUCOPHAGE XR 500MG TAB 100'S",
       brand: 'Merck Serono',
+      supplier: 'Zuellig Pharma',
       costPrice: 42.00,
       standardSp: 55.00,
       currentBranchSp: 55.00,
@@ -97,6 +102,7 @@
       code: '201102',
       name: "PANADOL ACTIFAST 500MG 20'S",
       brand: 'Haleon',
+      supplier: 'DKSH',
       costPrice: 11.20,
       standardSp: 13.90,
       currentBranchSp: 14.50,
@@ -113,6 +119,7 @@
       code: '201105',
       name: "PANADOL OPTIZORB 500MG 20'S",
       brand: 'Haleon',
+      supplier: 'DKSH',
       costPrice: 9.50,
       standardSp: 11.90,
       currentBranchSp: 12.20,
@@ -129,6 +136,7 @@
       code: '101357',
       name: "UPHAMOL 650MG STRIP (10X10'S)",
       brand: 'Duopharma',
+      supplier: 'Apex Pharmacy',
       costPrice: 16.50,
       standardSp: 22.90,
       currentBranchSp: 23.50,
@@ -145,6 +153,7 @@
       code: '203301',
       name: "GAVISCON DOUBLE ACTION LIQUID 150ML",
       brand: 'Reckitt',
+      supplier: 'DKSH',
       costPrice: 19.80,
       standardSp: 25.90,
       currentBranchSp: 26.50,
@@ -161,6 +170,7 @@
       code: '204118',
       name: "DIFFLAM AB SORE THROAT LOZENGES ORANGE 16'S",
       brand: 'iNova',
+      supplier: 'DKSH',
       costPrice: 8.40,
       standardSp: 11.50,
       currentBranchSp: 11.90,
@@ -177,6 +187,7 @@
       code: '205520',
       name: "HURIX'S 600 FLU COUGH SYRUP 100ML",
       brand: 'Hurixs',
+      supplier: 'Advance Pharma',
       costPrice: 7.20,
       standardSp: 9.90,
       currentBranchSp: 10.20,
@@ -195,6 +206,7 @@
       code: '301145',
       name: "FLAVETTES EFFERVESCENT VIT C + ZINC GLOW 30'S",
       brand: 'Duopharma',
+      supplier: 'Apex Pharmacy',
       costPrice: 29.50,
       standardSp: 42.90,
       currentBranchSp: 44.90,
@@ -211,6 +223,7 @@
       code: '301149',
       name: "CEBION VITAMIN C 1000MG ORANGE 30'S",
       brand: 'P&G',
+      supplier: 'Zuellig Pharma',
       costPrice: 27.00,
       standardSp: 38.90,
       currentBranchSp: 39.90,
@@ -227,6 +240,7 @@
       code: '102384',
       name: "BLACKMORES OMEGA-3 FISH OIL 1000MG (2X200'S)",
       brand: 'Blackmores',
+      supplier: 'DKSH',
       costPrice: 72.00,
       standardSp: 108.00,
       currentBranchSp: 112.00,
@@ -243,6 +257,7 @@
       code: 'HB-001',
       name: "⭐ PMG PRO-DEFENSE VITAMIN C 1000MG + ZINC 30'S (HOUSE BRAND)",
       brand: 'PMG Healthcare',
+      supplier: 'PMG HQ Central Warehouse',
       costPrice: 12.00,
       standardSp: 26.90,
       currentBranchSp: 26.90,
@@ -259,6 +274,7 @@
       code: 'HB-002',
       name: "⭐ PMG HIGH POTENCY DEEP SEA OMEGA-3 1200MG 100'S",
       brand: 'PMG Healthcare',
+      supplier: 'PMG HQ Central Warehouse',
       costPrice: 28.00,
       standardSp: 65.00,
       currentBranchSp: 65.00,
@@ -277,6 +293,7 @@
       code: '401101',
       name: "ENSURE GOLD VANILLA 850G",
       brand: 'Abbott',
+      supplier: 'DKSH',
       costPrice: 98.50,
       standardSp: 109.90,
       currentBranchSp: 112.00,
@@ -293,6 +310,7 @@
       code: '401105',
       name: "GLUCERNA TRIPLE CARE 850G",
       brand: 'Abbott',
+      supplier: 'DKSH',
       costPrice: 114.00,
       standardSp: 128.00,
       currentBranchSp: 130.00,
@@ -309,6 +327,7 @@
       code: '402210',
       name: "PEDIASURE COMPLETE OHT VANILLA 850G",
       brand: 'Abbott',
+      supplier: 'DKSH',
       costPrice: 99.00,
       standardSp: 111.00,
       currentBranchSp: 114.00,
@@ -325,6 +344,7 @@
       code: '405510',
       name: "DRYPERS WEE WEE DRY MEGA L 62'S",
       brand: 'Vinda',
+      supplier: 'Vinda Wholesaler',
       costPrice: 31.00,
       standardSp: 34.90,
       currentBranchSp: 36.50,
@@ -343,6 +363,7 @@
       code: '501102',
       name: "ACCU-CHEK INSTANT TEST STRIPS 50'S",
       brand: 'Roche',
+      supplier: 'Roche / DKSH',
       costPrice: 68.00,
       standardSp: 88.00,
       currentBranchSp: 89.00,
@@ -359,6 +380,7 @@
       code: '502205',
       name: "OMRON HEM-7120 BLOOD PRESSURE MONITOR",
       brand: 'Omron',
+      supplier: 'Yung Hua Heng',
       costPrice: 135.00,
       standardSp: 175.00,
       currentBranchSp: 179.00,
@@ -704,6 +726,13 @@
         if (stored) {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed) && parsed.length > 0) {
+            // Ensure every item has supplier attribute even if loaded from older storage format
+            parsed.forEach(p => {
+              if (!p.supplier) {
+                const def = DEFAULT_SKUS.find(d => d.id === p.id || d.code === p.code);
+                p.supplier = def && def.supplier ? def.supplier : 'DKSH / Zuellig';
+              }
+            });
             this.skus = parsed;
             return;
           }
@@ -755,7 +784,8 @@
           const match = (s.name || '').toLowerCase().includes(q) ||
                         (s.brand || '').toLowerCase().includes(q) ||
                         (s.code || '').toLowerCase().includes(q) ||
-                        (s.category || '').toLowerCase().includes(q);
+                        (s.category || '').toLowerCase().includes(q) ||
+                        (s.supplier || '').toLowerCase().includes(q);
           if (!match) return false;
         }
         // Category filter
@@ -770,7 +800,7 @@
       });
     }
 
-    // ─── UPDATE SKU PRICE IN MEMORY & STORAGE ──────────────────────────────────
+    // ─── UPDATE SKU PRICE & COST IN MEMORY & STORAGE ───────────────────────────
     updateSkuStandardSp(skuId, newSp) {
       const parsedSp = parseFloat(newSp);
       if (isNaN(parsedSp) || parsedSp < 0) return;
@@ -779,7 +809,31 @@
         sku.standardSp = parsedSp;
         sku.currentBranchSp = parsedSp;
         this.saveSkusToStorage();
+        this.renderSummaryCards();
         this.renderTableOnly();
+      }
+    }
+
+    updateSkuCostPrice(skuId, newCost) {
+      const parsedCost = parseFloat(newCost);
+      if (isNaN(parsedCost) || parsedCost < 0) return;
+      const sku = this.skus.find(s => s.id === skuId);
+      if (sku) {
+        sku.costPrice = parsedCost;
+        this.saveSkusToStorage();
+        this.renderSummaryCards();
+        this.renderTableOnly();
+        if (typeof showExpiryToast === 'function') {
+          showExpiryToast(`Updated ${sku.name} Cost: RM ${parsedCost.toFixed(2)}`);
+        }
+      }
+    }
+
+    updateSkuSupplier(skuId, newSupplier) {
+      const sku = this.skus.find(s => s.id === skuId);
+      if (sku) {
+        sku.supplier = (newSupplier || '').trim();
+        this.saveSkusToStorage();
       }
     }
 
@@ -791,6 +845,7 @@
         code: skuData.code || 'N/A',
         name: (skuData.name || 'NEW ITEM').toUpperCase(),
         brand: skuData.brand || 'General',
+        supplier: skuData.supplier || 'DKSH',
         costPrice: parseFloat(skuData.costPrice) || 0,
         standardSp: parseFloat(skuData.standardSp) || 0,
         currentBranchSp: parseFloat(skuData.standardSp) || 0,
@@ -926,8 +981,21 @@
             <td class="p-3">
               ${tagBadge}
             </td>
-            <td class="p-3 text-right font-mono font-semibold text-gray-700">
-              RM ${s.costPrice.toFixed(2)}
+            <td class="p-3 text-right">
+              <div class="inline-flex items-center gap-1 justify-end">
+                <span class="text-gray-400 text-xs font-mono">RM</span>
+                <input type="number" step="0.05" value="${s.costPrice.toFixed(2)}"
+                  onchange="window.pmgPricing.updateSkuCostPrice('${s.id}', this.value)"
+                  class="w-20 text-right font-mono font-bold text-gray-900 border border-amber-300 rounded px-1.5 py-1 focus:ring-2 focus:ring-amber-500 focus:border-amber-600 outline-none bg-amber-50/50 hover:bg-white transition"
+                  title="Click to edit Cost Price (varies depending on supplier/wholesaler deal)">
+              </div>
+              <div class="mt-1 flex items-center justify-end gap-1">
+                <i class="fa-solid fa-truck-field text-[10px] text-amber-600/70" title="Supplier / Wholesaler"></i>
+                <input type="text" list="pmgSupplierList" value="${s.supplier || ''}" placeholder="Supplier..."
+                  onchange="window.pmgPricing.updateSkuSupplier('${s.id}', this.value)"
+                  class="w-28 text-[11px] text-right font-medium text-gray-600 border-b border-dashed border-gray-300 hover:border-gray-500 focus:border-blue-500 bg-transparent px-1 py-0.5 outline-none"
+                  title="Supplier/Distributor (e.g. DKSH, Zuellig, Apex, SSJ Pharma, Advance, HQ)">
+              </div>
             </td>
             <td class="p-3 text-right">
               <div class="inline-flex items-center gap-1">
@@ -1121,6 +1189,7 @@
       if (input) {
         input.value = `Perform a deep competitor price research and retail pricing optimization for:
 SKU: ${sku.name} (Code: ${sku.code})
+Supplier/Distributor: ${sku.supplier || 'Standard Distributor'}
 Cost Price: RM ${sku.costPrice.toFixed(2)}
 Current PMG Standard Selling Price: RM ${sku.standardSp.toFixed(2)}
 Supermarket Benchmark (Farley / Emart): ${sku.supermarketPrice ? 'RM ' + sku.supermarketPrice.toFixed(2) : 'N/A'}
@@ -1128,10 +1197,11 @@ Competitor Pharmacy Benchmark (Watsons / Caring / Alpro): ${sku.chainPharmacyPri
 Region: Kuching & Padawan, Sarawak, Malaysia (7 Outlets: Kota Sentosa, Matang Jaya, Sungai Moyan, Malihah, Metrocity, Astana, Samariang).
 
 Please advise:
-1. Is our current PMG standard price competitive against supermarkets and chain pharmacies?
-2. Recommended Standardized Area Retail Price to maximize both customer volume and gross margin.
-3. Bundle and Basket Building Strategy (what high-margin companion item should be paired with it?).
-4. Script for branch counter staff when a customer claims Farley/Emart is cheaper.`;
+1. Supplier Cost Evaluation: With our cost of RM ${sku.costPrice.toFixed(2)} from ${sku.supplier || 'distributor'}, evaluate if there is margin squeeze or room for volume trade deals/rebates.
+2. Is our current PMG standard price competitive against supermarkets and chain pharmacies?
+3. Recommended Standardized Area Retail Price to maximize both customer volume and gross margin.
+4. Bundle and Basket Building Strategy (what high-margin companion item should be paired with it?).
+5. Script for branch counter staff when a customer claims Farley/Emart is cheaper.`;
       }
 
       if (modal) modal.classList.remove('hidden');
@@ -1294,7 +1364,7 @@ Our objective as Area Manager:
       this.skus.forEach((s, idx) => {
         const margin = this.calculateMargin(s.costPrice, s.standardSp);
         memo += `${idx + 1}. [${s.code}] ${s.name}\n`;
-        memo += `   Standard Area SP: RM ${s.standardSp.toFixed(2)} | Cost: RM ${s.costPrice.toFixed(2)} | Margin: ${margin}%\n`;
+        memo += `   Standard Area SP: RM ${s.standardSp.toFixed(2)} | Cost: RM ${s.costPrice.toFixed(2)} (${s.supplier || 'Distributor'}) | Margin: ${margin}%\n`;
         if (s.supermarketPrice) {
           memo += `   Supermarket Benchmark (Farley/Emart): RM ${s.supermarketPrice.toFixed(2)}\n`;
         }
