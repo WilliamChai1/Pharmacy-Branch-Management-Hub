@@ -77,51 +77,91 @@ function saveApps(apps) {
 }
 function loadSlots() { try { return JSON.parse(localStorage.getItem(REC_SLOTS_KEY)||'[]'); } catch { return []; } }
 function saveSlots(slots) { localStorage.setItem(REC_SLOTS_KEY, JSON.stringify(slots)); }
-function loadSettings() {
-  const def = { geminiKey: '', geminiModel: 'gemini-3.5-flash-lite', appointmentLink: '', notes: '' };
-  try { return { ...def, ...JSON.parse(localStorage.getItem(REC_SETTINGS_KEY)||'{}') }; } catch { return def; }
-}
-function saveSettings(s) { localStorage.setItem(REC_SETTINGS_KEY, JSON.stringify(s)); }
-
 // ─────────────────────────────────────────────────────────────────────────────
-// FILE HANDLING — Base64 encode files for OneDrive backup metadata
+// GLOBAL GEMINI KEY & ONEDRIVE INTEGRATION (Shared with Whole Program)
 // ─────────────────────────────────────────────────────────────────────────────
-async function fileToBase64(file) {
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(r.result);
-    r.onerror = rej;
-    r.readAsDataURL(file);
-  });
+function getGlobalGeminiKey() {
+  return localStorage.getItem('pmg_gemini_key')
+    || (document.getElementById('geminiApiKey')?.value)
+    || (window.pmgPricing?.geminiKey)
+    || '';
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ONEDRIVE BACKUP — write recruitment data to OneDrive RECRUITMENT folder
-// This extends onedrive-sync.js via a monkey-patch attached here
-// ─────────────────────────────────────────────────────────────────────────────
+function promptSetGeminiKey() {
+  const current = getGlobalGeminiKey();
+  const entered = prompt('Enter your Gemini API Key (saved globally for the whole PMG Hub):', current);
+  if (entered !== null) {
+    const val = entered.trim();
+    if (val) {
+      localStorage.setItem('pmg_gemini_key', val);
+      const elKey = document.getElementById('geminiApiKey');
+      if (elKey) elKey.value = val;
+      toast('Global Gemini API Key saved!', 'success');
+      renderAmDashboard();
+    } else {
+      localStorage.removeItem('pmg_gemini_key');
+      toast('Gemini API Key cleared.', 'info');
+      renderAmDashboard();
+    }
+  }
+}
+
+// Universal OneDrive Backup — uses window.pmgOneDriveSync (same as Patient Care, Expiry, Returns)
+async function backupRecruitmentToOneDrive() {
+  const engine = window.pmgOneDriveSync;
+  if (!engine) {
+    toast('OneDrive sync engine not loaded. Please connect OneDrive from the top bar.', 'warn');
+    return;
+  }
+
+  // Connect folder if not already connected
+  if (!engine.rootHandle) {
+    const ok = await engine.connectFolder();
+    if (!ok || !engine.rootHandle) {
+      toast('OneDrive folder connection cancelled.', 'warn');
+      return;
+    }
+  }
+
+  try {
+    toast('Syncing recruitment data to OneDrive...', 'info');
+    const apps = loadApps();
+    const rootHandle = engine.rootHandle;
+    const recDir = await rootHandle.getDirectoryHandle('RECRUITMENT', { create: true });
+
+    // 1. Save summary JSON
+    const summary = apps.map(a => ({
+      id: a.id, name: a.name, position: a.position, status: a.status,
+      appliedAt: a.appliedAt, aiScore: a.aiScore, aiVerdict: a.aiVerdict,
+      phone: a.phone, email: a.email, preferredBranch: a.preferredBranch,
+      spm: a.spm, highestQual: a.highestQual, cgpa: a.cgpa,
+      age: a.age, gender: a.gender, race: a.race, religion: a.religion
+    }));
+    const fh = await recDir.getFileHandle('recruitment_summary.json', { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify(summary, null, 2));
+    await w.close();
+
+    // 2. Save full applications backup with uploaded documents
+    const fullFh = await recDir.getFileHandle('recruitment_full_backup.json', { create: true });
+    const fullW = await fullFh.createWritable();
+    await fullW.write(JSON.stringify(apps, null, 2));
+    await fullW.close();
+
+    toast(`Backed up ${apps.length} applications to OneDrive /RECRUITMENT/`, 'success');
+  } catch(e) {
+    console.error('[Recruitment OneDrive Backup]', e);
+    toast('OneDrive backup error: ' + e.message, 'error');
+  }
+}
+
 function patchOneDriveWithRecruitment() {
-  if (!window.pmgOneDrive) { window.pmgOneDrive = {}; }
-  window.pmgOneDrive.saveRecruitmentToOneDrive = async function(apps) {
-    try {
-      const { dirHandle } = window.pmgOneDrive;
-      if (!dirHandle) return;
-      let recDir;
-      try { recDir = await dirHandle.getDirectoryHandle('RECRUITMENT', { create: true }); }
-      catch { return; }
-      // Save JSON summary (no file blobs — blobs saved separately on upload)
-      const summary = apps.map(a => ({
-        id: a.id, name: a.name, position: a.position, status: a.status,
-        appliedAt: a.appliedAt, aiScore: a.aiScore, aiVerdict: a.aiVerdict,
-        phone: a.phone, email: a.email, preferredBranch: a.preferredBranch,
-        spm: a.spm, highestQual: a.highestQual, cgpa: a.cgpa,
-      }));
-      const fh = await recDir.getFileHandle('recruitment_summary.json', { create: true });
-      const w  = await fh.createWritable();
-      await w.write(JSON.stringify(summary, null, 2));
-      await w.close();
-    } catch(e) { console.warn('[Recruitment] OneDrive backup skipped:', e.message); }
-  };
+  // auto trigger if already connected
+  if (window.pmgOneDriveSync && window.pmgOneDriveSync.rootHandle) {
+    backupRecruitmentToOneDrive();
+  }
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AI EVALUATION via Gemini
@@ -1061,7 +1101,7 @@ async function submitPublicForm(e) {
 // ─────────────────────────────────────────────────────────────────────────────
 function renderAmDashboard() {
   const apps = loadApps();
-  const settings = loadSettings();
+  const apiKey = getGlobalGeminiKey();
 
   const counts = {};
   Object.keys(STATUS_META).forEach(k => counts[k] = 0);
@@ -1091,16 +1131,18 @@ function renderAmDashboard() {
   </button>`).join('')}
 </div>
 
-<!-- Gemini API Key Quick Setup -->
-${!settings.geminiKey ? `
-<div class="bg-amber-50 border border-amber-300 rounded-xl p-4 mb-4 flex items-start gap-3">
-  <i class="fa-solid fa-triangle-exclamation text-amber-500 text-base mt-0.5"></i>
-  <div class="flex-1">
-    <p class="text-xs font-bold text-amber-800">Set up Gemini API Key to enable AI applicant evaluation</p>
-    <p class="text-xs text-amber-700 mt-1">Go to <strong>Settings</strong> tab to add your Gemini API key and enable automatic AI screening of new applications.</p>
+<!-- Gemini Key Status Notice (only if completely unset) -->
+${!apiKey ? `
+<div class="bg-amber-50 border border-amber-300 rounded-xl p-3 mb-4 flex items-center justify-between gap-3 flex-wrap">
+  <div class="flex items-center gap-2">
+    <i class="fa-solid fa-key text-amber-600 text-sm"></i>
+    <p class="text-xs text-amber-800 font-medium">Gemini API Key is not set in PMG Hub yet. (Shared across 5S Auditor, Pricing, and HR Recruitment)</p>
   </div>
-  <button onclick="window.pmgRecruitment.switchRecTab('settings')" class="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-amber-600 shrink-0">Settings →</button>
+  <button onclick="window.pmgRecruitment.promptSetGeminiKey()" class="text-xs bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg font-bold transition">
+    Set Hub Gemini Key
+  </button>
 </div>` : ''}
+
 
 <!-- Table -->
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
@@ -1177,7 +1219,7 @@ function viewApp(appId) {
   const apps = loadApps();
   const app = apps.find(a => a.id === appId);
   if (!app) { toast('Application not found', 'error'); return; }
-  const settings = loadSettings();
+  const apiKey = getGlobalGeminiKey();
 
   const m = STATUS_META[app.status] || STATUS_META.new;
 
@@ -1302,9 +1344,12 @@ function viewApp(appId) {
 <div class="bg-gray-50 border border-dashed border-gray-300 rounded-xl p-4 text-center mb-4">
   <i class="fa-solid fa-robot text-gray-300 text-2xl mb-2"></i>
   <p class="text-xs text-gray-500 mb-2">AI evaluation not yet run</p>
-  ${settings.geminiKey ? `<button onclick="window.pmgRecruitment.runAI('${appId}')" class="px-4 py-2 bg-purple-700 text-white text-xs font-bold rounded-lg hover:bg-purple-800 transition"><i class="fa-solid fa-robot mr-1"></i>Run Gemini AI Evaluation</button>` : '<p class="text-xs text-red-400">Set Gemini API key in Settings first</p>'}
+  <button onclick="window.pmgRecruitment.runAI('${appId}')" class="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-lg transition">
+    <i class="fa-solid fa-robot mr-1"></i>Run Gemini AI Evaluation
+  </button>
 </div>`;
   }
+
 
   // Build docs section
   const docsSection = app.docs && app.docs.length > 0 ? `
@@ -1480,8 +1525,8 @@ ${docsSection}
 
 <!-- Action Buttons -->
 <div class="flex flex-wrap gap-2 pt-2">
-  ${settings.geminiKey && !app.aiReport ? `<button onclick="window.pmgRecruitment.runAI('${appId}')" class="px-4 py-2 bg-purple-700 text-white text-xs font-bold rounded-xl hover:bg-purple-800 transition flex items-center gap-2"><i class="fa-solid fa-robot"></i>Run AI Evaluation</button>` : ''}
-  ${app.status === 'shortlist' ? `<button onclick="window.pmgRecruitment.openScheduleModal('${appId}')" class="px-4 py-2 bg-emerald-700 text-white text-xs font-bold rounded-xl hover:bg-emerald-800 transition flex items-center gap-2"><i class="fa-solid fa-calendar-plus"></i>Schedule Interview</button>` : ''}
+  ${!app.aiReport ? `<button onclick="window.pmgRecruitment.runAI('${appId}')" class="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-2"><i class="fa-solid fa-robot"></i>Run AI Evaluation</button>` : ''}
+  ${app.status === 'shortlist' ? `<button onclick="window.pmgRecruitment.openScheduleModal('${appId}')" class="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-2"><i class="fa-solid fa-calendar-plus"></i>Schedule Interview</button>` : ''}
   <button onclick="window.pmgRecruitment.updateStatus('${appId}','shortlist')" class="px-4 py-2 bg-blue-700 text-white text-xs font-bold rounded-xl hover:bg-blue-800 transition"><i class="fa-solid fa-check mr-1"></i>Shortlist</button>
   <button onclick="window.pmgRecruitment.updateStatus('${appId}','rejected')" class="px-4 py-2 bg-red-600 text-white text-xs font-bold rounded-xl hover:bg-red-700 transition"><i class="fa-solid fa-times mr-1"></i>Reject</button>
   <button onclick="window.pmgRecruitment.printApp('${appId}')" class="px-4 py-2 bg-gray-700 text-white text-xs font-bold rounded-xl hover:bg-gray-800 transition"><i class="fa-solid fa-print mr-1"></i>Print</button>
@@ -1495,8 +1540,11 @@ ${docsSection}
 // AI RUNNER
 // ─────────────────────────────────────────────────────────────────────────────
 async function runAI(appId) {
-  const settings = loadSettings();
-  if (!settings.geminiKey) { toast('Please set Gemini API key in Settings', 'warn'); return; }
+  const apiKey = getGlobalGeminiKey();
+  if (!apiKey) {
+    promptSetGeminiKey();
+    return;
+  }
 
   const apps = loadApps();
   const app = apps.find(a => a.id === appId);
@@ -1510,7 +1558,7 @@ async function runAI(appId) {
 
   try {
     // Always start with lite (primary). runAiEvaluation auto-falls back to flash.
-    const report = await runAiEvaluation(app, settings.geminiKey, 'lite');
+    const report = await runAiEvaluation(app, apiKey, 'lite');
     app.aiScore = report.score;
     app.aiVerdict = report.verdict;
     app.aiReport = report;
@@ -1528,6 +1576,7 @@ async function runAI(appId) {
     console.error('[Recruitment AI]', err);
   }
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STATUS & ACTIONS
@@ -1643,133 +1692,39 @@ async function confirmInterviewSchedule() {
   viewApp(appId);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SETTINGS TAB
-// ─────────────────────────────────────────────────────────────────────────────
-function renderSettingsTab() {
-  const s = loadSettings();
-  const container = el('recSettingsContent');
-  if (!container) return;
-
-  container.innerHTML = `
-<div class="max-w-xl space-y-4">
-  <div class="bg-white rounded-xl border border-gray-200 p-5">
-    <h4 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-robot text-purple-600"></i>Gemini AI Configuration</h4>
-    <div class="space-y-3">
-      <div>
-        <label class="rec-label">Gemini API Key</label>
-        <input type="password" id="sGeminiKey" class="rec-input" placeholder="AIza..." value="${sanitize(s.geminiKey)}">
-        <p class="text-[10px] text-gray-400 mt-1">Get your free API key at <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-blue-500 hover:underline">aistudio.google.com</a></p>
-      </div>
-      <div>
-        <label class="rec-label">AI Model for Screening</label>
-        <select id="sGeminiModel" class="rec-input">
-          <option value="gemini-3.5-flash-lite" ${s.geminiModel==='gemini-3.5-flash-lite'||!s.geminiModel?'selected':''}>🟢 Gemini 3.5 Flash-Lite — PRIMARY (Fast, Free-tier, 15 RPM)</option>
-          <option value="gemini-3.5-flash" ${s.geminiModel==='gemini-3.5-flash'?'selected':''}>🔵 Gemini 3.5 Flash — SECONDARY (Deep eval, 5 RPM fallback)</option>
-        </select>
-        <p class="text-[10px] text-gray-400 mt-1">Flash-Lite runs first (fast pre-screen). If it fails or rate-limits, Flash auto-takes over for deep evaluation.</p>
-      </div>
-    </div>
-  </div>
-  <div class="bg-white rounded-xl border border-gray-200 p-5">
-    <h4 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-link text-blue-600"></i>Public Application Form Link</h4>
-    <p class="text-xs text-gray-500 mb-3">Share this direct link with candidates. They fill in the online form and you receive applications here in the dashboard.</p>
-    <div class="bg-blue-900 border border-blue-700 rounded-xl p-3 mb-3">
-      <p class="text-[10px] text-blue-300 uppercase font-bold mb-1 tracking-wide">📎 Direct Link (GitHub Pages)</p>
-      <p class="text-xs font-mono text-white break-all">https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/</p>
-    </div>
-    <div class="flex flex-wrap gap-2">
-      <button onclick="window.pmgRecruitment.copyFormLink()" class="px-3 py-1.5 bg-blue-700 text-white text-xs font-bold rounded-lg hover:bg-blue-800 transition flex items-center gap-1.5">
-        <i class="fa-solid fa-copy"></i> Copy Link
-      </button>
-      <button onclick="window.pmgRecruitment.shareViaWhatsApp()" class="px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 transition flex items-center gap-1.5">
-        <i class="fa-brands fa-whatsapp"></i> Share via WhatsApp
-      </button>
-      <a href="https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/?tab=recruitment&view=apply" target="_blank" class="px-3 py-1.5 bg-gray-700 text-white text-xs font-bold rounded-lg hover:bg-gray-800 transition flex items-center gap-1.5">
-        <i class="fa-solid fa-arrow-up-right-from-square"></i> Preview Form
-      </a>
-    </div>
-    <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-3 text-xs text-amber-700">
-      <p class="font-bold mb-1"><i class="fa-solid fa-circle-info mr-1"></i>How to use:</p>
-      <ol class="list-decimal ml-4 space-y-0.5">
-        <li>Candidates open the link above and click <strong>HR Recruitment → Application Form (Public)</strong></li>
-        <li>They fill in the form and upload documents (SPM slip, IC, certificates)</li>
-        <li>Application appears instantly in your <strong>Applications Dashboard</strong></li>
-        <li>Click <strong>Run AI</strong> to get Gemini evaluation with numerology + sales pillar scores</li>
-      </ol>
-    </div>
-
-    </div>
-  </div>
-  <div class="bg-white rounded-xl border border-gray-200 p-5">
-    <h4 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-floppy-disk text-emerald-600"></i>OneDrive Backup</h4>
-    <p class="text-xs text-gray-500 mb-2">All applications are auto-backed up to your connected OneDrive folder under <code class="bg-gray-100 px-1 rounded">RECRUITMENT/</code>. Documents are saved within each application record.</p>
-    <div id="sOneDriveStatus" class="text-xs text-gray-500 flex items-center gap-2">
-      ${window.pmgOneDrive?.dirHandle ? '<i class="fa-solid fa-check-circle text-emerald-500"></i> OneDrive connected' : '<i class="fa-solid fa-xmark-circle text-gray-300"></i> OneDrive not connected — connect from the main OneDrive sync button'}
-    </div>
-  </div>
-  <div class="bg-white rounded-xl border border-gray-200 p-5">
-    <h4 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-calendar text-purple-600"></i>Interview Coordination with Patient Care</h4>
-    <p class="text-xs text-gray-500 mb-2">Interview scheduling is auto-coordinated with William Chai's Kota Sentosa pharmacist schedule (Mon–Fri 8:00–17:00, Sat 8:00–12:00). Lunch break (12:30–13:30) is excluded automatically.</p>
-    <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
-      <p class="font-bold mb-1">Schedule Overview:</p>
-      <ul class="space-y-0.5">
-        <li><i class="fa-regular fa-calendar-check mr-1"></i>Mon–Fri: 08:30–12:00 and 13:30–16:30 (30-min interview slots)</li>
-        <li><i class="fa-regular fa-calendar-check mr-1"></i>Saturday: 08:30–11:30 (morning only)</li>
-        <li><i class="fa-solid fa-xmark text-red-400 mr-1"></i>Sunday: Closed</li>
-      </ul>
-    </div>
-  </div>
-  <div class="flex justify-end">
-    <button onclick="window.pmgRecruitment.saveSettingsForm()" class="px-5 py-2.5 bg-blue-800 text-white text-sm font-bold rounded-xl hover:bg-blue-900 transition flex items-center gap-2">
-      <i class="fa-solid fa-floppy-disk"></i> Save Settings
-    </button>
-  </div>
-</div>`;
-}
-
-function saveSettingsForm() {
-  const s = loadSettings();
-  s.geminiKey = el('sGeminiKey')?.value.trim() || s.geminiKey;
-  s.geminiModel = el('sGeminiModel')?.value || s.geminiModel;
-  saveSettings(s);
-  toast('Settings saved!', 'success');
-  renderAmDashboard();
-}
-
 function copyFormLink() {
   const url = 'https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/';
   navigator.clipboard.writeText(url)
-    .then(()=>toast('Link copied! Share with candidates.', 'success'))
+    .then(()=>toast('Form link copied! Share with candidates.', 'success'))
     .catch(()=>toast('Link: https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/', 'warn'));
 }
 
 function shareViaWhatsApp() {
   const url = 'https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/';
-  const msg = `📋 *PMG Pharmacy Job Application*\n\nInterested in joining PUBLIC MEDICARE GROUP (PMG) Pharmacy team in Kuching, Sarawak?\n\nPositions available:\n• Pharmacist\n• Pharmacy Assistant\n• Nutritionist / Dietitian\n\n🔗 Apply online:\n${url}\n\nClick *HR Recruitment → Application Form (Public)* to fill in your details and upload your documents.\n\nFor enquiries, contact Area Manager William Chai.`;
+  const msg = `📋 *PMG Pharmacy Job Application*\n\nInterested in joining PUBLIC MEDICARE GROUP (PMG) Pharmacy team in Kuching, Sarawak?\n\nPositions available:\n• Pharmacist\n• Pharmacy Assistant\n• Nutritionist / Dietitian\n\n🔗 Apply online:\n${url}\n\nClick *HR Recruitment → Application Form (Public Preview)* to fill in your details and upload your documents.\n\nFor enquiries, contact Area Manager William Chai.`;
   window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
-
 // ─────────────────────────────────────────────────────────────────────────────
-// TAB SWITCHER
+// TAB SWITCHER (Clean: dashboard, slots, apply, detail — no settings tab)
 // ─────────────────────────────────────────────────────────────────────────────
 function switchRecTab(tab) {
-  ['dashboard','apply','detail','settings','slots'].forEach(t => {
+  ['dashboard','slots','apply','detail'].forEach(t => {
     const v = el(`recTab-${t}`);
     const b = el(`recTabBtn-${t}`);
     if (v) { if (t === tab) v.classList.remove('hidden'); else v.classList.add('hidden'); }
     if (b) {
       const active = 'border-b-2 border-blue-600 text-blue-700 font-bold';
       const inactive = 'border-b-2 border-transparent text-gray-500 hover:text-gray-700';
-      b.className = `rec-tab-btn text-xs py-2.5 px-3 transition flex items-center gap-1.5 ${t===tab?active:inactive}`;
+      b.className = `rec-tab-btn text-xs py-2 px-3 transition flex items-center gap-1.5 ${t===tab?active:inactive}`;
     }
   });
 
-  if (tab === 'settings') renderSettingsTab();
   if (tab === 'slots') renderSlotsTab();
   if (tab === 'apply') renderPublicForm();
+  if (tab === 'dashboard') renderAmDashboard();
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // INTERVIEW SLOTS TAB
@@ -1924,8 +1879,7 @@ window.pmgRecruitment = {
   closeScheduleModal,
   updateScheduleTimeSlots,
   confirmInterviewSchedule,
-  renderSettingsTab,
-  saveSettingsForm,
+  backupRecruitmentToOneDrive,
   copyFormLink,
   shareViaWhatsApp,
   switchRecTab,
@@ -1938,8 +1892,10 @@ window.pmgRecruitment = {
   submitPublicForm,
   loadApps,
   loadSlots,
-  loadSettings,
+  getGlobalGeminiKey,
+  promptSetGeminiKey,
 };
+
 
 // Auto-init when DOM ready
 if (document.readyState === 'loading') {
