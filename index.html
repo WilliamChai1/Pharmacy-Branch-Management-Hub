@@ -1105,10 +1105,13 @@
                   <th class="p-3">Product / SKU Details</th>
                   <th class="p-3 w-32">Strategic Role</th>
                   <th class="p-3 text-right w-36">
-                    <div>Cost (RM)</div>
+                    <div>Custom Cost (RM)</div>
                     <div class="text-[9px] text-gray-400 font-normal lowercase tracking-normal">Supplier / Wholesaler</div>
                   </th>
-                  <th class="p-3 text-right w-28">Standard Area SP</th>
+                  <th class="p-3 text-right w-32">
+                    <div>Member SP (RM)</div>
+                    <div class="text-[9px] text-gray-400 font-normal lowercase tracking-normal">Standard 7-Outlet SP</div>
+                  </th>
                   <th class="p-3 text-right w-28">Gross Margin %</th>
                   <th class="p-3 text-right w-36">Supermarket (Farley/Emart)</th>
                   <th class="p-3 text-right w-36">Competitor Chains</th>
@@ -4074,14 +4077,14 @@ Date visit: 06.01.2026
           
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <div>
-              <label class="block font-semibold text-gray-700 mb-1">Preset Supplier / Warehouse</label>
+              <label class="block font-semibold text-gray-700 mb-1">Preset Supplier / Vendor</label>
               <select id="nrDestPreset" onchange="pmgReturns.onDestPresetChanged(this.value)" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white outline-none focus:ring-2 focus:ring-teal-500">
                 <option value="">-- Choose Supplier Preset or Custom --</option>
-                <option value="SSJ PHARMA SDN BHD">SSJ PHARMA SDN BHD (Demak Laut, Kuching)</option>
-                <option value="DKSH MALAYSIA SDN BHD">DKSH MALAYSIA SDN BHD (Demak Laut, Kuching)</option>
-                <option value="ZUELLIG PHARMA SDN BHD">ZUELLIG PHARMA SDN BHD (Pending, Kuching)</option>
-                <option value="APEX PHARMACY MARKETING SDN BHD">APEX PHARMACY MARKETING (Demak Laut)</option>
-                <option value="SUNWARD PHARMACEUTICAL (M) SDN BHD">SUNWARD PHARMACEUTICAL (Kuching)</option>
+                <option value="SSJ PHARMA SDN BHD">SSJ PHARMA SDN BHD</option>
+                <option value="DKSH MALAYSIA SDN BHD">DKSH MALAYSIA SDN BHD</option>
+                <option value="ZUELLIG PHARMA SDN BHD">ZUELLIG PHARMA SDN BHD</option>
+                <option value="APEX PHARMACY MARKETING SDN BHD">APEX PHARMACY MARKETING SDN BHD</option>
+                <option value="SUNWARD PHARMACEUTICAL (M) SDN BHD">SUNWARD PHARMACEUTICAL (M) SDN BHD</option>
                 <option value="DUOPHARMA (M) SENDIRIAN BERHAD">DUOPHARMA (M) SENDIRIAN BERHAD</option>
                 <option value="KOTRA PHARMA (M) SDN BHD">KOTRA PHARMA (M) SDN BHD</option>
                 <option value="PHARMANIAGA LOGISTICS SDN BHD">PHARMANIAGA LOGISTICS SDN BHD</option>
@@ -4090,14 +4093,17 @@ Date visit: 06.01.2026
               </select>
             </div>
             <div>
-              <label class="block font-semibold text-gray-700 mb-1">Destination Company Name *</label>
+              <label class="block font-semibold text-gray-700 mb-1">Destination Company / Supplier *</label>
               <input type="text" id="nrDestCompany" placeholder="e.g. SSJ PHARMA SDN BHD" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-gray-800 bg-white uppercase">
             </div>
           </div>
 
           <div class="mb-3">
-            <label class="block font-semibold text-gray-700 mb-1">Delivery Destination Address *</label>
-            <input type="text" id="nrDestAddress" placeholder="e.g. LOT 1374, BLOCK 7, MUARA TEBAS LAND DISTRICT, DEMAK LAUT INDUSTRIAL PARK, 93050 KUCHING, SARAWAK." class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs text-gray-700 bg-white uppercase">
+            <div class="flex items-center justify-between mb-1">
+              <label class="block font-semibold text-gray-700">Delivery Destination Address <span class="text-gray-400 font-normal">(Optional)</span></label>
+              <span class="text-[10px] text-gray-400 italic">Transporter/vendor will deliver to their assigned warehouse</span>
+            </div>
+            <input type="text" id="nrDestAddress" placeholder="Optional — leave blank if vendor decides warehouse" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs text-gray-700 bg-white uppercase">
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -4891,8 +4897,9 @@ ItemCode,Description,Brand,Category,Cost,SellingPrice,Supplier
                 <th class="p-2">Code</th>
                 <th class="p-2">Description</th>
                 <th class="p-2">Brand</th>
-                <th class="p-2 text-right">Cost (RM)</th>
-                <th class="p-2 text-right">SP (RM)</th>
+                <th class="p-2 text-right">Custom Cost (RM)</th>
+                <th class="p-2 text-right">Member SP (RM)</th>
+                <th class="p-2 text-right">Non-Member (RM)</th>
                 <th class="p-2 text-right">Margin %</th>
                 <th class="p-2">Supplier</th>
               </tr>
@@ -5131,11 +5138,12 @@ function renderXilnexParsedPreview(csvText, filename) {
     columnPills.innerHTML = `
       <span class="font-bold text-gray-700 mr-1 flex items-center gap-1"><i class="fa-solid fa-code-compare text-indigo-600"></i> Auto-mapped Columns:</span>
       ${pill('Item Code', mapping.code)}
-      ${pill('Description', mapping.desc)}
+      ${pill('Description', mapping.name !== -1 ? mapping.name : mapping.desc)}
       ${pill('Brand', mapping.brand)}
       ${pill('Category', mapping.category)}
-      ${pill('Cost (RM)', mapping.cost)}
-      ${pill('Selling Price (RM)', mapping.price)}
+      ${pill('Custom Cost (RM)', mapping.cost)}
+      ${pill('Member Price / SP (RM)', mapping.price)}
+      ${mapping.nonMemberPrice !== -1 ? pill('Non-Member Price', mapping.nonMemberPrice) : ''}
       ${pill('Supplier', mapping.supplier)}
     `;
   }
@@ -5148,10 +5156,11 @@ function renderXilnexParsedPreview(csvText, filename) {
       return `
         <tr class="hover:bg-slate-50 text-[11px]">
           <td class="p-2 font-bold text-blue-900">${s.code}</td>
-          <td class="p-2 font-sans font-medium text-gray-800 max-w-[200px] truncate" title="${s.name}">${s.name}</td>
+          <td class="p-2 font-sans font-medium text-gray-800 max-w-[180px] truncate" title="${s.name}">${s.name}</td>
           <td class="p-2 font-sans text-gray-600">${s.brand || '-'}</td>
           <td class="p-2 text-right font-bold text-gray-700">RM ${s.costPrice.toFixed(2)}</td>
           <td class="p-2 text-right font-bold text-blue-700">RM ${s.standardSp.toFixed(2)}</td>
+          <td class="p-2 text-right font-medium text-gray-500">${s.nonMemberPrice ? 'RM ' + s.nonMemberPrice.toFixed(2) : '-'}</td>
           <td class="p-2 text-right font-bold ${parseFloat(margin) >= 30 ? 'text-emerald-700' : 'text-amber-700'}">${margin}%</td>
           <td class="p-2 font-sans text-gray-500">${s.supplier || '-'}</td>
         </tr>
@@ -5160,7 +5169,7 @@ function renderXilnexParsedPreview(csvText, filename) {
     if (parsedSkus.length > 15) {
       tbody.innerHTML += `
         <tr class="bg-gray-50 text-gray-500 italic text-[11px]">
-          <td colspan="7" class="p-2 text-center font-sans font-semibold">... and ${parsedSkus.length - 15} more SKUs ready for import</td>
+          <td colspan="8" class="p-2 text-center font-sans font-semibold">... and ${parsedSkus.length - 15} more SKUs ready for import</td>
         </tr>
       `;
     }

@@ -15,7 +15,7 @@
       name: 'PMG Pharmacy Kota Sentosa',
       code: 'KS01',
       badge: 'Area Manager Flagship Base',
-      locationProfile: '7th Mile Commercial Hub, Sentosa Parade. Busy commercial interchange, heavy senior citizen demographic, high bus/transport connectivity.',
+      locationProfile: '7th Mile Bazaar, Penrissen Road. Busy commercial interchange, heavy senior citizen demographic, high bus/transport connectivity.',
       localCompetitors: [
         'Farley Supermarket (6th Mile - aggressive FMCG/milk discounter)',
         'Local independent Chinese medical halls & pharmacies in 7th Mile Old Bazaar',
@@ -29,7 +29,7 @@
           'High patient trust in clinical counselling, Airdoc eye screening, and Teda Meridian consultation.'
         ],
         weaknesses: [
-          'High parking congestion around Sentosa Parade during peak morning and weekend market hours.',
+          'High parking congestion around 7th Mile Bazaar during peak morning and weekend market hours.',
           'Price pressure on milk powder (Ensure Gold, Glucerna) from nearby Farley 6th Mile.'
         ],
         opportunities: [
@@ -53,7 +53,7 @@
       name: 'PMG Pharmacy Matang Jaya',
       code: 'MATANG JAYA',
       badge: 'Mature Residential Suburb',
-      locationProfile: 'Matang Jaya Commercial Centre, Jalan Matang. Densely populated mature suburban housing estates, multi-ethnic family profile.',
+      locationProfile: 'Synergy Square, Matang Jaya. Densely populated mature suburban housing estates, multi-ethnic family profile.',
       localCompetitors: [
         'Emart Matang (Major hypermarket competitor 5 mins away)',
         'Watsons Matang Jaya',
@@ -91,7 +91,7 @@
       name: 'PMG Pharmacy Sungai Moyan',
       code: 'SUNGAI MOYAN',
       badge: 'Rapid-Growth Township',
-      locationProfile: 'Moyan Square, Jalan Batu Kawa-Matang. Rapidly expanding residential boomtown, young home-buyers, suburban retirees, garden houses.',
+      locationProfile: 'Genesis Walk, Jalan Batu Kawa/Matang. Rapidly expanding residential boomtown, young home-buyers, suburban retirees, garden houses.',
       localCompetitors: [
         'Emart Batu Kawa (10 mins drive)',
         'Local Chinese medicine sundry shops in Moyan',
@@ -99,7 +99,7 @@
       ],
       swot: {
         strengths: [
-          'Dominant modern community pharmacy in Moyan Square commercial heart.',
+          'Dominant modern community pharmacy in Genesis Walk commercial heart.',
           'Convenient parking and accessibility compared to congested central Kuching.',
           'First-stop emergency healthcare provider for Moyan, Segedup, and Batu Kawa rural fringe.'
         ],
@@ -110,7 +110,7 @@
         opportunities: [
           'Home delivery service for chronic medications to surrounding gated communities and kampungs.',
           'Gardening/agricultural community health support: anti-fungal, heat relief, wound care, pain relief.',
-          'Health kiosk events in Moyan Square during weekend community festivals.'
+          'Health kiosk events in Genesis Walk during weekend community festivals.'
         ],
         threats: [
           'Future entry of chain pharmacies into upcoming Moyan commercial phases.',
@@ -542,13 +542,27 @@
         name: -1,
         brand: -1,
         category: -1,
-        cost: -1,
-        price: -1,
+        cost: -1,             // PMG Custom Cost
+        price: -1,            // PMG Member Price (Selling Price)
+        nonMemberPrice: -1,   // PMG Non-Member Price
         supplier: -1,
         supermarket: -1,
         chain: -1
       };
 
+      // Pass 1: PMG-specific header priority (Custom Cost, Member Price, Non-Member Price)
+      headerRow.forEach((rawCol, idx) => {
+        const col = rawCol.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (col === 'customcost' || col.includes('customcost') || col === 'customcostrm') {
+          mapping.cost = idx;
+        } else if (col === 'memberprice' || col.includes('memberprice') || col === 'memberpricerm' || col === 'memberp' || col === 'member') {
+          mapping.price = idx;
+        } else if (col === 'nonmemberprice' || col.includes('nonmember') || col === 'nonmemberpricerm' || col === 'nonmemberp') {
+          mapping.nonMemberPrice = idx;
+        }
+      });
+
+      // Pass 2: Fallback to standard headers if not matched by PMG-specific headers
       headerRow.forEach((rawCol, idx) => {
         const col = rawCol.toLowerCase().replace(/[^a-z0-9]/g, '');
         if (mapping.code === -1 && (col === 'itemcode' || col === 'code' || col === 'barcode' || col === 'itembarcode' || col === 'sku' || col === 'productcode' || col === 'itemno')) {
@@ -601,8 +615,9 @@
 
         const brand = mapping.brand !== -1 ? (row[mapping.brand] || 'General').trim() : 'General';
         const category = mapping.category !== -1 ? (row[mapping.category] || 'General OTC').trim() : 'General OTC';
-        const cost = mapping.cost !== -1 ? this.cleanNumber(row[mapping.cost]) : 0;
-        const sp = mapping.price !== -1 ? this.cleanNumber(row[mapping.price]) : 0;
+        const cost = mapping.cost !== -1 ? this.cleanNumber(row[mapping.cost]) : 0; // PMG Custom Cost
+        const sp = mapping.price !== -1 ? this.cleanNumber(row[mapping.price]) : 0;  // PMG Member Price (Selling Price)
+        const nonMemberSp = mapping.nonMemberPrice !== -1 ? this.cleanNumber(row[mapping.nonMemberPrice]) : null;
         const supplier = mapping.supplier !== -1 ? (row[mapping.supplier] || 'Standard Distributor').trim() : 'Standard Distributor';
         const supermarket = mapping.supermarket !== -1 ? this.cleanNumber(row[mapping.supermarket]) : null;
         const chain = mapping.chain !== -1 ? this.cleanNumber(row[mapping.chain]) : null;
@@ -622,8 +637,9 @@
           brand: brand || 'General',
           category: category || 'General OTC',
           supplier: supplier || 'Standard Distributor',
-          costPrice: cost,
-          standardSp: sp,
+          costPrice: cost,                  // PMG Custom Cost
+          standardSp: sp,                   // PMG Member Price (Selling Price)
+          nonMemberPrice: nonMemberSp,      // PMG Non-Member Price
           currentBranchSp: sp,
           supermarketPrice: supermarket,
           chainPharmacyPrice: chain,
@@ -658,6 +674,7 @@
             ex.costPrice = newSku.costPrice;
             ex.standardSp = newSku.standardSp;
             ex.currentBranchSp = newSku.standardSp;
+            if (newSku.nonMemberPrice) ex.nonMemberPrice = newSku.nonMemberPrice;
             if (newSku.supplier) ex.supplier = newSku.supplier;
             if (newSku.category) ex.category = newSku.category;
             if (newSku.brand) ex.brand = newSku.brand;
@@ -685,7 +702,7 @@
         alert('Pricing matrix is empty. Nothing to export.');
         return;
       }
-      let csv = "Item Code,Description,Brand,Category,Supplier,Cost Price (RM),Standard Area SP (RM),Gross Margin %,Supermarket Benchmark (RM),Competitor Chain Benchmark (RM),Strategic Role,Notes\n";
+      let csv = "Item Code,Description,Brand,Category,Supplier,Custom Cost (RM),Member SP (RM),Non-Member Price (RM),Gross Margin %,Supermarket Benchmark (RM),Competitor Chain Benchmark (RM),Strategic Role,Notes\n";
       this.skus.forEach(s => {
         const margin = this.calculateMargin(s.costPrice, s.standardSp);
         const escapeCsv = (str) => `"${String(str || '').replace(/"/g, '""')}"`;
@@ -697,6 +714,7 @@
           escapeCsv(s.supplier),
           s.costPrice.toFixed(2),
           s.standardSp.toFixed(2),
+          s.nonMemberPrice ? s.nonMemberPrice.toFixed(2) : '',
           margin + '%',
           s.supermarketPrice ? s.supermarketPrice.toFixed(2) : '',
           s.chainPharmacyPrice ? s.chainPharmacyPrice.toFixed(2) : '',
@@ -895,7 +913,7 @@
                 <input type="number" step="0.05" value="${s.costPrice.toFixed(2)}"
                   onchange="window.pmgPricing.updateSkuCostPrice('${s.id}', this.value)"
                   class="w-20 text-right font-mono font-bold text-gray-900 border border-amber-300 rounded px-1.5 py-1 focus:ring-2 focus:ring-amber-500 focus:border-amber-600 outline-none bg-amber-50/50 hover:bg-white transition"
-                  title="Click to edit Cost Price (varies depending on supplier/wholesaler deal)">
+                  title="Click to edit Custom Cost Price (varies depending on supplier/wholesaler deal)">
               </div>
               <div class="mt-1 flex items-center justify-end gap-1">
                 <i class="fa-solid fa-truck-field text-[10px] text-amber-600/70" title="Supplier / Wholesaler"></i>
@@ -911,8 +929,9 @@
                 <input type="number" step="0.10" value="${s.standardSp.toFixed(2)}"
                   onchange="window.pmgPricing.updateSkuStandardSp('${s.id}', this.value)"
                   class="w-20 text-right font-mono font-bold text-blue-900 border border-blue-300 rounded px-1.5 py-1 focus:ring-2 focus:ring-blue-400 outline-none bg-blue-50/50 hover:bg-white transition"
-                  title="Click to edit standardized 7-outlet selling price">
+                  title="Click to edit standardized 7-outlet Member Selling Price">
               </div>
+              ${s.nonMemberPrice ? `<div class="text-[10px] text-gray-400 font-mono mt-0.5" title="Non-Member Price">Non-Member: RM ${s.nonMemberPrice.toFixed(2)}</div>` : ''}
             </td>
             <td class="p-3 text-right">
               <span class="px-2 py-0.5 rounded ${marginColor} font-mono">${margin}%</span>

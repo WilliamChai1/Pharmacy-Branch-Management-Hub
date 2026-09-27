@@ -15,69 +15,70 @@
   let dbInstance = null;
 
   // ─── SUPPLIER & WAREHOUSE DESTINATION PRESETS ─────────────────────────────────
+  // Delivery destination address is optional; vendor/transporter decides warehouse
   const DESTINATION_PRESETS = [
     {
       name: 'SSJ PHARMA SDN BHD',
       companyName: 'SSJ PHARMA SDN BHD',
-      address: 'LOT 1374, BLOCK 7, MUARA TEBAS LAND DISTRICT, DEMAK LAUT INDUSTRIAL PARK, 93050 KUCHING, SARAWAK.',
-      attn: 'Returns Dept / Mr. Tan',
-      phone: '082-432888'
+      address: '',
+      attn: '',
+      phone: ''
     },
     {
       name: 'DKSH MALAYSIA SDN BHD',
       companyName: 'DKSH MALAYSIA SDN BHD',
-      address: 'LOT 848, BLOCK 7, MUARA TEBAS LAND DISTRICT, DEMAK LAUT INDUSTRIAL PARK, 93050 KUCHING, SARAWAK.',
-      attn: 'Credit Note & Returns Dept',
-      phone: '082-433100'
+      address: '',
+      attn: '',
+      phone: ''
     },
     {
       name: 'ZUELLIG PHARMA SDN BHD',
       companyName: 'ZUELLIG PHARMA SDN BHD',
-      address: 'SUB LOT 1 & 2, LOT 1378, SECTION 66, KTLD, JALAN MERBAU, PENDING INDUSTRIAL ESTATE, 93450 KUCHING, SARAWAK.',
-      attn: 'Customer Service / Returns',
-      phone: '082-333111'
+      address: '',
+      attn: '',
+      phone: ''
     },
     {
       name: 'APEX PHARMACY MARKETING SDN BHD',
       companyName: 'APEX PHARMACY MARKETING SDN BHD',
-      address: 'SUBLOT 12, LOT 758, BLOCK 8, MUARA TEBAS LAND DISTRICT, DEMAK LAUT INDUSTRIAL PARK, 93050 KUCHING, SARAWAK.',
-      attn: 'Returns Dept',
-      phone: '082-432168'
+      address: '',
+      attn: '',
+      phone: ''
     },
     {
       name: 'SUNWARD PHARMACEUTICAL (M) SDN BHD',
       companyName: 'SUNWARD PHARMACEUTICAL (M) SDN BHD',
-      address: 'SARAWAK BRANCH WAREHOUSE, KUCHING, SARAWAK.',
-      attn: 'Returns Section',
+      address: '',
+      attn: '',
       phone: ''
     },
     {
       name: 'DUOPHARMA (M) SENDIRIAN BERHAD',
       companyName: 'DUOPHARMA (M) SENDIRIAN BERHAD',
-      address: 'KUCHING REGIONAL DISTRIBUTION CENTRE, SARAWAK.',
-      attn: 'Returns Dept',
+      address: '',
+      attn: '',
       phone: ''
     },
     {
       name: 'KOTRA PHARMA (M) SDN BHD',
       companyName: 'KOTRA PHARMA (M) SDN BHD',
-      address: 'SARAWAK DEPOT / LOGISTICS WAREHOUSE, KUCHING, SARAWAK.',
-      attn: 'Credit Note Dept',
+      address: '',
+      attn: '',
       phone: ''
     },
     {
       name: 'PHARMANIAGA LOGISTICS SDN BHD',
       companyName: 'PHARMANIAGA LOGISTICS SDN BHD',
-      address: 'LOT 1024, BLOCK 7, DEMAK LAUT INDUSTRIAL PARK, 93050 KUCHING, SARAWAK.',
-      attn: 'Returns & Inbound Receiving',
-      phone: '082-439900'
+      address: '',
+      attn: '',
+      phone: ''
     },
     {
       name: 'PMG CENTRAL WAREHOUSE / HQ',
       companyName: 'PMG HEALTHCARE SDN BHD (CENTRAL WAREHOUSE)',
-      address: 'PMG PHARMACY CENTRAL DISTRIBUTION WAREHOUSE, SARAWAK.',
-      attn: 'Warehouse Manager / Stock Returns',
-      phone: '082-888999'
+      address: '',
+      attn: '',
+      phone: ''
     }
   ];
 
@@ -248,11 +249,20 @@
         };
       }
     }
+    const fallbackAddresses = {
+      'Kota Sentosa': 'GROUND FLOOR, NO. 7, LOT 39, BLOCK 233, KNLD, 7TH MILE BAZAAR, PENRISSEN ROAD, 93250 KUCHING, SARAWAK.',
+      'Matang Jaya': 'LOT 694G, BLOCK C, LOT 6798, SYNERGY SQUARE, MATANG JAYA, 93050 KUCHING, SARAWAK.',
+      'Sungai Moyan': 'E-1-45, LOT 4568, GROUND FLOOR, BLOCK 10, MLD, GENESIS WALK, JALAN BATU KAWA/MATANG, 93250 KUCHING, SARAWAK.',
+      'Malihah': 'NO. 44-45, LOT 4792-4793, GROUND FLOOR, BLOCK 8, MATANG LAND DISTRICT, TAMAN SUNGAI TENGAH VALLEY, BATU 7, JALAN BELATOK, 93050 KUCHING, SARAWAK.',
+      'Metrocity': 'LOT 22, METROCITY COMMERCIAL CENTRE, JALAN MATANG, 93050 KUCHING, SARAWAK.',
+      'Astana': 'LOT 10000, GROUND FLOOR, SECTION 65, KTLD, JALAN ASTANA, PETRA JAYA, 93050 KUCHING, SARAWAK.',
+      'Samariang': 'GROUND FLOOR, SUBLOT 18, LOT 5587, AREA S3B, BANDAR BARU SAMARIANG, JALAN SULTAN TENGAH, 93050 KUCHING, SARAWAK.'
+    };
     return {
       name: bName || 'Kota Sentosa',
       code: 'KS01',
       companyName: `PMG PHARMACY (${bName.toUpperCase()}) SDN BHD`,
-      address: 'SARAWAK, MALAYSIA.'
+      address: fallbackAddresses[bName] || 'SARAWAK, MALAYSIA.'
     };
   }
 
@@ -761,8 +771,8 @@
       return;
     }
 
-    if (!destCompany || !destAddress) {
-      alert('Please fill in Destination Company Name and Destination Address (Where should the transporter deliver to?).');
+    if (!destCompany) {
+      alert('Please fill in Destination Company Name (or select a supplier preset). Destination Address is optional.');
       return;
     }
 
@@ -876,7 +886,7 @@
         <div style="margin-top: 10px; margin-bottom: 10px; padding: 8px 12px; background: #fafafa; border: 1.5px solid #000; border-radius: 4px;">
           <div style="font-size: 10px; font-weight: 900; color: #555; text-transform: uppercase; letter-spacing: 0.5px;">DELIVER TO / DESTINATION:</div>
           <div style="font-size: 14px; font-weight: 900; color: #000; margin-top: 2px; text-transform: uppercase;">${escapeHtml(ret.destCompany || ret.supplier || 'N/A')}</div>
-          <div style="font-size: 11px; font-weight: 600; color: #222; text-transform: uppercase; margin-top: 1px;">${escapeHtml(ret.destAddress || '')}</div>
+          ${ret.destAddress ? `<div style="font-size: 11px; font-weight: 600; color: #222; text-transform: uppercase; margin-top: 1px;">${escapeHtml(ret.destAddress)}</div>` : `<div style="font-size: 10px; font-style: italic; color: #666; margin-top: 1px;">(Warehouse destination to be determined by vendor / transporter)</div>`}
           ${(ret.destAttn || ret.destPhone) ? `
             <div style="font-size: 11px; font-weight: bold; color: #333; margin-top: 3px; display: flex; gap: 15px; flex-wrap: wrap;">
               ${ret.destAttn ? `<span><b>Attn:</b> ${escapeHtml(ret.destAttn)}</span>` : ''}
@@ -1041,7 +1051,7 @@
               ${escapeHtml(ret.destCompany || ret.supplier || 'N/A')}
             </div>
             <div style="font-size: 16px; font-weight: 700; color: #111; line-height: 1.35; text-transform: uppercase;">
-              ${escapeHtml(ret.destAddress || 'PLEASE CONTACT SENDER FOR WAREHOUSE ADDRESS')}
+              ${ret.destAddress ? escapeHtml(ret.destAddress) : '<span style="color: #666; font-style: italic; font-size: 14px;">(DESTINATION WAREHOUSE TO BE CONFIRMED BY VENDOR / TRANSPORTER)</span>'}
             </div>
             ${(ret.destAttn || ret.destPhone) ? `
               <div style="margin-top: 12px; padding-top: 10px; border-top: 2px dashed #999; font-size: 16px; font-weight: 900; display: flex; gap: 25px; flex-wrap: wrap;">

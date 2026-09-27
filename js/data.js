@@ -30,13 +30,13 @@ const GOOGLE_SHEETS_CONFIG = {
 
 // ─── BRANCHES (The 7 Outlets Managed by Area Manager) ───────────────────────
 const BRANCHES = [
-  { code: 'MATANG JAYA',  name: 'Matang Jaya',   startTime: '0800', companyName: 'PMG PHARMACY (MATANG JAYA) SDN BHD',  address: 'SUBLOT 5, MATANG JAYA COMMERCIAL CENTRE, JALAN MATANG, 93050 KUCHING, SARAWAK.' },
-  { code: 'SUNGAI MOYAN', name: 'Sungai Moyan',  startTime: '0800', companyName: 'PMG PHARMACY (SUNGAI MOYAN) SDN BHD', address: 'SUBLOT 15, MOYAN SQUARE, JALAN BATU KAWA-MATANG, 93250 KUCHING, SARAWAK.' },
-  { code: 'MALIHAH',      name: 'Malihah',       startTime: '0800', companyName: 'PMG PHARMACY (MALIHAH) SDN BHD',      address: 'SUBLOT 7, GROUND FLOOR, MALIHAH COMMERCIAL CENTRE, JALAN MATANG, 93050 KUCHING, SARAWAK.' },
-  { code: 'METROCITY',    name: 'Metrocity',     startTime: '0830', companyName: 'PMG PHARMACY (METROCITY) SDN BHD',    address: 'UNIT 21, METROCITY COMMERCIAL CENTRE, JALAN MATANG, 93050 KUCHING, SARAWAK.' },
-  { code: 'ASTANA',       name: 'Astana',        startTime: '0800', companyName: 'PMG PHARMACY (ASTANA) SDN BHD',       address: 'SUBLOT 12, GROUND FLOOR, ASTANA COMMERCIAL CENTRE, JALAN ASTANA, 93050 PETRA JAYA, KUCHING, SARAWAK.' },
-  { code: 'SAMARIANG',    name: 'Samariang',     startTime: '0730', companyName: 'PMG PHARMACY (SAMARIANG) SDN BHD',    address: 'SUBLOT 8, BANDAR BARU SAMARIANG, JALAN SULTAN TENGAH, 93050 KUCHING, SARAWAK.' },
-  { code: 'KS01',         name: 'Kota Sentosa',  startTime: '0730', companyName: 'PMG PHARMACY (KOTA SENTOSA) SDN BHD', address: 'NO. 102 & 103, GROUND FLOOR, SENTOSA PARADE, 7TH MILE, JALAN PENRISSEN, 93250 KUCHING, SARAWAK.' }
+  { code: 'MATANG JAYA',  name: 'Matang Jaya',   startTime: '0800', companyName: 'PMG PHARMACY (MATANG JAYA) SDN BHD',  address: 'LOT 694G, BLOCK C, LOT 6798, SYNERGY SQUARE, MATANG JAYA, 93050 KUCHING, SARAWAK.' },
+  { code: 'SUNGAI MOYAN', name: 'Sungai Moyan',  startTime: '0800', companyName: 'PMG PHARMACY (SUNGAI MOYAN) SDN BHD', address: 'E-1-45, LOT 4568, GROUND FLOOR, BLOCK 10, MLD, GENESIS WALK, JALAN BATU KAWA/MATANG, 93250 KUCHING, SARAWAK.' },
+  { code: 'MALIHAH',      name: 'Malihah',       startTime: '0800', companyName: 'PMG PHARMACY (MALIHAH) SDN BHD',      address: 'NO. 44-45, LOT 4792-4793, GROUND FLOOR, BLOCK 8, MATANG LAND DISTRICT, TAMAN SUNGAI TENGAH VALLEY, BATU 7, JALAN BELATOK, 93050 KUCHING, SARAWAK.' },
+  { code: 'METROCITY',    name: 'Metrocity',     startTime: '0830', companyName: 'PMG PHARMACY (METROCITY) SDN BHD',    address: 'LOT 22, METROCITY COMMERCIAL CENTRE, JALAN MATANG, 93050 KUCHING, SARAWAK.' },
+  { code: 'ASTANA',       name: 'Astana',        startTime: '0800', companyName: 'PMG PHARMACY (ASTANA) SDN BHD',       address: 'LOT 10000, GROUND FLOOR, SECTION 65, KTLD, JALAN ASTANA, PETRA JAYA, 93050 KUCHING, SARAWAK.' },
+  { code: 'SAMARIANG',    name: 'Samariang',     startTime: '0730', companyName: 'PMG PHARMACY (SAMARIANG) SDN BHD',    address: 'GROUND FLOOR, SUBLOT 18, LOT 5587, AREA S3B, BANDAR BARU SAMARIANG, JALAN SULTAN TENGAH, 93050 KUCHING, SARAWAK.' },
+  { code: 'KS01',         name: 'Kota Sentosa',  startTime: '0730', companyName: 'PMG PHARMACY (KOTA SENTOSA) SDN BHD', address: 'GROUND FLOOR, NO. 7, LOT 39, BLOCK 233, KNLD, 7TH MILE BAZAAR, PENRISSEN ROAD, 93250 KUCHING, SARAWAK.' }
 ];
 
 // ─── USERS / CREDENTIALS (secure internal storage) ───────────────────────────
