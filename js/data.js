@@ -173,11 +173,11 @@ async function loadLiveSheetData() {
   }
 
   if (loadedAnything) {
-    setIndicator('🟢 Staff Sheet Synced', 'bg-green-100 text-green-700', 'Google Sheets Staff Roster is live & synced. Click to re-sync.');
+    setIndicator('🟢 Google Sheets: Synced', 'bg-green-100 text-green-700 font-semibold', 'Google Sheets Live & Connected: Rymnet Staff Roster, Shift Schedule & Stock Expiry Tracker. Click to re-sync.');
   } else if (GOOGLE_SHEETS_CONFIG.usersCSV || GOOGLE_SHEETS_CONFIG.staffCSV) {
-    setIndicator('🟡 Staff Sheet (Cached)', 'bg-amber-100 text-amber-700', 'Using local cached staff roster. Patient database & hub are active. Click to retry Google Sheets sync.');
+    setIndicator('🟡 Google Sheets: Cached', 'bg-amber-100 text-amber-700 font-semibold', 'Using local cached data for Rymnet Staff, Schedule & Stock Expiry. Click to retry Google Sheets sync.');
   } else {
-    setIndicator('📋 Staff Sheet (Default)', 'bg-gray-100 text-gray-500', 'No remote Google Sheet linked. Using local staff database.');
+    setIndicator('📋 Google Sheets: Offline', 'bg-gray-100 text-gray-500 font-medium', 'No remote Google Sheet linked. Using local staff database.');
   }
 }
 

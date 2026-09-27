@@ -124,16 +124,35 @@
       </div>
     </div>
     <!-- Right controls -->
-    <div class="flex items-center gap-3 flex-wrap">
+    <div class="flex items-center gap-2.5 flex-wrap">
       <span id="loggedInUser" class="text-blue-200 text-xs font-medium bg-blue-800 px-3 py-1 rounded-full"></span>
-      <span id="liveDataIndicator" onclick="loadLiveSheetData()" class="text-xs px-2.5 py-1 rounded bg-blue-800 text-blue-200 cursor-pointer hover:opacity-85 transition font-semibold" title="Rymnet Staff Google Sheet Sync status. Click to refresh sync.">⏳ Syncing…</span>
-      <!-- Global Top OneDrive Status & Connect Button (Always Visible to AM & BM) -->
+      
+      <!-- Google Sheets Connection Status (Rymnet Staff, Roster Schedule & Stock Expiry) -->
+      <span id="liveDataIndicator" onclick="loadLiveSheetData()" class="text-xs px-2.5 py-1 rounded bg-blue-800 text-blue-200 cursor-pointer hover:opacity-85 transition font-semibold" title="Google Sheets Sync status (Rymnet Staff Roster, Shift Schedule & Stock Expiry Tracker). Click to refresh sync.">⏳ Syncing…</span>
+
+      <!-- Global Top OneDrive Status & Universal Sync (All Modules: Patients, Recruitment, Credit Notes, Pricing, Expiry) -->
       <span id="headerOneDriveSyncBadge" onclick="openOneDriveSyncModal()"
         class="text-xs px-2.5 py-1 rounded bg-blue-800 text-blue-200 cursor-pointer hover:bg-blue-700 transition font-semibold flex items-center gap-1.5 shadow-xs border border-blue-600/60"
-        title="OneDrive Cloud Storage Status. Click to connect folder or view live sync details.">
+        title="Universal OneDrive Sync (Patients, Job Applications, Credit Notes & DO, Pricing & Expiries). Click to sync or manage folder.">
         <i id="headerOneDriveSyncIcon" class="fa-brands fa-microsoft text-sky-300"></i>
         <span id="headerOneDriveSyncText">OneDrive: Connect Folder</span>
       </span>
+
+      <!-- Global Top Gemini AI Key (Powers Pricing SWOT, Recruitment Screening, Patient Consultations & Audit) -->
+      <div class="flex items-center gap-1.5 bg-blue-950/80 border border-amber-400/50 rounded-lg px-2.5 py-1 text-xs text-amber-200 shadow-xs">
+        <i class="fa-solid fa-key text-amber-400 shrink-0" title="Universal Gemini AI Key"></i>
+        <span class="hidden lg:inline font-semibold text-[11px] text-amber-300">Gemini AI:</span>
+        <input type="password" id="topGeminiApiKey" autocomplete="off" placeholder="Paste Gemini Key…"
+          class="bg-blue-900/90 border border-blue-600/70 text-white text-xs px-2 py-0.5 rounded outline-none w-28 sm:w-36 focus:w-48 transition-all focus:ring-1 focus:ring-amber-400 placeholder:text-blue-300/60 font-mono"
+          title="Global Gemini API Key (Auto-saved across all AI features). Type or paste key here, or click ⚙️ for model settings."
+          oninput="handleTopGeminiKeyInput(this.value)">
+        <button type="button" onclick="openGlobalGeminiModal()"
+          class="text-amber-300 hover:text-white text-xs px-1 py-0.5 rounded hover:bg-blue-800 transition"
+          title="Open Global Gemini AI Configuration & Model Tiers">
+          <i class="fa-solid fa-gear"></i>
+        </button>
+      </div>
+
       <!-- AM-only: branch switcher -->
       <select id="branchSelector" style="display:none"
         class="text-gray-900 text-xs px-3 py-1.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
@@ -585,11 +604,6 @@
               title="Share job application via WhatsApp">
               <i class="fa-brands fa-whatsapp text-sm"></i> <span>Share via WhatsApp</span>
             </button>
-            <button type="button" onclick="window.pmgRecruitment.backupRecruitmentToOneDrive()"
-              class="bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1.5 shadow-sm transition"
-              title="Backup all recruitment data and applications to connected OneDrive folder">
-              <i class="fa-brands fa-microsoft"></i> <span>Backup to OneDrive</span>
-            </button>
           </div>
         </div>
 
@@ -907,50 +921,33 @@
         </div>
       </div>
 
-      <!-- API key + branch selector -->
-      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-5">
-        <h3 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-          <i class="fa-solid fa-key text-amber-500"></i> Gemini API Configuration
-        </h3>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <div class="flex justify-between items-center mb-1">
-              <label class="block text-xs text-gray-500 font-medium">Gemini API Key <span class="text-gray-400">(stored locally)</span></label>
-              <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" class="text-xs text-amber-700 hover:underline flex items-center gap-1 font-semibold">
-                <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i> Get Free Key
-              </a>
-            </div>
-            <div class="flex gap-2">
-              <input type="password" id="geminiApiKey" autocomplete="off"
-                class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-amber-400 outline-none"
-                placeholder="AIzaSy… (paste your free key here)">
-              <button id="btnTestGeminiKey" type="button" onclick="testGeminiApiKey()"
-                class="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition whitespace-nowrap shadow-sm">
-                <i class="fa-solid fa-bolt"></i> Test Key
-              </button>
-            </div>
-            <p id="geminiKeyStatus" class="text-[11px] mt-1 text-gray-500"></p>
-            <div class="flex items-center gap-1.5 mt-2 text-[11px] text-gray-500 flex-wrap">
-              <span class="font-semibold text-gray-700"><i class="fa-solid fa-layer-group text-amber-600 mr-1"></i>Active Tiers:</span>
-              <span class="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded flex items-center gap-1"><i class="fa-solid fa-bolt text-emerald-600"></i>Primary: Gemini 3.5 Flash-Lite (500 RPD)</span>
-              <span class="bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded flex items-center gap-1"><i class="fa-solid fa-brain text-blue-600"></i>Secondary: Gemini 3.5 Flash (20 RPD)</span>
-              <span class="bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded flex items-center gap-1"><i class="fa-solid fa-shield-halved text-purple-600"></i>High-Quota Backup: Gemini 3.1 Flash-Lite (500 RPD)</span>
-            </div>
-          </div>
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">Target Branch for Audit</label>
-            <select id="auditBranchSelect"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-amber-400 outline-none bg-white">
-              <option value="">Select branch…</option>
-              <option value="KS01">Kota Sentosa</option>
-              <option value="BR02">BR02 – Branch 02</option>
-              <option value="BR03">BR03 – Branch 03</option>
-              <option value="BR04">BR04 – Branch 04</option>
-              <option value="BR05">BR05 – Branch 05</option>
-              <option value="BR06">BR06 – Branch 06</option>
-            </select>
-          </div>
+      <!-- Branch selector & Global AI Engine status -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-5 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <label class="block text-xs text-gray-600 font-semibold mb-1">Target Branch for Walkthrough Audit</label>
+          <select id="auditBranchSelect"
+            class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-amber-400 outline-none bg-white min-w-[220px]">
+            <option value="">Select branch…</option>
+            <option value="KS01">Kota Sentosa</option>
+            <option value="BR02">BR02 – Branch 02</option>
+            <option value="BR03">BR03 – Branch 03</option>
+            <option value="BR04">BR04 – Branch 04</option>
+            <option value="BR05">BR05 – Branch 05</option>
+            <option value="BR06">BR06 – Branch 06</option>
+          </select>
         </div>
+        <div class="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-900">
+          <i class="fa-solid fa-wand-magic-sparkles text-amber-500 text-sm"></i>
+          <div>
+            <span class="font-bold">Gemini AI Engine:</span>
+            <span class="text-blue-700"> Connected globally from Top Bar</span>
+          </div>
+          <button type="button" onclick="openGlobalGeminiModal()" class="ml-2 text-xs text-blue-700 hover:text-blue-900 font-bold underline">
+            Settings
+          </button>
+        </div>
+        <!-- Hidden input maintaining backwards compatibility for existing audit scripts -->
+        <input type="hidden" id="geminiApiKey" value="">
       </div>
 
       <!-- Video drop zone -->
@@ -1089,21 +1086,7 @@
               <p class="text-gray-500 text-xs">Standardize pricing across your 7 managed branches in Kuching & Padawan, benchmark against local hypermarkets (Farley, Emart, H&L) and pharmacy chains, and execute branch-by-branch SWOT battle plans.</p>
             </div>
           </div>
-          <div class="flex items-center gap-2 flex-wrap">
-            <span id="pricingAutoBackupStatus" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200 transition-all" title="Every price update and imported SKU is automatically backed up">
-              <i class="fa-solid fa-shield-halved text-blue-600"></i> Auto-backup: <span id="pricingLastBackupTime">Active</span>
-            </span>
-            <button type="button" onclick="window.pmgPricing.openBackupHistoryModal()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2.5 py-1 rounded border border-slate-300 transition" title="View auto-saved version history and restore previous snapshots">
-              <i class="fa-solid fa-clock-rotate-left text-slate-600"></i> Backup History
-            </button>
-            <span class="text-xs bg-purple-50 text-purple-800 font-semibold px-2.5 py-1 rounded border border-purple-200 flex items-center gap-1.5" title="Free Tier: Gemini 3.5 Flash-Lite (500 RPD) & Gemini 3.5 Flash (20 RPD) — 100% Free / RM 0 Budget">
-              <i class="fa-solid fa-wand-magic-sparkles text-purple-600"></i>
-              <span>Gemini 3.5 Flash (Free Tier)</span>
-            </span>
-            <button type="button" onclick="promptUpdateGeminiKey()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold px-2.5 py-1 rounded border border-gray-300 transition" title="View or update free Google AI Studio API key">
-              <i class="fa-solid fa-key text-gray-500"></i> API Key
-            </button>
-          </div>
+          <!-- Clean actions handled globally from Top Navigation Bar -->
         </div>
       </div>
 
@@ -1370,22 +1353,7 @@
           class="bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Configure fixed weekly template and edit specific dates / rest days">
           <i class="fa-solid fa-clock-rotate-left"></i> Manage Working Hours
         </button>
-        <!-- PMG OneDrive Folder Live Sync Button & Status Badge -->
-        <button id="patientOneDriveConnectBtn" type="button" onclick="window.pmgOneDriveSync.connectFolder()"
-          class="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Link directly to your branch folder or 'Patient care' folder in OneDrive for live auto-sync">
-          <i class="fa-solid fa-folder-open"></i> <span>Connect OneDrive Folder</span>
-        </button>
-        <span id="oneDriveLiveSyncBadge" onclick="openOneDriveSyncModal()"
-          class="cursor-pointer text-[11px] font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 px-3 py-1.5 rounded-lg border border-gray-300 flex items-center gap-1.5 transition shadow-xs" title="Click to view OneDrive Live Sync details or change branch folder">
-          <i id="oneDriveLiveSyncIcon" class="fa-brands fa-microsoft text-blue-600"></i>
-          <span id="oneDriveLiveSyncText">OneDrive: Connect Folder</span>
-        </span>
-
-        <!-- Fallback Manual Backup Buttons -->
-        <button id="patientOneDriveBackupBtn" type="button" onclick="backupToOneDrive()"
-          class="bg-sky-600 hover:bg-sky-700 text-white text-xs font-medium px-2.5 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Save manual daily backup directly to company Microsoft OneDrive">
-          <i class="fa-brands fa-microsoft"></i> Manual Backup
-        </button>
+        <!-- OneDrive sync handled globally via top navigation bar -->
         <button id="patientRestoreBtn" type="button" onclick="document.getElementById('restoreBackupInput').click()"
           class="bg-gray-700 hover:bg-gray-800 text-white text-xs font-medium px-2.5 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm" title="Restore patient database and reports from OneDrive or USB backup">
           <i class="fa-solid fa-file-import"></i> Restore Backup
@@ -3461,7 +3429,120 @@ Date visit: 06.01.2026
     </div>
   </div>
 
-  <!-- Modal: PMG OneDrive Live Sync Manager -->
+  <!-- ═══════════════════════════════════════════════════════════════════════════
+       MODAL: GLOBAL GEMINI AI ENGINE CONFIGURATION (Universal)
+  ══════════════════════════════════════════════════════════════════════════════ -->
+  <div id="globalGeminiModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+      <!-- Header -->
+      <div class="bg-gradient-to-r from-amber-700 via-amber-600 to-indigo-900 px-6 py-4 flex items-center justify-between text-white">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-amber-200 text-xl">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold">Universal Gemini AI Configuration</h3>
+            <p class="text-xs text-amber-100">Global AI Engine Connected Across All PMG Hub Modules</p>
+          </div>
+        </div>
+        <button onclick="closeGlobalGeminiModal()" class="text-white/70 hover:text-white text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="p-6 space-y-4 text-xs overflow-y-auto max-h-[75vh]">
+        <!-- Key Input Box -->
+        <div class="p-4 bg-amber-50/60 border border-amber-200 rounded-xl space-y-3">
+          <div class="flex justify-between items-center">
+            <label class="block font-bold text-gray-800">
+              <i class="fa-solid fa-key text-amber-600 mr-1"></i> Gemini API Key <span class="text-gray-400 font-normal">(Stored locally on this device)</span>
+            </label>
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener"
+              class="text-xs text-amber-800 hover:underline flex items-center gap-1 font-bold">
+              <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i> Get Free Key
+            </a>
+          </div>
+          <div class="flex gap-2">
+            <div class="relative flex-1">
+              <input type="password" id="modalGeminiApiKey" autocomplete="off"
+                class="w-full border border-gray-300 rounded-lg pl-3 pr-9 py-2 text-sm focus:ring-2 focus:ring-amber-500 outline-none font-mono"
+                placeholder="AIzaSy… (paste your free key here)"
+                oninput="handleModalGeminiKeyInput(this.value)">
+              <button type="button" onclick="toggleModalGeminiKeyVisibility()"
+                class="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-700">
+                <i id="modalKeyEyeIcon" class="fa-solid fa-eye"></i>
+              </button>
+            </div>
+            <button id="btnModalTestGeminiKey" type="button" onclick="testGlobalGeminiKey()"
+              class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition whitespace-nowrap shadow-sm flex items-center gap-1.5">
+              <i class="fa-solid fa-bolt"></i> Test Key
+            </button>
+          </div>
+          <p id="modalGeminiKeyStatus" class="text-[11px] text-gray-500 font-medium"></p>
+        </div>
+
+        <!-- Active Tiers Card (Exact from User Screenshot) -->
+        <div class="p-4 bg-gray-50 border border-gray-200 rounded-xl space-y-2">
+          <h4 class="font-bold text-gray-800 flex items-center gap-1.5">
+            <i class="fa-solid fa-layer-group text-amber-600"></i> Active Model Tiers & Quotas:
+          </h4>
+          <div class="space-y-1.5 pt-1 text-[11px]">
+            <div class="bg-emerald-50 border border-emerald-200 text-emerald-900 font-medium px-3 py-2 rounded-lg flex items-center justify-between">
+              <span class="flex items-center gap-1.5">
+                <i class="fa-solid fa-bolt text-emerald-600 text-sm"></i>
+                <b>Primary:</b> <code>gemini-3.5-flash-lite</code>
+              </span>
+              <span class="bg-emerald-200 text-emerald-900 font-bold px-2 py-0.5 rounded text-[10px]">500 RPD (Free)</span>
+            </div>
+            <div class="bg-blue-50 border border-blue-200 text-blue-900 font-medium px-3 py-2 rounded-lg flex items-center justify-between">
+              <span class="flex items-center gap-1.5">
+                <i class="fa-solid fa-brain text-blue-600 text-sm"></i>
+                <b>Secondary:</b> <code>gemini-3.5-flash</code>
+              </span>
+              <span class="bg-blue-200 text-blue-900 font-bold px-2 py-0.5 rounded text-[10px]">20 RPD (Deep Eval)</span>
+            </div>
+            <div class="bg-purple-50 border border-purple-200 text-purple-900 font-medium px-3 py-2 rounded-lg flex items-center justify-between">
+              <span class="flex items-center gap-1.5">
+                <i class="fa-solid fa-shield-halved text-purple-600 text-sm"></i>
+                <b>High-Quota Backup:</b> <code>gemini-3.1-flash-lite</code>
+              </span>
+              <span class="bg-purple-200 text-purple-900 font-bold px-2 py-0.5 rounded text-[10px]">500 RPD (Failover)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Connected Modules List -->
+        <div class="p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-2">
+          <h4 class="font-bold text-indigo-950 flex items-center gap-1.5">
+            <i class="fa-solid fa-circle-nodes text-indigo-600"></i> Connected AI Features (Auto-Synced):
+          </h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-gray-700">
+            <div class="flex items-center gap-1.5"><i class="fa-solid fa-check text-emerald-600"></i> <b>Pricing & SWOT:</b> KVI & Strategy matrix</div>
+            <div class="flex items-center gap-1.5"><i class="fa-solid fa-check text-emerald-600"></i> <b>HR Recruitment:</b> CV & SPM AI evaluation</div>
+            <div class="flex items-center gap-1.5"><i class="fa-solid fa-check text-emerald-600"></i> <b>Patient Care:</b> Consultation summaries</div>
+            <div class="flex items-center gap-1.5"><i class="fa-solid fa-check text-emerald-600"></i> <b>AM Audit:</b> Video & 5S inspection AI</div>
+            <div class="flex items-center gap-1.5"><i class="fa-solid fa-check text-emerald-600"></i> <b>Roster:</b> AI shift conflict resolver</div>
+            <div class="flex items-center gap-1.5"><i class="fa-solid fa-check text-emerald-600"></i> <b>Credit Notes:</b> OCR document parsing</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="bg-gray-50 px-6 py-4 border-t flex items-center justify-between">
+        <button type="button" onclick="clearGlobalGeminiKey()"
+          class="text-xs text-rose-600 hover:text-rose-800 font-semibold">
+          Clear Key
+        </button>
+        <button type="button" onclick="closeGlobalGeminiModal()"
+          class="px-5 py-2 bg-blue-900 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition shadow-sm">
+          Done
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: PMG OneDrive Live Sync Manager (Universal Hub Sync) -->
   <div id="oneDriveSyncModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 hidden">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
       <!-- Header -->
@@ -3471,8 +3552,8 @@ Date visit: 06.01.2026
             <i class="fa-brands fa-microsoft"></i>
           </div>
           <div>
-            <h3 class="text-base font-bold">PMG OneDrive Live Sync Engine</h3>
-            <p class="text-xs text-blue-200">Multi-Branch Real-Time Clinical Folder Synchronization</p>
+            <h3 class="text-base font-bold">Universal OneDrive Live Sync Engine</h3>
+            <p class="text-xs text-blue-200">Synchronizes Patient Care, Recruitment, Credit Notes, Pricing & Expiries</p>
           </div>
         </div>
         <button onclick="closeOneDriveSyncModal()" class="text-white/70 hover:text-white text-lg">
@@ -3505,6 +3586,21 @@ Date visit: 06.01.2026
         <!-- Live Sync Progress & Result Feedback Banner -->
         <div id="syncModalFeedback" class="hidden p-3 rounded-xl border text-xs transition"></div>
 
+        <!-- Universal Synced Modules Scope -->
+        <div class="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-2">
+          <h4 class="font-bold text-emerald-950 flex items-center gap-1.5">
+            <i class="fa-solid fa-cloud-arrow-up text-emerald-600"></i> Universal Sync Coverage (All Modules Included):
+          </h4>
+          <div class="grid grid-cols-2 gap-2 text-[11px] text-gray-700 font-medium">
+            <div class="flex items-center gap-1.5"><i class="fa-solid fa-circle-check text-emerald-600 text-xs"></i> <span>Patient Care Records</span></div>
+            <div class="flex items-center gap-1.5"><i class="fa-solid fa-circle-check text-emerald-600 text-xs"></i> <span>Job Applications (HR)</span></div>
+            <div class="flex items-center gap-1.5"><i class="fa-solid fa-circle-check text-emerald-600 text-xs"></i> <span>Credit Notes, PRN & DO</span></div>
+            <div class="flex items-center gap-1.5"><i class="fa-solid fa-circle-check text-emerald-600 text-xs"></i> <span>Pricing Master & SWOT</span></div>
+            <div class="flex items-center gap-1.5"><i class="fa-solid fa-circle-check text-emerald-600 text-xs"></i> <span>Branch Roster Schedules</span></div>
+            <div class="flex items-center gap-1.5"><i class="fa-solid fa-circle-check text-emerald-600 text-xs"></i> <span>Stock Expiry Trackers</span></div>
+          </div>
+        </div>
+
         <!-- 7 Branches Detected List -->
         <div class="p-4 bg-blue-50/70 border border-blue-200 rounded-xl">
           <h4 class="font-bold text-blue-950 mb-1 flex items-center gap-1.5">
@@ -3524,11 +3620,11 @@ Date visit: 06.01.2026
 
         <!-- Instructions -->
         <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-xl space-y-1.5 text-amber-950">
-          <p class="font-bold flex items-center gap-1.5"><i class="fa-solid fa-circle-info text-amber-600"></i> How to Connect:</p>
+          <p class="font-bold flex items-center gap-1.5"><i class="fa-solid fa-circle-info text-amber-600"></i> Single Unified Sync:</p>
           <ul class="list-disc pl-4 space-y-1 text-gray-700">
-            <li><b>For Branch Pharmacists:</b> Click "Connect Folder" and choose your specific branch folder (e.g. <code>KOTA SENTOSA</code>).</li>
-            <li><b>For Area Manager William:</b> Choose the parent <code>Patient care</code> folder to monitor all 7 branches.</li>
-            <li>The browser remembers this folder. All clinical encounters auto-save silently without clicking backup!</li>
+            <li><b>For Branch Pharmacists:</b> Click "Link / Change Folder" and choose your specific branch folder (e.g. <code>KOTA SENTOSA</code>).</li>
+            <li><b>For Area Manager William:</b> Choose the parent folder to automatically sync and monitor all 7 branches.</li>
+            <li>Once linked, clicking <b>"Sync Now"</b> or editing data auto-syncs all modules (patients, jobs, returns, pricing, expirations) directly into your OneDrive without clicking individual backup buttons!</li>
           </ul>
         </div>
       </div>
@@ -3542,7 +3638,7 @@ Date visit: 06.01.2026
         <div class="flex items-center gap-2">
           <button id="btnModalSyncNow" type="button" onclick="triggerManualSyncFromModal()"
             class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
-            <i class="fa-solid fa-arrows-rotate"></i> <span>Sync Now</span>
+            <i class="fa-solid fa-arrows-rotate"></i> <span>Sync All Modules Now</span>
           </button>
           <button type="button" onclick="window.pmgOneDriveSync.connectFolder().then(res => { updateSyncModalInfo(); if(res) triggerManualSyncFromModal(); })"
             class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-gray-300">
@@ -5529,6 +5625,151 @@ function openPublicApplicationPortal(e) {
   }
 }
 
+// ─── GLOBAL GEMINI AI CONFIGURATION (Universal Across Hub) ────────────────────
+function handleTopGeminiKeyInput(val) {
+  const clean = (val || '').trim();
+  if (clean) {
+    localStorage.setItem('pmg_gemini_key', clean);
+  } else {
+    localStorage.removeItem('pmg_gemini_key');
+  }
+  const modalInput = document.getElementById('modalGeminiApiKey');
+  if (modalInput && modalInput.value !== clean) modalInput.value = clean;
+  const auditInput = document.getElementById('geminiApiKey');
+  if (auditInput && auditInput.value !== clean) auditInput.value = clean;
+
+  updateGlobalGeminiBadge();
+}
+
+function handleModalGeminiKeyInput(val) {
+  const clean = (val || '').trim();
+  if (clean) {
+    localStorage.setItem('pmg_gemini_key', clean);
+  } else {
+    localStorage.removeItem('pmg_gemini_key');
+  }
+  const topInput = document.getElementById('topGeminiApiKey');
+  if (topInput && topInput.value !== clean) topInput.value = clean;
+  const auditInput = document.getElementById('geminiApiKey');
+  if (auditInput && auditInput.value !== clean) auditInput.value = clean;
+
+  updateGlobalGeminiBadge();
+}
+
+function updateGlobalGeminiBadge() {
+  const key = localStorage.getItem('pmg_gemini_key') || '';
+  const topInput = document.getElementById('topGeminiApiKey');
+  if (topInput && topInput.value !== key) topInput.value = key;
+  const modalInput = document.getElementById('modalGeminiApiKey');
+  if (modalInput && modalInput.value !== key) modalInput.value = key;
+  const auditInput = document.getElementById('geminiApiKey');
+  if (auditInput && auditInput.value !== key) auditInput.value = key;
+
+  const statusEl = document.getElementById('modalGeminiKeyStatus');
+  if (statusEl) {
+    if (key) {
+      statusEl.textContent = `✓ Key active (${key.slice(0, 6)}••••••••). Connected to Pricing, SWOT, Recruitment, Patient Care & Audits.`;
+      statusEl.className = 'text-[11px] text-emerald-700 font-semibold';
+    } else {
+      statusEl.textContent = 'No key set. Enter key to enable AI features across all modules.';
+      statusEl.className = 'text-[11px] text-gray-500 font-medium';
+    }
+  }
+}
+
+function openGlobalGeminiModal() {
+  updateGlobalGeminiBadge();
+  document.getElementById('globalGeminiModal')?.classList.remove('hidden');
+}
+
+function closeGlobalGeminiModal() {
+  document.getElementById('globalGeminiModal')?.classList.add('hidden');
+}
+
+function promptUpdateGeminiKey() {
+  openGlobalGeminiModal();
+}
+
+function clearGlobalGeminiKey() {
+  if (confirm('Clear the global Gemini API key from this device?\n\nAI features in all modules will be paused until a new key is added.')) {
+    localStorage.removeItem('pmg_gemini_key');
+    const topInput = document.getElementById('topGeminiApiKey');
+    if (topInput) topInput.value = '';
+    const modalInput = document.getElementById('modalGeminiApiKey');
+    if (modalInput) modalInput.value = '';
+    const auditInput = document.getElementById('geminiApiKey');
+    if (auditInput) auditInput.value = '';
+    updateGlobalGeminiBadge();
+  }
+}
+
+function toggleModalGeminiKeyVisibility() {
+  const inp = document.getElementById('modalGeminiApiKey');
+  const icon = document.getElementById('modalKeyEyeIcon');
+  if (!inp) return;
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    if (icon) icon.className = 'fa-solid fa-eye-slash';
+  } else {
+    inp.type = 'password';
+    if (icon) icon.className = 'fa-solid fa-eye';
+  }
+}
+
+async function testGlobalGeminiKey() {
+  const key = (localStorage.getItem('pmg_gemini_key') || document.getElementById('modalGeminiApiKey')?.value || '').trim();
+  const statusEl = document.getElementById('modalGeminiKeyStatus');
+  const btn = document.getElementById('btnModalTestGeminiKey');
+  if (!key) {
+    alert('Please enter or paste your Gemini API key first.');
+    return;
+  }
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Testing…';
+  }
+  if (statusEl) {
+    statusEl.textContent = 'Testing connection with Gemini 3.5 Flash-Lite…';
+    statusEl.className = 'text-[11px] text-blue-600 font-semibold';
+  }
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: 'Respond with OK.' }] }]
+      })
+    });
+    if (resp.ok) {
+      if (statusEl) {
+        statusEl.textContent = '✅ Success! Gemini AI key is valid and active across all modules.';
+        statusEl.className = 'text-[11px] text-emerald-700 font-bold';
+      }
+      localStorage.setItem('pmg_gemini_key', key);
+      updateGlobalGeminiBadge();
+    } else {
+      const errData = await resp.json().catch(() => ({}));
+      const msg = errData?.error?.message || `HTTP ${resp.status}`;
+      if (statusEl) {
+        statusEl.textContent = '❌ Key validation error: ' + msg;
+        statusEl.className = 'text-[11px] text-rose-700 font-semibold';
+      }
+    }
+  } catch (e) {
+    if (statusEl) {
+      statusEl.textContent = '❌ Connection failed: ' + e.message;
+      statusEl.className = 'text-[11px] text-rose-700 font-semibold';
+    }
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-bolt"></i> Test Key';
+    }
+  }
+}
+
 // ─── APP INIT ─────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   // Check URL parameters for 1-click Gemini API Key Configuration
@@ -5574,16 +5815,8 @@ document.addEventListener('DOMContentLoaded', () => {
     monthInput.value = `${year}-${month}`;
   }
 
-  // Pre-fill Gemini API key from localStorage
-  const geminiInput = document.getElementById('geminiApiKey');
-  if (geminiInput) {
-    let saved = localStorage.getItem('pmg_gemini_key') || '';
-    if (saved === 'AIzaSyAfJqs6YnY5J_URsuvmSMi8WM3BckVwKY4') {
-      localStorage.removeItem('pmg_gemini_key');
-      saved = '';
-    }
-    if (saved) geminiInput.value = saved;
-  }
+  // Pre-fill Gemini API key from localStorage across top bar & all modules
+  updateGlobalGeminiBadge();
 
   // Initialise modules
   initInventory();

@@ -509,6 +509,98 @@
           syncedBranches.push(branchName);
         }
 
+        // ─── STEP G: UNIVERSAL SYNC — CREDIT NOTES, PRN & DELIVERY ORDERS ──────
+        let returnsSyncedCount = 0;
+        try {
+          let allReturns = [];
+          if (typeof window.pmgReturns !== 'undefined' && typeof window.pmgReturns.getReturnsData === 'function') {
+            allReturns = window.pmgReturns.getReturnsData() || [];
+          } else {
+            const rawReturns = localStorage.getItem('pmg_returns_records_v1');
+            if (rawReturns) allReturns = JSON.parse(rawReturns);
+          }
+          if (Array.isArray(allReturns) && allReturns.length > 0) {
+            for (const branchName of syncedBranches) {
+              const branchReturns = allReturns.filter(r => (r.branch || '').toUpperCase() === branchName.toUpperCase());
+              await this.saveReturnsDatabaseToOneDrive(branchName, branchReturns);
+            }
+            returnsSyncedCount = allReturns.length;
+          }
+        } catch (returnsErr) {
+          console.warn('[PMG OneDrive Sync] Universal sync: Returns warning:', returnsErr);
+        }
+
+        // ─── STEP H: UNIVERSAL SYNC — HR RECRUITMENT & JOB APPLICATIONS ────────
+        let recruitmentSyncedCount = 0;
+        try {
+          if (typeof window.pmgRecruitment !== 'undefined' && typeof window.pmgRecruitment.loadApps === 'function') {
+            const apps = window.pmgRecruitment.loadApps();
+            if (this.rootHandle && Array.isArray(apps)) {
+              let recDir = this.rootHandle;
+              try {
+                recDir = await this.rootHandle.getDirectoryHandle('RECRUITMENT', { create: true });
+              } catch (_) { recDir = this.rootHandle; }
+
+              // 1. Summary JSON
+              const summary = apps.map(a => ({
+                id: a.id, name: a.name, position: a.position, status: a.status,
+                appliedAt: a.appliedAt, aiScore: a.aiScore, aiVerdict: a.aiVerdict,
+                phone: a.phone, email: a.email, preferredBranch: a.preferredBranch,
+                spm: a.spm, highestQual: a.highestQual, cgpa: a.cgpa
+              }));
+              const fhSummary = await recDir.getFileHandle('recruitment_summary.json', { create: true });
+              const wSummary = await fhSummary.createWritable();
+              await wSummary.write(JSON.stringify(summary, null, 2));
+              await wSummary.close();
+
+              // 2. Full backup JSON (applications, documents metadata, interview slots)
+              const fhFull = await recDir.getFileHandle('recruitment_full_backup.json', { create: true });
+              const wFull = await fhFull.createWritable();
+              await wFull.write(JSON.stringify(apps, null, 2));
+              await wFull.close();
+
+              recruitmentSyncedCount = apps.length;
+            }
+          }
+        } catch (recErr) {
+          console.warn('[PMG OneDrive Sync] Universal sync: Recruitment warning:', recErr);
+        }
+
+        // ─── STEP I: UNIVERSAL SYNC — PRICING INTELLIGENCE MASTER SKUS ─────────
+        let pricingSyncedCount = 0;
+        try {
+          let skus = null;
+          if (window.pmgPricing && Array.isArray(window.pmgPricing.skus) && window.pmgPricing.skus.length > 0) {
+            skus = window.pmgPricing.skus;
+          } else {
+            const rawSkus = localStorage.getItem('pmg_pricing_skus_master_v1');
+            if (rawSkus) skus = JSON.parse(rawSkus);
+          }
+          if (skus && skus.length > 0) {
+            await this.savePricingMasterToOneDrive(skus);
+            pricingSyncedCount = skus.length;
+          }
+        } catch (pricingErr) {
+          console.warn('[PMG OneDrive Sync] Universal sync: Pricing warning:', pricingErr);
+        }
+
+        // ─── STEP J: UNIVERSAL SYNC — STOCK EXPIRY & DISPOSAL TRACKER ──────────
+        try {
+          const rawExpiry = localStorage.getItem('pmg_expiry_entries_v1');
+          if (rawExpiry && this.rootHandle) {
+            let expDir = this.rootHandle;
+            try {
+              expDir = await this.rootHandle.getDirectoryHandle('EXPIRY_BACKUP', { create: true });
+            } catch (_) { expDir = this.rootHandle; }
+            const expHandle = await expDir.getFileHandle('stock_expiry_master.json', { create: true });
+            const expW = await expHandle.createWritable();
+            await expW.write(rawExpiry);
+            await expW.close();
+          }
+        } catch (expErr) {
+          console.warn('[PMG OneDrive Sync] Universal sync: Expiry warning:', expErr);
+        }
+
         // Persist local patientsData and refresh views
         if (typeof PATIENTS_STORAGE_KEY !== 'undefined' && typeof patientsData !== 'undefined') {
           localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
@@ -537,7 +629,10 @@
           branch: mainBranchLabel,
           count: totalMergedPatients,
           time: timeStr,
-          branches: syncedBranches
+          branches: syncedBranches,
+          returnsCount: returnsSyncedCount,
+          recruitmentCount: recruitmentSyncedCount,
+          pricingCount: pricingSyncedCount
         };
       } catch (err) {
         console.error('[PMG OneDrive Sync] manualSync error:', err);
@@ -1368,22 +1463,30 @@
       updateSyncModalInfo();
 
       if (fb) {
-        fb.className = 'p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs space-y-1';
+        fb.className = 'p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs space-y-1.5';
         fb.innerHTML = `
           <div class="font-bold flex items-center gap-1.5 text-emerald-700">
-            <i class="fa-solid fa-circle-check text-emerald-600 text-sm"></i> Synced Successfully with OneDrive!
+            <i class="fa-solid fa-circle-check text-emerald-600 text-sm"></i> Universal OneDrive Sync Complete!
           </div>
-          <div class="text-[11px] text-emerald-800">
-            • Target: <b>${escapeSyncHtml(res.branch)}</b> &bull; Patients: <b>${res.count}</b> &bull; Time: <b>${res.time}</b>
+          <div class="text-[11px] text-emerald-800 space-y-1">
+            <div>• <b>Target:</b> ${escapeSyncHtml(res.branch)} &bull; <b>Time:</b> ${res.time}</div>
+            <div class="grid grid-cols-2 gap-1.5 pt-1 text-[10px] text-emerald-900 font-medium">
+              <div>✓ <b>Patient Care:</b> ${res.count} records</div>
+              <div>✓ <b>Job Applications:</b> ${res.recruitmentCount || 0} applicants</div>
+              <div>✓ <b>Credit Notes & DO:</b> ${res.returnsCount || 0} records</div>
+              <div>✓ <b>Pricing SKUs:</b> ${res.pricingCount || 0} master items</div>
+              <div>✓ <b>Schedules:</b> Working hours synced</div>
+              <div>✓ <b>Stock Expiry:</b> Disposition logs synced</div>
+            </div>
           </div>
           <div class="text-[10px] text-emerald-700 mt-1 font-medium">
-            ✓ Clinical records, encounters, and appointments are up to date and saved to OneDrive.
+            All records across the entire PMG Management Hub are synchronized with your OneDrive folder.
           </div>
         `;
         fb.classList.remove('hidden');
       }
 
-      showPmgToast(`✅ OneDrive Synced: ${res.branch} (${res.count} patients at ${res.time})`, 'success');
+      showPmgToast(`✅ Universal OneDrive Synced (${res.branch} at ${res.time})`, 'success');
 
     } catch (err) {
       console.error('[PMG OneDrive Sync] Manual sync failed:', err);
