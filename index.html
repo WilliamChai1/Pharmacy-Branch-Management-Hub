@@ -979,9 +979,15 @@
             </div>
           </div>
           <div class="flex items-center gap-2 flex-wrap">
+            <span id="pricingAutoBackupStatus" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200 transition-all" title="Every price update and imported SKU is automatically backed up">
+              <i class="fa-solid fa-shield-halved text-blue-600"></i> Auto-backup: <span id="pricingLastBackupTime">Active</span>
+            </span>
+            <button type="button" onclick="window.pmgPricing.openBackupHistoryModal()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2.5 py-1 rounded border border-slate-300 transition" title="View auto-saved version history and restore previous snapshots">
+              <i class="fa-solid fa-clock-rotate-left text-slate-600"></i> Backup History
+            </button>
             <span class="text-xs bg-purple-50 text-purple-800 font-semibold px-2.5 py-1 rounded border border-purple-200 flex items-center gap-1.5" title="Free Tier: Gemini 3.5 Flash-Lite (500 RPD) & Gemini 3.5 Flash (20 RPD) — 100% Free / RM 0 Budget">
               <i class="fa-solid fa-wand-magic-sparkles text-purple-600"></i>
-              <span>Gemini 3.5 Flash-Lite &amp; 3.5 Flash (Free Tier: 0 Budget)</span>
+              <span>Gemini 3.5 Flash (Free Tier)</span>
             </span>
             <button type="button" onclick="promptUpdateGeminiKey()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold px-2.5 py-1 rounded border border-gray-300 transition" title="View or update free Google AI Studio API key">
               <i class="fa-solid fa-key text-gray-500"></i> API Key
@@ -4924,6 +4930,43 @@ ItemCode,Description,Brand,Category,Cost,SellingPrice,Supplier
     </div>
   </div>
 </div>
+
+<!-- Modal 4: Pricing Auto-Backup History & Snapshot Restore -->
+<div id="modalPricingBackupHistory" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs hidden p-4">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden border border-slate-200">
+    <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <i class="fa-solid fa-clock-rotate-left text-amber-400 text-base"></i>
+        <div>
+          <h3 class="font-bold text-sm">Pricing Auto-Backup Snapshot History</h3>
+          <p class="text-[11px] text-slate-300">Rolling snapshots auto-saved on every edit. 1-click restore available.</p>
+        </div>
+      </div>
+      <button type="button" onclick="window.pmgPricing.closeBackupHistoryModal()" class="text-white/80 hover:text-white p-1">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="p-4 overflow-y-auto flex-1">
+      <div class="border border-gray-200 rounded-xl overflow-hidden">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-50 font-bold text-gray-700 border-b border-gray-200">
+            <tr>
+              <th class="p-3">Saved Timestamp</th>
+              <th class="p-3">SKU Count</th>
+              <th class="p-3">Trigger / Source</th>
+              <th class="p-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="pricingBackupHistoryTbody" class="divide-y divide-gray-100"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="p-3 bg-gray-50 border-t flex justify-end">
+      <button type="button" onclick="window.pmgPricing.closeBackupHistoryModal()" class="px-4 py-1.5 text-xs font-bold text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg">Close</button>
+    </div>
+  </div>
+</div>
+
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
      SCRIPTS (load order matters: data → auth → modules)

@@ -853,6 +853,98 @@
       }
     }
 
+    // ─── SAVE PRICING MASTER DATABASE (JSON & CSV) TO ONEDRIVE ─────────────────
+    async savePricingMasterToOneDrive(skus) {
+      if (!this.rootHandle || this.mode === 'DISCONNECTED') return false;
+      try {
+        const hasPerm = await this._verifyPermission(this.rootHandle, true, false);
+        if (!hasPerm) return false;
+
+        const session = typeof getSession === 'function' ? getSession() : null;
+        const payload = {
+          title: 'PMG 7-Branch Pricing Master Database',
+          lastUpdated: new Date().toISOString(),
+          updatedBy: session?.displayName || 'Area Manager Chai Yee Sian (William)',
+          totalSkus: skus ? skus.length : 0,
+          skus: skus || []
+        };
+
+        // Determine destination folder (if parent, save to root or PRICING_BACKUP folder; if branch, save to branch folder)
+        let targetDir = this.rootHandle;
+        if (this.mode === 'PARENT') {
+          try {
+            targetDir = await this.rootHandle.getDirectoryHandle('PRICING_BACKUP', { create: true });
+          } catch (e) {
+            targetDir = this.rootHandle;
+          }
+        }
+
+        // 1. Write JSON master
+        const jsonHandle = await targetDir.getFileHandle('pmg_pricing_master.json', { create: true });
+        const jsonWritable = await jsonHandle.createWritable();
+        await jsonWritable.write(JSON.stringify(payload, null, 2));
+        await jsonWritable.close();
+
+        // 2. Generate and write CSV master
+        let csv = "Item Code,Description,Brand,Category,Supplier,Custom Cost (RM),Member SP (RM),Non-Member Price (RM),Gross Margin %,Supermarket Benchmark (RM),Competitor Chain Benchmark (RM),Strategic Role,Notes\n";
+        (skus || []).forEach(s => {
+          const margin = (s.standardSp > 0 && s.costPrice > 0) ? (((s.standardSp - s.costPrice) / s.standardSp) * 100).toFixed(1) : '0.0';
+          const escapeCsv = (str) => `"${String(str || '').replace(/"/g, '""')}"`;
+          csv += [
+            escapeCsv(s.code),
+            escapeCsv(s.name),
+            escapeCsv(s.brand),
+            escapeCsv(s.category),
+            escapeCsv(s.supplier),
+            s.costPrice.toFixed(2),
+            s.standardSp.toFixed(2),
+            s.nonMemberPrice ? s.nonMemberPrice.toFixed(2) : '',
+            margin + '%',
+            s.supermarketPrice ? s.supermarketPrice.toFixed(2) : '',
+            s.chainPharmacyPrice ? s.chainPharmacyPrice.toFixed(2) : '',
+            escapeCsv(s.strategyTag),
+            escapeCsv(s.notes)
+          ].join(',') + '\n';
+        });
+
+        const csvHandle = await targetDir.getFileHandle('pmg_pricing_master.csv', { create: true });
+        const csvWritable = await csvHandle.createWritable();
+        await csvWritable.write(csv);
+        await csvWritable.close();
+
+        console.log(`[PMG OneDrive Sync] Successfully auto-backed up ${skus.length} SKUs to OneDrive.`);
+        return true;
+      } catch (err) {
+        console.warn('[PMG OneDrive Sync] Could not auto-backup pricing to OneDrive:', err);
+        return false;
+      }
+    }
+
+    async loadPricingMasterFromOneDrive() {
+      if (!this.rootHandle || this.mode === 'DISCONNECTED') return null;
+      try {
+        const hasPerm = await this._verifyPermission(this.rootHandle, false, false);
+        if (!hasPerm) return null;
+
+        let targetDir = this.rootHandle;
+        if (this.mode === 'PARENT') {
+          try {
+            targetDir = await this.rootHandle.getDirectoryHandle('PRICING_BACKUP');
+          } catch (e) {
+            targetDir = this.rootHandle;
+          }
+        }
+
+        const fileHandle = await targetDir.getFileHandle('pmg_pricing_master.json');
+        const file = await fileHandle.getFile();
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        return parsed.skus || [];
+      } catch (e) {
+        return null;
+      }
+    }
+
     _formatCurrentMonthString() {
       const d = new Date();
       const m = String(d.getMonth() + 1).padStart(2, '0');

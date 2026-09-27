@@ -364,11 +364,196 @@
       this.saveSkusToStorage();
     }
 
-    saveSkusToStorage() {
+    saveSkusToStorage(skipAutoBackup = false) {
       try {
         localStorage.setItem(STORAGE_KEY_PRICING_SKUS, JSON.stringify(this.skus));
       } catch (e) {
         console.warn('[PMG Pricing] Save error:', e);
+      }
+      if (!skipAutoBackup) {
+        this.triggerAutoBackup();
+      }
+    }
+
+    triggerAutoBackup() {
+      if (this.autoBackupTimeout) clearTimeout(this.autoBackupTimeout);
+      this.autoBackupTimeout = setTimeout(() => {
+        this.performAutoBackup();
+      }, 500);
+    }
+
+    async performAutoBackup() {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const dateStr = now.toLocaleDateString('en-GB');
+
+      // 1. Maintain Rolling Snapshots in Local Storage (up to 15 versions)
+      try {
+        const historyKey = 'pmg_pricing_backup_history';
+        let history = [];
+        try {
+          const raw = localStorage.getItem(historyKey);
+          if (raw) history = JSON.parse(raw);
+        } catch (e) {}
+
+        const snapshot = {
+          id: 'snap-' + Date.now(),
+          timestamp: now.toISOString(),
+          displayTime: `${dateStr} ${timeStr}`,
+          skuCount: this.skus.length,
+          skus: JSON.parse(JSON.stringify(this.skus))
+        };
+
+        // Don't add identical consecutive snapshots if count is same and skus unchanged
+        if (history.length === 0 || history[0].skuCount !== snapshot.skuCount || JSON.stringify(history[0].skus) !== JSON.stringify(snapshot.skus)) {
+          history.unshift(snapshot);
+          if (history.length > 15) history = history.slice(0, 15);
+          localStorage.setItem(historyKey, JSON.stringify(history));
+        }
+
+        localStorage.setItem('pmg_pricing_latest_auto_backup', JSON.stringify({
+          updatedAt: now.toISOString(),
+          displayTime: `${dateStr} ${timeStr}`,
+          count: this.skus.length
+        }));
+      } catch (e) {
+        console.warn('[PMG Pricing] Local backup history error:', e);
+      }
+
+      // 2. Auto-backup to OneDrive if connected
+      let oneDriveSynced = false;
+      if (window.pmgOneDrive && typeof window.pmgOneDrive.savePricingMasterToOneDrive === 'function') {
+        const isConn = typeof window.pmgOneDrive.isConnected === 'function' 
+          ? window.pmgOneDrive.isConnected() 
+          : (window.pmgOneDrive.rootHandle && window.pmgOneDrive.mode !== 'DISCONNECTED');
+        if (isConn) {
+          oneDriveSynced = await window.pmgOneDrive.savePricingMasterToOneDrive(this.skus);
+        }
+      }
+
+      // 3. Update UI Badge
+      this.updateAutoBackupStatus(timeStr, oneDriveSynced);
+    }
+
+    updateAutoBackupStatus(timeStr, oneDriveSynced = false) {
+      const badge = document.getElementById('pricingAutoBackupStatus');
+      const timeEl = document.getElementById('pricingLastBackupTime');
+      if (timeEl) timeEl.textContent = timeStr || 'Just now';
+      if (badge) {
+        if (oneDriveSynced) {
+          badge.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 transition-all';
+          badge.innerHTML = `<i class="fa-solid fa-cloud-arrow-up text-emerald-600"></i> Auto-backed up to OneDrive (<span id="pricingLastBackupTime">${timeStr}</span>)`;
+        } else {
+          badge.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200 transition-all';
+          badge.innerHTML = `<i class="fa-solid fa-shield-halved text-blue-600"></i> Auto-backed up (<span id="pricingLastBackupTime">${timeStr}</span>)`;
+        }
+      }
+    }
+
+    openBackupHistoryModal() {
+      const modal = document.getElementById('modalPricingBackupHistory');
+      if (!modal) return;
+      this.renderBackupHistoryList();
+      modal.classList.remove('hidden');
+    }
+
+    closeBackupHistoryModal() {
+      const modal = document.getElementById('modalPricingBackupHistory');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    renderBackupHistoryList() {
+      const tbody = document.getElementById('pricingBackupHistoryTbody');
+      if (!tbody) return;
+      const historyKey = 'pmg_pricing_backup_history';
+      let history = [];
+      try {
+        const raw = localStorage.getItem(historyKey);
+        if (raw) history = JSON.parse(raw);
+      } catch (e) {}
+
+      if (history.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="4" class="p-6 text-center text-gray-400 text-xs italic">
+              No previous auto-backup snapshots recorded yet. Any SKU edit will create one automatically.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = history.map((snap, idx) => `
+        <tr class="hover:bg-slate-50 border-b border-gray-100 text-xs">
+          <td class="p-3 font-mono font-bold text-gray-800 flex items-center gap-2">
+            ${idx === 0 ? '<span class="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.5 rounded font-bold">Latest</span>' : ''}
+            <span>${snap.displayTime}</span>
+          </td>
+          <td class="p-3 font-mono font-bold text-blue-800">${snap.skuCount} SKUs</td>
+          <td class="p-3 text-gray-500">Auto-save on SKU edit / import</td>
+          <td class="p-3 text-right">
+            <button type="button" onclick="window.pmgPricing.restoreSnapshot('${snap.id}')"
+              class="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded font-bold text-xs transition shadow-2xs mr-2">
+              <i class="fa-solid fa-rotate-left mr-1"></i> Restore
+            </button>
+            <button type="button" onclick="window.pmgPricing.downloadSnapshotJson('${snap.id}')"
+              class="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded font-semibold text-xs border border-gray-300 transition">
+              <i class="fa-solid fa-download"></i>
+            </button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    restoreSnapshot(snapId) {
+      const historyKey = 'pmg_pricing_backup_history';
+      let history = [];
+      try {
+        const raw = localStorage.getItem(historyKey);
+        if (raw) history = JSON.parse(raw);
+      } catch (e) {}
+
+      const snap = history.find(s => s.id === snapId);
+      if (!snap) {
+        alert('Snapshot not found.');
+        return;
+      }
+
+      if (!confirm(`Restore pricing matrix to snapshot from ${snap.displayTime} (${snap.skuCount} SKUs)? Current changes will be replaced.`)) {
+        return;
+      }
+
+      this.skus = JSON.parse(JSON.stringify(snap.skus || []));
+      this.saveSkusToStorage(false);
+      this.render();
+      this.closeBackupHistoryModal();
+      if (typeof showExpiryToast === 'function') {
+        showExpiryToast(`Restored ${this.skus.length} SKUs from ${snap.displayTime}`);
+      }
+    }
+
+    downloadSnapshotJson(snapId) {
+      const historyKey = 'pmg_pricing_backup_history';
+      let history = [];
+      try {
+        const raw = localStorage.getItem(historyKey);
+        if (raw) history = JSON.parse(raw);
+      } catch (e) {}
+
+      const snap = history.find(s => s.id === snapId);
+      if (!snap) return;
+
+      const dataStr = JSON.stringify(snap, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json;charset=utf-8;' });
+      const filename = `PMG_Pricing_Snapshot_${snap.displayTime.replace(/[/ :]/g, '_')}.json`;
+      if (window.saveAs) {
+        window.saveAs(blob, filename);
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
       }
     }
 
