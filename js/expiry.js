@@ -31,6 +31,7 @@ function initExpiryModule() {
   loadLocalExpiryData();
   setupExpiryEventListeners();
   renderExpiryUI();
+  updateAccountsShareUi(document.getElementById('expiryBranchFilter')?.value || 'Kota Sentosa');
   // Fetch fresh data from Google Sheet in background
   syncExpiryFromSheets(false);
 }
@@ -345,23 +346,114 @@ function cleanNumericFloatString(val) {
   return s || 'N/A';
 }
 
+// ─── MONTH FOLDER LOOKUP & SOP FILENAME PARSER ─────────────────────────────
+const MONTH_FOLDER_MAP = {
+  'JAN': '01 - January', 'JANUARY': '01 - January',
+  'FEB': '02 - February', 'FEBRUARY': '02 - February',
+  'MAR': '03 - March', 'MARCH': '03 - March',
+  'APR': '04 - April', 'APRIL': '04 - April',
+  'MAY': '05 - May',
+  'JUN': '06 - June', 'JUNE': '06 - June',
+  'JUL': '07 - July', 'JULY': '07 - July',
+  'AUG': '08 - August', 'AUGUST': '08 - August',
+  'SEP': '09 - September', 'SEPTEMBER': '09 - September',
+  'OCT': '10 - October', 'OCTOBER': '10 - October',
+  'NOV': '11 - November', 'NOVEMBER': '11 - November',
+  'DEC': '12 - December', 'DECEMBER': '12 - December'
+};
+
+/**
+ * Parses scanned documents named according to Accounts SOP format:
+ * "(vendor name) (invoices number) (total amount in RM) - (month) (INV or CN)"
+ * e.g. "Sung Hoe 12345 RM 1500.50 - SEP INV.pdf"
+ * e.g. "Zuellig Pharma 99234 RM 420.00 - SEP CN.pdf"
+ */
+function parseInvoiceOrCnFilename(filename) {
+  const cleanName = filename.replace(/\.[^/.]+$/, '').trim();
+  
+  // Detect CN vs INV
+  const isCreditNote = /\b(CN|CREDIT\s*NOTE)\b/i.test(cleanName) || /[\s\-_]CN$/i.test(cleanName);
+  const docType = isCreditNote ? 'CN' : 'INV';
+  
+  // Extract month folder
+  let detectedMonthFolder = '';
+  const monthMatch = cleanName.match(/\b(JAN(?:UARY)?|FEB(?:RUARY)?|MAR(?:CH)?|APR(?:IL)?|MAY|JUN(?:E)?|JUL(?:Y)?|AUG(?:UST)?|SEP(?:TEMBER)?|OCT(?:OBER)?|NOV(?:EMBER)?|DEC(?:EMBER)?)\b/i);
+  if (monthMatch) {
+    const mKey = monthMatch[1].toUpperCase();
+    detectedMonthFolder = MONTH_FOLDER_MAP[mKey] || '';
+  }
+  
+  // Extract Year if present (e.g. 2025, 2026, 2027)
+  let detectedYear = '';
+  const yearMatch = cleanName.match(/\b(202[4-9]|203[0-9])\b/);
+  if (yearMatch) {
+    detectedYear = yearMatch[1];
+  } else {
+    detectedYear = String(new Date().getFullYear());
+  }
+
+  // Extract amount in RM if present (e.g. RM 1,234.50, RM1234.50, RM 450)
+  let detectedAmount = '';
+  const rmPattern = /\bRM\s*([0-9]+(?:,[0-9]{3})*(?:\.[0-9]{2})?|[0-9]+(?:\.[0-9]{2})?)/i;
+  const rmMatch = cleanName.match(rmPattern);
+  if (rmMatch) {
+    detectedAmount = 'RM ' + rmMatch[1].replace(/,/g, '');
+  }
+
+  // Strip trailing '- (month) (INV or CN)'
+  const tailRegex = /[-–]\s*(?:(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s*)?(?:INV|CN|INVOICE|CREDIT\s*NOTE).*$/i;
+  const headPart = cleanName.replace(tailRegex, '').trim();
+
+  // Strip \bRM\s*[\d,.]*
+  let beforeRm = headPart.replace(/\s*\bRM\s*[\d,.]*.*$/i, '').trim();
+  if (beforeRm === headPart && /\s+[\d,.]+\s*$/.test(headPart)) {
+    const possibleAmtMatch = headPart.match(/\s+([\d,.]+)\s*$/);
+    if (possibleAmtMatch && !detectedAmount) {
+      detectedAmount = 'RM ' + possibleAmtMatch[1];
+    }
+    beforeRm = headPart.replace(/\s+[\d,.]+\s*$/, '').trim();
+  }
+
+  const tokens = beforeRm.split(/\s+/).filter(Boolean);
+  let vendor = '';
+  let docNumber = '';
+  if (tokens.length >= 2) {
+    docNumber = tokens.pop();
+    vendor = tokens.join(' ');
+  } else if (tokens.length === 1) {
+    vendor = tokens[0];
+  } else {
+    vendor = 'General';
+  }
+
+  vendor = vendor.replace(/[<>:"/\\|?*]/g, '').trim();
+
+  return {
+    raw: filename,
+    isCreditNote,
+    type: docType,
+    vendor: vendor || 'General',
+    docNumber: docNumber || '',
+    amount: detectedAmount || '',
+    monthFolder: detectedMonthFolder || '',
+    year: detectedYear
+  };
+}
+
 // ─── GEMINI OCR INVOICE EXTRACTION ──────────────────────────────────────────
 /**
- * Processes a PDF invoice file using Gemini Multimodal Vision API directly in the browser.
+ * Processes a single invoice file via Gemini Multimodal Vision API directly in the browser.
+ * Returns array of validated stock items.
  */
-async function handleInvoicePdfExtraction(file, branch) {
-  const statusEl = document.getElementById('expiryOcrStatus');
-  const spinnerEl = document.getElementById('expiryOcrSpinner');
-  if (statusEl) statusEl.textContent = `Reading & converting ${file.name}…`;
-  if (spinnerEl) spinnerEl.classList.remove('hidden');
+async function extractInvoiceItemsFromPdf(file, branch, onStatus) {
+  const apiKey = (localStorage.getItem('pmg_gemini_key') || '').trim() || PMG_GLOBAL_FALLBACK_KEY;
+  const base64Data = await readFileAsBase64(file);
 
-  try {
-    const apiKey = (localStorage.getItem('pmg_gemini_key') || '').trim() || PMG_GLOBAL_FALLBACK_KEY;
-    const base64Data = await readFileAsBase64(file);
+  if (typeof onStatus === 'function') {
+    onStatus(`Analyzing ${file.name} layout & extracting line items via Gemini AI…`);
+  }
 
-    if (statusEl) statusEl.textContent = `Analyzing invoice layout & extracting line items via Gemini Multimodal AI…`;
-
-    const prompt = `
+  const prompt = `
 You are an expert pharmaceutical invoice parser for Malaysian pharmacy chains (e.g. PMG Pharmacy).
 Analyze this invoice document carefully.
 Identify:
@@ -384,117 +476,218 @@ CRITICAL EXTRACTION RULES:
 Return ONLY a valid JSON array of objects. No markdown formatting, no explanations.
 `;
 
-    const modelsToTry = [
-      EXPIRY_OCR_PRIMARY_MODEL,
-      EXPIRY_OCR_SECONDARY_MODEL,
-      EXPIRY_OCR_TERTIARY_MODEL,
-      'gemini-2.5-flash',
-      'gemini-1.5-flash'
-    ];
-    let items = null;
-    let successfulModel = '';
-    let lastError = null;
+  const modelsToTry = [
+    EXPIRY_OCR_PRIMARY_MODEL,
+    EXPIRY_OCR_SECONDARY_MODEL,
+    EXPIRY_OCR_TERTIARY_MODEL,
+    'gemini-2.5-flash',
+    'gemini-1.5-flash'
+  ];
+  let items = null;
+  let successfulModel = '';
+  let lastError = null;
 
-    for (const model of modelsToTry) {
-      try {
-        if (statusEl) statusEl.textContent = `Analyzing invoice with ${model}…`;
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const payload = {
-          contents: [{
-            parts: [
-              { text: prompt },
-              {
-                inlineData: {
-                  mimeType: file.type || 'application/pdf',
-                  data: base64Data
-                }
+  for (const model of modelsToTry) {
+    try {
+      if (typeof onStatus === 'function') onStatus(`Extracting ${file.name} with ${model}…`);
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const payload = {
+        contents: [{
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType: file.type || 'application/pdf',
+                data: base64Data
               }
-            ]
-          }],
-          generationConfig: {
-            response_mime_type: "application/json"
-          }
-        };
-
-        const res = await fetch(geminiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        const resData = await res.json();
-        if (resData.error || !resData.candidates || resData.candidates.length === 0) {
-          throw new Error(resData.error?.message || `Model ${model} returned empty response.`);
+            }
+          ]
+        }],
+        generationConfig: {
+          response_mime_type: "application/json"
         }
-
-        const rawText = resData.candidates[0].content.parts[0].text;
-        const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-        const parsed = JSON.parse(cleanJson);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          items = parsed;
-          successfulModel = model;
-          break;
-        }
-      } catch (err) {
-        console.warn(`[PMG Expiry] ${model} attempt failed:`, err);
-        lastError = err;
-      }
-    }
-
-    if (!items || items.length === 0) {
-      throw lastError || new Error('No stock items were identified in this document.');
-    }
-
-    // Attach metadata and run heuristic validation
-    pendingOcrItems = items.map((it, idx) => {
-      const rawExp = it.expiryDate || '';
-      const parsedExp = parseExpiryDate(rawExp);
-      const formattedExp = formatExpiryDateDisplay(parsedExp || rawExp);
-
-      let isAutoCorrected = false;
-      let isShortDated = false;
-      let isAmbiguous = false;
-
-      if (parsedExp) {
-        const horizon = calculateExpiryHorizon(parsedExp);
-        if (horizon.monthsLeft < 6) isShortDated = true;
-        const parts = String(rawExp).replace(/[-.]/g, '/').split('/');
-        if (parts.length === 3 && parseInt(parts[2], 10) < 100 && parseInt(parts[0], 10) >= 26) {
-          isAutoCorrected = true;
-        }
-      } else {
-        isAmbiguous = true;
-      }
-
-      return {
-        tempId: `pending_${Date.now()}_${idx}`,
-        branch: branch || 'Kota Sentosa',
-        batchNumber: cleanNumericFloatString(it.batchNumber),
-        itemCode: cleanNumericFloatString(it.itemCode),
-        itemDescription: it.itemDescription || it.itemName || 'Item',
-        expiryDate: formattedExp,
-        quantity: Math.max(1, parseFloat(it.quantity) || 1),
-        sourceFile: file.name,
-        status: 'Active',
-        selected: true,
-        autoCorrected: isAutoCorrected,
-        isShortDated: isShortDated,
-        isAmbiguous: isAmbiguous
       };
-    });
 
-    if (spinnerEl) spinnerEl.classList.add('hidden');
-    if (statusEl) statusEl.textContent = `✓ Extracted ${pendingOcrItems.length} items from ${file.name} (via ${successfulModel})`;
+      const res = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
-    openOcrReviewModal(file.name);
-  } catch (err) {
-    console.error('[PMG Expiry] OCR Extraction Error:', err);
-    if (spinnerEl) spinnerEl.classList.add('hidden');
-    if (statusEl) {
-      statusEl.textContent = `Extraction failed: ${err.message}`;
-      statusEl.className = 'text-xs text-rose-600 font-semibold';
+      const resData = await res.json();
+      if (resData.error || !resData.candidates || resData.candidates.length === 0) {
+        throw new Error(resData.error?.message || `Model ${model} returned empty response.`);
+      }
+
+      const rawText = resData.candidates[0].content.parts[0].text;
+      const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleanJson);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        items = parsed;
+        successfulModel = model;
+        break;
+      }
+    } catch (err) {
+      console.warn(`[PMG Expiry] ${model} attempt failed on ${file.name}:`, err);
+      lastError = err;
     }
   }
+
+  if (!items || items.length === 0) {
+    throw lastError || new Error(`No stock items were identified in ${file.name}.`);
+  }
+
+  // Attach metadata and run heuristic validation
+  return items.map((it, idx) => {
+    const rawExp = it.expiryDate || '';
+    const parsedExp = parseExpiryDate(rawExp);
+    const formattedExp = formatExpiryDateDisplay(parsedExp || rawExp);
+
+    let isAutoCorrected = false;
+    let isShortDated = false;
+    let isAmbiguous = false;
+
+    if (parsedExp) {
+      const horizon = calculateExpiryHorizon(parsedExp);
+      if (horizon.monthsLeft < 6) isShortDated = true;
+      const parts = String(rawExp).replace(/[-.]/g, '/').split('/');
+      if (parts.length === 3 && parseInt(parts[2], 10) < 100 && parseInt(parts[0], 10) >= 26) {
+        isAutoCorrected = true;
+      }
+    } else {
+      isAmbiguous = true;
+    }
+
+    return {
+      tempId: `pending_${Date.now()}_${Math.random().toString(36).substr(2, 5)}_${idx}`,
+      branch: branch || 'Kota Sentosa',
+      batchNumber: cleanNumericFloatString(it.batchNumber),
+      itemCode: cleanNumericFloatString(it.itemCode),
+      itemDescription: it.itemDescription || it.itemName || 'Item',
+      expiryDate: formattedExp,
+      quantity: Math.max(1, parseFloat(it.quantity) || 1),
+      sourceFile: file.name,
+      status: 'Active',
+      selected: true,
+      autoCorrected: isAutoCorrected,
+      isShortDated: isShortDated,
+      isAmbiguous: isAmbiguous,
+      ocrModel: successfulModel
+    };
+  });
+}
+
+/**
+ * Master Batch Handler for both Invoices and Credit Notes.
+ * 1. Automatically saves documents into company OneDrive following Accounts SOP:
+ *    [Branch] -> [Year] -> [Month] -> [Invoices | Credit Note] -> [Vendor] -> [Filename]
+ * 2. If Credit Note (CN): Completely OMITS Gemini OCR extraction to save tokens and time.
+ * 3. If Invoice (INV): Saves to OneDrive AND extracts batch/expiry items via Gemini AI.
+ * 4. Updates Accounts Department Submission panel in real time.
+ */
+async function handleBatchInvoiceAndCnUpload(files, branch) {
+  if (!files || files.length === 0) return;
+
+  const statusEl = document.getElementById('expiryOcrStatus');
+  const spinnerEl = document.getElementById('expiryOcrSpinner');
+  if (spinnerEl) spinnerEl.classList.remove('hidden');
+
+  const fileList = Array.from(files);
+  const totalFiles = fileList.length;
+  let cnCount = 0;
+  let invCount = 0;
+  let oneDriveSavedCount = 0;
+  const invoicesToExtract = [];
+
+  const targetBranch = branch || document.getElementById('expiryBranchFilter')?.value || 'Kota Sentosa';
+
+  for (let i = 0; i < totalFiles; i++) {
+    const file = fileList[i];
+    const parsed = parseInvoiceOrCnFilename(file.name);
+
+    if (statusEl) {
+      statusEl.textContent = `[${i + 1}/${totalFiles}] Saving to OneDrive: ${file.name}…`;
+    }
+
+    // Auto-save to OneDrive if OneDrive sync engine is active
+    if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveInvoiceOrCnToOneDrive === 'function') {
+      try {
+        const res = await window.pmgOneDriveSync.saveInvoiceOrCnToOneDrive(file, targetBranch, parsed);
+        if (res && res.success) {
+          oneDriveSavedCount++;
+        }
+      } catch (err) {
+        console.warn(`[PMG Expiry] OneDrive save error on ${file.name}:`, err);
+      }
+    }
+
+    if (parsed.isCreditNote) {
+      cnCount++;
+      console.log(`[PMG Expiry] Credit Note detected: ${file.name} -> Filed to OneDrive Credit Note/${parsed.vendor}/. Expiry OCR omitted.`);
+    } else {
+      invCount++;
+      invoicesToExtract.push({ file, parsed });
+    }
+  }
+
+  // Refresh Accounts Submission Bar
+  updateAccountsShareUi(targetBranch);
+
+  // If there are invoices that require OCR extraction
+  if (invoicesToExtract.length > 0) {
+    pendingOcrItems = [];
+    const sourceNames = [];
+
+    for (let j = 0; j < invoicesToExtract.length; j++) {
+      const { file } = invoicesToExtract[j];
+      try {
+        const extractedItems = await extractInvoiceItemsFromPdf(
+          file,
+          targetBranch,
+          (msg) => { if (statusEl) statusEl.textContent = `[Invoice ${j + 1}/${invoicesToExtract.length}] ${msg}`; }
+        );
+        if (Array.isArray(extractedItems) && extractedItems.length > 0) {
+          pendingOcrItems.push(...extractedItems);
+          sourceNames.push(file.name);
+        }
+      } catch (ocrErr) {
+        console.error(`[PMG Expiry] OCR extraction error on ${file.name}:`, ocrErr);
+      }
+    }
+
+    if (spinnerEl) spinnerEl.classList.add('hidden');
+
+    if (pendingOcrItems.length > 0) {
+      const msg = `✓ Extracted ${pendingOcrItems.length} items from ${sourceNames.length} invoice(s).` +
+        (cnCount > 0 ? ` (${cnCount} CN(s) saved to OneDrive with OCR omitted per SOP)` : '');
+      if (statusEl) {
+        statusEl.textContent = msg;
+        statusEl.className = 'text-xs text-emerald-700 font-semibold';
+      }
+      showExpiryToast(`✅ ${pendingOcrItems.length} line items ready for review!`);
+      openOcrReviewModal(sourceNames.length === 1 ? sourceNames[0] : `${sourceNames.length} Invoices (${pendingOcrItems.length} Items)`);
+    } else {
+      if (statusEl) {
+        statusEl.textContent = `Upload complete. ${cnCount} CN(s) & ${invCount} Invoice(s) filed to OneDrive. No inventory items extracted.`;
+        statusEl.className = 'text-xs text-gray-600 font-semibold';
+      }
+    }
+  } else {
+    // Only Credit Notes were uploaded
+    if (spinnerEl) spinnerEl.classList.add('hidden');
+    if (statusEl) {
+      statusEl.textContent = `✓ ${cnCount} Credit Note(s) filed to OneDrive Credit Note folder! Expiry OCR check omitted per SOP.`;
+      statusEl.className = 'text-xs text-emerald-700 font-semibold';
+    }
+    showExpiryToast(`✅ ${cnCount} Credit Note(s) saved to OneDrive Credit Note folder (OCR omitted per SOP).`);
+  }
+}
+
+/**
+ * Backwards compatibility wrapper for single-file calls.
+ */
+async function handleInvoicePdfExtraction(file, branch) {
+  return handleBatchInvoiceAndCnUpload([file], branch);
 }
 
 function readFileAsBase64(file) {
@@ -1183,6 +1376,7 @@ function setupExpiryEventListeners() {
       activeExpiryFilter.branch = e.target.value;
       expiryCurrentPage = 1;
       renderExpiryUI();
+      updateAccountsShareUi(e.target.value || 'Kota Sentosa');
     });
   }
 
@@ -1204,15 +1398,16 @@ function setupExpiryEventListeners() {
     });
   }
 
-  // PDF Dropzone
+  // PDF Dropzone & Multi-file Upload (Invoices + Credit Notes)
   const dropZone = document.getElementById('expiryDropZone');
   const fileInput = document.getElementById('expiryFileInput');
   if (dropZone && fileInput) {
     dropZone.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', e => {
-      if (e.target.files.length) {
+      if (e.target.files && e.target.files.length) {
         const branch = document.getElementById('expiryBranchFilter')?.value || 'Kota Sentosa';
-        handleInvoicePdfExtraction(e.target.files[0], branch);
+        handleBatchInvoiceAndCnUpload(e.target.files, branch);
+        e.target.value = '';
       }
     });
     dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('border-blue-500', 'bg-blue-50/50'); });
@@ -1220,9 +1415,9 @@ function setupExpiryEventListeners() {
     dropZone.addEventListener('drop', e => {
       e.preventDefault();
       dropZone.classList.remove('border-blue-500', 'bg-blue-50/50');
-      if (e.dataTransfer.files.length) {
+      if (e.dataTransfer.files && e.dataTransfer.files.length) {
         const branch = document.getElementById('expiryBranchFilter')?.value || 'Kota Sentosa';
-        handleInvoicePdfExtraction(e.dataTransfer.files[0], branch);
+        handleBatchInvoiceAndCnUpload(e.dataTransfer.files, branch);
       }
     });
   }
@@ -1306,3 +1501,115 @@ function promptUpdateGeminiKey() {
   }
 }
 window.promptUpdateGeminiKey = promptUpdateGeminiKey;
+
+// ─── ACCOUNTS DEPARTMENT ONEDRIVE SUBMISSION HELPERS ─────────────────────────
+function updateAccountsShareUi(branchName) {
+  const branch = branchName || document.getElementById('expiryBranchFilter')?.value || 'Kota Sentosa';
+  if (!window.pmgOneDriveSync || typeof window.pmgOneDriveSync.getAccountsSubmissionSummary !== 'function') {
+    return;
+  }
+
+  const summary = window.pmgOneDriveSync.getAccountsSubmissionSummary(branch);
+
+  const branchBadge = document.getElementById('accountsBarBranchBadge');
+  if (branchBadge) branchBadge.textContent = summary.branch;
+
+  const monthBadge = document.getElementById('accountsBarMonthBadge');
+  if (monthBadge) monthBadge.textContent = `${summary.month} ${summary.year}`;
+
+  const invCountEl = document.getElementById('accountsSummaryInvCount');
+  if (invCountEl) {
+    const totalStr = summary.invoicesTotal > 0 ? ` (RM ${summary.invoicesTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : '';
+    invCountEl.textContent = `${summary.invoicesCount} doc(s)${totalStr}`;
+  }
+
+  const cnCountEl = document.getElementById('accountsSummaryCnCount');
+  if (cnCountEl) {
+    const totalStr = summary.creditNotesTotal > 0 ? ` (RM ${summary.creditNotesTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : '';
+    cnCountEl.textContent = `${summary.creditNotesCount} doc(s)${totalStr}`;
+  }
+
+  const linkBtnText = document.getElementById('accountsShareLinkBtnText');
+  if (linkBtnText) {
+    linkBtnText.textContent = summary.shareLink ? 'OneDrive Link (Set)' : 'OneDrive Link';
+  }
+}
+
+function copyAccountsWhatsAppSummary() {
+  const branch = document.getElementById('expiryBranchFilter')?.value || 'Kota Sentosa';
+  if (!window.pmgOneDriveSync || typeof window.pmgOneDriveSync.getAccountsSubmissionSummary !== 'function') {
+    showExpiryToast('OneDrive Sync engine not ready.');
+    return;
+  }
+
+  const summary = window.pmgOneDriveSync.getAccountsSubmissionSummary(branch);
+  const invStr = `${summary.invoicesCount} doc(s)${summary.invoicesTotal > 0 ? ` (~RM ${summary.invoicesTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : ''}`;
+  const cnStr = `${summary.creditNotesCount} doc(s)${summary.creditNotesTotal > 0 ? ` (~RM ${summary.creditNotesTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : ''}`;
+  const vendorListStr = summary.vendors.length > 0 ? summary.vendors.join(', ') : 'Pending upload';
+
+  const shareLink = summary.shareLink || '[Please click "OneDrive Link" in Hub to attach link]';
+
+  const text = `*PMG PHARMACY (${summary.branch}) - MONTHLY ACCOUNTS SUBMISSION*
+📅 *Period:* ${summary.month} ${summary.year}
+
+📄 *Invoices (INV):* ${invStr}
+📑 *Credit Notes (CN):* ${cnStr}
+🏢 *Vendors (${summary.vendors.length}):* ${vendorListStr}
+
+📂 *OneDrive Folder Link:*
+${shareLink}
+
+_Arranged per Accounts SOP:_
+Year (${summary.year}) ➔ Month (${summary.month}) ➔ Invoices / Credit Note ➔ Vendor Folders`;
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      showExpiryToast('📋 Copied WhatsApp Accounts Summary to clipboard!');
+    }).catch(() => {
+      prompt('Copy your WhatsApp summary:', text);
+    });
+  } else {
+    prompt('Copy your WhatsApp summary:', text);
+  }
+}
+
+function promptSetOneDriveShareLink() {
+  const branch = document.getElementById('expiryBranchFilter')?.value || 'Kota Sentosa';
+  const bKey = `pmg_onedrive_share_link_${branch.replace(/\s+/g, '_').toUpperCase()}`;
+  const current = localStorage.getItem(bKey) || localStorage.getItem('pmg_onedrive_share_link') || '';
+
+  if (current) {
+    const choice = confirm(
+      `🔗 OneDrive Folder Link is currently set:\n\n${current}\n\nClick OK to open this link in a new tab, or Cancel to edit/change the link.`
+    );
+    if (choice) {
+      window.open(current, '_blank');
+      return;
+    }
+  }
+
+  const res = prompt(
+    `🔗 OneDrive Folder Link for ${branch} Accounts Submission:\n(Paste the link generated from your company OneDrive to share with your accounts officer)`,
+    current
+  );
+
+  if (res !== null) {
+    const trimmed = res.trim();
+    if (trimmed) {
+      localStorage.setItem(bKey, trimmed);
+      localStorage.setItem('pmg_onedrive_share_link', trimmed);
+      showExpiryToast('✅ Accounts OneDrive link saved!');
+    } else {
+      localStorage.removeItem(bKey);
+      showExpiryToast('OneDrive link cleared.');
+    }
+    updateAccountsShareUi(branch);
+  }
+}
+
+// Window exports
+window.updateAccountsShareUi = updateAccountsShareUi;
+window.copyAccountsWhatsAppSummary = copyAccountsWhatsAppSummary;
+window.promptSetOneDriveShareLink = promptSetOneDriveShareLink;
+window.handleBatchInvoiceAndCnUpload = handleBatchInvoiceAndCnUpload;
+

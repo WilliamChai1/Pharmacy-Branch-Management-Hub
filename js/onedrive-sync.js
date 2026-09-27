@@ -600,6 +600,150 @@
       }
     }
 
+    // ─── SAVE INVOICE OR CREDIT NOTE TO ONEDRIVE (ACCOUNTS SOP HIERARCHY) ──
+    async saveInvoiceOrCnToOneDrive(file, branchName, parsedMeta = {}) {
+      if (!this.rootHandle || this.mode === 'DISCONNECTED') {
+        console.warn('[PMG OneDrive Sync] OneDrive not connected. Invoice/CN not saved to cloud.');
+        return { success: false, reason: 'DISCONNECTED' };
+      }
+
+      try {
+        const hasPerm = await this._verifyPermission(this.rootHandle, true, false);
+        if (!hasPerm) {
+          console.warn('[PMG OneDrive Sync] Permission required to save file to OneDrive.');
+          return { success: false, reason: 'NO_PERMISSION' };
+        }
+
+        const bFolder = BRANCH_FOLDER_MAP[(branchName || '').toUpperCase()] || this._resolveCurrentBranchName() || 'KOTA SENTOSA';
+        const branchDir = await this._getTargetBranchDirectoryHandle(bFolder);
+        if (!branchDir) {
+          return { success: false, reason: 'BRANCH_DIR_ERROR' };
+        }
+
+        // 1. Year folder (e.g., '2026')
+        const yearStr = parsedMeta.year ? String(parsedMeta.year) : String(new Date().getFullYear());
+        const yearDir = await branchDir.getDirectoryHandle(yearStr, { create: true });
+
+        // 2. Month folder (e.g., '09 - September')
+        const monthStr = parsedMeta.monthFolder || this._formatCurrentMonthString();
+        const monthDir = await yearDir.getDirectoryHandle(monthStr, { create: true });
+
+        // 3. Category folder: 'Invoices' or 'Credit Note'
+        const categoryFolder = (parsedMeta.type === 'CN' || parsedMeta.isCreditNote) ? 'Credit Note' : 'Invoices';
+        const catDir = await monthDir.getDirectoryHandle(categoryFolder, { create: true });
+
+        // 4. Vendor folder: clean vendor name (e.g. 'DKSH', 'Zuellig Pharma', 'Apex')
+        const vendorFolder = (parsedMeta.vendor || 'General').replace(/[<>:"/\\|?*]/g, '').trim() || 'General';
+        const vendorDir = await catDir.getDirectoryHandle(vendorFolder, { create: true });
+
+        // 5. Write the file
+        const fileName = file.name;
+        const fileHandle = await vendorDir.getFileHandle(fileName, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(file);
+        await writable.close();
+
+        const relPath = `${bFolder}/${yearStr}/${monthStr}/${categoryFolder}/${vendorFolder}/${fileName}`;
+        console.log(`[PMG OneDrive Sync] Successfully saved ${categoryFolder} to OneDrive: ${relPath}`);
+
+        // Record in document upload log
+        this._recordDocumentUpload({
+          branch: bFolder,
+          year: yearStr,
+          month: monthStr,
+          category: categoryFolder,
+          vendor: vendorFolder,
+          fileName: fileName,
+          docNumber: parsedMeta.docNumber || '',
+          amount: parsedMeta.amount || '',
+          timestamp: new Date().toISOString(),
+          size: file.size
+        });
+
+        return {
+          success: true,
+          path: relPath,
+          branch: bFolder,
+          year: yearStr,
+          month: monthStr,
+          category: categoryFolder,
+          vendor: vendorFolder,
+          fileName: fileName
+        };
+      } catch (err) {
+        console.error('[PMG OneDrive Sync] Save Invoice/CN error:', err);
+        return { success: false, reason: err.message };
+      }
+    }
+
+    _formatCurrentMonthString() {
+      const d = new Date();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const names = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      return `${m} - ${names[d.getMonth()]}`;
+    }
+
+    _recordDocumentUpload(entry) {
+      try {
+        const log = JSON.parse(localStorage.getItem('pmg_uploaded_docs_log') || '[]');
+        log.unshift(entry);
+        if (log.length > 200) log.length = 200;
+        localStorage.setItem('pmg_uploaded_docs_log', JSON.stringify(log));
+      } catch (e) {
+        console.warn('[PMG OneDrive Sync] Could not record upload log:', e);
+      }
+    }
+
+    getAccountsSubmissionSummary(branchName, year, monthFolder) {
+      const bFolder = BRANCH_FOLDER_MAP[(branchName || '').toUpperCase()] || this._resolveCurrentBranchName() || 'KOTA SENTOSA';
+      const curYear = year ? String(year) : String(new Date().getFullYear());
+      const curMonth = monthFolder || this._formatCurrentMonthString();
+
+      let log = [];
+      try {
+        log = JSON.parse(localStorage.getItem('pmg_uploaded_docs_log') || '[]');
+      } catch (e) {}
+
+      const filtered = log.filter(it => 
+        (it.branch || '').toUpperCase() === bFolder.toUpperCase() &&
+        String(it.year) === curYear &&
+        it.month === curMonth
+      );
+
+      const invoices = filtered.filter(it => it.category === 'Invoices');
+      const creditNotes = filtered.filter(it => it.category === 'Credit Note');
+
+      const calcTotal = (items) => {
+        let sum = 0;
+        items.forEach(it => {
+          if (it.amount) {
+            const num = parseFloat(String(it.amount).replace(/[^0-9.]/g, ''));
+            if (!isNaN(num)) sum += num;
+          }
+        });
+        return sum;
+      };
+
+      const invTotal = calcTotal(invoices);
+      const cnTotal = calcTotal(creditNotes);
+      const vendors = Array.from(new Set(filtered.map(it => it.vendor).filter(Boolean)));
+      const shareLinkKey = `pmg_onedrive_share_link_${bFolder.replace(/\s+/g, '_')}`;
+      const shareLink = localStorage.getItem(shareLinkKey) || localStorage.getItem('pmg_onedrive_share_link') || '';
+
+      return {
+        branch: bFolder,
+        year: curYear,
+        month: curMonth,
+        invoicesCount: invoices.length,
+        invoicesTotal: invTotal,
+        creditNotesCount: creditNotes.length,
+        creditNotesTotal: cnTotal,
+        vendors,
+        shareLink,
+        items: filtered
+      };
+    }
+
     // ─── LOAD & MERGE FROM ONEDRIVE (BACKGROUND WATCHER) ─────────────────────
     async syncWithOneDriveFolder(force = false) {
       if (!this.rootHandle || this.mode === 'DISCONNECTED') return false;

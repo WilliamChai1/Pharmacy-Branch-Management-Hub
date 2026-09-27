@@ -3300,14 +3300,14 @@ Date visit: 06.01.2026
           <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-2 text-blue-600 text-xl">
             <i class="fa-solid fa-cloud-arrow-up"></i>
           </div>
-          <p class="text-sm font-bold text-gray-700">Drag & drop your OCR invoice document PDF here</p>
-          <p class="text-xs text-gray-400 mt-0.5">or click to browse — Gemini AI will extract batch #, item code, description, and expiry dates</p>
-          <input type="file" id="expiryFileInput" accept=".pdf,image/*" class="hidden">
+          <p class="text-sm font-bold text-gray-700">Drag & drop your Invoice or Credit Note (CN) PDF here</p>
+          <p class="text-xs text-gray-500 mt-0.5">Supports batch uploads. Auto-filed to OneDrive by Year/Month/Vendor. <b class="text-indigo-600">Credit Notes (CN) automatically skip expiry OCR</b>; Invoices extract batches & expiry dates via Gemini AI.</p>
+          <input type="file" id="expiryFileInput" accept=".pdf,image/*" multiple class="hidden">
         </div>
         <div class="flex items-center justify-between mt-2.5">
           <div class="flex items-center gap-2">
             <span id="expiryOcrSpinner" class="hidden"><i class="fa-solid fa-circle-notch fa-spin text-blue-600 text-xs"></i></span>
-            <span id="expiryOcrStatus" class="text-xs text-gray-500">Ready to upload invoice document.</span>
+            <span id="expiryOcrStatus" class="text-xs text-gray-500">Ready to upload invoice or CN documents.</span>
           </div>
           <button type="button" onclick="openQuickAddExpiryModal()" class="text-xs text-blue-600 hover:text-blue-800 font-bold hover:underline flex items-center gap-1">
             <i class="fa-solid fa-plus-circle"></i> + Quick Add Single Item
@@ -3333,6 +3333,52 @@ Date visit: 06.01.2026
         </div>
         <div class="mt-4 pt-3 border-t border-blue-800 flex justify-between items-center text-xs">
           <span class="text-teal-300 font-mono text-[11px]"><i class="fa-solid fa-shield-halved mr-1"></i>Google Apps Script Connected</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Accounts Department OneDrive Filing & SOP Submission Bar -->
+    <div class="bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 text-white rounded-xl shadow-sm p-4 mb-5 border border-blue-800/60">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div class="space-y-1">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-500/20 text-teal-300 border border-teal-500/30">
+              <i class="fa-solid fa-folder-tree"></i> Accounts SOP Auto-Filing
+            </span>
+            <span id="accountsBarBranchBadge" class="text-xs font-semibold text-blue-200 bg-white/10 px-2 py-0.5 rounded">Kota Sentosa</span>
+            <span id="accountsBarMonthBadge" class="text-xs font-mono text-teal-200">09 - September 2026</span>
+          </div>
+          <p class="text-xs text-blue-200/90 leading-relaxed">
+            Uploaded Invoices and Credit Notes are organized in real-time into your company OneDrive:
+            <span class="font-mono text-teal-300 text-[11px]">[Branch] / [Year] / [Month] / [Invoices | Credit Note] / [Vendor]</span>.
+            <b class="text-amber-300">Credit Notes (CN) automatically bypass expiry OCR to save tokens & time.</b>
+          </p>
+        </div>
+
+        <div class="flex items-center gap-2.5 flex-wrap">
+          <div class="bg-black/30 backdrop-blur px-3 py-1.5 rounded-lg border border-white/10 flex items-center gap-3 text-xs">
+            <div>
+              <span class="text-gray-400 text-[10px] block">Invoices Filed</span>
+              <span id="accountsSummaryInvCount" class="font-bold text-white">0 doc(s)</span>
+            </div>
+            <div class="h-6 w-px bg-white/20"></div>
+            <div>
+              <span class="text-gray-400 text-[10px] block">Credit Notes (No OCR)</span>
+              <span id="accountsSummaryCnCount" class="font-bold text-amber-300">0 doc(s)</span>
+            </div>
+          </div>
+
+          <button type="button" onclick="copyAccountsWhatsAppSummary()"
+            class="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow transition flex items-center gap-1.5 cursor-pointer"
+            title="Generate and copy submission message formatted for WhatsApp">
+            <i class="fa-brands fa-whatsapp text-sm"></i> Copy WhatsApp Summary
+          </button>
+
+          <button type="button" onclick="promptSetOneDriveShareLink()"
+            class="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow transition flex items-center gap-1.5 cursor-pointer"
+            title="Set or view the OneDrive web share link to share with Accounts Department">
+            <i class="fa-solid fa-link text-xs"></i> <span id="accountsShareLinkBtnText">OneDrive Link</span>
+          </button>
         </div>
       </div>
     </div>
