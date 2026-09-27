@@ -541,8 +541,25 @@
                 recDir = await this.rootHandle.getDirectoryHandle('RECRUITMENT', { create: true });
               } catch (_) { recDir = this.rootHandle; }
 
+              // Read existing applications to merge bidirectionally
+              let cloudApps = [];
+              try {
+                const exFh = await recDir.getFileHandle('recruitment_full_backup.json', { create: false });
+                const exF = await exFh.getFile();
+                const exT = await exF.text();
+                if (exT && exT.trim()) cloudApps = JSON.parse(exT);
+              } catch (_) {}
+
+              const appMap = new Map();
+              (cloudApps || []).forEach(a => { if (a && a.id) appMap.set(a.id, a); });
+              (apps || []).forEach(a => { if (a && a.id) appMap.set(a.id, a); });
+              const mergedApps = Array.from(appMap.values());
+              if (typeof window.pmgRecruitment?.saveApps === 'function') {
+                window.pmgRecruitment.saveApps(mergedApps);
+              }
+
               // 1. Summary JSON
-              const summary = apps.map(a => ({
+              const summary = mergedApps.map(a => ({
                 id: a.id, name: a.name, position: a.position, status: a.status,
                 appliedAt: a.appliedAt, aiScore: a.aiScore, aiVerdict: a.aiVerdict,
                 phone: a.phone, email: a.email, preferredBranch: a.preferredBranch,
@@ -556,10 +573,10 @@
               // 2. Full backup JSON (applications, documents metadata, interview slots)
               const fhFull = await recDir.getFileHandle('recruitment_full_backup.json', { create: true });
               const wFull = await fhFull.createWritable();
-              await wFull.write(JSON.stringify(apps, null, 2));
+              await wFull.write(JSON.stringify(mergedApps, null, 2));
               await wFull.close();
 
-              recruitmentSyncedCount = apps.length;
+              recruitmentSyncedCount = mergedApps.length;
             }
           }
         } catch (recErr) {
@@ -663,16 +680,44 @@
         const session = typeof getSession === 'function' ? getSession() : null;
         const nowIso = new Date().toISOString();
 
-        // Filter patients for this specific branch
-        const branchPatients = (patientsArray || []).filter(p => this._patientMatchesBranch(p, targetBranch));
+        // Step 1: Read existing cloud patients first to ensure conflict-free merge
+        let cloudPatients = [];
+        try {
+          const existingFileHandle = await dirHandle.getFileHandle('patients_master.json', { create: false });
+          const existingFile = await existingFileHandle.getFile();
+          const existingText = await existingFile.text();
+          if (existingText && existingText.trim()) {
+            const parsed = JSON.parse(existingText);
+            if (Array.isArray(parsed.patients)) {
+              cloudPatients = parsed.patients;
+            }
+          }
+        } catch (_) {
+          // File does not exist yet on OneDrive; cloudPatients remains empty
+        }
+
+        // Filter local patients for this specific branch
+        const localBranchPatients = (patientsArray || []).filter(p => this._patientMatchesBranch(p, targetBranch));
+
+        // Step 2: Merge local and cloud patients bidirectionally
+        const mergedBranchPatients = this._mergePatientArrays(localBranchPatients, cloudPatients);
+
+        // Step 3: Update global in-memory patientsData and localStorage
+        if (typeof patientsData !== 'undefined') {
+          const otherPatients = patientsData.filter(p => !this._patientMatchesBranch(p, targetBranch));
+          patientsData = [...otherPatients, ...mergedBranchPatients];
+          if (typeof PATIENTS_STORAGE_KEY !== 'undefined') {
+            localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
+          }
+        }
 
         const syncPayload = {
           branch: targetBranch,
           lastSync: nowIso,
           syncedBy: session?.displayName || 'Pharmacist',
           device: navigator.userAgent.includes('Edg') ? 'Edge Windows' : 'Chrome Windows',
-          count: branchPatients.length,
-          patients: branchPatients
+          count: mergedBranchPatients.length,
+          patients: mergedBranchPatients
         };
 
         const jsonContent = JSON.stringify(syncPayload, null, 2);
@@ -906,11 +951,30 @@
         if (!hasPerm) return false;
 
         const session = typeof getSession === 'function' ? getSession() : null;
+
+        // Step 1: Read existing cloud returns to ensure conflict-free merge
+        let cloudReturns = [];
+        try {
+          const existingHandle = await branchDir.getFileHandle('returns_credit_notes.json', { create: false });
+          const ef = await existingHandle.getFile();
+          const et = await ef.text();
+          if (et && et.trim()) {
+            const ep = JSON.parse(et);
+            if (Array.isArray(ep.returns)) cloudReturns = ep.returns;
+          }
+        } catch (_) {}
+
+        // Step 2: Merge returns by ID
+        const returnMap = new Map();
+        (cloudReturns || []).forEach(r => { if (r && r.id) returnMap.set(r.id, r); });
+        (returnsData || []).forEach(r => { if (r && r.id) returnMap.set(r.id, r); });
+        const mergedReturns = Array.from(returnMap.values());
+
         const payload = {
           branch: bFolder,
           lastUpdated: new Date().toISOString(),
           updatedBy: session?.displayName || 'Staff',
-          returns: returnsData || []
+          returns: mergedReturns
         };
 
         const fileHandle = await branchDir.getFileHandle('returns_credit_notes.json', { create: true });

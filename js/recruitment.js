@@ -1898,6 +1898,7 @@ window.pmgRecruitment = {
   exportAppPdf,
   submitPublicForm,
   loadApps,
+  saveApps,
   loadSlots,
   getGlobalGeminiKey,
   promptSetGeminiKey,

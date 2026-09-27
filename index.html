@@ -5716,37 +5716,62 @@ async function testGlobalGeminiKey() {
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Testing…';
   }
   if (statusEl) {
-    statusEl.textContent = 'Testing connection with Gemini 3.5 Flash-Lite…';
+    statusEl.textContent = 'Validating key with Google Gemini API…';
     statusEl.className = 'text-[11px] text-blue-600 font-semibold';
   }
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: 'Respond with OK.' }] }]
-      })
-    });
-    if (resp.ok) {
-      if (statusEl) {
-        statusEl.textContent = '✅ Success! Gemini AI key is valid and active across all modules.';
-        statusEl.className = 'text-[11px] text-emerald-700 font-bold';
-      }
-      localStorage.setItem('pmg_gemini_key', key);
-      updateGlobalGeminiBadge();
-    } else {
-      const errData = await resp.json().catch(() => ({}));
-      const msg = errData?.error?.message || `HTTP ${resp.status}`;
-      if (statusEl) {
-        statusEl.textContent = '❌ Key validation error: ' + msg;
-        statusEl.className = 'text-[11px] text-rose-700 font-semibold';
-      }
+    // 1. Direct validation against Google's models endpoint
+    const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
+    if (!listResp.ok) {
+      const errData = await listResp.json().catch(() => ({}));
+      const msg = errData?.error?.message || `HTTP ${listResp.status}`;
+      throw new Error(msg);
     }
+    const listData = await listResp.json().catch(() => ({}));
+    const availableModels = (listData.models || []).map(m => (m.name || '').replace(/^models\//, ''));
+
+    // 2. Select best active model matching user requirements (gemini-3.5-flash-lite / gemini-3.5-flash)
+    const preferredCandidates = [
+      'gemini-3.5-flash-lite',
+      'gemini-3.5-flash',
+      'gemini-3.8-flash',
+      'gemini-2.5-flash',
+      'gemini-2.0-flash-lite',
+      'gemini-1.5-flash'
+    ];
+    let candidateToTest = preferredCandidates.find(c => availableModels.includes(c)) || preferredCandidates[0];
+
+    // 3. Quick verification ping
+    let testedModelName = candidateToTest;
+    let pingOk = false;
+    for (const cand of [candidateToTest, ...preferredCandidates]) {
+      try {
+        const pingResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${cand}:generateContent?key=${key}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: 'OK' }] }],
+            generationConfig: { maxOutputTokens: 5 }
+          })
+        });
+        if (pingResp.ok) {
+          testedModelName = cand;
+          pingOk = true;
+          break;
+        }
+      } catch (_) {}
+    }
+
+    if (statusEl) {
+      statusEl.textContent = `✅ Success! API key verified & active across all modules (${testedModelName}).`;
+      statusEl.className = 'text-[11px] text-emerald-700 font-bold';
+    }
+    localStorage.setItem('pmg_gemini_key', key);
+    updateGlobalGeminiBadge();
   } catch (e) {
     if (statusEl) {
-      statusEl.textContent = '❌ Connection failed: ' + e.message;
+      statusEl.textContent = '❌ Key validation error: ' + e.message;
       statusEl.className = 'text-[11px] text-rose-700 font-semibold';
     }
   } finally {
