@@ -13,7 +13,7 @@ const MONTH_NAMES = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SE
 const EXPIRY_OCR_PRIMARY_MODEL   = 'gemini-3.5-flash-lite';
 const EXPIRY_OCR_SECONDARY_MODEL = 'gemini-3.5-flash';
 const EXPIRY_OCR_TERTIARY_MODEL  = 'gemini-3.1-flash-lite';
-const PMG_GLOBAL_FALLBACK_KEY    = 'AIzaSyBxKYPJWxi3ILfxPTlQFytzoXJvIZ72m4k';
+const PMG_GLOBAL_FALLBACK_KEY    = ''; // Revoked/leaked fallback key neutralized
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let expiryItems = [];

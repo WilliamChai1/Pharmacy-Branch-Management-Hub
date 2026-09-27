@@ -1230,6 +1230,20 @@ Our objective as Area Manager:
       this.executeAiResearch();
     }
 
+    saveInlineApiKeyAndRun() {
+      const input = document.getElementById('pricingInlineApiKeyInput');
+      const val = input ? input.value.trim() : '';
+      if (!val) {
+        alert('Please paste your Gemini API key from Google AI Studio.');
+        return;
+      }
+      localStorage.setItem(STORAGE_KEY_GEMINI, val);
+      if (typeof showExpiryToast === 'function') {
+        showExpiryToast('Gemini API key saved to PMG Hub.');
+      }
+      this.executeAiResearch();
+    }
+
     async executeAiResearch() {
       const resultContainer = document.getElementById('pricingAiResultBox');
       const statusPill = document.getElementById('pricingAiStatus');
@@ -1238,22 +1252,48 @@ Our objective as Area Manager:
 
       if (!promptText) return;
 
-      const apiKey = (localStorage.getItem(STORAGE_KEY_GEMINI) || '').trim() ||
-                     (typeof PMG_GLOBAL_FALLBACK_KEY !== 'undefined' ? PMG_GLOBAL_FALLBACK_KEY : '');
+      let apiKey = (localStorage.getItem(STORAGE_KEY_GEMINI) || '').trim();
+      const REVOKED_KEYS = [
+        'AIzaSyBxKYPJWxi3ILfxPTlQFytzoXJvIZ72m4k',
+        'AIzaSyAfJqs6YnY5J_URsuvmSMi8WM3BckVwKY4'
+      ];
+      if (REVOKED_KEYS.includes(apiKey)) {
+        apiKey = '';
+        localStorage.removeItem(STORAGE_KEY_GEMINI);
+      }
+
+      if (!apiKey && typeof PMG_GLOBAL_FALLBACK_KEY !== 'undefined' && PMG_GLOBAL_FALLBACK_KEY && !REVOKED_KEYS.includes(PMG_GLOBAL_FALLBACK_KEY)) {
+        apiKey = PMG_GLOBAL_FALLBACK_KEY;
+      }
 
       if (!apiKey) {
         if (resultContainer) {
           resultContainer.innerHTML = `
-            <div class="p-4 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs">
-              <h4 class="font-bold flex items-center gap-1.5 mb-1"><i class="fa-solid fa-key"></i> Gemini API Key Required (Free Tier)</h4>
-              <p class="mb-2">Google provides a <b>100% Free Tier</b> for Gemini 2.5 Flash and 1.5 Flash (up to 1,500 free requests per day, 0 cost). No credit card required!</p>
-              <button type="button" onclick="promptUpdateGeminiKey(); window.pmgPricing.executeAiResearch();"
-                class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition">
-                Enter Free Gemini Key
-              </button>
+            <div class="p-4 bg-amber-50 border border-amber-300 rounded-xl text-amber-950 text-xs">
+              <h4 class="font-bold flex items-center gap-1.5 mb-1.5 text-amber-900 text-sm">
+                <i class="fa-solid fa-key text-amber-600"></i> Free Gemini API Key Required
+              </h4>
+              <p class="mb-3 text-gray-700 leading-relaxed">
+                To run AI competitor research and battle plans, paste your free Google AI Studio API key. Google provides <b>Gemini 3.5 Flash-Lite &amp; Gemini 3.5 Flash</b> on a <b>100% Free Tier</b> (up to 500 requests/day, RM 0 budget).
+              </p>
+              <div class="flex items-center gap-2 mb-2">
+                <input type="text" id="pricingInlineApiKeyInput" placeholder="Paste your API key here (AIzaSy...)"
+                  class="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 font-mono text-xs focus:ring-2 focus:ring-purple-500 outline-none bg-white">
+                <button type="button" onclick="window.pmgPricing.saveInlineApiKeyAndRun()"
+                  class="px-4 py-1.5 bg-purple-700 hover:bg-purple-800 text-white font-bold rounded-lg transition whitespace-nowrap shadow-xs text-xs">
+                  Save &amp; Run Analysis
+                </button>
+              </div>
+              <div class="text-[11px] text-gray-500 flex items-center justify-between pt-1">
+                <span>Takes 30 seconds (no credit card):</span>
+                <a href="https://aistudio.google.com/app/apikey" target="_blank" class="font-bold text-purple-700 hover:underline">
+                  Get Free API Key from Google AI Studio &rarr;
+                </a>
+              </div>
             </div>
           `;
         }
+        if (statusPill) statusPill.textContent = 'Key Required';
         return;
       }
 
@@ -1261,27 +1301,29 @@ Our objective as Area Manager:
         resultContainer.innerHTML = `
           <div class="p-8 text-center text-gray-500 text-xs">
             <i class="fa-solid fa-circle-notch fa-spin text-2xl text-purple-600 mb-2 block"></i>
-            <span>Evaluating market pricing, hypermarket dynamics, and 7-outlet strategy via Gemini AI…</span>
+            <span>Evaluating market pricing, hypermarket dynamics, and 7-outlet strategy via Gemini 3.5 Flash…</span>
           </div>
         `;
       }
 
       if (statusPill) statusPill.textContent = 'Analyzing…';
 
-      // Models to try (Free Tier friendly)
+      // Stick to Gemini 3.5 Flash-Lite and Gemini 3.5 Flash (Free Tier)
       const modelsToTry = [
-        'gemini-2.5-flash',
-        'gemini-1.5-flash',
-        'gemini-3.5-flash-lite',
-        'gemini-3.5-flash'
+        { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
+        { code: 'gemini-3.5-flash',      name: 'Gemini 3.5 Flash' },
+        { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' },
+        { code: 'gemini-3.8-flash',      name: 'Gemini 3.8 Flash' }
       ];
 
       let responseText = '';
       let usedModel = '';
+      let lastErrorMsg = '';
+      let isKeyBlocked = false;
 
       for (const m of modelsToTry) {
         try {
-          const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
+          const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.code}:generateContent?key=${apiKey}`;
           const res = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1302,23 +1344,72 @@ Our objective as Area Manager:
             const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
             if (text && text.trim()) {
               responseText = text.trim();
-              usedModel = m;
+              usedModel = m.name;
               break;
+            }
+          } else {
+            const errData = await res.json().catch(() => ({}));
+            const errMsg = errData.error?.message || `HTTP ${res.status}`;
+            lastErrorMsg = errMsg;
+            console.warn(`[PMG Pricing AI] Model ${m.code} error (${res.status}):`, errMsg);
+
+            if (res.status === 403 || errMsg.toLowerCase().includes('leaked') || errMsg.toLowerCase().includes('api key')) {
+              isKeyBlocked = true;
+              break; // Stop immediately if API key itself is blocked or leaked
             }
           }
         } catch (e) {
-          console.warn(`[PMG Pricing AI] Model ${m} error:`, e);
+          lastErrorMsg = e.message;
+          console.warn(`[PMG Pricing AI] Network error on ${m.code}:`, e);
         }
       }
 
       if (!responseText) {
         if (resultContainer) {
-          resultContainer.innerHTML = `
-            <div class="p-4 bg-rose-50 border border-rose-300 rounded-xl text-rose-900 text-xs">
-              <h4 class="font-bold mb-1">AI Request Failed</h4>
-              <p>Could not connect to Gemini API. Please verify your free API key or network connection.</p>
-            </div>
-          `;
+          if (isKeyBlocked) {
+            resultContainer.innerHTML = `
+              <div class="p-4 bg-amber-50 border border-amber-300 rounded-xl text-amber-950 text-xs">
+                <h4 class="font-bold mb-1 text-amber-900 text-sm flex items-center gap-1.5">
+                  <i class="fa-solid fa-triangle-exclamation text-amber-600"></i> API Key Reported as Leaked or Expired
+                </h4>
+                <p class="mb-2 text-gray-700 leading-relaxed">
+                  Google rejected the key: <span class="font-mono text-rose-700 font-bold">${lastErrorMsg}</span>.
+                  Please paste a fresh, valid Free Gemini API key below.
+                </p>
+                <div class="flex items-center gap-2 mb-2">
+                  <input type="text" id="pricingInlineApiKeyInput" placeholder="Paste your new Google AI Studio key..."
+                    class="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 font-mono text-xs focus:ring-2 focus:ring-purple-500 outline-none bg-white">
+                  <button type="button" onclick="window.pmgPricing.saveInlineApiKeyAndRun()"
+                    class="px-4 py-1.5 bg-purple-700 hover:bg-purple-800 text-white font-bold rounded-lg transition text-xs whitespace-nowrap shadow-xs">
+                    Save &amp; Retry
+                  </button>
+                </div>
+                <div class="text-[11px] text-gray-500 flex items-center justify-between pt-1">
+                  <span>Get a fresh key (Free tier, 0 cost):</span>
+                  <a href="https://aistudio.google.com/app/apikey" target="_blank" class="font-bold text-purple-700 hover:underline">
+                    Google AI Studio Key Generator &rarr;
+                  </a>
+                </div>
+              </div>
+            `;
+          } else {
+            resultContainer.innerHTML = `
+              <div class="p-4 bg-rose-50 border border-rose-300 rounded-xl text-rose-900 text-xs">
+                <h4 class="font-bold mb-1 flex items-center gap-1.5">
+                  <i class="fa-solid fa-circle-exclamation text-rose-600"></i> AI Request Failed
+                </h4>
+                <p class="mb-2 text-rose-800">${lastErrorMsg || 'Could not connect to Gemini API. Please check your network or API key quota.'}</p>
+                <div class="flex items-center gap-2 mt-2">
+                  <input type="text" id="pricingInlineApiKeyInput" placeholder="Update Gemini API Key..."
+                    class="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 font-mono text-xs outline-none bg-white">
+                  <button type="button" onclick="window.pmgPricing.saveInlineApiKeyAndRun()"
+                    class="px-3 py-1.5 bg-rose-700 hover:bg-rose-800 text-white font-bold rounded-lg text-xs transition whitespace-nowrap">
+                    Update Key &amp; Retry
+                  </button>
+                </div>
+              </div>
+            `;
+          }
         }
         if (statusPill) statusPill.textContent = 'Error';
         return;
