@@ -522,7 +522,7 @@
       // Signed Proof status
       let proofBadge = '';
       if (ret.signedProof && ret.signedProof.fileName) {
-        proofBadge = `<button onclick="viewSignedProof('${ret.id}')" title="View signed DO proof: ${escapeHtml(ret.signedProof.fileName)}" class="text-xs text-emerald-700 hover:text-emerald-900 font-semibold inline-flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+        proofBadge = `<button onclick="pmgReturns.viewSignedProof('${ret.id}')" title="View signed DO proof: ${escapeHtml(ret.signedProof.fileName)}" class="text-xs text-emerald-700 hover:text-emerald-900 font-semibold inline-flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
           <i class="fa-solid fa-file-shield"></i> Proof Attached
         </button>`;
       } else {
@@ -584,10 +584,10 @@
               <button onclick="pmgReturns.openUploadSignedDoModal('${ret.id}')" class="px-2 py-1.5 text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 font-semibold rounded-lg border border-slate-300 transition" title="Upload Signed DO Proof to OneDrive">
                 <i class="fa-solid fa-cloud-arrow-up"></i>
               </button>
-              <button onclick="openSettleCnModal('${ret.id}')" class="px-2 py-1.5 text-xs bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-semibold rounded-lg border border-emerald-300 transition" title="Settle Credit Note & Key Xilnex">
+              <button onclick="pmgReturns.openSettleCnModal('${ret.id}')" class="px-2 py-1.5 text-xs bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-semibold rounded-lg border border-emerald-300 transition" title="Settle Credit Note & Key Xilnex">
                 <i class="fa-solid fa-check-double"></i>
               </button>
-              <button onclick="deleteReturnRecord('${ret.id}')" class="px-2 py-1.5 text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition" title="Delete record">
+              <button onclick="pmgReturns.deleteReturn('${ret.id}')" class="px-2 py-1.5 text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition" title="Delete record">
                 <i class="fa-solid fa-trash-can"></i>
               </button>
             </div>
@@ -847,7 +847,7 @@
           </select>
         </td>
         <td class="py-2 px-2 text-center">
-          <button type="button" onclick="removeDraftItemRow(${index})" class="text-rose-500 hover:text-rose-700 text-sm p-1" title="Remove SKU">
+          <button type="button" onclick="pmgReturns.removeDraftItemRow(${index})" class="text-rose-500 hover:text-rose-700 text-sm p-1" title="Remove SKU">
             <i class="fa-solid fa-xmark"></i>
           </button>
         </td>
@@ -1111,14 +1111,24 @@
   let activeReturnForLabels = null;
 
   function openPrintCartonLabelModal(returnId) {
-    const id = returnId || (activeReturnForDo ? activeReturnForDo.id : null);
-    const ret = returnsData.find(r => r.id === id);
-    if (!ret) return;
+    console.log('[PMG Returns] openPrintCartonLabelModal triggered with ID:', returnId);
+    const id = returnId || (activeReturnForDo ? activeReturnForDo.id : null) || (activeReturnForLabels ? activeReturnForLabels.id : null);
+    let ret = returnsData.find(r => r.id === id);
+    if (!ret && returnsData.length > 0) {
+      ret = returnsData[0];
+    }
+    if (!ret) {
+      alert('Please create or select a return record first to generate box labels.');
+      return;
+    }
     activeReturnForLabels = ret;
 
     const modal = document.getElementById('printCartonLabelModal');
     const container = document.getElementById('printCartonLabelsContainer');
-    if (!modal || !container) return;
+    if (!modal || !container) {
+      console.error('[PMG Returns] Carton label modal elements missing in DOM:', { modal, container });
+      return;
+    }
 
     const totalCartons = Math.max(1, ret.totalCartons || 1);
     const prnList = Array.from(new Set((ret.items || []).map(i => i.prnNumber).filter(Boolean))).join(', ');
@@ -1126,6 +1136,11 @@
     // Generate big labels for all cartons
     let labelsHtml = '';
     for (let c = 1; c <= totalCartons; c++) {
+      const itemsInThisCarton = (ret.items || []).filter(item => {
+        const cNum = parseInt(String(item.cartonNo || 1).replace(/\D/g, ''), 10) || 1;
+        return cNum === c;
+      });
+
       labelsHtml += `
         <div class="carton-shipping-box" style="page-break-after: always; width: 100%; max-width: 780px; margin: 0 auto 30px auto; border: 4px solid #000; padding: 22px; font-family: Arial, sans-serif; background: #fff; box-sizing: border-box; box-shadow: 0 4px 10px rgba(0,0,0,0.08);">
           <!-- Top Header -->
@@ -1160,8 +1175,8 @@
               <div style="font-size: 11px; font-weight: 900; text-transform: uppercase; color: #444; border-bottom: 1.5px solid #bbb; padding-bottom: 4px; margin-bottom: 6px;">
                 SENDER (FROM):
               </div>
-              <div style="font-size: 15px; font-weight: 900; text-transform: uppercase;">${escapeHtml(ret.companyName)}</div>
-              <div style="font-size: 12px; font-weight: 600; text-transform: uppercase; margin-top: 4px; color: #222;">${escapeHtml(ret.companyAddress)}</div>
+              <div style="font-size: 15px; font-weight: 900; text-transform: uppercase;">${escapeHtml(ret.companyName || ('PMG PHARMACY (' + (ret.branch || 'BRANCH') + ')'))}</div>
+              <div style="font-size: 12px; font-weight: 600; text-transform: uppercase; margin-top: 4px; color: #222;">${escapeHtml(ret.companyAddress || 'Sarawak, Malaysia')}</div>
               <div style="font-size: 12px; font-weight: bold; margin-top: 6px; color: #000;">BRANCH PIC: ${escapeHtml(ret.verifiedBy || 'Branch Pharmacist')}</div>
             </div>
 
@@ -1184,6 +1199,36 @@
             <div>PRN REF: <span style="font-family: monospace;">${prnList || 'N/A'}</span></div>
           </div>
 
+          <!-- PACKED ITEMS IN CARTON (RECEIVING WAREHOUSE CHECKLIST) -->
+          ${itemsInThisCarton.length > 0 ? `
+            <div style="border: 2px solid #000; margin-bottom: 14px; background: #fff; font-size: 12px;">
+              <div style="background: #e2e8f0; padding: 5px 10px; font-weight: 900; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; color: #1e293b; border-bottom: 1.5px solid #000; display: flex; justify-content: space-between;">
+                <span>📦 PACKED ITEMS IN CARTON ${c}:</span>
+                <span>${itemsInThisCarton.length} SKU(S)</span>
+              </div>
+              <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                <thead>
+                  <tr style="background: #f8fafc; border-bottom: 1px solid #000;">
+                    <th style="padding: 4px 8px; text-align: left; width: 110px; border-right: 1px solid #ddd;">ITEM CODE</th>
+                    <th style="padding: 4px 8px; text-align: left; border-right: 1px solid #ddd;">ITEM DESCRIPTION</th>
+                    <th style="padding: 4px 8px; text-align: center; width: 90px; border-right: 1px solid #ddd;">PRN NO</th>
+                    <th style="padding: 4px 8px; text-align: right; width: 80px;">QTY</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${itemsInThisCarton.map(it => `
+                    <tr style="border-bottom: 1px solid #eee;">
+                      <td style="padding: 4px 8px; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${escapeHtml(it.itemCode || '-')}</td>
+                      <td style="padding: 4px 8px; font-weight: 600; border-right: 1px solid #ddd;">${escapeHtml(it.itemDescription || '')}</td>
+                      <td style="padding: 4px 8px; text-align: center; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${escapeHtml(it.prnNumber || '-')}</td>
+                      <td style="padding: 4px 8px; text-align: right; font-weight: bold;">${it.quantity || 1} ${escapeHtml(it.uom || 'BOX')}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          ` : ''}
+
           <!-- SPECIAL HANDLING WARNING -->
           <div style="border: 2.5px dashed #d32f2f; background: #fff5f5; color: #b71c1c; padding: 10px; text-align: center; font-weight: 900; font-size: 14px; letter-spacing: 0.5px;">
             ⚠️ PHARMACEUTICAL RETURN GOODS · HANDLE WITH CARE · KEEP DRY · DO NOT DROP ⚠️
@@ -1197,48 +1242,85 @@
   }
 
   function closePrintCartonLabelModal() {
-    document.getElementById('printCartonLabelModal')?.classList.add('hidden');
+    const modal = document.getElementById('printCartonLabelModal');
+    if (modal) modal.classList.add('hidden');
   }
 
   function executePrintCartonLabels() {
     const container = document.getElementById('printCartonLabelsContainer');
     if (!container) return;
 
-    const printFrame = document.createElement('iframe');
-    printFrame.style.position = 'fixed';
-    printFrame.style.right = '0';
-    printFrame.style.bottom = '0';
-    printFrame.style.width = '0';
-    printFrame.style.height = '0';
-    printFrame.style.border = '0';
-    document.body.appendChild(printFrame);
+    try {
+      const printFrame = document.createElement('iframe');
+      printFrame.style.position = 'fixed';
+      printFrame.style.right = '0';
+      printFrame.style.bottom = '0';
+      printFrame.style.width = '0';
+      printFrame.style.height = '0';
+      printFrame.style.border = '0';
+      document.body.appendChild(printFrame);
 
-    const doc = printFrame.contentWindow.document;
-    doc.open();
-    doc.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>PMG_Carton_Labels_${activeReturnForLabels ? activeReturnForLabels.doNumber : 'Cartons'}</title>
-        <style>
-          @page { size: A4 landscape; margin: 10mm; }
-          body { margin: 0; padding: 0; font-family: Arial, sans-serif; background: #fff; }
-          .carton-shipping-box { page-break-after: always; }
-          .carton-shipping-box:last-child { page-break-after: avoid; }
-        </style>
-      </head>
-      <body>
-        ${container.innerHTML}
-        <script>
-          window.onload = function() {
-            window.print();
-            setTimeout(function() { window.frameElement.remove(); }, 1500);
-          };
-        <\/script>
-      </body>
-      </html>
-    `);
-    doc.close();
+      const doc = printFrame.contentWindow.document;
+      doc.open();
+      doc.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>PMG_Carton_Labels_${activeReturnForLabels ? activeReturnForLabels.doNumber : 'Cartons'}</title>
+          <style>
+            @page { size: A4 landscape; margin: 8mm; }
+            body { margin: 0; padding: 0; font-family: Arial, sans-serif; background: #fff; }
+            .carton-shipping-box { page-break-after: always; }
+            .carton-shipping-box:last-child { page-break-after: avoid; }
+          </style>
+        </head>
+        <body>
+          ${container.innerHTML}
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.focus();
+                window.print();
+              }, 250);
+              setTimeout(function() {
+                if (window.frameElement) window.frameElement.remove();
+              }, 4000);
+            };
+          <\/script>
+        </body>
+        </html>
+      `);
+      doc.close();
+    } catch (err) {
+      console.warn('Iframe print fallback to window.open', err);
+      const printWin = window.open('', '_blank');
+      if (printWin) {
+        printWin.document.write(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>PMG_Carton_Labels_${activeReturnForLabels ? activeReturnForLabels.doNumber : 'Cartons'}</title>
+            <style>
+              @page { size: A4 landscape; margin: 8mm; }
+              body { margin: 10px; font-family: Arial, sans-serif; background: #fff; }
+              .carton-shipping-box { page-break-after: always; }
+              .carton-shipping-box:last-child { page-break-after: avoid; }
+            </style>
+          </head>
+          <body>
+            ${container.innerHTML}
+            <script>
+              window.onload = function() {
+                window.focus();
+                window.print();
+              };
+            <\/script>
+          </body>
+          </html>
+        `);
+        printWin.document.close();
+      }
+    }
   }
 
   // ─── MODAL 3: UPLOAD SIGNED DO PROOF (ONEDRIVE INTEGRATION) ───────────────────
@@ -1505,6 +1587,12 @@
     deleteReturn: deleteReturnRecord,
     exportExcel: exportReturnsToExcel
   };
+
+  // Global convenience aliases
+  window.openSettleCnModal = openSettleCnModal;
+  window.deleteReturnRecord = deleteReturnRecord;
+  window.viewSignedProof = viewSignedProof;
+  window.removeDraftItemRow = removeDraftItemRow;
 
   // Auto-init on page load if container exists
   document.addEventListener('DOMContentLoaded', () => {

@@ -4143,11 +4143,12 @@ Date visit: 06.01.2026
         <button type="button" onclick="pmgReturns.submitSettleCn()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs shadow transition flex items-center gap-1.5">
           <i class="fa-solid fa-check"></i> Complete & Settle
         </button>
+      </div>
     </div>
   </div>
 
   <!-- MODAL 5: PRINT BOX / CARTON SHIPPING LABELS -->
-  <div id="printCartonLabelModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 hidden">
+  <div id="printCartonLabelModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 hidden" style="z-index: 60;">
     <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[95vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
       <!-- Modal Header -->
       <div class="bg-slate-900 text-white px-6 py-3.5 flex items-center justify-between shrink-0">
@@ -4424,7 +4425,6 @@ Date visit: 06.01.2026
           Done
         </button>
       </div>
-    </div>
     </div>
 
     <!-- Staff login redirect -->
