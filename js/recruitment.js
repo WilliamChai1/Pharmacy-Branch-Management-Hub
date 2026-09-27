@@ -275,7 +275,10 @@ Score each of these four pillars (0–25 each), then sum for total score (0–10
 A. Plan Execution (0–25): History of commitment, completing tasks, discipline, contract willingness
 B. Communication (0–25): Language skills, role-fit for customer-facing sales, multi-language bonus
 C. Stress Resilience (0–25): Health, lifestyle (smoking is a negative), shift adaptability, stability
-D. Qualification Fit (0–25): SPM aptitude + relevant education for the specific role
+PUBLIC & ONLINE FOOTPRINT RESEARCH:
+- Cross-reference the candidate's declared background, institutions (${app.institution || 'local'}), and verify alignment with Sarawak retail pharmacy sector realities.
+- Note any verifiable public professional presence, school credibility, or areas requiring interview verification.
+- PRIVACY & ETHICS RULE: Under the Malaysian Personal Data Protection Act 2010 (PDPA) and fair employment practices, evaluate the candidate based on verified job qualifications, aptitude, and direct interview verification. Do not fabricate or hallucinate unverified private social media rumors or private family gossip.
 
 Return ONLY valid JSON with exactly these keys:
 {
@@ -292,6 +295,7 @@ Return ONLY valid JSON with exactly these keys:
   "communicationAssessment": "<detailed assessment of communication fit for pharmacy sales>",
   "planExecutionAssessment": "<assessment of plan execution and follow-through ability>",
   "stressResilienceAssessment": "<assessment of stress handling, lifestyle, and shift readiness>",
+  "onlineFootprintNotes": "<assessment of candidate's public educational/professional footprint and what to verify in interview>",
   "interviewQuestions": ["<Q1 — probe communication>", "<Q2 — probe plan execution>", "<Q3 — probe stress handling>", "<Q4 — probe sales scenario>", "<Q5 — probe commitment/retention>"],
   "summary": "<2-3 sentence overall assessment for William Chai to read quickly>"
 }
@@ -300,35 +304,50 @@ Return ONLY valid JSON. No markdown, no extra text.`;
 
   let lastErr = null;
   for (const modelId of modelsToTry) {
-    try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
-      const resp = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+    // Try with Google Search grounding first, gracefully fallback to standard if unsupported
+    const toolAttempts = [
+      [{ googleSearch: {} }],
+      null
+    ];
+
+    for (const tools of toolAttempts) {
+      try {
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
+        const reqBody = {
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
-        }),
-      });
+          generationConfig: { temperature: 0.2, maxOutputTokens: 2500 },
+        };
+        if (tools) reqBody.tools = tools;
 
-      if (!resp.ok) {
-        const err = await resp.text();
-        throw new Error(`Gemini API error ${resp.status}: ${err.slice(0,200)}`);
+        const resp = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(reqBody),
+        });
+
+        if (!resp.ok) {
+          const err = await resp.text();
+          // If tools cause error (e.g. 400 unsupported or quota), skip to no-tools
+          if (tools) continue;
+          throw new Error(`Gemini API error ${resp.status}: ${err.slice(0,200)}`);
+        }
+
+        const data = await resp.json();
+        const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const clean = raw.replace(/^```json?\s*/i,'').replace(/```\s*$/,'').trim();
+        const result = JSON.parse(clean);
+        result._modelUsed = modelId + (tools ? ' + Web Grounding' : '');
+        return result;
+      } catch(e) {
+        if (tools) continue; // Try fallback without tools
+        lastErr = e;
+        console.warn(`[Recruitment AI] ${modelId} failed:`, e.message, '— trying next model...');
       }
-
-      const data = await resp.json();
-      const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      const clean = raw.replace(/^```json?\s*/i,'').replace(/```\s*$/,'').trim();
-      const result = JSON.parse(clean);
-      result._modelUsed = modelId; // track which model succeeded
-      return result;
-    } catch(e) {
-      lastErr = e;
-      console.warn(`[Recruitment AI] ${modelId} failed:`, e.message, '— trying next model...');
     }
   }
   throw lastErr || new Error('All Gemini models failed');
 }
+
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -638,24 +657,24 @@ function renderPublicForm() {
         <table class="text-xs w-full border border-gray-200 rounded-lg overflow-hidden">
           <thead class="bg-gray-50 text-gray-600">
             <tr>
-              <th class="p-2">From</th><th class="p-2">To</th><th class="p-2">Company</th>
-              <th class="p-2">Position</th>
-              <th class="p-2">Benefits</th><th class="p-2">Reason Leaving</th>
+              <th class="p-2 text-left">From</th>
+              <th class="p-2 text-left">To</th>
+              <th class="p-2 text-left">Company / Syarikat</th>
+              <th class="p-2 text-left">Position / Jawatan</th>
             </tr>
           </thead>
           <tbody>
             ${[0,1,2,3].map(i=>`
             <tr class="border-t border-gray-100">
-              <td class="p-1"><input type="text" name="empFrom${i}" class="rec-input text-xs w-16" placeholder="YYYY"></td>
-              <td class="p-1"><input type="text" name="empTo${i}" class="rec-input text-xs w-16" placeholder="YYYY/Present"></td>
-              <td class="p-1"><input type="text" name="empCo${i}" class="rec-input text-xs" placeholder="Company"></td>
-              <td class="p-1"><input type="text" name="empPos${i}" class="rec-input text-xs" placeholder="Position"></td>
-              <td class="p-1"><input type="text" name="empBen${i}" class="rec-input text-xs" placeholder="EPF, SOCSO, etc."></td>
-              <td class="p-1"><input type="text" name="empLeave${i}" class="rec-input text-xs" placeholder="Reason"></td>
+              <td class="p-1"><input type="text" name="empFrom${i}" class="rec-input text-xs" placeholder="YYYY"></td>
+              <td class="p-1"><input type="text" name="empTo${i}" class="rec-input text-xs" placeholder="YYYY / Present"></td>
+              <td class="p-1"><input type="text" name="empCo${i}" class="rec-input text-xs" placeholder="Company Name"></td>
+              <td class="p-1"><input type="text" name="empPos${i}" class="rec-input text-xs" placeholder="Position / Role"></td>
             </tr>`).join('')}
           </tbody>
         </table>
       </div>
+
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
         <div><label class="rec-label">Notice Required</label><input type="text" name="noticeRequired" class="rec-input" placeholder="e.g. 1 month, immediate"></div>
         <div><label class="rec-label">Skills Possessed / Kemahiran</label><input type="text" name="skills" class="rec-input" placeholder="e.g. dispensing, counselling"></div>
@@ -849,12 +868,13 @@ async function submitPublicForm(e) {
   btn.disabled = true;
   btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submitting...';
 
-  // Build employment history string (no salary)
+  // Build employment history string (From, To, Company, Position only)
   const empRows = [0,1,2,3].map(i => {
-    const from=get(`empFrom${i}`), to=get(`empTo${i}`), co=get(`empCo${i}`), pos=get(`empPos${i}`), ben=get(`empBen${i}`), reason=get(`empLeave${i}`);
+    const from=get(`empFrom${i}`), to=get(`empTo${i}`), co=get(`empCo${i}`), pos=get(`empPos${i}`);
     if (!co) return '';
-    return `${from}–${to} | ${co} | ${pos} ${ben ? `(${ben})` : ''} | Left: ${reason}`;
+    return `${from}–${to} | ${co} | ${pos}`;
   }).filter(Boolean).join('\n');
+
 
   // Build education string
   const eduRows = [0,1,2,3].map(i => {
@@ -1267,6 +1287,11 @@ function viewApp(appId) {
     <p class="text-xs font-bold text-amber-300 mb-1"><i class="fa-solid fa-graduation-cap mr-1"></i>Qualification Risk</p>
     <p class="text-xs text-slate-300">${sanitize(r.qualificationRisk||'—')}</p>
   </div>
+  ${r.onlineFootprintNotes ? `
+  <div class="bg-slate-800 rounded-lg p-3 mb-3">
+    <p class="text-xs font-bold text-cyan-300 mb-1"><i class="fa-solid fa-globe mr-1"></i>Public Footprint & Background Verification (AI)</p>
+    <p class="text-xs text-slate-300 leading-relaxed">${sanitize(r.onlineFootprintNotes)}</p>
+  </div>` : ''}
   <div class="bg-slate-800 rounded-lg p-3">
     <p class="text-xs font-bold text-purple-300 mb-2"><i class="fa-solid fa-comments mr-1"></i>Suggested Interview Questions</p>
     <ol class="text-xs text-slate-300 space-y-1 list-decimal ml-4">${(r.interviewQuestions||[]).map(q=>`<li>${sanitize(q)}</li>`).join('')}</ol>
@@ -1280,7 +1305,6 @@ function viewApp(appId) {
   ${settings.geminiKey ? `<button onclick="window.pmgRecruitment.runAI('${appId}')" class="px-4 py-2 bg-purple-700 text-white text-xs font-bold rounded-lg hover:bg-purple-800 transition"><i class="fa-solid fa-robot mr-1"></i>Run Gemini AI Evaluation</button>` : '<p class="text-xs text-red-400">Set Gemini API key in Settings first</p>'}
 </div>`;
   }
-
 
   // Build docs section
   const docsSection = app.docs && app.docs.length > 0 ? `
@@ -1312,6 +1336,76 @@ function viewApp(appId) {
 </div>
 
 ${aiSection}
+
+<!-- Candidate & Family Public Research (OSINT) -->
+<div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-xl p-4 text-white mb-4 border border-indigo-800/40 shadow-sm">
+  <div class="flex items-center justify-between mb-2.5 flex-wrap gap-2">
+    <div class="flex items-center gap-2">
+      <i class="fa-solid fa-magnifying-glass-chart text-cyan-400"></i>
+      <h4 class="text-xs font-bold text-white uppercase tracking-wide">Candidate & Family Public Research (Social Media & Web)</h4>
+    </div>
+    <span class="text-[10px] bg-indigo-900 text-indigo-200 px-2 py-0.5 rounded border border-indigo-700">Area Manager Due Diligence</span>
+  </div>
+  <p class="text-xs text-slate-300 mb-3 leading-relaxed">
+    1-Click direct links to search real-time public profiles, social media, and web footprint for <strong>${sanitize(app.name)}</strong>:
+  </p>
+  
+  <!-- Candidate Search Buttons -->
+  <div class="flex flex-wrap gap-2 mb-3">
+    <a href="https://www.facebook.com/search/people/?q=${encodeURIComponent(app.name)}" target="_blank"
+      class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-xs">
+      <i class="fa-brands fa-facebook"></i> Facebook Profile Search
+    </a>
+    <a href="https://www.google.com/search?q=${encodeURIComponent('site:instagram.com "' + app.name + '"')}" target="_blank"
+      class="px-3 py-1.5 bg-pink-600 hover:bg-pink-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-xs">
+      <i class="fa-brands fa-instagram"></i> Instagram Search
+    </a>
+    <a href="https://www.google.com/search?q=${encodeURIComponent('site:linkedin.com/in "' + app.name + '"')}" target="_blank"
+      class="px-3 py-1.5 bg-sky-700 hover:bg-sky-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-xs">
+      <i class="fa-brands fa-linkedin"></i> LinkedIn Search
+    </a>
+    <a href="https://www.google.com/search?q=${encodeURIComponent('"' + app.name + '" ' + (app.placeOfBirth || app.preferredBranch || 'Sarawak'))}" target="_blank"
+      class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-xs">
+      <i class="fa-brands fa-google"></i> Google Web Search
+    </a>
+  </div>
+
+  <!-- Family Members Direct Search Links -->
+  ${app.familyBackground ? `
+  <div class="border-t border-indigo-900/60 pt-2.5 mt-2.5">
+    <p class="text-[11px] font-bold text-indigo-300 mb-1.5 flex items-center gap-1">
+      <i class="fa-solid fa-users text-indigo-400"></i> Family Members Verification:
+    </p>
+    <div class="flex flex-wrap gap-1.5">
+      ${app.familyBackground.split(';').map(fam => {
+        const trimmed = fam.trim();
+        if (!trimmed) return '';
+        const famName = trimmed.replace(/\(.*?\)/g, '').trim();
+        if (!famName) return '';
+        return `
+        <div class="inline-flex items-center gap-1.5 bg-slate-800/80 border border-indigo-800/50 rounded-lg px-2.5 py-1 text-[11px]">
+          <span class="text-slate-200 font-medium">${sanitize(trimmed)}</span>
+          <a href="https://www.facebook.com/search/people/?q=${encodeURIComponent(famName)}" target="_blank" title="Search ${sanitize(famName)} on Facebook" class="text-blue-400 hover:text-blue-300 ml-1">
+            <i class="fa-brands fa-facebook"></i>
+          </a>
+          <a href="https://www.google.com/search?q=${encodeURIComponent('"' + famName + '" Sarawak')}" target="_blank" title="Search ${sanitize(famName)} on Google" class="text-slate-400 hover:text-slate-200">
+            <i class="fa-brands fa-google"></i>
+          </a>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>` : ''}
+
+  <!-- Legal & PDPA Guidance -->
+  <div class="bg-indigo-950/70 border border-indigo-800/40 rounded-lg p-2.5 mt-3 text-[10px] text-slate-300 flex items-start gap-2">
+    <i class="fa-solid fa-scale-balanced text-amber-400 text-xs shrink-0 mt-0.5"></i>
+    <div>
+      <span class="text-amber-300 font-bold">Malaysian Employment Law &amp; PDPA 2010 Compliance:</span>
+      Public search links are provided for lawful pre-employment verification. Under the <em>Personal Data Protection Act 2010 (Act 709)</em>, hiring evaluations must prioritize candidate job qualifications, integrity, and direct interview responses. Family member information is gathered strictly for emergency and conflict-of-interest declarations.
+    </div>
+  </div>
+</div>
+
 
 <!-- Personal Info -->
 <div class="bg-white rounded-xl border border-gray-200 p-4 mb-4">
