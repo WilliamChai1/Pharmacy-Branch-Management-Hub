@@ -424,17 +424,12 @@ function renderPublicForm(targetContainerId) {
 
   container.innerHTML = `
 <div class="max-w-2xl mx-auto">
-  <div class="bg-gradient-to-r from-blue-900 to-blue-700 rounded-xl p-5 mb-5 text-white">
-    <div class="flex items-center gap-3 mb-2">
-      <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-        <i class="fa-solid fa-hospital-user text-white text-xl"></i>
-      </div>
-      <div>
-        <p class="text-xs font-semibold text-blue-200 uppercase tracking-wide">PUBLIC MEDICARE GROUP SDN BHD (898870-V)</p>
-        <h2 class="text-base font-bold">Job Application Form — East Malaysia Branches</h2>
-      </div>
+  <div class="bg-blue-800 rounded-2xl p-6 mb-5 text-white shadow-md text-center">
+    <div class="w-12 h-12 bg-white/15 rounded-2xl flex items-center justify-center mx-auto mb-2.5">
+      <i class="fa-solid fa-file-signature text-white text-xl"></i>
     </div>
-    <p class="text-xs text-blue-200">HR/RECRUITMENT/001/2023 · Please fill in ALL fields accurately. False information may result in disqualification.</p>
+    <h1 class="text-2xl font-bold tracking-tight">Job Application</h1>
+    <p class="text-xs text-blue-200 mt-1">Please fill in your details and upload your documents below.</p>
   </div>
 
   <form id="recPublicForm" class="space-y-5" onsubmit="window.pmgRecruitment.submitPublicForm(event)">
@@ -775,9 +770,9 @@ function renderPublicForm(targetContainerId) {
       </div>
     </div>
 
-    <!-- SECTION 10: PMG SCREENING QUESTIONNAIRE -->
+    <!-- SECTION 10: APPLICANT QUESTIONNAIRE -->
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-      <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-clipboard-question text-emerald-600"></i> PMG Screening Questionnaire (HR/RECRUITMENT/001/2023)</h3>
+      <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-clipboard-question text-emerald-600"></i> Additional Questionnaire / Soalan Tambahan</h3>
       <div class="space-y-3">
         <div>
           <label class="rec-label">Do you have transport? How do you commute? / Ada kenderaan sendiri? *</label>
@@ -1844,8 +1839,8 @@ function printApp(appId) {
   if (!app) return;
   const w = window.open('','_blank');
   w.document.write(`<html><head><title>PMG Application — ${app.name}</title></head><body style="font-family:Arial;font-size:12px;padding:20px">
-    <h2>PUBLIC MEDICARE GROUP SDN BHD — Job Application</h2>
-    <p><strong>Ref:</strong> ${app.id} | <strong>Applied:</strong> ${fmtDateTime(app.appliedAt)}</p>
+    <h2>Job Application</h2>
+    <p><strong>Ref:</strong> ${app.id} | <strong>Candidate:</strong> ${app.name} | <strong>Applied:</strong> ${fmtDateTime(app.appliedAt)}</p>
     <hr>
     <pre>${JSON.stringify(app, null, 2)}</pre>
   </body></html>`);
