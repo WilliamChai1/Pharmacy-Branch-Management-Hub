@@ -416,10 +416,10 @@ function getAvailableSlots(dateStr) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// APPLICATION FORM RENDER (PUBLIC LINK VIEW)
+// APPLICATION FORM RENDER (PUBLIC LINK VIEW & STANDALONE PORTAL)
 // ─────────────────────────────────────────────────────────────────────────────
-function renderPublicForm() {
-  const container = el('recruitmentPublicFormArea');
+function renderPublicForm(targetContainerId) {
+  const container = el(targetContainerId || 'recruitmentPublicFormArea');
   if (!container) return;
 
   container.innerHTML = `
@@ -895,6 +895,10 @@ function renderPublicForm() {
 </div>`;
 }
 
+function renderPublicPortalForm(targetContainerId) {
+  renderPublicForm(targetContainerId || 'publicJobAppContainer');
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SUBMIT PUBLIC FORM
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1068,8 +1072,15 @@ async function submitPublicForm(e) {
   saveApps(apps);
 
   // Show success
-  const container = el('recruitmentPublicFormArea');
+  const container = form.closest('#publicJobAppContainer')
+                 || form.closest('#recruitmentPublicFormArea')
+                 || el('publicJobAppContainer')
+                 || el('recruitmentPublicFormArea');
   if (container) {
+    const isPortal = container.id === 'publicJobAppContainer' || !!el('publicJobAppContainer');
+    const resetCall = isPortal 
+      ? "window.pmgRecruitment.renderPublicPortalForm('publicJobAppContainer')" 
+      : "window.pmgRecruitment.renderPublicForm('recruitmentPublicFormArea')";
     container.innerHTML = `
 <div class="max-w-lg mx-auto text-center py-16">
   <div class="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-5">
@@ -1087,7 +1098,7 @@ async function submitPublicForm(e) {
       <li>Face-to-face interview at PMG Pharmacy Kota Sentosa</li>
     </ol>
   </div>
-  <button onclick="window.pmgRecruitment.renderPublicForm()" class="mt-6 px-5 py-2.5 bg-blue-700 text-white text-sm font-bold rounded-xl hover:bg-blue-800 transition">
+  <button onclick="${resetCall}" class="mt-6 px-5 py-2.5 bg-blue-700 text-white text-sm font-bold rounded-xl hover:bg-blue-800 transition">
     Submit Another Application
   </button>
 </div>`;
@@ -1693,15 +1704,15 @@ async function confirmInterviewSchedule() {
 }
 
 function copyFormLink() {
-  const url = 'https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/';
+  const url = 'https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/?apply=1';
   navigator.clipboard.writeText(url)
-    .then(()=>toast('Form link copied! Share with candidates.', 'success'))
-    .catch(()=>toast('Link: https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/', 'warn'));
+    .then(()=>toast('Public application form link copied! (Direct access, no login needed)', 'success'))
+    .catch(()=>toast('Link: ' + url, 'warn'));
 }
 
 function shareViaWhatsApp() {
-  const url = 'https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/';
-  const msg = `📋 *PMG Pharmacy Job Application*\n\nInterested in joining PUBLIC MEDICARE GROUP (PMG) Pharmacy team in Kuching, Sarawak?\n\nPositions available:\n• Pharmacist\n• Pharmacy Assistant\n• Nutritionist / Dietitian\n\n🔗 Apply online:\n${url}\n\nClick *HR Recruitment → Application Form (Public Preview)* to fill in your details and upload your documents.\n\nFor enquiries, contact Area Manager William Chai.`;
+  const url = 'https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/?apply=1';
+  const msg = `📋 *PMG Pharmacy Job Application*\n\nInterested in joining PUBLIC MEDICARE GROUP (PMG) Pharmacy team in Kuching, Sarawak?\n\nPositions available:\n• Pharmacist\n• Pharmacy Assistant\n• Nutritionist / Dietitian\n\n🔗 Apply directly online (No login required):\n${url}\n\nFill in your details and upload your SPM/education results directly.\n\nFor enquiries, contact Area Manager William Chai (PMG Kota Sentosa).`;
   window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
@@ -1869,6 +1880,7 @@ function init() {
 window.pmgRecruitment = {
   init,
   renderPublicForm,
+  renderPublicPortalForm,
   renderAmDashboard,
   viewApp,
   runAI,

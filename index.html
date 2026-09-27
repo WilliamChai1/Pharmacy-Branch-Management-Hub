@@ -94,9 +94,19 @@
         Branch Managers: use branch code + PIN<br>
         Area Manager: username <strong>am</strong> + AM PIN
       </p>
+
+      <!-- Public Job Applicant Link on Login Screen -->
+      <div class="mt-4 pt-3 border-t border-gray-100 text-center">
+        <a href="?apply=1" onclick="openPublicApplicationPortal(event)"
+          class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 hover:text-blue-800 hover:underline">
+          <i class="fa-solid fa-file-signature text-rose-600"></i>
+          <span>Job Applicant? Click Here to Apply Online</span>
+        </a>
+      </div>
     </div>
   </div>
 </div>
+
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
      MAIN HEADER
@@ -4760,6 +4770,39 @@ Date visit: 06.01.2026
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
+     PUBLIC JOB APPLICANT PORTAL (STANDALONE — NO STAFF LOGIN BARRIER)
+══════════════════════════════════════════════════════════════════════════════ -->
+<div id="publicJobApplicationView" class="hidden min-h-screen bg-slate-100 flex flex-col justify-between py-6 px-4">
+  <div class="max-w-4xl mx-auto w-full">
+    <!-- Header Banner -->
+    <div class="bg-gradient-to-r from-blue-900 to-indigo-900 rounded-2xl shadow-md p-6 text-white mb-6 text-center">
+      <div class="w-14 h-14 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-3 backdrop-blur-sm">
+        <i class="fa-solid fa-notes-medical text-rose-400 text-2xl"></i>
+      </div>
+      <h1 class="text-xl sm:text-2xl font-black tracking-tight">PUBLIC MEDICARE GROUP (PMG) PHARMACY</h1>
+      <p class="text-xs sm:text-sm text-blue-200 font-medium mt-1">Official Job Application Portal · Sarawak Outlets</p>
+      <div class="inline-flex items-center gap-1.5 bg-blue-800/80 border border-blue-700/60 rounded-full px-3 py-1 text-[11px] text-blue-200 mt-3">
+        <i class="fa-solid fa-location-dot text-rose-400"></i>
+        <span>Kota Sentosa, Matang Jaya, Sungai Moyan, Malihah, Metrocity, Astana, Samariang</span>
+      </div>
+    </div>
+
+    <!-- Application Form Container -->
+    <div id="publicJobAppContainer">
+      <!-- Injected by window.pmgRecruitment.renderPublicPortalForm() -->
+    </div>
+
+    <!-- Staff login redirect at bottom -->
+    <div class="text-center mt-8 pt-4 border-t border-gray-200">
+      <a href="index.html" class="text-xs text-gray-500 hover:text-blue-700 transition">
+        <i class="fa-solid fa-lock text-[10px] mr-1"></i> PMG Staff / Area Manager Sign In
+      </a>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
      AREA MANAGER PRICING INTELLIGENCE & AI MODALS
 ══════════════════════════════════════════════════════════════════════════════ -->
 
@@ -5443,6 +5486,49 @@ function triggerPwaInstall() {
   }
 }
 
+// ─── PUBLIC JOB APPLICANT PORTAL (Direct Access - No Staff Login Required) ─────
+function openPublicApplicationPortal(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  // Hide all staff views & overlays
+  document.getElementById('authOverlay')?.classList.add('hidden');
+  document.getElementById('mainHeader')?.classList.add('hidden');
+  document.getElementById('mainNav')?.classList.add('hidden');
+  document.getElementById('mainContent')?.classList.add('hidden');
+  document.getElementById('mainFooter')?.classList.add('hidden');
+  document.getElementById('customerBookingView')?.classList.add('hidden');
+
+  // Reveal standalone job application portal
+  const portalView = document.getElementById('publicJobApplicationView');
+  if (portalView) {
+    portalView.classList.remove('hidden');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // Update browser URL query param without reload if opened via link click
+  if (window.history && window.history.pushState) {
+    const curSearch = window.location.search;
+    if (!curSearch.includes('apply=1') && !curSearch.includes('job=1')) {
+      const newUrl = window.location.pathname + '?apply=1';
+      window.history.pushState({ path: newUrl }, '', newUrl);
+    }
+  }
+
+  // Render form
+  const render = () => {
+    if (window.pmgRecruitment && typeof window.pmgRecruitment.renderPublicPortalForm === 'function') {
+      window.pmgRecruitment.renderPublicPortalForm('publicJobAppContainer');
+    } else if (window.pmgRecruitment && typeof window.pmgRecruitment.renderPublicForm === 'function') {
+      window.pmgRecruitment.renderPublicForm('publicJobAppContainer');
+    }
+  };
+
+  if (window.pmgRecruitment) {
+    render();
+  } else {
+    setTimeout(render, 150);
+  }
+}
+
 // ─── APP INIT ─────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   // Check URL parameters for 1-click Gemini API Key Configuration
@@ -5457,6 +5543,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const cleanUrl = window.location.origin + window.location.pathname;
     window.history.replaceState({}, document.title, cleanUrl);
     alert('✅ Gemini AI Key has been securely configured and saved to this device!');
+  }
+
+  // Check URL parameters for Public Job Application Portal Mode (?apply=1 or ?job=1 or ?action=apply)
+  if (urlParams.get('apply') === '1' || urlParams.get('job') === '1' || urlParams.get('action') === 'apply') {
+    openPublicApplicationPortal();
+    return; // Exit staff app boot - do NOT prompt for staff PIN/login
   }
 
   // Check URL parameters for Customer Self-Booking Mode (?book=1 or ?action=book)
