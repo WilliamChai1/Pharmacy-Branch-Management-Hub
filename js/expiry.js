@@ -400,8 +400,8 @@ function parseInvoiceOrCnFilename(filename) {
     detectedAmount = 'RM ' + rmMatch[1].replace(/,/g, '');
   }
 
-  // Strip trailing '- (month) (INV or CN)'
-  const tailRegex = /[-–]\s*(?:(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s*)?(?:INV|CN|INVOICE|CREDIT\s*NOTE).*$/i;
+  // Strip trailing '- (month) (INV or CN)' or '- (month) (year) (INV or CN)'
+  const tailRegex = /[-–]\s*(?:(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s*)?(?:202[0-9]|203[0-9])?\s*(?:INV|CN|INVOICE|CREDIT\s*NOTE).*$/i;
   const headPart = cleanName.replace(tailRegex, '').trim();
 
   // Strip \bRM\s*[\d,.]*
