@@ -528,6 +528,12 @@
           <i class="fa-solid fa-video text-amber-600"></i>
           <span>5S Walkthrough Video Auditor</span>
         </button>
+        <button type="button" onclick="switchAmSubTab('pricing')" id="am-subtab-btn-pricing"
+          class="am-subtab-btn font-semibold text-sm py-2.5 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-2 transition">
+          <i class="fa-solid fa-chart-line text-emerald-600"></i>
+          <span>Pricing Intelligence & Strategic SWOT Matrix</span>
+          <span class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">7 Outlets AM</span>
+        </button>
       </div>
     </div>
 
@@ -951,6 +957,182 @@
       </div><!-- /auditReportContainer -->
 
     </div><!-- /am-view-5s -->
+
+    <!-- ═════════════════════════════════════════════════════════════════════════
+         AM SUB-TAB 3: PRICING INTELLIGENCE, COMPETITOR BENCHMARKING & SWOT MATRIX
+    ══════════════════════════════════════════════════════════════════════════ -->
+    <div id="am-view-pricing" class="am-subview hidden">
+
+      <!-- Executive Header Card -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-5">
+        <div class="flex items-start justify-between gap-4 flex-wrap">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center shrink-0">
+              <i class="fa-solid fa-chart-line text-emerald-700 text-lg"></i>
+            </div>
+            <div>
+              <div class="flex items-center gap-2 mb-0.5 flex-wrap">
+                <h2 class="text-lg font-bold text-gray-900">Area Manager Pricing Intelligence & Strategic SWOT Matrix</h2>
+                <span class="text-xs bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded border border-emerald-200">7 Outlets Master</span>
+              </div>
+              <p class="text-gray-500 text-xs">Standardize pricing across your 7 managed branches in Kuching & Padawan, benchmark against local hypermarkets (Farley, Emart, H&L) and pharmacy chains, and execute branch-by-branch SWOT battle plans.</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-xs bg-purple-50 text-purple-800 font-semibold px-2.5 py-1 rounded border border-purple-200 flex items-center gap-1.5" title="Free Tier: Gemini 2.5 Flash / 1.5 Flash (15 RPM / 1,500 RPD / 0 Cost)">
+              <i class="fa-solid fa-wand-magic-sparkles text-purple-600"></i>
+              <span>Gemini 2.5 Flash (Free Tier: 0 Budget)</span>
+            </span>
+            <button type="button" onclick="promptUpdateGeminiKey()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold px-2.5 py-1 rounded border border-gray-300 transition" title="View or update free Google AI Studio API key">
+              <i class="fa-solid fa-key text-gray-500"></i> API Key
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- KPI Summary Cards -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+          <div class="text-xs text-gray-500 font-semibold uppercase mb-1">Monitored SKUs</div>
+          <div id="pricingSummaryTotalSkus" class="text-2xl font-bold text-gray-900 font-mono">—</div>
+          <div class="text-[11px] text-gray-400 mt-0.5">Across 7 PMG Outlets</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+          <div class="text-xs text-gray-500 font-semibold uppercase mb-1">Area Avg Gross Margin</div>
+          <div id="pricingSummaryAvgMargin" class="text-2xl font-bold text-emerald-600 font-mono">—</div>
+          <div class="text-[11px] text-emerald-700 mt-0.5">Target: &ge; 25.0%</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+          <div class="text-xs text-gray-500 font-semibold uppercase mb-1">Supermarket KVIs</div>
+          <div id="pricingSummaryKvis" class="text-2xl font-bold text-rose-600 font-mono">—</div>
+          <div class="text-[11px] text-rose-700 mt-0.5">Farley / Emart Traffic Defense</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+          <div class="text-xs text-gray-500 font-semibold uppercase mb-1">High-Margin Builders</div>
+          <div id="pricingSummaryBuilders" class="text-2xl font-bold text-purple-600 font-mono">—</div>
+          <div class="text-[11px] text-purple-700 mt-0.5">PMG House Brands &gt; 50% Margin</div>
+        </div>
+      </div>
+
+      <!-- Module Sub-Tabs (Matrix vs SWOT vs Playbook) -->
+      <div class="flex items-center gap-2 mb-4 bg-white p-1.5 rounded-xl border border-gray-200 shadow-2xs overflow-x-auto">
+        <button type="button" id="pricingInnerTabBtn-matrix" onclick="switchPricingInnerTab('matrix')"
+          class="px-4 py-2 text-xs font-bold rounded-lg transition text-white bg-blue-800 shadow-xs whitespace-nowrap">
+          <i class="fa-solid fa-table-list mr-1.5"></i> 1. Unified SKU Pricing & Standardization Matrix
+        </button>
+        <button type="button" id="pricingInnerTabBtn-swot" onclick="switchPricingInnerTab('swot')"
+          class="px-4 py-2 text-xs font-bold rounded-lg transition text-gray-600 hover:text-gray-900 bg-gray-100 whitespace-nowrap">
+          <i class="fa-solid fa-map-location-dot mr-1.5 text-blue-600"></i> 2. The 7 Branches SWOT & Action Plans
+        </button>
+        <button type="button" id="pricingInnerTabBtn-playbook" onclick="switchPricingInnerTab('playbook')"
+          class="px-4 py-2 text-xs font-bold rounded-lg transition text-gray-600 hover:text-gray-900 bg-gray-100 whitespace-nowrap">
+          <i class="fa-solid fa-chess-knight mr-1.5 text-purple-600"></i> 3. Supermarket & Competitor Counter-Strategy
+        </button>
+      </div>
+
+      <!-- PANEL 1: SKU PRICING MATRIX -->
+      <div id="pricingTabPanel-matrix" class="space-y-4">
+        <!-- Control & Filter Bar -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex flex-wrap gap-3 items-center justify-between">
+          <div class="flex items-center gap-3 flex-wrap flex-1 min-w-[280px]">
+            <!-- Search -->
+            <div class="relative flex-1 min-w-[180px]">
+              <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-gray-400 text-xs"></i>
+              <input type="text" id="pricingSearchInput" placeholder="Search SKU, brand, or code…"
+                oninput="window.pmgPricing.searchQuery = this.value; window.pmgPricing.renderTableOnly();"
+                class="w-full pl-9 pr-3 py-1.5 border border-gray-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+
+            <!-- Category Filter -->
+            <select id="pricingCategoryFilter"
+              onchange="window.pmgPricing.activeCategoryFilter = this.value; window.pmgPricing.renderTableOnly();"
+              class="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white outline-none">
+              <option value="ALL">All Categories</option>
+              <option value="Chronic / NCD">Chronic / NCD</option>
+              <option value="OTC / Analgesic">OTC / Analgesic</option>
+              <option value="OTC / Fast Moving">OTC / Fast Moving</option>
+              <option value="Vitamins & Health">Vitamins & Health</option>
+              <option value="Nutrition & Milk">Nutrition & Milk</option>
+              <option value="Diagnostics & Devices">Diagnostics & Devices</option>
+            </select>
+
+            <!-- Strategy Tag Filter -->
+            <select id="pricingStrategyFilter"
+              onchange="window.pmgPricing.activeStrategyFilter = this.value; window.pmgPricing.renderTableOnly();"
+              class="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white outline-none">
+              <option value="ALL">All Strategic Roles</option>
+              <option value="kvi_defensive">🔴 KVI Defensive (Supermarket Match)</option>
+              <option value="core_rx">🔵 Core OTC / Prescription</option>
+              <option value="margin_builder">⭐ Margin Builder (&gt; 50%)</option>
+              <option value="clinical_bundle">💎 Clinical Moat</option>
+            </select>
+          </div>
+
+          <div class="flex items-center gap-2 flex-wrap">
+            <button type="button" onclick="openAddSkuModal()"
+              class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-2xs">
+              <i class="fa-solid fa-plus-circle"></i> + Add Custom SKU
+            </button>
+            <button type="button" onclick="window.pmgPricing.exportPriceMemo()"
+              class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-2xs"
+              title="Download standardized price directive memo for all 7 branch managers">
+              <i class="fa-solid fa-file-export"></i> Export 7-Branch Price Memo
+            </button>
+            <button type="button" onclick="window.pmgPricing.resetToDefaults()"
+              class="text-gray-500 hover:text-gray-700 text-xs px-2.5 py-1.5 rounded border border-gray-300 transition"
+              title="Reset SKUs to Area Manager factory benchmarks">
+              <i class="fa-solid fa-rotate-left"></i> Reset
+            </button>
+          </div>
+        </div>
+
+        <!-- Matrix Table -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead class="bg-slate-50 border-b border-gray-200 text-gray-700 uppercase font-bold text-[11px]">
+                <tr>
+                  <th class="p-3">Product / SKU Details</th>
+                  <th class="p-3 w-32">Strategic Role</th>
+                  <th class="p-3 text-right w-24">Cost (RM)</th>
+                  <th class="p-3 text-right w-28">Standard Area SP</th>
+                  <th class="p-3 text-right w-28">Gross Margin %</th>
+                  <th class="p-3 text-right w-36">Supermarket (Farley/Emart)</th>
+                  <th class="p-3 text-right w-36">Competitor Chains</th>
+                  <th class="p-3 text-center w-28">AI Intelligence</th>
+                </tr>
+              </thead>
+              <tbody id="pricingTableTbody" class="divide-y divide-gray-100">
+                <!-- Dynamically rendered -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL 2: 7 BRANCHES SWOT -->
+      <div id="pricingTabPanel-swot" class="hidden">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <div id="pricingBranchSwotContainer">
+            <!-- Dynamically rendered -->
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL 3: PLAYBOOK -->
+      <div id="pricingTabPanel-playbook" class="hidden">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <h3 class="font-bold text-base text-gray-900 mb-1 flex items-center gap-2">
+            <i class="fa-solid fa-chess-queen text-purple-700"></i> Area Manager Competitive Battle Playbook
+          </h3>
+          <p class="text-xs text-gray-500 mb-4">Tactical protocols to protect pharmacy margins while effectively countering supermarket loss-leader pricing and aggressive chain pharmacy campaigns in Greater Kuching.</p>
+          <div id="pricingPlaybookContainer">
+            <!-- Dynamically rendered -->
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /am-view-pricing -->
 
   </div><!-- /content-audit -->
 
@@ -4441,6 +4623,167 @@ Date visit: 06.01.2026
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
+     AREA MANAGER PRICING INTELLIGENCE & AI MODALS
+══════════════════════════════════════════════════════════════════════════════ -->
+
+<!-- Modal 1: Gemini AI Deep Pricing & SWOT Research Runner -->
+<div id="pricingAiModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs hidden p-4">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in duration-150 border border-purple-200">
+    <div class="bg-gradient-to-r from-purple-800 to-indigo-900 text-white px-5 py-3.5 flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
+          <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
+        </div>
+        <div>
+          <h3 id="pricingAiModalTitle" class="font-bold text-sm leading-tight">AI Competitor Intelligence & Pricing Research</h3>
+          <p class="text-[11px] text-purple-200">Grounded analysis across Supermarkets (Farley/Emart) & Pharmacy Chains</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span id="pricingAiStatus" class="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded text-purple-100">Ready</span>
+        <button type="button" onclick="closePricingAiModal()" class="text-white/80 hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-base"></i>
+        </button>
+      </div>
+    </div>
+
+    <div class="p-5 overflow-y-auto space-y-4 flex-1">
+      <div>
+        <label class="block text-xs font-bold text-gray-700 mb-1">Research Prompt & Competitor Parameters:</label>
+        <textarea id="pricingAiPromptInput" rows="5"
+          class="w-full border border-gray-300 rounded-lg p-2.5 text-xs font-mono outline-none focus:ring-2 focus:ring-purple-400 bg-slate-50"></textarea>
+      </div>
+
+      <div class="flex items-center justify-between gap-2 flex-wrap">
+        <div class="text-[11px] text-gray-500 flex items-center gap-1.5">
+          <i class="fa-solid fa-circle-info text-blue-500"></i>
+          <span>Gemini 2.5 Flash Free Tier (100% Free · 0 Budget Required)</span>
+        </div>
+        <button type="button" onclick="window.pmgPricing.executeAiResearch()"
+          class="bg-purple-700 hover:bg-purple-800 active:bg-purple-900 text-white text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 transition shadow-xs">
+          <i class="fa-solid fa-bolt"></i> Run Research & Battle Plan
+        </button>
+      </div>
+
+      <!-- AI Response Container -->
+      <div class="border border-purple-100 rounded-xl p-4 bg-purple-50/30">
+        <div class="text-[11px] font-bold uppercase tracking-wider text-purple-900 mb-2 flex items-center gap-1.5">
+          <i class="fa-solid fa-brain text-purple-600"></i> Strategic Findings & Executive Advice:
+        </div>
+        <div id="pricingAiResultBox">
+          <p class="text-xs text-gray-400 italic">Click "Run Research & Battle Plan" above to generate grounded market analysis.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-gray-50 px-5 py-3 border-t flex justify-end">
+      <button type="button" onclick="closePricingAiModal()" class="px-4 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs font-bold">
+        Close
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal 2: Add Custom SKU to Benchmark -->
+<div id="modalAddSku" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs hidden p-4">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in duration-150 border border-gray-200">
+    <div class="bg-blue-900 text-white px-5 py-3.5 flex items-center justify-between">
+      <h3 class="font-bold text-sm flex items-center gap-2">
+        <i class="fa-solid fa-plus-circle text-teal-400"></i> Add SKU to 7-Branch Pricing Benchmark
+      </h3>
+      <button type="button" onclick="closeAddSkuModal()" class="text-white/80 hover:text-white p-1">
+        <i class="fa-solid fa-xmark text-base"></i>
+      </button>
+    </div>
+
+    <form onsubmit="handleAddSkuSubmit(event)" class="p-5 space-y-3.5 text-xs">
+      <div>
+        <label class="block font-bold text-gray-700 mb-1">Product Description / SKU Name *</label>
+        <input type="text" id="addSkuName" placeholder="e.g. BIODERMA SENSIBIO H2O 500ML" required
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 uppercase font-semibold">
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-semibold text-gray-700 mb-1">SKU / Item Code</label>
+          <input type="text" id="addSkuCode" placeholder="e.g. 104501"
+            class="w-full border border-gray-300 rounded-lg px-3 py-1.5 font-mono">
+        </div>
+        <div>
+          <label class="block font-semibold text-gray-700 mb-1">Brand / Principal</label>
+          <input type="text" id="addSkuBrand" placeholder="e.g. Bioderma / Naos"
+            class="w-full border border-gray-300 rounded-lg px-3 py-1.5">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-semibold text-gray-700 mb-1">Category</label>
+          <select id="addSkuCategory" class="w-full border border-gray-300 rounded-lg px-3 py-1.5 bg-white">
+            <option value="Chronic / NCD">Chronic / NCD</option>
+            <option value="OTC / Analgesic">OTC / Analgesic</option>
+            <option value="OTC / Fast Moving">OTC / Fast Moving</option>
+            <option value="Vitamins & Health">Vitamins & Health</option>
+            <option value="Nutrition & Milk">Nutrition & Milk</option>
+            <option value="Diagnostics & Devices">Diagnostics & Devices</option>
+          </select>
+        </div>
+        <div>
+          <label class="block font-semibold text-gray-700 mb-1">Strategic Role</label>
+          <select id="addSkuStrategy" class="w-full border border-gray-300 rounded-lg px-3 py-1.5 bg-white">
+            <option value="core_rx">Core OTC / Prescription</option>
+            <option value="kvi_defensive">KVI Defensive (Supermarket Match)</option>
+            <option value="margin_builder">Margin Builder (&gt; 50%)</option>
+            <option value="clinical_bundle">Clinical Moat</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Cost Price (RM) *</label>
+          <input type="number" step="0.10" id="addSkuCost" placeholder="e.g. 52.00" required
+            class="w-full border border-gray-300 rounded-lg px-3 py-1.5 font-mono font-bold text-gray-800">
+        </div>
+        <div>
+          <label class="block font-bold text-blue-900 mb-1">Standard Selling Price (RM) *</label>
+          <input type="number" step="0.10" id="addSkuSp" placeholder="e.g. 69.90" required
+            class="w-full border border-blue-400 rounded-lg px-3 py-1.5 font-mono font-bold text-blue-900 bg-blue-50/40">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-gray-600 mb-1">Supermarket Price (Farley/Emart)</label>
+          <input type="number" step="0.10" id="addSkuSupermarket" placeholder="e.g. 68.90"
+            class="w-full border border-gray-300 rounded-lg px-3 py-1.5 font-mono">
+        </div>
+        <div>
+          <label class="block text-gray-600 mb-1">Competitor Chain Price</label>
+          <input type="number" step="0.10" id="addSkuChain" placeholder="e.g. 72.00"
+            class="w-full border border-gray-300 rounded-lg px-3 py-1.5 font-mono">
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-gray-600 mb-1">Area Manager Notes & Directives</label>
+        <input type="text" id="addSkuNotes" placeholder="e.g. Pair with cotton pads; display on eye-level shelf"
+          class="w-full border border-gray-300 rounded-lg px-3 py-1.5">
+      </div>
+
+      <div class="pt-2 flex justify-end gap-2 border-t">
+        <button type="button" onclick="closeAddSkuModal()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-bold">
+          Cancel
+        </button>
+        <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-xs transition">
+          Save SKU to 7 Branches
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
      SCRIPTS (load order matters: data → auth → modules)
 ══════════════════════════════════════════════════════════════════════════════ -->
 <script src="js/data.js"></script>
@@ -4455,6 +4798,7 @@ Date visit: 06.01.2026
 <script src="js/seed_expiry_data.js"></script>
 <script src="js/expiry.js"></script>
 <script src="js/returns-cn.js"></script>
+<script src="js/pricing-intelligence.js"></script>
 
 <script>
 // ─── TAB SWITCHER ─────────────────────────────────────────────────────────────
@@ -4482,7 +4826,7 @@ function switchTab(tab) {
 function switchAmSubTab(subtab) {
   document.querySelectorAll('.am-subview').forEach(el => el.classList.add('hidden'));
   document.querySelectorAll('.am-subtab-btn').forEach(btn => {
-    btn.classList.remove('active', 'border-purple-600', 'text-purple-700');
+    btn.classList.remove('active', 'border-purple-600', 'text-purple-700', 'border-emerald-600', 'text-emerald-700');
     btn.classList.add('border-transparent', 'text-gray-500');
   });
 
@@ -4491,9 +4835,94 @@ function switchAmSubTab(subtab) {
 
   if (targetView) targetView.classList.remove('hidden');
   if (targetBtn) {
-    targetBtn.classList.add('active', 'border-purple-600', 'text-purple-700');
+    const activeColor = subtab === 'pricing' ? 'text-emerald-700' : 'text-purple-700';
+    const activeBorder = subtab === 'pricing' ? 'border-emerald-600' : 'border-purple-600';
+    targetBtn.classList.add('active', activeBorder, activeColor);
     targetBtn.classList.remove('border-transparent', 'text-gray-500');
   }
+
+  if (subtab === 'pricing' && window.pmgPricing) {
+    window.pmgPricing.render();
+  }
+}
+
+// ─── PRICING INTELLIGENCE & SWOT UI HELPERS ──────────────────────────────────
+function switchPricingInnerTab(tab) {
+  const pMatrix = document.getElementById('pricingTabPanel-matrix');
+  const pSwot = document.getElementById('pricingTabPanel-swot');
+  const pPlaybook = document.getElementById('pricingTabPanel-playbook');
+
+  if (pMatrix) pMatrix.classList.add('hidden');
+  if (pSwot) pSwot.classList.add('hidden');
+  if (pPlaybook) pPlaybook.classList.add('hidden');
+
+  const bMatrix = document.getElementById('pricingInnerTabBtn-matrix');
+  const bSwot = document.getElementById('pricingInnerTabBtn-swot');
+  const bPlaybook = document.getElementById('pricingInnerTabBtn-playbook');
+
+  const inactive = 'px-4 py-2 text-xs font-bold rounded-lg transition text-gray-600 hover:text-gray-900 bg-gray-100 whitespace-nowrap';
+  const active = 'px-4 py-2 text-xs font-bold rounded-lg transition text-white bg-blue-800 shadow-xs whitespace-nowrap';
+
+  if (bMatrix) bMatrix.className = inactive;
+  if (bSwot) bSwot.className = inactive;
+  if (bPlaybook) bPlaybook.className = inactive;
+
+  const targetPanel = document.getElementById(`pricingTabPanel-${tab}`);
+  const targetBtn = document.getElementById(`pricingInnerTabBtn-${tab}`);
+  if (targetPanel) targetPanel.classList.remove('hidden');
+  if (targetBtn) targetBtn.className = active;
+
+  if (tab === 'swot' && window.pmgPricing) {
+    window.pmgPricing.renderBranchSwot();
+  } else if (tab === 'playbook' && window.pmgPricing) {
+    window.pmgPricing.renderPlaybook();
+  }
+}
+
+function openAddSkuModal() {
+  const m = document.getElementById('modalAddSku');
+  if (m) m.classList.remove('hidden');
+}
+
+function closeAddSkuModal() {
+  const m = document.getElementById('modalAddSku');
+  if (m) m.classList.add('hidden');
+}
+
+function handleAddSkuSubmit(e) {
+  e.preventDefault();
+  const name = document.getElementById('addSkuName')?.value || '';
+  const code = document.getElementById('addSkuCode')?.value || '';
+  const brand = document.getElementById('addSkuBrand')?.value || '';
+  const category = document.getElementById('addSkuCategory')?.value || 'OTC / Fast Moving';
+  const cost = parseFloat(document.getElementById('addSkuCost')?.value) || 0;
+  const sp = parseFloat(document.getElementById('addSkuSp')?.value) || 0;
+  const smPrice = document.getElementById('addSkuSupermarket')?.value;
+  const chainPrice = document.getElementById('addSkuChain')?.value;
+  const strategyTag = document.getElementById('addSkuStrategy')?.value || 'core_rx';
+  const notes = document.getElementById('addSkuNotes')?.value || '';
+
+  if (!name || cost <= 0 || sp <= 0) {
+    alert('Please enter a valid product description, cost price, and standard selling price.');
+    return;
+  }
+
+  if (window.pmgPricing) {
+    window.pmgPricing.addNewSku({
+      name, code, brand, category, costPrice: cost, standardSp: sp,
+      supermarketPrice: smPrice ? parseFloat(smPrice) : null,
+      chainPharmacyPrice: chainPrice ? parseFloat(chainPrice) : null,
+      strategyTag, notes
+    });
+  }
+
+  closeAddSkuModal();
+  e.target.reset();
+}
+
+function closePricingAiModal() {
+  const m = document.getElementById('pricingAiModal');
+  if (m) m.classList.add('hidden');
 }
 
 // ─── PWA INSTALLATION SUPPORT ─────────────────────────────────────────────────
@@ -4589,6 +5018,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initScheduler();
   initPatientModule();
   initExpiryModule();
+  if (typeof initPricingIntelligence === 'function') initPricingIntelligence();
 
   // Fetch live data from Google Sheets (non-blocking background fetch).
   loadLiveSheetData();
