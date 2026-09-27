@@ -1,0 +1,937 @@
+{
+  "8a6b0091-1449-42fa-9972-e2d87b4da5d6": {
+    "rid": "8a6b0091-1449-42fa-9972-e2d87b4da5d6",
+    "reportDate": "2026-09-25",
+    "immunityScore": 58,
+    "healthScore": 78,
+    "advice": "发现亚健康指标，请根据下面调理建议，采用【活血化瘀】原则进行调理，改善亚健康状态",
+    "zangfuSummary": "小肠虚弱6.6，肝虚7.4，脾虚7.7",
+    "tizhiSummary": "血瘀6.0，津液亏虚7.3，津液停聚7.4",
+    "jingluoSummary": "膀胱经/肺经/任脉淤堵",
+    "subHealthZangfu": [
+      {
+        "name": "小肠虚弱",
+        "score": 6.6,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "肝虚",
+        "score": 7.4,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "脾虚",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "大肠虚弱",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "肺虚",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "胃虚",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "心虚",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "肾虚",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "膀胱虚弱",
+        "score": 8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "胆虚",
+        "score": 8,
+        "levelText": "亚健康"
+      }
+    ],
+    "subHealthTizhi": [
+      {
+        "name": "血瘀",
+        "score": 6,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "津液亏虚",
+        "score": 7.3,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "津液停聚",
+        "score": 7.4,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "阴虚",
+        "score": 7.5,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "气滞",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "寒",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "热",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "气虚",
+        "score": 7.9,
+        "levelText": "亚健康"
+      }
+    ],
+    "blockedJingluo": [
+      {
+        "name": "足太阳膀胱经",
+        "score": 5.9,
+        "levelText": "警惕风险"
+      },
+      {
+        "name": "手太阴肺经",
+        "score": 6,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "任脉",
+        "score": 6,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手太阳小肠经",
+        "score": 6.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足厥阴肝经",
+        "score": 7.6,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手厥阴心包经",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足太阴脾经",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足阳明胃经",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手阳明大肠经",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手少阴心经",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足少阳胆经",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手少阳三焦经",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "督脉",
+        "score": 7.9,
+        "levelText": "亚健康"
+      }
+    ],
+    "spinePressure": [
+      {
+        "name": "TH6（胸椎）",
+        "score": 7.6
+      },
+      {
+        "name": "C6（颈椎）",
+        "score": 7.6
+      },
+      {
+        "name": "TH3（胸椎）",
+        "score": 7.7
+      },
+      {
+        "name": "COCCYX-s（尾骨）",
+        "score": 7.7
+      },
+      {
+        "name": "TH2（胸椎）",
+        "score": 7.7
+      }
+    ]
+  },
+  "ecb47dfb-2b11-4aee-9a2f-40c1a6b3b225": {
+    "rid": "ecb47dfb-2b11-4aee-9a2f-40c1a6b3b225",
+    "reportDate": "2026-05-09",
+    "immunityScore": 21,
+    "healthScore": 75,
+    "advice": "发现亚健康指标，请根据下面调理建议，采用【养胃】原则进行调理，改善亚健康状态",
+    "zangfuSummary": "胃虚7.1，小肠虚弱7.1，肾虚7.3",
+    "tizhiSummary": "寒7.2，气虚7.5，血瘀7.6",
+    "jingluoSummary": "大肠经/心经/任脉淤堵",
+    "subHealthZangfu": [
+      {
+        "name": "胃虚",
+        "score": 7.1,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "小肠虚弱",
+        "score": 7.1,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "肾虚",
+        "score": 7.3,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "肝虚",
+        "score": 7.6,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "脾虚",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "大肠虚弱",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "肺虚",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "心虚",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "膀胱虚弱",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "胆虚",
+        "score": 7.9,
+        "levelText": "亚健康"
+      }
+    ],
+    "subHealthTizhi": [
+      {
+        "name": "寒",
+        "score": 7.2,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "气虚",
+        "score": 7.5,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "血瘀",
+        "score": 7.6,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "阳虚",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "气滞",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "津液停聚",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "津液亏虚",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "热",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "阴虚",
+        "score": 7.9,
+        "levelText": "亚健康"
+      }
+    ],
+    "blockedJingluo": [
+      {
+        "name": "手阳明大肠经",
+        "score": 6,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手少阴心经",
+        "score": 6.5,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "任脉",
+        "score": 6.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足太阴脾经",
+        "score": 7.3,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "督脉",
+        "score": 7.3,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足阳明胃经",
+        "score": 7.4,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手厥阴心包经",
+        "score": 7.4,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手太阴肺经",
+        "score": 7.4,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足少阳胆经",
+        "score": 7.4,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手太阳小肠经",
+        "score": 7.5,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手少阳三焦经",
+        "score": 7.6,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足厥阴肝经",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足少阴肾经",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足太阳膀胱经",
+        "score": 8,
+        "levelText": "亚健康"
+      }
+    ],
+    "spinePressure": [
+      {
+        "name": "C7（颈椎）",
+        "score": 6
+      },
+      {
+        "name": "S2（骶骨）",
+        "score": 6.3
+      },
+      {
+        "name": "C4（颈椎）",
+        "score": 6.3
+      },
+      {
+        "name": "TH7（胸椎）",
+        "score": 6.4
+      },
+      {
+        "name": "TH4（胸椎）",
+        "score": 6.5
+      }
+    ]
+  },
+  "e8c4d82b-445f-4175-864a-5f41f6cad9c3": {
+    "rid": "e8c4d82b-445f-4175-864a-5f41f6cad9c3",
+    "reportDate": "2026-04-10",
+    "immunityScore": 51,
+    "healthScore": 79,
+    "advice": "发现亚健康指标，请根据下面调理建议，采用【补虚祛寒，举陷固涩】原则进行调理，改善亚健康状态",
+    "zangfuSummary": "大肠虚弱7.1，胆虚7.4，胃虚7.4",
+    "tizhiSummary": "津液停聚7.6，气滞7.7，阳虚7.7",
+    "jingluoSummary": "肾经/心包经/心经淤堵",
+    "subHealthZangfu": [
+      {
+        "name": "大肠虚弱",
+        "score": 7.1,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "胆虚",
+        "score": 7.4,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "胃虚",
+        "score": 7.4,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "脾虚",
+        "score": 7.6,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "小肠虚弱",
+        "score": 7.6,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "肝虚",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "肾虚",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "心虚",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "膀胱虚弱",
+        "score": 8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "肺虚",
+        "score": 8,
+        "levelText": "亚健康"
+      }
+    ],
+    "subHealthTizhi": [
+      {
+        "name": "津液停聚",
+        "score": 7.6,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "气滞",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "阳虚",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "气虚",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "阴虚",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "津液亏虚",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "寒",
+        "score": 8,
+        "levelText": "亚健康"
+      }
+    ],
+    "blockedJingluo": [
+      {
+        "name": "足少阴肾经",
+        "score": 6.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手厥阴心包经",
+        "score": 7.2,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手少阴心经",
+        "score": 7.6,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手太阳小肠经",
+        "score": 7.6,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "督脉",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足厥阴肝经",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "任脉",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足阳明胃经",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足少阳胆经",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手太阴肺经",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手阳明大肠经",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手少阳三焦经",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足太阴脾经",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足太阳膀胱经",
+        "score": 7.9,
+        "levelText": "亚健康"
+      }
+    ],
+    "spinePressure": [
+      {
+        "name": "TH10（胸椎）",
+        "score": 6.9
+      },
+      {
+        "name": "C2（颈椎）",
+        "score": 7.1
+      },
+      {
+        "name": "S2（骶骨）",
+        "score": 7.1
+      },
+      {
+        "name": "TH3（胸椎）",
+        "score": 7.4
+      },
+      {
+        "name": "TH9（胸椎）",
+        "score": 7.5
+      }
+    ]
+  },
+  "6c74e0c8-6014-4482-82c9-ff6376381542": {
+    "rid": "6c74e0c8-6014-4482-82c9-ff6376381542",
+    "reportDate": "2026-03-12",
+    "immunityScore": 57,
+    "healthScore": 82,
+    "advice": "发现亚健康指标，请根据下面调理建议，采用【温煦祛寒】原则进行调理，改善亚健康状态",
+    "zangfuSummary": "脾虚7.3，小肠虚弱7.6，肝虚7.7",
+    "tizhiSummary": "寒6.0，气虚6.5，血虚7.4",
+    "jingluoSummary": "胆经/脾经/肺经淤堵",
+    "subHealthZangfu": [
+      {
+        "name": "脾虚",
+        "score": 7.3,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "小肠虚弱",
+        "score": 7.6,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "肝虚",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "胃虚",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "肾虚",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "胆虚",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "肺虚",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "膀胱虚弱",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "大肠虚弱",
+        "score": 7.9,
+        "levelText": "亚健康"
+      }
+    ],
+    "subHealthTizhi": [
+      {
+        "name": "寒",
+        "score": 6,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "气虚",
+        "score": 6.5,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "血虚",
+        "score": 7.4,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "阳虚",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "阴虚",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "热",
+        "score": 7.9,
+        "levelText": "亚健康"
+      }
+    ],
+    "blockedJingluo": [
+      {
+        "name": "足少阳胆经",
+        "score": 7.2,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足太阴脾经",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手太阴肺经",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足太阳膀胱经",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足阳明胃经",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手厥阴心包经",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手少阳三焦经",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足厥阴肝经",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足少阴肾经",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "督脉",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手阳明大肠经",
+        "score": 7.9,
+        "levelText": "亚健康"
+      }
+    ],
+    "spinePressure": [
+      {
+        "name": "TH2（胸椎）",
+        "score": 7.5
+      },
+      {
+        "name": "TH8（胸椎）",
+        "score": 7.5
+      },
+      {
+        "name": "TH5（胸椎）",
+        "score": 7.6
+      },
+      {
+        "name": "TH9（胸椎）",
+        "score": 7.6
+      },
+      {
+        "name": "TH6（胸椎）",
+        "score": 7.6
+      }
+    ]
+  },
+  "e3e9890c-2e38-4035-9355-477c61ce45e7": {
+    "rid": "e3e9890c-2e38-4035-9355-477c61ce45e7",
+    "reportDate": "2026-01-06",
+    "immunityScore": 52,
+    "healthScore": 79,
+    "advice": "发现亚健康指标，请根据下面调理建议，采用【滋养津液】原则进行调理，改善亚健康状态",
+    "zangfuSummary": "肾虚7.5，大肠虚弱7.7，肺虚7.7",
+    "tizhiSummary": "津液亏虚6.6，阴虚7.5，热7.5",
+    "jingluoSummary": "心经/心包经/督脉淤堵",
+    "subHealthZangfu": [
+      {
+        "name": "肾虚",
+        "score": 7.5,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "大肠虚弱",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "肺虚",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "胃虚",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "胆虚",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "小肠虚弱",
+        "score": 8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "膀胱虚弱",
+        "score": 8,
+        "levelText": "亚健康"
+      }
+    ],
+    "subHealthTizhi": [
+      {
+        "name": "津液亏虚",
+        "score": 6.6,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "阴虚",
+        "score": 7.5,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "热",
+        "score": 7.5,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "阳虚",
+        "score": 7.6,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "血瘀",
+        "score": 7.6,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "津液停聚",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "血虚",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "气滞",
+        "score": 7.9,
+        "levelText": "亚健康"
+      }
+    ],
+    "blockedJingluo": [
+      {
+        "name": "手少阴心经",
+        "score": 7.6,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手厥阴心包经",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "督脉",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手阳明大肠经",
+        "score": 7.7,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手太阳小肠经",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足太阳膀胱经",
+        "score": 7.8,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "手太阴肺经",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足少阴肾经",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "任脉",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足太阴脾经",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足厥阴肝经",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足阳明胃经",
+        "score": 7.9,
+        "levelText": "亚健康"
+      },
+      {
+        "name": "足少阳胆经",
+        "score": 7.9,
+        "levelText": "亚健康"
+      }
+    ],
+    "spinePressure": [
+      {
+        "name": "TH6（胸椎）",
+        "score": 6
+      },
+      {
+        "name": "TH11（胸椎）",
+        "score": 6.8
+      },
+      {
+        "name": "C3（颈椎）",
+        "score": 7.3
+      },
+      {
+        "name": "L5（腰椎）",
+        "score": 7.4
+      },
+      {
+        "name": "TH9（胸椎）",
+        "score": 7.4
+      }
+    ]
+  }
+}

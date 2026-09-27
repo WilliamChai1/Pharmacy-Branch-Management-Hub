@@ -1923,6 +1923,9 @@ Date visit: 06.01.2026
                         <button type="button" id="viewTedaTvBtn" onclick="openTedaTvModal()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-xs sm:text-sm font-bold transition flex items-center gap-1.5 shadow-xs whitespace-nowrap" title="View interactive TEDA TV Report">
                           <i class="fa-solid fa-tv text-amber-600"></i> View TV
                         </button>
+                        <button type="button" id="syncTedaManualBtn" onclick="openTedaManualSyncModal()" class="px-2.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs sm:text-sm font-bold transition flex items-center gap-1 shadow-xs whitespace-nowrap" title="Quick Sync or edit TEDA metrics">
+                          <i class="fa-solid fa-sliders text-amber-700"></i> Edit / Sync
+                        </button>
                       </div>
                       <!-- Verified TEDA Link Ribbon with Full RID & Quick Copy -->
                       <div id="tedaUrlVerifiedBanner" class="hidden mt-1.5 p-2 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between gap-2 text-xs text-emerald-900">
@@ -2341,6 +2344,9 @@ Date visit: 06.01.2026
           </div>
         </div>
         <div class="flex items-center gap-2">
+          <button type="button" onclick="quickSyncTedaFromViewer()" class="text-xs bg-amber-500 hover:bg-amber-400 text-slate-950 px-3.5 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 shadow-sm">
+            <i class="fa-solid fa-bolt"></i> Quick Sync to Notes
+          </button>
           <a id="tedaTvExternalLink" href="#" target="_blank" rel="noopener" class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1.5 rounded-xl font-semibold transition flex items-center gap-1.5">
             <i class="fa-solid fa-arrow-up-right-from-square"></i> Open in New Tab
           </a>
@@ -2351,6 +2357,82 @@ Date visit: 06.01.2026
       </div>
       <div class="flex-1 bg-slate-950 relative">
         <iframe id="tedaTvIframe" src="" class="w-full h-full border-0" allow="fullscreen"></iframe>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: TEDA Manual Sync / Findings Verification -->
+  <div id="tedaManualSyncModal" class="fixed inset-0 z-[75] flex items-center justify-center bg-black/70 p-3 sm:p-5 hidden" style="z-index: 75;">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-xl flex flex-col overflow-hidden border border-amber-200">
+      <div class="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-amber-600 to-amber-700 text-white shrink-0">
+        <div class="flex items-center gap-2.5">
+          <span class="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center text-sm font-bold">
+            <i class="fa-solid fa-sliders text-amber-100"></i>
+          </span>
+          <div>
+            <h4 class="font-bold text-sm sm:text-base text-white flex items-center gap-2">
+              <span>TEDA Findings &amp; Meridian Quick Sync</span>
+            </h4>
+            <p class="text-[11px] text-amber-100 font-mono truncate max-w-xs" id="tedaSyncRidDisplay">Report ID</p>
+          </div>
+        </div>
+        <button onclick="closeTedaManualSyncModal()" class="text-white/80 hover:text-white text-xl p-1 transition">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="p-5 sm:p-6 space-y-4 max-h-[80vh] overflow-y-auto bg-slate-50/50">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">健康指数 (Health Score / 100)</label>
+            <input type="number" id="tedaSyncHealth" min="0" max="100" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-black text-gray-900 bg-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" placeholder="e.g. 78">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">免疫力指数 (Immunity / 100)</label>
+            <input type="number" id="tedaSyncImmunity" min="0" max="100" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-black text-gray-900 bg-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" placeholder="e.g. 58">
+            <p class="text-[10px] text-gray-500 mt-0.5">&lt;50 亚健康/偏低，≥50 良好</p>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">调理建议 (Core Principle)</label>
+          <input type="text" id="tedaSyncAdvice" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-bold text-amber-950 bg-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" placeholder="e.g. 【活血化瘀】">
+          <div class="flex flex-wrap gap-1.5 mt-1.5">
+            <button type="button" onclick="selectTedaAdviceQuickTag('【活血化瘀】')" class="text-[10px] bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-lg border border-amber-200 transition">【活血化瘀】</button>
+            <button type="button" onclick="selectTedaAdviceQuickTag('【健脾化湿】')" class="text-[10px] bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-lg border border-amber-200 transition">【健脾化湿】</button>
+            <button type="button" onclick="selectTedaAdviceQuickTag('【养胃】')" class="text-[10px] bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-lg border border-amber-200 transition">【养胃】</button>
+            <button type="button" onclick="selectTedaAdviceQuickTag('【温煦祛寒】')" class="text-[10px] bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-lg border border-amber-200 transition">【温煦祛寒】</button>
+            <button type="button" onclick="selectTedaAdviceQuickTag('【补虚祛寒，举陷固涩】')" class="text-[10px] bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-lg border border-amber-200 transition">【补虚祛寒】</button>
+            <button type="button" onclick="selectTedaAdviceQuickTag('【滋养津液】')" class="text-[10px] bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-lg border border-amber-200 transition">【滋养津液】</button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">脏腑辩证 (Zang-Fu Sub-health)</label>
+          <input type="text" id="tedaSyncZangfu" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs sm:text-sm text-gray-800 bg-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" placeholder="e.g. 小肠虚弱 6.6, 肝虚 7.4, 脾虚 7.7">
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">气血体质 (Constitution)</label>
+          <input type="text" id="tedaSyncTizhi" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs sm:text-sm text-gray-800 bg-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" placeholder="e.g. 血瘀 6.0, 津液亏虚 7.3, 津液停聚 7.4">
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">经络淤堵 (Blocked Meridians)</label>
+          <input type="text" id="tedaSyncJingluo" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs sm:text-sm text-gray-800 bg-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" placeholder="e.g. 足太阳膀胱经 5.9, 手太阴肺经 6.0, 任脉 6.0">
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">脊柱压力 (Spine Pressure)</label>
+          <input type="text" id="tedaSyncSpine" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs sm:text-sm text-gray-800 bg-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" placeholder="e.g. TH6（胸椎） 7.6, C6（颈椎） 7.6, TH3（胸椎） 7.7">
+        </div>
+      </div>
+      <div class="px-6 py-3.5 bg-gray-50 border-t border-gray-200 flex items-center justify-between gap-3 shrink-0">
+        <button type="button" onclick="closeTedaManualSyncModal()" class="px-4 py-2 border border-gray-300 rounded-xl text-xs sm:text-sm font-semibold text-gray-700 hover:bg-gray-100 transition">
+          Cancel
+        </button>
+        <button type="button" onclick="saveTedaManualSync()" class="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition flex items-center gap-1.5">
+          <i class="fa-solid fa-check"></i> Apply to Encounter Notes &amp; Badges
+        </button>
       </div>
     </div>
   </div>
