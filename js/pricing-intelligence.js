@@ -6,392 +6,8 @@
   const STORAGE_KEY_PRICING_SKUS = 'pmg_pricing_skus_master';
   const STORAGE_KEY_GEMINI = 'pmg_gemini_key';
 
-  // ─── DEFAULT BENCHMARK SKUs (SARAWAK / KUCHING RETAIL PHARMACY) ─────────────
-  const DEFAULT_SKUS = [
-    // ── Chronic Medications (NCD) ──
-    {
-      id: 'sku-01',
-      category: 'Chronic / NCD',
-      code: '104322',
-      name: "JANUMET XR 100/1000MG TAB 28'S",
-      brand: 'MSD',
-      supplier: 'Zuellig Pharma',
-      costPrice: 98.50,
-      standardSp: 118.00,
-      currentBranchSp: 118.00,
-      supermarketPrice: null, // Supermarkets don't sell POM
-      chainPharmacyPrice: 122.00,
-      competitorName: 'Caring / Alpro',
-      strategyTag: 'core_rx',
-      elasticity: 'Inelastic',
-      notes: 'Prescription staple. High patient loyalty; tie in with HbA1c & kidney monitoring to defend volume.'
-    },
-    {
-      id: 'sku-02',
-      category: 'Chronic / NCD',
-      code: '101684',
-      name: "NORVASC 5MG TAB 30'S",
-      brand: 'Pfizer / Viatris',
-      supplier: 'Zuellig Pharma',
-      costPrice: 36.00,
-      standardSp: 48.00,
-      currentBranchSp: 48.00,
-      supermarketPrice: null,
-      chainPharmacyPrice: 49.50,
-      competitorName: 'BIG / Guardian',
-      strategyTag: 'core_rx',
-      elasticity: 'Inelastic',
-      notes: 'Offer generic Amlodipine 5mg (Cost RM 4.50, SP RM 15.00) as 70% margin alternative for budget-conscious.'
-    },
-    {
-      id: 'sku-03',
-      category: 'Chronic / NCD',
-      code: '105112',
-      name: "FORXIGA 10MG TAB 28'S",
-      brand: 'AstraZeneca',
-      supplier: 'DKSH',
-      costPrice: 125.00,
-      standardSp: 148.00,
-      currentBranchSp: 149.00,
-      supermarketPrice: null,
-      chainPharmacyPrice: 152.00,
-      competitorName: 'Alpro Pharmacy',
-      strategyTag: 'core_rx',
-      elasticity: 'Moderate',
-      notes: 'Cardiorenal-metabolic anchor. Standardize at RM 148.00 across all 7 outlets.'
-    },
-    {
-      id: 'sku-04',
-      category: 'Chronic / NCD',
-      code: '102219',
-      name: "LIPITOR 20MG TAB 30'S",
-      brand: 'Pfizer / Viatris',
-      supplier: 'Zuellig Pharma',
-      costPrice: 82.00,
-      standardSp: 105.00,
-      currentBranchSp: 106.00,
-      supermarketPrice: null,
-      chainPharmacyPrice: 109.00,
-      competitorName: 'Caring Pharmacy',
-      strategyTag: 'core_rx',
-      elasticity: 'Inelastic',
-      notes: 'Lipid control. Bundle with CoQ10 100mg to prevent statin-induced myopathy (high margin bundle).'
-    },
-    {
-      id: 'sku-05',
-      category: 'Chronic / NCD',
-      code: '101340',
-      name: "GLUCOPHAGE XR 500MG TAB 100'S",
-      brand: 'Merck Serono',
-      supplier: 'Zuellig Pharma',
-      costPrice: 42.00,
-      standardSp: 55.00,
-      currentBranchSp: 55.00,
-      supermarketPrice: null,
-      chainPharmacyPrice: 58.00,
-      competitorName: 'Local Independent',
-      strategyTag: 'core_rx',
-      elasticity: 'Inelastic',
-      notes: 'First-line Metformin. High monthly replenishment repeat rate.'
-    },
-
-    // ── Over-The-Counter (OTC) & Fast Moving ──
-    {
-      id: 'sku-06',
-      category: 'OTC / Analgesic',
-      code: '201102',
-      name: "PANADOL ACTIFAST 500MG 20'S",
-      brand: 'Haleon',
-      supplier: 'DKSH',
-      costPrice: 11.20,
-      standardSp: 13.90,
-      currentBranchSp: 14.50,
-      supermarketPrice: 13.50,
-      chainPharmacyPrice: 14.20,
-      competitorName: 'Farley / Emart',
-      strategyTag: 'kvi_defensive',
-      elasticity: 'Highly Elastic',
-      notes: '⚠️ Supermarket Traffic Loss Leader. Must standardize at RM 13.90 across all 7 outlets to stop price-gouging perception.'
-    },
-    {
-      id: 'sku-07',
-      category: 'OTC / Analgesic',
-      code: '201105',
-      name: "PANADOL OPTIZORB 500MG 20'S",
-      brand: 'Haleon',
-      supplier: 'DKSH',
-      costPrice: 9.50,
-      standardSp: 11.90,
-      currentBranchSp: 12.20,
-      supermarketPrice: 11.50,
-      chainPharmacyPrice: 12.50,
-      competitorName: 'Farley / H&L',
-      strategyTag: 'kvi_defensive',
-      elasticity: 'Highly Elastic',
-      notes: 'Match within RM 0.40 of Farley. Keep on front counter beside payment POS.'
-    },
-    {
-      id: 'sku-08',
-      category: 'OTC / Analgesic',
-      code: '101357',
-      name: "UPHAMOL 650MG STRIP (10X10'S)",
-      brand: 'Duopharma',
-      supplier: 'Apex Pharmacy',
-      costPrice: 16.50,
-      standardSp: 22.90,
-      currentBranchSp: 23.50,
-      supermarketPrice: null,
-      chainPharmacyPrice: 24.50,
-      competitorName: 'Watsons / Guardian',
-      strategyTag: 'core_rx',
-      elasticity: 'Moderate',
-      notes: 'Good alternative to Panadol with better margin (27.9%).'
-    },
-    {
-      id: 'sku-09',
-      category: 'OTC / Fast Moving',
-      code: '203301',
-      name: "GAVISCON DOUBLE ACTION LIQUID 150ML",
-      brand: 'Reckitt',
-      supplier: 'DKSH',
-      costPrice: 19.80,
-      standardSp: 25.90,
-      currentBranchSp: 26.50,
-      supermarketPrice: 26.50,
-      chainPharmacyPrice: 26.90,
-      competitorName: 'Watsons / Emart',
-      strategyTag: 'core_rx',
-      elasticity: 'Moderate',
-      notes: 'Gastric & GERD fast relief. Beat supermarket by RM 0.60; display prominently in GI shelf.'
-    },
-    {
-      id: 'sku-10',
-      category: 'OTC / Fast Moving',
-      code: '204118',
-      name: "DIFFLAM AB SORE THROAT LOZENGES ORANGE 16'S",
-      brand: 'iNova',
-      supplier: 'DKSH',
-      costPrice: 8.40,
-      standardSp: 11.50,
-      currentBranchSp: 11.90,
-      supermarketPrice: 11.80,
-      chainPharmacyPrice: 12.50,
-      competitorName: 'Guardian / CS',
-      strategyTag: 'core_rx',
-      elasticity: 'Moderate',
-      notes: 'Antiseptic throat lozenge. High impulse buy item during flu season.'
-    },
-    {
-      id: 'sku-11',
-      category: 'OTC / Fast Moving',
-      code: '205520',
-      name: "HURIX'S 600 FLU COUGH SYRUP 100ML",
-      brand: 'Hurixs',
-      supplier: 'Advance Pharma',
-      costPrice: 7.20,
-      standardSp: 9.90,
-      currentBranchSp: 10.20,
-      supermarketPrice: 9.60,
-      chainPharmacyPrice: 10.20,
-      competitorName: 'Farley / Everrise',
-      strategyTag: 'kvi_defensive',
-      elasticity: 'High',
-      notes: 'Popular local herbal syrup. Keep within RM 9.90.'
-    },
-
-    // ── Vitamins & Wellness Supplements ──
-    {
-      id: 'sku-12',
-      category: 'Vitamins & Health',
-      code: '301145',
-      name: "FLAVETTES EFFERVESCENT VIT C + ZINC GLOW 30'S",
-      brand: 'Duopharma',
-      supplier: 'Apex Pharmacy',
-      costPrice: 29.50,
-      standardSp: 42.90,
-      currentBranchSp: 44.90,
-      supermarketPrice: 43.90,
-      chainPharmacyPrice: 45.90,
-      competitorName: 'Watsons / Guardian',
-      strategyTag: 'core_rx',
-      elasticity: 'Moderate',
-      notes: 'Skin glow & immunity. Strong seller in Metrocity & Matang Jaya among female professionals.'
-    },
-    {
-      id: 'sku-13',
-      category: 'Vitamins & Health',
-      code: '301149',
-      name: "CEBION VITAMIN C 1000MG ORANGE 30'S",
-      brand: 'P&G',
-      supplier: 'Zuellig Pharma',
-      costPrice: 27.00,
-      standardSp: 38.90,
-      currentBranchSp: 39.90,
-      supermarketPrice: 39.50,
-      chainPharmacyPrice: 41.50,
-      competitorName: 'Farley / Caring',
-      strategyTag: 'core_rx',
-      elasticity: 'Moderate',
-      notes: 'Heritage vitamin C brand in Sarawak.'
-    },
-    {
-      id: 'sku-14',
-      category: 'Vitamins & Health',
-      code: '102384',
-      name: "BLACKMORES OMEGA-3 FISH OIL 1000MG (2X200'S)",
-      brand: 'Blackmores',
-      supplier: 'DKSH',
-      costPrice: 72.00,
-      standardSp: 108.00,
-      currentBranchSp: 112.00,
-      supermarketPrice: null,
-      chainPharmacyPrice: 118.00,
-      competitorName: 'Caring / Alpro',
-      strategyTag: 'core_rx',
-      elasticity: 'Moderate',
-      notes: 'Family cardiovascular protection. 33.3% margin.'
-    },
-    {
-      id: 'sku-15',
-      category: 'Vitamins & Health',
-      code: 'HB-001',
-      name: "⭐ PMG PRO-DEFENSE VITAMIN C 1000MG + ZINC 30'S (HOUSE BRAND)",
-      brand: 'PMG Healthcare',
-      supplier: 'PMG HQ Central Warehouse',
-      costPrice: 12.00,
-      standardSp: 26.90,
-      currentBranchSp: 26.90,
-      supermarketPrice: null,
-      chainPharmacyPrice: null,
-      competitorName: 'Exclusive to PMG',
-      strategyTag: 'margin_builder',
-      elasticity: 'Shielded (Exclusive)',
-      notes: '💎 55.4% GROSS MARGIN! Train counter staff to recommend when customer asks for Flavettes or Redoxon.'
-    },
-    {
-      id: 'sku-16',
-      category: 'Vitamins & Health',
-      code: 'HB-002',
-      name: "⭐ PMG HIGH POTENCY DEEP SEA OMEGA-3 1200MG 100'S",
-      brand: 'PMG Healthcare',
-      supplier: 'PMG HQ Central Warehouse',
-      costPrice: 28.00,
-      standardSp: 65.00,
-      currentBranchSp: 65.00,
-      supermarketPrice: null,
-      chainPharmacyPrice: null,
-      competitorName: 'Exclusive to PMG',
-      strategyTag: 'margin_builder',
-      elasticity: 'Shielded (Exclusive)',
-      notes: '💎 56.9% GROSS MARGIN! Pair with BP & Cholesterol check at consultation desk.'
-    },
-
-    // ── Adult & Infant Nutrition (Supermarket War Zone) ──
-    {
-      id: 'sku-17',
-      category: 'Nutrition & Milk',
-      code: '401101',
-      name: "ENSURE GOLD VANILLA 850G",
-      brand: 'Abbott',
-      supplier: 'DKSH',
-      costPrice: 98.50,
-      standardSp: 109.90,
-      currentBranchSp: 112.00,
-      supermarketPrice: 108.90,
-      chainPharmacyPrice: 114.90,
-      competitorName: 'Farley 6th Mile / Emart',
-      strategyTag: 'kvi_defensive',
-      elasticity: 'Extremely Elastic',
-      notes: '⚠️ CRITICAL KVI! Supermarkets (Farley/Emart) sell at 1-3% margin to pull seniors. Match at RM 109.90; win back margin via Calcium/Bone supplements add-on.'
-    },
-    {
-      id: 'sku-18',
-      category: 'Nutrition & Milk',
-      code: '401105',
-      name: "GLUCERNA TRIPLE CARE 850G",
-      brand: 'Abbott',
-      supplier: 'DKSH',
-      costPrice: 114.00,
-      standardSp: 128.00,
-      currentBranchSp: 130.00,
-      supermarketPrice: 126.90,
-      chainPharmacyPrice: 132.00,
-      competitorName: 'Farley / CS',
-      strategyTag: 'kvi_defensive',
-      elasticity: 'Highly Elastic',
-      notes: 'Diabetic meal replacement. Price competitively; give free blood glucose test voucher upon purchase of 2 cans.'
-    },
-    {
-      id: 'sku-19',
-      category: 'Nutrition & Milk',
-      code: '402210',
-      name: "PEDIASURE COMPLETE OHT VANILLA 850G",
-      brand: 'Abbott',
-      supplier: 'DKSH',
-      costPrice: 99.00,
-      standardSp: 111.00,
-      currentBranchSp: 114.00,
-      supermarketPrice: 109.90,
-      chainPharmacyPrice: 115.00,
-      competitorName: 'Emart / Farley',
-      strategyTag: 'kvi_defensive',
-      elasticity: 'Highly Elastic',
-      notes: 'Crucial for young families in Moyan, Samariang, and Malihah. Standardize at RM 111.00.'
-    },
-    {
-      id: 'sku-20',
-      category: 'Nutrition & Milk',
-      code: '405510',
-      name: "DRYPERS WEE WEE DRY MEGA L 62'S",
-      brand: 'Vinda',
-      supplier: 'Vinda Wholesaler',
-      costPrice: 31.00,
-      standardSp: 34.90,
-      currentBranchSp: 36.50,
-      supermarketPrice: 33.50,
-      chainPharmacyPrice: 36.90,
-      competitorName: 'Farley / H&L',
-      strategyTag: 'kvi_defensive',
-      elasticity: 'Extremely Elastic',
-      notes: 'Do NOT overstock. Keep small buffer at RM 34.90. Place teething gel and diaper rash cream right above diapers.'
-    },
-
-    // ── Diagnostics & Equipment (Clinical Moat) ──
-    {
-      id: 'sku-21',
-      category: 'Diagnostics & Devices',
-      code: '501102',
-      name: "ACCU-CHEK INSTANT TEST STRIPS 50'S",
-      brand: 'Roche',
-      supplier: 'Roche / DKSH',
-      costPrice: 68.00,
-      standardSp: 88.00,
-      currentBranchSp: 89.00,
-      supermarketPrice: null,
-      chainPharmacyPrice: 92.00,
-      competitorName: 'Caring / Alpro',
-      strategyTag: 'clinical_bundle',
-      elasticity: 'Moderate',
-      notes: '22.7% margin. Bundle with lancets (RM 18) and alcohol swabs (RM 8) for complete home monitoring package.'
-    },
-    {
-      id: 'sku-22',
-      category: 'Diagnostics & Devices',
-      code: '502205',
-      name: "OMRON HEM-7120 BLOOD PRESSURE MONITOR",
-      brand: 'Omron',
-      supplier: 'Yung Hua Heng',
-      costPrice: 135.00,
-      standardSp: 175.00,
-      currentBranchSp: 179.00,
-      supermarketPrice: null,
-      chainPharmacyPrice: 185.00,
-      competitorName: 'Watsons / BIG',
-      strategyTag: 'clinical_bundle',
-      elasticity: 'Low (Quality Driven)',
-      notes: 'Provide free in-store calibration, battery testing, and patient logbook to defeat online shopee/lazada discounters.'
-    }
-  ];
+  // ─── DEFAULT BENCHMARK SKUs (Clean Slate for Area Manager Xilnex Import) ─────
+  const DEFAULT_SKUS = [];
 
   // ─── THE 7 BRANCH SWOT PROFILES (KUCHING & PADAWAN REGION) ───────────────────
   const BRANCH_SWOT_DATA = {
@@ -723,16 +339,20 @@
     loadSkusFromStorage() {
       try {
         const stored = localStorage.getItem(STORAGE_KEY_PRICING_SKUS);
+        const demoPurged = localStorage.getItem('pmg_pricing_demo_purged');
         if (stored) {
           const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            // Ensure every item has supplier attribute even if loaded from older storage format
-            parsed.forEach(p => {
-              if (!p.supplier) {
-                const def = DEFAULT_SKUS.find(d => d.id === p.id || d.code === p.code);
-                p.supplier = def && def.supplier ? def.supplier : 'DKSH / Zuellig';
+          if (Array.isArray(parsed)) {
+            // If the user previously had only demo items ('sku-01' to 'sku-22'), purge them once
+            if (!demoPurged) {
+              const onlyDemo = parsed.length > 0 && parsed.every(p => p.id && /^sku-\d+$/.test(p.id));
+              if (onlyDemo) {
+                this.skus = [];
+                localStorage.setItem('pmg_pricing_demo_purged', 'true');
+                this.saveSkusToStorage();
+                return;
               }
-            });
+            }
             this.skus = parsed;
             return;
           }
@@ -740,8 +360,7 @@
       } catch (err) {
         console.warn('[PMG Pricing] Could not parse stored SKUs:', err);
       }
-      // Fallback to default benchmark dataset
-      this.skus = JSON.parse(JSON.stringify(DEFAULT_SKUS));
+      this.skus = [];
       this.saveSkusToStorage();
     }
 
@@ -753,15 +372,21 @@
       }
     }
 
-    resetToDefaults() {
-      if (confirm('Reset all SKU prices and benchmarks to Area Manager factory standards?')) {
-        this.skus = JSON.parse(JSON.stringify(DEFAULT_SKUS));
-        this.saveSkusToStorage();
-        this.render();
-        if (typeof showExpiryToast === 'function') {
-          showExpiryToast('Restored 7-branch factory benchmark pricing data.');
-        }
+    clearAllSkus(confirmUser = true) {
+      if (confirmUser && !confirm('Are you sure you want to clear all SKUs in the Pricing Matrix? You can then import your fresh Xilnex item list.')) {
+        return;
       }
+      this.skus = [];
+      localStorage.setItem('pmg_pricing_demo_purged', 'true');
+      this.saveSkusToStorage();
+      this.render();
+      if (typeof showExpiryToast === 'function') {
+        showExpiryToast('Pricing matrix cleared. Ready for Xilnex CSV import.');
+      }
+    }
+
+    resetToDefaults() {
+      this.clearAllSkus(true);
     }
 
     // ─── CALCULATE MARGIN ───────────────────────────────────────────────────────
@@ -864,6 +489,263 @@
       }
     }
 
+    // ─── XILNEX CSV PARSER & IMPORT ENGINE ───────────────────────────────────────
+    parseCsv(text) {
+      const lines = [];
+      let row = [];
+      let field = '';
+      let inQuotes = false;
+      const cleanText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+      for (let i = 0; i < cleanText.length; i++) {
+        const char = cleanText[i];
+        const nextChar = cleanText[i + 1];
+
+        if (char === '"') {
+          if (inQuotes && nextChar === '"') {
+            field += '"';
+            i++; // skip next quote
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if ((char === ',' || char === '\t') && !inQuotes) {
+          row.push(field.trim());
+          field = '';
+        } else if (char === '\n' && !inQuotes) {
+          row.push(field.trim());
+          if (row.some(f => f.length > 0)) {
+            lines.push(row);
+          }
+          row = [];
+          field = '';
+        } else {
+          field += char;
+        }
+      }
+      if (field || row.length > 0) {
+        row.push(field.trim());
+        if (row.some(f => f.length > 0)) lines.push(row);
+      }
+      return lines;
+    }
+
+    cleanNumber(val) {
+      if (!val) return 0;
+      const cleaned = String(val).replace(/[^0-9.-]/g, '');
+      const num = parseFloat(cleaned);
+      return isNaN(num) ? 0 : num;
+    }
+
+    detectXilnexColumns(headerRow) {
+      const mapping = {
+        code: -1,
+        name: -1,
+        brand: -1,
+        category: -1,
+        cost: -1,
+        price: -1,
+        supplier: -1,
+        supermarket: -1,
+        chain: -1
+      };
+
+      headerRow.forEach((rawCol, idx) => {
+        const col = rawCol.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (mapping.code === -1 && (col === 'itemcode' || col === 'code' || col === 'barcode' || col === 'itembarcode' || col === 'sku' || col === 'productcode' || col === 'itemno')) {
+          mapping.code = idx;
+        } else if (mapping.name === -1 && (col === 'description' || col === 'itemdescription' || col === 'itemname' || col === 'name' || col === 'productname' || col === 'itemdesc')) {
+          mapping.name = idx;
+        } else if (mapping.brand === -1 && (col === 'brand' || col === 'brandname' || col === 'principal' || col === 'manufacturer' || col === 'mfg')) {
+          mapping.brand = idx;
+        } else if (mapping.category === -1 && (col === 'category' || col === 'group' || col === 'department' || col === 'itemgroup' || col === 'itemtype' || col === 'type' || col === 'dept')) {
+          mapping.category = idx;
+        } else if (mapping.cost === -1 && (col === 'cost' || col === 'costprice' || col === 'basecost' || col === 'unitcost' || col === 'avgcost' || col === 'averagecost' || col === 'standardcost' || col === 'stdcost' || col === 'lastcost' || col === 'purchaseprice' || col === 'buyprice')) {
+          mapping.cost = idx;
+        } else if (mapping.price === -1 && (col === 'sellingprice' || col === 'price' || col === 'normalprice' || col === 'normalsellingprice' || col === 'retailprice' || col === 'standardprice' || col === 'sp' || col === 'unitprice' || col === 'rsp' || col === 'srp')) {
+          mapping.price = idx;
+        } else if (mapping.supplier === -1 && (col === 'supplier' || col === 'suppliername' || col === 'vendor' || col === 'vendorname' || col === 'preferredvendor' || col === 'distributor')) {
+          mapping.supplier = idx;
+        } else if (mapping.supermarket === -1 && (col.includes('supermarket') || col.includes('farley') || col.includes('emart'))) {
+          mapping.supermarket = idx;
+        } else if (mapping.chain === -1 && (col.includes('chain') || col.includes('watsons') || col.includes('guardian') || col.includes('alpro') || col.includes('competitor'))) {
+          mapping.chain = idx;
+        }
+      });
+
+      return mapping;
+    }
+
+    processXilnexCsvText(csvText, filename = '') {
+      const rows = this.parseCsv(csvText);
+      if (rows.length < 2) {
+        alert('The uploaded file does not contain enough data rows.');
+        return null;
+      }
+
+      const headers = rows[0];
+      const mapping = this.detectXilnexColumns(headers);
+
+      if (mapping.name === -1 && mapping.code === -1) {
+        alert('Could not detect Product Description or Item Code in CSV headers. Please ensure the CSV contains columns like "Description" or "ItemCode".');
+        return null;
+      }
+
+      const parsedSkus = [];
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r];
+        if (!row || row.length === 0 || !row.some(c => c.trim())) continue;
+
+        const code = mapping.code !== -1 ? (row[mapping.code] || '').trim() : `XIL-${r}`;
+        const name = mapping.name !== -1 ? (row[mapping.name] || '').trim() : (code || `Item ${r}`);
+        if (!name && !code) continue;
+
+        const brand = mapping.brand !== -1 ? (row[mapping.brand] || 'General').trim() : 'General';
+        const category = mapping.category !== -1 ? (row[mapping.category] || 'General OTC').trim() : 'General OTC';
+        const cost = mapping.cost !== -1 ? this.cleanNumber(row[mapping.cost]) : 0;
+        const sp = mapping.price !== -1 ? this.cleanNumber(row[mapping.price]) : 0;
+        const supplier = mapping.supplier !== -1 ? (row[mapping.supplier] || 'Standard Distributor').trim() : 'Standard Distributor';
+        const supermarket = mapping.supermarket !== -1 ? this.cleanNumber(row[mapping.supermarket]) : null;
+        const chain = mapping.chain !== -1 ? this.cleanNumber(row[mapping.chain]) : null;
+
+        // Auto assign strategic role based on initial gross margin
+        let strategyTag = 'core_rx';
+        if (cost > 0 && sp > 0) {
+          const m = ((sp - cost) / sp) * 100;
+          if (m >= 45) strategyTag = 'margin_builder';
+          else if (m < 15) strategyTag = 'kvi_defensive';
+        }
+
+        parsedSkus.push({
+          id: 'xilnex-' + (code ? code.replace(/[^a-zA-Z0-9_-]/g, '_') : Date.now() + '-' + r),
+          code: code || 'N/A',
+          name: name.toUpperCase(),
+          brand: brand || 'General',
+          category: category || 'General OTC',
+          supplier: supplier || 'Standard Distributor',
+          costPrice: cost,
+          standardSp: sp,
+          currentBranchSp: sp,
+          supermarketPrice: supermarket,
+          chainPharmacyPrice: chain,
+          competitorName: 'Local Competitors',
+          strategyTag,
+          elasticity: 'Moderate',
+          notes: `Imported from Xilnex${filename ? ' (' + filename + ')' : ''}`
+        });
+      }
+
+      this.pendingXilnexSkus = parsedSkus;
+      this.pendingXilnexMapping = { headers, mapping };
+      return parsedSkus;
+    }
+
+    applyXilnexImport(mode = 'replace') {
+      if (!this.pendingXilnexSkus || this.pendingXilnexSkus.length === 0) {
+        alert('No parsed Xilnex SKUs to import.');
+        return;
+      }
+
+      if (mode === 'replace') {
+        this.skus = [...this.pendingXilnexSkus];
+      } else {
+        // Merge & update existing by code
+        const existingMap = new Map();
+        this.skus.forEach(s => existingMap.set(s.code, s));
+
+        this.pendingXilnexSkus.forEach(newSku => {
+          if (newSku.code && newSku.code !== 'N/A' && existingMap.has(newSku.code)) {
+            const ex = existingMap.get(newSku.code);
+            ex.costPrice = newSku.costPrice;
+            ex.standardSp = newSku.standardSp;
+            ex.currentBranchSp = newSku.standardSp;
+            if (newSku.supplier) ex.supplier = newSku.supplier;
+            if (newSku.category) ex.category = newSku.category;
+            if (newSku.brand) ex.brand = newSku.brand;
+            if (newSku.name) ex.name = newSku.name;
+          } else {
+            this.skus.push(newSku);
+          }
+        });
+      }
+
+      localStorage.setItem('pmg_pricing_demo_purged', 'true');
+      this.saveSkusToStorage();
+      this.render();
+
+      if (typeof showExpiryToast === 'function') {
+        showExpiryToast(`Successfully imported ${this.pendingXilnexSkus.length} SKUs into Pricing Matrix.`);
+      }
+
+      this.pendingXilnexSkus = null;
+    }
+
+    // ─── EXPORT BACKUP CSV & JSON ──────────────────────────────────────────────
+    exportBackupCsv() {
+      if (this.skus.length === 0) {
+        alert('Pricing matrix is empty. Nothing to export.');
+        return;
+      }
+      let csv = "Item Code,Description,Brand,Category,Supplier,Cost Price (RM),Standard Area SP (RM),Gross Margin %,Supermarket Benchmark (RM),Competitor Chain Benchmark (RM),Strategic Role,Notes\n";
+      this.skus.forEach(s => {
+        const margin = this.calculateMargin(s.costPrice, s.standardSp);
+        const escapeCsv = (str) => `"${String(str || '').replace(/"/g, '""')}"`;
+        csv += [
+          escapeCsv(s.code),
+          escapeCsv(s.name),
+          escapeCsv(s.brand),
+          escapeCsv(s.category),
+          escapeCsv(s.supplier),
+          s.costPrice.toFixed(2),
+          s.standardSp.toFixed(2),
+          margin + '%',
+          s.supermarketPrice ? s.supermarketPrice.toFixed(2) : '',
+          s.chainPharmacyPrice ? s.chainPharmacyPrice.toFixed(2) : '',
+          escapeCsv(s.strategyTag),
+          escapeCsv(s.notes)
+        ].join(',') + '\n';
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const filename = `PMG_Pricing_Master_Backup_${new Date().toISOString().slice(0, 10)}.csv`;
+      if (window.saveAs) {
+        window.saveAs(blob, filename);
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+      }
+      if (typeof showExpiryToast === 'function') {
+        showExpiryToast('Exported Pricing Master CSV Backup.');
+      }
+    }
+
+    exportBackupJson() {
+      if (this.skus.length === 0) {
+        alert('Pricing matrix is empty. Nothing to export.');
+        return;
+      }
+      const dataStr = JSON.stringify({
+        exportedAt: new Date().toISOString(),
+        author: 'Area Manager William Chai',
+        outlets: ['Kota Sentosa', 'Matang Jaya', 'Sungai Moyan', 'Malihah', 'Metrocity', 'Astana', 'Samariang'],
+        skus: this.skus
+      }, null, 2);
+
+      const blob = new Blob([dataStr], { type: 'application/json;charset=utf-8;' });
+      const filename = `PMG_Pricing_Master_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+      if (window.saveAs) {
+        window.saveAs(blob, filename);
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+      }
+    }
+
     // ─── UI RENDER MAIN ─────────────────────────────────────────────────────────
     render() {
       this.renderSummaryCards();
@@ -905,14 +787,40 @@
       const filtered = this.getFilteredSkus();
 
       if (filtered.length === 0) {
-        tbody.innerHTML = `
-          <tr>
-            <td colspan="8" class="text-center py-8 text-gray-400 text-xs">
-              <i class="fa-solid fa-box-open text-2xl mb-2 text-gray-300 block"></i>
-              No SKUs matching the current filter. Try adjusting your search query or category.
-            </td>
-          </tr>
-        `;
+        if (this.skus.length === 0) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="8" class="text-center py-12 text-gray-500 bg-white">
+                <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-3 text-2xl shadow-xs">
+                  <i class="fa-solid fa-file-csv"></i>
+                </div>
+                <h4 class="font-bold text-base text-gray-900 mb-1">Pricing Matrix Ready for Xilnex Import</h4>
+                <p class="text-xs text-gray-500 max-w-md mx-auto mb-4 leading-relaxed">
+                  Default placeholder SKUs have been removed. Click <b>Import Xilnex CSV</b> to upload your live inventory item list, or add custom SKUs manually.
+                </p>
+                <div class="flex items-center justify-center gap-3">
+                  <button type="button" onclick="openXilnexImportModal()"
+                    class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center gap-2 shadow-xs">
+                    <i class="fa-solid fa-upload"></i> Import Xilnex CSV
+                  </button>
+                  <button type="button" onclick="openAddSkuModal()"
+                    class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center gap-2">
+                    <i class="fa-solid fa-plus"></i> + Add Manually
+                  </button>
+                </div>
+              </td>
+            </tr>
+          `;
+        } else {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="8" class="text-center py-8 text-gray-400 text-xs bg-white">
+                <i class="fa-solid fa-box-open text-2xl mb-2 text-gray-300 block"></i>
+                No SKUs matching the current filter. Try adjusting your search query or category.
+              </td>
+            </tr>
+          `;
+        }
         return;
       }
 

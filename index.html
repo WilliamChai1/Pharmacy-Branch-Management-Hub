@@ -1069,19 +1069,29 @@
           </div>
 
           <div class="flex items-center gap-2 flex-wrap">
+            <button type="button" onclick="openXilnexImportModal()"
+              class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-2xs"
+              title="Upload PMG Xilnex Item List CSV/Excel Export">
+              <i class="fa-solid fa-file-csv"></i> Import Xilnex CSV
+            </button>
             <button type="button" onclick="openAddSkuModal()"
               class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-2xs">
-              <i class="fa-solid fa-plus-circle"></i> + Add Custom SKU
+              <i class="fa-solid fa-plus-circle"></i> + Add SKU
+            </button>
+            <button type="button" onclick="window.pmgPricing.exportBackupCsv()"
+              class="bg-slate-700 hover:bg-slate-800 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-2xs"
+              title="Download Pricing Matrix CSV Backup to save to OneDrive">
+              <i class="fa-solid fa-cloud-arrow-down"></i> Backup CSV
             </button>
             <button type="button" onclick="window.pmgPricing.exportPriceMemo()"
               class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-2xs"
               title="Download standardized price directive memo for all 7 branch managers">
-              <i class="fa-solid fa-file-export"></i> Export 7-Branch Price Memo
+              <i class="fa-solid fa-file-export"></i> Export Memo
             </button>
-            <button type="button" onclick="window.pmgPricing.resetToDefaults()"
-              class="text-gray-500 hover:text-gray-700 text-xs px-2.5 py-1.5 rounded border border-gray-300 transition"
-              title="Reset SKUs to Area Manager factory benchmarks">
-              <i class="fa-solid fa-rotate-left"></i> Reset
+            <button type="button" onclick="window.pmgPricing.clearAllSkus()"
+              class="text-rose-600 hover:bg-rose-50 text-xs px-2.5 py-1.5 rounded border border-rose-300 font-semibold transition"
+              title="Clear all SKUs in Pricing Matrix to start fresh">
+              <i class="fa-solid fa-trash-can"></i> Clear All
             </button>
           </div>
         </div>
@@ -4802,6 +4812,112 @@ Date visit: 06.01.2026
   </div>
 </div>
 
+<!-- Modal 3: Import PMG Xilnex Item List CSV -->
+<div id="modalXilnexImport" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs hidden p-4">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in duration-150 border border-indigo-200">
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-indigo-900 via-blue-900 to-slate-900 text-white px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-amber-300 text-lg">
+          <i class="fa-solid fa-file-csv"></i>
+        </div>
+        <div>
+          <h3 class="font-bold text-base">Import PMG Xilnex Item List</h3>
+          <p class="text-xs text-indigo-200">Upload CSV / Excel export from Xilnex POS with automatic column mapping</p>
+        </div>
+      </div>
+      <button type="button" onclick="closeXilnexImportModal()" class="text-white/80 hover:text-white text-lg p-1">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <!-- Content -->
+    <div class="p-5 overflow-y-auto space-y-4 text-xs flex-1">
+      <!-- File upload dropzone -->
+      <div id="xilnexDropZone" onclick="document.getElementById('xilnexFileInput').click()"
+        class="border-2 border-dashed border-indigo-300 hover:border-indigo-500 bg-indigo-50/40 hover:bg-indigo-50 rounded-2xl p-6 text-center cursor-pointer transition">
+        <input type="file" id="xilnexFileInput" accept=".csv,.txt,.tsv" class="hidden" onchange="handleXilnexFileSelect(event)">
+        <i class="fa-solid fa-cloud-arrow-up text-3xl text-indigo-600 mb-2 block"></i>
+        <div class="font-bold text-gray-800 text-sm mb-1">Click to select or drag &amp; drop Xilnex CSV file</div>
+        <p class="text-[11px] text-gray-500">Supports standard Xilnex Item List, Price Book, or Inventory CSV exports</p>
+      </div>
+
+      <!-- Or paste text toggle -->
+      <div>
+        <div class="flex justify-between items-center mb-1">
+          <label class="font-bold text-gray-700">Or Paste CSV / Tabular Text directly:</label>
+          <span class="text-[11px] text-gray-400">Header row required (e.g. ItemCode, Description, Cost, Price...)</span>
+        </div>
+        <textarea id="xilnexPasteText" rows="4" placeholder="Paste Xilnex exported rows here...
+ItemCode,Description,Brand,Category,Cost,SellingPrice,Supplier
+101684,NORVASC 5MG TAB 30'S,Pfizer,Chronic,36.00,48.00,Zuellig Pharma"
+          class="w-full border border-gray-300 rounded-xl p-3 font-mono text-[11px] focus:ring-2 focus:ring-indigo-400 outline-none bg-slate-50/50"></textarea>
+        <div class="mt-1 flex justify-end">
+          <button type="button" onclick="handleXilnexPasteParse()" class="px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold rounded-lg text-xs transition">
+            <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Parse Pasted CSV
+          </button>
+        </div>
+      </div>
+
+      <!-- Preview Container -->
+      <div id="xilnexPreviewArea" class="hidden space-y-3 pt-3 border-t">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <div class="font-bold text-emerald-800 text-xs flex items-center gap-1.5">
+            <i class="fa-solid fa-circle-check text-emerald-600"></i>
+            <span id="xilnexPreviewCountBadge">0 SKUs ready to import</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <label class="flex items-center gap-1.5 cursor-pointer font-bold text-gray-700">
+              <input type="radio" name="xilnexImportMode" value="replace" checked>
+              <span>Replace All (Clean Start)</span>
+            </label>
+            <label class="flex items-center gap-1.5 cursor-pointer font-bold text-gray-700">
+              <input type="radio" name="xilnexImportMode" value="merge">
+              <span>Merge &amp; Update Existing</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Detected Columns Pill Summary -->
+        <div id="xilnexColumnPills" class="bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-[11px] text-gray-600 flex flex-wrap gap-1.5">
+          <!-- Filled dynamically -->
+        </div>
+
+        <!-- Scrollable mini preview table -->
+        <div class="border border-gray-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
+          <table class="w-full text-left text-[11px]">
+            <thead class="bg-gray-100 font-bold text-gray-700 sticky top-0">
+              <tr>
+                <th class="p-2">Code</th>
+                <th class="p-2">Description</th>
+                <th class="p-2">Brand</th>
+                <th class="p-2 text-right">Cost (RM)</th>
+                <th class="p-2 text-right">SP (RM)</th>
+                <th class="p-2 text-right">Margin %</th>
+                <th class="p-2">Supplier</th>
+              </tr>
+            </thead>
+            <tbody id="xilnexPreviewTbody" class="divide-y divide-gray-100 font-mono">
+              <!-- Preview rows -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="p-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+      <button type="button" onclick="closeXilnexImportModal()" class="px-4 py-2 text-xs font-bold text-gray-600 hover:text-gray-800">
+        Cancel
+      </button>
+      <button id="xilnexConfirmImportBtn" type="button" onclick="confirmXilnexImport()" disabled
+        class="px-5 py-2.5 text-xs font-bold bg-gray-300 text-gray-500 cursor-not-allowed rounded-xl transition flex items-center gap-2 shadow-xs">
+        <i class="fa-solid fa-cloud-arrow-down"></i> Confirm &amp; Import SKUs into Hub
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════════════════════════════════════════════════════════════════════
      SCRIPTS (load order matters: data → auth → modules)
 ══════════════════════════════════════════════════════════════════════════════ -->
@@ -4943,6 +5059,127 @@ function handleAddSkuSubmit(e) {
 function closePricingAiModal() {
   const m = document.getElementById('pricingAiModal');
   if (m) m.classList.add('hidden');
+}
+
+// ─── XILNEX IMPORT MODAL HELPERS ──────────────────────────────────────────
+function openXilnexImportModal() {
+  const m = document.getElementById('modalXilnexImport');
+  if (m) m.classList.remove('hidden');
+  const preview = document.getElementById('xilnexPreviewArea');
+  if (preview) preview.classList.add('hidden');
+  const confirmBtn = document.getElementById('xilnexConfirmImportBtn');
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.className = 'px-5 py-2.5 text-xs font-bold bg-gray-300 text-gray-500 cursor-not-allowed rounded-xl transition flex items-center gap-2 shadow-xs';
+  }
+}
+
+function closeXilnexImportModal() {
+  const m = document.getElementById('modalXilnexImport');
+  if (m) m.classList.add('hidden');
+  const fileInput = document.getElementById('xilnexFileInput');
+  if (fileInput) fileInput.value = '';
+}
+
+function handleXilnexFileSelect(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target.result;
+    renderXilnexParsedPreview(text, file.name);
+  };
+  reader.readAsText(file);
+}
+
+function handleXilnexPasteParse() {
+  const text = document.getElementById('xilnexPasteText')?.value || '';
+  if (!text.trim()) {
+    alert('Please paste CSV text or item list rows first.');
+    return;
+  }
+  renderXilnexParsedPreview(text, 'pasted_text.csv');
+}
+
+function renderXilnexParsedPreview(csvText, filename) {
+  if (!window.pmgPricing) return;
+  const parsedSkus = window.pmgPricing.processXilnexCsvText(csvText, filename);
+  if (!parsedSkus || parsedSkus.length === 0) {
+    alert('No valid product rows could be recognized. Please make sure the header row contains at least Description or ItemCode, Cost, and Selling Price.');
+    return;
+  }
+
+  const previewArea = document.getElementById('xilnexPreviewArea');
+  const countBadge = document.getElementById('xilnexPreviewCountBadge');
+  const columnPills = document.getElementById('xilnexColumnPills');
+  const tbody = document.getElementById('xilnexPreviewTbody');
+  const confirmBtn = document.getElementById('xilnexConfirmImportBtn');
+
+  if (countBadge) {
+    countBadge.textContent = `${parsedSkus.length} SKUs recognized from ${filename || 'file'}`;
+  }
+
+  // Display mapped columns pill
+  if (columnPills && window.pmgPricing.pendingXilnexMapping) {
+    const { headers, mapping } = window.pmgPricing.pendingXilnexMapping;
+    const pill = (label, colIdx) => {
+      const colName = colIdx !== -1 ? headers[colIdx] : 'Not mapped';
+      const color = colIdx !== -1 ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-gray-100 text-gray-400 border-gray-200';
+      return `<span class="px-2 py-0.5 rounded border text-[10px] font-bold ${color}">${label}: ${colName}</span>`;
+    };
+    columnPills.innerHTML = `
+      <span class="font-bold text-gray-700 mr-1 flex items-center gap-1"><i class="fa-solid fa-code-compare text-indigo-600"></i> Auto-mapped Columns:</span>
+      ${pill('Item Code', mapping.code)}
+      ${pill('Description', mapping.desc)}
+      ${pill('Brand', mapping.brand)}
+      ${pill('Category', mapping.category)}
+      ${pill('Cost (RM)', mapping.cost)}
+      ${pill('Selling Price (RM)', mapping.price)}
+      ${pill('Supplier', mapping.supplier)}
+    `;
+  }
+
+  // Populate first 15 preview rows
+  if (tbody) {
+    const previewList = parsedSkus.slice(0, 15);
+    tbody.innerHTML = previewList.map(s => {
+      const margin = s.standardSp > 0 ? (((s.standardSp - s.costPrice) / s.standardSp) * 100).toFixed(1) : '0.0';
+      return `
+        <tr class="hover:bg-slate-50 text-[11px]">
+          <td class="p-2 font-bold text-blue-900">${s.code}</td>
+          <td class="p-2 font-sans font-medium text-gray-800 max-w-[200px] truncate" title="${s.name}">${s.name}</td>
+          <td class="p-2 font-sans text-gray-600">${s.brand || '-'}</td>
+          <td class="p-2 text-right font-bold text-gray-700">RM ${s.costPrice.toFixed(2)}</td>
+          <td class="p-2 text-right font-bold text-blue-700">RM ${s.standardSp.toFixed(2)}</td>
+          <td class="p-2 text-right font-bold ${parseFloat(margin) >= 30 ? 'text-emerald-700' : 'text-amber-700'}">${margin}%</td>
+          <td class="p-2 font-sans text-gray-500">${s.supplier || '-'}</td>
+        </tr>
+      `;
+    }).join('');
+    if (parsedSkus.length > 15) {
+      tbody.innerHTML += `
+        <tr class="bg-gray-50 text-gray-500 italic text-[11px]">
+          <td colspan="7" class="p-2 text-center font-sans font-semibold">... and ${parsedSkus.length - 15} more SKUs ready for import</td>
+        </tr>
+      `;
+    }
+  }
+
+  if (previewArea) previewArea.classList.remove('hidden');
+  if (confirmBtn) {
+    confirmBtn.disabled = false;
+    confirmBtn.className = 'px-5 py-2.5 text-xs font-bold bg-indigo-700 hover:bg-indigo-800 text-white cursor-pointer rounded-xl transition flex items-center gap-2 shadow-sm';
+  }
+}
+
+function confirmXilnexImport() {
+  if (!window.pmgPricing) return;
+  const modeRadio = document.querySelector('input[name="xilnexImportMode"]:checked');
+  const mode = modeRadio ? modeRadio.value : 'replace';
+
+  window.pmgPricing.applyXilnexImport(mode);
+  closeXilnexImportModal();
 }
 
 // ─── PWA INSTALLATION SUPPORT ─────────────────────────────────────────────────
