@@ -14,6 +14,73 @@
   let activeReturnForCn = null;
   let dbInstance = null;
 
+  // ─── SUPPLIER & WAREHOUSE DESTINATION PRESETS ─────────────────────────────────
+  const DESTINATION_PRESETS = [
+    {
+      name: 'SSJ PHARMA SDN BHD',
+      companyName: 'SSJ PHARMA SDN BHD',
+      address: 'LOT 1374, BLOCK 7, MUARA TEBAS LAND DISTRICT, DEMAK LAUT INDUSTRIAL PARK, 93050 KUCHING, SARAWAK.',
+      attn: 'Returns Dept / Mr. Tan',
+      phone: '082-432888'
+    },
+    {
+      name: 'DKSH MALAYSIA SDN BHD',
+      companyName: 'DKSH MALAYSIA SDN BHD',
+      address: 'LOT 848, BLOCK 7, MUARA TEBAS LAND DISTRICT, DEMAK LAUT INDUSTRIAL PARK, 93050 KUCHING, SARAWAK.',
+      attn: 'Credit Note & Returns Dept',
+      phone: '082-433100'
+    },
+    {
+      name: 'ZUELLIG PHARMA SDN BHD',
+      companyName: 'ZUELLIG PHARMA SDN BHD',
+      address: 'SUB LOT 1 & 2, LOT 1378, SECTION 66, KTLD, JALAN MERBAU, PENDING INDUSTRIAL ESTATE, 93450 KUCHING, SARAWAK.',
+      attn: 'Customer Service / Returns',
+      phone: '082-333111'
+    },
+    {
+      name: 'APEX PHARMACY MARKETING SDN BHD',
+      companyName: 'APEX PHARMACY MARKETING SDN BHD',
+      address: 'SUBLOT 12, LOT 758, BLOCK 8, MUARA TEBAS LAND DISTRICT, DEMAK LAUT INDUSTRIAL PARK, 93050 KUCHING, SARAWAK.',
+      attn: 'Returns Dept',
+      phone: '082-432168'
+    },
+    {
+      name: 'SUNWARD PHARMACEUTICAL (M) SDN BHD',
+      companyName: 'SUNWARD PHARMACEUTICAL (M) SDN BHD',
+      address: 'SARAWAK BRANCH WAREHOUSE, KUCHING, SARAWAK.',
+      attn: 'Returns Section',
+      phone: ''
+    },
+    {
+      name: 'DUOPHARMA (M) SENDIRIAN BERHAD',
+      companyName: 'DUOPHARMA (M) SENDIRIAN BERHAD',
+      address: 'KUCHING REGIONAL DISTRIBUTION CENTRE, SARAWAK.',
+      attn: 'Returns Dept',
+      phone: ''
+    },
+    {
+      name: 'KOTRA PHARMA (M) SDN BHD',
+      companyName: 'KOTRA PHARMA (M) SDN BHD',
+      address: 'SARAWAK DEPOT / LOGISTICS WAREHOUSE, KUCHING, SARAWAK.',
+      attn: 'Credit Note Dept',
+      phone: ''
+    },
+    {
+      name: 'PHARMANIAGA LOGISTICS SDN BHD',
+      companyName: 'PHARMANIAGA LOGISTICS SDN BHD',
+      address: 'LOT 1024, BLOCK 7, DEMAK LAUT INDUSTRIAL PARK, 93050 KUCHING, SARAWAK.',
+      attn: 'Returns & Inbound Receiving',
+      phone: '082-439900'
+    },
+    {
+      name: 'PMG CENTRAL WAREHOUSE / HQ',
+      companyName: 'PMG HEALTHCARE SDN BHD (CENTRAL WAREHOUSE)',
+      address: 'PMG PHARMACY CENTRAL DISTRIBUTION WAREHOUSE, SARAWAK.',
+      attn: 'Warehouse Manager / Stock Returns',
+      phone: '082-888999'
+    }
+  ];
+
   // ─── INITIAL SEED DATA (Includes User's Sample) ────────────────────────────────
   const SEED_RETURNS = [
     {
@@ -24,7 +91,11 @@
       companyName: 'PMG PHARMACY (LUNDU) SDN BHD',
       companyAddress: 'NO.20, LUNDU BAZAAR, PEKAN LUNDU, 94500, SARAWAK.',
       date: '29.06.2026',
-      supplier: 'INTAS / SANDOZ',
+      supplier: 'SSJ PHARMA SDN BHD',
+      destCompany: 'SSJ PHARMA SDN BHD',
+      destAddress: 'LOT 1374, BLOCK 7, MUARA TEBAS LAND DISTRICT, DEMAK LAUT INDUSTRIAL PARK, 93050 KUCHING, SARAWAK.',
+      destAttn: 'Returns Dept / Mr. Tan',
+      destPhone: '082-432888',
       totalCartons: 1,
       status: 'awaiting_cn', // 'pending_pickup', 'awaiting_cn', 'completed'
       verifiedBy: 'Branch Pharmacist',
@@ -32,7 +103,7 @@
       pickupDate: '29.06.2026',
       signedProof: {
         fileName: 'DO_LND_2609_001_Signed_Proof.pdf',
-        path: 'LUNDU/2026/06 - June/Returns_DO/INTAS_SANDOZ/DO_LND_2609_001_Signed_Proof.pdf',
+        path: 'LUNDU/2026/06 - June/Returns_DO/SSJ_PHARMA/DO_LND_2609_001_Signed_Proof.pdf',
         timestamp: '2026-06-29T10:15:00.000Z'
       },
       cnNumber: '',
@@ -76,6 +147,10 @@
       companyAddress: 'NO. 102 & 103, GROUND FLOOR, SENTOSA PARADE, 7TH MILE, JALAN PENRISSEN, 93250 KUCHING, SARAWAK.',
       date: '24.09.2026',
       supplier: 'DKSH MALAYSIA',
+      destCompany: 'DKSH MALAYSIA SDN BHD',
+      destAddress: 'LOT 848, BLOCK 7, MUARA TEBAS LAND DISTRICT, DEMAK LAUT INDUSTRIAL PARK, 93050 KUCHING, SARAWAK.',
+      destAttn: 'Credit Note & Returns Dept',
+      destPhone: '082-433100',
       totalCartons: 2,
       status: 'pending_pickup',
       verifiedBy: 'Ting Kwang Yu',
