@@ -708,20 +708,20 @@
           return { success: false, reason: 'BRANCH_DIR_ERROR' };
         }
 
-        // 1. Year folder (e.g., '2026')
-        const yearStr = doMeta.year ? String(doMeta.year) : String(new Date().getFullYear());
-        const yearDir = await branchDir.getDirectoryHandle(yearStr, { create: true });
+        // 1. Dedicated DO folder at branch root level (e.g., 'KOTA SENTOSA / DO')
+        const doRoot = await branchDir.getDirectoryHandle('DO', { create: true });
 
-        // 2. Month folder (e.g., '09 - September')
+        // 2. Year folder under DO (e.g., '2026')
+        const yearStr = doMeta.year ? String(doMeta.year) : String(new Date().getFullYear());
+        const yearDir = await doRoot.getDirectoryHandle(yearStr, { create: true });
+
+        // 3. Month folder under DO (e.g., '09 - September')
         const monthStr = doMeta.monthFolder || this._formatCurrentMonthString();
         const monthDir = await yearDir.getDirectoryHandle(monthStr, { create: true });
 
-        // 3. Category folder: 'Returns_DO'
-        const catDir = await monthDir.getDirectoryHandle('Returns_DO', { create: true });
-
         // 4. Vendor folder: clean vendor name (e.g. 'DKSH', 'Sandoz', 'Intas')
         const vendorFolder = (doMeta.vendor || 'General').replace(/[<>:"/\\|?*]/g, '').trim() || 'General';
-        const vendorDir = await catDir.getDirectoryHandle(vendorFolder, { create: true });
+        const vendorDir = await monthDir.getDirectoryHandle(vendorFolder, { create: true });
 
         // 5. Safe file name with DO Number prefix
         const cleanDoNo = (doMeta.doNumber || 'DO').replace(/[<>:"/\\|?*]/g, '_');
@@ -733,14 +733,14 @@
         await writable.write(file);
         await writable.close();
 
-        const relPath = `${bFolder}/${yearStr}/${monthStr}/Returns_DO/${vendorFolder}/${finalFileName}`;
+        const relPath = `${bFolder}/DO/${yearStr}/${monthStr}/${vendorFolder}/${finalFileName}`;
         console.log(`[PMG OneDrive Sync] Successfully saved Signed DO to OneDrive: ${relPath}`);
 
         this._recordDocumentUpload({
           branch: bFolder,
           year: yearStr,
           month: monthStr,
-          category: 'Returns_DO',
+          category: 'DO',
           vendor: vendorFolder,
           fileName: finalFileName,
           docNumber: doMeta.doNumber || '',
@@ -754,7 +754,7 @@
           branch: bFolder,
           year: yearStr,
           month: monthStr,
-          category: 'Returns_DO',
+          category: 'DO',
           vendor: vendorFolder,
           fileName: finalFileName
         };
