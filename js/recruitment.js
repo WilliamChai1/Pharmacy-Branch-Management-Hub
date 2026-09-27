@@ -1,0 +1,1700 @@
+// js/recruitment.js — PMG HR Recruitment & Applicant Management Module
+// Area Manager (William Chai) only. Integrates with Patient Care schedule (KS).
+'use strict';
+
+(() => {
+// ─────────────────────────────────────────────────────────────────────────────
+// CONSTANTS & STORAGE KEYS
+// ─────────────────────────────────────────────────────────────────────────────
+const REC_KEY         = 'pmg_recruitment_apps_v1';
+const REC_SLOTS_KEY   = 'pmg_recruitment_slots_v1';
+const REC_SETTINGS_KEY= 'pmg_recruitment_settings_v1';
+const MAX_FILE_MB     = 15;
+
+const POSITIONS = [
+  { value: 'pharmacist', label: 'Pharmacist (Ahli Farmasi)' },
+  { value: 'pharmacy_assistant', label: 'Pharmacy Assistant (Pembantu Farmasi)' },
+  { value: 'nutritionist', label: 'Nutritionist (Pakar Pemakanan)' },
+  { value: 'dietitian', label: 'Dietitian (Dietitian)' },
+  { value: 'cashier', label: 'Cashier / Counter Staff' },
+  { value: 'management_trainee', label: 'Management Trainee' },
+];
+
+const BRANCHES_APPLY = [
+  'PMG Pharmacy Kota Sentosa',
+  'PMG Pharmacy Matang Jaya',
+  'PMG Pharmacy Sungai Moyan',
+  'PMG Pharmacy Malihah',
+  'PMG Pharmacy Metrocity',
+  'PMG Pharmacy Astana',
+  'PMG Pharmacy Samariang',
+  'Any / Flexible',
+];
+
+const STATUS_META = {
+  new:       { label: 'New Application',        color: 'bg-blue-100 text-blue-700',   icon: 'fa-inbox' },
+  reviewing: { label: 'Under AI Review',         color: 'bg-amber-100 text-amber-700', icon: 'fa-robot' },
+  shortlist: { label: 'Shortlisted',             color: 'bg-emerald-100 text-emerald-700', icon: 'fa-check-circle' },
+  invited:   { label: 'Interview Invited',        color: 'bg-purple-100 text-purple-700', icon: 'fa-calendar-check' },
+  rejected:  { label: 'Not Suitable',            color: 'bg-red-100 text-red-700',     icon: 'fa-times-circle' },
+  hired:     { label: 'Hired',                   color: 'bg-teal-100 text-teal-700',   icon: 'fa-user-check' },
+};
+
+// KS pharmacist schedule (William Chai) — Mon-Fri 8H, Sat 4H, Sun off
+// Interview slots are auto-excluded if Patient Care calendar is booked on that time
+const WILLIAM_SCHEDULE = { 0: null, 1:'0800-1700', 2:'0800-1700', 3:'0800-1700', 4:'0800-1700', 5:'0800-1700', 6:'0800-1200' };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+function genId() { return 'APP-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2,5).toUpperCase(); }
+function now() { return new Date().toISOString(); }
+function fmtDate(iso) { if (!iso) return '—'; const d = new Date(iso); return d.toLocaleDateString('en-MY',{day:'2-digit',month:'short',year:'numeric'}); }
+function fmtDateTime(iso) { if (!iso) return '—'; const d = new Date(iso); return d.toLocaleDateString('en-MY',{day:'2-digit',month:'short',year:'numeric'})+' '+d.toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit'}); }
+function sanitize(str) { return (str||'').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function el(id) { return document.getElementById(id); }
+function toast(msg, type='info') {
+  const t = document.createElement('div');
+  const colors = { info:'bg-blue-700', success:'bg-emerald-700', error:'bg-red-700', warn:'bg-amber-600' };
+  t.className = `fixed bottom-6 right-4 z-[9999] px-4 py-3 rounded-xl text-white text-sm font-semibold shadow-2xl flex items-center gap-2 transition-all ${colors[type]||colors.info}`;
+  t.innerHTML = `<i class="fa-solid ${type==='success'?'fa-check-circle':type==='error'?'fa-triangle-exclamation':'fa-circle-info'}"></i> ${sanitize(msg)}`;
+  document.body.appendChild(t);
+  setTimeout(()=>{ t.style.opacity='0'; setTimeout(()=>t.remove(),400); }, 3200);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STORAGE
+// ─────────────────────────────────────────────────────────────────────────────
+function loadApps() { try { return JSON.parse(localStorage.getItem(REC_KEY)||'[]'); } catch { return []; } }
+function saveApps(apps) {
+  localStorage.setItem(REC_KEY, JSON.stringify(apps));
+  // Auto-backup to OneDrive if connected
+  try {
+    if (window.pmgOneDrive && typeof window.pmgOneDrive.saveRecruitmentToOneDrive === 'function') {
+      window.pmgOneDrive.saveRecruitmentToOneDrive(apps);
+    }
+  } catch(e) {}
+}
+function loadSlots() { try { return JSON.parse(localStorage.getItem(REC_SLOTS_KEY)||'[]'); } catch { return []; } }
+function saveSlots(slots) { localStorage.setItem(REC_SLOTS_KEY, JSON.stringify(slots)); }
+function loadSettings() {
+  const def = { geminiKey: '', geminiModel: 'gemini-1.5-flash-8b', appointmentLink: '', notes: '' };
+  try { return { ...def, ...JSON.parse(localStorage.getItem(REC_SETTINGS_KEY)||'{}') }; } catch { return def; }
+}
+function saveSettings(s) { localStorage.setItem(REC_SETTINGS_KEY, JSON.stringify(s)); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FILE HANDLING — Base64 encode files for OneDrive backup metadata
+// ─────────────────────────────────────────────────────────────────────────────
+async function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ONEDRIVE BACKUP — write recruitment data to OneDrive RECRUITMENT folder
+// This extends onedrive-sync.js via a monkey-patch attached here
+// ─────────────────────────────────────────────────────────────────────────────
+function patchOneDriveWithRecruitment() {
+  if (!window.pmgOneDrive) { window.pmgOneDrive = {}; }
+  window.pmgOneDrive.saveRecruitmentToOneDrive = async function(apps) {
+    try {
+      const { dirHandle } = window.pmgOneDrive;
+      if (!dirHandle) return;
+      let recDir;
+      try { recDir = await dirHandle.getDirectoryHandle('RECRUITMENT', { create: true }); }
+      catch { return; }
+      // Save JSON summary (no file blobs — blobs saved separately on upload)
+      const summary = apps.map(a => ({
+        id: a.id, name: a.name, position: a.position, status: a.status,
+        appliedAt: a.appliedAt, aiScore: a.aiScore, aiVerdict: a.aiVerdict,
+        phone: a.phone, email: a.email, preferredBranch: a.preferredBranch,
+        spm: a.spm, highestQual: a.highestQual, cgpa: a.cgpa,
+      }));
+      const fh = await recDir.getFileHandle('recruitment_summary.json', { create: true });
+      const w  = await fh.createWritable();
+      await w.write(JSON.stringify(summary, null, 2));
+      await w.close();
+    } catch(e) { console.warn('[Recruitment] OneDrive backup skipped:', e.message); }
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI EVALUATION via Gemini
+// ─────────────────────────────────────────────────────────────────────────────
+const GEMINI_MODELS = {
+  lite:    { id: 'gemini-1.5-flash-8b',  label: 'Gemini Flash-Lite (Quick Screen)' },
+  flash:   { id: 'gemini-1.5-flash',     label: 'Gemini 3.5 Flash (Deep Eval)' },
+};
+
+async function runAiEvaluation(app, apiKey, modelKey = 'flash') {
+  const model = GEMINI_MODELS[modelKey]?.id || GEMINI_MODELS.flash.id;
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  // Build SPM analysis section
+  const spmRaw = app.spm || '';
+  const spmSummary = spmRaw ? `SPM Results: ${spmRaw}` : 'SPM Results: Not provided';
+
+  const prompt = `You are an experienced HR manager for PUBLIC MEDICARE GROUP (PMG) pharmacy chain in Kuching, Sarawak, Malaysia. You are helping Area Manager pharmacist William Chai screen job applicants.
+
+IMPORTANT CONTEXT:
+- This is a community pharmacy in Sarawak, East Malaysia
+- Local Kuching universities (e.g., Cyberjaya College Kuching, UNIMAS, Curtin Sarawak) are generally BELOW international standards. Do NOT overweight a high CGPA from these institutions.
+- SPM (Malaysian O-Level equivalent) results are often a BETTER indicator of fundamental aptitude than local university GPA. Pay careful attention to SPM grades, especially for Sciences (Biology, Chemistry, Additional Mathematics) and English.
+- For Pharmacy Assistant roles: SPM is the PRIMARY qualification. 3Bs and above in relevant subjects is very good.
+- For Pharmacist roles: Must have Board of Pharmacy (BPharm) degree + valid APC (Annual Practising Certificate) from Malaysia Pharmacy Board.
+- For Nutritionist/Dietitian: Must have relevant degree; local diploma applicants should be evaluated cautiously.
+- Sarawak demographics: Many staff are Iban, Bidayuh, Chinese, Malay. Multi-language ability (Malay, English, local dialects) is a bonus.
+- Ability to travel between 7 branches and do shift work is important.
+- 3-year contract is standard. Candidates mentioning plans to leave (govt job waiting) should be flagged as HIGH RISK.
+
+APPLICANT PROFILE:
+- Name: ${app.name}
+- Position Applied: ${app.position}
+- Age: ${app.age || '?'}, Gender: ${app.gender || '?'}, Race: ${app.race || '?'}
+- Marital Status: ${app.maritalStatus || '?'}
+- Religion: ${app.religion || '?'}
+- IC/NRIC: ${app.ic || '?'}
+- Phone: ${app.phone || '?'}
+- Address: ${app.address || '?'}
+- Preferred Branch: ${app.preferredBranch || '?'}
+- Willing to Travel: ${app.willingToTravel || '?'}
+
+EDUCATION:
+- ${spmSummary}
+- Highest Qualification: ${app.highestQual || '?'}
+- Institution: ${app.institution || '?'}
+- CGPA/Grade: ${app.cgpa || '?'}
+- Additional certs: ${app.additionalCerts || 'None stated'}
+
+WORK EXPERIENCE:
+${app.workHistory || 'No work history provided.'}
+
+LANGUAGE PROFICIENCY:
+${app.languages || 'Not specified'}
+
+SCREENING QUESTIONNAIRE (HR/RECRUITMENT/001/2023):
+- Transport/Driving: ${app.hasTransport || '?'} | License: ${app.drivingLicense || '?'}
+- Able to travel branches: ${app.ableToTravel || '?'}
+- Smokes/Vapes: ${app.smokes || '?'}
+- Health issues: ${app.healthIssues || '?'}
+- Recent surgery (6 months): ${app.recentSurgery || '?'}
+- Depression medication: ${app.depressionMeds || '?'}
+- Height/Weight: ${app.height||'?'}/${app.weight||'?'}
+- Can do shift work: ${app.canDoShift || '?'}
+- Accept 3-year contract: ${app.accept3yr || '?'}
+- Future study/govt job plan: ${app.futurePlan || '?'}
+
+HEALTH & INTERESTS:
+- Mental/physical illness declared: ${app.healthDeclaration || 'No'}
+- Female applicant expecting: ${app.expecting || 'N/A'}
+- Professional Membership: ${app.professionalMembership || 'None'}
+
+SUPPLEMENTARY:
+- Relatives at PMG: ${app.relativesAtPmg || 'No'}
+- Ever dismissed/suspended: ${app.dismissed || 'No'}
+- Ever convicted: ${app.convicted || 'No'}
+
+EMERGENCY CONTACT: ${app.emergencyContact || '?'}
+
+FAMILY BACKGROUND: ${app.familyBackground || 'Not provided'}
+
+REFERENCES:
+${app.references || 'Not provided'}
+
+Please provide a structured JSON evaluation with these exact keys:
+{
+  "score": <integer 0-100>,
+  "verdict": "<Highly Recommended | Recommended | Borderline | Not Recommended>",
+  "strengths": ["<point 1>", "<point 2>", ...],
+  "concerns": ["<concern 1>", ...],
+  "spmAnalysis": "<detailed analysis of SPM results and what they indicate about aptitude>",
+  "qualificationRisk": "<assessment of whether local university CGPA is reliable indicator>",
+  "retentionRisk": "<Low | Medium | High — based on 3-year contract commitment, govt job plans, etc.>",
+  "interviewQuestions": ["<suggested Q1>", "<suggested Q2>", "<suggested Q3>", "<suggested Q4>", "<suggested Q5>"],
+  "summary": "<2-3 sentence overall assessment for William Chai to read quickly>"
+}
+
+Return ONLY valid JSON. No markdown, no extra text.`;
+
+  const resp = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 1500 } }),
+  });
+
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`Gemini API error ${resp.status}: ${err.slice(0,200)}`);
+  }
+
+  const data = await resp.json();
+  const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  // Strip possible markdown fences
+  const clean = raw.replace(/^```json?\s*/i,'').replace(/```\s*$/,'').trim();
+  return JSON.parse(clean);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INTERVIEW SLOT HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+function getAvailableSlots(dateStr) {
+  // dateStr: YYYY-MM-DD
+  const d = new Date(dateStr);
+  const dow = d.getDay(); // 0=Sun
+  const sched = WILLIAM_SCHEDULE[dow];
+  if (!sched) return []; // Sunday = off
+
+  // Generate slots: 30-min blocks within working hours, skip lunch 1230-1330
+  const [startH, endH] = sched.split('-').map(t => parseInt(t.slice(0,2))*60 + parseInt(t.slice(2)));
+  const slots = [];
+  for (let t = startH + 30; t <= endH - 30; t += 30) { // start 30 min after clock-in
+    const h = Math.floor(t/60), m = t%60;
+    const lbl = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    // Skip lunch
+    if (t >= 12*60+30 && t < 13*60+30) continue;
+    // Skip already booked
+    const booked = loadSlots().some(s => s.date === dateStr && s.time === lbl && s.confirmed);
+    if (!booked) slots.push(lbl);
+  }
+  return slots;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APPLICATION FORM RENDER (PUBLIC LINK VIEW)
+// ─────────────────────────────────────────────────────────────────────────────
+function renderPublicForm() {
+  const container = el('recruitmentPublicFormArea');
+  if (!container) return;
+
+  container.innerHTML = `
+<div class="max-w-2xl mx-auto">
+  <div class="bg-gradient-to-r from-blue-900 to-blue-700 rounded-xl p-5 mb-5 text-white">
+    <div class="flex items-center gap-3 mb-2">
+      <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+        <i class="fa-solid fa-hospital-user text-white text-xl"></i>
+      </div>
+      <div>
+        <p class="text-xs font-semibold text-blue-200 uppercase tracking-wide">PUBLIC MEDICARE GROUP SDN BHD (898870-V)</p>
+        <h2 class="text-base font-bold">Job Application Form — East Malaysia Branches</h2>
+      </div>
+    </div>
+    <p class="text-xs text-blue-200">HR/RECRUITMENT/001/2023 · Please fill in ALL fields accurately. False information may result in disqualification.</p>
+  </div>
+
+  <form id="recPublicForm" class="space-y-5" onsubmit="window.pmgRecruitment.submitPublicForm(event)">
+
+    <!-- SECTION 1: POSITION -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-briefcase text-blue-600"></i> Position Applied</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="rec-label">Position / Jawatan *</label>
+          <select name="position" required class="rec-input">
+            <option value="">— Select Position —</option>
+            ${POSITIONS.map(p=>`<option value="${p.value}">${p.label}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="rec-label">Preferred Branch / Cawangan Pilihan *</label>
+          <select name="preferredBranch" required class="rec-input">
+            <option value="">— Select Branch —</option>
+            ${BRANCHES_APPLY.map(b=>`<option value="${b}">${b}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 2: PERSONAL DATA -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-id-card text-blue-600"></i> Personal Data / Maklumat Peribadi</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="sm:col-span-2">
+          <label class="rec-label">Full Name (Underline Surname) / Nama Penuh *</label>
+          <input type="text" name="name" required class="rec-input" placeholder="e.g. CHAI YEE SIAN">
+        </div>
+        <div>
+          <label class="rec-label">Gender / Jantina *</label>
+          <select name="gender" required class="rec-input">
+            <option value="">—</option>
+            <option>Male / Lelaki</option>
+            <option>Female / Perempuan</option>
+          </select>
+        </div>
+        <div>
+          <label class="rec-label">Marital Status / Status Perkahwinan *</label>
+          <select name="maritalStatus" required class="rec-input">
+            <option value="">—</option>
+            <option>Single / Bujang</option>
+            <option>Married / Berkahwin</option>
+            <option>Divorced / Bercerai</option>
+            <option>Widowed / Balu</option>
+          </select>
+        </div>
+        <div>
+          <label class="rec-label">NRIC / Passport No. *</label>
+          <input type="text" name="ic" required class="rec-input" placeholder="e.g. 030904-13-1234">
+        </div>
+        <div>
+          <label class="rec-label">Date of Birth / Tarikh Lahir *</label>
+          <input type="date" name="dob" required class="rec-input">
+        </div>
+        <div>
+          <label class="rec-label">Age / Umur *</label>
+          <input type="number" name="age" required min="17" max="65" class="rec-input" placeholder="e.g. 23">
+        </div>
+        <div>
+          <label class="rec-label">Race / Bangsa *</label>
+          <input type="text" name="race" required class="rec-input" placeholder="e.g. Iban, Bidayuh, Chinese, Malay">
+        </div>
+        <div>
+          <label class="rec-label">Religion / Agama</label>
+          <input type="text" name="religion" class="rec-input" placeholder="e.g. Christian, Islam, Buddhism">
+        </div>
+        <div>
+          <label class="rec-label">Citizenship / Warganegara *</label>
+          <select name="citizenship" required class="rec-input">
+            <option>Malaysian</option>
+            <option>Permanent Resident</option>
+            <option>Others</option>
+          </select>
+        </div>
+        <div>
+          <label class="rec-label">Place of Birth / Tempat Lahir</label>
+          <input type="text" name="placeOfBirth" class="rec-input" placeholder="e.g. Hospital KK, Sabah">
+        </div>
+        <div>
+          <label class="rec-label">IC Colour / Warna IC</label>
+          <select name="icColour" class="rec-input">
+            <option>Blue / Biru (Malaysian)</option>
+            <option>Red / Merah (PR)</option>
+            <option>Others</option>
+          </select>
+        </div>
+        <div class="sm:col-span-2">
+          <label class="rec-label">Home Address / Alamat Rumah *</label>
+          <textarea name="address" required rows="2" class="rec-input" placeholder="Full address including postcode and state"></textarea>
+        </div>
+        <div>
+          <label class="rec-label">Contact No. / No. Telefon *</label>
+          <input type="tel" name="phone" required class="rec-input" placeholder="e.g. 011-12345678">
+        </div>
+        <div>
+          <label class="rec-label">Email Address</label>
+          <input type="email" name="email" class="rec-input" placeholder="e.g. name@gmail.com">
+        </div>
+        <div>
+          <label class="rec-label">Height / Ketinggian (cm)</label>
+          <input type="number" name="height" min="100" max="220" class="rec-input" placeholder="e.g. 165">
+        </div>
+        <div>
+          <label class="rec-label">Weight / Berat (kg)</label>
+          <input type="number" name="weight" min="30" max="200" class="rec-input" placeholder="e.g. 55">
+        </div>
+        <div>
+          <label class="rec-label">Driving License / Lesen Memandu</label>
+          <select name="drivingLicense" class="rec-input">
+            <option value="No">No / Tidak</option>
+            <option value="Yes - Class D">Yes - Class D (Car)</option>
+            <option value="Yes - Class B2">Yes - Class B2 (Motorcycle)</option>
+            <option value="Yes - Both">Yes - Both / Kedua-dua</option>
+          </select>
+        </div>
+        <div>
+          <label class="rec-label">EPF No.</label>
+          <input type="text" name="epfNo" class="rec-input" placeholder="Optional">
+        </div>
+        <div>
+          <label class="rec-label">SOCSO No.</label>
+          <input type="text" name="socsoNo" class="rec-input" placeholder="Optional">
+        </div>
+        <div>
+          <label class="rec-label">Income Tax File No.</label>
+          <input type="text" name="taxNo" class="rec-input" placeholder="Optional">
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 3: EMERGENCY CONTACT -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-phone-alt text-red-500"></i> Emergency Contact / Kenalan Kecemasan</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div><label class="rec-label">Name / Nama *</label><input type="text" name="ecName" required class="rec-input"></div>
+        <div><label class="rec-label">Relationship / Hubungan *</label><input type="text" name="ecRelation" required class="rec-input" placeholder="e.g. Father, Mother, Spouse"></div>
+        <div><label class="rec-label">Contact No. *</label><input type="tel" name="ecPhone" required class="rec-input"></div>
+        <div><label class="rec-label">Address / Alamat</label><input type="text" name="ecAddress" class="rec-input"></div>
+      </div>
+    </div>
+
+    <!-- SECTION 4: FAMILY -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-users text-indigo-500"></i> Family Particulars / Maklumat Keluarga</h3>
+      <p class="text-xs text-gray-500 mb-3">List immediate family members (parents, siblings, spouse, children).</p>
+      <div id="recFamilyRows">
+        ${[0,1,2].map(i=>`
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+          <input type="text" name="famName${i}" class="rec-input text-xs" placeholder="Name">
+          <input type="text" name="famRelation${i}" class="rec-input text-xs" placeholder="Relation">
+          <input type="number" name="famAge${i}" class="rec-input text-xs" placeholder="Age">
+          <input type="text" name="famOccupation${i}" class="rec-input text-xs" placeholder="Occupation">
+        </div>`).join('')}
+      </div>
+      <button type="button" onclick="window.pmgRecruitment.addFamilyRow()" class="text-xs text-blue-600 hover:underline mt-1">+ Add more family members</button>
+    </div>
+
+    <!-- SECTION 5: EDUCATIONAL BACKGROUND -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-graduation-cap text-amber-600"></i> Educational Background / Latar Belakang Pendidikan</h3>
+
+      <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3 text-xs text-amber-800">
+        <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+        <strong>SPM is important!</strong> Please list ALL SPM subjects and grades clearly. This helps us evaluate your aptitude accurately.
+      </div>
+
+      <div class="mb-3">
+        <label class="rec-label">SPM Results (List all subjects & grades) / Keputusan SPM *</label>
+        <textarea name="spm" required rows="3" class="rec-input font-mono text-xs" placeholder="e.g. BM: A, BI: B+, Matematik: B, Add Math: C+, Biology: B, Chemistry: B, Physics: C&#10;Year: 2020, School: SMK Tabuan Jaya, Kuching"></textarea>
+      </div>
+
+      <table class="w-full text-xs mb-2 border border-gray-200 rounded-lg overflow-hidden">
+        <thead class="bg-gray-50 text-gray-600">
+          <tr>
+            <th class="p-2 text-left">From</th><th class="p-2 text-left">To</th>
+            <th class="p-2 text-left">School / Institution</th>
+            <th class="p-2 text-left">Certificate / Degree & CGPA</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${[0,1,2,3].map(i=>`
+          <tr class="border-t border-gray-100">
+            <td class="p-1"><input type="text" name="eduFrom${i}" class="rec-input text-xs" placeholder="Year"></td>
+            <td class="p-1"><input type="text" name="eduTo${i}" class="rec-input text-xs" placeholder="Year"></td>
+            <td class="p-1"><input type="text" name="eduInst${i}" class="rec-input text-xs" placeholder="Institution name"></td>
+            <td class="p-1"><input type="text" name="eduCert${i}" class="rec-input text-xs" placeholder="e.g. Diploma Healthcare, CGPA 3.74"></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+        <div>
+          <label class="rec-label">Highest Qualification *</label>
+          <select name="highestQual" required class="rec-input">
+            <option value="">—</option>
+            <option>SPM / O-Level</option>
+            <option>STPM / A-Level</option>
+            <option>Certificate</option>
+            <option>Diploma</option>
+            <option>Advanced Diploma</option>
+            <option>Bachelor Degree</option>
+            <option>Master / PhD</option>
+          </select>
+        </div>
+        <div>
+          <label class="rec-label">Main Institution Name</label>
+          <input type="text" name="institution" class="rec-input" placeholder="e.g. Cyberjaya College Kuching">
+        </div>
+        <div>
+          <label class="rec-label">CGPA / Final Grade</label>
+          <input type="text" name="cgpa" class="rec-input" placeholder="e.g. 3.74 or Credit">
+        </div>
+      </div>
+
+      <div class="mt-3">
+        <label class="rec-label">Professional Membership / Keahlian Profesional</label>
+        <input type="text" name="professionalMembership" class="rec-input" placeholder="e.g. Malaysian Pharmacy Board APC No. 12345, Dietitians Association Malaysia">
+      </div>
+
+      <div class="mt-3">
+        <label class="rec-label">Additional Certifications / Sijil Tambahan</label>
+        <input type="text" name="additionalCerts" class="rec-input" placeholder="e.g. BLS, First Aid, DOSM halal cert, etc.">
+      </div>
+    </div>
+
+    <!-- SECTION 6: LANGUAGE PROFICIENCY -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-language text-purple-600"></i> Language Proficiency / Kemahiran Bahasa</h3>
+      <div class="overflow-x-auto">
+        <table class="text-xs w-full border border-gray-200 rounded-lg overflow-hidden">
+          <thead class="bg-gray-50 text-gray-600">
+            <tr>
+              <th class="p-2 text-left">Language</th>
+              <th class="p-2 text-center" colspan="3">Written / Bertulis</th>
+              <th class="p-2 text-center" colspan="3">Spoken / Lisan</th>
+            </tr>
+            <tr class="text-[10px]">
+              <th></th>
+              <th class="p-1 text-center">Excellent</th><th class="p-1 text-center">Good</th><th class="p-1 text-center">Average</th>
+              <th class="p-1 text-center">Excellent</th><th class="p-1 text-center">Good</th><th class="p-1 text-center">Average</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${['Malay / BM','English / BI','Mandarin','Iban','Bidayuh','Others'].map(lang=>`
+            <tr class="border-t border-gray-100">
+              <td class="p-2 font-medium text-gray-700">${lang}</td>
+              ${['wExcel','wGood','wAvg','sExcel','sGood','sAvg'].map(k=>`
+              <td class="p-1 text-center"><input type="checkbox" name="lang_${lang.replace(/[^a-z]/gi,'')}_${k}" class="h-3.5 w-3.5 rounded accent-blue-600"></td>`).join('')}
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- SECTION 7: EMPLOYMENT HISTORY -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-building text-slate-600"></i> Employment History / Sejarah Pekerjaan <span class="text-xs font-normal text-gray-400">(Start with most recent)</span></h3>
+      <div class="overflow-x-auto">
+        <table class="text-xs w-full border border-gray-200 rounded-lg overflow-hidden">
+          <thead class="bg-gray-50 text-gray-600">
+            <tr>
+              <th class="p-2">From</th><th class="p-2">To</th><th class="p-2">Company</th>
+              <th class="p-2">Position</th><th class="p-2">Last Salary (RM)</th>
+              <th class="p-2">Benefits</th><th class="p-2">Reason Leaving</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${[0,1,2,3].map(i=>`
+            <tr class="border-t border-gray-100">
+              <td class="p-1"><input type="text" name="empFrom${i}" class="rec-input text-xs w-16" placeholder="YYYY"></td>
+              <td class="p-1"><input type="text" name="empTo${i}" class="rec-input text-xs w-16" placeholder="YYYY/Present"></td>
+              <td class="p-1"><input type="text" name="empCo${i}" class="rec-input text-xs" placeholder="Company"></td>
+              <td class="p-1"><input type="text" name="empPos${i}" class="rec-input text-xs" placeholder="Position"></td>
+              <td class="p-1"><input type="number" name="empSal${i}" class="rec-input text-xs w-20" placeholder="e.g. 2000"></td>
+              <td class="p-1"><input type="text" name="empBen${i}" class="rec-input text-xs" placeholder="EPF, SOCSO, etc."></td>
+              <td class="p-1"><input type="text" name="empLeave${i}" class="rec-input text-xs" placeholder="Reason"></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+        <div><label class="rec-label">Notice Required</label><input type="text" name="noticeRequired" class="rec-input" placeholder="e.g. 1 month, immediate"></div>
+        <div><label class="rec-label">Expected Salary (RM) / Gaji Diharapkan *</label><input type="number" name="expectedSalary" required class="rec-input" placeholder="e.g. 2500"></div>
+        <div><label class="rec-label">Skills Possessed / Kemahiran</label><input type="text" name="skills" class="rec-input" placeholder="e.g. dispensing, counselling"></div>
+      </div>
+      <div class="mt-3">
+        <label class="rec-label">Technical / IT Knowledge</label>
+        <input type="text" name="itSkills" class="rec-input" placeholder="e.g. Xilnex POS, Microsoft Office, Pharmacy Management System">
+      </div>
+    </div>
+
+    <!-- SECTION 8: HEALTH & INTERESTS -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-heart-pulse text-red-500"></i> Health & Interests / Kesihatan & Minat</h3>
+      <div class="space-y-3">
+        <div>
+          <label class="rec-label">Do you have or have you suffered from any mental illness, physical disability, disease or serious illness?</label>
+          <div class="flex gap-4 mt-1">
+            <label class="flex items-center gap-1 text-sm"><input type="radio" name="healthDeclaration" value="Yes" class="accent-blue-600"> Yes</label>
+            <label class="flex items-center gap-1 text-sm"><input type="radio" name="healthDeclaration" value="No" checked class="accent-blue-600"> No</label>
+          </div>
+          <input type="text" name="healthDeclarationDetail" class="rec-input mt-1 text-xs" placeholder="If yes, please give details">
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="rec-label">Do you smoke or vape? / Adakah anda merokok atau vaping?</label>
+            <select name="smokes" class="rec-input"><option value="No">No</option><option value="Yes">Yes</option><option value="Used to, quit">Used to, quit</option></select>
+          </div>
+          <div>
+            <label class="rec-label">Any health issues? / Ada masalah kesihatan?</label>
+            <input type="text" name="healthIssues" class="rec-input" placeholder="If none, write 'None'">
+          </div>
+          <div>
+            <label class="rec-label">Recent surgery in past 6 months? / Pembedahan 6 bulan lepas?</label>
+            <select name="recentSurgery" class="rec-input"><option value="No">No</option><option value="Yes">Yes</option></select>
+          </div>
+          <div>
+            <label class="rec-label">Taking depression medication? / Ubat kemurungan?</label>
+            <select name="depressionMeds" class="rec-input"><option value="No">No</option><option value="Yes">Yes</option></select>
+          </div>
+        </div>
+        <div class="border-t border-gray-100 pt-3">
+          <p class="text-xs font-semibold text-gray-600 mb-2">Female Applicant Only (Untuk Pemohon Wanita Sahaja):</p>
+          <div class="flex gap-4">
+            <label class="text-xs">Are you expecting / Adakah anda hamil?</label>
+            <label class="flex items-center gap-1 text-xs"><input type="radio" name="expecting" value="No" checked class="accent-blue-600"> No</label>
+            <label class="flex items-center gap-1 text-xs"><input type="radio" name="expecting" value="Yes" class="accent-blue-600"> Yes</label>
+          </div>
+          <input type="text" name="expectingWeeks" class="rec-input mt-1 text-xs" placeholder="If yes, state week number">
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 9: REFERENCES -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-address-book text-indigo-500"></i> References / Rujukan <span class="text-xs font-normal text-gray-400">(Do not include relatives)</span></h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        ${[0,1].map(i=>`
+        <div class="border border-gray-100 rounded-lg p-3">
+          <p class="text-xs font-bold text-gray-500 mb-2">Reference ${i+1}</p>
+          <input type="text" name="ref${i}Name" class="rec-input text-xs mb-2" placeholder="Full Name">
+          <input type="text" name="ref${i}Occ" class="rec-input text-xs mb-2" placeholder="Occupation / Company">
+          <input type="text" name="ref${i}Rel" class="rec-input text-xs mb-2" placeholder="Relation (e.g. Ex-supervisor)">
+          <input type="tel" name="ref${i}Phone" class="rec-input text-xs mb-2" placeholder="Contact No.">
+          <input type="text" name="ref${i}Years" class="rec-input text-xs" placeholder="Years Known">
+        </div>`).join('')}
+      </div>
+    </div>
+
+    <!-- SECTION 10: PMG SCREENING QUESTIONNAIRE -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-clipboard-question text-emerald-600"></i> PMG Screening Questionnaire (HR/RECRUITMENT/001/2023)</h3>
+      <div class="space-y-3">
+        <div>
+          <label class="rec-label">Do you have transport? How do you commute? / Ada kenderaan sendiri? *</label>
+          <input type="text" name="hasTransport" required class="rec-input" placeholder="e.g. Yes, I drive my own car (Class D license)">
+        </div>
+        <div>
+          <label class="rec-label">Are you able to travel to other branches if needed? / Boleh pergi ke cawangan lain? *</label>
+          <div class="flex gap-4 mt-1">
+            <label class="flex items-center gap-1 text-sm"><input type="radio" name="ableToTravel" value="Yes" required class="accent-blue-600"> Yes</label>
+            <label class="flex items-center gap-1 text-sm"><input type="radio" name="ableToTravel" value="No" class="accent-blue-600"> No</label>
+          </div>
+        </div>
+        <div>
+          <label class="rec-label">Can you do shift work? (Morning 7:30AM–3:30PM / Evening 1:30PM–9:30PM) / Boleh buat syif? *</label>
+          <div class="flex gap-4 mt-1">
+            <label class="flex items-center gap-1 text-sm"><input type="radio" name="canDoShift" value="Yes" required class="accent-blue-600"> Yes</label>
+            <label class="flex items-center gap-1 text-sm"><input type="radio" name="canDoShift" value="No" class="accent-blue-600"> No</label>
+            <label class="flex items-center gap-1 text-sm"><input type="radio" name="canDoShift" value="Morning only" class="accent-blue-600"> Morning only</label>
+          </div>
+        </div>
+        <div>
+          <label class="rec-label">Do you accept a 3-year employment contract? / Terima kontrak 3 tahun? *</label>
+          <div class="flex gap-4 mt-1">
+            <label class="flex items-center gap-1 text-sm"><input type="radio" name="accept3yr" value="Yes" required class="accent-blue-600"> Yes</label>
+            <label class="flex items-center gap-1 text-sm"><input type="radio" name="accept3yr" value="No" class="accent-blue-600"> No</label>
+            <label class="flex items-center gap-1 text-sm"><input type="radio" name="accept3yr" value="Negotiable" class="accent-blue-600"> Negotiable</label>
+          </div>
+        </div>
+        <div>
+          <label class="rec-label">Do you have any plans to further study, find another job, or wait for a government offer within 3 years? *</label>
+          <div class="flex gap-4 mt-1">
+            <label class="flex items-center gap-1 text-sm"><input type="radio" name="futurePlan" value="No" required class="accent-blue-600"> No</label>
+            <label class="flex items-center gap-1 text-sm"><input type="radio" name="futurePlan" value="Yes" class="accent-blue-600"> Yes</label>
+          </div>
+          <input type="text" name="futurePlanDetail" class="rec-input mt-1 text-xs" placeholder="If yes, please explain">
+        </div>
+        <div>
+          <label class="rec-label">Willing to work at which specific location? / Lokasi pilihan</label>
+          <input type="text" name="willingToTravel" class="rec-input" placeholder="e.g. Kota Sentosa preferred, willing to help other branches when needed">
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 11: SUPPLEMENTARY -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-circle-info text-slate-500"></i> Supplementary Information / Maklumat Tambahan</h3>
+      <div class="space-y-3">
+        <div>
+          <label class="rec-label">Do you have any relatives or friends employed by PMG?</label>
+          <div class="flex gap-4 mt-1">
+            <label class="flex items-center gap-1 text-sm"><input type="radio" name="relativesAtPmg" value="No" checked class="accent-blue-600"> No</label>
+            <label class="flex items-center gap-1 text-sm"><input type="radio" name="relativesAtPmg" value="Yes" class="accent-blue-600"> Yes</label>
+          </div>
+          <input type="text" name="relativesAtPmgDetail" class="rec-input mt-1 text-xs" placeholder="If yes, please state name and relationship">
+        </div>
+        <div>
+          <label class="rec-label">Have you ever been dismissed or suspended from employment?</label>
+          <div class="flex gap-4 mt-1">
+            <label class="flex items-center gap-1 text-sm"><input type="radio" name="dismissed" value="No" checked class="accent-blue-600"> No</label>
+            <label class="flex items-center gap-1 text-sm"><input type="radio" name="dismissed" value="Yes" class="accent-blue-600"> Yes</label>
+          </div>
+          <input type="text" name="dismissedDetail" class="rec-input mt-1 text-xs" placeholder="If yes, please give details">
+        </div>
+        <div>
+          <label class="rec-label">Have you ever been convicted in a court of law?</label>
+          <div class="flex gap-4 mt-1">
+            <label class="flex items-center gap-1 text-sm"><input type="radio" name="convicted" value="No" checked class="accent-blue-600"> No</label>
+            <label class="flex items-center gap-1 text-sm"><input type="radio" name="convicted" value="Yes" class="accent-blue-600"> Yes</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 12: DOCUMENT UPLOAD -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-file-arrow-up text-blue-600"></i> Document Upload / Muat Naik Dokumen</h3>
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700 mb-3">
+        <i class="fa-solid fa-circle-info mr-1"></i>
+        Accept: PDF, JPG, PNG. Max ${MAX_FILE_MB}MB per file. Upload original scan/photo — not edited copies.
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="rec-label">Recent Passport Photo *</label>
+          <input type="file" name="filePhoto" accept="image/*,.pdf" required class="rec-file-input">
+        </div>
+        <div>
+          <label class="rec-label">NRIC / MyKad (Front & Back) *</label>
+          <input type="file" name="fileIC" accept="image/*,.pdf" required class="rec-file-input" multiple>
+        </div>
+        <div>
+          <label class="rec-label">SPM Result Slip *</label>
+          <input type="file" name="fileSPM" accept="image/*,.pdf" required class="rec-file-input">
+        </div>
+        <div>
+          <label class="rec-label">Diploma / Degree Certificate</label>
+          <input type="file" name="fileDegree" accept="image/*,.pdf" class="rec-file-input" multiple>
+        </div>
+        <div>
+          <label class="rec-label">Transcript / Academic Results</label>
+          <input type="file" name="fileTranscript" accept="image/*,.pdf" class="rec-file-input" multiple>
+        </div>
+        <div>
+          <label class="rec-label">Professional License / APC / Registration</label>
+          <input type="file" name="fileLicense" accept="image/*,.pdf" class="rec-file-input">
+        </div>
+        <div>
+          <label class="rec-label">Other Supporting Documents</label>
+          <input type="file" name="fileOther" accept="image/*,.pdf" class="rec-file-input" multiple>
+        </div>
+      </div>
+    </div>
+
+    <!-- DECLARATION -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-signature text-gray-500"></i> Declaration / Pengakuan</h3>
+      <p class="text-xs text-gray-600 mb-4 leading-relaxed">
+        I declare that the information given in this application for employment is accurate and that I have withheld no information which would in any way affect my employment by the Company. I accept that if any information given in this application is in any way false or incorrect, the Company shall have the right to terminate my employment without notice and without giving any reason.
+      </p>
+      <div class="flex items-start gap-2">
+        <input type="checkbox" name="declaration" required id="recDeclaration" class="mt-0.5 h-4 w-4 rounded accent-blue-600">
+        <label for="recDeclaration" class="text-xs text-gray-700">I agree to the above declaration and confirm all information provided is true and accurate. / <em>Saya bersetuju dengan pengakuan di atas dan mengesahkan semua maklumat yang diberikan adalah benar dan tepat.</em></label>
+      </div>
+    </div>
+
+    <div class="flex justify-end gap-3">
+      <button type="button" onclick="window.pmgRecruitment.resetPublicForm()" class="px-5 py-2.5 text-sm font-bold text-gray-600 bg-gray-200 hover:bg-gray-300 rounded-xl transition">
+        <i class="fa-solid fa-rotate-left mr-1"></i> Reset
+      </button>
+      <button type="submit" class="px-6 py-2.5 text-sm font-bold text-white bg-blue-800 hover:bg-blue-900 rounded-xl transition flex items-center gap-2 shadow-sm">
+        <i class="fa-solid fa-paper-plane"></i> Submit Application / Hantar Permohonan
+      </button>
+    </div>
+  </form>
+</div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUBMIT PUBLIC FORM
+// ─────────────────────────────────────────────────────────────────────────────
+async function submitPublicForm(e) {
+  e.preventDefault();
+  const form = e.target;
+  const fd = new FormData(form);
+  const get = (k) => fd.get(k) || '';
+
+  const btn = form.querySelector('button[type="submit"]');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submitting...';
+
+  // Build employment history string
+  const empRows = [0,1,2,3].map(i => {
+    const from=get(`empFrom${i}`), to=get(`empTo${i}`), co=get(`empCo${i}`), pos=get(`empPos${i}`), sal=get(`empSal${i}`), reason=get(`empLeave${i}`);
+    if (!co) return '';
+    return `${from}–${to} | ${co} | ${pos} | RM${sal} | Left: ${reason}`;
+  }).filter(Boolean).join('\n');
+
+  // Build education string
+  const eduRows = [0,1,2,3].map(i => {
+    const from=get(`eduFrom${i}`), to=get(`eduTo${i}`), inst=get(`eduInst${i}`), cert=get(`eduCert${i}`);
+    if (!inst) return '';
+    return `${from}–${to}: ${inst} — ${cert}`;
+  }).filter(Boolean).join('\n');
+
+  // Build family string
+  const famRows = [0,1,2].map(i => {
+    const name=get(`famName${i}`), rel=get(`famRelation${i}`), age=get(`famAge${i}`), occ=get(`famOccupation${i}`);
+    if (!name) return '';
+    return `${name} (${rel}, Age ${age}, ${occ})`;
+  }).filter(Boolean).join('; ');
+
+  // Build references string
+  const refs = [0,1].map(i => {
+    const name=get(`ref${i}Name`), occ=get(`ref${i}Occ`), rel=get(`ref${i}Rel`), phone=get(`ref${i}Phone`), yrs=get(`ref${i}Years`);
+    if (!name) return '';
+    return `${name} | ${occ} | ${rel} | ${phone} | ${yrs} yrs`;
+  }).filter(Boolean).join('\n');
+
+  // Language proficiency
+  const langKeys = ['Malay/BM','English/BI','Mandarin','Iban','Bidayuh','Others'];
+  const langSummary = langKeys.map(lang => {
+    const key = lang.replace(/[^a-z]/gi,'');
+    const skills = ['wExcel','wGood','wAvg','sExcel','sGood','sAvg'];
+    const ticked = skills.filter(s => fd.get(`lang_${key}_${s}`)).join(', ');
+    return ticked ? `${lang}: ${ticked}` : '';
+  }).filter(Boolean).join('; ');
+
+  // Process file uploads → base64 metadata
+  const fileFields = ['filePhoto','fileIC','fileSPM','fileDegree','fileTranscript','fileLicense','fileOther'];
+  const uploadedDocs = [];
+  for (const field of fileFields) {
+    const files = form[field] ? Array.from(form[field].files) : [];
+    for (const f of files) {
+      if (f.size > MAX_FILE_MB * 1024 * 1024) {
+        toast(`File "${f.name}" exceeds ${MAX_FILE_MB}MB limit`, 'error');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Submit Application';
+        return;
+      }
+      try {
+        const b64 = await fileToBase64(f);
+        uploadedDocs.push({ field, name: f.name, size: f.size, type: f.type, data: b64 });
+      } catch(err) {
+        toast(`Error reading file ${f.name}`, 'error');
+      }
+    }
+  }
+
+  const app = {
+    id: genId(),
+    appliedAt: now(),
+    status: 'new',
+    aiScore: null,
+    aiVerdict: null,
+    aiReport: null,
+
+    // Position
+    position: POSITIONS.find(p=>p.value===get('position'))?.label || get('position'),
+    positionKey: get('position'),
+    preferredBranch: get('preferredBranch'),
+
+    // Personal
+    name: get('name'),
+    gender: get('gender'),
+    maritalStatus: get('maritalStatus'),
+    ic: get('ic'),
+    dob: get('dob'),
+    age: get('age'),
+    race: get('race'),
+    religion: get('religion'),
+    citizenship: get('citizenship'),
+    placeOfBirth: get('placeOfBirth'),
+    icColour: get('icColour'),
+    address: get('address'),
+    phone: get('phone'),
+    email: get('email'),
+    height: get('height'),
+    weight: get('weight'),
+    drivingLicense: get('drivingLicense'),
+    epfNo: get('epfNo'),
+    socsoNo: get('socsoNo'),
+    taxNo: get('taxNo'),
+
+    // Emergency
+    emergencyContact: `${get('ecName')} (${get('ecRelation')}) — ${get('ecPhone')}; ${get('ecAddress')}`,
+
+    // Family
+    familyBackground: famRows,
+
+    // Education
+    spm: get('spm'),
+    highestQual: get('highestQual'),
+    institution: get('institution'),
+    cgpa: get('cgpa'),
+    additionalCerts: get('additionalCerts'),
+    professionalMembership: get('professionalMembership'),
+    educationHistory: eduRows,
+
+    // Language
+    languages: langSummary,
+
+    // Employment
+    workHistory: empRows,
+    noticeRequired: get('noticeRequired'),
+    expectedSalary: get('expectedSalary'),
+    skills: get('skills'),
+    itSkills: get('itSkills'),
+
+    // Health
+    healthDeclaration: get('healthDeclaration'),
+    healthDeclarationDetail: get('healthDeclarationDetail'),
+    smokes: get('smokes'),
+    healthIssues: get('healthIssues'),
+    recentSurgery: get('recentSurgery'),
+    depressionMeds: get('depressionMeds'),
+    expecting: get('expecting'),
+    expectingWeeks: get('expectingWeeks'),
+
+    // References
+    references: refs,
+
+    // Screening
+    hasTransport: get('hasTransport'),
+    ableToTravel: get('ableToTravel'),
+    canDoShift: get('canDoShift'),
+    accept3yr: get('accept3yr'),
+    futurePlan: get('futurePlan'),
+    futurePlanDetail: get('futurePlanDetail'),
+    willingToTravel: get('willingToTravel'),
+
+    // Supplementary
+    relativesAtPmg: get('relativesAtPmg'),
+    relativesAtPmgDetail: get('relativesAtPmgDetail'),
+    dismissed: get('dismissed'),
+    dismissedDetail: get('dismissedDetail'),
+    convicted: get('convicted'),
+
+    // Documents
+    docs: uploadedDocs,
+    docNames: uploadedDocs.map(d=>d.name),
+  };
+
+  const apps = loadApps();
+  apps.unshift(app);
+  saveApps(apps);
+
+  // Show success
+  const container = el('recruitmentPublicFormArea');
+  if (container) {
+    container.innerHTML = `
+<div class="max-w-lg mx-auto text-center py-16">
+  <div class="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-5">
+    <i class="fa-solid fa-check-circle text-emerald-600 text-4xl"></i>
+  </div>
+  <h2 class="text-xl font-bold text-gray-900 mb-2">Application Submitted!</h2>
+  <p class="text-gray-600 text-sm mb-4">Your application reference is <span class="font-mono font-bold text-blue-700">${app.id}</span></p>
+  <p class="text-gray-500 text-xs mb-6">Our Area Manager will review your application and contact you within 3–5 working days if you are shortlisted for an interview at PMG Pharmacy Kota Sentosa.</p>
+  <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 text-left text-xs text-blue-800">
+    <p class="font-bold mb-1">What happens next?</p>
+    <ol class="list-decimal ml-4 space-y-1">
+      <li>AI pre-screening of your documents (within 24 hours)</li>
+      <li>Area Manager review (within 3 working days)</li>
+      <li>If shortlisted, you will receive an interview appointment link via phone/email</li>
+      <li>Face-to-face interview at PMG Pharmacy Kota Sentosa</li>
+    </ol>
+  </div>
+  <button onclick="window.pmgRecruitment.renderPublicForm()" class="mt-6 px-5 py-2.5 bg-blue-700 text-white text-sm font-bold rounded-xl hover:bg-blue-800 transition">
+    Submit Another Application
+  </button>
+</div>`;
+  }
+
+  toast('Application submitted successfully! Reference: ' + app.id, 'success');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AM DASHBOARD RENDER
+// ─────────────────────────────────────────────────────────────────────────────
+function renderAmDashboard() {
+  const apps = loadApps();
+  const settings = loadSettings();
+
+  const counts = {};
+  Object.keys(STATUS_META).forEach(k => counts[k] = 0);
+  apps.forEach(a => { if (counts[a.status] !== undefined) counts[a.status]++; });
+
+  const filterEl = el('recFilterStatus');
+  const filterVal = filterEl?.value || 'all';
+  const searchVal = (el('recSearchInput')?.value || '').toLowerCase();
+
+  const filtered = apps.filter(a => {
+    const matchStatus = filterVal === 'all' || a.status === filterVal;
+    const matchSearch = !searchVal || a.name.toLowerCase().includes(searchVal) ||
+      a.position.toLowerCase().includes(searchVal) || a.id.toLowerCase().includes(searchVal);
+    return matchStatus && matchSearch;
+  });
+
+  const dash = el('recAmDashboardContent');
+  if (!dash) return;
+
+  dash.innerHTML = `
+<!-- Stats Bar -->
+<div class="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
+  ${Object.entries(STATUS_META).map(([k,m])=>`
+  <button onclick="window.pmgRecruitment.filterByStatus('${k}')" class="bg-white border border-gray-200 rounded-xl p-3 text-center hover:shadow-sm transition ${filterVal===k?'ring-2 ring-blue-400':''}">
+    <p class="text-xl font-bold text-gray-900">${counts[k]}</p>
+    <p class="text-[10px] text-gray-500 leading-tight">${m.label}</p>
+  </button>`).join('')}
+</div>
+
+<!-- Gemini API Key Quick Setup -->
+${!settings.geminiKey ? `
+<div class="bg-amber-50 border border-amber-300 rounded-xl p-4 mb-4 flex items-start gap-3">
+  <i class="fa-solid fa-triangle-exclamation text-amber-500 text-base mt-0.5"></i>
+  <div class="flex-1">
+    <p class="text-xs font-bold text-amber-800">Set up Gemini API Key to enable AI applicant evaluation</p>
+    <p class="text-xs text-amber-700 mt-1">Go to <strong>Settings</strong> tab to add your Gemini API key and enable automatic AI screening of new applications.</p>
+  </div>
+  <button onclick="window.pmgRecruitment.switchRecTab('settings')" class="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-amber-600 shrink-0">Settings →</button>
+</div>` : ''}
+
+<!-- Table -->
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+  <div class="p-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+    <div class="flex items-center gap-2">
+      <input type="text" id="recSearchInput" placeholder="Search name, position, ID..." oninput="window.pmgRecruitment.renderAmDashboard()"
+        class="border border-gray-300 rounded-lg px-3 py-1.5 text-xs w-48 focus:ring-2 focus:ring-blue-400 outline-none" value="${sanitize(searchVal)}">
+      <select id="recFilterStatus" onchange="window.pmgRecruitment.renderAmDashboard()"
+        class="border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-400 outline-none">
+        <option value="all" ${filterVal==='all'?'selected':''}>All Status</option>
+        ${Object.entries(STATUS_META).map(([k,m])=>`<option value="${k}" ${filterVal===k?'selected':''}>${m.label}</option>`).join('')}
+      </select>
+    </div>
+    <span class="text-xs text-gray-400">${filtered.length} application${filtered.length!==1?'s':''}</span>
+  </div>
+  ${filtered.length === 0 ? `
+  <div class="text-center py-16 text-gray-400">
+    <i class="fa-solid fa-inbox text-4xl mb-3"></i>
+    <p class="text-sm font-medium">No applications yet</p>
+    <p class="text-xs mt-1">Share the application form link with candidates</p>
+  </div>` : `
+  <div class="overflow-x-auto">
+    <table class="w-full text-xs">
+      <thead class="bg-slate-50 text-gray-600 font-bold">
+        <tr>
+          <th class="p-3 text-left">Ref ID</th>
+          <th class="p-3 text-left">Name</th>
+          <th class="p-3 text-left">Position</th>
+          <th class="p-3 text-left">Branch</th>
+          <th class="p-3 text-left">Applied</th>
+          <th class="p-3 text-left">AI Score</th>
+          <th class="p-3 text-left">Status</th>
+          <th class="p-3 text-left">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-50">
+        ${filtered.map(app => {
+          const m = STATUS_META[app.status] || STATUS_META.new;
+          const scoreColor = app.aiScore >= 75 ? 'text-emerald-700 font-bold' :
+                             app.aiScore >= 50 ? 'text-amber-700 font-bold' :
+                             app.aiScore !== null ? 'text-red-700 font-bold' : 'text-gray-400';
+          return `
+          <tr class="hover:bg-gray-50 transition">
+            <td class="p-3 font-mono text-blue-700">${sanitize(app.id)}</td>
+            <td class="p-3 font-semibold text-gray-900">${sanitize(app.name)}</td>
+            <td class="p-3 text-gray-600">${sanitize(app.position)}</td>
+            <td class="p-3 text-gray-500">${sanitize(app.preferredBranch||'—')}</td>
+            <td class="p-3 text-gray-500">${fmtDate(app.appliedAt)}</td>
+            <td class="p-3 ${scoreColor}">
+              ${app.aiScore !== null ? app.aiScore + '/100' : '<span class="text-gray-300">—</span>'}
+              ${app.aiVerdict ? `<br><span class="text-[9px] font-normal text-gray-500">${sanitize(app.aiVerdict)}</span>` : ''}
+            </td>
+            <td class="p-3"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${m.color}"><i class="fa-solid ${m.icon} mr-1"></i>${m.label}</span></td>
+            <td class="p-3">
+              <div class="flex items-center gap-1">
+                <button onclick="window.pmgRecruitment.viewApp('${app.id}')" title="View" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"><i class="fa-solid fa-eye"></i></button>
+                ${!app.aiReport && app.status === 'new' ? `<button onclick="window.pmgRecruitment.runAI('${app.id}')" title="Run AI Evaluation" class="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg"><i class="fa-solid fa-robot"></i></button>` : ''}
+                ${app.status === 'shortlist' ? `<button onclick="window.pmgRecruitment.openScheduleModal('${app.id}')" title="Schedule Interview" class="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"><i class="fa-solid fa-calendar-plus"></i></button>` : ''}
+                <button onclick="window.pmgRecruitment.deleteApp('${app.id}')" title="Delete" class="p-1.5 text-red-400 hover:bg-red-50 rounded-lg"><i class="fa-solid fa-trash"></i></button>
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  </div>`}
+</div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VIEW APPLICATION DETAIL
+// ─────────────────────────────────────────────────────────────────────────────
+function viewApp(appId) {
+  const apps = loadApps();
+  const app = apps.find(a => a.id === appId);
+  if (!app) { toast('Application not found', 'error'); return; }
+  const settings = loadSettings();
+
+  const m = STATUS_META[app.status] || STATUS_META.new;
+
+  // Render AI report section
+  let aiSection = '';
+  if (app.aiReport) {
+    const r = app.aiReport;
+    const sc = r.score >= 75 ? 'bg-emerald-500' : r.score >= 50 ? 'bg-amber-500' : 'bg-red-500';
+    aiSection = `
+<div class="bg-slate-900 rounded-xl p-4 text-white mb-4">
+  <div class="flex items-center justify-between mb-3">
+    <div class="flex items-center gap-2">
+      <i class="fa-solid fa-robot text-purple-400"></i>
+      <span class="font-bold text-sm">Gemini AI Evaluation Report</span>
+    </div>
+    <span class="text-xs text-slate-400">Evaluated ${fmtDateTime(app.aiEvaluatedAt)}</span>
+  </div>
+  <div class="flex items-center gap-4 mb-4">
+    <div class="w-16 h-16 rounded-full ${sc} flex items-center justify-center shrink-0">
+      <span class="text-xl font-black">${r.score}</span>
+    </div>
+    <div>
+      <p class="font-bold text-base">${sanitize(r.verdict)}</p>
+      <p class="text-slate-300 text-xs mt-1 leading-relaxed">${sanitize(r.summary)}</p>
+      <p class="text-xs mt-1">Retention Risk: <span class="font-bold ${r.retentionRisk==='High'?'text-red-400':r.retentionRisk==='Medium'?'text-amber-400':'text-emerald-400'}">${r.retentionRisk}</span></p>
+    </div>
+  </div>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+    <div>
+      <p class="text-xs font-bold text-emerald-400 mb-1"><i class="fa-solid fa-plus mr-1"></i>Strengths</p>
+      <ul class="text-xs text-slate-300 space-y-1">${(r.strengths||[]).map(s=>`<li class="flex gap-1"><i class="fa-solid fa-check text-emerald-400 mt-0.5 shrink-0"></i>${sanitize(s)}</li>`).join('')}</ul>
+    </div>
+    <div>
+      <p class="text-xs font-bold text-red-400 mb-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Concerns</p>
+      <ul class="text-xs text-slate-300 space-y-1">${(r.concerns||[]).map(c=>`<li class="flex gap-1"><i class="fa-solid fa-xmark text-red-400 mt-0.5 shrink-0"></i>${sanitize(c)}</li>`).join('')}</ul>
+    </div>
+  </div>
+  <div class="bg-slate-800 rounded-lg p-3 mb-3">
+    <p class="text-xs font-bold text-amber-300 mb-1"><i class="fa-solid fa-school mr-1"></i>SPM Analysis</p>
+    <p class="text-xs text-slate-300">${sanitize(r.spmAnalysis||'—')}</p>
+  </div>
+  <div class="bg-slate-800 rounded-lg p-3 mb-3">
+    <p class="text-xs font-bold text-amber-300 mb-1"><i class="fa-solid fa-university mr-1"></i>Qualification Risk Assessment</p>
+    <p class="text-xs text-slate-300">${sanitize(r.qualificationRisk||'—')}</p>
+  </div>
+  <div class="bg-slate-800 rounded-lg p-3">
+    <p class="text-xs font-bold text-purple-300 mb-2"><i class="fa-solid fa-comments mr-1"></i>Suggested Interview Questions</p>
+    <ol class="text-xs text-slate-300 space-y-1 list-decimal ml-4">${(r.interviewQuestions||[]).map(q=>`<li>${sanitize(q)}</li>`).join('')}</ol>
+  </div>
+</div>`;
+  } else {
+    aiSection = `
+<div class="bg-gray-50 border border-dashed border-gray-300 rounded-xl p-4 text-center mb-4">
+  <i class="fa-solid fa-robot text-gray-300 text-2xl mb-2"></i>
+  <p class="text-xs text-gray-500 mb-2">AI evaluation not yet run</p>
+  ${settings.geminiKey ? `<button onclick="window.pmgRecruitment.runAI('${appId}')" class="px-4 py-2 bg-purple-700 text-white text-xs font-bold rounded-lg hover:bg-purple-800 transition"><i class="fa-solid fa-robot mr-1"></i>Run Gemini AI Evaluation</button>` : '<p class="text-xs text-red-400">Set Gemini API key in Settings first</p>'}
+</div>`;
+  }
+
+  // Build docs section
+  const docsSection = app.docs && app.docs.length > 0 ? `
+<div class="mb-4">
+  <h4 class="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1"><i class="fa-solid fa-paperclip text-gray-400"></i>Uploaded Documents (${app.docs.length})</h4>
+  <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+    ${app.docs.map((d,i)=>`
+    <a href="${d.data}" download="${sanitize(d.name)}" class="flex items-center gap-2 p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition text-xs">
+      <i class="fa-solid ${d.type.includes('pdf')?'fa-file-pdf text-red-500':'fa-file-image text-blue-500'}"></i>
+      <span class="truncate text-gray-700">${sanitize(d.name)}</span>
+    </a>`).join('')}
+  </div>
+</div>` : '<p class="text-xs text-gray-400 mb-4">No documents uploaded.</p>';
+
+  const content = el('recAmDetailContent');
+  if (!content) return;
+
+  content.innerHTML = `
+<div class="flex items-center justify-between mb-4">
+  <button onclick="window.pmgRecruitment.switchRecTab('dashboard')" class="text-xs text-blue-600 hover:underline flex items-center gap-1">
+    <i class="fa-solid fa-arrow-left"></i> Back to Applications
+  </button>
+  <div class="flex items-center gap-2">
+    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${m.color}"><i class="fa-solid ${m.icon} mr-1"></i>${m.label}</span>
+    <select onchange="window.pmgRecruitment.updateStatus('${appId}', this.value)" class="text-xs border border-gray-300 rounded-lg px-2 py-1 focus:ring-2 focus:ring-blue-400 outline-none">
+      ${Object.entries(STATUS_META).map(([k,sm])=>`<option value="${k}" ${app.status===k?'selected':''}>${sm.label}</option>`).join('')}
+    </select>
+  </div>
+</div>
+
+${aiSection}
+
+<!-- Personal Info -->
+<div class="bg-white rounded-xl border border-gray-200 p-4 mb-4">
+  <h4 class="text-xs font-bold text-gray-700 mb-3 pb-2 border-b border-gray-100 flex items-center gap-2"><i class="fa-solid fa-id-card text-blue-500"></i>${sanitize(app.name)} — ${sanitize(app.position)}</h4>
+  <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+    ${[
+      ['Ref ID', app.id], ['Applied', fmtDateTime(app.appliedAt)], ['Position', app.position],
+      ['Preferred Branch', app.preferredBranch], ['Gender', app.gender], ['Age', app.age],
+      ['Race', app.race], ['Religion', app.religion], ['Marital Status', app.maritalStatus],
+      ['NRIC/IC', app.ic], ['DOB', app.dob], ['Citizenship', app.citizenship],
+      ['IC Colour', app.icColour], ['Place of Birth', app.placeOfBirth], ['Height', app.height ? app.height+'cm' : '—'],
+      ['Weight', app.weight ? app.weight+'kg' : '—'], ['Phone', app.phone], ['Email', app.email],
+      ['Driving License', app.drivingLicense], ['EPF No.', app.epfNo||'—'], ['SOCSO No.', app.socsoNo||'—'],
+    ].map(([k,v])=>`<div><p class="text-[10px] text-gray-400 uppercase tracking-wide">${k}</p><p class="font-medium text-gray-800">${sanitize(String(v||'—'))}</p></div>`).join('')}
+    <div class="col-span-2 sm:col-span-3"><p class="text-[10px] text-gray-400 uppercase tracking-wide">Address</p><p class="font-medium text-gray-800">${sanitize(app.address||'—')}</p></div>
+    <div class="col-span-2 sm:col-span-3"><p class="text-[10px] text-gray-400 uppercase tracking-wide">Emergency Contact</p><p class="font-medium text-gray-800">${sanitize(app.emergencyContact||'—')}</p></div>
+  </div>
+</div>
+
+<!-- Education & SPM -->
+<div class="bg-white rounded-xl border border-gray-200 p-4 mb-4">
+  <h4 class="text-xs font-bold text-gray-700 mb-3 pb-2 border-b border-gray-100 flex items-center gap-2"><i class="fa-solid fa-graduation-cap text-amber-500"></i>Education</h4>
+  <div class="bg-amber-50 rounded-lg p-3 mb-3">
+    <p class="text-[10px] text-amber-700 font-bold uppercase mb-1">SPM Results</p>
+    <p class="text-xs text-gray-800 whitespace-pre-line">${sanitize(app.spm||'Not provided')}</p>
+  </div>
+  <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs mb-2">
+    <div><p class="text-[10px] text-gray-400 uppercase">Highest Qual</p><p class="font-medium">${sanitize(app.highestQual||'—')}</p></div>
+    <div><p class="text-[10px] text-gray-400 uppercase">Institution</p><p class="font-medium">${sanitize(app.institution||'—')}</p></div>
+    <div><p class="text-[10px] text-gray-400 uppercase">CGPA/Grade</p><p class="font-medium">${sanitize(app.cgpa||'—')}</p></div>
+    <div><p class="text-[10px] text-gray-400 uppercase">Professional Membership</p><p class="font-medium">${sanitize(app.professionalMembership||'None')}</p></div>
+    <div class="col-span-2"><p class="text-[10px] text-gray-400 uppercase">Additional Certs</p><p class="font-medium">${sanitize(app.additionalCerts||'—')}</p></div>
+  </div>
+  ${app.educationHistory ? `<p class="text-[10px] text-gray-400 uppercase mb-1">Education History</p><p class="text-xs whitespace-pre-line font-mono text-gray-700">${sanitize(app.educationHistory)}</p>` : ''}
+</div>
+
+<!-- Work & Screening -->
+<div class="bg-white rounded-xl border border-gray-200 p-4 mb-4">
+  <h4 class="text-xs font-bold text-gray-700 mb-3 pb-2 border-b border-gray-100 flex items-center gap-2"><i class="fa-solid fa-briefcase text-slate-500"></i>Work History & Screening</h4>
+  <div class="bg-gray-50 rounded-lg p-3 mb-3">
+    <p class="text-[10px] text-gray-500 uppercase font-bold mb-1">Employment History</p>
+    <p class="text-xs whitespace-pre-line font-mono text-gray-700">${sanitize(app.workHistory||'No previous employment.')}</p>
+  </div>
+  <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+    ${[
+      ['Expected Salary', 'RM '+(app.expectedSalary||'?')], ['Notice Period', app.noticeRequired||'?'],
+      ['Skills', app.skills||'—'], ['IT Skills', app.itSkills||'—'],
+      ['Has Transport', app.hasTransport||'?'], ['Able to Travel Branches', app.ableToTravel||'?'],
+      ['Can Do Shift', app.canDoShift||'?'], ['Accept 3yr Contract', app.accept3yr||'?'],
+      ['Future Study/Govt Plan', app.futurePlan||'?'], ['Smokes/Vapes', app.smokes||'?'],
+      ['Health Issues', app.healthIssues||'None'], ['Depression Meds', app.depressionMeds||'No'],
+      ['Recent Surgery', app.recentSurgery||'No'], ['Relatives at PMG', app.relativesAtPmg||'No'],
+      ['Dismissed Before', app.dismissed||'No'], ['Convicted', app.convicted||'No'],
+    ].map(([k,v])=>`<div><p class="text-[10px] text-gray-400 uppercase">${k}</p><p class="font-medium text-gray-800">${sanitize(String(v))}</p></div>`).join('')}
+    ${app.futurePlanDetail ? `<div class="col-span-2 sm:col-span-3"><p class="text-[10px] text-gray-400 uppercase">Future Plan Details</p><p class="font-medium text-red-700">${sanitize(app.futurePlanDetail)}</p></div>` : ''}
+  </div>
+</div>
+
+<!-- Languages -->
+<div class="bg-white rounded-xl border border-gray-200 p-4 mb-4">
+  <h4 class="text-xs font-bold text-gray-700 mb-2 flex items-center gap-2"><i class="fa-solid fa-language text-purple-500"></i>Languages</h4>
+  <p class="text-xs text-gray-600">${sanitize(app.languages||'Not specified')}</p>
+</div>
+
+<!-- References -->
+<div class="bg-white rounded-xl border border-gray-200 p-4 mb-4">
+  <h4 class="text-xs font-bold text-gray-700 mb-2 flex items-center gap-2"><i class="fa-solid fa-address-book text-indigo-500"></i>References</h4>
+  <p class="text-xs text-gray-600 whitespace-pre-line font-mono">${sanitize(app.references||'Not provided')}</p>
+</div>
+
+<!-- Documents -->
+${docsSection}
+
+<!-- Action Buttons -->
+<div class="flex flex-wrap gap-2 pt-2">
+  ${settings.geminiKey && !app.aiReport ? `<button onclick="window.pmgRecruitment.runAI('${appId}')" class="px-4 py-2 bg-purple-700 text-white text-xs font-bold rounded-xl hover:bg-purple-800 transition flex items-center gap-2"><i class="fa-solid fa-robot"></i>Run AI Evaluation</button>` : ''}
+  ${app.status === 'shortlist' ? `<button onclick="window.pmgRecruitment.openScheduleModal('${appId}')" class="px-4 py-2 bg-emerald-700 text-white text-xs font-bold rounded-xl hover:bg-emerald-800 transition flex items-center gap-2"><i class="fa-solid fa-calendar-plus"></i>Schedule Interview</button>` : ''}
+  <button onclick="window.pmgRecruitment.updateStatus('${appId}','shortlist')" class="px-4 py-2 bg-blue-700 text-white text-xs font-bold rounded-xl hover:bg-blue-800 transition"><i class="fa-solid fa-check mr-1"></i>Shortlist</button>
+  <button onclick="window.pmgRecruitment.updateStatus('${appId}','rejected')" class="px-4 py-2 bg-red-600 text-white text-xs font-bold rounded-xl hover:bg-red-700 transition"><i class="fa-solid fa-times mr-1"></i>Reject</button>
+  <button onclick="window.pmgRecruitment.printApp('${appId}')" class="px-4 py-2 bg-gray-700 text-white text-xs font-bold rounded-xl hover:bg-gray-800 transition"><i class="fa-solid fa-print mr-1"></i>Print</button>
+  <button onclick="window.pmgRecruitment.exportAppPdf('${appId}')" class="px-4 py-2 bg-slate-600 text-white text-xs font-bold rounded-xl hover:bg-slate-700 transition"><i class="fa-solid fa-file-pdf mr-1"></i>Export PDF</button>
+</div>`;
+
+  switchRecTab('detail');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI RUNNER
+// ─────────────────────────────────────────────────────────────────────────────
+async function runAI(appId) {
+  const settings = loadSettings();
+  if (!settings.geminiKey) { toast('Please set Gemini API key in Settings', 'warn'); return; }
+
+  const apps = loadApps();
+  const app = apps.find(a => a.id === appId);
+  if (!app) return;
+
+  const model = settings.geminiModel || 'gemini-1.5-flash';
+  toast('Running Gemini AI evaluation... please wait', 'info');
+
+  // Update status to reviewing
+  app.status = 'reviewing';
+  saveApps(apps);
+
+  try {
+    const modelKey = model.includes('8b') || model.includes('lite') ? 'lite' : 'flash';
+    const report = await runAiEvaluation(app, settings.geminiKey, modelKey);
+    app.aiScore = report.score;
+    app.aiVerdict = report.verdict;
+    app.aiReport = report;
+    app.aiEvaluatedAt = now();
+    app.status = report.score >= 60 ? 'shortlist' : 'reviewing';
+    saveApps(apps);
+    toast(`AI Evaluation complete! Score: ${report.score}/100 — ${report.verdict}`, 'success');
+    viewApp(appId); // refresh detail view
+  } catch(err) {
+    app.status = 'new';
+    saveApps(apps);
+    toast('AI evaluation failed: ' + err.message, 'error');
+    console.error('[Recruitment AI]', err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATUS & ACTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+function updateStatus(appId, newStatus) {
+  const apps = loadApps();
+  const app = apps.find(a => a.id === appId);
+  if (!app) return;
+  app.status = newStatus;
+  saveApps(apps);
+  toast(`Status updated to: ${STATUS_META[newStatus]?.label}`, 'success');
+  renderAmDashboard();
+  // Refresh detail if open
+  const detailEl = el('recAmDetailContent');
+  if (detailEl && !detailEl.classList.contains('hidden')) viewApp(appId);
+}
+
+function deleteApp(appId) {
+  if (!confirm('Delete this application? This cannot be undone.')) return;
+  const apps = loadApps().filter(a => a.id !== appId);
+  saveApps(apps);
+  toast('Application deleted', 'info');
+  renderAmDashboard();
+  switchRecTab('dashboard');
+}
+
+function filterByStatus(status) {
+  const el2 = el('recFilterStatus');
+  if (el2) { el2.value = status; }
+  renderAmDashboard();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INTERVIEW SCHEDULING MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+function openScheduleModal(appId) {
+  const apps = loadApps();
+  const app = apps.find(a => a.id === appId);
+  if (!app) return;
+
+  const modal = el('modalRecInterviewSchedule');
+  if (!modal) return;
+
+  el('schedModalAppName').textContent = app.name;
+  el('schedModalAppPos').textContent = app.position;
+  el('schedModalAppId').value = appId;
+
+  // Set min date to tomorrow
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
+  el('schedModalDate').min = tomorrow.toISOString().split('T')[0];
+  el('schedModalDate').value = '';
+  el('schedModalTimeSlot').innerHTML = '<option value="">— Pick a date first —</option>';
+  el('schedModalLocation').value = 'PMG Pharmacy Kota Sentosa, Jalan Setia Raja, Kota Sentosa, Kuching, Sarawak';
+  el('schedModalNotes').value = '';
+
+  modal.classList.remove('hidden');
+}
+
+function closeScheduleModal() {
+  const modal = el('modalRecInterviewSchedule');
+  if (modal) modal.classList.add('hidden');
+}
+
+function updateScheduleTimeSlots() {
+  const dateVal = el('schedModalDate')?.value;
+  const slotSel = el('schedModalTimeSlot');
+  if (!dateVal || !slotSel) return;
+
+  const slots = getAvailableSlots(dateVal);
+  slotSel.innerHTML = slots.length === 0
+    ? '<option value="">No slots available on this day</option>'
+    : '<option value="">— Select Time —</option>' + slots.map(s=>`<option value="${s}">${s}</option>`).join('');
+}
+
+async function confirmInterviewSchedule() {
+  const appId = el('schedModalAppId')?.value;
+  const date = el('schedModalDate')?.value;
+  const time = el('schedModalTimeSlot')?.value;
+  const location = el('schedModalLocation')?.value;
+  const notes = el('schedModalNotes')?.value || '';
+
+  if (!date || !time) { toast('Please select date and time', 'warn'); return; }
+
+  const apps = loadApps();
+  const app = apps.find(a => a.id === appId);
+  if (!app) return;
+
+  // Save slot
+  const slots = loadSlots();
+  slots.push({ id: genId(), appId, applicantName: app.name, position: app.position, date, time, location, notes, confirmed: true, createdAt: now() });
+  saveSlots(slots);
+
+  // Update app status
+  app.status = 'invited';
+  app.interviewDate = date;
+  app.interviewTime = time;
+  app.interviewLocation = location;
+  saveApps(apps);
+
+  // Build appointment message for candidate
+  const msg = `Dear ${app.name},\n\nCongratulations! You have been shortlisted for an interview at PMG Pharmacy.\n\nInterview Details:\nDate: ${date}\nTime: ${time}\nLocation: ${location}\n\nPlease bring:\n- Original IC / MyKad\n- All original academic certificates\n- Any professional certifications\n\nContact: William Chai (Area Manager)\nPhone: [Your phone number]\n\nWe look forward to meeting you.\n\nBest regards,\nPMG Pharmacy HR Team`;
+
+  closeScheduleModal();
+  toast('Interview scheduled! ' + date + ' ' + time, 'success');
+
+  // Show message template
+  if (confirm('Interview scheduled! Open WhatsApp message template?')) {
+    const waLink = `https://wa.me/${(app.phone||'').replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`;
+    window.open(waLink, '_blank');
+  }
+
+  renderAmDashboard();
+  viewApp(appId);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SETTINGS TAB
+// ─────────────────────────────────────────────────────────────────────────────
+function renderSettingsTab() {
+  const s = loadSettings();
+  const container = el('recSettingsContent');
+  if (!container) return;
+
+  container.innerHTML = `
+<div class="max-w-xl space-y-4">
+  <div class="bg-white rounded-xl border border-gray-200 p-5">
+    <h4 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-robot text-purple-600"></i>Gemini AI Configuration</h4>
+    <div class="space-y-3">
+      <div>
+        <label class="rec-label">Gemini API Key</label>
+        <input type="password" id="sGeminiKey" class="rec-input" placeholder="AIza..." value="${sanitize(s.geminiKey)}">
+        <p class="text-[10px] text-gray-400 mt-1">Get your free API key at <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-blue-500 hover:underline">aistudio.google.com</a></p>
+      </div>
+      <div>
+        <label class="rec-label">AI Model for Screening</label>
+        <select id="sGeminiModel" class="rec-input">
+          <option value="gemini-1.5-flash-8b" ${s.geminiModel==='gemini-1.5-flash-8b'?'selected':''}>Gemini Flash-Lite (Fast, Free tier friendly)</option>
+          <option value="gemini-1.5-flash" ${s.geminiModel==='gemini-1.5-flash'?'selected':''}>Gemini 1.5 Flash (More thorough, recommended)</option>
+        </select>
+        <p class="text-[10px] text-gray-400 mt-1">Gemini Flash-Lite for quick pre-screen; Gemini 1.5 Flash for full deep evaluation.</p>
+      </div>
+    </div>
+  </div>
+  <div class="bg-white rounded-xl border border-gray-200 p-5">
+    <h4 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-link text-blue-600"></i>Public Application Form Link</h4>
+    <p class="text-xs text-gray-500 mb-2">Share this link with candidates. They can open the Management Hub and click the "Apply for Job" button, or you can share it via WhatsApp/email.</p>
+    <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs font-mono text-gray-700 flex items-center justify-between gap-2">
+      <span class="truncate">Open PMG Management Hub → HR Recruitment → Apply for Job</span>
+      <button onclick="window.pmgRecruitment.copyFormLink()" class="text-blue-600 hover:underline text-xs shrink-0 font-sans font-bold"><i class="fa-solid fa-copy mr-1"></i>Copy</button>
+    </div>
+  </div>
+  <div class="bg-white rounded-xl border border-gray-200 p-5">
+    <h4 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-floppy-disk text-emerald-600"></i>OneDrive Backup</h4>
+    <p class="text-xs text-gray-500 mb-2">All applications are auto-backed up to your connected OneDrive folder under <code class="bg-gray-100 px-1 rounded">RECRUITMENT/</code>. Documents are saved within each application record.</p>
+    <div id="sOneDriveStatus" class="text-xs text-gray-500 flex items-center gap-2">
+      ${window.pmgOneDrive?.dirHandle ? '<i class="fa-solid fa-check-circle text-emerald-500"></i> OneDrive connected' : '<i class="fa-solid fa-xmark-circle text-gray-300"></i> OneDrive not connected — connect from the main OneDrive sync button'}
+    </div>
+  </div>
+  <div class="bg-white rounded-xl border border-gray-200 p-5">
+    <h4 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-calendar text-purple-600"></i>Interview Coordination with Patient Care</h4>
+    <p class="text-xs text-gray-500 mb-2">Interview scheduling is auto-coordinated with William Chai's Kota Sentosa pharmacist schedule (Mon–Fri 8:00–17:00, Sat 8:00–12:00). Lunch break (12:30–13:30) is excluded automatically.</p>
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
+      <p class="font-bold mb-1">Schedule Overview:</p>
+      <ul class="space-y-0.5">
+        <li><i class="fa-regular fa-calendar-check mr-1"></i>Mon–Fri: 08:30–12:00 and 13:30–16:30 (30-min interview slots)</li>
+        <li><i class="fa-regular fa-calendar-check mr-1"></i>Saturday: 08:30–11:30 (morning only)</li>
+        <li><i class="fa-solid fa-xmark text-red-400 mr-1"></i>Sunday: Closed</li>
+      </ul>
+    </div>
+  </div>
+  <div class="flex justify-end">
+    <button onclick="window.pmgRecruitment.saveSettingsForm()" class="px-5 py-2.5 bg-blue-800 text-white text-sm font-bold rounded-xl hover:bg-blue-900 transition flex items-center gap-2">
+      <i class="fa-solid fa-floppy-disk"></i> Save Settings
+    </button>
+  </div>
+</div>`;
+}
+
+function saveSettingsForm() {
+  const s = loadSettings();
+  s.geminiKey = el('sGeminiKey')?.value.trim() || s.geminiKey;
+  s.geminiModel = el('sGeminiModel')?.value || s.geminiModel;
+  saveSettings(s);
+  toast('Settings saved!', 'success');
+  renderAmDashboard();
+}
+
+function copyFormLink() {
+  const url = window.location.href.split('?')[0] + '?tab=recruitment&view=apply';
+  navigator.clipboard.writeText(url).then(()=>toast('Link copied!','success')).catch(()=>toast('Copy failed — select and copy manually','warn'));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB SWITCHER
+// ─────────────────────────────────────────────────────────────────────────────
+function switchRecTab(tab) {
+  ['dashboard','apply','detail','settings','slots'].forEach(t => {
+    const v = el(`recTab-${t}`);
+    const b = el(`recTabBtn-${t}`);
+    if (v) { if (t === tab) v.classList.remove('hidden'); else v.classList.add('hidden'); }
+    if (b) {
+      const active = 'border-b-2 border-blue-600 text-blue-700 font-bold';
+      const inactive = 'border-b-2 border-transparent text-gray-500 hover:text-gray-700';
+      b.className = `rec-tab-btn text-xs py-2.5 px-3 transition flex items-center gap-1.5 ${t===tab?active:inactive}`;
+    }
+  });
+
+  if (tab === 'settings') renderSettingsTab();
+  if (tab === 'slots') renderSlotsTab();
+  if (tab === 'apply') renderPublicForm();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INTERVIEW SLOTS TAB
+// ─────────────────────────────────────────────────────────────────────────────
+function renderSlotsTab() {
+  const container = el('recSlotsContent');
+  if (!container) return;
+  const slots = loadSlots().sort((a,b)=>a.date>b.date?1:-1);
+
+  // Calendar grid for next 2 weeks
+  const days = [];
+  for (let i = 1; i <= 14; i++) {
+    const d = new Date(); d.setDate(d.getDate()+i);
+    days.push(d);
+  }
+
+  const booked = {};
+  slots.forEach(s => { if (!booked[s.date]) booked[s.date] = []; booked[s.date].push(s); });
+
+  container.innerHTML = `
+<div class="mb-4">
+  <h4 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-calendar-week text-purple-600"></i>Upcoming Interview Schedule (Next 14 Days)</h4>
+  <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 mb-4">
+    ${days.map(d => {
+      const iso = d.toISOString().split('T')[0];
+      const dow = d.getDay();
+      const isOff = dow === 0;
+      const daySlots = booked[iso] || [];
+      const avail = isOff ? 0 : getAvailableSlots(iso).length;
+      return `
+<div class="border rounded-xl p-2 text-center text-xs ${isOff?'bg-gray-50 text-gray-300 border-gray-100':'bg-white border-gray-200 hover:shadow-sm transition'}">
+  <p class="font-bold text-[10px] text-gray-400">${d.toLocaleDateString('en-MY',{weekday:'short'}).toUpperCase()}</p>
+  <p class="text-sm font-bold ${isOff?'text-gray-300':'text-gray-900'}">${d.getDate()}</p>
+  <p class="text-[10px] ${isOff?'text-gray-300':'text-gray-400'}">${d.toLocaleDateString('en-MY',{month:'short'})}</p>
+  ${!isOff ? `<p class="text-[10px] mt-1 ${avail>3?'text-emerald-600':avail>0?'text-amber-600':'text-red-500'} font-semibold">${avail} slot${avail!==1?'s':''}</p>` : '<p class="text-[10px] text-gray-200 mt-1">Off</p>'}
+  ${daySlots.length>0 ? `<p class="text-[10px] text-blue-600 font-bold">${daySlots.length} booked</p>` : ''}
+</div>`;
+    }).join('')}
+  </div>
+</div>
+
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+  <div class="p-3 border-b border-gray-100">
+    <h4 class="text-xs font-bold text-gray-700">All Scheduled Interviews</h4>
+  </div>
+  ${slots.length === 0 ? `<div class="text-center py-10 text-gray-400 text-xs"><i class="fa-solid fa-calendar text-3xl mb-2"></i><p>No interviews scheduled yet</p></div>` : `
+  <table class="w-full text-xs">
+    <thead class="bg-slate-50 text-gray-600 font-bold">
+      <tr>
+        <th class="p-3 text-left">Date & Time</th>
+        <th class="p-3 text-left">Applicant</th>
+        <th class="p-3 text-left">Position</th>
+        <th class="p-3 text-left">Location</th>
+        <th class="p-3 text-left">Notes</th>
+        <th class="p-3 text-left">Action</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-50">
+      ${slots.map(s=>`
+      <tr class="hover:bg-gray-50">
+        <td class="p-3 font-semibold text-gray-900">${sanitize(s.date)} ${sanitize(s.time)}</td>
+        <td class="p-3"><button onclick="window.pmgRecruitment.viewApp('${s.appId}')" class="text-blue-600 hover:underline">${sanitize(s.applicantName)}</button></td>
+        <td class="p-3 text-gray-600">${sanitize(s.position)}</td>
+        <td class="p-3 text-gray-500">${sanitize(s.location)}</td>
+        <td class="p-3 text-gray-400">${sanitize(s.notes||'—')}</td>
+        <td class="p-3"><button onclick="window.pmgRecruitment.deleteSlot('${s.id}')" class="text-red-400 hover:text-red-600 text-xs"><i class="fa-solid fa-trash"></i></button></td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`}
+</div>`;
+}
+
+function deleteSlot(slotId) {
+  if (!confirm('Remove this interview slot?')) return;
+  const slots = loadSlots().filter(s => s.id !== slotId);
+  saveSlots(slots);
+  toast('Interview slot removed', 'info');
+  renderSlotsTab();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MISC HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+function addFamilyRow() {
+  const container = el('recFamilyRows');
+  if (!container) return;
+  const i = container.querySelectorAll('div').length;
+  const div = document.createElement('div');
+  div.className = 'grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2';
+  div.innerHTML = `
+    <input type="text" name="famName${i}" class="rec-input text-xs" placeholder="Name">
+    <input type="text" name="famRelation${i}" class="rec-input text-xs" placeholder="Relation">
+    <input type="number" name="famAge${i}" class="rec-input text-xs" placeholder="Age">
+    <input type="text" name="famOccupation${i}" class="rec-input text-xs" placeholder="Occupation">`;
+  container.appendChild(div);
+}
+
+function resetPublicForm() {
+  const f = document.getElementById('recPublicForm');
+  if (f) f.reset();
+}
+
+function printApp(appId) {
+  const apps = loadApps();
+  const app = apps.find(a => a.id === appId);
+  if (!app) return;
+  const w = window.open('','_blank');
+  w.document.write(`<html><head><title>PMG Application — ${app.name}</title></head><body style="font-family:Arial;font-size:12px;padding:20px">
+    <h2>PUBLIC MEDICARE GROUP SDN BHD — Job Application</h2>
+    <p><strong>Ref:</strong> ${app.id} | <strong>Applied:</strong> ${fmtDateTime(app.appliedAt)}</p>
+    <hr>
+    <pre>${JSON.stringify(app, null, 2)}</pre>
+  </body></html>`);
+  w.document.close();
+  w.print();
+}
+
+function exportAppPdf(appId) {
+  // Simple: open print with formatted data
+  printApp(appId);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────────────────────
+function init() {
+  patchOneDriveWithRecruitment();
+
+  // Check URL for apply view
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('view') === 'apply') {
+    setTimeout(() => switchRecTab('apply'), 500);
+  }
+
+  // Initial render
+  renderAmDashboard();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PUBLIC API
+// ─────────────────────────────────────────────────────────────────────────────
+window.pmgRecruitment = {
+  init,
+  renderPublicForm,
+  renderAmDashboard,
+  viewApp,
+  runAI,
+  deleteApp,
+  updateStatus,
+  filterByStatus,
+  openScheduleModal,
+  closeScheduleModal,
+  updateScheduleTimeSlots,
+  confirmInterviewSchedule,
+  renderSettingsTab,
+  saveSettingsForm,
+  copyFormLink,
+  switchRecTab,
+  renderSlotsTab,
+  deleteSlot,
+  addFamilyRow,
+  resetPublicForm,
+  printApp,
+  exportAppPdf,
+  submitPublicForm,
+  loadApps,
+  loadSlots,
+  loadSettings,
+};
+
+// Auto-init when DOM ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+
+})();
