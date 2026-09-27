@@ -11,35 +11,47 @@
   const KNOWN_BRANCH_FOLDERS = [
     'ASTANA',
     'KOTA SENTOSA',
+    'LUNDU',
     'MALIHAH',
+    'MATANG',
     'METROCITY',
     'MJK',
     'MOYAN',
-    'SEMARIANG'
+    'SEMARIANG',
+    'BDC',
+    'SERIAN'
   ];
 
   // Mapping between branch codes and OneDrive folder names
   const BRANCH_FOLDER_MAP = {
     'KS01': 'KOTA SENTOSA',
     'KOTA SENTOSA': 'KOTA SENTOSA',
+    'LUNDU': 'LUNDU',
     'ASTANA': 'ASTANA',
     'MALIHAH': 'MALIHAH',
+    'MATANG': 'MATANG',
     'METROCITY': 'METROCITY',
     'MJK': 'MJK',
     'MOYAN': 'MOYAN',
-    'SEMARIANG': 'SEMARIANG'
+    'SEMARIANG': 'SEMARIANG',
+    'BDC': 'BDC',
+    'SERIAN': 'SERIAN'
   };
 
   // Reverse mapping from folder name to storage branch code
   const FOLDER_BRANCH_CODE_MAP = {
     'KOTA SENTOSA': 'KS01',
     'KS01': 'KS01',
+    'LUNDU': 'LUNDU',
     'ASTANA': 'ASTANA',
     'MALIHAH': 'MALIHAH',
+    'MATANG': 'MATANG',
     'METROCITY': 'METROCITY',
     'MJK': 'MJK',
     'MOYAN': 'MOYAN',
-    'SEMARIANG': 'SEMARIANG'
+    'SEMARIANG': 'SEMARIANG',
+    'BDC': 'BDC',
+    'SERIAN': 'SERIAN'
   };
 
   class OneDriveSyncEngine {
@@ -673,6 +685,136 @@
       } catch (err) {
         console.error('[PMG OneDrive Sync] Save Invoice/CN error:', err);
         return { success: false, reason: err.message };
+      }
+    }
+
+    // ─── SAVE SIGNED DO PROOF TO ONEDRIVE ────────────────────────────────────
+    async saveSignedDoProofToOneDrive(file, branchName, doMeta = {}) {
+      if (!this.rootHandle || this.mode === 'DISCONNECTED') {
+        console.warn('[PMG OneDrive Sync] OneDrive not connected. Signed DO not saved to cloud.');
+        return { success: false, reason: 'DISCONNECTED' };
+      }
+
+      try {
+        const hasPerm = await this._verifyPermission(this.rootHandle, true, false);
+        if (!hasPerm) {
+          console.warn('[PMG OneDrive Sync] Permission required to save signed DO to OneDrive.');
+          return { success: false, reason: 'NO_PERMISSION' };
+        }
+
+        const bFolder = BRANCH_FOLDER_MAP[(branchName || '').toUpperCase()] || this._resolveCurrentBranchName() || 'KOTA SENTOSA';
+        const branchDir = await this._getTargetBranchDirectoryHandle(bFolder);
+        if (!branchDir) {
+          return { success: false, reason: 'BRANCH_DIR_ERROR' };
+        }
+
+        // 1. Year folder (e.g., '2026')
+        const yearStr = doMeta.year ? String(doMeta.year) : String(new Date().getFullYear());
+        const yearDir = await branchDir.getDirectoryHandle(yearStr, { create: true });
+
+        // 2. Month folder (e.g., '09 - September')
+        const monthStr = doMeta.monthFolder || this._formatCurrentMonthString();
+        const monthDir = await yearDir.getDirectoryHandle(monthStr, { create: true });
+
+        // 3. Category folder: 'Returns_DO'
+        const catDir = await monthDir.getDirectoryHandle('Returns_DO', { create: true });
+
+        // 4. Vendor folder: clean vendor name (e.g. 'DKSH', 'Sandoz', 'Intas')
+        const vendorFolder = (doMeta.vendor || 'General').replace(/[<>:"/\\|?*]/g, '').trim() || 'General';
+        const vendorDir = await catDir.getDirectoryHandle(vendorFolder, { create: true });
+
+        // 5. Safe file name with DO Number prefix
+        const cleanDoNo = (doMeta.doNumber || 'DO').replace(/[<>:"/\\|?*]/g, '_');
+        const ext = file.name.includes('.') ? file.name.substring(file.name.lastIndexOf('.')) : '.pdf';
+        const finalFileName = `${cleanDoNo}_Signed_Proof${ext}`;
+
+        const fileHandle = await vendorDir.getFileHandle(finalFileName, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(file);
+        await writable.close();
+
+        const relPath = `${bFolder}/${yearStr}/${monthStr}/Returns_DO/${vendorFolder}/${finalFileName}`;
+        console.log(`[PMG OneDrive Sync] Successfully saved Signed DO to OneDrive: ${relPath}`);
+
+        this._recordDocumentUpload({
+          branch: bFolder,
+          year: yearStr,
+          month: monthStr,
+          category: 'Returns_DO',
+          vendor: vendorFolder,
+          fileName: finalFileName,
+          docNumber: doMeta.doNumber || '',
+          timestamp: new Date().toISOString(),
+          size: file.size
+        });
+
+        return {
+          success: true,
+          path: relPath,
+          branch: bFolder,
+          year: yearStr,
+          month: monthStr,
+          category: 'Returns_DO',
+          vendor: vendorFolder,
+          fileName: finalFileName
+        };
+      } catch (err) {
+        console.error('[PMG OneDrive Sync] Save Signed DO error:', err);
+        return { success: false, reason: err.message };
+      }
+    }
+
+    // ─── SAVE RETURNS / CN DATABASE (JSON) TO ONEDRIVE ───────────────────────
+    async saveReturnsDatabaseToOneDrive(branchName, returnsData) {
+      if (!this.rootHandle || this.mode === 'DISCONNECTED') return false;
+      const bFolder = BRANCH_FOLDER_MAP[(branchName || '').toUpperCase()] || this._resolveCurrentBranchName() || 'KOTA SENTOSA';
+      const branchDir = await this._getTargetBranchDirectoryHandle(bFolder);
+      if (!branchDir) return false;
+
+      try {
+        const hasPerm = await this._verifyPermission(this.rootHandle, true, false);
+        if (!hasPerm) return false;
+
+        const session = typeof getSession === 'function' ? getSession() : null;
+        const payload = {
+          branch: bFolder,
+          lastUpdated: new Date().toISOString(),
+          updatedBy: session?.displayName || 'Staff',
+          returns: returnsData || []
+        };
+
+        const fileHandle = await branchDir.getFileHandle('returns_credit_notes.json', { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(JSON.stringify(payload, null, 2));
+        await writable.close();
+        console.log(`[PMG OneDrive Sync] Saved returns_credit_notes.json to OneDrive for ${bFolder}`);
+        return true;
+      } catch (err) {
+        console.warn(`[PMG OneDrive Sync] Could not save returns DB to OneDrive for ${bFolder}:`, err);
+        return false;
+      }
+    }
+
+    // ─── LOAD RETURNS / CN DATABASE (JSON) FROM ONEDRIVE ─────────────────────
+    async loadReturnsDatabaseFromOneDrive(branchName) {
+      if (!this.rootHandle || this.mode === 'DISCONNECTED') return null;
+      const bFolder = BRANCH_FOLDER_MAP[(branchName || '').toUpperCase()] || this._resolveCurrentBranchName() || 'KOTA SENTOSA';
+      const branchDir = await this._getTargetBranchDirectoryHandle(bFolder);
+      if (!branchDir) return null;
+
+      try {
+        const hasPerm = await this._verifyPermission(this.rootHandle, false, false);
+        if (!hasPerm) return null;
+
+        const fileHandle = await branchDir.getFileHandle('returns_credit_notes.json');
+        const file = await fileHandle.getFile();
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        console.log(`[PMG OneDrive Sync] Loaded returns_credit_notes.json from OneDrive (${parsed.returns?.length || 0} records)`);
+        return parsed.returns || [];
+      } catch (err) {
+        // File may not exist yet on fresh branch setup
+        return null;
       }
     }
 

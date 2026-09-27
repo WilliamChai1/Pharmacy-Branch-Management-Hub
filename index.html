@@ -170,6 +170,12 @@
         <span>Stock Expiry Tracker</span>
         <span class="text-xs bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded font-bold">HQ KPI</span>
       </button>
+      <button onclick="switchTab('returns')" id="tab-returns"
+        class="tab-btn whitespace-nowrap py-3.5 px-4 border-b-2 text-sm flex items-center gap-2">
+        <i class="fa-solid fa-file-invoice-dollar text-sm text-teal-600"></i>
+        <span>Credit Note & Returns (PRN/DO)</span>
+        <span class="text-xs bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded font-bold">NEW</span>
+      </button>
     </div>
   </div>
 </nav>
@@ -3656,6 +3662,439 @@ Date visit: 06.01.2026
   <div id="expiryToast" class="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl text-xs font-bold flex items-center gap-2 transition-all duration-300 opacity-0 hidden border border-slate-700">
   </div>
 
+  <!-- ─────────────────────────────────────────────────────────────────────────
+       MODULE 5: CREDIT NOTE, PRN & DELIVERY ORDER (DO) TRACKER
+  ───────────────────────────────────────────────────────────────────────────── -->
+  <div id="content-returns" class="tab-content hidden">
+
+    <!-- Module Header Card -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-5">
+      <div class="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <div class="w-8 h-8 bg-teal-100 rounded-lg flex items-center justify-center">
+              <i class="fa-solid fa-file-invoice-dollar text-teal-700"></i>
+            </div>
+            <h2 class="text-lg font-bold text-gray-900">Credit Note, PRN & Delivery Order (DO) Tracker</h2>
+          </div>
+          <p class="text-gray-500 text-sm">Compound return SKUs into official Delivery Orders, enforce max 3-SKU PRN limit, archive driver-signed DOs to OneDrive, and track supplier Credit Notes into Xilnex.</p>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <select id="returnsBranchFilter" onchange="pmgReturns.render()" class="text-xs bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-teal-500">
+            <!-- Populated dynamically -->
+          </select>
+          <button type="button" onclick="pmgReturns.exportExcel()" class="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold px-3 py-2 rounded-lg text-xs flex items-center gap-1.5 shadow-sm transition">
+            <i class="fa-solid fa-file-excel text-emerald-600"></i> Export Excel
+          </button>
+          <button type="button" onclick="pmgReturns.openNewModal()" class="bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-1.5 shadow transition">
+            <i class="fa-solid fa-plus-circle"></i> + New Return / Compound DO
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Summary Metric Cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <div class="flex items-center justify-between text-gray-500 text-xs mb-1">
+          <span class="font-bold">TOTAL ACTIVE RETURNS</span>
+          <i class="fa-solid fa-boxes-packing text-gray-400"></i>
+        </div>
+        <div id="returnsTotalCount" class="text-2xl font-black text-gray-800">0</div>
+        <div class="text-[11px] text-gray-400 mt-0.5">Recorded return shipments</div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm border border-amber-200 bg-amber-50/30 p-4">
+        <div class="flex items-center justify-between text-amber-800 text-xs mb-1">
+          <span class="font-bold">PENDING PICKUP</span>
+          <i class="fa-solid fa-clock text-amber-500"></i>
+        </div>
+        <div id="returnsPendingPickupCount" class="text-2xl font-black text-amber-700">0</div>
+        <div class="text-[11px] text-amber-800 mt-0.5">Awaiting transporter collection</div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm border border-blue-200 bg-blue-50/30 p-4">
+        <div class="flex items-center justify-between text-blue-800 text-xs mb-1">
+          <span class="font-bold">AWAITING SUPPLIER CN</span>
+          <i class="fa-solid fa-truck-fast text-blue-500"></i>
+        </div>
+        <div id="returnsAwaitingCnCount" class="text-2xl font-black text-blue-700">0</div>
+        <div class="text-[11px] text-blue-800 mt-0.5">Driver signed · In transit / review</div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm border border-emerald-200 bg-emerald-50/30 p-4">
+        <div class="flex items-center justify-between text-emerald-800 text-xs mb-1">
+          <span class="font-bold">COMPLETED (IN XILNEX)</span>
+          <i class="fa-solid fa-circle-check text-emerald-500"></i>
+        </div>
+        <div id="returnsCompletedCount" class="text-2xl font-black text-emerald-700">0</div>
+        <div class="text-[11px] text-emerald-800 mt-0.5">CN received & keyed into Xilnex</div>
+      </div>
+    </div>
+
+    <!-- Filter & Live Search Toolbar -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-5">
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
+        <!-- Filter Tabs -->
+        <div class="flex items-center gap-1 border-b sm:border-b-0 border-gray-200 pb-2 sm:pb-0 w-full sm:w-auto overflow-x-auto">
+          <button type="button" id="returns-filter-all" onclick="pmgReturns.setFilter('all')" class="returns-filter-btn active whitespace-nowrap text-xs px-3 py-1.5 rounded-lg border border-blue-600 bg-blue-50 text-blue-700 font-bold transition">
+            All Records
+          </button>
+          <button type="button" id="returns-filter-pending_pickup" onclick="pmgReturns.setFilter('pending_pickup')" class="returns-filter-btn whitespace-nowrap text-xs px-3 py-1.5 rounded-lg border border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition">
+            Pending Pickup
+          </button>
+          <button type="button" id="returns-filter-awaiting_cn" onclick="pmgReturns.setFilter('awaiting_cn')" class="returns-filter-btn whitespace-nowrap text-xs px-3 py-1.5 rounded-lg border border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition">
+            Awaiting CN
+          </button>
+          <button type="button" id="returns-filter-completed" onclick="pmgReturns.setFilter('completed')" class="returns-filter-btn whitespace-nowrap text-xs px-3 py-1.5 rounded-lg border border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition">
+            Completed (Keyed Xilnex)
+          </button>
+        </div>
+
+        <!-- Search Input -->
+        <div class="relative w-full sm:w-80">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+          <input type="text" id="returnsSearchInput" oninput="pmgReturns.handleSearch(this.value)" placeholder="Search Item, PRN No, Item Code, DO..." class="w-full pl-8 pr-4 py-2 text-xs border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50">
+        </div>
+      </div>
+    </div>
+
+    <!-- Returns Table Card -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-slate-50 border-b border-gray-200 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+              <th class="py-3 px-4">DO Number & Branch</th>
+              <th class="py-3 px-4">Supplier & PRN Slips</th>
+              <th class="py-3 px-4">Return SKUs & Cartons</th>
+              <th class="py-3 px-4 text-center">Status</th>
+              <th class="py-3 px-4">Signed DO Proof</th>
+              <th class="py-3 px-4">Credit Note Info</th>
+              <th class="py-3 px-4 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="returnsTableBody" class="divide-y divide-gray-100">
+            <!-- Populated dynamically by pmgReturns.render() -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════
+       MODALS FOR CREDIT NOTE & RETURNS TRACKER
+  ══════════════════════════════════════════════════════════════════════════════ -->
+
+  <!-- MODAL 1: NEW RETURN APPLICATION / COMPOUND DO BUILDER -->
+  <div id="newReturnModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <!-- Modal Header -->
+      <div class="bg-gradient-to-r from-teal-800 to-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 bg-teal-600 rounded-lg flex items-center justify-center text-white">
+            <i class="fa-solid fa-truck-ramp-box"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-base leading-tight">Create Return Application & Compound DO</h3>
+            <p class="text-teal-200 text-xs">Bundle return items, enforce 3-SKU manual PRN rule, and calculate carton charges.</p>
+          </div>
+        </div>
+        <button type="button" onclick="pmgReturns.closeNewModal()" class="text-white/70 hover:text-white text-xl p-1">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-6 overflow-y-auto flex-grow space-y-5 text-xs">
+        <!-- DO Header Details -->
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+          <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2.5">
+            <i class="fa-solid fa-building mr-1"></i> Delivery Order (DO) Official Header Information
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">Branch</label>
+              <select id="nrBranchSelect" onchange="pmgReturns.onNrBranchChanged()" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white outline-none focus:ring-2 focus:ring-teal-500">
+                <option value="Kota Sentosa">KS01 – Kota Sentosa</option>
+                <option value="Lundu">LUNDU – Lundu</option>
+                <option value="Astana">ASTANA – Astana</option>
+                <option value="Malihah">MALIHAH – Malihah</option>
+                <option value="Metrocity">METROCITY – Metrocity</option>
+                <option value="MJK">MJK – MJK</option>
+                <option value="Moyan">MOYAN – Moyan</option>
+                <option value="Semariang">SEMARIANG – Semariang</option>
+                <option value="Matang">MATANG – Matang</option>
+                <option value="BDC">BDC – BDC</option>
+                <option value="Serian">SERIAN – Serian</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">DO Number (Auto/Custom)</label>
+              <input type="text" id="nrDoNumber" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-blue-900 bg-white uppercase">
+            </div>
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">DO Date</label>
+              <input type="text" id="nrDate" placeholder="DD.MM.YYYY" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">Registered Company Name</label>
+              <input type="text" id="nrCompanyName" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-gray-800 bg-white uppercase">
+            </div>
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">Supplier / Vendor Name</label>
+              <input type="text" id="nrSupplier" placeholder="e.g. DKSH, Sandoz, Intas, Apex..." class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white">
+            </div>
+          </div>
+
+          <div class="mt-3">
+            <label class="block font-semibold text-gray-700 mb-1">Registered Company Address</label>
+            <input type="text" id="nrCompanyAddress" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs text-gray-600 bg-white uppercase">
+          </div>
+        </div>
+
+        <!-- PRN 3-SKU Rule Warning Banner (Dynamically shown) -->
+        <div id="nrPrnLimitWarning" class="hidden bg-amber-50 border border-amber-300 rounded-xl p-3.5"></div>
+
+        <!-- Return Items Table Section -->
+        <div class="border border-gray-200 rounded-xl overflow-hidden bg-white">
+          <div class="bg-gray-100/80 px-4 py-2.5 border-b border-gray-200 flex items-center justify-between flex-wrap gap-2">
+            <div class="font-bold text-gray-700 text-xs flex items-center gap-2">
+              <span>Return Items / SKUs Compounding List</span>
+              <span id="nrTotalCartonBadge" class="bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded text-[11px] font-black">Total Number of Carton: 1</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="pmgReturns.autoGroupPrnByThree()" class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold px-2.5 py-1 rounded-lg transition" title="Auto-assign PRN numbers in batches of 3 SKUs per manual slip">
+                <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Auto-Split by 3 SKUs
+              </button>
+              <button type="button" onclick="pmgReturns.addDraftItemRow()" class="text-xs bg-teal-600 hover:bg-teal-700 text-white font-bold px-2.5 py-1 rounded-lg shadow-sm transition">
+                <i class="fa-solid fa-plus mr-1"></i> Add SKU
+              </button>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50 border-b border-gray-200 text-[10px] font-bold text-gray-500 uppercase">
+                  <th class="py-2 px-2 text-center w-14">Ctn #</th>
+                  <th class="py-2 px-2 w-28">Item Code</th>
+                  <th class="py-2 px-2">Item Description</th>
+                  <th class="py-2 px-2 w-32">Qty & UOM</th>
+                  <th class="py-2 px-2 w-28">PRN No.</th>
+                  <th class="py-2 px-2 w-36">Return Reason</th>
+                  <th class="py-2 px-2 text-center w-10"></th>
+                </tr>
+              </thead>
+              <tbody id="nrItemsTableBody" class="divide-y divide-gray-100">
+                <!-- Rows populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Additional Handover Details -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">Verified By (Branch Staff Name)</label>
+            <input type="text" id="nrVerifiedBy" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white">
+          </div>
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">Remarks / Sales Rep Notes (Optional)</label>
+            <input type="text" id="nrRemarks" placeholder="e.g. Sales rep approved return; short expiry" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white">
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="bg-gray-50 px-6 py-3.5 border-t border-gray-200 flex items-center justify-between shrink-0">
+        <span class="text-[11px] text-gray-500">
+          <i class="fa-solid fa-circle-info mr-1 text-teal-600"></i> Saves to IndexedDB and syncs to company OneDrive.
+        </span>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="pmgReturns.closeNewModal()" class="px-4 py-2 border border-gray-300 text-gray-600 hover:text-gray-800 font-bold rounded-lg text-xs transition">
+            Cancel
+          </button>
+          <button type="button" onclick="pmgReturns.saveNewReturn()" class="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-lg text-xs shadow-md transition flex items-center gap-1.5">
+            <i class="fa-solid fa-file-circle-check"></i> Save & Generate DO
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: OFFICIAL PMG DELIVERY ORDER (DO) PRINT VIEW -->
+  <div id="printDoModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[95vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <!-- Modal Header -->
+      <div class="bg-slate-900 text-white px-6 py-3.5 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-file-invoice text-teal-400"></i>
+          <h3 class="font-bold text-sm">Official PMG Delivery Order (DO)</h3>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="pmgReturns.executePrintDo()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow transition">
+            <i class="fa-solid fa-print"></i> Print DO (A4)
+          </button>
+          <button type="button" onclick="pmgReturns.closePrintDoModal()" class="text-white/70 hover:text-white text-lg p-1">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Printable Document Container -->
+      <div class="p-6 overflow-y-auto flex-grow bg-slate-100 flex justify-center">
+        <div id="printDoDocumentContainer" class="shadow-lg rounded">
+          <!-- Official DO HTML injected here -->
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="bg-white px-6 py-3 border-t border-gray-200 flex justify-between items-center text-xs shrink-0">
+        <span class="text-gray-500 font-medium">Have delivery driver sign both copies at collection. Upload scanned copy to OneDrive as proof.</span>
+        <button type="button" onclick="pmgReturns.closePrintDoModal()" class="px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg transition">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 3: UPLOAD SIGNED DO PROOF TO ONEDRIVE -->
+  <div id="uploadSignedDoModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <!-- Header -->
+      <div class="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-shield-halved text-emerald-400"></i>
+          <h3 class="font-bold text-sm">Upload Signed DO Proof to OneDrive</h3>
+        </div>
+        <button type="button" onclick="pmgReturns.closeUploadSignedDoModal()" class="text-white/70 hover:text-white text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="p-5 space-y-4 text-xs">
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 flex justify-between items-center">
+          <div>
+            <div class="text-[10px] text-gray-400 font-bold uppercase">Delivery Order</div>
+            <div id="usdDoNumber" class="font-mono font-bold text-blue-900 text-sm">DO-000</div>
+          </div>
+          <div class="text-right">
+            <div id="usdBranch" class="font-bold text-gray-800">Branch</div>
+            <div id="usdSupplier" class="text-[11px] text-gray-500">Supplier</div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">Pick Up By (Driver Name / Transporter)</label>
+            <input type="text" id="usdDriverName" placeholder="e.g. Lian Ping Express / John" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white">
+          </div>
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">Pickup Date</label>
+            <input type="text" id="usdPickupDate" placeholder="DD.MM.YYYY" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white">
+          </div>
+        </div>
+
+        <!-- File Upload Drag & Drop Box -->
+        <div>
+          <label class="block font-semibold text-gray-700 mb-1">Scanned Signed DO / Camera Photo</label>
+          <div onclick="document.getElementById('usdFileInput').click()" class="border-2 border-dashed border-teal-300 hover:border-teal-500 bg-teal-50/30 rounded-xl p-6 text-center cursor-pointer transition">
+            <i class="fa-solid fa-camera text-2xl text-teal-600 mb-2"></i>
+            <p class="font-bold text-gray-700">Click to choose or photograph Signed DO</p>
+            <p class="text-[11px] text-gray-500 mt-1">Accepts PDF, JPG, PNG files. Automatically saved to branch OneDrive.</p>
+            <div id="usdFileNamePreview" class="mt-2 text-xs font-mono font-bold text-teal-700">No file selected</div>
+          </div>
+          <input type="file" id="usdFileInput" accept=".pdf,image/*" onchange="pmgReturns.handleUsdFileSelected(this)" class="hidden">
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="bg-gray-50 px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+        <button type="button" onclick="pmgReturns.closeUploadSignedDoModal()" class="px-4 py-2 border border-gray-300 text-gray-600 hover:text-gray-800 font-bold rounded-lg text-xs">
+          Cancel
+        </button>
+        <button type="button" id="usdSubmitBtn" onclick="pmgReturns.submitSignedDoProof()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs shadow transition flex items-center gap-1.5">
+          <i class="fa-solid fa-cloud-arrow-up"></i> Upload & Save to OneDrive
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 4: SETTLE CREDIT NOTE & KEY XILNEX -->
+  <div id="settleCnModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <!-- Header -->
+      <div class="bg-gradient-to-r from-emerald-800 to-slate-900 text-white px-5 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-money-bill-transfer text-emerald-300"></i>
+          <h3 class="font-bold text-sm">Settle Supplier Credit Note (CN)</h3>
+        </div>
+        <button type="button" onclick="pmgReturns.closeSettleCnModal()" class="text-white/70 hover:text-white text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="p-5 space-y-4 text-xs">
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 flex justify-between items-center">
+          <div>
+            <div class="text-[10px] text-gray-400 font-bold uppercase">Delivery Order Ref</div>
+            <div id="scnDoNumber" class="font-mono font-bold text-blue-900 text-sm">DO-000</div>
+          </div>
+          <div class="text-right">
+            <div class="text-[10px] text-gray-400 font-bold uppercase">Supplier</div>
+            <div id="scnSupplier" class="font-bold text-gray-800">Supplier</div>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-gray-700 mb-1">Supplier Credit Note (CN) Number *</label>
+          <input type="text" id="scnCnNumber" placeholder="e.g. CN-DKSH-99214" class="w-full border border-gray-300 rounded-lg px-2.5 py-2 text-xs font-mono font-bold uppercase bg-white">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">CN Amount (RM)</label>
+            <input type="number" step="0.01" id="scnCnAmount" placeholder="0.00" class="w-full border border-gray-300 rounded-lg px-2.5 py-2 text-xs font-bold text-emerald-700 bg-white">
+          </div>
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">CN Date Received</label>
+            <input type="text" id="scnCnDate" placeholder="DD.MM.YYYY" class="w-full border border-gray-300 rounded-lg px-2.5 py-2 text-xs font-semibold bg-white">
+          </div>
+        </div>
+
+        <div class="bg-emerald-50/60 border border-emerald-200 rounded-xl p-3 flex items-start gap-2.5">
+          <input type="checkbox" id="scnXilnexChecked" class="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500">
+          <label for="scnXilnexChecked" class="text-xs text-emerald-900 font-bold leading-snug cursor-pointer">
+            I confirm this Credit Note has been entered into the Xilnex system.
+            <span class="block font-normal text-[11px] text-emerald-700 mt-0.5">Stock ledger will be updated and record marked as Completed.</span>
+          </label>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-gray-700 mb-1">Keyed By (Staff Name)</label>
+          <input type="text" id="scnStaffName" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white">
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="bg-gray-50 px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+        <button type="button" onclick="pmgReturns.closeSettleCnModal()" class="px-4 py-2 border border-gray-300 text-gray-600 hover:text-gray-800 font-bold rounded-lg text-xs">
+          Cancel
+        </button>
+        <button type="button" onclick="pmgReturns.submitSettleCn()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs shadow transition flex items-center gap-1.5">
+          <i class="fa-solid fa-check"></i> Complete & Settle
+        </button>
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
@@ -3919,6 +4358,7 @@ Date visit: 06.01.2026
 <script src="js/patient.js"></script>
 <script src="js/seed_expiry_data.js"></script>
 <script src="js/expiry.js"></script>
+<script src="js/returns-cn.js"></script>
 
 <script>
 // ─── TAB SWITCHER ─────────────────────────────────────────────────────────────
@@ -3936,6 +4376,9 @@ function switchTab(tab) {
   }
   if (tab === 'expiry' && typeof renderExpiryUI === 'function') {
     renderExpiryUI();
+  }
+  if (tab === 'returns' && window.pmgReturns && typeof window.pmgReturns.render === 'function') {
+    window.pmgReturns.render();
   }
 }
 
