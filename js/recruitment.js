@@ -229,12 +229,10 @@ EDUCATION:
 - CGPA/Grade: ${app.cgpa || '?'}
 - Education History: ${app.educationHistory || '—'}
 - Additional Certs: ${app.additionalCerts || 'None stated'}
-- Professional Membership: ${app.professionalMembership || 'None'}
 
 WORK EXPERIENCE:
 ${app.workHistory || 'No work history provided.'}
 - Notice Required: ${app.noticeRequired || '?'}
-- Expected Salary: RM${app.expectedSalary || '?'}
 - Skills: ${app.skills || '—'}
 - IT Knowledge: ${app.itSkills || '—'}
 
@@ -262,12 +260,10 @@ SCREENING QUESTIONNAIRE (HR/001/2023):
 
 HEALTH & INTERESTS:
 - Mental/physical illness declared: ${app.healthDeclaration || 'No'} — ${app.healthDeclarationDetail || ''}
-- Female applicant expecting: ${app.expecting || 'N/A'}
 
 SUPPLEMENTARY:
 - Relatives at PMG: ${app.relativesAtPmg || 'No'} — ${app.relativesAtPmgDetail || ''}
-- Ever dismissed/suspended: ${app.dismissed || 'No'} — ${app.dismissedDetail || ''}
-- Ever convicted: ${app.convicted || 'No'}
+
 
 EMERGENCY CONTACT: ${app.emergencyContact || '?'}
 REFERENCES: ${app.references || 'Not provided'}
@@ -500,20 +496,9 @@ function renderPublicForm() {
             <option value="Yes - Both">Yes - Both / Kedua-dua</option>
           </select>
         </div>
-        <div>
-          <label class="rec-label">EPF No.</label>
-          <input type="text" name="epfNo" class="rec-input" placeholder="Optional">
-        </div>
-        <div>
-          <label class="rec-label">SOCSO No.</label>
-          <input type="text" name="socsoNo" class="rec-input" placeholder="Optional">
-        </div>
-        <div>
-          <label class="rec-label">Income Tax File No.</label>
-          <input type="text" name="taxNo" class="rec-input" placeholder="Optional">
-        </div>
       </div>
     </div>
+
 
     <!-- SECTION 3: EMERGENCY CONTACT -->
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
@@ -600,15 +585,11 @@ function renderPublicForm() {
       </div>
 
       <div class="mt-3">
-        <label class="rec-label">Professional Membership / Keahlian Profesional</label>
-        <input type="text" name="professionalMembership" class="rec-input" placeholder="e.g. Malaysian Pharmacy Board APC No. 12345, Dietitians Association Malaysia">
-      </div>
-
-      <div class="mt-3">
         <label class="rec-label">Additional Certifications / Sijil Tambahan</label>
         <input type="text" name="additionalCerts" class="rec-input" placeholder="e.g. BLS, First Aid, DOSM halal cert, etc.">
       </div>
     </div>
+
 
     <!-- SECTION 6: LANGUAGE PROFICIENCY -->
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
@@ -628,14 +609,25 @@ function renderPublicForm() {
             </tr>
           </thead>
           <tbody>
-            ${['Malay / BM','English / BI','Mandarin','Iban','Bidayuh','Others'].map(lang=>`
+            ${['Malay / BM','English / BI','Mandarin','Iban','Bidayuh'].map(lang=>`
             <tr class="border-t border-gray-100">
               <td class="p-2 font-medium text-gray-700">${lang}</td>
               ${['wExcel','wGood','wAvg','sExcel','sGood','sAvg'].map(k=>`
               <td class="p-1 text-center"><input type="checkbox" name="lang_${lang.replace(/[^a-z]/gi,'')}_${k}" class="h-3.5 w-3.5 rounded accent-blue-600"></td>`).join('')}
             </tr>`).join('')}
+            <tr class="border-t border-gray-100 bg-slate-50/50">
+              <td class="p-1.5 font-medium text-gray-700">
+                <input type="text" name="lang_other_custom" placeholder="Others (specify language/dialect)" class="rec-input text-xs py-1">
+              </td>
+              ${['wExcel','wGood','wAvg','sExcel','sGood','sAvg'].map(k=>`
+              <td class="p-1 text-center"><input type="checkbox" name="lang_Others_${k}" class="h-3.5 w-3.5 rounded accent-blue-600"></td>`).join('')}
+            </tr>
           </tbody>
         </table>
+      </div>
+      <div class="mt-3">
+        <label class="rec-label">Other Languages / Dialects (Fill in text / Lain-lain bahasa atau dialek)</label>
+        <input type="text" name="langOthersText" class="rec-input text-xs" placeholder="e.g. Foochow (fluent spoken), Hokkien (conversational), Hakka, Cantonese, Tamil, Melanau, Kayan">
       </div>
     </div>
 
@@ -647,7 +639,7 @@ function renderPublicForm() {
           <thead class="bg-gray-50 text-gray-600">
             <tr>
               <th class="p-2">From</th><th class="p-2">To</th><th class="p-2">Company</th>
-              <th class="p-2">Position</th><th class="p-2">Last Salary (RM)</th>
+              <th class="p-2">Position</th>
               <th class="p-2">Benefits</th><th class="p-2">Reason Leaving</th>
             </tr>
           </thead>
@@ -658,16 +650,14 @@ function renderPublicForm() {
               <td class="p-1"><input type="text" name="empTo${i}" class="rec-input text-xs w-16" placeholder="YYYY/Present"></td>
               <td class="p-1"><input type="text" name="empCo${i}" class="rec-input text-xs" placeholder="Company"></td>
               <td class="p-1"><input type="text" name="empPos${i}" class="rec-input text-xs" placeholder="Position"></td>
-              <td class="p-1"><input type="number" name="empSal${i}" class="rec-input text-xs w-20" placeholder="e.g. 2000"></td>
               <td class="p-1"><input type="text" name="empBen${i}" class="rec-input text-xs" placeholder="EPF, SOCSO, etc."></td>
               <td class="p-1"><input type="text" name="empLeave${i}" class="rec-input text-xs" placeholder="Reason"></td>
             </tr>`).join('')}
           </tbody>
         </table>
       </div>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
         <div><label class="rec-label">Notice Required</label><input type="text" name="noticeRequired" class="rec-input" placeholder="e.g. 1 month, immediate"></div>
-        <div><label class="rec-label">Expected Salary (RM) / Gaji Diharapkan *</label><input type="number" name="expectedSalary" required class="rec-input" placeholder="e.g. 2500"></div>
         <div><label class="rec-label">Skills Possessed / Kemahiran</label><input type="text" name="skills" class="rec-input" placeholder="e.g. dispensing, counselling"></div>
       </div>
       <div class="mt-3">
@@ -706,17 +696,9 @@ function renderPublicForm() {
             <select name="depressionMeds" class="rec-input"><option value="No">No</option><option value="Yes">Yes</option></select>
           </div>
         </div>
-        <div class="border-t border-gray-100 pt-3">
-          <p class="text-xs font-semibold text-gray-600 mb-2">Female Applicant Only (Untuk Pemohon Wanita Sahaja):</p>
-          <div class="flex gap-4">
-            <label class="text-xs">Are you expecting / Adakah anda hamil?</label>
-            <label class="flex items-center gap-1 text-xs"><input type="radio" name="expecting" value="No" checked class="accent-blue-600"> No</label>
-            <label class="flex items-center gap-1 text-xs"><input type="radio" name="expecting" value="Yes" class="accent-blue-600"> Yes</label>
-          </div>
-          <input type="text" name="expectingWeeks" class="rec-input mt-1 text-xs" placeholder="If yes, state week number">
-        </div>
       </div>
     </div>
+
 
     <!-- SECTION 9: REFERENCES -->
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
@@ -750,11 +732,10 @@ function renderPublicForm() {
           </div>
         </div>
         <div>
-          <label class="rec-label">Can you do shift work? (Morning 7:30AM–3:30PM / Evening 1:30PM–9:30PM) / Boleh buat syif? *</label>
+          <label class="rec-label">Can you do shift work? / Boleh buat kerja syif? *</label>
           <div class="flex gap-4 mt-1">
             <label class="flex items-center gap-1 text-sm"><input type="radio" name="canDoShift" value="Yes" required class="accent-blue-600"> Yes</label>
             <label class="flex items-center gap-1 text-sm"><input type="radio" name="canDoShift" value="No" class="accent-blue-600"> No</label>
-            <label class="flex items-center gap-1 text-sm"><input type="radio" name="canDoShift" value="Morning only" class="accent-blue-600"> Morning only</label>
           </div>
         </div>
         <div>
@@ -792,21 +773,6 @@ function renderPublicForm() {
           </div>
           <input type="text" name="relativesAtPmgDetail" class="rec-input mt-1 text-xs" placeholder="If yes, please state name and relationship">
         </div>
-        <div>
-          <label class="rec-label">Have you ever been dismissed or suspended from employment?</label>
-          <div class="flex gap-4 mt-1">
-            <label class="flex items-center gap-1 text-sm"><input type="radio" name="dismissed" value="No" checked class="accent-blue-600"> No</label>
-            <label class="flex items-center gap-1 text-sm"><input type="radio" name="dismissed" value="Yes" class="accent-blue-600"> Yes</label>
-          </div>
-          <input type="text" name="dismissedDetail" class="rec-input mt-1 text-xs" placeholder="If yes, please give details">
-        </div>
-        <div>
-          <label class="rec-label">Have you ever been convicted in a court of law?</label>
-          <div class="flex gap-4 mt-1">
-            <label class="flex items-center gap-1 text-sm"><input type="radio" name="convicted" value="No" checked class="accent-blue-600"> No</label>
-            <label class="flex items-center gap-1 text-sm"><input type="radio" name="convicted" value="Yes" class="accent-blue-600"> Yes</label>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -839,15 +805,12 @@ function renderPublicForm() {
           <input type="file" name="fileTranscript" accept="image/*,.pdf" class="rec-file-input" multiple>
         </div>
         <div>
-          <label class="rec-label">Professional License / APC / Registration</label>
-          <input type="file" name="fileLicense" accept="image/*,.pdf" class="rec-file-input">
-        </div>
-        <div>
           <label class="rec-label">Other Supporting Documents</label>
           <input type="file" name="fileOther" accept="image/*,.pdf" class="rec-file-input" multiple>
         </div>
       </div>
     </div>
+
 
     <!-- DECLARATION -->
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
@@ -886,11 +849,11 @@ async function submitPublicForm(e) {
   btn.disabled = true;
   btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submitting...';
 
-  // Build employment history string
+  // Build employment history string (no salary)
   const empRows = [0,1,2,3].map(i => {
-    const from=get(`empFrom${i}`), to=get(`empTo${i}`), co=get(`empCo${i}`), pos=get(`empPos${i}`), sal=get(`empSal${i}`), reason=get(`empLeave${i}`);
+    const from=get(`empFrom${i}`), to=get(`empTo${i}`), co=get(`empCo${i}`), pos=get(`empPos${i}`), ben=get(`empBen${i}`), reason=get(`empLeave${i}`);
     if (!co) return '';
-    return `${from}–${to} | ${co} | ${pos} | RM${sal} | Left: ${reason}`;
+    return `${from}–${to} | ${co} | ${pos} ${ben ? `(${ben})` : ''} | Left: ${reason}`;
   }).filter(Boolean).join('\n');
 
   // Build education string
@@ -914,17 +877,28 @@ async function submitPublicForm(e) {
     return `${name} | ${occ} | ${rel} | ${phone} | ${yrs} yrs`;
   }).filter(Boolean).join('\n');
 
-  // Language proficiency
-  const langKeys = ['Malay/BM','English/BI','Mandarin','Iban','Bidayuh','Others'];
-  const langSummary = langKeys.map(lang => {
+  // Language proficiency — including custom input and text notes
+  const langKeys = ['Malay/BM','English/BI','Mandarin','Iban','Bidayuh'];
+  const langItems = langKeys.map(lang => {
     const key = lang.replace(/[^a-z]/gi,'');
     const skills = ['wExcel','wGood','wAvg','sExcel','sGood','sAvg'];
     const ticked = skills.filter(s => fd.get(`lang_${key}_${s}`)).join(', ');
     return ticked ? `${lang}: ${ticked}` : '';
-  }).filter(Boolean).join('; ');
+  }).filter(Boolean);
 
-  // Process file uploads → base64 metadata
-  const fileFields = ['filePhoto','fileIC','fileSPM','fileDegree','fileTranscript','fileLicense','fileOther'];
+  const customLang = get('lang_other_custom').trim();
+  const otherTicked = ['wExcel','wGood','wAvg','sExcel','sGood','sAvg'].filter(s => fd.get(`lang_Others_${s}`)).join(', ');
+  if (customLang) {
+    langItems.push(`${customLang}${otherTicked ? ': ' + otherTicked : ''}`);
+  }
+  const langText = get('langOthersText').trim();
+  if (langText) {
+    langItems.push(`Additional: ${langText}`);
+  }
+  const langSummary = langItems.join('; ');
+
+  // Process file uploads → base64 metadata (no fileLicense needed)
+  const fileFields = ['filePhoto','fileIC','fileSPM','fileDegree','fileTranscript','fileOther'];
   const uploadedDocs = [];
   for (const field of fileFields) {
     const files = form[field] ? Array.from(form[field].files) : [];
@@ -975,9 +949,6 @@ async function submitPublicForm(e) {
     height: get('height'),
     weight: get('weight'),
     drivingLicense: get('drivingLicense'),
-    epfNo: get('epfNo'),
-    socsoNo: get('socsoNo'),
-    taxNo: get('taxNo'),
 
     // Emergency
     emergencyContact: `${get('ecName')} (${get('ecRelation')}) — ${get('ecPhone')}; ${get('ecAddress')}`,
@@ -991,7 +962,6 @@ async function submitPublicForm(e) {
     institution: get('institution'),
     cgpa: get('cgpa'),
     additionalCerts: get('additionalCerts'),
-    professionalMembership: get('professionalMembership'),
     educationHistory: eduRows,
 
     // Language
@@ -1000,7 +970,6 @@ async function submitPublicForm(e) {
     // Employment
     workHistory: empRows,
     noticeRequired: get('noticeRequired'),
-    expectedSalary: get('expectedSalary'),
     skills: get('skills'),
     itSkills: get('itSkills'),
 
@@ -1011,8 +980,6 @@ async function submitPublicForm(e) {
     healthIssues: get('healthIssues'),
     recentSurgery: get('recentSurgery'),
     depressionMeds: get('depressionMeds'),
-    expecting: get('expecting'),
-    expectingWeeks: get('expectingWeeks'),
 
     // References
     references: refs,
@@ -1029,14 +996,12 @@ async function submitPublicForm(e) {
     // Supplementary
     relativesAtPmg: get('relativesAtPmg'),
     relativesAtPmgDetail: get('relativesAtPmgDetail'),
-    dismissed: get('dismissed'),
-    dismissedDetail: get('dismissedDetail'),
-    convicted: get('convicted'),
 
     // Documents
     docs: uploadedDocs,
     docNames: uploadedDocs.map(d=>d.name),
   };
+
 
   const apps = loadApps();
   apps.unshift(app);
@@ -1359,7 +1324,7 @@ ${aiSection}
       ['NRIC/IC', app.ic], ['DOB', app.dob], ['Citizenship', app.citizenship],
       ['IC Colour', app.icColour], ['Place of Birth', app.placeOfBirth], ['Height', app.height ? app.height+'cm' : '—'],
       ['Weight', app.weight ? app.weight+'kg' : '—'], ['Phone', app.phone], ['Email', app.email],
-      ['Driving License', app.drivingLicense], ['EPF No.', app.epfNo||'—'], ['SOCSO No.', app.socsoNo||'—'],
+      ['Driving License', app.drivingLicense],
     ].map(([k,v])=>`<div><p class="text-[10px] text-gray-400 uppercase tracking-wide">${k}</p><p class="font-medium text-gray-800">${sanitize(String(v||'—'))}</p></div>`).join('')}
     <div class="col-span-2 sm:col-span-3"><p class="text-[10px] text-gray-400 uppercase tracking-wide">Address</p><p class="font-medium text-gray-800">${sanitize(app.address||'—')}</p></div>
     <div class="col-span-2 sm:col-span-3"><p class="text-[10px] text-gray-400 uppercase tracking-wide">Emergency Contact</p><p class="font-medium text-gray-800">${sanitize(app.emergencyContact||'—')}</p></div>
@@ -1377,8 +1342,7 @@ ${aiSection}
     <div><p class="text-[10px] text-gray-400 uppercase">Highest Qual</p><p class="font-medium">${sanitize(app.highestQual||'—')}</p></div>
     <div><p class="text-[10px] text-gray-400 uppercase">Institution</p><p class="font-medium">${sanitize(app.institution||'—')}</p></div>
     <div><p class="text-[10px] text-gray-400 uppercase">CGPA/Grade</p><p class="font-medium">${sanitize(app.cgpa||'—')}</p></div>
-    <div><p class="text-[10px] text-gray-400 uppercase">Professional Membership</p><p class="font-medium">${sanitize(app.professionalMembership||'None')}</p></div>
-    <div class="col-span-2"><p class="text-[10px] text-gray-400 uppercase">Additional Certs</p><p class="font-medium">${sanitize(app.additionalCerts||'—')}</p></div>
+    <div class="col-span-2 sm:col-span-3"><p class="text-[10px] text-gray-400 uppercase">Additional Certs</p><p class="font-medium">${sanitize(app.additionalCerts||'—')}</p></div>
   </div>
   ${app.educationHistory ? `<p class="text-[10px] text-gray-400 uppercase mb-1">Education History</p><p class="text-xs whitespace-pre-line font-mono text-gray-700">${sanitize(app.educationHistory)}</p>` : ''}
 </div>
@@ -1392,15 +1356,15 @@ ${aiSection}
   </div>
   <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
     ${[
-      ['Expected Salary', 'RM '+(app.expectedSalary||'?')], ['Notice Period', app.noticeRequired||'?'],
+      ['Notice Period', app.noticeRequired||'?'],
       ['Skills', app.skills||'—'], ['IT Skills', app.itSkills||'—'],
       ['Has Transport', app.hasTransport||'?'], ['Able to Travel Branches', app.ableToTravel||'?'],
       ['Can Do Shift', app.canDoShift||'?'], ['Accept 3yr Contract', app.accept3yr||'?'],
       ['Future Study/Govt Plan', app.futurePlan||'?'], ['Smokes/Vapes', app.smokes||'?'],
       ['Health Issues', app.healthIssues||'None'], ['Depression Meds', app.depressionMeds||'No'],
       ['Recent Surgery', app.recentSurgery||'No'], ['Relatives at PMG', app.relativesAtPmg||'No'],
-      ['Dismissed Before', app.dismissed||'No'], ['Convicted', app.convicted||'No'],
     ].map(([k,v])=>`<div><p class="text-[10px] text-gray-400 uppercase">${k}</p><p class="font-medium text-gray-800">${sanitize(String(v))}</p></div>`).join('')}
+
     ${app.futurePlanDetail ? `<div class="col-span-2 sm:col-span-3"><p class="text-[10px] text-gray-400 uppercase">Future Plan Details</p><p class="font-medium text-red-700">${sanitize(app.futurePlanDetail)}</p></div>` : ''}
   </div>
 </div>
