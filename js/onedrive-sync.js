@@ -1042,30 +1042,56 @@
 
     // ─── UI STATUS BADGE UPDATER ─────────────────────────────────────────────
     _updateBadge(status, text) {
+      // 1. Module-level badge (Patient Care tab)
       const badgeEl = document.getElementById('oneDriveLiveSyncBadge');
       const textEl = document.getElementById('oneDriveLiveSyncText');
       const iconEl = document.getElementById('oneDriveLiveSyncIcon');
 
-      if (!badgeEl || !textEl) return;
+      // 2. Global Top Header badge (Always visible in Top Navbar to AM & BM)
+      const hBadgeEl = document.getElementById('headerOneDriveSyncBadge');
+      const hTextEl = document.getElementById('headerOneDriveSyncText');
+      const hIconEl = document.getElementById('headerOneDriveSyncIcon');
 
-      textEl.textContent = text;
+      if (badgeEl && textEl) {
+        textEl.textContent = text;
+        if (status === 'CONNECTED') {
+          badgeEl.className = 'cursor-pointer text-[11px] font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-300 flex items-center gap-1.5 transition shadow-xs';
+          if (iconEl) iconEl.className = 'fa-solid fa-cloud-check text-emerald-600';
+        } else if (status === 'SYNCING') {
+          badgeEl.className = 'cursor-pointer text-[11px] font-semibold text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-300 flex items-center gap-1.5 transition shadow-xs';
+          if (iconEl) iconEl.className = 'fa-solid fa-arrows-rotate text-blue-600 animate-spin';
+        } else if (status === 'PERMISSION_NEEDED') {
+          badgeEl.className = 'cursor-pointer text-[11px] font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg border border-amber-300 flex items-center gap-1.5 transition shadow-xs';
+          if (iconEl) iconEl.className = 'fa-solid fa-lock text-amber-600';
+        } else if (status === 'ERROR') {
+          badgeEl.className = 'cursor-pointer text-[11px] font-semibold text-rose-800 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-lg border border-rose-300 flex items-center gap-1.5 transition shadow-xs';
+          if (iconEl) iconEl.className = 'fa-solid fa-triangle-exclamation text-rose-600';
+        } else {
+          // DISCONNECTED
+          badgeEl.className = 'cursor-pointer text-[11px] font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 px-3 py-1.5 rounded-lg border border-gray-300 flex items-center gap-1.5 transition shadow-xs';
+          if (iconEl) iconEl.className = 'fa-brands fa-microsoft text-blue-600';
+        }
+      }
 
-      if (status === 'CONNECTED') {
-        badgeEl.className = 'cursor-pointer text-[11px] font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-300 flex items-center gap-1.5 transition shadow-xs';
-        if (iconEl) iconEl.className = 'fa-solid fa-cloud-check text-emerald-600';
-      } else if (status === 'SYNCING') {
-        badgeEl.className = 'cursor-pointer text-[11px] font-semibold text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-300 flex items-center gap-1.5 transition shadow-xs';
-        if (iconEl) iconEl.className = 'fa-solid fa-arrows-rotate text-blue-600 animate-spin';
-      } else if (status === 'PERMISSION_NEEDED') {
-        badgeEl.className = 'cursor-pointer text-[11px] font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg border border-amber-300 flex items-center gap-1.5 transition shadow-xs';
-        if (iconEl) iconEl.className = 'fa-solid fa-lock text-amber-600';
-      } else if (status === 'ERROR') {
-        badgeEl.className = 'cursor-pointer text-[11px] font-semibold text-rose-800 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-lg border border-rose-300 flex items-center gap-1.5 transition shadow-xs';
-        if (iconEl) iconEl.className = 'fa-solid fa-triangle-exclamation text-rose-600';
-      } else {
-        // DISCONNECTED
-        badgeEl.className = 'cursor-pointer text-[11px] font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 px-3 py-1.5 rounded-lg border border-gray-300 flex items-center gap-1.5 transition shadow-xs';
-        if (iconEl) iconEl.className = 'fa-brands fa-microsoft text-blue-600';
+      if (hBadgeEl && hTextEl) {
+        hTextEl.textContent = text;
+        if (status === 'CONNECTED') {
+          hBadgeEl.className = 'cursor-pointer text-xs font-semibold text-emerald-100 bg-emerald-700 hover:bg-emerald-600 px-2.5 py-1 rounded flex items-center gap-1.5 transition shadow-xs border border-emerald-500/50';
+          if (hIconEl) hIconEl.className = 'fa-solid fa-cloud-check text-emerald-200';
+        } else if (status === 'SYNCING') {
+          hBadgeEl.className = 'cursor-pointer text-xs font-semibold text-blue-100 bg-blue-700 hover:bg-blue-600 px-2.5 py-1 rounded flex items-center gap-1.5 transition shadow-xs border border-blue-500/50';
+          if (hIconEl) hIconEl.className = 'fa-solid fa-arrows-rotate text-blue-200 animate-spin';
+        } else if (status === 'PERMISSION_NEEDED') {
+          hBadgeEl.className = 'cursor-pointer text-xs font-semibold text-amber-100 bg-amber-600 hover:bg-amber-500 px-2.5 py-1 rounded flex items-center gap-1.5 transition shadow-xs border border-amber-400/50';
+          if (hIconEl) hIconEl.className = 'fa-solid fa-lock text-amber-200';
+        } else if (status === 'ERROR') {
+          hBadgeEl.className = 'cursor-pointer text-xs font-semibold text-rose-100 bg-rose-700 hover:bg-rose-600 px-2.5 py-1 rounded flex items-center gap-1.5 transition shadow-xs border border-rose-500/50';
+          if (hIconEl) hIconEl.className = 'fa-solid fa-triangle-exclamation text-rose-200';
+        } else {
+          // DISCONNECTED
+          hBadgeEl.className = 'cursor-pointer text-xs font-semibold text-blue-200 bg-blue-800 hover:bg-blue-700 px-2.5 py-1 rounded flex items-center gap-1.5 transition shadow-xs border border-blue-600/60';
+          if (hIconEl) hIconEl.className = 'fa-brands fa-microsoft text-sky-300';
+        }
       }
     }
   }

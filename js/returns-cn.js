@@ -137,79 +137,6 @@
           expiryDate: '2026-08'
         }
       ]
-    },
-    {
-      id: 'ret-ks-2609-002',
-      doNumber: 'DO-KS-2609-002',
-      branch: 'Kota Sentosa',
-      branchCode: 'KS01',
-      companyName: 'PMG PHARMACY (KOTA SENTOSA) SDN BHD',
-      companyAddress: 'NO. 102 & 103, GROUND FLOOR, SENTOSA PARADE, 7TH MILE, JALAN PENRISSEN, 93250 KUCHING, SARAWAK.',
-      date: '24.09.2026',
-      supplier: 'DKSH MALAYSIA',
-      destCompany: 'DKSH MALAYSIA SDN BHD',
-      destAddress: 'LOT 848, BLOCK 7, MUARA TEBAS LAND DISTRICT, DEMAK LAUT INDUSTRIAL PARK, 93050 KUCHING, SARAWAK.',
-      destAttn: 'Credit Note & Returns Dept',
-      destPhone: '082-433100',
-      totalCartons: 2,
-      status: 'pending_pickup',
-      verifiedBy: 'Ting Kwang Yu',
-      pickupBy: '',
-      pickupDate: '',
-      signedProof: null,
-      cnNumber: '',
-      cnAmount: 0,
-      cnDate: '',
-      xilnexKeyed: false,
-      xilnexKeyedDate: '',
-      xilnexKeyedBy: '',
-      remarks: 'Damaged during transit + recall items.',
-      items: [
-        {
-          cartonNo: 1,
-          itemCode: '101684',
-          itemDescription: 'DICLORAN 50MG DELAYED-RELEASE TAB',
-          quantity: 5,
-          uom: 'BOX',
-          prnNumber: 'PRN-KS-0881',
-          reason: 'Damaged Goods',
-          batchNo: 'DC9812',
-          expiryDate: '2027-01'
-        },
-        {
-          cartonNo: 1,
-          itemCode: '135514',
-          itemDescription: "HEMAPIX 2.5MG TAB 10'S - SANDOZ",
-          quantity: 4,
-          uom: 'BOX',
-          prnNumber: 'PRN-KS-0881',
-          reason: 'Supplier Recall',
-          batchNo: 'HP7721',
-          expiryDate: '2026-11'
-        },
-        {
-          cartonNo: 1,
-          itemCode: '104322',
-          itemDescription: "JANUMET XR 100MG/1000MG TAB 7'S X4/BOX",
-          quantity: 2,
-          uom: 'BOX',
-          prnNumber: 'PRN-KS-0881',
-          reason: 'Damaged Goods',
-          batchNo: 'JN1190',
-          expiryDate: '2026-12'
-        },
-        {
-          cartonNo: 2,
-          itemCode: '116345',
-          itemDescription: "SEA-COCONUT LOZENGES EXTRA STRONG 15G 6'S",
-          quantity: 10,
-          uom: 'PACK',
-          prnNumber: 'PRN-KS-0882',
-          reason: 'Slow Moving Stock',
-          batchNo: 'SC4402',
-          expiryDate: '2026-10'
-        }
-      ]
     }
   ];
 
@@ -238,24 +165,33 @@
   async function loadReturnsFromDb() {
     try {
       const db = await openDatabase();
+      const hasSeeded = localStorage.getItem('pmg_returns_seeded') === 'true';
+      const deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_returns') || '["ret-ks-2609-002"]');
+
       return new Promise((resolve) => {
         const tx = db.transaction(DB_STORE_NAME, 'readonly');
         const store = tx.objectStore(DB_STORE_NAME);
         const req = store.getAll();
         req.onsuccess = () => {
-          const list = req.result || [];
-          if (list.length === 0) {
-            // Seed initial data
-            saveAllReturnsToDb(SEED_RETURNS).then(() => resolve(SEED_RETURNS));
+          let list = (req.result || []).filter(r => !deletedIds.includes(r.id));
+          if (list.length === 0 && !hasSeeded) {
+            // Seed initial data once
+            localStorage.setItem('pmg_returns_seeded', 'true');
+            const cleanSeed = SEED_RETURNS.filter(r => !deletedIds.includes(r.id));
+            saveAllReturnsToDb(cleanSeed).then(() => resolve(cleanSeed));
           } else {
+            // Purge deleted records from DB store if any remained
+            if (deletedIds.length > 0 && req.result && req.result.length > 0) {
+              deletedIds.forEach(did => deleteReturnFromDb(did));
+            }
             resolve(list);
           }
         };
-        req.onerror = () => resolve(SEED_RETURNS);
+        req.onerror = () => resolve([]);
       });
     } catch (err) {
-      console.warn('[PMG Returns] DB error, using seed data:', err);
-      return SEED_RETURNS;
+      console.warn('[PMG Returns] DB error:', err);
+      return [];
     }
   }
 
@@ -314,21 +250,24 @@
       return;
     }
 
-    const branch = targetBranch || getActiveBranchName();
     try {
+      const branch = targetBranch || getActiveBranchName();
+      const deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_returns') || '["ret-ks-2609-002"]');
+
       // 1. Check if OneDrive has cloud data
       const cloudData = await window.pmgOneDriveSync.loadReturnsDatabaseFromOneDrive(branch);
       if (Array.isArray(cloudData) && cloudData.length > 0) {
-        // Merge cloud data with local data by id
+        // Filter out any tombstoned deleted IDs
+        const cleanCloud = cloudData.filter(r => !deletedIds.includes(r.id));
         const map = new Map();
-        returnsData.forEach(r => map.set(r.id, r));
-        cloudData.forEach(r => map.set(r.id, r)); // Cloud takes priority or merges
+        returnsData.filter(r => !deletedIds.includes(r.id)).forEach(r => map.set(r.id, r));
+        cleanCloud.forEach(r => map.set(r.id, r));
         returnsData = Array.from(map.values());
         await saveAllReturnsToDb(returnsData);
       }
 
       // 2. Push current state back to OneDrive
-      const branchOnlyData = returnsData.filter(r => (r.branch || '').toUpperCase() === branch.toUpperCase());
+      const branchOnlyData = returnsData.filter(r => (r.branch || '').toUpperCase() === branch.toUpperCase() && !deletedIds.includes(r.id));
       await window.pmgOneDriveSync.saveReturnsDatabaseToOneDrive(branch, branchOnlyData);
       console.log(`[PMG Returns] Synced returns with OneDrive for ${branch}`);
     } catch (err) {
@@ -1484,7 +1423,6 @@
     alert(`🎉 Credit Note ${cnNumber} marked as Completed & Keyed into Xilnex!`);
   }
 
-  // ─── DELETE RECORD ────────────────────────────────────────────────────────────
   async function deleteReturnRecord(returnId) {
     const ret = returnsData.find(r => r.id === returnId);
     if (!ret) return;
@@ -1492,9 +1430,23 @@
     const confirmDel = confirm(`Are you sure you want to delete return record ${ret.doNumber}? This cannot be undone.`);
     if (!confirmDel) return;
 
+    // 1. Record in tombstone list so cloud sync never resurrects it
+    const deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_returns') || '["ret-ks-2609-002"]');
+    if (!deletedIds.includes(returnId)) {
+      deletedIds.push(returnId);
+      localStorage.setItem('pmg_deleted_returns', JSON.stringify(deletedIds));
+    }
+
+    // 2. Remove from local memory and IndexedDB
     returnsData = returnsData.filter(r => r.id !== returnId);
     await deleteReturnFromDb(returnId);
-    syncReturnsWithOneDrive(ret.branch);
+
+    // 3. Directly overwrite OneDrive file with clean array (no re-merging old file)
+    if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveReturnsDatabaseToOneDrive === 'function') {
+      const branchOnlyData = returnsData.filter(r => (r.branch || '').toUpperCase() === ret.branch.toUpperCase() && !deletedIds.includes(r.id));
+      await window.pmgOneDriveSync.saveReturnsDatabaseToOneDrive(ret.branch, branchOnlyData);
+    }
+
     renderReturnsUI();
   }
 
