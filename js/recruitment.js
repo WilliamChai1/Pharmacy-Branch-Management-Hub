@@ -78,7 +78,7 @@ function saveApps(apps) {
 function loadSlots() { try { return JSON.parse(localStorage.getItem(REC_SLOTS_KEY)||'[]'); } catch { return []; } }
 function saveSlots(slots) { localStorage.setItem(REC_SLOTS_KEY, JSON.stringify(slots)); }
 function loadSettings() {
-  const def = { geminiKey: '', geminiModel: 'gemini-1.5-flash-8b', appointmentLink: '', notes: '' };
+  const def = { geminiKey: '', geminiModel: 'gemini-3.5-flash-lite', appointmentLink: '', notes: '' };
   try { return { ...def, ...JSON.parse(localStorage.getItem(REC_SETTINGS_KEY)||'{}') }; } catch { return def; }
 }
 function saveSettings(s) { localStorage.setItem(REC_SETTINGS_KEY, JSON.stringify(s)); }
@@ -126,38 +126,96 @@ function patchOneDriveWithRecruitment() {
 // ─────────────────────────────────────────────────────────────────────────────
 // AI EVALUATION via Gemini
 // ─────────────────────────────────────────────────────────────────────────────
+// Primary: Gemini 3.5 Flash-Lite (fast, free-tier-friendly pre-screen)
+// Secondary: Gemini 3.5 Flash (deep eval, fallback with retry)
 const GEMINI_MODELS = {
-  lite:    { id: 'gemini-1.5-flash-8b',  label: 'Gemini Flash-Lite (Quick Screen)' },
-  flash:   { id: 'gemini-1.5-flash',     label: 'Gemini 3.5 Flash (Deep Eval)' },
+  lite:  { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite (Primary — Fast Screen)' },
+  flash: { id: 'gemini-3.5-flash',      label: 'Gemini 3.5 Flash (Secondary — Deep Eval)'    },
 };
 
-async function runAiEvaluation(app, apiKey, modelKey = 'flash') {
-  const model = GEMINI_MODELS[modelKey]?.id || GEMINI_MODELS.flash.id;
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+// ─────────────────────────────────────────────────────────────────────────────
+// NUMEROLOGY — Life Path Number from Date of Birth
+// Used as one signal among many to assess personality for sales role
+// ─────────────────────────────────────────────────────────────────────────────
+function calcLifePathNumber(dob) {
+  // dob: YYYY-MM-DD
+  if (!dob) return null;
+  const digits = dob.replace(/-/g,'').split('').map(Number);
+  let sum = digits.reduce((a,b)=>a+b,0);
+  // Reduce to single digit (keep master numbers 11, 22, 33)
+  while (sum > 9 && sum !== 11 && sum !== 22 && sum !== 33) {
+    sum = String(sum).split('').map(Number).reduce((a,b)=>a+b,0);
+  }
+  return sum;
+}
 
-  // Build SPM analysis section
+const NUMEROLOGY_PROFILES = {
+  1:  { name:'The Leader',      salesFit:'★★★★★', traits:'Self-starter, ambitious, goal-oriented. Natural closer. Excellent for target-driven sales. May need coaching on listening.' },
+  2:  { name:'The Diplomat',    salesFit:'★★★☆☆', traits:'Cooperative, empathetic, good listener. Builds trust well. Slower to close; needs confidence coaching for assertive selling.' },
+  3:  { name:'The Communicator',salesFit:'★★★★★', traits:'Naturally charming, expressive, persuasive. Excellent for product promotion and customer engagement. Watch for inconsistency.' },
+  4:  { name:'The Builder',     salesFit:'★★★☆☆', traits:'Disciplined, systematic, reliable. Strong on plan execution and follow-through. Not a natural "talker" but earns trust.' },
+  5:  { name:'The Adventurer',  salesFit:'★★★★☆', traits:'Energetic, versatile, great communicator. Handles pressure well. Can be impulsive; needs structure.' },
+  6:  { name:'The Nurturer',    salesFit:'★★★★☆', traits:'Caring, responsible, customer-service oriented. Excellent for healthcare/pharmacy sales. Very good at building loyalty.' },
+  7:  { name:'The Analyst',     salesFit:'★★☆☆☆', traits:'Introspective, detail-oriented, knowledgeable. Better suited to specialist/technical roles than front-line sales.' },
+  8:  { name:'The Executive',   salesFit:'★★★★★', traits:'Business-minded, results-driven, handles rejection well. Natural for high-target sales environments. Strong stress resilience.' },
+  9:  { name:'The Humanitarian',salesFit:'★★★☆☆', traits:'Compassionate, idealistic, broad thinking. Good for relationship-based selling; may deprioritize personal sales targets.' },
+  11: { name:'The Visionary',   salesFit:'★★★★☆', traits:'Highly intuitive, inspirational communicator. Excellent brand ambassador. Can be over-sensitive to rejection.' },
+  22: { name:'The Master Builder',salesFit:'★★★★★', traits:'Exceptional planner and executor. Rare number. Strategic thinker with high sales ceiling if motivated by mission.' },
+  33: { name:'The Master Teacher',salesFit:'★★★★☆', traits:'Deeply empathetic, inspiring presence. Outstanding for pharmacy counselling-led sales. Extremely rare.' },
+};
+
+function getNumerologyInfo(dob) {
+  const num = calcLifePathNumber(dob);
+  if (!num) return null;
+  const profile = NUMEROLOGY_PROFILES[num] || { name:'Unknown', salesFit:'—', traits:'No profile available.' };
+  return { number: num, ...profile };
+}
+
+async function runAiEvaluation(app, apiKey, modelKey = 'lite') {
+  // Primary: lite. Fallback to flash if lite fails.
+  const modelsToTry = modelKey === 'lite'
+    ? [GEMINI_MODELS.lite.id, GEMINI_MODELS.flash.id]
+    : [GEMINI_MODELS.flash.id, GEMINI_MODELS.lite.id];
+
   const spmRaw = app.spm || '';
   const spmSummary = spmRaw ? `SPM Results: ${spmRaw}` : 'SPM Results: Not provided';
 
-  const prompt = `You are an experienced HR manager for PUBLIC MEDICARE GROUP (PMG) pharmacy chain in Kuching, Sarawak, Malaysia. You are helping Area Manager pharmacist William Chai screen job applicants.
+  // Numerology
+  const numInfo = getNumerologyInfo(app.dob);
+  const numerologySection = numInfo
+    ? `NUMEROLOGY PROFILE (Life Path Number ${numInfo.number} — ${numInfo.name}):\n- Sales Fit Rating: ${numInfo.salesFit}\n- Personality Traits: ${numInfo.traits}\n- Note: Numerology is ONE supplementary data point only. Do NOT use it as primary decision factor.`
+    : 'NUMEROLOGY: DOB not provided — cannot calculate.';
+
+  const prompt = `You are an experienced HR manager for PUBLIC MEDICARE GROUP (PMG) pharmacy chain in Kuching, Sarawak, Malaysia. You are helping Area Manager pharmacist William Chai screen job applicants for a SALES-ORIENTED community pharmacy team.
+
+═══════════════════════════════════════
+PMG EVALUATION PRIORITIES (in order):
+═══════════════════════════════════════
+1. PLAN EXECUTION ABILITY — Can this person set targets, follow through, and deliver results consistently? Look at work history (did they stay and achieve?), contract acceptance, and responses that show self-discipline.
+2. COMMUNICATION SKILLS — Critical for pharmacy sales. Must be able to explain products clearly in Malay AND English, handle objections, counsel patients, and upsell. Multi-language (Iban/Bidayuh/Mandarin) is a major bonus.
+3. STRESS RESILIENCE — Community pharmacy is physically and emotionally demanding (long shifts, difficult customers, stock pressure). Flag candidates who smoke/vape (health risk), have mental health concerns, or show fragile patterns.
+4. SMOKING / VAPING — PMG does NOT want staff who smoke or vape. This reflects poorly on health image of a pharmacy. If "Yes" to smoking, flag as CONCERN and reduce score.
 
 IMPORTANT CONTEXT:
 - This is a community pharmacy in Sarawak, East Malaysia
-- Local Kuching universities (e.g., Cyberjaya College Kuching, UNIMAS, Curtin Sarawak) are generally BELOW international standards. Do NOT overweight a high CGPA from these institutions.
-- SPM (Malaysian O-Level equivalent) results are often a BETTER indicator of fundamental aptitude than local university GPA. Pay careful attention to SPM grades, especially for Sciences (Biology, Chemistry, Additional Mathematics) and English.
-- For Pharmacy Assistant roles: SPM is the PRIMARY qualification. 3Bs and above in relevant subjects is very good.
-- For Pharmacist roles: Must have Board of Pharmacy (BPharm) degree + valid APC (Annual Practising Certificate) from Malaysia Pharmacy Board.
-- For Nutritionist/Dietitian: Must have relevant degree; local diploma applicants should be evaluated cautiously.
-- Sarawak demographics: Many staff are Iban, Bidayuh, Chinese, Malay. Multi-language ability (Malay, English, local dialects) is a bonus.
-- Ability to travel between 7 branches and do shift work is important.
-- 3-year contract is standard. Candidates mentioning plans to leave (govt job waiting) should be flagged as HIGH RISK.
+- Local Kuching universities (e.g., Cyberjaya College Kuching, UNIMAS, Curtin Sarawak) are BELOW international standards. Do NOT overweight local CGPA.
+- SPM is often a BETTER indicator of aptitude than local diploma/degree GPA. Analyze Sciences (Bio, Chem, Add Maths) and English grades carefully.
+- Pharmacy Assistant: SPM primary. 3B+ in relevant subjects is good.
+- Pharmacist: Must have BPharm degree + valid Malaysia Pharmacy Board APC.
+- Nutritionist/Dietitian: Relevant degree required; local diploma treated cautiously.
+- Sarawak demographics: Iban, Bidayuh, Chinese, Malay. Multi-language is a strong plus.
+- Travel between 7 branches and shift work required.
+- 3-year contract is standard. Govt job applicants = HIGH retention risk.
 
+═══════════════════════════════════════
 APPLICANT PROFILE:
+═══════════════════════════════════════
 - Name: ${app.name}
 - Position Applied: ${app.position}
 - Age: ${app.age || '?'}, Gender: ${app.gender || '?'}, Race: ${app.race || '?'}
 - Marital Status: ${app.maritalStatus || '?'}
 - Religion: ${app.religion || '?'}
+- DOB: ${app.dob || '?'}
 - IC/NRIC: ${app.ic || '?'}
 - Phone: ${app.phone || '?'}
 - Address: ${app.address || '?'}
@@ -169,76 +227,113 @@ EDUCATION:
 - Highest Qualification: ${app.highestQual || '?'}
 - Institution: ${app.institution || '?'}
 - CGPA/Grade: ${app.cgpa || '?'}
-- Additional certs: ${app.additionalCerts || 'None stated'}
+- Education History: ${app.educationHistory || '—'}
+- Additional Certs: ${app.additionalCerts || 'None stated'}
+- Professional Membership: ${app.professionalMembership || 'None'}
 
 WORK EXPERIENCE:
 ${app.workHistory || 'No work history provided.'}
+- Notice Required: ${app.noticeRequired || '?'}
+- Expected Salary: RM${app.expectedSalary || '?'}
+- Skills: ${app.skills || '—'}
+- IT Knowledge: ${app.itSkills || '—'}
 
 LANGUAGE PROFICIENCY:
 ${app.languages || 'Not specified'}
 
-SCREENING QUESTIONNAIRE (HR/RECRUITMENT/001/2023):
+FAMILY BACKGROUND:
+${app.familyBackground || 'Not provided'}
+
+${numerologySection}
+
+═══════════════════════════════════════
+SCREENING QUESTIONNAIRE (HR/001/2023):
+═══════════════════════════════════════
 - Transport/Driving: ${app.hasTransport || '?'} | License: ${app.drivingLicense || '?'}
 - Able to travel branches: ${app.ableToTravel || '?'}
-- Smokes/Vapes: ${app.smokes || '?'}
+- ⚠️ SMOKES / VAPES: ${app.smokes || '?'} ← IMPORTANT: PMG prefers non-smokers. Flag "Yes" as concern.
 - Health issues: ${app.healthIssues || '?'}
 - Recent surgery (6 months): ${app.recentSurgery || '?'}
 - Depression medication: ${app.depressionMeds || '?'}
-- Height/Weight: ${app.height||'?'}/${app.weight||'?'}
+- Height/Weight: ${app.height||'?'}cm / ${app.weight||'?'}kg
 - Can do shift work: ${app.canDoShift || '?'}
 - Accept 3-year contract: ${app.accept3yr || '?'}
-- Future study/govt job plan: ${app.futurePlan || '?'}
+- Future study/govt job plan: ${app.futurePlan || '?'} — ${app.futurePlanDetail || ''}
 
 HEALTH & INTERESTS:
-- Mental/physical illness declared: ${app.healthDeclaration || 'No'}
+- Mental/physical illness declared: ${app.healthDeclaration || 'No'} — ${app.healthDeclarationDetail || ''}
 - Female applicant expecting: ${app.expecting || 'N/A'}
-- Professional Membership: ${app.professionalMembership || 'None'}
 
 SUPPLEMENTARY:
-- Relatives at PMG: ${app.relativesAtPmg || 'No'}
-- Ever dismissed/suspended: ${app.dismissed || 'No'}
+- Relatives at PMG: ${app.relativesAtPmg || 'No'} — ${app.relativesAtPmgDetail || ''}
+- Ever dismissed/suspended: ${app.dismissed || 'No'} — ${app.dismissedDetail || ''}
 - Ever convicted: ${app.convicted || 'No'}
 
 EMERGENCY CONTACT: ${app.emergencyContact || '?'}
+REFERENCES: ${app.references || 'Not provided'}
 
-FAMILY BACKGROUND: ${app.familyBackground || 'Not provided'}
+═══════════════════════════════════════
+EVALUATION INSTRUCTIONS:
+═══════════════════════════════════════
+Score each of these four pillars (0–25 each), then sum for total score (0–100):
+A. Plan Execution (0–25): History of commitment, completing tasks, discipline, contract willingness
+B. Communication (0–25): Language skills, role-fit for customer-facing sales, multi-language bonus
+C. Stress Resilience (0–25): Health, lifestyle (smoking is a negative), shift adaptability, stability
+D. Qualification Fit (0–25): SPM aptitude + relevant education for the specific role
 
-REFERENCES:
-${app.references || 'Not provided'}
-
-Please provide a structured JSON evaluation with these exact keys:
+Return ONLY valid JSON with exactly these keys:
 {
   "score": <integer 0-100>,
+  "pillarScores": { "planExecution": <0-25>, "communication": <0-25>, "stressResilience": <0-25>, "qualificationFit": <0-25> },
   "verdict": "<Highly Recommended | Recommended | Borderline | Not Recommended>",
+  "smokingFlag": <true|false>,
   "strengths": ["<point 1>", "<point 2>", ...],
   "concerns": ["<concern 1>", ...],
-  "spmAnalysis": "<detailed analysis of SPM results and what they indicate about aptitude>",
-  "qualificationRisk": "<assessment of whether local university CGPA is reliable indicator>",
-  "retentionRisk": "<Low | Medium | High — based on 3-year contract commitment, govt job plans, etc.>",
-  "interviewQuestions": ["<suggested Q1>", "<suggested Q2>", "<suggested Q3>", "<suggested Q4>", "<suggested Q5>"],
+  "spmAnalysis": "<detailed analysis of SPM results and aptitude for the role>",
+  "qualificationRisk": "<assessment of whether local university CGPA is a reliable indicator>",
+  "retentionRisk": "<Low | Medium | High>",
+  "numerologyInsight": "<brief interpretation of Life Path Number ${numInfo?.number || '?'} — ${numInfo?.name || '?'} in context of this pharmacy sales role>",
+  "communicationAssessment": "<detailed assessment of communication fit for pharmacy sales>",
+  "planExecutionAssessment": "<assessment of plan execution and follow-through ability>",
+  "stressResilienceAssessment": "<assessment of stress handling, lifestyle, and shift readiness>",
+  "interviewQuestions": ["<Q1 — probe communication>", "<Q2 — probe plan execution>", "<Q3 — probe stress handling>", "<Q4 — probe sales scenario>", "<Q5 — probe commitment/retention>"],
   "summary": "<2-3 sentence overall assessment for William Chai to read quickly>"
 }
 
 Return ONLY valid JSON. No markdown, no extra text.`;
 
-  const resp = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 1500 } }),
-  });
+  let lastErr = null;
+  for (const modelId of modelsToTry) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
+        }),
+      });
 
-  if (!resp.ok) {
-    const err = await resp.text();
-    throw new Error(`Gemini API error ${resp.status}: ${err.slice(0,200)}`);
+      if (!resp.ok) {
+        const err = await resp.text();
+        throw new Error(`Gemini API error ${resp.status}: ${err.slice(0,200)}`);
+      }
+
+      const data = await resp.json();
+      const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const clean = raw.replace(/^```json?\s*/i,'').replace(/```\s*$/,'').trim();
+      const result = JSON.parse(clean);
+      result._modelUsed = modelId; // track which model succeeded
+      return result;
+    } catch(e) {
+      lastErr = e;
+      console.warn(`[Recruitment AI] ${modelId} failed:`, e.message, '— trying next model...');
+    }
   }
-
-  const data = await resp.json();
-  const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  // Strip possible markdown fences
-  const clean = raw.replace(/^```json?\s*/i,'').replace(/```\s*$/,'').trim();
-  return JSON.parse(clean);
+  throw lastErr || new Error('All Gemini models failed');
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // INTERVIEW SLOT HELPERS
@@ -1106,26 +1201,89 @@ function viewApp(appId) {
   if (app.aiReport) {
     const r = app.aiReport;
     const sc = r.score >= 75 ? 'bg-emerald-500' : r.score >= 50 ? 'bg-amber-500' : 'bg-red-500';
+    const numInfo = getNumerologyInfo(app.dob);
+
+    // Pillar score bars
+    const pillars = r.pillarScores || {};
+    const pillarDefs = [
+      { key:'planExecution',    label:'Plan Execution',    icon:'fa-bullseye',       color:'bg-blue-500' },
+      { key:'communication',    label:'Communication',     icon:'fa-comments',       color:'bg-purple-500' },
+      { key:'stressResilience', label:'Stress Resilience', icon:'fa-shield-heart',   color:'bg-amber-500' },
+      { key:'qualificationFit', label:'Qualification Fit', icon:'fa-graduation-cap', color:'bg-emerald-500' },
+    ];
+
     aiSection = `
 <div class="bg-slate-900 rounded-xl p-4 text-white mb-4">
-  <div class="flex items-center justify-between mb-3">
+  <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
     <div class="flex items-center gap-2">
       <i class="fa-solid fa-robot text-purple-400"></i>
       <span class="font-bold text-sm">Gemini AI Evaluation Report</span>
+      <span class="text-[10px] bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">${sanitize(r._modelUsed || 'gemini-3.5-flash-lite')}</span>
     </div>
     <span class="text-xs text-slate-400">Evaluated ${fmtDateTime(app.aiEvaluatedAt)}</span>
   </div>
-  <div class="flex items-center gap-4 mb-4">
-    <div class="w-16 h-16 rounded-full ${sc} flex items-center justify-center shrink-0">
+
+  ${r.smokingFlag ? `<div class="bg-red-900/60 border border-red-500 rounded-lg p-2 mb-3 flex items-center gap-2 text-xs text-red-300">
+    <i class="fa-solid fa-ban text-red-400 text-base"></i>
+    <strong class="text-red-300">⚠ SMOKING / VAPING FLAGGED</strong> — PMG policy: non-smoker preferred. This is a concern for pharmacy health image.
+  </div>` : '<div class="bg-emerald-900/40 border border-emerald-700 rounded-lg p-2 mb-3 flex items-center gap-2 text-xs text-emerald-300"><i class="fa-solid fa-check-circle text-emerald-400"></i> Non-smoker confirmed — good for pharmacy health image.</div>'}
+
+  <div class="flex items-center gap-4 mb-4 flex-wrap">
+    <div class="w-16 h-16 rounded-full ${sc} flex items-center justify-center shrink-0 shadow-lg">
       <span class="text-xl font-black">${r.score}</span>
     </div>
-    <div>
+    <div class="flex-1 min-w-0">
       <p class="font-bold text-base">${sanitize(r.verdict)}</p>
       <p class="text-slate-300 text-xs mt-1 leading-relaxed">${sanitize(r.summary)}</p>
-      <p class="text-xs mt-1">Retention Risk: <span class="font-bold ${r.retentionRisk==='High'?'text-red-400':r.retentionRisk==='Medium'?'text-amber-400':'text-emerald-400'}">${r.retentionRisk}</span></p>
+      <p class="text-xs mt-1">Retention Risk: <span class="font-bold ${r.retentionRisk==='High'?'text-red-400':r.retentionRisk==='Medium'?'text-amber-400':'text-emerald-400'}">${sanitize(r.retentionRisk||'—')}</span></p>
     </div>
   </div>
-  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+
+  <!-- Sales Pillar Scorecard -->
+  <div class="bg-slate-800 rounded-xl p-3 mb-3">
+    <p class="text-xs font-bold text-blue-300 mb-2"><i class="fa-solid fa-chart-bar mr-1"></i>Sales Team Pillar Scores</p>
+    <div class="grid grid-cols-2 gap-2">
+      ${pillarDefs.map(p => {
+        const val = pillars[p.key] || 0;
+        const pct = (val / 25) * 100;
+        return `<div>
+          <div class="flex justify-between text-[10px] mb-0.5">
+            <span class="flex items-center gap-1"><i class="fa-solid ${p.icon} text-xs"></i>${p.label}</span>
+            <span class="font-bold">${val}/25</span>
+          </div>
+          <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
+            <div class="h-full ${p.color} rounded-full transition-all" style="width:${pct}%"></div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>
+
+  <!-- Numerology Card -->
+  ${numInfo ? `<div class="bg-indigo-900/50 border border-indigo-700 rounded-xl p-3 mb-3">
+    <p class="text-xs font-bold text-indigo-300 mb-1.5"><i class="fa-solid fa-star-of-david mr-1"></i>Numerology — Life Path Number ${numInfo.number}: ${sanitize(numInfo.name)}</p>
+    <p class="text-xs text-indigo-200 mb-1">Sales Fit: <span class="font-bold text-yellow-300">${sanitize(numInfo.salesFit)}</span></p>
+    <p class="text-[11px] text-slate-300 mb-1">${sanitize(numInfo.traits)}</p>
+    ${r.numerologyInsight ? `<p class="text-[11px] text-indigo-200 italic border-t border-indigo-800 pt-1.5 mt-1.5"><i class="fa-solid fa-robot text-indigo-400 mr-1"></i>${sanitize(r.numerologyInsight)}</p>` : ''}
+  </div>` : ''}
+
+  <!-- 3 Key Dimensions -->
+  <div class="space-y-2 mb-3">
+    <div class="bg-slate-800 rounded-lg p-3">
+      <p class="text-xs font-bold text-blue-300 mb-1"><i class="fa-solid fa-bullseye mr-1"></i>Plan Execution Assessment</p>
+      <p class="text-xs text-slate-300">${sanitize(r.planExecutionAssessment||'—')}</p>
+    </div>
+    <div class="bg-slate-800 rounded-lg p-3">
+      <p class="text-xs font-bold text-purple-300 mb-1"><i class="fa-solid fa-comments mr-1"></i>Communication Assessment</p>
+      <p class="text-xs text-slate-300">${sanitize(r.communicationAssessment||'—')}</p>
+    </div>
+    <div class="bg-slate-800 rounded-lg p-3">
+      <p class="text-xs font-bold text-amber-300 mb-1"><i class="fa-solid fa-shield-heart mr-1"></i>Stress Resilience Assessment</p>
+      <p class="text-xs text-slate-300">${sanitize(r.stressResilienceAssessment||'—')}</p>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
     <div>
       <p class="text-xs font-bold text-emerald-400 mb-1"><i class="fa-solid fa-plus mr-1"></i>Strengths</p>
       <ul class="text-xs text-slate-300 space-y-1">${(r.strengths||[]).map(s=>`<li class="flex gap-1"><i class="fa-solid fa-check text-emerald-400 mt-0.5 shrink-0"></i>${sanitize(s)}</li>`).join('')}</ul>
@@ -1135,12 +1293,13 @@ function viewApp(appId) {
       <ul class="text-xs text-slate-300 space-y-1">${(r.concerns||[]).map(c=>`<li class="flex gap-1"><i class="fa-solid fa-xmark text-red-400 mt-0.5 shrink-0"></i>${sanitize(c)}</li>`).join('')}</ul>
     </div>
   </div>
+
   <div class="bg-slate-800 rounded-lg p-3 mb-3">
     <p class="text-xs font-bold text-amber-300 mb-1"><i class="fa-solid fa-school mr-1"></i>SPM Analysis</p>
     <p class="text-xs text-slate-300">${sanitize(r.spmAnalysis||'—')}</p>
   </div>
   <div class="bg-slate-800 rounded-lg p-3 mb-3">
-    <p class="text-xs font-bold text-amber-300 mb-1"><i class="fa-solid fa-university mr-1"></i>Qualification Risk Assessment</p>
+    <p class="text-xs font-bold text-amber-300 mb-1"><i class="fa-solid fa-graduation-cap mr-1"></i>Qualification Risk</p>
     <p class="text-xs text-slate-300">${sanitize(r.qualificationRisk||'—')}</p>
   </div>
   <div class="bg-slate-800 rounded-lg p-3">
@@ -1156,6 +1315,7 @@ function viewApp(appId) {
   ${settings.geminiKey ? `<button onclick="window.pmgRecruitment.runAI('${appId}')" class="px-4 py-2 bg-purple-700 text-white text-xs font-bold rounded-lg hover:bg-purple-800 transition"><i class="fa-solid fa-robot mr-1"></i>Run Gemini AI Evaluation</button>` : '<p class="text-xs text-red-400">Set Gemini API key in Settings first</p>'}
 </div>`;
   }
+
 
   // Build docs section
   const docsSection = app.docs && app.docs.length > 0 ? `
@@ -1284,24 +1444,25 @@ async function runAI(appId) {
   const app = apps.find(a => a.id === appId);
   if (!app) return;
 
-  const model = settings.geminiModel || 'gemini-1.5-flash';
-  toast('Running Gemini AI evaluation... please wait', 'info');
+  toast('Running Gemini 3.5 Flash-Lite evaluation… please wait', 'info');
 
   // Update status to reviewing
   app.status = 'reviewing';
   saveApps(apps);
 
   try {
-    const modelKey = model.includes('8b') || model.includes('lite') ? 'lite' : 'flash';
-    const report = await runAiEvaluation(app, settings.geminiKey, modelKey);
+    // Always start with lite (primary). runAiEvaluation auto-falls back to flash.
+    const report = await runAiEvaluation(app, settings.geminiKey, 'lite');
     app.aiScore = report.score;
     app.aiVerdict = report.verdict;
     app.aiReport = report;
     app.aiEvaluatedAt = now();
     app.status = report.score >= 60 ? 'shortlist' : 'reviewing';
     saveApps(apps);
-    toast(`AI Evaluation complete! Score: ${report.score}/100 — ${report.verdict}`, 'success');
+    const modelLabel = report._modelUsed?.includes('lite') ? 'Flash-Lite' : 'Flash';
+    toast(`AI Evaluation complete [${modelLabel}]! Score: ${report.score}/100 — ${report.verdict}`, 'success');
     viewApp(appId); // refresh detail view
+
   } catch(err) {
     app.status = 'new';
     saveApps(apps);
@@ -1445,19 +1606,41 @@ function renderSettingsTab() {
       <div>
         <label class="rec-label">AI Model for Screening</label>
         <select id="sGeminiModel" class="rec-input">
-          <option value="gemini-1.5-flash-8b" ${s.geminiModel==='gemini-1.5-flash-8b'?'selected':''}>Gemini Flash-Lite (Fast, Free tier friendly)</option>
-          <option value="gemini-1.5-flash" ${s.geminiModel==='gemini-1.5-flash'?'selected':''}>Gemini 1.5 Flash (More thorough, recommended)</option>
+          <option value="gemini-3.5-flash-lite" ${s.geminiModel==='gemini-3.5-flash-lite'||!s.geminiModel?'selected':''}>🟢 Gemini 3.5 Flash-Lite — PRIMARY (Fast, Free-tier, 15 RPM)</option>
+          <option value="gemini-3.5-flash" ${s.geminiModel==='gemini-3.5-flash'?'selected':''}>🔵 Gemini 3.5 Flash — SECONDARY (Deep eval, 5 RPM fallback)</option>
         </select>
-        <p class="text-[10px] text-gray-400 mt-1">Gemini Flash-Lite for quick pre-screen; Gemini 1.5 Flash for full deep evaluation.</p>
+        <p class="text-[10px] text-gray-400 mt-1">Flash-Lite runs first (fast pre-screen). If it fails or rate-limits, Flash auto-takes over for deep evaluation.</p>
       </div>
     </div>
   </div>
   <div class="bg-white rounded-xl border border-gray-200 p-5">
     <h4 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-link text-blue-600"></i>Public Application Form Link</h4>
-    <p class="text-xs text-gray-500 mb-2">Share this link with candidates. They can open the Management Hub and click the "Apply for Job" button, or you can share it via WhatsApp/email.</p>
-    <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs font-mono text-gray-700 flex items-center justify-between gap-2">
-      <span class="truncate">Open PMG Management Hub → HR Recruitment → Apply for Job</span>
-      <button onclick="window.pmgRecruitment.copyFormLink()" class="text-blue-600 hover:underline text-xs shrink-0 font-sans font-bold"><i class="fa-solid fa-copy mr-1"></i>Copy</button>
+    <p class="text-xs text-gray-500 mb-3">Share this direct link with candidates. They fill in the online form and you receive applications here in the dashboard.</p>
+    <div class="bg-blue-900 border border-blue-700 rounded-xl p-3 mb-3">
+      <p class="text-[10px] text-blue-300 uppercase font-bold mb-1 tracking-wide">📎 Direct Link (GitHub Pages)</p>
+      <p class="text-xs font-mono text-white break-all">https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <button onclick="window.pmgRecruitment.copyFormLink()" class="px-3 py-1.5 bg-blue-700 text-white text-xs font-bold rounded-lg hover:bg-blue-800 transition flex items-center gap-1.5">
+        <i class="fa-solid fa-copy"></i> Copy Link
+      </button>
+      <button onclick="window.pmgRecruitment.shareViaWhatsApp()" class="px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 transition flex items-center gap-1.5">
+        <i class="fa-brands fa-whatsapp"></i> Share via WhatsApp
+      </button>
+      <a href="https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/?tab=recruitment&view=apply" target="_blank" class="px-3 py-1.5 bg-gray-700 text-white text-xs font-bold rounded-lg hover:bg-gray-800 transition flex items-center gap-1.5">
+        <i class="fa-solid fa-arrow-up-right-from-square"></i> Preview Form
+      </a>
+    </div>
+    <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-3 text-xs text-amber-700">
+      <p class="font-bold mb-1"><i class="fa-solid fa-circle-info mr-1"></i>How to use:</p>
+      <ol class="list-decimal ml-4 space-y-0.5">
+        <li>Candidates open the link above and click <strong>HR Recruitment → Application Form (Public)</strong></li>
+        <li>They fill in the form and upload documents (SPM slip, IC, certificates)</li>
+        <li>Application appears instantly in your <strong>Applications Dashboard</strong></li>
+        <li>Click <strong>Run AI</strong> to get Gemini evaluation with numerology + sales pillar scores</li>
+      </ol>
+    </div>
+
     </div>
   </div>
   <div class="bg-white rounded-xl border border-gray-200 p-5">
@@ -1497,9 +1680,18 @@ function saveSettingsForm() {
 }
 
 function copyFormLink() {
-  const url = window.location.href.split('?')[0] + '?tab=recruitment&view=apply';
-  navigator.clipboard.writeText(url).then(()=>toast('Link copied!','success')).catch(()=>toast('Copy failed — select and copy manually','warn'));
+  const url = 'https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/';
+  navigator.clipboard.writeText(url)
+    .then(()=>toast('Link copied! Share with candidates.', 'success'))
+    .catch(()=>toast('Link: https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/', 'warn'));
 }
+
+function shareViaWhatsApp() {
+  const url = 'https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/';
+  const msg = `📋 *PMG Pharmacy Job Application*\n\nInterested in joining PUBLIC MEDICARE GROUP (PMG) Pharmacy team in Kuching, Sarawak?\n\nPositions available:\n• Pharmacist\n• Pharmacy Assistant\n• Nutritionist / Dietitian\n\n🔗 Apply online:\n${url}\n\nClick *HR Recruitment → Application Form (Public)* to fill in your details and upload your documents.\n\nFor enquiries, contact Area Manager William Chai.`;
+  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB SWITCHER
@@ -1677,6 +1869,7 @@ window.pmgRecruitment = {
   renderSettingsTab,
   saveSettingsForm,
   copyFormLink,
+  shareViaWhatsApp,
   switchRecTab,
   renderSlotsTab,
   deleteSlot,
