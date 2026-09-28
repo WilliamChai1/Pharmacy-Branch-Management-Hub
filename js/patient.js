@@ -4170,15 +4170,28 @@ async function autoAnalyzeTedaLink() {
     applyTedaReportToUi(report, rawUrl);
 
     if (statusEl) {
-      statusEl.className = 'text-[10px] text-emerald-700 font-bold';
-      statusEl.innerHTML = `
-        <div class="flex items-center justify-between gap-2 flex-wrap">
-          <span><i class="fa-solid fa-circle-check text-emerald-600"></i> Authentic TEDA Report Auto-Grabbed &amp; Synced (Immunity ${report.immunityScore != null ? report.immunityScore : 78}, Health ${report.healthScore != null ? report.healthScore : 82})</span>
-          <button type="button" onclick="openTedaTvModal()" class="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-[10px] font-bold transition">
-            <i class="fa-solid fa-tv mr-1"></i> View TV
-          </button>
-        </div>
-      `;
+      if (report.isFallback) {
+        statusEl.className = 'text-[10px] text-amber-800 font-bold';
+        statusEl.innerHTML = `
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <span><i class="fa-solid fa-shield-halved text-amber-600"></i> TEDA anti-hotlink protected direct grab. Opening <b>View TV</b> &mdash; click <b>"Quick Sync"</b> to confirm authentic scores!</span>
+            <button type="button" onclick="openTedaTvModal()" class="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-[10px] font-bold transition">
+              <i class="fa-solid fa-tv mr-1"></i> View TV
+            </button>
+          </div>
+        `;
+        openTedaTvModal();
+      } else {
+        statusEl.className = 'text-[10px] text-emerald-700 font-bold';
+        statusEl.innerHTML = `
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <span><i class="fa-solid fa-circle-check text-emerald-600"></i> Authentic TEDA Report Auto-Grabbed &amp; Synced (Immunity ${report.immunityScore != null ? report.immunityScore : '—'}, Health ${report.healthScore != null ? report.healthScore : '—'})</span>
+            <button type="button" onclick="openTedaTvModal()" class="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-[10px] font-bold transition">
+              <i class="fa-solid fa-tv mr-1"></i> View TV
+            </button>
+          </div>
+        `;
+      }
     }
 
     checkTedaUrl(rawUrl);
@@ -4198,22 +4211,23 @@ async function autoAnalyzeTedaLink() {
 }
 
 /**
- * Intelligent clinical fallback structure populated from vitals
+ * Safe clinical fallback when TEDA direct API is restricted by Qiaolz anti-hotlink headers
  */
 function getTedaClinicalFallbackReport(rid, rawUrl) {
   return {
     rid,
+    isFallback: true,
     reportDate: getTodayDateString(0),
-    immunityScore: 78,
-    healthScore: 82,
-    advice: '【综合调理原则】疏肝理气，调补气血，健脾祛湿',
-    subHealthZangfu: [{ name: '肝', score: 3.5 }, { name: '脾', score: 3.2 }],
-    subHealthTizhi: [{ name: '平和质偏气虚', score: 3.6 }, { name: '湿热倾向', score: 3.1 }],
-    blockedJingluo: [{ name: '足厥阴肝经', score: 3.4 }, { name: '足少阳胆经', score: 3.0 }],
-    spinePressure: [{ name: '颈椎C4-C5', score: 3.0 }],
-    zangfuSummary: '肝气条达微滞，脾运化略缓',
-    tizhiSummary: '气虚体质兼夹痰湿',
-    jingluoSummary: '肝胆经络气血稍滞，宜疏肝畅中'
+    immunityScore: null,
+    healthScore: null,
+    advice: '【需从TV核验】',
+    subHealthZangfu: [],
+    subHealthTizhi: [],
+    blockedJingluo: [],
+    spinePressure: [],
+    zangfuSummary: '请在上方点击 "View TV" 查看实时评估数据，并点击 "Quick Sync" 同步至病历。',
+    tizhiSummary: '待从实时报告同步',
+    jingluoSummary: '待从实时报告同步'
   };
 }
 
@@ -4432,28 +4446,29 @@ function openTedaManualSyncModal(customRid, customUrl) {
   const spineEl = document.getElementById('tedaSyncSpine');
 
   if (ridEl) ridEl.textContent = rid || 'Unknown Report ID';
-  if (healthEl) healthEl.value = report?.healthScore != null ? report.healthScore : 78;
-  if (immEl) immEl.value = report?.immunityScore != null ? report.immunityScore : 58;
-  if (adviceEl) adviceEl.value = report?.advice || '【活血化瘀】';
+  const hasRealData = report && !report.isFallback;
+  if (healthEl) healthEl.value = (hasRealData && report.healthScore != null) ? report.healthScore : '';
+  if (immEl) immEl.value = (hasRealData && report.immunityScore != null) ? report.immunityScore : '';
+  if (adviceEl) adviceEl.value = (hasRealData && report.advice) ? report.advice : '';
   if (zangfuEl) {
-    zangfuEl.value = report?.subHealthZangfu && report.subHealthZangfu.length
-      ? report.subHealthZangfu.map(x => `${x.name} ${x.score}`).join(', ')
-      : (report?.zangfuSummary || '小肠虚弱 6.6, 肝虚 7.4, 脾虚 7.7');
+    zangfuEl.value = (hasRealData && report.subHealthZangfu && report.subHealthZangfu.length)
+      ? report.subHealthZangfu.map(x => `${x.name} ${x.score != null ? x.score : ''}`).join(', ')
+      : (hasRealData ? (report.zangfuSummary || '') : '');
   }
   if (tizhiEl) {
-    tizhiEl.value = report?.subHealthTizhi && report.subHealthTizhi.length
-      ? report.subHealthTizhi.map(x => `${x.name} ${x.score}`).join(', ')
-      : (report?.tizhiSummary || '血瘀 6.0, 津液亏虚 7.3, 津液停聚 7.4');
+    tizhiEl.value = (hasRealData && report.subHealthTizhi && report.subHealthTizhi.length)
+      ? report.subHealthTizhi.map(x => `${x.name} ${x.score != null ? x.score : ''}`).join(', ')
+      : (hasRealData ? (report.tizhiSummary || '') : '');
   }
   if (jingluoEl) {
-    jingluoEl.value = report?.blockedJingluo && report.blockedJingluo.length
-      ? report.blockedJingluo.map(x => `${x.name} ${x.score}`).join(', ')
-      : (report?.jingluoSummary || '足太阳膀胱经 5.9, 手太阴肺经 6.0, 任脉 6.0');
+    jingluoEl.value = (hasRealData && report.blockedJingluo && report.blockedJingluo.length)
+      ? report.blockedJingluo.map(x => `${x.name} ${x.score != null ? x.score : ''}`).join(', ')
+      : (hasRealData ? (report.jingluoSummary || '') : '');
   }
   if (spineEl) {
-    spineEl.value = report?.spinePressure && report.spinePressure.length
-      ? report.spinePressure.map(x => `${x.name} ${x.score}`).join(', ')
-      : 'TH6（胸椎） 7.6, C6（颈椎） 7.6, TH3（胸椎） 7.7';
+    spineEl.value = (hasRealData && report.spinePressure && report.spinePressure.length)
+      ? report.spinePressure.map(x => `${x.name} ${x.score != null ? x.score : ''}`).join(', ')
+      : '';
   }
 
   modal.classList.remove('hidden');
