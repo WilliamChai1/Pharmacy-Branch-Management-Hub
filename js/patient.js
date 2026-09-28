@@ -3893,24 +3893,52 @@ async function fetchAndDecryptTedaReport(rid) {
     throw new Error('CryptoJS library is not loaded. Please ensure internet connectivity to load CryptoJS.');
   }
 
-  const endpoint = `https://sg-app.qiaolz.com/report/result2?rid=${encodeURIComponent(rid)}&mac=&lang=&v=3.0.0`;
-  const response = await fetch(endpoint, {
-    method: 'GET',
-    headers: {
-      'Accept': '*/*'
+  let uint8 = null;
+
+  // Method 2 (Cloud Relay Proxy): Route via Google Apps Script relay to bypass browser Referer restrictions
+  if (typeof PMG_SCHEDULE_API_URL !== 'undefined' && PMG_SCHEDULE_API_URL) {
+    try {
+      const relayUrl = `${PMG_SCHEDULE_API_URL}?action=proxyTeda&rid=${encodeURIComponent(rid)}`;
+      const relayRes = await fetch(relayUrl);
+      if (relayRes.ok) {
+        const relayData = await relayRes.json();
+        if (relayData && relayData.success && relayData.data) {
+          const binaryString = atob(relayData.data);
+          const len = binaryString.length;
+          uint8 = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            uint8[i] = binaryString.charCodeAt(i);
+          }
+        }
+      }
+    } catch (relayErr) {
+      console.warn('[TEDA Relay Notice]: Cloud proxy relay unreachable:', relayErr);
     }
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch TEDA report (HTTP ${response.status})`);
   }
 
-  const arrayBuffer = await response.arrayBuffer();
-  if (!arrayBuffer || arrayBuffer.byteLength === 0) {
-    throw new Error('Received empty response from TEDA server.');
+  // Fallback: Direct browser fetch
+  if (!uint8) {
+    const endpoint = `https://sg-app.qiaolz.com/report/result2?rid=${encodeURIComponent(rid)}&mac=&lang=&v=3.0.0`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'GET',
+        headers: { 'Accept': '*/*' }
+      });
+      if (response.ok) {
+        const arrayBuffer = await response.arrayBuffer();
+        if (arrayBuffer && arrayBuffer.byteLength > 0) {
+          uint8 = new Uint8Array(arrayBuffer);
+        }
+      }
+    } catch (directErr) {
+      console.warn('[TEDA Direct Fetch Notice]: Direct fetch restricted:', directErr);
+    }
   }
 
-  const uint8 = new Uint8Array(arrayBuffer);
+  if (!uint8 || uint8.byteLength === 0) {
+    throw new Error('Received empty response from TEDA server (Qiaolz domain restriction).');
+  }
+
   const { cipherData, cipherKey } = decodeTedaProtobuf(uint8);
   if (!cipherData || !cipherKey) {
     throw new Error('Invalid TEDA report payload structure.');
@@ -3943,8 +3971,8 @@ async function fetchAndDecryptTedaReport(rid) {
   const structured = {
     rid,
     advice: r.advice || '',
-    immunityScore: r.score2 != null ? r.score2 : (r.score1 != null ? r.score1 : ''),
-    healthScore: r.score1 != null ? r.score1 : (r.score2 != null ? r.score2 : ''),
+    immunityScore: r.score1 != null ? r.score1 : (r.score2 != null ? r.score2 : ''),
+    healthScore: r.score2 != null ? r.score2 : (r.score1 != null ? r.score1 : ''),
     reportDate: r.timeStr || '',
     zangfuSummary: '',
     tizhiSummary: '',
