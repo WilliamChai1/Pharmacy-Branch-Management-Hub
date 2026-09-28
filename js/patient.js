@@ -7160,24 +7160,24 @@ function parseLarkCustomer(text, defaultBranch = 'Kota Sentosa') {
 const PMG_SCHEDULE_API_URL = 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
 
 const BRANCH_SCHEDULES = {
-  'Kota Sentosa':  { name: 'Kota Sentosa',  open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', phone: '601110990693', hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
-  'KOTA SENTOSA':  { name: 'Kota Sentosa',  open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', phone: '601110990693', hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
-  'KS01':          { name: 'Kota Sentosa',  open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', phone: '601110990693', hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
-  'MATANG JAYA':   { name: 'Matang Jaya',   open: '08:00', close: '21:00', pharmacist: 'Amy Chai (Pharmacist)',     phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
-  'Matang Jaya':   { name: 'Matang Jaya',   open: '08:00', close: '21:00', pharmacist: 'Amy Chai (Pharmacist)',     phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
-  'MATANG':        { name: 'Matang Jaya',   open: '08:00', close: '21:00', pharmacist: 'Amy Chai (Pharmacist)',     phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
-  'SUNGAI MOYAN':  { name: 'Sungai Moyan',  open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
-  'Sungai Moyan':  { name: 'Sungai Moyan',  open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
-  'MOYAN':         { name: 'Sungai Moyan',  open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
-  'MALIHAH':       { name: 'Malihah',       open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
-  'Malihah':       { name: 'Malihah',       open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
-  'METROCITY':     { name: 'Metrocity',     open: '08:30', close: '21:30', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
-  'Metrocity':     { name: 'Metrocity',     open: '08:30', close: '21:30', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
-  'ASTANA':        { name: 'Astana',        open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
-  'Astana':        { name: 'Astana',        open: '08:00', close: '21:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
-  'SAMARIANG':     { name: 'Samariang',     open: '07:30', close: '21:30', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
-  'Samariang':     { name: 'Samariang',     open: '07:30', close: '21:30', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
-  'SEMARIANG':     { name: 'Samariang',     open: '07:30', close: '21:30', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' }
+  'Kota Sentosa':  { name: 'Kota Sentosa',  open: '08:00', close: '17:00', pharmacist: 'William Chai (Pharmacist)', phone: '601110990693', hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
+  'KOTA SENTOSA':  { name: 'Kota Sentosa',  open: '08:00', close: '17:00', pharmacist: 'William Chai (Pharmacist)', phone: '601110990693', hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
+  'KS01':          { name: 'Kota Sentosa',  open: '08:00', close: '17:00', pharmacist: 'William Chai (Pharmacist)', phone: '601110990693', hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
+  'MATANG JAYA':   { name: 'Matang Jaya',   open: '08:00', close: '17:00', pharmacist: 'Amy Chai (Pharmacist)',     phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
+  'Matang Jaya':   { name: 'Matang Jaya',   open: '08:00', close: '17:00', pharmacist: 'Amy Chai (Pharmacist)',     phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
+  'MATANG':        { name: 'Matang Jaya',   open: '08:00', close: '17:00', pharmacist: 'Amy Chai (Pharmacist)',     phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
+  'SUNGAI MOYAN':  { name: 'Sungai Moyan',  open: '08:00', close: '17:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
+  'Sungai Moyan':  { name: 'Sungai Moyan',  open: '08:00', close: '17:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
+  'MOYAN':         { name: 'Sungai Moyan',  open: '08:00', close: '17:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
+  'MALIHAH':       { name: 'Malihah',       open: '08:00', close: '17:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
+  'Malihah':       { name: 'Malihah',       open: '08:00', close: '17:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
+  'METROCITY':     { name: 'Metrocity',     open: '08:30', close: '17:30', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
+  'Metrocity':     { name: 'Metrocity',     open: '08:30', close: '17:30', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
+  'ASTANA':        { name: 'Astana',        open: '08:00', close: '17:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
+  'Astana':        { name: 'Astana',        open: '08:00', close: '17:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
+  'SAMARIANG':     { name: 'Samariang',     open: '07:30', close: '17:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
+  'Samariang':     { name: 'Samariang',     open: '07:30', close: '17:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
+  'SEMARIANG':     { name: 'Samariang',     open: '07:30', close: '17:00', pharmacist: 'Duty Pharmacist',           phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' }
 };
 
 function escHtml(str) {
@@ -7286,7 +7286,7 @@ function unpackScheduleFromUrl(schParam, branchCode) {
     }
     const compact = JSON.parse(jsonStr);
     const code = normalizeBranchCode(compact.b || branchCode || 'Kota Sentosa');
-    const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' };
+    const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || { name: 'Kota Sentosa', open: '08:00', close: '17:00', pharmacist: 'William Chai (Pharmacist)', hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' };
 
     const hasBreak = compact.k ? (compact.k[0] === 1) : (defInfo.hasBreak !== false);
     const breakStart = (compact.k && compact.k[1]) || defInfo.breakStart || '12:30';
@@ -7369,7 +7369,7 @@ function unpackScheduleFromUrl(schParam, branchCode) {
  */
 function getPharmacistSchedule(branchCode) {
   const code = normalizeBranchCode(branchCode);
-  const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)' };
+  const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || { name: 'Kota Sentosa', open: '08:00', close: '17:00', pharmacist: 'William Chai (Pharmacist)' };
 
   let data = null;
   try {
@@ -7392,13 +7392,13 @@ function getPharmacistSchedule(branchCode) {
       breakEnd: defInfo.breakEnd || '13:30',
       breakLabel: defInfo.breakLabel || '休息/午餐时间 (Rest / Lunch Break)',
       weeklyTemplate: {
-        "1": { dayName: "Monday",    isOpen: true, open: defInfo.open, close: defInfo.close, pharmacist: defInfo.pharmacist },
-        "2": { dayName: "Tuesday",   isOpen: true, open: defInfo.open, close: defInfo.close, pharmacist: defInfo.pharmacist },
-        "3": { dayName: "Wednesday", isOpen: true, open: defInfo.open, close: defInfo.close, pharmacist: defInfo.pharmacist },
-        "4": { dayName: "Thursday",  isOpen: true, open: defInfo.open, close: defInfo.close, pharmacist: defInfo.pharmacist },
-        "5": { dayName: "Friday",    isOpen: true, open: defInfo.open, close: defInfo.close, pharmacist: defInfo.pharmacist },
-        "6": { dayName: "Saturday",  isOpen: true, open: defInfo.open, close: defInfo.close, pharmacist: defInfo.pharmacist },
-        "0": { dayName: "Sunday",    isOpen: true, open: defInfo.open, close: defInfo.close, pharmacist: defInfo.pharmacist }
+        "1": { dayName: "Monday",    isOpen: true,  open: '08:00', close: '17:00', pharmacist: defInfo.pharmacist },
+        "2": { dayName: "Tuesday",   isOpen: true,  open: '08:00', close: '17:00', pharmacist: defInfo.pharmacist },
+        "3": { dayName: "Wednesday", isOpen: true,  open: '08:00', close: '17:00', pharmacist: defInfo.pharmacist },
+        "4": { dayName: "Thursday",  isOpen: true,  open: '08:00', close: '17:00', pharmacist: defInfo.pharmacist },
+        "5": { dayName: "Friday",    isOpen: true,  open: '08:00', close: '17:00', pharmacist: defInfo.pharmacist },
+        "6": { dayName: "Saturday",  isOpen: true,  open: '08:00', close: '12:00', pharmacist: defInfo.pharmacist },
+        "0": { dayName: "Sunday",    isOpen: false, open: '',      close: '',      pharmacist: '' }
       },
       dateOverrides: {}
     };
@@ -7422,7 +7422,13 @@ function getPharmacistSchedule(branchCode) {
     ];
     daysMeta.forEach(({ num, name }) => {
       if (!data.weeklyTemplate[num]) {
-        data.weeklyTemplate[num] = { dayName: name, isOpen: true, open: defInfo.open, close: defInfo.close, pharmacist: defInfo.pharmacist };
+        if (num === '0') {
+          data.weeklyTemplate[num] = { dayName: name, isOpen: false, open: '', close: '', pharmacist: '' };
+        } else if (num === '6') {
+          data.weeklyTemplate[num] = { dayName: name, isOpen: true, open: '08:00', close: '12:00', pharmacist: defInfo.pharmacist };
+        } else {
+          data.weeklyTemplate[num] = { dayName: name, isOpen: true, open: '08:00', close: '17:00', pharmacist: defInfo.pharmacist };
+        }
       }
     });
     if (!data.dateOverrides) data.dateOverrides = {};
@@ -7541,7 +7547,7 @@ async function fetchScheduleFromSheets(branchCode) {
  */
 function getPharmacistScheduleForDate(branchCode, dateStr) {
   const code = normalizeBranchCode(branchCode);
-  const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || { name: 'Kota Sentosa', open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' };
+  const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || { name: 'Kota Sentosa', open: '08:00', close: '17:00', pharmacist: 'William Chai (Pharmacist)', hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' };
   const sched = getPharmacistSchedule(code);
 
   const effHasBreak = typeof sched.hasBreak !== 'undefined' ? sched.hasBreak : (defInfo.hasBreak !== false);
@@ -7846,16 +7852,34 @@ async function initCustomerBooking(defaultBranchCode = 'Kota Sentosa') {
   // ── Step 7: Set date picker bounds ────────────────────────────────────────
   const dateInput = document.getElementById('custBookDate');
   if (dateInput) {
-    const today = new Date();
-    const minStr = today.toISOString().split('T')[0];
-    const maxDate = new Date();
-    maxDate.setDate(today.getDate() + 60);
-    const maxStr = maxDate.toISOString().split('T')[0];
+    const todayStr = getTodayDateString(0);
+    const maxStr = getTodayDateString(60);
 
-    dateInput.min = minStr;
+    dateInput.min = todayStr;
     dateInput.max = maxStr;
-    if (!dateInput.value) {
-      dateInput.value = minStr;
+
+    // Check whether today still has upcoming consultation slots remaining
+    const branchCode = normalizeBranchCode(branchParam || 'Kota Sentosa');
+    const todaySched = getPharmacistScheduleForDate(branchCode, todayStr);
+    const now = new Date();
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    let todayHasRemainingSlots = false;
+
+    if (todaySched && todaySched.isOpen && !todaySched.isClosed && todaySched.close) {
+      const [closeH, closeM] = todaySched.close.split(':').map(Number);
+      const closeMinutes = closeH * 60 + closeM;
+      if (nowMinutes < (closeMinutes - 30)) {
+        todayHasRemainingSlots = true;
+      }
+    }
+
+    if (!dateInput.value || dateInput.value < todayStr) {
+      // If today is closed or all consultation hours have ended for today, advance default date to tomorrow!
+      if (!todayHasRemainingSlots) {
+        dateInput.value = getTodayDateString(1);
+      } else {
+        dateInput.value = todayStr;
+      }
     }
   }
 
@@ -7903,6 +7927,26 @@ function updateCustBookHours() {
   const timeSelect = document.getElementById('custBookTime');
   const submitBtn = document.getElementById('custBookSubmitBtn');
   const submitText = document.getElementById('custBookSubmitText');
+
+  const todayStr = getTodayDateString(0);
+  if (dateStr && dateStr < todayStr) {
+    if (bannerEl) {
+      bannerEl.className = 'rounded-2xl p-4 text-sm sm:text-base font-bold flex items-center gap-2.5 bg-rose-50 border border-rose-300 text-rose-800';
+      bannerEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-rose-600 text-base"></i>
+        <span><b>Selected date has already passed (${dateStr}).</b> Please choose today or an upcoming date.</span>`;
+      bannerEl.classList.remove('hidden');
+    }
+    if (descEl) {
+      descEl.innerHTML = `<span class="text-rose-600 font-bold">⚠️ Selected date (${dateStr}) has already passed.</span>`;
+    }
+    if (timeSelect) {
+      timeSelect.innerHTML = `<option value="">⚠️ Date has passed (已过日期)</option>`;
+      timeSelect.disabled = true;
+    }
+    if (submitBtn) submitBtn.disabled = true;
+    if (submitText) submitText.textContent = `Selected Date Has Passed`;
+    return;
+  }
 
   if (titleEl) titleEl.textContent = `${schedForDate.branchName} Operating Hours`;
 
@@ -8002,6 +8046,7 @@ function updateCustBookHours() {
     });
   }
 
+  const isToday = (dateStr === todayStr);
   let options = '';
   let availableCount = 0;
   for (let m = openMinutes; m <= closeMinutes - 30; m += 30) {
@@ -8016,8 +8061,11 @@ function updateCustBookHours() {
 
     const isBreak = hasBreak && (m >= breakStartMin && m < breakEndMin);
     const isBooked = bookedTimes.has(timeVal);
+    const isPast = isToday && (m <= currentMinutes);
 
-    if (isBreak) {
+    if (isPast) {
+      options += `<option value="${timeVal}" disabled class="bg-gray-100 text-gray-400 italic">⏳ ${label} (${timeVal}) - 已截止 / 已过时间 (Time Passed)</option>`;
+    } else if (isBreak) {
       options += `<option value="${timeVal}" disabled class="bg-amber-50 text-amber-900 font-semibold">☕ ${label} (${timeVal}) - ${escHtml(schedForDate.breakLabel || '休息/午餐时间 (Rest / Lunch Break)')}</option>`;
     } else if (isBooked) {
       options += `<option value="${timeVal}" disabled class="bg-gray-100 text-gray-400">⛔ ${label} (${timeVal}) - 已约满 (Fully Booked)</option>`;
@@ -8028,7 +8076,25 @@ function updateCustBookHours() {
   }
 
   if (availableCount === 0) {
-    options = `<option value="" disabled selected>⚠️ All consultation slots are fully booked for ${dateStr}. Please select another date.</option>` + options;
+    if (isToday) {
+      options = `<option value="" disabled selected>⚠️ Today's consultation hours have already ended (${dateStr}). Please select tomorrow or a future date.</option>` + options;
+      if (currentBookingType !== 'refill_extension') {
+        if (bannerEl) {
+          bannerEl.className = 'rounded-2xl p-4 text-sm sm:text-base font-bold flex items-center gap-2.5 bg-amber-50 border border-amber-300 text-amber-900';
+          bannerEl.innerHTML = `<i class="fa-solid fa-clock-rotate-left text-amber-600 text-base"></i>
+            <span><b>Today's consultation hours have ended</b> (${dateStr}). All consultation slots for today have already passed. Please select tomorrow or a future date.</span>`;
+          bannerEl.classList.remove('hidden');
+        }
+        if (submitBtn) submitBtn.disabled = true;
+        if (submitText) submitText.textContent = `Consultation Hours Ended for Today`;
+      }
+    } else {
+      options = `<option value="" disabled selected>⚠️ All consultation slots are fully booked for ${dateStr}. Please select another date.</option>` + options;
+      if (currentBookingType !== 'refill_extension') {
+        if (submitBtn) submitBtn.disabled = true;
+        if (submitText) submitText.textContent = `Fully Booked on Selected Date`;
+      }
+    }
   }
 
   timeSelect.innerHTML = options;
@@ -8119,6 +8185,13 @@ async function handleCustomerBookingSubmit(e) {
 
   const branchCode = normalizeBranchCode(document.getElementById('custBranchSelect').value);
   const date = document.getElementById('custBookDate').value;
+
+  const todayStr = getTodayDateString(0);
+  if (date < todayStr) {
+    alert(`The selected date (${date}) has already passed. Please select today or a future date.`);
+    return;
+  }
+
   const schedForDate = getPharmacistScheduleForDate(branchCode, date);
 
   if (schedForDate.isClosed) {
@@ -8147,10 +8220,29 @@ async function handleCustomerBookingSubmit(e) {
       return;
     }
 
+    const [th, tm] = time.split(':').map(Number);
+    const tMin = th * 60 + tm;
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+
+    // Check if slot has already passed today
+    if (date === todayStr && tMin <= nowMin) {
+      alert(`The selected time slot (${time}) has already passed today (${todayStr}). Please choose an upcoming consultation slot or select a future date.`);
+      return;
+    }
+
+    // Check if slot is within operating hours
+    const [openH, openM] = schedForDate.open.split(':').map(Number);
+    const [closeH, closeM] = schedForDate.close.split(':').map(Number);
+    const openMinutes = openH * 60 + openM;
+    const closeMinutes = closeH * 60 + closeM;
+    if (tMin < openMinutes || tMin > (closeMinutes - 30)) {
+      alert(`The selected time slot (${time}) is outside the pharmacist's operating hours (${schedForDate.open} – ${schedForDate.close}). Please select a time within working hours.`);
+      return;
+    }
+
     // Validate against pharmacist rest / lunch break window
     if (schedForDate.hasBreak !== false && schedForDate.breakStart && schedForDate.breakEnd) {
-      const [th, tm] = time.split(':').map(Number);
-      const tMin = th * 60 + tm;
       const [bsh, bsm] = schedForDate.breakStart.split(':').map(Number);
       const [beh, bem] = schedForDate.breakEnd.split(':').map(Number);
       if (tMin >= (bsh * 60 + bsm) && tMin < (beh * 60 + bem)) {
@@ -8779,7 +8871,7 @@ function resetCustomerBookingForm() {
 // ═════════════════════════════════════════════════════════════════════════════
 let activeHoursSubTab = 'weekly';
 
-function openManageHoursModal() {
+async function openManageHoursModal() {
   const modal = document.getElementById('manageHoursModal');
   if (!modal) return;
 
@@ -8800,12 +8892,33 @@ function openManageHoursModal() {
   // Pre-fill override date input with today
   const overrideDateInput = document.getElementById('overrideDateInput');
   if (overrideDateInput && !overrideDateInput.value) {
-    overrideDateInput.value = new Date().toISOString().split('T')[0];
+    overrideDateInput.value = getTodayDateString(0);
   }
 
   switchHoursSubTab('weekly');
   renderManageHoursModal();
   modal.classList.remove('hidden');
+
+  // Live fetch from Google Sheets to ensure modal displays cloud single-source-of-truth
+  try {
+    const cloudSched = await fetchScheduleFromSheets(userBranch);
+    if (cloudSched) {
+      renderManageHoursModal();
+    }
+  } catch (_) {}
+}
+
+async function onHoursBranchChange() {
+  const branchSelect = document.getElementById('hoursBranchSelect');
+  const rawCode = branchSelect ? branchSelect.value : 'Kota Sentosa';
+  const code = normalizeBranchCode(rawCode);
+  renderManageHoursModal();
+  try {
+    const cloudSched = await fetchScheduleFromSheets(code);
+    if (cloudSched) {
+      renderManageHoursModal();
+    }
+  } catch (_) {}
 }
 
 function closeManageHoursModal() {
@@ -8881,9 +8994,9 @@ function renderWeeklyTemplateTbody(sched) {
   dayOrder.forEach(({ num, label }) => {
     const item = (sched.weeklyTemplate && sched.weeklyTemplate[num]) || {
       dayName: label,
-      isOpen: true,
-      open: '07:30',
-      close: '21:30',
+      isOpen: num !== '0',
+      open: '08:00',
+      close: num === '6' ? '12:00' : '17:00',
       pharmacist: sched.defaultPharmacist || 'Duty Pharmacist'
     };
 
@@ -8897,11 +9010,11 @@ function renderWeeklyTemplateTbody(sched) {
           </label>
         </td>
         <td class="p-2.5">
-          <input type="time" id="tmplTimeOpen_${num}" value="${item.open || '07:30'}" ${item.isOpen ? '' : 'disabled'}
+          <input type="time" id="tmplTimeOpen_${num}" value="${item.open || '08:00'}" ${item.isOpen ? '' : 'disabled'}
             class="border border-gray-300 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-40">
         </td>
         <td class="p-2.5">
-          <input type="time" id="tmplTimeClose_${num}" value="${item.close || '21:30'}" ${item.isOpen ? '' : 'disabled'}
+          <input type="time" id="tmplTimeClose_${num}" value="${item.close || (num === '6' ? '12:00' : '17:00')}" ${item.isOpen ? '' : 'disabled'}
             class="border border-gray-300 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-40">
         </td>
         <td class="p-2.5">
@@ -8939,12 +9052,17 @@ function toggleWeeklyRowInputs(dayNum) {
   if (p) p.disabled = !isOpen;
 }
 
-function saveWeeklyTemplate(e) {
+async function saveWeeklyTemplate(e) {
   if (e) e.preventDefault();
   const branchSelect = document.getElementById('hoursBranchSelect');
   const rawCode = branchSelect ? branchSelect.value : 'Kota Sentosa';
   const code = normalizeBranchCode(rawCode);
-  const sched = getPharmacistSchedule(code);
+
+  let baseSched = null;
+  try {
+    baseSched = await fetchScheduleFromSheets(code);
+  } catch (_) {}
+  const sched = baseSched || getPharmacistSchedule(code);
 
   const breakToggle = document.getElementById('branchBreakToggle');
   const breakStart = document.getElementById('branchBreakStart');
@@ -8956,27 +9074,51 @@ function saveWeeklyTemplate(e) {
   sched.breakEnd = breakEnd ? breakEnd.value : '13:30';
   sched.breakLabel = (breakLabel && breakLabel.value.trim()) ? breakLabel.value.trim() : '休息/午餐时间 (Rest / Lunch Break)';
 
+  if (!sched.weeklyTemplate) sched.weeklyTemplate = {};
+
   const dayNums = ['1', '2', '3', '4', '5', '6', '0'];
   dayNums.forEach(num => {
     const chk = document.getElementById(`tmplOpen_${num}`);
-    const isOpen = chk ? chk.checked : true;
-    const openVal = document.getElementById(`tmplTimeOpen_${num}`)?.value || '07:30';
-    const closeVal = document.getElementById(`tmplTimeClose_${num}`)?.value || '21:30';
-    const pharmVal = document.getElementById(`tmplPharm_${num}`)?.value?.trim() || sched.defaultPharmacist;
+    const isOpen = chk ? chk.checked : (num !== '0');
+    const openVal = document.getElementById(`tmplTimeOpen_${num}`)?.value || '08:00';
+    const closeVal = document.getElementById(`tmplTimeClose_${num}`)?.value || (num === '6' ? '12:00' : '17:00');
+    const pharmVal = document.getElementById(`tmplPharm_${num}`)?.value?.trim() || sched.defaultPharmacist || 'William Chai (Pharmacist)';
 
     sched.weeklyTemplate[num] = {
-      dayName: sched.weeklyTemplate[num]?.dayName || num,
+      dayName: sched.weeklyTemplate[num]?.dayName || (num === '0' ? 'Sunday' : num === '6' ? 'Saturday' : 'Weekday'),
       isOpen,
-      open: openVal,
-      close: closeVal,
-      pharmacist: pharmVal
+      open: isOpen ? openVal : '',
+      close: isOpen ? closeVal : '',
+      pharmacist: isOpen ? pharmVal : ''
     };
   });
 
-  savePharmacistSchedule(code, sched);
-  updateShareBookingUrl();
-  updateCustBookHours();
-  alert(`Weekly template & rest break hours for ${sched.branchName || code} saved successfully!`);
+  if (baseSched && Array.isArray(baseSched.onlineBookings) && (!Array.isArray(sched.onlineBookings) || sched.onlineBookings.length === 0)) {
+    sched.onlineBookings = baseSched.onlineBookings;
+  }
+
+  const submitBtn = e && e.target ? (e.target.querySelector('button[type="submit"]') || e.target) : null;
+  const originalBtnText = submitBtn ? submitBtn.innerHTML : '';
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Saving & Syncing to Cloud...';
+  }
+
+  try {
+    savePharmacistSchedule(code, sched);
+    await pushScheduleToSheets(code, sched);
+    updateShareBookingUrl();
+    updateCustBookHours();
+    alert(`Weekly template & rest break hours for ${sched.branchName || code} saved and synchronized to Google Sheets cloud successfully!`);
+  } catch (err) {
+    console.error('[saveWeeklyTemplate] Save error:', err);
+    alert(`Schedule saved locally, but cloud sync warning: ${err.message}`);
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalBtnText;
+    }
+  }
 }
 
 function toggleOverrideTimeInputs() {
@@ -8991,12 +9133,17 @@ function toggleOverrideTimeInputs() {
   }
 }
 
-function saveDateOverride(e) {
+async function saveDateOverride(e) {
   if (e) e.preventDefault();
   const branchSelect = document.getElementById('hoursBranchSelect');
   const rawCode = branchSelect ? branchSelect.value : 'Kota Sentosa';
   const code = normalizeBranchCode(rawCode);
-  const sched = getPharmacistSchedule(code);
+
+  let baseSched = null;
+  try {
+    baseSched = await fetchScheduleFromSheets(code);
+  } catch (_) {}
+  const sched = baseSched || getPharmacistSchedule(code);
 
   const dateInput = document.getElementById('overrideDateInput');
   const dateStr = dateInput ? dateInput.value : '';
@@ -9005,8 +9152,16 @@ function saveDateOverride(e) {
     return;
   }
 
+  const todayStr = getTodayDateString(0);
+  if (dateStr < todayStr) {
+    alert(`Cannot set an override for a past date (${dateStr}).`);
+    return;
+  }
+
   const statusSel = document.getElementById('overrideStatusSelect')?.value || 'closed';
   const reason = document.getElementById('overrideReasonInput')?.value?.trim() || '';
+
+  if (!sched.dateOverrides) sched.dateOverrides = {};
 
   if (statusSel === 'closed') {
     sched.dateOverrides[dateStr] = {
@@ -9017,9 +9172,9 @@ function saveDateOverride(e) {
       reason: reason || 'Rest Day / Public Holiday'
     };
   } else {
-    const openVal = document.getElementById('overrideOpenInput')?.value || '07:30';
-    const closeVal = document.getElementById('overrideCloseInput')?.value || '16:30';
-    const pharmVal = document.getElementById('overridePharmacistInput')?.value?.trim() || sched.defaultPharmacist;
+    const openVal = document.getElementById('overrideOpenInput')?.value || '08:00';
+    const closeVal = document.getElementById('overrideCloseInput')?.value || '17:00';
+    const pharmVal = document.getElementById('overridePharmacistInput')?.value?.trim() || sched.defaultPharmacist || 'William Chai (Pharmacist)';
 
     sched.dateOverrides[dateStr] = {
       isClosed: false,
@@ -9030,7 +9185,12 @@ function saveDateOverride(e) {
     };
   }
 
+  if (baseSched && Array.isArray(baseSched.onlineBookings) && (!Array.isArray(sched.onlineBookings) || sched.onlineBookings.length === 0)) {
+    sched.onlineBookings = baseSched.onlineBookings;
+  }
+
   savePharmacistSchedule(code, sched);
+  await pushScheduleToSheets(code, sched);
   renderDateOverridesTbody(sched);
   updateShareBookingUrl();
   updateCustBookHours();
@@ -9039,15 +9199,24 @@ function saveDateOverride(e) {
   toggleOverrideTimeInputs();
 }
 
-function deleteDateOverride(dateStr) {
+async function deleteDateOverride(dateStr) {
   const branchSelect = document.getElementById('hoursBranchSelect');
   const rawCode = branchSelect ? branchSelect.value : 'Kota Sentosa';
   const code = normalizeBranchCode(rawCode);
-  const sched = getPharmacistSchedule(code);
+
+  let baseSched = null;
+  try {
+    baseSched = await fetchScheduleFromSheets(code);
+  } catch (_) {}
+  const sched = baseSched || getPharmacistSchedule(code);
 
   if (sched.dateOverrides && sched.dateOverrides[dateStr]) {
     delete sched.dateOverrides[dateStr];
+    if (baseSched && Array.isArray(baseSched.onlineBookings) && (!Array.isArray(sched.onlineBookings) || sched.onlineBookings.length === 0)) {
+      sched.onlineBookings = baseSched.onlineBookings;
+    }
     savePharmacistSchedule(code, sched);
+    await pushScheduleToSheets(code, sched);
     renderDateOverridesTbody(sched);
     updateShareBookingUrl();
     updateCustBookHours();
