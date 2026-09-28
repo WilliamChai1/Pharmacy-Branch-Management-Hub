@@ -1758,7 +1758,7 @@ async function confirmInterviewSchedule() {
   saveApps(apps);
 
   // Build appointment message for candidate
-  const msg = `Dear ${app.name},\n\nCongratulations! You have been shortlisted for an interview at PMG Pharmacy.\n\nInterview Details:\nDate: ${date}\nTime: ${time}\nLocation: ${location}\n\nPlease bring:\n- Original IC / MyKad\n- All original academic certificates\n- Any professional certifications\n\nContact: William Chai (Area Manager)\nPhone: [Your phone number]\n\nWe look forward to meeting you.\n\nBest regards,\nPMG Pharmacy HR Team`;
+  const msg = `Dear ${app.name},\n\nCongratulations! You have been shortlisted for an interview at PMG Pharmacy.\n\nInterview Details:\nDate: ${date}\nTime: ${time}\nLocation: ${location}\n\nPlease bring:\n- Original IC / MyKad\n- All original academic certificates\n- Any professional certifications\n\nContact: William Chai (Area Manager)\nPhone: +601110990693\n\nWe look forward to meeting you.\n\nBest regards,\nPMG Pharmacy HR Team`;
 
   closeScheduleModal();
   toast('Interview scheduled! ' + date + ' ' + time, 'success');
@@ -1782,7 +1782,7 @@ function copyFormLink() {
 
 function shareViaWhatsApp() {
   const url = 'https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/?apply=1';
-  const msg = `📋 *PMG Pharmacy Job Application*\n\nInterested in joining PUBLIC MEDICARE GROUP (PMG) Pharmacy team in Kuching, Sarawak?\n\nPositions available:\n• Pharmacist\n• Pharmacy Assistant\n• Nutritionist / Dietitian\n\n🔗 Apply directly online (No login required):\n${url}\n\nFill in your details and upload your SPM/education results directly.\n\nFor enquiries, contact Area Manager William Chai (PMG Kota Sentosa).`;
+  const msg = `📋 *PMG Pharmacy Job Application*\n\nInterested in joining PUBLIC MEDICARE GROUP (PMG) Pharmacy team in Kuching, Sarawak?\n\nPositions available:\n• Pharmacist\n• Pharmacy Assistant\n• Nutritionist / Dietitian\n\n🔗 Apply directly online (No login required):\n${url}\n\nFill in your details and upload your SPM/education results directly.\n\nFor enquiries, contact Area Manager William Chai (PMG Kota Sentosa) at +601110990693.`;
   window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
 }
 

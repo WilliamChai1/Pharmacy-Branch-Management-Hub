@@ -7119,9 +7119,9 @@ function parseLarkCustomer(text, defaultBranch = 'Kota Sentosa') {
 const PMG_SCHEDULE_API_URL = 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
 
 const BRANCH_SCHEDULES = {
-  'Kota Sentosa':  { name: 'Kota Sentosa',  open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', phone: '60168334455' },
-  'KOTA SENTOSA':  { name: 'Kota Sentosa',  open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', phone: '60168334455' },
-  'KS01':          { name: 'Kota Sentosa',  open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', phone: '60168334455' },
+  'Kota Sentosa':  { name: 'Kota Sentosa',  open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', phone: '601110990693' },
+  'KOTA SENTOSA':  { name: 'Kota Sentosa',  open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', phone: '601110990693' },
+  'KS01':          { name: 'Kota Sentosa',  open: '07:30', close: '21:30', pharmacist: 'William Chai (Pharmacist)', phone: '601110990693' },
   'MATANG JAYA':   { name: 'Matang Jaya',   open: '08:00', close: '21:00', pharmacist: 'Amy Chai (Pharmacist)',     phone: '60123456789' },
   'Matang Jaya':   { name: 'Matang Jaya',   open: '08:00', close: '21:00', pharmacist: 'Amy Chai (Pharmacist)',     phone: '60123456789' },
   'MATANG':        { name: 'Matang Jaya',   open: '08:00', close: '21:00', pharmacist: 'Amy Chai (Pharmacist)',     phone: '60123456789' },
@@ -8191,8 +8191,8 @@ function sendCustomerBookingWaToPharmacist() {
   if (!currentCustomerBooking) return;
   const b = currentCustomerBooking;
   const branchCode = normalizeBranchCode(b.branchCode || b.branchName || 'Kota Sentosa');
-  const info = BRANCH_SCHEDULES[branchCode] || BRANCH_SCHEDULES['Kota Sentosa'] || { phone: '60168334455', pharmacist: 'William Chai (Pharmacist)', name: 'Kota Sentosa' };
-  const targetPhone = info.phone || '60168334455';
+  const info = BRANCH_SCHEDULES[branchCode] || BRANCH_SCHEDULES['Kota Sentosa'] || { phone: '601110990693', pharmacist: 'William Chai (Pharmacist)', name: 'Kota Sentosa' };
+  const targetPhone = info.phone || '601110990693';
 
   const payloadStr = JSON.stringify({
     ref: b.ref || b.id,
