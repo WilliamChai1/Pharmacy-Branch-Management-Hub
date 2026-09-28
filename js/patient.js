@@ -15,6 +15,35 @@ function getTodayDateString(offsetDays = 0) {
 
 const DEFAULT_PATIENTS_DATA = [
   {
+    id: 'PT-JONGHUIWAN',
+    name: 'JONG HUI WAN',
+    ic: '',
+    phone: '',
+    gender: 'Female',
+    age: null,
+    race: 'Chinese',
+    language: 'Chinese',
+    branch: 'Kota Sentosa',
+    conditions: ['Pending Consultation'],
+    allergies: 'None recorded',
+    notes: 'Online booking via Customer Portal (Ref: PMG-BK-570346)',
+    createdAt: '2026-09-28',
+    encounters: [],
+    medications: [],
+    appointments: [
+      {
+        id: 'PMG-BK-570346',
+        date: '2026-09-28',
+        time: '12:30',
+        purpose: 'In-Person Consultation & Health Screening',
+        service: 'In-Person Consultation & Health Screening',
+        pharmacist: 'William Chai (Pharmacist)',
+        status: 'Scheduled',
+        notes: 'Booked via Online Customer Portal (Ref: PMG-BK-570346)'
+      }
+    ]
+  },
+  {
     id: 'PT-1001',
     name: 'Tan Ah Kow',
     ic: '640512-13-5431',
@@ -918,6 +947,10 @@ function initPatientModule() {
   updateBackupStatusBadge();
   updateDailyBackupBanner();
   renderPatientModule();
+  // Auto-sync customer online bookings from cloud relay (silent background fetch)
+  if (typeof syncOnlineBookingsFromCloud === 'function') {
+    syncOnlineBookingsFromCloud(false).catch(() => {});
+  }
 }
 
 function loadPatientsData() {
@@ -966,8 +999,14 @@ function loadPatientsData() {
         if (defPt.medications && (!patientsData[idx].medications || !patientsData[idx].medications.length)) {
           patientsData[idx].medications = JSON.parse(JSON.stringify(defPt.medications));
         }
-        if (defPt.appointments && (!patientsData[idx].appointments || !patientsData[idx].appointments.length)) {
-          patientsData[idx].appointments = JSON.parse(JSON.stringify(defPt.appointments));
+        if (defPt.appointments && Array.isArray(defPt.appointments)) {
+          if (!patientsData[idx].appointments) patientsData[idx].appointments = [];
+          defPt.appointments.forEach(defApt => {
+            const exists = patientsData[idx].appointments.some(a => a.id === defApt.id || (a.date === defApt.date && a.time === defApt.time && (a.purpose === defApt.purpose || a.service === defApt.service)));
+            if (!exists) {
+              patientsData[idx].appointments.unshift(JSON.parse(JSON.stringify(defApt)));
+            }
+          });
         }
         if (defPt.nextTcaDate && (!patientsData[idx].nextTcaDate || patientsData[idx].nextTcaDate < defPt.nextTcaDate)) {
           patientsData[idx].nextTcaDate = defPt.nextTcaDate;
@@ -7896,6 +7935,47 @@ function updateCustBookHours() {
   timeSelect.innerHTML = options;
 }
 
+/**
+ * Pushes customer self-booking data to Google Sheets Cloud Relay.
+ * Appends/updates booking in branch's onlineBookings array across devices.
+ */
+async function pushBookingToCloud(bookingData) {
+  if (!PMG_SCHEDULE_API_URL || !bookingData) return false;
+  try {
+    const branchCode = normalizeBranchCode(bookingData.branchCode || bookingData.branchName || 'Kota Sentosa');
+    const sched = (await fetchScheduleFromSheets(branchCode)) || getPharmacistSchedule(branchCode) || {};
+    if (!Array.isArray(sched.onlineBookings)) {
+      sched.onlineBookings = [];
+    }
+    const ref = bookingData.ref || bookingData.id;
+    const existsIdx = sched.onlineBookings.findIndex(b => b.id === ref || b.ref === ref);
+    if (existsIdx >= 0) {
+      sched.onlineBookings[existsIdx] = bookingData;
+    } else {
+      sched.onlineBookings.unshift(bookingData);
+    }
+    if (sched.onlineBookings.length > 200) {
+      sched.onlineBookings = sched.onlineBookings.slice(0, 200);
+    }
+    const payload = {
+      branch: branchCode,
+      schedule: sched,
+      updatedBy: `Customer: ${bookingData.patientName || 'Online Booking'}`
+    };
+    await fetch(PMG_SCHEDULE_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+      redirect: 'follow'
+    });
+    console.log(`[PMG Cloud Booking] Successfully synced booking ${ref} to Google Apps Script cloud.`);
+    return true;
+  } catch (err) {
+    console.warn('[PMG Cloud Booking] Failed to push booking to cloud:', err);
+    return false;
+  }
+}
+
 function handleCustomerBookingSubmit(e) {
   e.preventDefault();
 
@@ -7973,6 +8053,11 @@ function handleCustomerBookingSubmit(e) {
   };
 
   currentCustomerBooking = bookingData;
+
+  // Push to Google Sheets Cloud Relay so pharmacist sees it immediately on any device
+  pushBookingToCloud(bookingData).catch(err => {
+    console.warn('[PMG Cloud Relay] Could not push booking:', err);
+  });
 
   // Save to customer bookings list in localStorage
   let custBookings = [];
@@ -8096,6 +8181,310 @@ function sendCustomerBookingWaConfirm() {
   const targetPhone = cleanPhone.startsWith('0') ? '60' + cleanPhone.slice(1) : cleanPhone;
   const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`;
   window.open(waUrl, '_blank');
+}
+
+/**
+ * Sends booking notification directly to branch pharmacist's WhatsApp
+ * Includes a 1-Click Base64 link so the pharmacist instantly imports the appointment on click.
+ */
+function sendCustomerBookingWaToPharmacist() {
+  if (!currentCustomerBooking) return;
+  const b = currentCustomerBooking;
+  const branchCode = normalizeBranchCode(b.branchCode || b.branchName || 'Kota Sentosa');
+  const info = BRANCH_SCHEDULES[branchCode] || BRANCH_SCHEDULES['Kota Sentosa'] || { phone: '60168334455', pharmacist: 'William Chai (Pharmacist)', name: 'Kota Sentosa' };
+  const targetPhone = info.phone || '60168334455';
+
+  const payloadStr = JSON.stringify({
+    ref: b.ref || b.id,
+    name: b.patientName,
+    phone: b.patientPhone || '',
+    ic: b.patientIc || '',
+    date: b.date,
+    time: b.time,
+    service: b.service || b.purpose || 'In-Person Consultation & Health Screening',
+    branch: b.branchName || branchCode,
+    type: b.bookingType || 'in_person'
+  });
+  let b64 = '';
+  try {
+    b64 = btoa(encodeURIComponent(payloadStr));
+  } catch (_) {
+    b64 = btoa(payloadStr);
+  }
+
+  const baseUrl = window.location.origin + window.location.pathname;
+  const importUrl = `${baseUrl}?importBooking=${encodeURIComponent(b64)}`;
+
+  const msg = `*PMG Pharmacy - 客户到店面诊预约通知 (New Online Booking)*
+
+📌 *预约编号 / Ref:* ${b.ref}
+👤 *顾客姓名 / Name:* ${b.patientName}
+📞 *联络电话 / Phone:* ${b.patientPhone || '未填写 (Not provided)'}
+🏪 *预约分店 / Branch:* ${b.branchName}
+📅 *预约日期 / Date:* ${b.date}
+⏰ *预约时间 / Time:* ${b.time}
+🩺 *服务项目 / Service:* ${b.service}
+👨‍⚕️ *指定药剂师 / Pharmacist:* ${b.pharmacist}
+
+⚡ *药剂师一键同步进入系统 / 1-Click Import into System:*
+${importUrl}
+
+(顾客已在网上提交预约登记，点击上方链接即可在药剂系统内查阅并自动建档)`;
+
+  const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`;
+  window.open(waUrl, '_blank');
+}
+
+/**
+ * Imports a customer booking into the local patient registry and appointment queues.
+ * Used by cloud sync, URL parameter import, and quick reference code import.
+ * Returns true if a new appointment or patient was added, false if already up to date.
+ */
+function importSingleBooking(booking, showNotification = false) {
+  if (!booking || !booking.patientName) return false;
+  const ref = booking.ref || booking.id || ('PMG-BK-' + Math.floor(100000 + Math.random() * 900000));
+  booking.ref = ref;
+  booking.id = ref;
+
+  // 1. Update customer bookings list in localStorage
+  let custBookings = [];
+  try {
+    custBookings = JSON.parse(localStorage.getItem('pmg_customer_bookings') || '[]');
+  } catch (_) { custBookings = []; }
+  const existingCbIdx = custBookings.findIndex(cb => cb.ref === ref || cb.id === ref);
+  if (existingCbIdx >= 0) {
+    custBookings[existingCbIdx] = booking;
+  } else {
+    custBookings.unshift(booking);
+  }
+  localStorage.setItem('pmg_customer_bookings', JSON.stringify(custBookings));
+
+  // 2. Locate patient in patientsData
+  const cleanPhone = (booking.patientPhone || '').replace(/\D/g, '');
+  const cleanIc = (booking.patientIc || '').replace(/\D/g, '');
+  const cleanName = (booking.patientName || '').trim().toLowerCase();
+
+  let patient = patientsData.find(p => {
+    const pPhone = (p.phone || '').replace(/\D/g, '');
+    const pIc = (p.ic || '').replace(/\D/g, '');
+    const pName = (p.name || '').trim().toLowerCase();
+    const hasApt = (p.appointments || []).some(a => a.id === ref);
+    return (cleanPhone && pPhone && cleanPhone === pPhone) ||
+           (cleanIc && pIc && cleanIc === pIc) ||
+           (cleanName && pName && cleanName === pName) ||
+           hasApt ||
+           (p.id === 'PT-JONGHUIWAN' && cleanName.includes('jong'));
+  });
+
+  const aptObj = {
+    id: ref,
+    date: booking.date,
+    time: booking.time,
+    service: booking.service || booking.purpose || 'In-Person Consultation & Health Screening',
+    purpose: booking.purpose || booking.service || 'In-Person Consultation & Health Screening',
+    pharmacist: booking.pharmacist || 'William Chai (Pharmacist)',
+    status: booking.status || 'Scheduled',
+    type: booking.bookingType || 'in_person',
+    notes: booking.notes || `Booked via Online Customer Portal (Ref: ${ref})`,
+    createdAt: booking.createdAt || new Date().toISOString()
+  };
+
+  let isNew = false;
+  if (patient) {
+    if (!Array.isArray(patient.appointments)) patient.appointments = [];
+    const aptIdx = patient.appointments.findIndex(a => a.id === ref);
+    if (aptIdx >= 0) {
+      patient.appointments[aptIdx] = aptObj;
+    } else {
+      patient.appointments.unshift(aptObj);
+      isNew = true;
+    }
+    if (booking.patientPhone && !patient.phone) patient.phone = booking.patientPhone;
+    if (booking.patientIc && !patient.ic) patient.ic = booking.patientIc;
+  } else {
+    isNew = true;
+    const newPatient = {
+      id: 'PT-' + ref.replace(/[^A-Za-z0-9]/g, ''),
+      name: booking.patientName,
+      ic: booking.patientIc || '',
+      phone: booking.patientPhone || '',
+      gender: booking.gender || 'Other',
+      dob: '',
+      age: null,
+      race: 'Other',
+      language: 'English',
+      branch: normalizeBranchCode(booking.branchName || booking.branchCode || 'Kota Sentosa'),
+      allergies: 'None recorded',
+      conditions: [booking.bookingType === 'refill_extension' ? 'Chronic Medication Refill' : 'Pending Consultation'],
+      medications: [],
+      encounters: [],
+      documents: [],
+      appointments: [aptObj],
+      notes: booking.notes || `Imported customer booking: Ref ${ref}`,
+      createdAt: booking.date || getTodayDateString(0)
+    };
+    patientsData.unshift(newPatient);
+  }
+
+  savePatientsData();
+  if (showNotification) {
+    alert(`✅ Successfully imported appointment for ${booking.patientName} (${ref}) on ${booking.date} at ${booking.time}!`);
+  }
+  return isNew;
+}
+
+/**
+ * Queries Google Apps Script Cloud Relay for online customer bookings
+ * for the current branch and automatically merges them into the local appointment queues.
+ */
+async function syncOnlineBookingsFromCloud(showPrompt = false) {
+  if (!PMG_SCHEDULE_API_URL) return;
+  try {
+    const session = typeof getSession === 'function' ? getSession() : null;
+    const branch = normalizeBranchCode((session && session.branch && session.branch !== 'ALL') ? session.branch : 'Kota Sentosa');
+
+    const res = await fetch(`${PMG_SCHEDULE_API_URL}?branch=${encodeURIComponent(branch)}`);
+    const data = await res.json();
+    if (!data.success || !data.schedule || !Array.isArray(data.schedule.onlineBookings)) {
+      if (showPrompt) alert(`No online bookings found in cloud for ${branch}.`);
+      return;
+    }
+
+    const cloudBookings = data.schedule.onlineBookings;
+    let newImportCount = 0;
+
+    cloudBookings.forEach(b => {
+      const imported = importSingleBooking(b, false);
+      if (imported) newImportCount++;
+    });
+
+    if (newImportCount > 0) {
+      savePatientsData();
+      renderPatientModule();
+      if (showPrompt) {
+        alert(`✅ Successfully synchronized ${newImportCount} online appointment(s) from cloud!`);
+      }
+    } else {
+      if (showPrompt) {
+        alert(`All cloud appointments for ${branch} are already synchronized (${cloudBookings.length} total).`);
+      }
+    }
+  } catch (err) {
+    console.warn('[PMG Cloud Sync] Sync failed:', err);
+    if (showPrompt) alert('Could not sync from cloud. Please verify internet connectivity.');
+  }
+}
+
+// ─── QUICK IMPORT MODAL HANDLERS ─────────────────────────────────────────────
+function openQuickImportBookingModal() {
+  const modal = document.getElementById('quickImportBookingModal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    const input = document.getElementById('quickImportRefInput');
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+  }
+}
+
+function closeQuickImportBookingModal() {
+  const modal = document.getElementById('quickImportBookingModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function searchAndImportBookingByRef() {
+  const inputEl = document.getElementById('quickImportRefInput');
+  const refCode = (inputEl ? inputEl.value : '').trim().toUpperCase();
+  if (!refCode) {
+    alert('Please enter a booking reference code (e.g. PMG-BK-570346).');
+    return;
+  }
+
+  // Check local data first
+  let foundPatient = null;
+  let foundApt = null;
+  patientsData.forEach(p => {
+    (p.appointments || []).forEach(a => {
+      if (a.id === refCode) {
+        foundPatient = p;
+        foundApt = a;
+      }
+    });
+  });
+
+  if (foundApt) {
+    alert(`Booking ${refCode} is already present in your system for ${foundPatient.name} on ${foundApt.date} at ${foundApt.time}.`);
+    closeQuickImportBookingModal();
+    renderPatientModule();
+    return;
+  }
+
+  try {
+    inputEl.disabled = true;
+    const session = typeof getSession === 'function' ? getSession() : null;
+    const branch = normalizeBranchCode((session && session.branch && session.branch !== 'ALL') ? session.branch : 'Kota Sentosa');
+
+    const res = await fetch(`${PMG_SCHEDULE_API_URL}?branch=${encodeURIComponent(branch)}`);
+    const data = await res.json();
+    inputEl.disabled = false;
+
+    if (data.success && data.schedule && Array.isArray(data.schedule.onlineBookings)) {
+      const match = data.schedule.onlineBookings.find(b => (b.id && b.id.toUpperCase() === refCode) || (b.ref && b.ref.toUpperCase() === refCode));
+      if (match) {
+        importSingleBooking(match, true);
+        renderPatientModule();
+        closeQuickImportBookingModal();
+        return;
+      }
+    }
+
+    alert(`Reference code "${refCode}" was not found in the online cloud bookings for ${branch}.\n\nYou can fill in the details below to add it directly.`);
+    document.getElementById('quickImportRefInput').value = refCode;
+  } catch (err) {
+    inputEl.disabled = false;
+    alert(`Could not connect to cloud relay: ${err.message}. Please check your internet or enter manually.`);
+  }
+}
+
+function submitManualQuickImport() {
+  const refCode = (document.getElementById('quickImportRefInput')?.value || '').trim().toUpperCase() || ('PMG-BK-' + Math.floor(100000 + Math.random() * 900000));
+  const name = (document.getElementById('quickImportName')?.value || '').trim();
+  const phone = (document.getElementById('quickImportPhone')?.value || '').trim();
+  const ic = (document.getElementById('quickImportIc')?.value || '').trim();
+  const date = document.getElementById('quickImportDate')?.value || getTodayDateString(0);
+  const time = document.getElementById('quickImportTime')?.value || '12:30';
+  const service = document.getElementById('quickImportService')?.value || 'In-Person Consultation & Health Screening';
+
+  if (!name) {
+    alert('Please enter the patient name.');
+    return;
+  }
+
+  const session = typeof getSession === 'function' ? getSession() : null;
+  const branch = normalizeBranchCode((session && session.branch && session.branch !== 'ALL') ? session.branch : 'Kota Sentosa');
+
+  const booking = {
+    id: refCode,
+    ref: refCode,
+    patientName: name,
+    patientPhone: phone,
+    patientIc: ic,
+    date,
+    time,
+    service,
+    purpose: service,
+    branchName: branch,
+    branchCode: branch,
+    pharmacist: 'William Chai (Pharmacist)',
+    bookingType: 'in_person',
+    status: 'Scheduled',
+    notes: `Manual import of customer booking (${refCode})`
+  };
+
+  importSingleBooking(booking, true);
+  renderPatientModule();
+  closeQuickImportBookingModal();
 }
 
 /**
