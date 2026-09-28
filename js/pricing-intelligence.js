@@ -319,6 +319,60 @@
     }
   ];
 
+  // ─── INDEXED-DB HIGH CAPACITY STORAGE ENGINE (60,000+ SKUs) ──────────────────
+  const PRICING_IDB_NAME = 'pmg_pricing_matrix_db';
+  const PRICING_IDB_VERSION = 1;
+  const PRICING_IDB_STORE = 'skus_store';
+
+  function openPricingIndexedDb() {
+    return new Promise((resolve, reject) => {
+      if (typeof indexedDB === 'undefined') {
+        return reject(new Error('IndexedDB not supported'));
+      }
+      const req = indexedDB.open(PRICING_IDB_NAME, PRICING_IDB_VERSION);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(PRICING_IDB_STORE)) {
+          db.createObjectStore(PRICING_IDB_STORE);
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function getPricingSkusFromIdb() {
+    try {
+      const db = await openPricingIndexedDb();
+      return new Promise((resolve) => {
+        const tx = db.transaction(PRICING_IDB_STORE, 'readonly');
+        const store = tx.objectStore(PRICING_IDB_STORE);
+        const req = store.get('master_skus');
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      });
+    } catch (e) {
+      console.warn('[PMG Pricing IDB] Read error:', e);
+      return null;
+    }
+  }
+
+  async function setPricingSkusToIdb(skus) {
+    try {
+      const db = await openPricingIndexedDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(PRICING_IDB_STORE, 'readwrite');
+        const store = tx.objectStore(PRICING_IDB_STORE);
+        const req = store.put(skus, 'master_skus');
+        req.onsuccess = () => resolve(true);
+        req.onerror = () => reject(req.error);
+      });
+    } catch (e) {
+      console.warn('[PMG Pricing IDB] Write error:', e);
+      return false;
+    }
+  }
+
   // ─── PRICING INTELLIGENCE ENGINE CLASS ───────────────────────────────────────
   class PricingIntelligenceEngine {
     constructor() {
@@ -329,31 +383,35 @@
       this.searchQuery = '';
       this.isAiRunning = false;
       this.selectedSkuForAi = null;
+      this.currentPage = 1;
+      this.pageSize = 50;
       this.init();
     }
 
-    init() {
-      this.loadSkusFromStorage();
+    async init() {
+      await this.loadSkusFromStorage();
+      this.render();
     }
 
-    loadSkusFromStorage() {
+    async loadSkusFromStorage() {
+      // 1. Try High-Capacity IndexedDB first (supports 60,000+ SKUs)
+      try {
+        const idbSkus = await getPricingSkusFromIdb();
+        if (Array.isArray(idbSkus) && idbSkus.length > 0) {
+          this.skus = idbSkus;
+          return;
+        }
+      } catch (e) {}
+
+      // 2. Fallback to localStorage
       try {
         const stored = localStorage.getItem(STORAGE_KEY_PRICING_SKUS);
-        const demoPurged = localStorage.getItem('pmg_pricing_demo_purged');
         if (stored) {
           const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) {
-            // If the user previously had only demo items ('sku-01' to 'sku-22'), purge them once
-            if (!demoPurged) {
-              const onlyDemo = parsed.length > 0 && parsed.every(p => p.id && /^sku-\d+$/.test(p.id));
-              if (onlyDemo) {
-                this.skus = [];
-                localStorage.setItem('pmg_pricing_demo_purged', 'true');
-                this.saveSkusToStorage();
-                return;
-              }
-            }
+          if (Array.isArray(parsed) && parsed.length > 0) {
             this.skus = parsed;
+            // Migrate to IndexedDB
+            await setPricingSkusToIdb(this.skus);
             return;
           }
         }
@@ -361,15 +419,32 @@
         console.warn('[PMG Pricing] Could not parse stored SKUs:', err);
       }
       this.skus = [];
-      this.saveSkusToStorage();
     }
 
-    saveSkusToStorage(skipAutoBackup = false) {
+    async saveSkusToStorage(skipAutoBackup = false) {
+      // 1. Save to IndexedDB (zero quota limitations)
       try {
-        localStorage.setItem(STORAGE_KEY_PRICING_SKUS, JSON.stringify(this.skus));
+        await setPricingSkusToIdb(this.skus);
       } catch (e) {
-        console.warn('[PMG Pricing] Save error:', e);
+        console.warn('[PMG Pricing] IDB save error:', e);
       }
+
+      // 2. In localStorage, only store if small (<= 1000 items) to prevent QuotaExceededError
+      try {
+        if (this.skus.length <= 1000) {
+          localStorage.setItem(STORAGE_KEY_PRICING_SKUS, JSON.stringify(this.skus));
+        } else {
+          // If large, remove the huge JSON from localStorage and store light metadata pointer
+          localStorage.removeItem(STORAGE_KEY_PRICING_SKUS);
+          localStorage.setItem('pmg_pricing_skus_meta', JSON.stringify({
+            count: this.skus.length,
+            updatedAt: new Date().toISOString()
+          }));
+        }
+      } catch (e) {
+        console.warn('[PMG Pricing] LocalStorage quota skipped:', e);
+      }
+
       if (!skipAutoBackup) {
         this.triggerAutoBackup();
       }
@@ -387,7 +462,7 @@
       const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       const dateStr = now.toLocaleDateString('en-GB');
 
-      // 1. Maintain Rolling Snapshots in Local Storage (up to 15 versions)
+      // 1. Store only lightweight metadata history (prevent huge localStorage memory consumption)
       try {
         const historyKey = 'pmg_pricing_backup_history';
         let history = [];
@@ -400,12 +475,10 @@
           id: 'snap-' + Date.now(),
           timestamp: now.toISOString(),
           displayTime: `${dateStr} ${timeStr}`,
-          skuCount: this.skus.length,
-          skus: JSON.parse(JSON.stringify(this.skus))
+          skuCount: this.skus.length
         };
 
-        // Don't add identical consecutive snapshots if count is same and skus unchanged
-        if (history.length === 0 || history[0].skuCount !== snapshot.skuCount || JSON.stringify(history[0].skus) !== JSON.stringify(snapshot.skus)) {
+        if (history.length === 0 || history[0].skuCount !== snapshot.skuCount) {
           history.unshift(snapshot);
           if (history.length > 15) history = history.slice(0, 15);
           localStorage.setItem(historyKey, JSON.stringify(history));
@@ -420,7 +493,7 @@
         console.warn('[PMG Pricing] Local backup history error:', e);
       }
 
-      // 2. Auto-backup to OneDrive if connected
+      // 2. Auto-backup full master database to OneDrive if connected
       let oneDriveSynced = false;
       if (window.pmgOneDrive && typeof window.pmgOneDrive.savePricingMasterToOneDrive === 'function') {
         const isConn = typeof window.pmgOneDrive.isConnected === 'function' 
@@ -557,13 +630,15 @@
       }
     }
 
-    clearAllSkus(confirmUser = true) {
+    async clearAllSkus(confirmUser = true) {
       if (confirmUser && !confirm('Are you sure you want to clear all SKUs in the Pricing Matrix? You can then import your fresh Xilnex item list.')) {
         return;
       }
       this.skus = [];
-      localStorage.setItem('pmg_pricing_demo_purged', 'true');
-      this.saveSkusToStorage();
+      localStorage.removeItem(STORAGE_KEY_PRICING_SKUS);
+      localStorage.removeItem('pmg_pricing_skus_meta');
+      await setPricingSkusToIdb([]);
+      this.currentPage = 1;
       this.render();
       if (typeof showExpiryToast === 'function') {
         showExpiryToast('Pricing matrix cleared. Ready for Xilnex CSV import.');
@@ -676,40 +751,43 @@
 
     // ─── XILNEX CSV PARSER & IMPORT ENGINE ───────────────────────────────────────
     parseCsv(text) {
+      if (!text) return [];
       const lines = [];
-      let row = [];
-      let field = '';
-      let inQuotes = false;
-      const cleanText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      const rawLines = text.split(/\r?\n/);
+      for (let r = 0; r < rawLines.length; r++) {
+        const line = rawLines[r];
+        if (!line || !line.trim()) continue;
 
-      for (let i = 0; i < cleanText.length; i++) {
-        const char = cleanText[i];
-        const nextChar = cleanText[i + 1];
-
-        if (char === '"') {
-          if (inQuotes && nextChar === '"') {
-            field += '"';
-            i++; // skip next quote
-          } else {
-            inQuotes = !inQuotes;
-          }
-        } else if ((char === ',' || char === '\t') && !inQuotes) {
-          row.push(field.trim());
-          field = '';
-        } else if (char === '\n' && !inQuotes) {
-          row.push(field.trim());
-          if (row.some(f => f.length > 0)) {
-            lines.push(row);
-          }
-          row = [];
-          field = '';
-        } else {
-          field += char;
+        // Fast path: standard non-quoted line (over 90% of rows in inventory CSV)
+        if (!line.includes('"')) {
+          const sep = line.includes('\t') ? '\t' : ',';
+          const parts = line.split(sep).map(p => p.trim());
+          if (parts.some(p => p.length > 0)) lines.push(parts);
+          continue;
         }
-      }
-      if (field || row.length > 0) {
+
+        // Quoted line parser
+        const row = [];
+        let field = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const c = line[i];
+          if (c === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+              field += '"';
+              i++;
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if ((c === ',' || c === '\t') && !inQuotes) {
+            row.push(field.trim());
+            field = '';
+          } else {
+            field += c;
+          }
+        }
         row.push(field.trim());
-        if (row.some(f => f.length > 0)) lines.push(row);
+        if (row.some(p => p.length > 0)) lines.push(row);
       }
       return lines;
     }
@@ -1027,8 +1105,16 @@
         return;
       }
 
+      const totalCount = filtered.length;
+      const totalPages = Math.max(1, Math.ceil(totalCount / this.pageSize));
+      if (this.currentPage > totalPages) this.currentPage = totalPages;
+      if (this.currentPage < 1) this.currentPage = 1;
+
+      const startIndex = (this.currentPage - 1) * this.pageSize;
+      const pageSkus = filtered.slice(startIndex, startIndex + this.pageSize);
+
       let html = '';
-      filtered.forEach(s => {
+      pageSkus.forEach(s => {
         const margin = this.calculateMargin(s.costPrice, s.standardSp);
         const profit = this.calculateProfit(s.costPrice, s.standardSp);
 
@@ -1140,6 +1226,81 @@
       });
 
       tbody.innerHTML = html;
+      this.renderPaginationControls(totalCount);
+    }
+
+    renderPaginationControls(totalCount) {
+      const pagContainer = document.getElementById('pricingPaginationContainer');
+      if (!pagContainer) return;
+      if (totalCount === 0) {
+        pagContainer.innerHTML = '';
+        return;
+      }
+      const totalPages = Math.max(1, Math.ceil(totalCount / this.pageSize));
+      const start = (this.currentPage - 1) * this.pageSize + 1;
+      const end = Math.min(this.currentPage * this.pageSize, totalCount);
+
+      pagContainer.innerHTML = `
+        <div class="flex items-center gap-2 text-gray-600 font-medium">
+          <span>Showing <b class="text-gray-900">${start.toLocaleString()}–${end.toLocaleString()}</b> of <b class="text-gray-900">${totalCount.toLocaleString()}</b> SKUs</span>
+          <span class="text-gray-300">|</span>
+          <label class="flex items-center gap-1.5 cursor-pointer">
+            <span class="text-gray-500">Rows:</span>
+            <select onchange="window.pmgPricing.setPageSize(this.value)" class="border border-gray-300 rounded px-2 py-0.5 text-xs bg-white font-bold outline-none cursor-pointer">
+              <option value="50" ${this.pageSize === 50 ? 'selected' : ''}>50</option>
+              <option value="100" ${this.pageSize === 100 ? 'selected' : ''}>100</option>
+              <option value="200" ${this.pageSize === 200 ? 'selected' : ''}>200</option>
+              <option value="500" ${this.pageSize === 500 ? 'selected' : ''}>500</option>
+            </select>
+          </label>
+        </div>
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <button type="button" onclick="window.pmgPricing.goToPage(1)" ${this.currentPage <= 1 ? 'disabled' : ''}
+            class="px-2.5 py-1 rounded-lg border border-gray-300 bg-white hover:bg-gray-100 disabled:opacity-40 disabled:pointer-events-none text-xs font-bold transition cursor-pointer">
+            « First
+          </button>
+          <button type="button" onclick="window.pmgPricing.prevPage()" ${this.currentPage <= 1 ? 'disabled' : ''}
+            class="px-3 py-1 rounded-lg border border-gray-300 bg-white hover:bg-gray-100 disabled:opacity-40 disabled:pointer-events-none text-xs font-bold transition cursor-pointer">
+            <i class="fa-solid fa-chevron-left mr-1"></i> Prev
+          </button>
+          <span class="px-3 py-1 text-xs font-bold bg-indigo-50 text-indigo-900 rounded-lg border border-indigo-200">
+            Page ${this.currentPage} of ${totalPages}
+          </span>
+          <button type="button" onclick="window.pmgPricing.nextPage()" ${this.currentPage >= totalPages ? 'disabled' : ''}
+            class="px-3 py-1 rounded-lg border border-gray-300 bg-white hover:bg-gray-100 disabled:opacity-40 disabled:pointer-events-none text-xs font-bold transition cursor-pointer">
+            Next <i class="fa-solid fa-chevron-right ml-1"></i>
+          </button>
+          <button type="button" onclick="window.pmgPricing.goToPage(${totalPages})" ${this.currentPage >= totalPages ? 'disabled' : ''}
+            class="px-2.5 py-1 rounded-lg border border-gray-300 bg-white hover:bg-gray-100 disabled:opacity-40 disabled:pointer-events-none text-xs font-bold transition cursor-pointer">
+            Last »
+          </button>
+        </div>
+      `;
+    }
+
+    goToPage(page) {
+      const filtered = this.getFilteredSkus();
+      const totalPages = Math.max(1, Math.ceil(filtered.length / this.pageSize));
+      const p = Math.max(1, Math.min(parseInt(page, 10) || 1, totalPages));
+      this.currentPage = p;
+      this.renderTableOnly();
+    }
+
+    nextPage() {
+      this.goToPage(this.currentPage + 1);
+    }
+
+    prevPage() {
+      this.goToPage(this.currentPage - 1);
+    }
+
+    setPageSize(size) {
+      const s = parseInt(size, 10);
+      if (s > 0) {
+        this.pageSize = s;
+        this.currentPage = 1;
+        this.renderTableOnly();
+      }
     }
 
     // ─── RENDER BRANCH SWOT TABS & DETAILS ──────────────────────────────────────

@@ -600,7 +600,23 @@
     return session?.displayName || 'Pharmacist';
   }
 
+  function syncDraftItemsFromDom() {
+    const tbody = document.getElementById('nrItemsTableBody');
+    if (!tbody) return;
+    const rows = tbody.querySelectorAll('tr');
+    rows.forEach((row, index) => {
+      if (!draftItems[index]) return;
+      row.querySelectorAll('[data-field]').forEach(el => {
+        const field = el.getAttribute('data-field');
+        if (field) {
+          draftItems[index][field] = el.value;
+        }
+      });
+    });
+  }
+
   function addDraftItemRow() {
+    syncDraftItemsFromDom();
     const lastCarton = draftItems.length > 0 ? (draftItems[draftItems.length - 1].cartonNo || 1) : 1;
     const lastPrn = draftItems.length > 0 ? (draftItems[draftItems.length - 1].prnNumber || '') : '';
 
@@ -620,6 +636,7 @@
   }
 
   function removeDraftItemRow(index) {
+    syncDraftItemsFromDom();
     if (draftItems.length <= 1) {
       alert('A Delivery Order must have at least one return item.');
       return;
@@ -631,7 +648,9 @@
   function updateDraftItem(index, field, value) {
     if (!draftItems[index]) return;
     draftItems[index][field] = value;
-    checkPrnLimitsAndCartons();
+    if (field === 'cartonNo' || field === 'prnNumber') {
+      checkPrnLimitsAndCartons();
+    }
   }
 
   // PRN 3-SKU LIMIT CHECKER & CARTON COUNTER
@@ -676,6 +695,7 @@
   }
 
   function autoGroupPrnByThree() {
+    syncDraftItemsFromDom();
     const basePrn = prompt('Enter starting PRN booklet slip number (e.g. PRN-001 or 12345):', 'PRN-001');
     if (!basePrn) return;
 
@@ -703,18 +723,18 @@
     tbody.innerHTML = draftItems.map((item, index) => `
       <tr class="border-b border-gray-100 text-xs">
         <td class="py-2 px-2 text-center">
-          <input type="number" min="1" max="99" value="${item.cartonNo || 1}" onchange="updateDraftItem(${index}, 'cartonNo', this.value)" class="w-12 text-center border border-gray-300 rounded px-1 py-1 font-bold text-gray-700">
+          <input data-field="cartonNo" type="number" min="1" max="99" value="${item.cartonNo || 1}" oninput="pmgReturns.updateDraftItem(${index}, 'cartonNo', this.value)" onchange="pmgReturns.updateDraftItem(${index}, 'cartonNo', this.value)" class="w-12 text-center border border-gray-300 rounded px-1 py-1 font-bold text-gray-700">
         </td>
         <td class="py-2 px-2">
-          <input type="text" placeholder="e.g. 103366" value="${escapeHtml(item.itemCode || '')}" onchange="updateDraftItem(${index}, 'itemCode', this.value)" class="w-24 border border-gray-300 rounded px-2 py-1 font-mono uppercase">
+          <input data-field="itemCode" type="text" placeholder="e.g. 103366" value="${escapeHtml(item.itemCode || '')}" oninput="pmgReturns.updateDraftItem(${index}, 'itemCode', this.value)" onchange="pmgReturns.updateDraftItem(${index}, 'itemCode', this.value)" class="w-24 border border-gray-300 rounded px-2 py-1 font-mono uppercase">
         </td>
         <td class="py-2 px-2">
-          <input type="text" placeholder="e.g. FINAINTAS 5MG TAB 10'S" value="${escapeHtml(item.itemDescription || '')}" onchange="updateDraftItem(${index}, 'itemDescription', this.value)" class="w-full border border-gray-300 rounded px-2 py-1 font-semibold text-gray-800">
+          <input data-field="itemDescription" type="text" placeholder="e.g. FINAINTAS 5MG TAB 10'S" value="${escapeHtml(item.itemDescription || '')}" oninput="pmgReturns.updateDraftItem(${index}, 'itemDescription', this.value)" onchange="pmgReturns.updateDraftItem(${index}, 'itemDescription', this.value)" class="w-full border border-gray-300 rounded px-2 py-1 font-semibold text-gray-800">
         </td>
         <td class="py-2 px-2">
           <div class="flex items-center gap-1">
-            <input type="number" min="1" value="${item.quantity || 1}" onchange="updateDraftItem(${index}, 'quantity', this.value)" class="w-14 border border-gray-300 rounded px-1.5 py-1 text-center font-bold">
-            <select onchange="updateDraftItem(${index}, 'uom', this.value)" class="border border-gray-300 rounded px-1 py-1 text-xs">
+            <input data-field="quantity" type="number" min="1" value="${item.quantity || 1}" oninput="pmgReturns.updateDraftItem(${index}, 'quantity', this.value)" onchange="pmgReturns.updateDraftItem(${index}, 'quantity', this.value)" class="w-14 border border-gray-300 rounded px-1.5 py-1 text-center font-bold">
+            <select data-field="uom" onchange="pmgReturns.updateDraftItem(${index}, 'uom', this.value)" class="border border-gray-300 rounded px-1 py-1 text-xs">
               <option value="BOX" ${item.uom === 'BOX' ? 'selected' : ''}>BOX</option>
               <option value="BTL" ${item.uom === 'BTL' ? 'selected' : ''}>BTL</option>
               <option value="TAB" ${item.uom === 'TAB' ? 'selected' : ''}>TAB</option>
@@ -726,10 +746,10 @@
           </div>
         </td>
         <td class="py-2 px-2">
-          <input type="text" placeholder="e.g. PRN-0412" value="${escapeHtml(item.prnNumber || '')}" onchange="updateDraftItem(${index}, 'prnNumber', this.value)" class="w-24 border border-gray-300 rounded px-2 py-1 font-mono font-bold text-amber-800 bg-amber-50/50">
+          <input data-field="prnNumber" type="text" placeholder="e.g. PRN-0412" value="${escapeHtml(item.prnNumber || '')}" oninput="pmgReturns.updateDraftItem(${index}, 'prnNumber', this.value)" onchange="pmgReturns.updateDraftItem(${index}, 'prnNumber', this.value)" class="w-24 border border-gray-300 rounded px-2 py-1 font-mono font-bold text-amber-800 bg-amber-50/50">
         </td>
         <td class="py-2 px-2">
-          <select onchange="updateDraftItem(${index}, 'reason', this.value)" class="w-full border border-gray-300 rounded px-1.5 py-1 text-xs">
+          <select data-field="reason" onchange="pmgReturns.updateDraftItem(${index}, 'reason', this.value)" class="w-full border border-gray-300 rounded px-1.5 py-1 text-xs">
             <option value="Near Expiry" ${item.reason === 'Near Expiry' ? 'selected' : ''}>Near Expiry</option>
             <option value="Expired" ${item.reason === 'Expired' ? 'selected' : ''}>Expired</option>
             <option value="Damaged Goods" ${item.reason === 'Damaged Goods' ? 'selected' : ''}>Damaged Goods</option>
@@ -751,6 +771,7 @@
   }
 
   async function saveNewReturnApplication() {
+    syncDraftItemsFromDom();
     const branch = document.getElementById('nrBranchSelect').value;
     const companyName = document.getElementById('nrCompanyName').value.trim();
     const companyAddress = document.getElementById('nrCompanyAddress').value.trim();
@@ -783,7 +804,7 @@
 
     // Validate items
     for (let i = 0; i < draftItems.length; i++) {
-      if (!draftItems[i].itemDescription.trim()) {
+      if (!draftItems[i].itemDescription || !draftItems[i].itemDescription.trim()) {
         alert(`Item #${i + 1} is missing an Item Description.`);
         return;
       }
@@ -1002,6 +1023,307 @@
 
   // ─── MODAL 2B: LARGE BOX / CARTON SHIPPING LABELS GENERATOR ──────────────────
   let activeReturnForLabels = null;
+  let activeCartonTemplate = 'SSJ_NORMAL';
+
+  const SSJ_TEMPLATES_CONFIG = {
+    SSJ_NORMAL: {
+      title: 'PLEASE USE THIS TEMPLATE WHEN DO NORMAL STOCK RETURN',
+      category: 'RETURN STOCK',
+      to: 'SSJ PHARMA SDN BHD (SCD)',
+      attn: 'MR DOUGLAS',
+      showRemarks: false,
+      dateLabel: 'DATE RETURN',
+      badgeText: 'SSJ WAREHOUSE VERIFIED',
+      caution: '⚠️ PHARMACEUTICAL RETURN GOODS · RETURNING TO SSJ WAREHOUSE · HANDLE WITH CARE ⚠️'
+    },
+    SSJ_AGING: {
+      title: 'PLEASE USE THIS TEMPLATE WHEN DO NORMAL STOCK RETURN',
+      category: 'RETURN STOCK (AGING STOCK WITH LONGER EXPIRY > 1 YEARS)',
+      to: 'SSJ PHARMA SDN BHD (SCD)',
+      attn: 'MR DOUGLAS',
+      showRemarks: false,
+      dateLabel: 'DATE RETURN',
+      badgeText: 'SSJ WAREHOUSE AGING STOCK',
+      caution: '⚠️ RETURN STOCK (AGING WITH LONG EXPIRY > 1 YR) · SSJ WAREHOUSE VERIFIED ⚠️'
+    },
+    SSJ_RECALL: {
+      title: 'PLEASE USE THIS TEMPLATE WHEN DO ANY RETURN STOCK (PRODUCT RECALL) TO SSJ',
+      category: 'PRODUCT RECALL',
+      to: 'SSJ PHARMA SDN BHD (SCD)',
+      attn: 'MR DOUGLAS',
+      showRemarks: true,
+      remarks: 'HANDLE WITH CARE-FRAGILE ITEM',
+      showDeadline: true,
+      dateLabel: 'DATE RETURN',
+      badgeText: 'SSJ URGENT PRODUCT RECALL',
+      caution: '🚨 URGENT PRODUCT RECALL RETURN GOODS · PRIORITY SSJ WAREHOUSE RECEIVING 🚨'
+    },
+    INTERBRANCH: {
+      title: 'PLEASE USE THIS TEMPLATE WHEN DO STOCK IN-TRANSIT',
+      category: 'IN-TRANSIT',
+      to: null, // dynamic
+      attn: null, // dynamic
+      showRemarks: false,
+      dateLabel: 'DATE PASS TO DRIVER',
+      badgeText: 'INTERBRANCH TRANSIT',
+      caution: '🚚 INTERBRANCH STOCK IN-TRANSIT · OUTLET TO OUTLET DIRECT TRANSFER 🚚'
+    }
+  };
+
+  function onCartonTemplateChanged(templateKey) {
+    activeCartonTemplate = templateKey || 'SSJ_NORMAL';
+    renderCartonLabelsHtml(activeCartonTemplate);
+  }
+
+  function renderCartonLabelsHtml(templateKey) {
+    const container = document.getElementById('printCartonLabelsContainer');
+    if (!container || !activeReturnForLabels) return;
+
+    const ret = activeReturnForLabels;
+    const totalCartons = Math.max(1, ret.totalCartons || 1);
+    const prnList = Array.from(new Set((ret.items || []).map(i => i.prnNumber).filter(Boolean))).join(', ');
+    const tpl = templateKey || activeCartonTemplate || 'SSJ_NORMAL';
+
+    let labelsHtml = '';
+
+    for (let c = 1; c <= totalCartons; c++) {
+      const itemsInThisCarton = (ret.items || []).filter(item => {
+        const cNum = parseInt(String(item.cartonNo || 1).replace(/\D/g, ''), 10) || 1;
+        return cNum === c;
+      });
+
+      if (tpl === 'VENDOR_STANDARD') {
+        // Standard Non-SSJ / Generic Vendor Shipping Label
+        labelsHtml += `
+          <div class="carton-shipping-box" style="page-break-after: always; width: 100%; max-width: 780px; margin: 0 auto 30px auto; border: 4px solid #000; padding: 22px; font-family: Arial, sans-serif; background: #fff; box-sizing: border-box; box-shadow: 0 4px 10px rgba(0,0,0,0.08);">
+            <!-- Top Header -->
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3.5px solid #000; padding-bottom: 12px; margin-bottom: 16px;">
+              <div style="font-size: 20px; font-weight: 900; letter-spacing: 1px;">🚚 CARTON SHIPPING / DELIVERY LABEL</div>
+              <div style="font-size: 15px; font-weight: 900; background: #000; color: #fff; padding: 5px 12px; border-radius: 4px;">PMG PHARMACY</div>
+            </div>
+
+            <!-- DESTINATION (SHIP TO) -->
+            <div style="border: 3.5px solid #000; padding: 18px; background: #fafafa; margin-bottom: 18px;">
+              <div style="font-size: 13px; font-weight: 900; text-transform: uppercase; color: #444; letter-spacing: 1.5px; border-bottom: 2px dashed #999; padding-bottom: 5px; margin-bottom: 10px;">
+                SHIP TO / DELIVER TO (DESTINATION):
+              </div>
+              <div style="font-size: 26px; font-weight: 900; color: #000; line-height: 1.2; text-transform: uppercase; margin-bottom: 8px;">
+                ${escapeHtml(ret.destCompany || ret.supplier || 'N/A')}
+              </div>
+              <div style="font-size: 15px; font-weight: 700; color: #111; line-height: 1.35; text-transform: uppercase;">
+                ${ret.destAddress ? escapeHtml(ret.destAddress) : '<span style="color: #666; font-style: italic; font-size: 14px;">(DESTINATION WAREHOUSE TO BE CONFIRMED BY VENDOR / TRANSPORTER)</span>'}
+              </div>
+              ${(ret.destAttn || ret.destPhone) ? `
+                <div style="margin-top: 12px; padding-top: 10px; border-top: 2px dashed #999; font-size: 15px; font-weight: 900; display: flex; gap: 25px; flex-wrap: wrap;">
+                  ${ret.destAttn ? `<div>ATTN: <span style="font-size: 17px; text-decoration: underline;">${escapeHtml(ret.destAttn)}</span></div>` : ''}
+                  ${ret.destPhone ? `<div>TEL: <span style="font-size: 17px; font-family: monospace;">${escapeHtml(ret.destPhone)}</span></div>` : ''}
+                </div>
+              ` : ''}
+            </div>
+
+            <!-- SENDER & CARTON BADGE ROW -->
+            <div style="display: flex; gap: 16px; margin-bottom: 16px;">
+              <div style="flex: 1.2; border: 2.5px solid #000; padding: 14px; background: #fff;">
+                <div style="font-size: 11px; font-weight: 900; text-transform: uppercase; color: #444; border-bottom: 1.5px solid #bbb; padding-bottom: 4px; margin-bottom: 6px;">
+                  SENDER (FROM):
+                </div>
+                <div style="font-size: 15px; font-weight: 900; text-transform: uppercase;">${escapeHtml(ret.companyName || ('PMG PHARMACY (' + (ret.branch || 'BRANCH') + ')'))}</div>
+                <div style="font-size: 12px; font-weight: 600; text-transform: uppercase; margin-top: 4px; color: #222;">${escapeHtml(ret.companyAddress || 'Sarawak, Malaysia')}</div>
+                <div style="font-size: 12px; font-weight: bold; margin-top: 6px; color: #000;">BRANCH PIC: ${escapeHtml(ret.verifiedBy || 'Branch Pharmacist')}</div>
+              </div>
+
+              <div style="flex: 1; border: 4px solid #000; background: #f4f4f4; padding: 12px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+                <div style="font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 1.5px; color: #333;">CARTON IDENTIFIER</div>
+                <div style="font-size: 38px; font-weight: 900; color: #000; line-height: 1.05; margin: 6px 0;">
+                  CARTON ${c} OF ${totalCartons}
+                </div>
+                <div style="font-size: 12px; font-weight: 900; background: #000; color: #fff; padding: 3px 10px; border-radius: 4px;">
+                  TOTAL ${totalCartons} CARTON(S)
+                </div>
+              </div>
+            </div>
+
+            <!-- SHIPMENT METADATA BAR -->
+            <div style="display: flex; justify-content: space-between; align-items: center; border: 2.5px solid #000; padding: 10px 16px; font-size: 14px; font-weight: 900; margin-bottom: 14px; background: #fff;">
+              <div>DO NO: <span style="font-family: monospace; font-size: 16px; color: #0d47a1;">${escapeHtml(ret.doNumber)}</span></div>
+              <div>DATE: <span>${escapeHtml(ret.date)}</span></div>
+              <div>PRN REF: <span style="font-family: monospace;">${prnList || 'N/A'}</span></div>
+            </div>
+
+            <!-- PACKED ITEMS IN CARTON -->
+            ${itemsInThisCarton.length > 0 ? `
+              <div style="border: 2px solid #000; margin-bottom: 14px; background: #fff; font-size: 12px;">
+                <div style="background: #e2e8f0; padding: 5px 10px; font-weight: 900; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; color: #1e293b; border-bottom: 1.5px solid #000; display: flex; justify-content: space-between;">
+                  <span>📦 PACKED ITEMS IN CARTON ${c}:</span>
+                  <span>${itemsInThisCarton.length} SKU(S)</span>
+                </div>
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                  <thead>
+                    <tr style="background: #f8fafc; border-bottom: 1px solid #000;">
+                      <th style="padding: 4px 8px; text-align: left; width: 110px; border-right: 1px solid #ddd;">ITEM CODE</th>
+                      <th style="padding: 4px 8px; text-align: left; border-right: 1px solid #ddd;">ITEM DESCRIPTION</th>
+                      <th style="padding: 4px 8px; text-align: center; width: 90px; border-right: 1px solid #ddd;">PRN NO</th>
+                      <th style="padding: 4px 8px; text-align: right; width: 80px;">QTY</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${itemsInThisCarton.map(it => `
+                      <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 4px 8px; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${escapeHtml(it.itemCode || '-')}</td>
+                        <td style="padding: 4px 8px; font-weight: 600; border-right: 1px solid #ddd;">${escapeHtml(it.itemDescription || '')}</td>
+                        <td style="padding: 4px 8px; text-align: center; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${escapeHtml(it.prnNumber || '-')}</td>
+                        <td style="padding: 4px 8px; text-align: right; font-weight: bold;">${it.quantity || 1} ${escapeHtml(it.uom || 'BOX')}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            ` : ''}
+
+            <!-- SPECIAL HANDLING WARNING -->
+            <div style="border: 2.5px dashed #d32f2f; background: #fff5f5; color: #b71c1c; padding: 10px; text-align: center; font-weight: 900; font-size: 14px; letter-spacing: 0.5px;">
+              ⚠️ PHARMACEUTICAL RETURN GOODS · HANDLE WITH CARE · KEEP DRY · DO NOT DROP ⚠️
+            </div>
+          </div>
+        `;
+      } else {
+        // Official SSJ Templates: SSJ_NORMAL, SSJ_AGING, SSJ_RECALL, INTERBRANCH
+        const cfg = SSJ_TEMPLATES_CONFIG[tpl] || SSJ_TEMPLATES_CONFIG.SSJ_NORMAL;
+        const targetTo = cfg.to || ret.destCompany || 'SSJ PHARMA SDN BHD (SCD)';
+        const targetAttn = cfg.attn || ret.destAttn || (tpl === 'INTERBRANCH' ? 'BRANCH PHARMACIST / PIC' : 'MR DOUGLAS');
+
+        labelsHtml += `
+          <div class="carton-shipping-box" style="page-break-after: always; width: 100%; max-width: 780px; margin: 0 auto 30px auto; border: 4px solid #000; padding: 22px; font-family: Arial, sans-serif; background: #fff; box-sizing: border-box; box-shadow: 0 4px 10px rgba(0,0,0,0.08);">
+            
+            <!-- SSJ Official Header Banner (Exact wording from HQ Excel Template) -->
+            <div style="background: #000; color: #fff; text-align: center; font-size: 15px; font-weight: 900; letter-spacing: 0.5px; padding: 9px 14px; margin-bottom: 16px; border-radius: 4px; text-transform: uppercase;">
+              ${cfg.title}
+            </div>
+
+            <!-- Official SSJ Specification Table -->
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; border: 3px solid #000;">
+              <tbody>
+                <tr>
+                  <td style="width: 210px; padding: 10px 14px; font-size: 13px; font-weight: 900; background: #e2e8f0; border: 2px solid #000; text-transform: uppercase; color: #0f172a;">
+                    CATEGORY RETURN
+                  </td>
+                  <td style="padding: 10px 14px; font-size: 18px; font-weight: 900; border: 2px solid #000; color: #000; text-transform: uppercase; letter-spacing: 0.5px;">
+                    ${cfg.category}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: #e2e8f0; border: 2px solid #000; text-transform: uppercase; color: #0f172a;">
+                    FROM
+                  </td>
+                  <td style="padding: 10px 14px; font-size: 16px; font-weight: 900; border: 2px solid #000; color: #000; text-transform: uppercase;">
+                    <div>${escapeHtml(ret.companyName || ('PMG PHARMACY (' + (ret.branch || 'BRANCH') + ')'))}</div>
+                    <div style="font-size: 12px; font-weight: 600; color: #444; margin-top: 3px;">${escapeHtml(ret.companyAddress || 'Sarawak, Malaysia')}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: #e2e8f0; border: 2px solid #000; text-transform: uppercase; color: #0f172a;">
+                    TO
+                  </td>
+                  <td style="padding: 10px 14px; font-size: 18px; font-weight: 900; border: 2px solid #000; color: #000; text-transform: uppercase;">
+                    ${escapeHtml(targetTo)}
+                    ${ret.destAddress && targetTo !== 'SSJ PHARMA SDN BHD (SCD)' ? `<div style="font-size: 12px; font-weight: 600; color: #444; margin-top: 3px;">${escapeHtml(ret.destAddress)}</div>` : ''}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: #e2e8f0; border: 2px solid #000; text-transform: uppercase; color: #0f172a;">
+                    ATTENTION
+                  </td>
+                  <td style="padding: 10px 14px; font-size: 17px; font-weight: 900; border: 2px solid #000; color: #000; text-transform: uppercase;">
+                    ${escapeHtml(targetAttn)}
+                    ${ret.destPhone ? `<span style="font-size: 14px; font-weight: bold; margin-left: 14px; font-family: monospace;">(TEL: ${escapeHtml(ret.destPhone)})</span>` : ''}
+                  </td>
+                </tr>
+                ${cfg.showRemarks ? `
+                  <tr>
+                    <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: #fee2e2; border: 2px solid #000; text-transform: uppercase; color: #991b1b;">
+                      REMARKS
+                    </td>
+                    <td style="padding: 10px 14px; font-size: 15px; font-weight: 900; border: 2px solid #000; color: #b91c1c; text-transform: uppercase;">
+                      ${cfg.remarks || 'HANDLE WITH CARE-FRAGILE ITEM'}${ret.remarks ? ' · ' + escapeHtml(ret.remarks) : ''}
+                    </td>
+                  </tr>
+                ` : ''}
+                ${cfg.showDeadline ? `
+                  <tr>
+                    <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: #fee2e2; border: 2px solid #000; text-transform: uppercase; color: #991b1b;">
+                      DEADLINE RETURN
+                    </td>
+                    <td style="padding: 10px 14px; font-size: 15px; font-weight: 900; border: 2px solid #000; color: #b91c1c; text-transform: uppercase;">
+                      URGENT / WITHIN 24-48 HOURS
+                    </td>
+                  </tr>
+                ` : ''}
+                <tr>
+                  <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: #e2e8f0; border: 2px solid #000; text-transform: uppercase; color: #0f172a;">
+                    ${cfg.dateLabel}
+                  </td>
+                  <td style="padding: 10px 14px; font-size: 16px; font-weight: 900; border: 2px solid #000; color: #000;">
+                    ${escapeHtml(ret.date)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <!-- Carton Identifier & DO Summary Row -->
+            <div style="display: flex; gap: 14px; margin-bottom: 14px;">
+              <div style="flex: 1; border: 3px solid #000; background: #f8fafc; padding: 12px 14px; text-align: center;">
+                <div style="font-size: 11px; font-weight: 900; text-transform: uppercase; color: #475569; letter-spacing: 1px;">CARTON IDENTIFIER</div>
+                <div style="font-size: 34px; font-weight: 900; color: #000; line-height: 1.1; margin: 4px 0;">CARTON ${c} OF ${totalCartons}</div>
+                <div style="font-size: 11px; font-weight: 900; background: #000; color: #fff; display: inline-block; padding: 2px 10px; border-radius: 3px;">TOTAL ${totalCartons} CARTON(S)</div>
+              </div>
+              <div style="flex: 1.2; border: 3px solid #000; background: #fff; padding: 12px 14px; display: flex; flex-direction: column; justify-content: center;">
+                <div style="font-size: 13px; font-weight: 900; margin-bottom: 4px;">DO NUMBER: <span style="font-family: monospace; font-size: 15px; color: #0d47a1;">${escapeHtml(ret.doNumber)}</span></div>
+                <div style="font-size: 13px; font-weight: 900; margin-bottom: 4px;">PRN REF: <span style="font-family: monospace; font-size: 13px; color: #92400e;">${prnList || 'N/A'}</span></div>
+                <div style="font-size: 12px; font-weight: bold; color: #475569;">BRANCH PIC: ${escapeHtml(ret.verifiedBy || 'Branch Pharmacist')}</div>
+              </div>
+            </div>
+
+            <!-- PACKED ITEMS IN CARTON (RECEIVING WAREHOUSE CHECKLIST) -->
+            ${itemsInThisCarton.length > 0 ? `
+              <div style="border: 2px solid #000; margin-bottom: 14px; background: #fff; font-size: 12px;">
+                <div style="background: #e2e8f0; padding: 6px 10px; font-weight: 900; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; color: #1e293b; border-bottom: 1.5px solid #000; display: flex; justify-content: space-between;">
+                  <span>📦 PACKED ITEMS IN CARTON ${c}:</span>
+                  <span>${itemsInThisCarton.length} SKU(S)</span>
+                </div>
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                  <thead>
+                    <tr style="background: #f8fafc; border-bottom: 1px solid #000;">
+                      <th style="padding: 5px 8px; text-align: left; width: 110px; border-right: 1px solid #ddd;">ITEM CODE</th>
+                      <th style="padding: 5px 8px; text-align: left; border-right: 1px solid #ddd;">ITEM DESCRIPTION</th>
+                      <th style="padding: 5px 8px; text-align: center; width: 90px; border-right: 1px solid #ddd;">PRN NO</th>
+                      <th style="padding: 5px 8px; text-align: right; width: 80px;">QTY</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${itemsInThisCarton.map(it => `
+                      <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 5px 8px; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${escapeHtml(it.itemCode || '-')}</td>
+                        <td style="padding: 5px 8px; font-weight: 600; border-right: 1px solid #ddd;">${escapeHtml(it.itemDescription || '')}</td>
+                        <td style="padding: 5px 8px; text-align: center; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${escapeHtml(it.prnNumber || '-')}</td>
+                        <td style="padding: 5px 8px; text-align: right; font-weight: bold;">${it.quantity || 1} ${escapeHtml(it.uom || 'BOX')}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            ` : ''}
+
+            <!-- SPECIAL HANDLING WARNING -->
+            <div style="border: 2.5px dashed #000; background: #fffbeb; color: #000; padding: 10px; text-align: center; font-weight: 900; font-size: 13px; letter-spacing: 0.5px;">
+              ${cfg.caution}
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    container.innerHTML = labelsHtml;
+  }
 
   function openPrintCartonLabelModal(returnId) {
     console.log('[PMG Returns] openPrintCartonLabelModal triggered with ID:', returnId);
@@ -1023,114 +1345,29 @@
       return;
     }
 
-    const totalCartons = Math.max(1, ret.totalCartons || 1);
-    const prnList = Array.from(new Set((ret.items || []).map(i => i.prnNumber).filter(Boolean))).join(', ');
+    // Auto-detect template based on destination and reasons
+    let detectedTemplate = 'SSJ_NORMAL';
+    const destUpper = ((ret.destCompany || '') + ' ' + (ret.supplier || '')).toUpperCase();
+    const hasRecall = (ret.items || []).some(it => (it.reason || '').toLowerCase().includes('recall'));
+    const hasAging = (ret.items || []).some(it => (it.reason || '').toLowerCase().includes('slow') || (it.reason || '').toLowerCase().includes('aging'));
 
-    // Generate big labels for all cartons
-    let labelsHtml = '';
-    for (let c = 1; c <= totalCartons; c++) {
-      const itemsInThisCarton = (ret.items || []).filter(item => {
-        const cNum = parseInt(String(item.cartonNo || 1).replace(/\D/g, ''), 10) || 1;
-        return cNum === c;
-      });
-
-      labelsHtml += `
-        <div class="carton-shipping-box" style="page-break-after: always; width: 100%; max-width: 780px; margin: 0 auto 30px auto; border: 4px solid #000; padding: 22px; font-family: Arial, sans-serif; background: #fff; box-sizing: border-box; box-shadow: 0 4px 10px rgba(0,0,0,0.08);">
-          <!-- Top Header -->
-          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3.5px solid #000; padding-bottom: 12px; margin-bottom: 16px;">
-            <div style="font-size: 20px; font-weight: 900; letter-spacing: 1px;">🚚 CARTON SHIPPING / DELIVERY LABEL</div>
-            <div style="font-size: 15px; font-weight: 900; background: #000; color: #fff; padding: 5px 12px; border-radius: 4px;">PMG PHARMACY</div>
-          </div>
-
-          <!-- DESTINATION (SHIP TO) - EXTRA LARGE AND HIGH CONTRAST -->
-          <div style="border: 3.5px solid #000; padding: 18px; background: #fafafa; margin-bottom: 18px;">
-            <div style="font-size: 13px; font-weight: 900; text-transform: uppercase; color: #444; letter-spacing: 1.5px; border-bottom: 2px dashed #999; padding-bottom: 5px; margin-bottom: 10px;">
-              SHIP TO / DELIVER TO (DESTINATION):
-            </div>
-            <div style="font-size: 28px; font-weight: 900; color: #000; line-height: 1.2; text-transform: uppercase; margin-bottom: 8px;">
-              ${escapeHtml(ret.destCompany || ret.supplier || 'N/A')}
-            </div>
-            <div style="font-size: 16px; font-weight: 700; color: #111; line-height: 1.35; text-transform: uppercase;">
-              ${ret.destAddress ? escapeHtml(ret.destAddress) : '<span style="color: #666; font-style: italic; font-size: 14px;">(DESTINATION WAREHOUSE TO BE CONFIRMED BY VENDOR / TRANSPORTER)</span>'}
-            </div>
-            ${(ret.destAttn || ret.destPhone) ? `
-              <div style="margin-top: 12px; padding-top: 10px; border-top: 2px dashed #999; font-size: 16px; font-weight: 900; display: flex; gap: 25px; flex-wrap: wrap;">
-                ${ret.destAttn ? `<div>ATTN: <span style="font-size: 18px; text-decoration: underline;">${escapeHtml(ret.destAttn)}</span></div>` : ''}
-                ${ret.destPhone ? `<div>TEL: <span style="font-size: 18px; font-family: monospace;">${escapeHtml(ret.destPhone)}</span></div>` : ''}
-              </div>
-            ` : ''}
-          </div>
-
-          <!-- SENDER & CARTON BADGE ROW -->
-          <div style="display: flex; gap: 16px; margin-bottom: 16px;">
-            <!-- SENDER (FROM) -->
-            <div style="flex: 1.2; border: 2.5px solid #000; padding: 14px; background: #fff;">
-              <div style="font-size: 11px; font-weight: 900; text-transform: uppercase; color: #444; border-bottom: 1.5px solid #bbb; padding-bottom: 4px; margin-bottom: 6px;">
-                SENDER (FROM):
-              </div>
-              <div style="font-size: 15px; font-weight: 900; text-transform: uppercase;">${escapeHtml(ret.companyName || ('PMG PHARMACY (' + (ret.branch || 'BRANCH') + ')'))}</div>
-              <div style="font-size: 12px; font-weight: 600; text-transform: uppercase; margin-top: 4px; color: #222;">${escapeHtml(ret.companyAddress || 'Sarawak, Malaysia')}</div>
-              <div style="font-size: 12px; font-weight: bold; margin-top: 6px; color: #000;">BRANCH PIC: ${escapeHtml(ret.verifiedBy || 'Branch Pharmacist')}</div>
-            </div>
-
-            <!-- GIGANTIC CARTON IDENTIFIER BADGE -->
-            <div style="flex: 1; border: 4px solid #000; background: #f4f4f4; padding: 12px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
-              <div style="font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 1.5px; color: #333;">CARTON IDENTIFIER</div>
-              <div style="font-size: 38px; font-weight: 900; color: #000; line-height: 1.05; margin: 6px 0;">
-                CARTON ${c} OF ${totalCartons}
-              </div>
-              <div style="font-size: 12px; font-weight: 900; background: #000; color: #fff; padding: 3px 10px; border-radius: 4px;">
-                TOTAL ${totalCartons} CARTON(S)
-              </div>
-            </div>
-          </div>
-
-          <!-- SHIPMENT METADATA BAR -->
-          <div style="display: flex; justify-content: space-between; align-items: center; border: 2.5px solid #000; padding: 10px 16px; font-size: 14px; font-weight: 900; margin-bottom: 14px; background: #fff;">
-            <div>DO NO: <span style="font-family: monospace; font-size: 16px; color: #0d47a1;">${escapeHtml(ret.doNumber)}</span></div>
-            <div>DATE: <span>${escapeHtml(ret.date)}</span></div>
-            <div>PRN REF: <span style="font-family: monospace;">${prnList || 'N/A'}</span></div>
-          </div>
-
-          <!-- PACKED ITEMS IN CARTON (RECEIVING WAREHOUSE CHECKLIST) -->
-          ${itemsInThisCarton.length > 0 ? `
-            <div style="border: 2px solid #000; margin-bottom: 14px; background: #fff; font-size: 12px;">
-              <div style="background: #e2e8f0; padding: 5px 10px; font-weight: 900; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; color: #1e293b; border-bottom: 1.5px solid #000; display: flex; justify-content: space-between;">
-                <span>📦 PACKED ITEMS IN CARTON ${c}:</span>
-                <span>${itemsInThisCarton.length} SKU(S)</span>
-              </div>
-              <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                <thead>
-                  <tr style="background: #f8fafc; border-bottom: 1px solid #000;">
-                    <th style="padding: 4px 8px; text-align: left; width: 110px; border-right: 1px solid #ddd;">ITEM CODE</th>
-                    <th style="padding: 4px 8px; text-align: left; border-right: 1px solid #ddd;">ITEM DESCRIPTION</th>
-                    <th style="padding: 4px 8px; text-align: center; width: 90px; border-right: 1px solid #ddd;">PRN NO</th>
-                    <th style="padding: 4px 8px; text-align: right; width: 80px;">QTY</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${itemsInThisCarton.map(it => `
-                    <tr style="border-bottom: 1px solid #eee;">
-                      <td style="padding: 4px 8px; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${escapeHtml(it.itemCode || '-')}</td>
-                      <td style="padding: 4px 8px; font-weight: 600; border-right: 1px solid #ddd;">${escapeHtml(it.itemDescription || '')}</td>
-                      <td style="padding: 4px 8px; text-align: center; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${escapeHtml(it.prnNumber || '-')}</td>
-                      <td style="padding: 4px 8px; text-align: right; font-weight: bold;">${it.quantity || 1} ${escapeHtml(it.uom || 'BOX')}</td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-            </div>
-          ` : ''}
-
-          <!-- SPECIAL HANDLING WARNING -->
-          <div style="border: 2.5px dashed #d32f2f; background: #fff5f5; color: #b71c1c; padding: 10px; text-align: center; font-weight: 900; font-size: 14px; letter-spacing: 0.5px;">
-            ⚠️ PHARMACEUTICAL RETURN GOODS · HANDLE WITH CARE · KEEP DRY · DO NOT DROP ⚠️
-          </div>
-        </div>
-      `;
+    if (destUpper.includes('SSJ')) {
+      if (hasRecall) detectedTemplate = 'SSJ_RECALL';
+      else if (hasAging) detectedTemplate = 'SSJ_AGING';
+      else detectedTemplate = 'SSJ_NORMAL';
+    } else if (destUpper.includes('PMG') || destUpper.includes('BRANCH') || destUpper.includes('SENTOSA') || destUpper.includes('OUTLET')) {
+      detectedTemplate = 'INTERBRANCH';
+    } else {
+      detectedTemplate = 'VENDOR_STANDARD';
     }
 
-    container.innerHTML = labelsHtml;
+    activeCartonTemplate = detectedTemplate;
+    const tplSelect = document.getElementById('cartonLabelTemplateSelect');
+    if (tplSelect) {
+      tplSelect.value = detectedTemplate;
+    }
+
+    renderCartonLabelsHtml(activeCartonTemplate);
     modal.classList.remove('hidden');
   }
 
@@ -1481,6 +1718,8 @@
     openPrintCartonLabelModal: openPrintCartonLabelModal,
     closePrintCartonLabelModal: closePrintCartonLabelModal,
     executePrintCartonLabels: executePrintCartonLabels,
+    onCartonTemplateChanged: onCartonTemplateChanged,
+    syncDraftItemsFromDom: syncDraftItemsFromDom,
     getActiveReturnId: () => (activeReturnForDo ? activeReturnForDo.id : null),
     openUploadSignedDoModal: openUploadSignedDoModal,
     closeUploadSignedDoModal: closeUploadSignedDoModal,

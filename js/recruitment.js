@@ -53,6 +53,34 @@ function fmtDate(iso) { if (!iso) return '—'; const d = new Date(iso); return 
 function fmtDateTime(iso) { if (!iso) return '—'; const d = new Date(iso); return d.toLocaleDateString('en-MY',{day:'2-digit',month:'short',year:'numeric'})+' '+d.toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit'}); }
 function sanitize(str) { return (str||'').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function el(id) { return document.getElementById(id); }
+
+const DEFAULT_SPM_SUBJECTS = [
+  'Bahasa Melayu',
+  'Bahasa Inggeris',
+  'Sejarah',
+  'Matematik',
+  'Sains',
+  'Pendidikan Islam / Moral',
+  'Matematik Tambahan',
+  'Biologi / Prinsip Perakaunan'
+];
+
+const SPM_GRADES = ['A+', 'A', 'A-', 'B+', 'B', 'C+', 'C', 'D', 'E', 'G', 'TH'];
+
+function createSpmRowHtml(subject = '', grade = '') {
+  return `
+    <div class="spm-subject-row flex items-center gap-2 bg-white p-1.5 rounded-lg border border-gray-200 shadow-2xs">
+      <input type="text" name="spmSubject" value="${sanitize(subject)}" placeholder="e.g. Fizik / Prinsip Perakaunan" class="rec-input text-xs flex-1">
+      <select name="spmGrade" class="rec-input text-xs font-bold font-mono w-28 bg-slate-50 border-gray-300">
+        <option value="">-- Grade --</option>
+        ${SPM_GRADES.map(g => `<option value="${g}" ${g === grade ? 'selected' : ''}>${g}</option>`).join('')}
+      </select>
+      <button type="button" onclick="this.closest('.spm-subject-row').remove()" class="text-rose-500 hover:text-rose-700 hover:bg-rose-50 p-1.5 rounded text-xs transition cursor-pointer" title="Remove Subject">
+        <i class="fa-solid fa-trash-can"></i>
+      </button>
+    </div>
+  `;
+}
 function toast(msg, type='info') {
   const t = document.createElement('div');
   const colors = { info:'bg-blue-700', success:'bg-emerald-700', error:'bg-red-700', warn:'bg-amber-600' };
@@ -590,9 +618,34 @@ function renderPublicForm(targetContainerId) {
         <strong>SPM is important!</strong> Please list ALL SPM subjects and grades clearly. This helps us evaluate your aptitude accurately.
       </div>
 
-      <div class="mb-3">
-        <label class="rec-label">SPM Results (List all subjects & grades) / Keputusan SPM *</label>
-        <textarea name="spm" required rows="3" class="rec-input font-mono text-xs" placeholder="e.g. BM: A, BI: B+, Matematik: B, Add Math: C+, Biology: B, Chemistry: B, Physics: C&#10;Year: 2020, School: SMK Tabuan Jaya, Kuching"></textarea>
+      <!-- SPM RESULTS: SCHOOL & 2-COLUMN SUBJECT-GRADE BREAKDOWN -->
+      <div class="mb-4 bg-slate-50/70 p-3.5 rounded-xl border border-gray-200">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-3">
+          <div class="sm:col-span-2">
+            <label class="rec-label">Secondary School / Nama Sekolah Menengah (SPM) *</label>
+            <input type="text" name="spmSchool" id="recSpmSchool" required placeholder="e.g. SMK St. Joseph / SMK Green Road, Kuching" class="rec-input text-xs">
+          </div>
+          <div>
+            <label class="rec-label">SPM Year / Tahun *</label>
+            <input type="number" min="1980" max="2035" name="spmYear" id="recSpmYear" required placeholder="e.g. 2022" class="rec-input text-xs">
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between mb-2">
+          <label class="rec-label mb-0 font-bold text-gray-800">SPM Subject &amp; Grade Breakdown / Keputusan SPM *</label>
+          <span class="text-[11px] text-gray-500">Core SPM: 8–10 subjects (max 12)</span>
+        </div>
+
+        <div id="spmSubjectsContainer" class="space-y-1.5">
+          ${DEFAULT_SPM_SUBJECTS.map(subj => createSpmRowHtml(subj, '')).join('')}
+        </div>
+
+        <div class="mt-2.5 flex items-center justify-between">
+          <button type="button" onclick="window.pmgRecruitment.addSpmSubjectRow()" class="text-xs font-bold text-blue-700 hover:text-blue-800 flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg transition cursor-pointer">
+            <i class="fa-solid fa-plus"></i> + Add Subject / Tambah Subjek
+          </button>
+          <span class="text-[11px] text-gray-400">Click "+" to add up to 12 subjects</span>
+        </div>
       </div>
 
       <table class="w-full text-xs mb-2 border border-gray-200 rounded-lg overflow-hidden">
@@ -977,6 +1030,25 @@ async function submitPublicForm(e) {
     }
   }
 
+  // Extract SPM School, Year & Subjects Breakdown
+  const spmSchool = get('spmSchool');
+  const spmYear = get('spmYear');
+  const spmSubjects = [];
+  const subjInputs = form.querySelectorAll('input[name="spmSubject"]');
+  const gradeInputs = form.querySelectorAll('select[name="spmGrade"]');
+  subjInputs.forEach((inp, idx) => {
+    const sName = inp.value.trim();
+    const sGrade = gradeInputs[idx]?.value.trim();
+    if (sName && sGrade) {
+      spmSubjects.push(`${sName}: ${sGrade}`);
+    }
+  });
+
+  const spmCombinedText = [
+    spmSchool ? `School: ${spmSchool}${spmYear ? ` (${spmYear})` : ''}` : '',
+    spmSubjects.length > 0 ? `Results: ${spmSubjects.join(', ')}` : (get('spm') || '')
+  ].filter(Boolean).join('\n');
+
   const app = {
     id: genId(),
     appliedAt: now(),
@@ -1016,7 +1088,10 @@ async function submitPublicForm(e) {
     familyBackground: famRows,
 
     // Education
-    spm: get('spm'),
+    spm: spmCombinedText || get('spm') || 'Not provided',
+    spmSchool: spmSchool,
+    spmYear: spmYear,
+    spmSubjects: spmSubjects,
     highestQual: get('highestQual'),
     institution: get('institution'),
     cgpa: get('cgpa'),
@@ -1828,9 +1903,21 @@ function addFamilyRow() {
   container.appendChild(div);
 }
 
+function addSpmSubjectRow(subject = '', grade = '') {
+  const container = document.getElementById('spmSubjectsContainer');
+  if (!container) return;
+  const div = document.createElement('div');
+  div.innerHTML = createSpmRowHtml(subject, grade);
+  container.appendChild(div.firstElementChild);
+}
+
 function resetPublicForm() {
   const f = document.getElementById('recPublicForm');
   if (f) f.reset();
+  const spmCont = document.getElementById('spmSubjectsContainer');
+  if (spmCont) {
+    spmCont.innerHTML = DEFAULT_SPM_SUBJECTS.map(subj => createSpmRowHtml(subj, '')).join('');
+  }
 }
 
 function printApp(appId) {
@@ -1893,6 +1980,7 @@ window.pmgRecruitment = {
   renderSlotsTab,
   deleteSlot,
   addFamilyRow,
+  addSpmSubjectRow,
   resetPublicForm,
   printApp,
   exportAppPdf,
