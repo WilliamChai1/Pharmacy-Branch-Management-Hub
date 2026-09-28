@@ -3117,7 +3117,7 @@ Date visit: 06.01.2026
             <span id="shareBookingHoursTitle">Kota Sentosa Pharmacist Hours</span>
           </div>
           <p id="shareBookingHoursDetails" class="text-[11px] text-purple-800">
-            Consultation Hours: <b>07:30 AM – 09:30 PM</b> (Mon – Sun)<br>
+            Consultation Hours: <b>08:00 AM – 05:00 PM</b> (Mon – Fri), <b>08:00 AM – 12:00 PM</b> (Sat)<br>
             Duty Pharmacist: <b>William Chai (Pharmacist)</b>
           </p>
         </div>
@@ -4802,7 +4802,7 @@ Date visit: 06.01.2026
             <i class="fa-regular fa-calendar-check text-emerald-400 text-xl"></i> Schedule Appointment or Request Refill
           </h2>
           <span id="custOpenDailyBadge" class="inline-flex items-center text-xs text-blue-200 bg-white/10 px-2.5 py-1 rounded-full border border-white/20">
-            <span class="w-2 h-2 rounded-full bg-emerald-400 mr-1.5 animate-pulse"></span><span id="custOpenDailyText">Open Daily</span>
+            <span class="w-2 h-2 rounded-full bg-emerald-400 mr-1.5 animate-pulse"></span><span id="custOpenDailyText">Pharmacist On Duty</span>
           </span>
         </div>
         <p id="custCardSubtitle" class="text-sm text-blue-100 mt-1">Please select your service, branch, and preferred time below.</p>
@@ -4815,7 +4815,7 @@ Date visit: 06.01.2026
             <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-black">1</span>
             <span id="custStep1Title">Select PMG Pharmacy Branch</span>
           </label>
-          <select id="custBranchSelect" onchange="updateCustBookHours()" required
+          <select id="custBranchSelect" onchange="onCustBranchChange()" required
             class="w-full border-2 border-gray-300 rounded-2xl px-4 py-3.5 text-base sm:text-lg font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none bg-white">
             <option value="Kota Sentosa">Kota Sentosa</option>
             <option value="Matang Jaya">Matang Jaya</option>
@@ -4881,11 +4881,9 @@ Date visit: 06.01.2026
             </span>
             <span id="custPharmOptional" class="text-xs sm:text-sm text-gray-400 font-normal">Optional</span>
           </label>
-          <select id="custPharmacistSelect"
+          <select id="custPharmacistSelect" onchange="updateCustBookHours()"
             class="w-full border-2 border-gray-300 rounded-2xl px-4 py-3.5 text-base sm:text-lg font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none bg-white">
             <option id="custPharmAnyOption" value="">Any Available Pharmacist on Duty</option>
-            <option value="Pharmacist William Chai">Pharmacist William Chai</option>
-            <option value="Pharmacist Kenix Ling">Pharmacist Kenix Ling</option>
           </select>
         </div>
 
@@ -4910,6 +4908,21 @@ Date visit: 06.01.2026
               </select>
             </div>
           </div>
+
+          <!-- Pharmacist Consultation Hours & Break Notice Card -->
+          <div id="custBranchHoursCard" class="rounded-2xl p-4 bg-blue-50/80 border border-blue-200/70 text-sm text-blue-950 flex items-start gap-3">
+            <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 mt-0.5">
+              <i class="fa-regular fa-clock text-base"></i>
+            </div>
+            <div class="flex-1">
+              <div id="custBranchHoursTitle" class="font-black text-blue-900 text-sm sm:text-base">Kota Sentosa Pharmacist Consultation Hours</div>
+              <div id="custBranchHoursDesc" class="text-xs sm:text-sm text-blue-800 mt-0.5 leading-relaxed">
+                Consultation Hours: <b>08:00 AM – 05:00 PM</b> &bull; Break: <b>12:30 PM – 01:30 PM</b><br>
+                Attending Pharmacist: <b>William Chai (Pharmacist)</b>
+              </div>
+            </div>
+          </div>
+
           <!-- Refill Extension info notice -->
           <div id="custRefillExtensionNotice" class="hidden p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-sm sm:text-base text-emerald-900">
             <i class="fa-solid fa-bell text-emerald-600 mr-1.5"></i>
@@ -5419,7 +5432,7 @@ ItemCode,Description,Brand,Category,Cost,SellingPrice,Supplier
 <script src="js/scheduler.js?v=20260928_v5"></script>
 <script src="js/db.js?v=20260928_v5"></script>
 <script src="js/onedrive-sync.js?v=20260928_v5"></script>
-<script src="js/patient.js?v=20260928_v7"></script>
+<script src="js/patient.js?v=20260928_v8"></script>
 <script src="js/seed_expiry_data.js?v=20260928_v5"></script>
 <script src="js/expiry.js?v=20260928_v5"></script>
 <script src="js/returns-cn.js?v=20260928_v5"></script>

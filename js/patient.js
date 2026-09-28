@@ -7382,16 +7382,13 @@ function unpackScheduleFromUrl(schParam, branchCode) {
  */
 function getPharmacistSchedule(branchCode) {
   const code = normalizeBranchCode(branchCode);
-  const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || { name: 'Kota Sentosa', open: '08:00', close: '17:00', pharmacist: 'William Chai (Pharmacist)' };
+  const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || { name: code, open: '08:00', close: '17:00', pharmacist: 'Duty Pharmacist', hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' };
 
   let data = null;
   try {
     const raw = localStorage.getItem(`pmg_pharmacist_schedule_${code}`) ||
                 (code === 'Kota Sentosa' ? (localStorage.getItem('pmg_pharmacist_schedule_KOTA SENTOSA') || localStorage.getItem('pmg_pharmacist_schedule_KS01')) : null) ||
-                (branchCode ? localStorage.getItem(`pmg_pharmacist_schedule_${branchCode}`) : null) ||
-                localStorage.getItem('pmg_pharmacist_schedule_Kota Sentosa') ||
-                localStorage.getItem('pmg_pharmacist_schedule_KOTA SENTOSA') ||
-                localStorage.getItem('pmg_pharmacist_schedule_KS01');
+                (branchCode && branchCode !== code ? localStorage.getItem(`pmg_pharmacist_schedule_${branchCode}`) : null);
     if (raw) data = JSON.parse(raw);
   } catch (_) { data = null; }
 
@@ -7529,16 +7526,25 @@ async function fetchScheduleFromSheets(branchCode) {
     clearTimeout(timeout);
     const data = await res.json();
     if (data.success && data.schedule) {
-      // Cache to localStorage (directly, no re-push to Sheets)
       const code = normalizeBranchCode(branchCode);
-      const jsonStr = JSON.stringify(data.schedule);
-      localStorage.setItem(`pmg_pharmacist_schedule_${code}`, jsonStr);
-      if (code === 'Kota Sentosa') {
-        localStorage.setItem('pmg_pharmacist_schedule_KOTA SENTOSA', jsonStr);
-        localStorage.setItem('pmg_pharmacist_schedule_KS01', jsonStr);
+      const localSched = getPharmacistSchedule(code);
+      const cloudUpdated = data.schedule.lastUpdated || data.lastUpdated || '';
+      const localUpdated = (localSched && localSched.lastUpdated) || '';
+
+      // Only adopt from Google Sheets if cloud is genuinely newer or local has no weekly template
+      if (!localSched || !localSched.weeklyTemplate || !localUpdated || cloudUpdated >= localUpdated) {
+        const jsonStr = JSON.stringify(data.schedule);
+        localStorage.setItem(`pmg_pharmacist_schedule_${code}`, jsonStr);
+        if (code === 'Kota Sentosa') {
+          localStorage.setItem('pmg_pharmacist_schedule_KOTA SENTOSA', jsonStr);
+          localStorage.setItem('pmg_pharmacist_schedule_KS01', jsonStr);
+        }
+        console.log(`[PMG Sheets] ✅ Cached live schedule for ${branchCode} (last updated: ${cloudUpdated})`);
+        return data.schedule;
+      } else {
+        console.log(`[PMG Sheets] Local schedule is newer (${localUpdated}) than cloud (${cloudUpdated}) — keeping local.`);
+        return localSched;
       }
-      console.log(`[PMG Sheets] ✅ Fetched live schedule for ${branchCode} (last updated: ${data.lastUpdated})`);
-      return data.schedule;
     }
     console.warn('[PMG Sheets] No schedule found in Sheets for:', branchCode);
     return null;
@@ -7712,13 +7718,51 @@ function updateShareBookingUrl() {
 
   const titleEl = document.getElementById('shareBookingHoursTitle');
   const descEl  = document.getElementById('shareBookingHoursDetails');
-  if (titleEl) titleEl.textContent = `${sched.branchName || info.name} Pharmacist Hours`;
+  if (titleEl) titleEl.textContent = `${sched.branchName || info.name} Pharmacist Consultation Hours`;
 
   const overrideCount = sched.dateOverrides ? Object.keys(sched.dateOverrides).length : 0;
   const overrideNote = overrideCount > 0 ? `<br><span class="text-purple-700 font-semibold text-[10px]">✨ ${overrideCount} specific date / holiday override(s) active</span>` : '';
 
+  // Extract weekly template hours summary
+  let scheduleSummary = '';
+  if (sched && sched.weeklyTemplate) {
+    const daysOpen = [];
+    const weekdaysOpen = [];
+    for (const d of ['1','2','3','4','5']) {
+      const tmpl = sched.weeklyTemplate[d];
+      if (tmpl && tmpl.isOpen && tmpl.open && tmpl.close) {
+        weekdaysOpen.push(tmpl);
+      }
+    }
+    if (weekdaysOpen.length === 5 && weekdaysOpen.every(t => t.open === weekdaysOpen[0].open && t.close === weekdaysOpen[0].close)) {
+      daysOpen.push(`<b>Mon – Fri:</b> ${weekdaysOpen[0].open} – ${weekdaysOpen[0].close}`);
+    } else {
+      for (const [d, name] of [['1','Mon'],['2','Tue'],['3','Wed'],['4','Thu'],['5','Fri']]) {
+        const tmpl = sched.weeklyTemplate[d];
+        if (tmpl && tmpl.isOpen) daysOpen.push(`<b>${name}:</b> ${tmpl.open}–${tmpl.close}`);
+      }
+    }
+    const satTmpl = sched.weeklyTemplate['6'];
+    if (satTmpl && satTmpl.isOpen) {
+      daysOpen.push(`<b>Sat:</b> ${satTmpl.open} – ${satTmpl.close}`);
+    }
+    const sunTmpl = sched.weeklyTemplate['0'];
+    if (sunTmpl && sunTmpl.isOpen) {
+      daysOpen.push(`<b>Sun:</b> ${sunTmpl.open} – ${sunTmpl.close}`);
+    } else {
+      daysOpen.push(`<b>Sun:</b> Closed`);
+    }
+    scheduleSummary = daysOpen.join(' | ');
+  } else {
+    scheduleSummary = `<b>Mon – Fri:</b> ${info.open} – ${info.close} | <b>Sat:</b> 08:00 – 12:00 | <b>Sun:</b> Closed`;
+  }
+
+  const breakNote = (sched.hasBreak !== false && sched.breakStart && sched.breakEnd)
+    ? `<br><span class="text-amber-800 font-semibold text-[11px]">☕ Rest / Lunch Break: ${sched.breakStart} – ${sched.breakEnd}</span>`
+    : '';
+
   if (descEl) {
-    descEl.innerHTML = `Standard Consultation Hours: <b>${info.open} – ${info.close}</b> (Mon – Sun)<br>Duty Pharmacist: <b>${escHtml(sched.defaultPharmacist || info.pharmacist)}</b>${overrideNote}`;
+    descEl.innerHTML = `Consultation Schedule:<br>${scheduleSummary}<br>Duty Pharmacist: <b>${escHtml(sched.defaultPharmacist || info.pharmacist)}</b>${breakNote}${overrideNote}`;
   }
 
   const baseUrl = window.location.origin + window.location.pathname;
@@ -7758,7 +7802,37 @@ function shareBookingViaWhatsApp() {
   const info = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || BRANCH_SCHEDULES['KS01'];
   const bookingUrl = inputEl ? inputEl.value : '';
 
-  const msg = `Halo! Anda boleh tempah slot pemeriksaan kesihatan atau rundingan ahli farmasi di PMG Pharmacy (${sched.branchName || info.name}) di pautan berikut:\n\n${bookingUrl}\n\nWaktu Perundingan: ${info.open} - ${info.close}.\nJumpa anda nanti!`;
+  const dutyPharm = sched.defaultPharmacist || info.pharmacist;
+  let scheduleText = '';
+  if (sched && sched.weeklyTemplate) {
+    const lines = [];
+    const weekdaysOpen = [];
+    for (const d of ['1','2','3','4','5']) {
+      const tmpl = sched.weeklyTemplate[d];
+      if (tmpl && tmpl.isOpen) weekdaysOpen.push(tmpl);
+    }
+    if (weekdaysOpen.length === 5 && weekdaysOpen.every(t => t.open === weekdaysOpen[0].open && t.close === weekdaysOpen[0].close)) {
+      lines.push(`• Isnin – Jumaat: ${weekdaysOpen[0].open} – ${weekdaysOpen[0].close}`);
+    } else {
+      for (const [d, name] of [['1','Isnin'],['2','Selasa'],['3','Rabu'],['4','Khamis'],['5','Jumaat']]) {
+        const tmpl = sched.weeklyTemplate[d];
+        if (tmpl && tmpl.isOpen) lines.push(`• ${name}: ${tmpl.open} – ${tmpl.close}`);
+      }
+    }
+    const sat = sched.weeklyTemplate['6'];
+    if (sat && sat.isOpen) lines.push(`• Sabtu: ${sat.open} – ${sat.close}`);
+    const sun = sched.weeklyTemplate['0'];
+    if (sun && sun.isOpen) lines.push(`• Ahad: ${sun.open} – ${sun.close}`);
+    else lines.push(`• Ahad: Ditutup (Closed)`);
+    if (sched.hasBreak !== false && sched.breakStart && sched.breakEnd) {
+      lines.push(`• Waktu Rehat Ahli Farmasi: ${sched.breakStart} – ${sched.breakEnd}`);
+    }
+    scheduleText = lines.join('\n');
+  } else {
+    scheduleText = `• Isnin – Jumaat: ${info.open} – ${info.close}\n• Sabtu: 08:00 – 12:00\n• Ahad: Ditutup (Closed)`;
+  }
+
+  const msg = `Halo! Anda boleh tempah slot pemeriksaan kesihatan atau rundingan ahli farmasi (${dutyPharm}) di PMG Pharmacy (${sched.branchName || info.name}) di pautan berikut:\n\n🔗 ${bookingUrl}\n\n📅 *Waktu Perundingan Ahli Farmasi (Bukan Waktu Kedai):*\n${scheduleText}\n\nJumpa anda nanti!`;
 
   const waUrl = `https://wa.me/?text=${encodeURIComponent(msg)}`;
   window.open(waUrl, '_blank');
@@ -7776,7 +7850,7 @@ const BOOKING_I18N = {
     headerSubtitle: 'Patient Care, Clinical Consultation & Medication Refill',
     cardTitle: '<i class="fa-regular fa-calendar-check text-emerald-400 text-xl"></i> Schedule Appointment or Request Refill',
     cardSubtitle: 'Please select your service, branch, and preferred time below.',
-    openDaily: 'Open Daily',
+    openDaily: 'Pharmacist On Duty',
     step1Title: 'Select PMG Pharmacy Branch',
     branchLockText: 'Branch locked to your registered profile',
     step2Title: 'Select Your Service',
@@ -7790,6 +7864,8 @@ const BOOKING_I18N = {
     step3Title: 'Preferred Pharmacist',
     pharmOptional: 'Optional',
     pharmAnyOption: 'Any Available Pharmacist on Duty',
+    consultHoursTitle: (branch) => `${branch} Pharmacist Consultation Hours`,
+    consultHoursDesc: (open, close, breakInfo, pharm) => `Consultation Hours: <b>${open} – ${close}</b>${breakInfo ? ` &bull; Break: <b>${breakInfo}</b>` : ''}${pharm ? `<br>Attending Pharmacist: <b>${pharm}</b>` : ''}`,
     dateLabelInPerson: 'Select Date',
     dateLabelRefill: 'Select Expected Refill Date',
     timeLabel: 'Select Time Slot',
@@ -7849,7 +7925,7 @@ const BOOKING_I18N = {
     headerSubtitle: 'Penjagaan Pesakit, Rundingan Klinikal & Ulangan Ubat',
     cardTitle: '<i class="fa-regular fa-calendar-check text-emerald-400 text-xl"></i> Tempah Temujanji atau Permohonan Ulangan',
     cardSubtitle: 'Sila pilih jenis perkhidmatan, cawangan, dan waktu pilihan anda di bawah.',
-    openDaily: 'Buka Setiap Hari',
+    openDaily: 'Ahli Farmasi Bertugas',
     step1Title: 'Pilih Cawangan Farmasi PMG',
     branchLockText: 'Cawangan dikunci mengikut profil berdaftar anda',
     step2Title: 'Pilih Jenis Perkhidmatan',
@@ -7863,6 +7939,8 @@ const BOOKING_I18N = {
     step3Title: 'Pilihan Ahli Farmasi',
     pharmOptional: 'Pilihan',
     pharmAnyOption: 'Mana-mana Ahli Farmasi Bertugas',
+    consultHoursTitle: (branch) => `Waktu Rundingan Ahli Farmasi ${branch}`,
+    consultHoursDesc: (open, close, breakInfo, pharm) => `Waktu Rundingan: <b>${open} – ${close}</b>${breakInfo ? ` &bull; Waktu Rehat: <b>${breakInfo}</b>` : ''}${pharm ? `<br>Ahli Farmasi Bertugas: <b>${pharm}</b>` : ''}`,
     dateLabelInPerson: 'Pilih Tarikh Temujanji',
     dateLabelRefill: 'Pilih Tarikh Pengambilan Ubat',
     timeLabel: 'Pilih Slot Masa',
@@ -7922,7 +8000,7 @@ const BOOKING_I18N = {
     headerSubtitle: '慢病照护 · 临床健康咨询 · 药物续订与顺延',
     cardTitle: '<i class="fa-regular fa-calendar-check text-emerald-400 text-xl"></i> 预约到店面诊或慢病用药续订',
     cardSubtitle: '请在下方选择您的服务项目、分店与合适的时间。',
-    openDaily: '每日营业',
+    openDaily: '执业药剂师在岗',
     step1Title: '选择 PMG 药剂行分店',
     branchLockText: '已锁定为您注册档案所在的分店',
     step2Title: '选择服务项目',
@@ -7936,6 +8014,8 @@ const BOOKING_I18N = {
     step3Title: '指定主理药剂师',
     pharmOptional: '可自选',
     pharmAnyOption: '任意当值执业药剂师',
+    consultHoursTitle: (branch) => `${branch} 药剂师面诊当值时间`,
+    consultHoursDesc: (open, close, breakInfo, pharm) => `面诊当值时间：<b>${open} – ${close}</b>${breakInfo ? ` &bull; 休息时段：<b>${breakInfo}</b>` : ''}${pharm ? `<br>主理执业药剂师：<b>${pharm}</b>` : ''}`,
     dateLabelInPerson: '选择面诊日期',
     dateLabelRefill: '选择预计取药日期',
     timeLabel: '选择预约时间段',
@@ -8108,7 +8188,11 @@ function setBookingLanguage(lang) {
   const doneBtn = document.getElementById('custSuccessDoneBtnText');
   if (doneBtn) doneBtn.textContent = i18n.successDoneBtn;
 
-  // Refresh dynamic types and slots
+  // Refresh dynamic types, pharmacist options, and slots
+  const branchSelect = document.getElementById('custBranchSelect');
+  if (branchSelect) {
+    populateCustPharmacistSelect(branchSelect.value);
+  }
   const bookingTypeEl = document.querySelector('input[name="custBookingType"]:checked');
   const currentBookingType = bookingTypeEl ? bookingTypeEl.value : 'in_person';
   toggleBookingType(currentBookingType);
@@ -8208,6 +8292,21 @@ async function initCustomerBooking(defaultBranchCode = 'Kota Sentosa') {
     if (lockNotice) lockNotice.classList.remove('hidden');
   }
 
+  // ── Step 4b: Populate Pharmacists list for this branch ───────────────────
+  populateCustPharmacistSelect(branchParam);
+  const pharmParam = urlParams.get('pharm') || urlParams.get('pharmacist');
+  if (pharmParam) {
+    const pharmSelect = document.getElementById('custPharmacistSelect');
+    if (pharmSelect) {
+      for (let opt of pharmSelect.options) {
+        if (opt.value && (opt.value.toLowerCase().includes(pharmParam.toLowerCase()) || pharmParam.toLowerCase().includes(opt.value.toLowerCase()))) {
+          pharmSelect.value = opt.value;
+          break;
+        }
+      }
+    }
+  }
+
   // ── Step 5: Pre-fill Name, Phone, IC from query params ────────────────────
   const nameParam = urlParams.get('name');
   if (nameParam) {
@@ -8303,6 +8402,85 @@ function toggleBookingType(type) {
   }
 }
 
+/**
+ * Dynamically populates the preferred pharmacist select dropdown (#custPharmacistSelect)
+ * based on the branch's weekly template, default pharmacist, overrides, and USERS registry.
+ * Decoupled from Rymnet so any branch functions independently with full reliability.
+ */
+function populateCustPharmacistSelect(branchCode) {
+  const select = document.getElementById('custPharmacistSelect');
+  if (!select) return;
+  const currentVal = select.value;
+  const i18n = BOOKING_I18N[currentBookingLang] || BOOKING_I18N.en;
+
+  const code = normalizeBranchCode(branchCode);
+  const sched = getPharmacistSchedule(code);
+  const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || { name: code, pharmacist: 'Duty Pharmacist' };
+
+  const pharmSet = new Set();
+
+  // 1. From Schedule Object (Weekly template + Default + Overrides)
+  if (sched) {
+    if (sched.defaultPharmacist && sched.defaultPharmacist.trim()) {
+      pharmSet.add(sched.defaultPharmacist.trim());
+    }
+    if (sched.weeklyTemplate) {
+      Object.values(sched.weeklyTemplate).forEach(tmpl => {
+        if (tmpl && tmpl.pharmacist && tmpl.pharmacist.trim()) {
+          pharmSet.add(tmpl.pharmacist.trim());
+        }
+      });
+    }
+    if (sched.dateOverrides) {
+      Object.values(sched.dateOverrides).forEach(ov => {
+        if (ov && ov.pharmacist && ov.pharmacist.trim()) {
+          pharmSet.add(ov.pharmacist.trim());
+        }
+      });
+    }
+  }
+
+  // 2. From static BRANCH_SCHEDULES
+  if (defInfo && defInfo.pharmacist && defInfo.pharmacist.trim()) {
+    pharmSet.add(defInfo.pharmacist.trim());
+  }
+
+  // 3. From USERS config (if matches branch)
+  if (typeof USERS !== 'undefined' && Array.isArray(USERS)) {
+    USERS.forEach(u => {
+      const uBranch = normalizeBranchCode(u.branch);
+      if (uBranch === code || u.branch === 'ALL') {
+        if (u.role === 'Pharmacist' || (u.displayName && u.displayName.toLowerCase().includes('pharmacist'))) {
+          if (u.displayName && u.displayName.trim()) {
+            pharmSet.add(u.displayName.trim());
+          }
+        }
+      }
+    });
+  }
+
+  // Filter out pure placeholders
+  const validPharms = Array.from(pharmSet).filter(p => p && p !== 'Duty Pharmacist' && p !== 'Pharmacist');
+
+  let html = `<option id="custPharmAnyOption" value="">${escHtml(i18n.pharmAnyOption || 'Any Available Pharmacist on Duty')}</option>`;
+  if (validPharms.length === 0) {
+    html += `<option value="Duty Pharmacist">Duty Pharmacist</option>`;
+  } else {
+    validPharms.forEach(p => {
+      const isSelected = (p === currentVal);
+      html += `<option value="${escHtml(p)}" ${isSelected ? 'selected' : ''}>${escHtml(p)}</option>`;
+    });
+  }
+  select.innerHTML = html;
+}
+
+function onCustBranchChange() {
+  const select = document.getElementById('custBranchSelect');
+  const code = normalizeBranchCode(select ? select.value : 'Kota Sentosa');
+  populateCustPharmacistSelect(code);
+  updateCustBookHours();
+}
+
 function updateCustBookHours() {
   const i18n = BOOKING_I18N[currentBookingLang] || BOOKING_I18N.en;
   const branchSelect = document.getElementById('custBranchSelect');
@@ -8340,13 +8518,29 @@ function updateCustBookHours() {
     return;
   }
 
-  if (titleEl) titleEl.textContent = `${schedForDate.branchName} Operating Hours`;
+  if (titleEl) {
+    if (typeof i18n.consultHoursTitle === 'function') {
+      titleEl.textContent = i18n.consultHoursTitle(schedForDate.branchName);
+    } else {
+      titleEl.textContent = `${schedForDate.branchName} Pharmacist Consultation Hours`;
+    }
+  }
+
+  const preferredPharmEl = document.getElementById('custPharmacistSelect');
+  const attendingPharm = (preferredPharmEl && preferredPharmEl.value) ? preferredPharmEl.value : (schedForDate.pharmacist || 'Duty Pharmacist');
+  const hasBreak = schedForDate.hasBreak !== false && schedForDate.breakStart && schedForDate.breakEnd;
 
   if (descEl) {
     if (schedForDate.isClosed) {
       descEl.innerHTML = `<span class="text-rose-600 font-bold">⚠️ ${i18n.closedOption}</span><br>Reason: <b>${escHtml(schedForDate.reason || 'Rest Day')}</b>`;
     } else {
-      descEl.innerHTML = `Operating Hours: <b>${schedForDate.open} – ${schedForDate.close}</b> (Mon – Sun)${schedForDate.isOverride ? ' <span class="text-xs text-indigo-600 font-bold">(Special Shift)</span>' : ''}`;
+      const breakInfo = hasBreak ? `${schedForDate.breakStart} – ${schedForDate.breakEnd}` : null;
+      if (typeof i18n.consultHoursDesc === 'function') {
+        descEl.innerHTML = i18n.consultHoursDesc(schedForDate.open, schedForDate.close, breakInfo, escHtml(attendingPharm)) +
+          (schedForDate.isOverride ? ' <span class="text-xs text-indigo-600 font-bold">(Special Shift)</span>' : '');
+      } else {
+        descEl.innerHTML = `Consultation Hours: <b>${schedForDate.open} – ${schedForDate.close}</b>${breakInfo ? ` &bull; Break: <b>${breakInfo}</b>` : ''}<br>Attending Pharmacist: <b>${escHtml(attendingPharm)}</b>${schedForDate.isOverride ? ' <span class="text-xs text-indigo-600 font-bold">(Special Shift)</span>' : ''}`;
+      }
     }
   }
 
@@ -8400,7 +8594,6 @@ function updateCustBookHours() {
   const closeMinutes = closeH * 60 + closeM;
 
   // Determine rest / lunch break window
-  const hasBreak = schedForDate.hasBreak !== false && schedForDate.breakStart && schedForDate.breakEnd;
   let breakStartMin = -1;
   let breakEndMin = -1;
   if (hasBreak) {
@@ -9515,11 +9708,9 @@ async function saveWeeklyTemplate(e) {
   const rawCode = branchSelect ? branchSelect.value : 'Kota Sentosa';
   const code = normalizeBranchCode(rawCode);
 
-  let baseSched = null;
-  try {
-    baseSched = await fetchScheduleFromSheets(code);
-  } catch (_) {}
-  const sched = baseSched || getPharmacistSchedule(code);
+  const sched = getPharmacistSchedule(code);
+  const nowIso = new Date().toISOString();
+  sched.lastUpdated = nowIso;
 
   const breakToggle = document.getElementById('branchBreakToggle');
   const breakStart = document.getElementById('branchBreakStart');
@@ -9549,10 +9740,6 @@ async function saveWeeklyTemplate(e) {
       pharmacist: isOpen ? pharmVal : ''
     };
   });
-
-  if (baseSched && Array.isArray(baseSched.onlineBookings) && (!Array.isArray(sched.onlineBookings) || sched.onlineBookings.length === 0)) {
-    sched.onlineBookings = baseSched.onlineBookings;
-  }
 
   const submitBtn = e && e.target ? (e.target.querySelector('button[type="submit"]') || e.target) : null;
   const originalBtnText = submitBtn ? submitBtn.innerHTML : '';
@@ -9803,13 +9990,23 @@ function syncPharmacistHoursFromRoster() {
       };
       syncCount++;
     } else {
-      let openTime = '07:30';
-      let closeTime = '21:30';
+      let openTime = '08:00';
+      let closeTime = '17:00';
 
-      const m = rec.shiftCode.match(/(\d{4})-(\d{4})/);
+      const sc = (rec.shiftCode || '').toUpperCase();
+      const m = sc.match(/(\d{4})[^\d]*(\d{4})/);
       if (m) {
         openTime = `${m[1].slice(0,2)}:${m[1].slice(2,4)}`;
         closeTime = `${m[2].slice(0,2)}:${m[2].slice(2,4)}`;
+      } else if (sc === 'M' || sc.includes('0730-1630')) {
+        openTime = '07:30';
+        closeTime = '16:30';
+      } else if (sc === '4H' || sc.includes('0730-1130')) {
+        openTime = '07:30';
+        closeTime = '11:30';
+      } else if (sc === 'N' || sc.includes('1230-2130')) {
+        openTime = '12:30';
+        closeTime = '21:30';
       }
 
       sched.dateOverrides[rec.workDate] = {
