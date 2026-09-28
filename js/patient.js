@@ -1887,6 +1887,19 @@ function getPatientSelfBookingUrl(patient) {
   params.set('book', '1');
   params.set('branch', branch);
 
+  // Match language with patient's profile preference
+  const rawLang = typeof getPatientLanguageByRace === 'function' ? getPatientLanguageByRace(patient) : (patient?.language || 'English');
+  const normalizedLang = String(rawLang).toLowerCase();
+  let langCode = 'en';
+  if (normalizedLang.includes('chinese') || normalizedLang.includes('cina') || normalizedLang.includes('zh') || normalizedLang.includes('华') || normalizedLang.includes('中')) {
+    langCode = 'zh';
+  } else if (normalizedLang.includes('malay') || normalizedLang.includes('melayu') || normalizedLang.includes('ms') || normalizedLang.includes('my') || normalizedLang.includes('bm')) {
+    langCode = 'ms';
+  } else {
+    langCode = 'en';
+  }
+  params.set('lang', langCode);
+
   if (typeof getPharmacistSchedule === 'function' && typeof packScheduleForUrl === 'function') {
     const sched = getPharmacistSchedule(branch);
     const packedSched = packScheduleForUrl(sched);
@@ -7755,17 +7768,394 @@ function shareBookingViaWhatsApp() {
 // ─── CUSTOMER SELF-SERVICE BOOKING VIEW (?book=1) ────────────────────────────
 // ═════════════════════════════════════════════════════════════════════════════
 let currentCustomerBooking = null;
+let currentBookingLang = 'en';
+
+const BOOKING_I18N = {
+  en: {
+    headerTitle: 'PMG Pharmacy · Appointment & Refill Portal',
+    headerSubtitle: 'Patient Care, Clinical Consultation & Medication Refill',
+    cardTitle: '<i class="fa-regular fa-calendar-check text-emerald-400 text-xl"></i> Schedule Appointment or Request Refill',
+    cardSubtitle: 'Please select your service, branch, and preferred time below.',
+    openDaily: 'Open Daily',
+    step1Title: 'Select PMG Pharmacy Branch',
+    branchLockText: 'Branch locked to your registered profile',
+    step2Title: 'Select Your Service',
+    opt1Title: '🩺 In-Person Consultation & Health Screening',
+    opt1Badge: 'In-Person Visit',
+    opt1Desc: 'Meet our pharmacist in-person for blood pressure & glucose checks, comprehensive chronic health reviews, and clinical consultation.',
+    opt2Title: '💊 Routine Medication & Supplement Refill (+1 Month Extension)',
+    opt2Badge: 'Refill & +1 Month Extension',
+    opt2Desc: 'If your blood pressure, blood glucose, and health metrics are stable, request medication refills in advance and extend your next follow-up by 1 month.',
+    opt2Notice: 'Subject to pharmacist review and approval. Your next reminder date will be updated automatically.',
+    step3Title: 'Preferred Pharmacist',
+    pharmOptional: 'Optional',
+    pharmAnyOption: 'Any Available Pharmacist on Duty',
+    dateLabelInPerson: 'Select Date',
+    dateLabelRefill: 'Select Expected Refill Date',
+    timeLabel: 'Select Time Slot',
+    refillNoticeText: 'Refill Notice: Our pharmacist will review your medication history, prepare your medications in advance, and extend your next follow-up reminder by 1 month.',
+    step6Title: 'Your Particulars',
+    nameLabel: 'Full Name',
+    namePlaceholder: 'e.g. Tan Ah Kow / Siti Ahmad',
+    phoneLabel: 'WhatsApp / Mobile Number',
+    phonePlaceholder: 'e.g. 011-10990693',
+    icLabel: 'IC / Passport Number (Optional)',
+    icPlaceholder: 'e.g. 750812-13-5567',
+    submitInPerson: 'Confirm & Book Appointment',
+    submitRefill: 'Submit Refill & 1-Month Extension Request',
+    submitting: '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Registering appointment with pharmacy...',
+    submitDatePassed: 'Selected Date Has Passed',
+    submitClosed: 'Branch Closed on Selected Date',
+    submitHoursEnded: 'Consultation Hours Ended for Today',
+    submitFullyBooked: 'Fully Booked on Selected Date',
+    slotTimePassed: 'Time Passed',
+    slotBreak: 'Rest / Lunch Break',
+    slotBooked: 'Fully Booked',
+    slotAvailable: 'Available',
+    loadingSlots: '⏳ Loading available time slots...',
+    datePassedOption: '⚠️ Date has passed',
+    closedOption: 'No consultation slots available (Closed)',
+    todayEndedOption: "⚠️ Today's consultation hours have already ended. Please select tomorrow or a future date.",
+    fullyBookedOption: '⚠️ All consultation slots are fully booked for this date. Please select another date.',
+    bannerDatePassed: (date) => `<b>Selected date has already passed (${date}).</b> Please choose today or an upcoming date.`,
+    bannerClosed: (date, reason) => `<b>Branch is Closed on ${date}</b> (${reason || 'Rest Day / Public Holiday'}). Please choose another date.`,
+    bannerSpecial: (date, open, close, reason) => `<b>Special Hours for ${date}:</b> Open ${open} – ${close} (${reason || 'Special Shift'})`,
+    bannerTodayEnded: (date) => `<b>Today's consultation hours have ended</b> (${date}). All consultation slots for today have already passed. Please select tomorrow or a future date.`,
+    alertDatePassed: (date) => `The selected date (${date}) has already passed. Please select today or a future date.`,
+    alertClosed: (date, reason) => `Sorry, the pharmacy is closed on ${date} (${reason || 'Rest Day / Public Holiday'}). Please select another date.`,
+    alertSelectTime: 'Please select an available consultation time slot.',
+    alertTimePassed: (time, today) => `The selected time slot (${time}) has already passed today (${today}). Please choose an upcoming consultation slot or select a future date.`,
+    alertOutsideHours: (time, open, close) => `The selected time slot (${time}) is outside the pharmacist's operating hours (${open} – ${close}). Please select a time within working hours.`,
+    alertBreak: (time, start, end) => `The selected time slot (${time}) is during the pharmacist's rest / lunch break (${start} – ${end}). Please select another available consultation time slot.`,
+    alertFillRequired: 'Please fill in your name, phone number, and preferred date.',
+    successTitleApt: 'Appointment Confirmed!',
+    successSubApt: 'Your in-person consultation appointment has been directly registered in our pharmacy system.',
+    successTitleRefill: 'Extension Request Submitted!',
+    successSubRefill: 'Your chronic medication refill and 1-month follow-up extension request has been submitted. Our pharmacist will review your history, prepare your medications, and update your next reminder date.',
+    confirmRefLabel: 'Reference Code:',
+    confirmNameLabel: 'Patient Name:',
+    confirmBranchLabel: 'Branch:',
+    confirmDateLabelApt: 'Date & Time:',
+    confirmDateLabelRefill: 'Expected Refill Date:',
+    confirmServiceLabel: 'Request Type:',
+    confirmServiceApt: 'In-Person Consultation & Health Screening',
+    confirmServiceRefill: '1-Month Refill Extension (Pending Approval)',
+    successWaBtn: 'Send Booking Details to Pharmacist WhatsApp',
+    successCopyBtn: 'Save Copy to My WhatsApp',
+    successDoneBtn: 'Done'
+  },
+  ms: {
+    headerTitle: 'Farmasi PMG · Portal Temujanji & Ulangan Ubat',
+    headerSubtitle: 'Penjagaan Pesakit, Rundingan Klinikal & Ulangan Ubat',
+    cardTitle: '<i class="fa-regular fa-calendar-check text-emerald-400 text-xl"></i> Tempah Temujanji atau Permohonan Ulangan',
+    cardSubtitle: 'Sila pilih jenis perkhidmatan, cawangan, dan waktu pilihan anda di bawah.',
+    openDaily: 'Buka Setiap Hari',
+    step1Title: 'Pilih Cawangan Farmasi PMG',
+    branchLockText: 'Cawangan dikunci mengikut profil berdaftar anda',
+    step2Title: 'Pilih Jenis Perkhidmatan',
+    opt1Title: '🩺 Rundingan Bersemuka & Pemeriksaan Kesihatan',
+    opt1Badge: 'Lawatan Bersemuka',
+    opt1Desc: 'Berjumpa ahli farmasi kami secara bersemuka untuk pemeriksaan tekanan darah, glukosa, semakan ubat kronik dan nasihat klinikal.',
+    opt2Title: '💊 Ulangan Ubat Kronik & Suplemen (+1 Bulan Lanjutan)',
+    opt2Badge: 'Ulangan & +1 Bulan Lanjutan',
+    opt2Desc: 'Jika tekanan darah, gula darah, dan metrik kesihatan anda stabil, mohon bekalan ubat lebih awal dan lanjutkan temujanji seterusnya sebanyak 1 bulan.',
+    opt2Notice: 'Tertakluk kepada semakan dan kelulusan ahli farmasi. Tarikh peringatan seterusnya akan dikemas kini secara automatik.',
+    step3Title: 'Pilihan Ahli Farmasi',
+    pharmOptional: 'Pilihan',
+    pharmAnyOption: 'Mana-mana Ahli Farmasi Bertugas',
+    dateLabelInPerson: 'Pilih Tarikh Temujanji',
+    dateLabelRefill: 'Pilih Tarikh Pengambilan Ubat',
+    timeLabel: 'Pilih Slot Masa',
+    refillNoticeText: 'Notis Ulangan Ubat: Ahli farmasi kami akan menyemak rekod ubat anda, menyediakan bekalan ubat lebih awal, dan melanjutkan peringatan temujanji anda sebanyak 1 bulan.',
+    step6Title: 'Maklumat Anda',
+    nameLabel: 'Nama Penuh',
+    namePlaceholder: 'cth. Siti binti Ahmad / Tan Ah Kow',
+    phoneLabel: 'Nombor WhatsApp / Telefon Bimbit',
+    phonePlaceholder: 'cth. 011-10990693',
+    icLabel: 'No. Kad Pengenalan / Pasport (Pilihan)',
+    icPlaceholder: 'cth. 750812-13-5567',
+    submitInPerson: 'Sahkan & Tempah Temujanji',
+    submitRefill: 'Hantar Permohonan Ulangan & Lanjutan 1 Bulan',
+    submitting: '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Mendaftarkan temujanji dengan farmasi...',
+    submitDatePassed: 'Tarikh Pilihan Telah Berlalu',
+    submitClosed: 'Cawangan Ditutup pada Tarikh Dipilih',
+    submitHoursEnded: 'Waktu Rundingan Hari Ini Telah Tamat',
+    submitFullyBooked: 'Slot Penuh pada Tarikh Dipilih',
+    slotTimePassed: 'Masa Telah Berlalu',
+    slotBreak: 'Waktu Rehat / Makan Tengah Hari',
+    slotBooked: 'Slot Penuh',
+    slotAvailable: 'Boleh Ditempah',
+    loadingSlots: '⏳ Memuatkan slot masa yang ada...',
+    datePassedOption: '⚠️ Tarikh telah berlalu',
+    closedOption: 'Tiada slot perundingan (Cawangan Ditutup)',
+    todayEndedOption: '⚠️ Waktu perundingan hari ini telah tamat. Sila pilih esok atau tarikh akan datang.',
+    fullyBookedOption: '⚠️ Semua slot perundingan telah penuh bagi tarikh ini. Sila pilih tarikh lain.',
+    bannerDatePassed: (date) => `<b>Tarikh pilihan telah berlalu (${date}).</b> Sila pilih hari ini atau tarikh akan datang.`,
+    bannerClosed: (date, reason) => `<b>Cawangan ditutup pada ${date}</b> (${reason || 'Hari Rehat / Cuti Umum'}). Sila pilih tarikh lain.`,
+    bannerSpecial: (date, open, close, reason) => `<b>Waktu Khas untuk ${date}:</b> Dibuka ${open} – ${close} (${reason || 'Syif Khas'})`,
+    bannerTodayEnded: (date) => `<b>Waktu perundingan hari ini telah tamat</b> (${date}). Semua slot perundingan untuk hari ini telah berlalu. Sila pilih esok atau tarikh seterusnya.`,
+    alertDatePassed: (date) => `Tarikh pilihan (${date}) telah berlalu. Sila pilih hari ini atau tarikh akan datang.`,
+    alertClosed: (date, reason) => `Maaf, cawangan ditutup pada ${date} (${reason || 'Hari Rehat / Cuti Umum'}). Sila pilih tarikh lain.`,
+    alertSelectTime: 'Sila pilih slot masa temujanji yang ada.',
+    alertTimePassed: (time, today) => `Slot masa pilihan (${time}) telah berlalu hari ini (${today}). Sila pilih slot yang masih ada atau tarikh akan datang.`,
+    alertOutsideHours: (time, open, close) => `Slot masa pilihan (${time}) berada di luar waktu operasi ahli farmasi (${open} – ${close}). Sila pilih waktu dalam waktu operasi.`,
+    alertBreak: (time, start, end) => `Slot masa pilihan (${time}) adalah semasa waktu rehat ahli farmasi (${start} – ${end}). Sila pilih slot masa yang lain.`,
+    alertFillRequired: 'Sila isi nama, nombor telefon dan tarikh pilihan anda.',
+    successTitleApt: 'Temujanji Berjaya Disahkan!',
+    successSubApt: 'Temujanji perundingan bersemuka anda telah didaftarkan terus ke dalam sistem farmasi kami.',
+    successTitleRefill: 'Permohonan Berjaya Dihantar!',
+    successSubRefill: 'Permohonan ulangan ubat kronik dan lanjutan temujanji 1 bulan anda telah dihantar. Ahli farmasi kami akan menyemak rekod, menyediakan ubat anda, dan mengemas kini tarikh peringatan seterusnya.',
+    confirmRefLabel: 'Kod Rujukan:',
+    confirmNameLabel: 'Nama Pesakit:',
+    confirmBranchLabel: 'Cawangan:',
+    confirmDateLabelApt: 'Tarikh & Masa:',
+    confirmDateLabelRefill: 'Tarikh Pengambilan Ubat:',
+    confirmServiceLabel: 'Jenis Permohonan:',
+    confirmServiceApt: 'Rundingan Bersemuka & Pemeriksaan Kesihatan',
+    confirmServiceRefill: 'Ulangan Ubat & Lanjutan 1 Bulan (Menunggu Kelulusan)',
+    successWaBtn: 'Hantar Maklumat ke WhatsApp Ahli Farmasi',
+    successCopyBtn: 'Simpan Salinan ke WhatsApp Saya',
+    successDoneBtn: 'Selesai'
+  },
+  zh: {
+    headerTitle: 'PMG 药剂行 · 预约面诊与慢病续药平台',
+    headerSubtitle: '慢病照护 · 临床健康咨询 · 药物续订与顺延',
+    cardTitle: '<i class="fa-regular fa-calendar-check text-emerald-400 text-xl"></i> 预约到店面诊或慢病用药续订',
+    cardSubtitle: '请在下方选择您的服务项目、分店与合适的时间。',
+    openDaily: '每日营业',
+    step1Title: '选择 PMG 药剂行分店',
+    branchLockText: '已锁定为您注册档案所在的分店',
+    step2Title: '选择服务项目',
+    opt1Title: '🩺 到店面诊与全面健康筛查',
+    opt1Badge: '到店面诊',
+    opt1Desc: '与我们的执业药剂师面对面交流，进行血压与血糖检查、长期慢病用药评估及专业健康咨询。',
+    opt2Title: '💊 常备慢病药物与保健品续订（+顺延 1 个月复诊）',
+    opt2Badge: '续药与顺延 1 个月',
+    opt2Desc: '如果您的血压、血糖及健康指标平稳，可提前申请常备药物续订，并将下一次复查提醒自动顺延 1 个月。',
+    opt2Notice: '需经执业药剂师审核用药档案后批准生效。系统将自动更新您的下一次复查提醒。',
+    step3Title: '指定主理药剂师',
+    pharmOptional: '可自选',
+    pharmAnyOption: '任意当值执业药剂师',
+    dateLabelInPerson: '选择面诊日期',
+    dateLabelRefill: '选择预计取药日期',
+    timeLabel: '选择预约时间段',
+    refillNoticeText: '续药须知：执业药剂师将审核您的用药记录，提前为您备妥药物，并将下一次复查提醒自动顺延 1 个月。',
+    step6Title: '您的个人资料',
+    nameLabel: '姓名',
+    namePlaceholder: '例：陈阿九 / Tan Ah Kow',
+    phoneLabel: 'WhatsApp / 手机号码',
+    phonePlaceholder: '例：011-10990693',
+    icLabel: '身份证 / 护照号码（选填）',
+    icPlaceholder: '例：750812-13-5567',
+    submitInPerson: '确认并提交面诊预约',
+    submitRefill: '提交续药与顺延 1 个月申请',
+    submitting: '<i class="fa-solid fa-spinner fa-spin mr-2"></i> 正在向药剂行登记预约...',
+    submitDatePassed: '所选日期已过期',
+    submitClosed: '所选日期分店休息',
+    submitHoursEnded: '今日面诊时段已结束',
+    submitFullyBooked: '所选日期已约满',
+    slotTimePassed: '已过时间',
+    slotBreak: '休息 / 午餐时间',
+    slotBooked: '已约满',
+    slotAvailable: '可预约',
+    loadingSlots: '⏳ 正在加载可用时间段...',
+    datePassedOption: '⚠️ 日期已过期',
+    closedOption: '本日无可用面诊时段（休息闭店）',
+    todayEndedOption: '⚠️ 今日面诊时段已全部结束。请选择明日或未来的日期。',
+    fullyBookedOption: '⚠️ 所选日期的面诊时段已约满。请选择其他日期。',
+    bannerDatePassed: (date) => `<b>所选日期已过期 (${date})。</b> 请选择今天或未来的日期。`,
+    bannerClosed: (date, reason) => `<b>分店在 ${date} 休息闭店</b> (${reason || '休息日 / 公共假期'})。请选择其他日期。`,
+    bannerSpecial: (date, open, close, reason) => `<b>${date} 特殊营业时段：</b> ${open} – ${close} (${reason || '特殊排班'})`,
+    bannerTodayEnded: (date) => `<b>今日面诊时段已结束</b> (${date})。今日所有面诊时间段均已过，请选择明日或未来的日期。`,
+    alertDatePassed: (date) => `所选日期 (${date}) 已过期，请选择今天或未来的日期。`,
+    alertClosed: (date, reason) => `抱歉，药剂行在 ${date} 休息闭店 (${reason || '休息日 / 公共假期'})，请选择其他日期。`,
+    alertSelectTime: '请选择可用的面诊时间段。',
+    alertTimePassed: (time, today) => `所选的时间段 (${time}) 在今天 (${today}) 已经过去。请选择后续时间段或未来的日期。`,
+    alertOutsideHours: (time, open, close) => `所选时间段 (${time}) 不在药剂师当值营业时段 (${open} – ${close}) 内，请选择工作时间段。`,
+    alertBreak: (time, start, end) => `所选时间段 (${time}) 处于药剂师休息/午餐时间 (${start} – ${end})，请选择其他可预约的时间段。`,
+    alertFillRequired: '请填写您的姓名、联络电话及预约日期。',
+    successTitleApt: '面诊预约已成功登记！',
+    successSubApt: '您的到店面诊预约已直接录入药剂行系统，我们期待为您服务。',
+    successTitleRefill: '续药与顺延申请已提交！',
+    successSubRefill: '您的慢病常备药物续药与顺延 1 个月复诊申请已提交。执业药剂师将在审核您的用药记录后予以批准，系统将自动更新您的下一次复诊提醒。',
+    confirmRefLabel: '预约编号：',
+    confirmNameLabel: '顾客姓名：',
+    confirmBranchLabel: '分店：',
+    confirmDateLabelApt: '预约时间：',
+    confirmDateLabelRefill: '预计取药日期：',
+    confirmServiceLabel: '申请项目：',
+    confirmServiceApt: '到店面诊与全面健康筛查',
+    confirmServiceRefill: '慢病用药续订与顺延 1 个月（待药剂师审核）',
+    successWaBtn: '发送预约详情给执业药剂师 WhatsApp',
+    successCopyBtn: '发送备份到我的 WhatsApp',
+    successDoneBtn: '完成'
+  }
+};
+
+function setBookingLanguage(lang) {
+  let target = (lang || '').toLowerCase();
+  if (target.includes('chi') || target.includes('cn') || target === 'zh') target = 'zh';
+  else if (target.includes('malay') || target.includes('melayu') || target.startsWith('bm') || target === 'ms' || target === 'my') target = 'ms';
+  else target = 'en';
+
+  currentBookingLang = target;
+  try {
+    localStorage.setItem('pmg_customer_booking_lang', target);
+  } catch (_) {}
+
+  // Update URL search param without reload
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set('lang', target);
+    window.history.replaceState({}, '', url.toString());
+  } catch (_) {}
+
+  // Update language selector button styles
+  const btnEn = document.getElementById('btnLang_en');
+  const btnMs = document.getElementById('btnLang_ms');
+  const btnZh = document.getElementById('btnLang_zh');
+  const activeClass = 'px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-xs sm:text-sm font-black transition bg-white text-blue-900 shadow-sm';
+  const inactiveClass = 'px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-xs sm:text-sm font-bold transition text-white/80 hover:text-white hover:bg-white/10';
+
+  if (btnEn) btnEn.className = (target === 'en') ? activeClass : inactiveClass;
+  if (btnMs) btnMs.className = (target === 'ms') ? activeClass : inactiveClass;
+  if (btnZh) btnZh.className = (target === 'zh') ? activeClass : inactiveClass;
+
+  const i18n = BOOKING_I18N[target] || BOOKING_I18N.en;
+
+  // Header & Card text
+  const hTitle = document.getElementById('custHeaderTitle');
+  if (hTitle) hTitle.textContent = i18n.headerTitle;
+  const hSub = document.getElementById('custHeaderSubtitle');
+  if (hSub) hSub.textContent = i18n.headerSubtitle;
+  const cTitle = document.getElementById('custCardTitle');
+  if (cTitle) cTitle.innerHTML = i18n.cardTitle;
+  const cSub = document.getElementById('custCardSubtitle');
+  if (cSub) cSub.textContent = i18n.cardSubtitle;
+  const openDaily = document.getElementById('custOpenDailyText');
+  if (openDaily) openDaily.textContent = i18n.openDaily;
+
+  // Step 1
+  const s1Title = document.getElementById('custStep1Title');
+  if (s1Title) s1Title.textContent = i18n.step1Title;
+  const bLock = document.getElementById('custBranchLockText');
+  if (bLock) bLock.textContent = i18n.branchLockText;
+
+  // Step 2
+  const s2Title = document.getElementById('custStep2Title');
+  if (s2Title) s2Title.textContent = i18n.step2Title;
+  const opt1Title = document.getElementById('custOpt1Title');
+  if (opt1Title) opt1Title.textContent = i18n.opt1Title;
+  const opt1Badge = document.getElementById('custOpt1Badge');
+  if (opt1Badge) opt1Badge.textContent = i18n.opt1Badge;
+  const opt1Desc = document.getElementById('custOpt1Desc');
+  if (opt1Desc) opt1Desc.textContent = i18n.opt1Desc;
+
+  const opt2Title = document.getElementById('custOpt2Title');
+  if (opt2Title) opt2Title.textContent = i18n.opt2Title;
+  const opt2Badge = document.getElementById('custOpt2Badge');
+  if (opt2Badge) opt2Badge.textContent = i18n.opt2Badge;
+  const opt2Desc = document.getElementById('custOpt2Desc');
+  if (opt2Desc) opt2Desc.textContent = i18n.opt2Desc;
+  const opt2Notice = document.getElementById('custOpt2Notice');
+  if (opt2Notice) opt2Notice.textContent = i18n.opt2Notice;
+
+  // Step 3
+  const s3Title = document.getElementById('custStep3Title');
+  if (s3Title) s3Title.textContent = i18n.step3Title;
+  const pOpt = document.getElementById('custPharmOptional');
+  if (pOpt) pOpt.textContent = i18n.pharmOptional;
+  const pAny = document.getElementById('custPharmAnyOption');
+  if (pAny) pAny.textContent = i18n.pharmAnyOption;
+
+  // Step 4 & 5
+  const timeLabel = document.getElementById('custTimeLabel');
+  if (timeLabel) timeLabel.textContent = i18n.timeLabel;
+  const refillNotice = document.getElementById('custRefillNoticeText');
+  if (refillNotice) refillNotice.textContent = i18n.refillNoticeText;
+
+  // Step 6
+  const s6Title = document.getElementById('custStep6Title');
+  if (s6Title) s6Title.textContent = i18n.step6Title;
+  const nLabel = document.getElementById('custNameLabel');
+  if (nLabel) nLabel.textContent = i18n.nameLabel;
+  const nInput = document.getElementById('custBookName');
+  if (nInput) nInput.placeholder = i18n.namePlaceholder;
+
+  const pLabel = document.getElementById('custPhoneLabel');
+  if (pLabel) pLabel.textContent = i18n.phoneLabel;
+  const pInput = document.getElementById('custBookPhone');
+  if (pInput) pInput.placeholder = i18n.phonePlaceholder;
+
+  const icLabel = document.getElementById('custIcLabel');
+  if (icLabel) icLabel.textContent = i18n.icLabel;
+  const icInput = document.getElementById('custBookIc');
+  if (icInput) icInput.placeholder = i18n.icPlaceholder;
+
+  // Confirmation Card labels
+  const cRef = document.getElementById('custConfirmRefLabel');
+  if (cRef) cRef.textContent = i18n.confirmRefLabel;
+  const cName = document.getElementById('custConfirmNameLabel');
+  if (cName) cName.textContent = i18n.confirmNameLabel;
+  const cBranch = document.getElementById('custConfirmBranchLabel');
+  if (cBranch) cBranch.textContent = i18n.confirmBranchLabel;
+  const cService = document.getElementById('custConfirmServiceLabel');
+  if (cService) cService.textContent = i18n.confirmServiceLabel;
+  const waBtn = document.getElementById('custSuccessWaBtnText');
+  if (waBtn) waBtn.textContent = i18n.successWaBtn;
+  const copyBtn = document.getElementById('custSuccessCopyBtnText');
+  if (copyBtn) copyBtn.textContent = i18n.successCopyBtn;
+  const doneBtn = document.getElementById('custSuccessDoneBtnText');
+  if (doneBtn) doneBtn.textContent = i18n.successDoneBtn;
+
+  // Refresh dynamic types and slots
+  const bookingTypeEl = document.querySelector('input[name="custBookingType"]:checked');
+  const currentBookingType = bookingTypeEl ? bookingTypeEl.value : 'in_person';
+  toggleBookingType(currentBookingType);
+  updateCustBookHours();
+
+  // If success card is currently showing, re-translate its text
+  if (currentCustomerBooking) {
+    const isRefill = (currentCustomerBooking.bookingType === 'refill_extension');
+    const sTitle = document.getElementById('custSuccessTitle');
+    const sSub = document.getElementById('custSuccessSubtitle');
+    const cDateLabel = document.getElementById('custConfirmDateLabel');
+    const cServiceVal = document.getElementById('custConfirmService');
+    if (sTitle) sTitle.textContent = isRefill ? i18n.successTitleRefill : i18n.successTitleApt;
+    if (sSub) sSub.textContent = isRefill ? i18n.successSubRefill : i18n.successSubApt;
+    if (cDateLabel) cDateLabel.textContent = isRefill ? i18n.confirmDateLabelRefill : i18n.confirmDateLabelApt;
+    if (cServiceVal) cServiceVal.textContent = isRefill ? i18n.confirmServiceRefill : i18n.confirmServiceApt;
+  }
+}
 
 async function initCustomerBooking(defaultBranchCode = 'Kota Sentosa') {
   const urlParams = new URLSearchParams(window.location.search);
   let branchParam = normalizeBranchCode(urlParams.get('branch') || defaultBranchCode);
 
+  // ── Step 0: Language setup ────────────────────────────────────────────────
+  const langQuery = (urlParams.get('lang') || urlParams.get('language') || '').toLowerCase();
+  let selectedLang = 'en';
+  if (langQuery.startsWith('zh') || langQuery.includes('chi') || langQuery.includes('cn')) {
+    selectedLang = 'zh';
+  } else if (langQuery.startsWith('ms') || langQuery.includes('malay') || langQuery.includes('melayu') || langQuery.startsWith('bm') || langQuery === 'my') {
+    selectedLang = 'ms';
+  } else if (langQuery.startsWith('en')) {
+    selectedLang = 'en';
+  } else {
+    try {
+      const saved = localStorage.getItem('pmg_customer_booking_lang');
+      if (saved && ['en', 'ms', 'zh'].includes(saved)) selectedLang = saved;
+    } catch (_) {}
+  }
+  setBookingLanguage(selectedLang);
+
   // ── Step 1: Show loading state immediately ────────────────────────────────
   const timeSelect = document.getElementById('custBookTime');
   const submitBtn  = document.getElementById('custBookSubmitBtn');
   const descEl     = document.getElementById('custBranchHoursDesc');
+  const curI18n    = BOOKING_I18N[currentBookingLang] || BOOKING_I18N.en;
   if (timeSelect) {
-    timeSelect.innerHTML = '<option value="">⏳ Loading available time slots...</option>';
+    timeSelect.innerHTML = `<option value="">${curI18n.loadingSlots}</option>`;
     timeSelect.disabled = true;
   }
   if (submitBtn) submitBtn.disabled = true;
@@ -7891,6 +8281,7 @@ async function initCustomerBooking(defaultBranchCode = 'Kota Sentosa') {
  * Toggles UI between In-Person Consultation and 1-Month Refill Extension Request
  */
 function toggleBookingType(type) {
+  const i18n = BOOKING_I18N[currentBookingLang] || BOOKING_I18N.en;
   const timeContainer = document.getElementById('custTimeSlotContainer');
   const refillNotice = document.getElementById('custRefillExtensionNotice');
   const submitText = document.getElementById('custBookSubmitText');
@@ -7900,19 +8291,20 @@ function toggleBookingType(type) {
   if (type === 'refill_extension') {
     if (timeContainer) timeContainer.classList.add('hidden');
     if (refillNotice) refillNotice.classList.remove('hidden');
-    if (submitText) submitText.textContent = 'Submit Refill & 1-Month Extension Request (提交续药与顺延申请)';
-    if (dateLabel) dateLabel.textContent = 'Select Expected Refill Date (选择预计取药日期)';
+    if (submitText) submitText.textContent = i18n.submitRefill;
+    if (dateLabel) dateLabel.textContent = i18n.dateLabelRefill;
     if (timeSelect) timeSelect.required = false;
   } else {
     if (timeContainer) timeContainer.classList.remove('hidden');
     if (refillNotice) refillNotice.classList.add('hidden');
-    if (submitText) submitText.textContent = 'Confirm & Book Appointment (确认预约)';
-    if (dateLabel) dateLabel.textContent = 'Select Date (选择面诊日期)';
+    if (submitText) submitText.textContent = i18n.submitInPerson;
+    if (dateLabel) dateLabel.textContent = i18n.dateLabelInPerson;
     if (timeSelect) timeSelect.required = true;
   }
 }
 
 function updateCustBookHours() {
+  const i18n = BOOKING_I18N[currentBookingLang] || BOOKING_I18N.en;
   const branchSelect = document.getElementById('custBranchSelect');
   let rawCode = branchSelect ? branchSelect.value : 'Kota Sentosa';
   const code = normalizeBranchCode(rawCode);
@@ -7933,18 +8325,18 @@ function updateCustBookHours() {
     if (bannerEl) {
       bannerEl.className = 'rounded-2xl p-4 text-sm sm:text-base font-bold flex items-center gap-2.5 bg-rose-50 border border-rose-300 text-rose-800';
       bannerEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-rose-600 text-base"></i>
-        <span><b>Selected date has already passed (${dateStr}).</b> Please choose today or an upcoming date.</span>`;
+        <span>${i18n.bannerDatePassed(dateStr)}</span>`;
       bannerEl.classList.remove('hidden');
     }
     if (descEl) {
-      descEl.innerHTML = `<span class="text-rose-600 font-bold">⚠️ Selected date (${dateStr}) has already passed.</span>`;
+      descEl.innerHTML = `<span class="text-rose-600 font-bold">⚠️ ${i18n.bannerDatePassed(dateStr)}</span>`;
     }
     if (timeSelect) {
-      timeSelect.innerHTML = `<option value="">⚠️ Date has passed (已过日期)</option>`;
+      timeSelect.innerHTML = `<option value="">${i18n.datePassedOption}</option>`;
       timeSelect.disabled = true;
     }
     if (submitBtn) submitBtn.disabled = true;
-    if (submitText) submitText.textContent = `Selected Date Has Passed`;
+    if (submitText) submitText.textContent = i18n.submitDatePassed;
     return;
   }
 
@@ -7952,7 +8344,7 @@ function updateCustBookHours() {
 
   if (descEl) {
     if (schedForDate.isClosed) {
-      descEl.innerHTML = `<span class="text-rose-600 font-bold">⚠️ Pharmacist is closed / off on this date</span><br>Reason: <b>${escHtml(schedForDate.reason || 'Rest Day')}</b>`;
+      descEl.innerHTML = `<span class="text-rose-600 font-bold">⚠️ ${i18n.closedOption}</span><br>Reason: <b>${escHtml(schedForDate.reason || 'Rest Day')}</b>`;
     } else {
       descEl.innerHTML = `Operating Hours: <b>${schedForDate.open} – ${schedForDate.close}</b> (Mon – Sun)${schedForDate.isOverride ? ' <span class="text-xs text-indigo-600 font-bold">(Special Shift)</span>' : ''}`;
     }
@@ -7963,17 +8355,17 @@ function updateCustBookHours() {
     if (bannerEl) {
       bannerEl.className = 'rounded-2xl p-4 text-sm sm:text-base font-bold flex items-center gap-2.5 bg-rose-50 border border-rose-200 text-rose-800';
       bannerEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-rose-600 text-base"></i>
-        <span><b>Branch is Closed on ${dateStr}</b> (${escHtml(schedForDate.reason || 'Rest Day / Public Holiday')}). Please choose another date.</span>`;
+        <span>${i18n.bannerClosed(dateStr, escHtml(schedForDate.reason || ''))}</span>`;
       bannerEl.classList.remove('hidden');
     }
 
     if (timeSelect) {
-      timeSelect.innerHTML = `<option value="">No consultation slots available (Closed)</option>`;
+      timeSelect.innerHTML = `<option value="">${i18n.closedOption}</option>`;
       timeSelect.disabled = true;
     }
 
     if (submitBtn) submitBtn.disabled = true;
-    if (submitText) submitText.textContent = `Branch Closed on Selected Date`;
+    if (submitText) submitText.textContent = i18n.submitClosed;
     return;
   }
 
@@ -7982,7 +8374,7 @@ function updateCustBookHours() {
     if (schedForDate.isOverride) {
       bannerEl.className = 'rounded-2xl p-4 text-sm sm:text-base font-bold flex items-center gap-2.5 bg-indigo-50 border border-indigo-200 text-indigo-800';
       bannerEl.innerHTML = `<i class="fa-solid fa-circle-info text-indigo-600 text-base"></i>
-        <span><b>Special Hours for ${dateStr}:</b> Open ${schedForDate.open} – ${schedForDate.close} (${escHtml(schedForDate.reason || 'Special Shift')})</span>`;
+        <span>${i18n.bannerSpecial(dateStr, schedForDate.open, schedForDate.close, escHtml(schedForDate.reason || ''))}</span>`;
       bannerEl.classList.remove('hidden');
     } else {
       bannerEl.classList.add('hidden');
@@ -7995,8 +8387,8 @@ function updateCustBookHours() {
   const currentBookingType = bookingTypeEl ? bookingTypeEl.value : 'in_person';
   if (submitText) {
     submitText.textContent = (currentBookingType === 'refill_extension')
-      ? 'Submit Refill & 1-Month Extension Request (提交续药与顺延申请)'
-      : 'Confirm & Book Appointment (确认预约)';
+      ? i18n.submitRefill
+      : i18n.submitInPerson;
   }
 
   if (!timeSelect) return;
@@ -8047,6 +8439,9 @@ function updateCustBookHours() {
   }
 
   const isToday = (dateStr === todayStr);
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
   let options = '';
   let availableCount = 0;
   for (let m = openMinutes; m <= closeMinutes - 30; m += 30) {
@@ -8064,35 +8459,36 @@ function updateCustBookHours() {
     const isPast = isToday && (m <= currentMinutes);
 
     if (isPast) {
-      options += `<option value="${timeVal}" disabled class="bg-gray-100 text-gray-400 italic">⏳ ${label} (${timeVal}) - 已截止 / 已过时间 (Time Passed)</option>`;
+      options += `<option value="${timeVal}" disabled class="bg-gray-100 text-gray-400 italic">⏳ ${label} (${timeVal}) - ${i18n.slotTimePassed}</option>`;
     } else if (isBreak) {
-      options += `<option value="${timeVal}" disabled class="bg-amber-50 text-amber-900 font-semibold">☕ ${label} (${timeVal}) - ${escHtml(schedForDate.breakLabel || '休息/午餐时间 (Rest / Lunch Break)')}</option>`;
+      const bLabel = schedForDate.breakLabel || i18n.slotBreak;
+      options += `<option value="${timeVal}" disabled class="bg-amber-50 text-amber-900 font-semibold">☕ ${label} (${timeVal}) - ${escHtml(bLabel)}</option>`;
     } else if (isBooked) {
-      options += `<option value="${timeVal}" disabled class="bg-gray-100 text-gray-400">⛔ ${label} (${timeVal}) - 已约满 (Fully Booked)</option>`;
+      options += `<option value="${timeVal}" disabled class="bg-gray-100 text-gray-400">⛔ ${label} (${timeVal}) - ${i18n.slotBooked}</option>`;
     } else {
       availableCount++;
-      options += `<option value="${timeVal}">🟢 ${label} (${timeVal}) - 可预约 (Available)</option>`;
+      options += `<option value="${timeVal}">🟢 ${label} (${timeVal}) - ${i18n.slotAvailable}</option>`;
     }
   }
 
   if (availableCount === 0) {
     if (isToday) {
-      options = `<option value="" disabled selected>⚠️ Today's consultation hours have already ended (${dateStr}). Please select tomorrow or a future date.</option>` + options;
+      options = `<option value="" disabled selected>${i18n.todayEndedOption}</option>` + options;
       if (currentBookingType !== 'refill_extension') {
         if (bannerEl) {
           bannerEl.className = 'rounded-2xl p-4 text-sm sm:text-base font-bold flex items-center gap-2.5 bg-amber-50 border border-amber-300 text-amber-900';
           bannerEl.innerHTML = `<i class="fa-solid fa-clock-rotate-left text-amber-600 text-base"></i>
-            <span><b>Today's consultation hours have ended</b> (${dateStr}). All consultation slots for today have already passed. Please select tomorrow or a future date.</span>`;
+            <span>${i18n.bannerTodayEnded(dateStr)}</span>`;
           bannerEl.classList.remove('hidden');
         }
         if (submitBtn) submitBtn.disabled = true;
-        if (submitText) submitText.textContent = `Consultation Hours Ended for Today`;
+        if (submitText) submitText.textContent = i18n.submitHoursEnded;
       }
     } else {
-      options = `<option value="" disabled selected>⚠️ All consultation slots are fully booked for ${dateStr}. Please select another date.</option>` + options;
+      options = `<option value="" disabled selected>${i18n.fullyBookedOption}</option>` + options;
       if (currentBookingType !== 'refill_extension') {
         if (submitBtn) submitBtn.disabled = true;
-        if (submitText) submitText.textContent = `Fully Booked on Selected Date`;
+        if (submitText) submitText.textContent = i18n.submitFullyBooked;
       }
     }
   }
@@ -8182,20 +8578,21 @@ async function updateAppointmentStatusInCloud(appointmentId, newStatus, branchCo
 
 async function handleCustomerBookingSubmit(e) {
   e.preventDefault();
+  const i18n = BOOKING_I18N[currentBookingLang] || BOOKING_I18N.en;
 
   const branchCode = normalizeBranchCode(document.getElementById('custBranchSelect').value);
   const date = document.getElementById('custBookDate').value;
 
   const todayStr = getTodayDateString(0);
   if (date < todayStr) {
-    alert(`The selected date (${date}) has already passed. Please select today or a future date.`);
+    alert(i18n.alertDatePassed(date));
     return;
   }
 
   const schedForDate = getPharmacistScheduleForDate(branchCode, date);
 
   if (schedForDate.isClosed) {
-    alert(`Sorry, the pharmacy is closed on ${date} (${schedForDate.reason || 'Rest Day / Public Holiday'}). Please select another date.`);
+    alert(i18n.alertClosed(date, schedForDate.reason));
     return;
   }
 
@@ -8216,7 +8613,7 @@ async function handleCustomerBookingSubmit(e) {
     const timeSelect = document.getElementById('custBookTime');
     time = timeSelect ? timeSelect.value : '';
     if (!time) {
-      alert('Please select an available consultation time slot.');
+      alert(i18n.alertSelectTime);
       return;
     }
 
@@ -8227,7 +8624,7 @@ async function handleCustomerBookingSubmit(e) {
 
     // Check if slot has already passed today
     if (date === todayStr && tMin <= nowMin) {
-      alert(`The selected time slot (${time}) has already passed today (${todayStr}). Please choose an upcoming consultation slot or select a future date.`);
+      alert(i18n.alertTimePassed(time, todayStr));
       return;
     }
 
@@ -8237,7 +8634,7 @@ async function handleCustomerBookingSubmit(e) {
     const openMinutes = openH * 60 + openM;
     const closeMinutes = closeH * 60 + closeM;
     if (tMin < openMinutes || tMin > (closeMinutes - 30)) {
-      alert(`The selected time slot (${time}) is outside the pharmacist's operating hours (${schedForDate.open} – ${schedForDate.close}). Please select a time within working hours.`);
+      alert(i18n.alertOutsideHours(time, schedForDate.open, schedForDate.close));
       return;
     }
 
@@ -8246,7 +8643,7 @@ async function handleCustomerBookingSubmit(e) {
       const [bsh, bsm] = schedForDate.breakStart.split(':').map(Number);
       const [beh, bem] = schedForDate.breakEnd.split(':').map(Number);
       if (tMin >= (bsh * 60 + bsm) && tMin < (beh * 60 + bem)) {
-        alert(`The selected time slot (${time}) is during the pharmacist's rest / lunch break (${schedForDate.breakStart} – ${schedForDate.breakEnd}). Please select another available consultation time slot.`);
+        alert(i18n.alertBreak(time, schedForDate.breakStart, schedForDate.breakEnd));
         return;
       }
     }
@@ -8269,7 +8666,7 @@ async function handleCustomerBookingSubmit(e) {
   const ic = document.getElementById('custBookIc') ? document.getElementById('custBookIc').value.trim() : '';
 
   if (!name || !phone || !date) {
-    alert('Please fill in your name, phone number, and preferred date.');
+    alert(i18n.alertFillRequired);
     return;
   }
 
@@ -8303,7 +8700,7 @@ async function handleCustomerBookingSubmit(e) {
   const originalBtnHtml = submitBtn ? submitBtn.innerHTML : '';
   if (submitBtn) {
     submitBtn.disabled = true;
-    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Registering appointment with pharmacy...';
+    submitBtn.innerHTML = i18n.submitting;
   }
 
   // Await push to Google Sheets Cloud Relay so pharmacist immediately receives it
@@ -8345,6 +8742,11 @@ async function handleCustomerBookingSubmit(e) {
     });
     savePatientsData();
   } else {
+    let ptLang = 'English';
+    if (currentBookingLang === 'zh') ptLang = 'Chinese';
+    else if (currentBookingLang === 'ms') ptLang = 'Malay';
+    else ptLang = 'English';
+
     const newPatient = {
       id: 'P-' + Date.now(),
       name: name,
@@ -8353,6 +8755,7 @@ async function handleCustomerBookingSubmit(e) {
       gender: 'Other',
       dob: '',
       age: '',
+      language: ptLang,
       branch: normalizeBranchCode(branchInfo.name || branchCode || 'Kota Sentosa'),
       allergies: 'None recorded',
       chronicConditions: [bookingType === 'refill_extension' ? 'Chronic Medication Refill' : 'Pending Consultation'],
@@ -8384,25 +8787,21 @@ async function handleCustomerBookingSubmit(e) {
     window.pmgOneDriveSync.saveToOneDrive(patientsData);
   }
 
-  // Render Confirmation Screen
+  // Render Confirmation Screen in chosen language
+  const isRefill = (bookingType === 'refill_extension');
   document.getElementById('custConfirmRef').textContent = bookingRef;
   document.getElementById('custConfirmName').textContent = name;
   document.getElementById('custConfirmBranch').textContent = branchInfo.name;
-  document.getElementById('custConfirmDateTime').textContent = (bookingType === 'refill_extension') ? `${date} (Expected Refill Collection)` : `${date} at ${time}`;
-  document.getElementById('custConfirmService').textContent = (bookingType === 'refill_extension') ? '1-Month Refill Extension (Pending Approval)' : service;
+  document.getElementById('custConfirmDateTime').textContent = isRefill ? `${date} (${i18n.dateLabelRefill})` : `${date} at ${time}`;
+  document.getElementById('custConfirmService').textContent = isRefill ? i18n.confirmServiceRefill : i18n.confirmServiceApt;
 
   const confirmDateLabel = document.getElementById('custConfirmDateLabel');
   if (confirmDateLabel) {
-    confirmDateLabel.textContent = (bookingType === 'refill_extension') ? 'Refill Date (预计取药):' : 'Date & Time (预约时间):';
+    confirmDateLabel.textContent = isRefill ? i18n.confirmDateLabelRefill : i18n.confirmDateLabelApt;
   }
 
-  if (bookingType === 'refill_extension') {
-    document.getElementById('custSuccessTitle').textContent = 'Extension Request Submitted!';
-    document.getElementById('custSuccessSubtitle').textContent = '您的慢病常备药物续药与【顺延 1 个月复诊】申请已提交。执业药剂师将在审核您的用药记录后予以批准，系统将自动更新您的下一次复诊提醒。';
-  } else {
-    document.getElementById('custSuccessTitle').textContent = 'Appointment Confirmed!';
-    document.getElementById('custSuccessSubtitle').textContent = '您的到店面诊预约已成功登记，我们期待为您服务。';
-  }
+  document.getElementById('custSuccessTitle').textContent = isRefill ? i18n.successTitleRefill : i18n.successTitleApt;
+  document.getElementById('custSuccessSubtitle').textContent = isRefill ? i18n.successSubRefill : i18n.successSubApt;
 
   document.getElementById('customerBookingFormCard').classList.add('hidden');
   document.getElementById('customerBookingSuccessCard').classList.remove('hidden');
@@ -8412,8 +8811,11 @@ function sendCustomerBookingWaConfirm() {
   if (!currentCustomerBooking) return;
   const b = currentCustomerBooking;
   let msg = '';
-  if (b.bookingType === 'refill_extension' || (b.service && b.service.includes('Extension'))) {
-    msg = `*PMG Pharmacy - 慢病用药续订与顺延申请确认*
+  const lang = currentBookingLang || 'en';
+
+  if (lang === 'zh') {
+    if (b.bookingType === 'refill_extension' || (b.service && b.service.includes('Extension'))) {
+      msg = `*PMG Pharmacy - 慢病用药续订与顺延申请确认*
 
 编号: ${b.ref}
 顾客姓名: ${b.patientName}
@@ -8422,8 +8824,8 @@ function sendCustomerBookingWaConfirm() {
 预计取药日期: ${b.date}
 
 我们已收到您的续药申请。驻店药剂师将审核您的用药档案，批准后将为您自动顺延下一次复诊提醒日期并备齐药物。如有疑问，欢迎随时联系我们！祝您身体健康！`;
-  } else {
-    msg = `*PMG Pharmacy - 到店预约确认*
+    } else {
+      msg = `*PMG Pharmacy - 到店面诊预约确认*
 
 编号: ${b.ref}
 顾客姓名: ${b.patientName}
@@ -8431,9 +8833,59 @@ function sendCustomerBookingWaConfirm() {
 预约日期: ${b.date}
 预约时段: ${b.time}
 服务项目: ${b.service}
-指定药剂师: ${b.pharmacist}
+主理药剂师: ${b.pharmacist}
 
 感谢您选择 PMG Pharmacy。请提前 5-10 分钟到达。如需更改时间，欢迎回复此信息。祝您身体健康！`;
+    }
+  } else if (lang === 'ms') {
+    if (b.bookingType === 'refill_extension' || (b.service && b.service.includes('Extension'))) {
+      msg = `*PMG Pharmacy - Pengesahan Permohonan Ulangan Ubat & Lanjutan*
+
+No. Rujukan: ${b.ref}
+Nama Pesakit: ${b.patientName}
+Cawangan: ${b.branchName}
+Jenis Permohonan: Ulangan Ubat Kronik & Suplemen (+1 Bulan Lanjutan)
+Tarikh Pengambilan Ubat: ${b.date}
+
+Kami telah menerima permohonan anda. Ahli farmasi kami akan menyemak rekod ubat anda, menyediakan ubat, dan mengemas kini tarikh temujanji ulangan seterusnya secara automatik. Sila hubungi kami jika ada sebarang pertanyaan. Terima kasih!`;
+    } else {
+      msg = `*PMG Pharmacy - Pengesahan Temujanji Rundingan Bersemuka*
+
+No. Rujukan: ${b.ref}
+Nama Pesakit: ${b.patientName}
+Cawangan: ${b.branchName}
+Tarikh Temujanji: ${b.date}
+Masa Temujanji: ${b.time}
+Perkhidmatan: ${b.service}
+Ahli Farmasi Bertugas: ${b.pharmacist}
+
+Terima kasih kerana memilih PMG Pharmacy. Sila hadir 5-10 minit lebih awal. Jika ingin membuat penukaran waktu, sila balas mesej ini. Semoga sentiasa sihat sejahtera!`;
+    }
+  } else {
+    // English default
+    if (b.bookingType === 'refill_extension' || (b.service && b.service.includes('Extension'))) {
+      msg = `*PMG Pharmacy - Chronic Refill & Extension Request Confirmation*
+
+Reference No: ${b.ref}
+Patient Name: ${b.patientName}
+Branch: ${b.branchName}
+Request Type: Chronic Medication & Supplement Refill (+1 Month Extension)
+Expected Collection Date: ${b.date}
+
+We have received your refill extension request. Our duty pharmacist will review your medication profile, prepare your medications in advance, and automatically extend your next follow-up reminder. Please contact us if you have any questions! Wishing you good health!`;
+    } else {
+      msg = `*PMG Pharmacy - In-Person Consultation Appointment Confirmation*
+
+Reference No: ${b.ref}
+Patient Name: ${b.patientName}
+Branch: ${b.branchName}
+Appointment Date: ${b.date}
+Time Slot: ${b.time}
+Service: ${b.service}
+Duty Pharmacist: ${b.pharmacist}
+
+Thank you for choosing PMG Pharmacy. Please arrive 5-10 minutes prior to your scheduled slot. If you need to reschedule, please reply to this message. Wishing you good health!`;
+    }
   }
 
   const cleanPhone = b.patientPhone.replace(/\D/g, '');
@@ -8474,21 +8926,26 @@ function sendCustomerBookingWaToPharmacist() {
   const baseUrl = window.location.origin + window.location.pathname;
   const importUrl = `${baseUrl}?importBooking=${encodeURIComponent(b64)}`;
 
-  const msg = `*PMG Pharmacy - 客户到店面诊预约通知 (New Online Booking)*
+  const isRefill = (b.bookingType === 'refill_extension');
+  const typeDisplay = isRefill
+    ? '💊 Chronic Med Refill & 1-Month Extension (续药顺延)'
+    : '🩺 In-Person Consultation (到店面诊)';
 
-📌 *预约编号 / Ref:* ${b.ref}
-👤 *顾客姓名 / Name:* ${b.patientName}
-📞 *联络电话 / Phone:* ${b.patientPhone || '未填写 (Not provided)'}
-🏪 *预约分店 / Branch:* ${b.branchName}
-📅 *预约日期 / Date:* ${b.date}
-⏰ *预约时间 / Time:* ${b.time}
-🩺 *服务项目 / Service:* ${b.service}
-👨‍⚕️ *指定药剂师 / Pharmacist:* ${b.pharmacist}
+  const msg = `*PMG Pharmacy - New Customer Booking / Request Notification*
 
-⚡ *药剂师一键同步进入系统 / 1-Click Import into System:*
+📌 *Ref No / 预约编号:* ${b.ref}
+👤 *Patient Name / 姓名:* ${b.patientName}
+📞 *Phone / 联络电话:* ${b.patientPhone || 'Not provided'}
+🏪 *Branch / 分店:* ${b.branchName}
+📅 *Date / 日期:* ${b.date}
+⏰ *Time / 时间:* ${b.time}
+📋 *Request Type / 服务项目:* ${typeDisplay}
+👨‍⚕️ *Consultant / 主理药剂师:* ${b.pharmacist}
+
+⚡ *1-Click Import into PMG System / 一键录入系统:*
 ${importUrl}
 
-(顾客已在网上提交预约登记，点击上方链接即可在药剂系统内查阅并自动建档)`;
+(The patient submitted this request online. Tap the link above to view and automatically register in the pharmacy appointment queue)`;
 
   const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`;
   window.open(waUrl, '_blank');
