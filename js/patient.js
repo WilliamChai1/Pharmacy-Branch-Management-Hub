@@ -3802,6 +3802,41 @@ const TEDA_KNOWN_REPORTS_MAP = {
       { name: "C3（颈椎）", score: 7.3 },
       { name: "L5（腰椎）", score: 7.4 }
     ]
+  },
+  "cbb5d2e9-2dc3-4da0-aeb1-62d6e8bab38f": {
+    rid: "cbb5d2e9-2dc3-4da0-aeb1-62d6e8bab38f",
+    reportDate: "2026-09-28",
+    immunityScore: 62,
+    healthScore: 78,
+    advice: "【补益肝胆】",
+    fullAdvice: "发现亚健康指标，请根据下面调理建议，采用【补益肝胆】原则进行调理，改善亚健康状态",
+    zangfuSummary: "肝虚 7.2分、肾虚 7.5分、脾虚 7.6分、大肠虚弱 7.8分",
+    tizhiSummary: "阴虚 7.5分、血虚 7.6分、阳虚 7.7分、津液停聚 7.7分",
+    jingluoSummary: "手阳明大肠经 7.4分、足太阳膀胱经 7.5分、手太阳小肠经 7.6分、手厥阴心包经 7.6分",
+    subHealthZangfu: [
+      { name: "肝虚", score: 7.2, levelText: "亚健康" },
+      { name: "肾虚", score: 7.5, levelText: "亚健康" },
+      { name: "脾虚", score: 7.6, levelText: "亚健康" },
+      { name: "大肠虚弱", score: 7.8, levelText: "亚健康" }
+    ],
+    subHealthTizhi: [
+      { name: "阴虚", score: 7.5, levelText: "亚健康" },
+      { name: "血虚", score: 7.6, levelText: "亚健康" },
+      { name: "阳虚", score: 7.7, levelText: "亚健康" },
+      { name: "津液停聚", score: 7.7, levelText: "亚健康" }
+    ],
+    blockedJingluo: [
+      { name: "手阳明大肠经", score: 7.4, levelText: "亚健康" },
+      { name: "足太阳膀胱经", score: 7.5, levelText: "亚健康" },
+      { name: "手太阳小肠经", score: 7.6, levelText: "亚健康" },
+      { name: "手厥阴心包经", score: 7.6, levelText: "亚健康" }
+    ],
+    spinePressure: [
+      { name: "C7（颈椎）", score: 5.9 },
+      { name: "TH5（胸椎）", score: 6.0 },
+      { name: "C1（颈椎）", score: 6.5 },
+      { name: "COCCYX-s（尾骨）", score: 7.0 }
+    ]
   }
 };
 
@@ -3908,8 +3943,8 @@ async function fetchAndDecryptTedaReport(rid) {
   const structured = {
     rid,
     advice: r.advice || '',
-    immunityScore: r.score1 != null ? r.score1 : '',
-    healthScore: r.score2 != null ? r.score2 : '',
+    immunityScore: r.score2 != null ? r.score2 : (r.score1 != null ? r.score1 : ''),
+    healthScore: r.score1 != null ? r.score1 : (r.score2 != null ? r.score2 : ''),
     reportDate: r.timeStr || '',
     zangfuSummary: '',
     tizhiSummary: '',
