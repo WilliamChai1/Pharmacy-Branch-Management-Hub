@@ -1,5 +1,5 @@
 // js/recruitment.js — PMG HR Recruitment & Applicant Management Module
-// Area Manager (William Chai) only. Integrates with Patient Care schedule (KS).
+// William Chai only. Integrates with Patient Care schedule (KS).
 'use strict';
 
 (() => {
@@ -254,7 +254,7 @@ async function runAiEvaluation(app, apiKey, modelKey = 'lite') {
     ? `NUMEROLOGY PROFILE (Life Path Number ${numInfo.number} — ${numInfo.name}):\n- Sales Fit Rating: ${numInfo.salesFit}\n- Personality Traits: ${numInfo.traits}\n- Note: Numerology is ONE supplementary data point only. Do NOT use it as primary decision factor.`
     : 'NUMEROLOGY: DOB not provided — cannot calculate.';
 
-  const prompt = `You are an experienced HR manager for PUBLIC MEDICARE GROUP (PMG) pharmacy chain in Kuching, Sarawak, Malaysia. You are helping Area Manager pharmacist William Chai screen job applicants for a SALES-ORIENTED community pharmacy team.
+  const prompt = `You are an experienced HR manager for PUBLIC MEDICARE GROUP (PMG) pharmacy chain in Kuching, Sarawak, Malaysia. You are helping William Chai screen job applicants for a SALES-ORIENTED community pharmacy team.
 
 ═══════════════════════════════════════
 PMG EVALUATION PRIORITIES (in order):
@@ -1158,12 +1158,12 @@ async function submitPublicForm(e) {
   </div>
   <h2 class="text-xl font-bold text-gray-900 mb-2">Application Submitted!</h2>
   <p class="text-gray-600 text-sm mb-4">Your application reference is <span class="font-mono font-bold text-blue-700">${app.id}</span></p>
-  <p class="text-gray-500 text-xs mb-6">Our Area Manager will review your application and contact you within 3–5 working days if you are shortlisted for an interview at PMG Pharmacy Kota Sentosa.</p>
+  <p class="text-gray-500 text-xs mb-6">William Chai will review your application and contact you within 3–5 working days if you are shortlisted for an interview at PMG Pharmacy Kota Sentosa.</p>
   <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 text-left text-xs text-blue-800">
     <p class="font-bold mb-1">What happens next?</p>
     <ol class="list-decimal ml-4 space-y-1">
       <li>AI pre-screening of your documents (within 24 hours)</li>
-      <li>Area Manager review (within 3 working days)</li>
+      <li>William Chai review (within 3 working days)</li>
       <li>If shortlisted, you will receive an interview appointment link via phone/email</li>
       <li>Face-to-face interview at PMG Pharmacy Kota Sentosa</li>
     </ol>
@@ -1470,7 +1470,7 @@ ${aiSection}
       <i class="fa-solid fa-magnifying-glass-chart text-cyan-400"></i>
       <h4 class="text-xs font-bold text-white uppercase tracking-wide">Candidate & Family Public Research (Social Media & Web)</h4>
     </div>
-    <span class="text-[10px] bg-indigo-900 text-indigo-200 px-2 py-0.5 rounded border border-indigo-700">Area Manager Due Diligence</span>
+    <span class="text-[10px] bg-indigo-900 text-indigo-200 px-2 py-0.5 rounded border border-indigo-700">Due Diligence Review</span>
   </div>
   <p class="text-xs text-slate-300 mb-3 leading-relaxed">
     1-Click direct links to search real-time public profiles, social media, and web footprint for <strong>${sanitize(app.name)}</strong>:
@@ -1758,7 +1758,7 @@ async function confirmInterviewSchedule() {
   saveApps(apps);
 
   // Build appointment message for candidate
-  const msg = `Dear ${app.name},\n\nCongratulations! You have been shortlisted for an interview at PMG Pharmacy.\n\nInterview Details:\nDate: ${date}\nTime: ${time}\nLocation: ${location}\n\nPlease bring:\n- Original IC / MyKad\n- All original academic certificates\n- Any professional certifications\n\nContact: William Chai (Area Manager)\nPhone: +601110990693\n\nWe look forward to meeting you.\n\nBest regards,\nPMG Pharmacy HR Team`;
+  const msg = `Dear ${app.name},\n\nCongratulations! You have been shortlisted for an interview at PMG Pharmacy.\n\nInterview Details:\nDate: ${date}\nTime: ${time}\nLocation: ${location}\n\nPlease bring:\n- Original IC / MyKad\n- All original academic certificates\n- Any professional certifications\n\nContact: William Chai\nPhone: +601110990693\n\nWe look forward to meeting you.\n\nBest regards,\nPMG Pharmacy HR Team`;
 
   closeScheduleModal();
   toast('Interview scheduled! ' + date + ' ' + time, 'success');
@@ -1782,7 +1782,7 @@ function copyFormLink() {
 
 function shareViaWhatsApp() {
   const url = 'https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/?apply=1';
-  const msg = `📋 *PMG Pharmacy Job Application*\n\nInterested in joining PUBLIC MEDICARE GROUP (PMG) Pharmacy team in Kuching, Sarawak?\n\nPositions available:\n• Pharmacist\n• Pharmacy Assistant\n• Nutritionist / Dietitian\n\n🔗 Apply directly online (No login required):\n${url}\n\nFill in your details and upload your SPM/education results directly.\n\nFor enquiries, contact Area Manager William Chai (PMG Kota Sentosa) at +601110990693.`;
+  const msg = `📋 *PMG Pharmacy Job Application*\n\nInterested in joining PUBLIC MEDICARE GROUP (PMG) Pharmacy team in Kuching, Sarawak?\n\nPositions available:\n• Pharmacist\n• Pharmacy Assistant\n• Nutritionist / Dietitian\n\n🔗 Apply directly online (No login required):\n${url}\n\nFill in your details and upload your SPM/education results directly.\n\nFor enquiries, contact William Chai (PMG Kota Sentosa) at +601110990693.`;
   window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
