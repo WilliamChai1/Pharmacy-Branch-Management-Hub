@@ -45,15 +45,15 @@ const BRANCHES = [
 // Regular Staff rows cannot log in.
 let USERS = [
   // ── Area Manager (All Branches + Patient Care + Area Manager Suite) ──
-  { username: 'williamchai', password: '833445', branch: 'ALL',          role: 'AM',         displayName: 'Chai Yee Sian (Area Manager)', empNo: 'PMG00831' },
-  { username: 'am',          password: '9999',   branch: 'ALL',          role: 'AM',         displayName: 'Area Manager',                 empNo: 'PMG00831' },
+  { username: 'williamchai', password: '833445', branch: 'ALL',          role: 'AM',         displayName: 'William Chai Yee Sian (Area Manager)', empNo: 'PMG00831' },
+  { username: 'am',          password: '9999',   branch: 'ALL',          role: 'AM',         displayName: 'Area Manager',                         empNo: 'PMG00831' },
 
   // ── Branch Managers & Assistant Branch Managers (Inventory + Roster only) ──
   { username: 'Ting',        password: '920429', branch: 'Kota Sentosa', role: 'BM',         displayName: 'Ting Kwang Yu (BM)',           empNo: 'PMG00723' },
   { username: 'Louna',       password: '100711', branch: 'Kota Sentosa', role: 'ABM',        displayName: 'Haniesha Louna (ABM)',         empNo: 'PMG01294' },
 
   // ── Pharmacists (Inventory + Roster only; Patient Care remains AM-only for now) ──
-  { username: 'Aylwinchai',  password: '446688', branch: 'Kota Sentosa', role: 'Pharmacist', displayName: 'Chai Yee Sian (Pharmacist)',  empNo: 'PMG00831' },
+  { username: 'Aylwinchai',  password: '446688', branch: 'Kota Sentosa', role: 'Pharmacist', displayName: 'William Chai Yee Sian (Pharmacist)',  empNo: 'PMG00831' },
   { username: 'Kenix',       password: '335577', branch: 'Kota Sentosa', role: 'Pharmacist', displayName: 'Kenix Ling (Pharmacist)',     empNo: 'PMG02963' },
   { username: 'amychai',     password: '123456', branch: 'Matang Jaya',  role: 'Pharmacist', displayName: 'Amy Chai (Pharmacist)',        empNo: ''         },
 
@@ -72,7 +72,7 @@ let USERS = [
 let STAFF_MAP = [
   // ── Kota Sentosa (KS01) — active staff only ──
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'TING',       empNo: 'PMG00723', empName: 'TING KWANG YU'                   },
-  { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'WILLIAM',    empNo: 'PMG00831', empName: 'CHAI YEE SIAN'                    },
+  { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'WILLIAM',    empNo: 'PMG00831', empName: 'WILLIAM CHAI YEE SIAN'           },
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'LOUNA',      empNo: 'PMG01294', empName: 'HANIESHA LOUNA ANAK DAGENG'       },
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'FIONA',      empNo: 'PMG01780', empName: 'FIONA FIENA ANAK JAMES'           },
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'NURHAFIZAH', empNo: 'PMG02070', empName: 'NURHAFIZAH BINTI PAULI'           },

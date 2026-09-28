@@ -1331,7 +1331,7 @@
         <select id="patientPharmacistFilter" onchange="renderPatientModule()"
           class="text-xs px-3 py-2 rounded-lg border border-purple-300 bg-purple-50 text-purple-900 font-semibold focus:ring-2 focus:ring-purple-500 outline-none">
           <option value="">All Pharmacists (全部药剂师)</option>
-          <option value="William Chai">Pharmacist William Chai</option>
+          <option value="William Chai Yee Sian">Pharmacist William Chai Yee Sian</option>
           <option value="Kenix Ling">Pharmacist Kenix Ling</option>
         </select>
       </div>
@@ -2796,7 +2796,7 @@ Date visit: 06.01.2026
         <div>
           <label class="block font-semibold text-gray-700 mb-1">Attending Pharmacist (负责药剂师) *</label>
           <select id="aptPharmacist" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none">
-            <option value="William Chai (Pharmacist)">William Chai (Pharmacist)</option>
+            <option value="William Chai Yee Sian (Pharmacist)">William Chai Yee Sian (Pharmacist)</option>
             <option value="Kenix Ling (Pharmacist)">Kenix Ling (Pharmacist)</option>
             <option value="Duty Pharmacist">Duty Pharmacist</option>
           </select>
@@ -2883,7 +2883,7 @@ Date visit: 06.01.2026
           <label class="block font-bold text-gray-700 mb-1">Attending Pharmacist (Responsible Pharmacist) *</label>
           <select id="reschedPharmacist" onchange="updateRescheduleMessagePreview()"
             class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none">
-            <option value="William Chai (Pharmacist)">William Chai (Pharmacist)</option>
+            <option value="William Chai Yee Sian (Pharmacist)">William Chai Yee Sian (Pharmacist)</option>
             <option value="Kenix Ling (Pharmacist)">Kenix Ling (Pharmacist)</option>
             <option value="Duty Pharmacist">Duty Pharmacist</option>
           </select>
@@ -3118,7 +3118,7 @@ Date visit: 06.01.2026
           </div>
           <p id="shareBookingHoursDetails" class="text-[11px] text-purple-800">
             Consultation Hours: <b>08:00 AM – 05:00 PM</b> (Mon – Fri), <b>08:00 AM – 12:00 PM</b> (Sat)<br>
-            Duty Pharmacist: <b>William Chai (Pharmacist)</b>
+            Duty Pharmacist: <b>William Chai Yee Sian (Pharmacist)</b>
           </p>
         </div>
 
@@ -4918,7 +4918,7 @@ Date visit: 06.01.2026
               <div id="custBranchHoursTitle" class="font-black text-blue-900 text-sm sm:text-base">Kota Sentosa Pharmacist Consultation Hours</div>
               <div id="custBranchHoursDesc" class="text-xs sm:text-sm text-blue-800 mt-0.5 leading-relaxed">
                 Consultation Hours: <b>08:00 AM – 05:00 PM</b> &bull; Break: <b>12:30 PM – 01:30 PM</b><br>
-                Attending Pharmacist: <b>William Chai (Pharmacist)</b>
+                Attending Pharmacist: <b>William Chai Yee Sian (Pharmacist)</b>
               </div>
             </div>
           </div>
@@ -5424,7 +5424,7 @@ ItemCode,Description,Brand,Category,Cost,SellingPrice,Supplier
      SCRIPTS (load order matters: data → auth → modules)
 ══════════════════════════════════════════════════════════════════════════════ -->
 
-<script src="js/data.js?v=20260928_v5"></script>
+<script src="js/data.js?v=20260928_v6"></script>
 <script src="js/auth.js?v=20260928_v5"></script>
 <script src="js/inventory.js?v=20260928_v5"></script>
 <script src="js/roster.js?v=20260928_v5"></script>
@@ -5432,7 +5432,7 @@ ItemCode,Description,Brand,Category,Cost,SellingPrice,Supplier
 <script src="js/scheduler.js?v=20260928_v5"></script>
 <script src="js/db.js?v=20260928_v5"></script>
 <script src="js/onedrive-sync.js?v=20260928_v5"></script>
-<script src="js/patient.js?v=20260928_v8"></script>
+<script src="js/patient.js?v=20260928_v9"></script>
 <script src="js/seed_expiry_data.js?v=20260928_v5"></script>
 <script src="js/expiry.js?v=20260928_v5"></script>
 <script src="js/returns-cn.js?v=20260928_v5"></script>
@@ -6008,7 +6008,7 @@ document.addEventListener('DOMContentLoaded', () => {
               branchName: b.branch || 'Kota Sentosa',
               branchCode: b.branch || 'Kota Sentosa',
               bookingType: b.type || 'in_person',
-              pharmacist: 'William Chai (Pharmacist)',
+              pharmacist: 'William Chai Yee Sian (Pharmacist)',
               status: 'Scheduled',
               notes: `Imported via 1-Click WhatsApp Link (Ref: ${b.ref})`
             }, true);

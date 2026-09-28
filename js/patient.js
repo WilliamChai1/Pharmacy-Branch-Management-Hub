@@ -2593,7 +2593,7 @@ function sendDirectAppointmentReminderWa(patientId, appointmentId) {
   const branchInfo = BRANCH_SCHEDULES[branchCode] || BRANCH_SCHEDULES['Kota Sentosa'];
   const sched = typeof getPharmacistSchedule === 'function' ? getPharmacistSchedule(branchCode) : null;
   const branchName = sched ? (sched.branchName || branchInfo?.name) : (branchInfo ? branchInfo.name : 'PMG Pharmacy Kota Sentosa');
-  const dutyPharm = (apt.pharmacist && !apt.pharmacist.includes('Ting')) ? apt.pharmacist : (sched ? sched.defaultPharmacist : 'William Chai (Pharmacist)');
+  const dutyPharm = normalizePharmacistName((apt.pharmacist && !apt.pharmacist.includes('Ting')) ? apt.pharmacist : (sched ? sched.defaultPharmacist : 'William Chai Yee Sian (Pharmacist)'));
   const bookingUrl = typeof getPatientSelfBookingUrl === 'function' ? getPatientSelfBookingUrl(p) : window.location.href;
 
   const lang = typeof getPatientLanguageByRace === 'function' ? getPatientLanguageByRace(p) : 'Chinese';
@@ -2664,7 +2664,7 @@ function openRescheduleModal(patientId, appointmentId, directWa = false) {
   document.getElementById('reschedPatientName').textContent = p.name;
   document.getElementById('reschedPatientPhone').textContent = p.phone || 'No phone number';
   document.getElementById('reschedPatientBranch').textContent = (p.branch === 'KS01' || p.branch === 'KOTA SENTOSA') ? 'Kota Sentosa' : p.branch;
-  document.getElementById('reschedOriginalSlot').textContent = `${apt.date} (${apt.time || '10:00'}) · ${(apt.pharmacist && !apt.pharmacist.includes('Ting')) ? apt.pharmacist : 'William Chai (Pharmacist)'}`;
+  document.getElementById('reschedOriginalSlot').textContent = `${apt.date} (${apt.time || '10:00'}) · ${normalizePharmacistName((apt.pharmacist && !apt.pharmacist.includes('Ting')) ? apt.pharmacist : 'William Chai Yee Sian (Pharmacist)')}`;
 
   // Populate Inputs
   document.getElementById('reschedNewDate').value = apt.date || getTodayDateString(1);
@@ -2674,18 +2674,20 @@ function openRescheduleModal(patientId, appointmentId, directWa = false) {
   if (pharmSel) {
     let targetPharm = apt.pharmacist || '';
     if (targetPharm.includes('Ting') || !targetPharm) {
-      targetPharm = 'William Chai (Pharmacist)';
+      targetPharm = 'William Chai Yee Sian (Pharmacist)';
+    } else {
+      targetPharm = normalizePharmacistName(targetPharm);
     }
     let matched = false;
     for (let i = 0; i < pharmSel.options.length; i++) {
-      if (pharmSel.options[i].value.toLowerCase().includes(targetPharm.toLowerCase())) {
+      if (pharmSel.options[i].value.toLowerCase().includes(targetPharm.toLowerCase()) || targetPharm.toLowerCase().includes(pharmSel.options[i].value.toLowerCase())) {
         pharmSel.selectedIndex = i;
         matched = true;
         break;
       }
     }
     if (!matched) {
-      pharmSel.value = 'William Chai (Pharmacist)';
+      pharmSel.value = 'William Chai Yee Sian (Pharmacist)';
     }
   }
 
@@ -2726,7 +2728,7 @@ function buildRescheduleWhatsAppMessage(patient, originalApt, newDate, newTime, 
   const branchInfo = BRANCH_SCHEDULES[branchCode] || BRANCH_SCHEDULES['Kota Sentosa'];
   const sched = typeof getPharmacistSchedule === 'function' ? getPharmacistSchedule(branchCode) : null;
   const branchName = sched ? (sched.branchName || branchInfo.name) : (branchInfo ? branchInfo.name : 'PMG Pharmacy Kota Sentosa');
-  const dutyPharm = (newPharm && !newPharm.includes('Ting')) ? newPharm : ((originalApt?.pharmacist && !originalApt.pharmacist.includes('Ting')) ? originalApt.pharmacist : (sched ? sched.defaultPharmacist : 'William Chai (Pharmacist)'));
+  const dutyPharm = normalizePharmacistName((newPharm && !newPharm.includes('Ting')) ? newPharm : ((originalApt?.pharmacist && !originalApt.pharmacist.includes('Ting')) ? originalApt.pharmacist : (sched ? sched.defaultPharmacist : 'William Chai Yee Sian (Pharmacist)')));
   const bookingUrl = typeof getPatientSelfBookingUrl === 'function' ? getPatientSelfBookingUrl(patient) : window.location.href;
 
   const origSlot = originalApt ? `${originalApt.date} (${originalApt.time || '10:00'})` : '原定时间';
@@ -7173,9 +7175,9 @@ function parseLarkCustomer(text, defaultBranch = 'Kota Sentosa') {
 const PMG_SCHEDULE_API_URL = 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
 
 const BRANCH_SCHEDULES = {
-  'Kota Sentosa':  { name: 'Kota Sentosa',  open: '08:00', close: '17:00', pharmacist: 'William Chai (Pharmacist)', phone: '601110990693', hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
-  'KOTA SENTOSA':  { name: 'Kota Sentosa',  open: '08:00', close: '17:00', pharmacist: 'William Chai (Pharmacist)', phone: '601110990693', hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
-  'KS01':          { name: 'Kota Sentosa',  open: '08:00', close: '17:00', pharmacist: 'William Chai (Pharmacist)', phone: '601110990693', hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
+  'Kota Sentosa':  { name: 'Kota Sentosa',  open: '08:00', close: '17:00', pharmacist: 'William Chai Yee Sian (Pharmacist)', phone: '601110990693', hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
+  'KOTA SENTOSA':  { name: 'Kota Sentosa',  open: '08:00', close: '17:00', pharmacist: 'William Chai Yee Sian (Pharmacist)', phone: '601110990693', hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
+  'KS01':          { name: 'Kota Sentosa',  open: '08:00', close: '17:00', pharmacist: 'William Chai Yee Sian (Pharmacist)', phone: '601110990693', hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
   'MATANG JAYA':   { name: 'Matang Jaya',   open: '08:00', close: '17:00', pharmacist: 'Amy Chai (Pharmacist)',     phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
   'Matang Jaya':   { name: 'Matang Jaya',   open: '08:00', close: '17:00', pharmacist: 'Amy Chai (Pharmacist)',     phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
   'MATANG':        { name: 'Matang Jaya',   open: '08:00', close: '17:00', pharmacist: 'Amy Chai (Pharmacist)',     phone: '60123456789',   hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },
@@ -7196,6 +7198,20 @@ const BRANCH_SCHEDULES = {
 function escHtml(str) {
   if (str == null) return '';
   return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m]);
+}
+
+/**
+ * Normalizes pharmacist names so William Chai and Chai Yee Sian are always unified
+ * as "William Chai Yee Sian (Pharmacist)" across customer booking, roster, and patient care.
+ */
+function normalizePharmacistName(rawName) {
+  if (!rawName) return '';
+  const str = String(rawName).trim();
+  const lower = str.toLowerCase();
+  if ((lower.includes('william') && lower.includes('chai')) || (lower.includes('chai') && lower.includes('yee') && lower.includes('sian'))) {
+    return 'William Chai Yee Sian (Pharmacist)';
+  }
+  return str;
 }
 
 /**
@@ -7299,7 +7315,7 @@ function unpackScheduleFromUrl(schParam, branchCode) {
     }
     const compact = JSON.parse(jsonStr);
     const code = normalizeBranchCode(compact.b || branchCode || 'Kota Sentosa');
-    const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || { name: 'Kota Sentosa', open: '08:00', close: '17:00', pharmacist: 'William Chai (Pharmacist)', hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' };
+    const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || { name: 'Kota Sentosa', open: '08:00', close: '17:00', pharmacist: 'William Chai Yee Sian (Pharmacist)', hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' };
 
     const hasBreak = compact.k ? (compact.k[0] === 1) : (defInfo.hasBreak !== false);
     const breakStart = (compact.k && compact.k[1]) || defInfo.breakStart || '12:30';
@@ -7329,7 +7345,7 @@ function unpackScheduleFromUrl(schParam, branchCode) {
           isOpen: arr[0] === 1,
           open: arr[1] || defaultHours[0],
           close: arr[2] || defaultHours[1],
-          pharmacist: arr[3] || compact.p || defInfo.pharmacist
+          pharmacist: normalizePharmacistName(arr[3] || compact.p || defInfo.pharmacist)
         };
       } else {
         const isOff = offDays.has(dayIdx);
@@ -7339,7 +7355,7 @@ function unpackScheduleFromUrl(schParam, branchCode) {
           isOpen: !isOff,
           open: custom ? custom[0] : defaultHours[0],
           close: custom ? custom[1] : defaultHours[1],
-          pharmacist: compact.p || defInfo.pharmacist
+          pharmacist: normalizePharmacistName(compact.p || defInfo.pharmacist)
         };
       }
     });
@@ -7362,7 +7378,7 @@ function unpackScheduleFromUrl(schParam, branchCode) {
     return {
       branchCode: code,
       branchName: compact.n || defInfo.name,
-      defaultPharmacist: compact.p || defInfo.pharmacist,
+      defaultPharmacist: normalizePharmacistName(compact.p || defInfo.pharmacist),
       hasBreak: hasBreak,
       breakStart: breakStart,
       breakEnd: breakEnd,
@@ -7396,18 +7412,18 @@ function getPharmacistSchedule(branchCode) {
     data = {
       branchCode: code,
       branchName: defInfo.name,
-      defaultPharmacist: defInfo.pharmacist,
+      defaultPharmacist: normalizePharmacistName(defInfo.pharmacist),
       hasBreak: defInfo.hasBreak !== false,
       breakStart: defInfo.breakStart || '12:30',
       breakEnd: defInfo.breakEnd || '13:30',
       breakLabel: defInfo.breakLabel || '休息/午餐时间 (Rest / Lunch Break)',
       weeklyTemplate: {
-        "1": { dayName: "Monday",    isOpen: true,  open: '08:00', close: '17:00', pharmacist: defInfo.pharmacist },
-        "2": { dayName: "Tuesday",   isOpen: true,  open: '08:00', close: '17:00', pharmacist: defInfo.pharmacist },
-        "3": { dayName: "Wednesday", isOpen: true,  open: '08:00', close: '17:00', pharmacist: defInfo.pharmacist },
-        "4": { dayName: "Thursday",  isOpen: true,  open: '08:00', close: '17:00', pharmacist: defInfo.pharmacist },
-        "5": { dayName: "Friday",    isOpen: true,  open: '08:00', close: '17:00', pharmacist: defInfo.pharmacist },
-        "6": { dayName: "Saturday",  isOpen: true,  open: '08:00', close: '12:00', pharmacist: defInfo.pharmacist },
+        "1": { dayName: "Monday",    isOpen: true,  open: '08:00', close: '17:00', pharmacist: normalizePharmacistName(defInfo.pharmacist) },
+        "2": { dayName: "Tuesday",   isOpen: true,  open: '08:00', close: '17:00', pharmacist: normalizePharmacistName(defInfo.pharmacist) },
+        "3": { dayName: "Wednesday", isOpen: true,  open: '08:00', close: '17:00', pharmacist: normalizePharmacistName(defInfo.pharmacist) },
+        "4": { dayName: "Thursday",  isOpen: true,  open: '08:00', close: '17:00', pharmacist: normalizePharmacistName(defInfo.pharmacist) },
+        "5": { dayName: "Friday",    isOpen: true,  open: '08:00', close: '17:00', pharmacist: normalizePharmacistName(defInfo.pharmacist) },
+        "6": { dayName: "Saturday",  isOpen: true,  open: '08:00', close: '12:00', pharmacist: normalizePharmacistName(defInfo.pharmacist) },
         "0": { dayName: "Sunday",    isOpen: false, open: '',      close: '',      pharmacist: '' }
       },
       dateOverrides: {}
@@ -7415,7 +7431,7 @@ function getPharmacistSchedule(branchCode) {
   } else {
     data.branchCode = code;
     if (!data.branchName) data.branchName = defInfo.name;
-    if (!data.defaultPharmacist) data.defaultPharmacist = defInfo.pharmacist;
+    data.defaultPharmacist = normalizePharmacistName(data.defaultPharmacist || defInfo.pharmacist);
     if (typeof data.hasBreak === 'undefined') data.hasBreak = defInfo.hasBreak !== false;
     if (!data.breakStart) data.breakStart = defInfo.breakStart || '12:30';
     if (!data.breakEnd) data.breakEnd = defInfo.breakEnd || '13:30';
@@ -7435,13 +7451,22 @@ function getPharmacistSchedule(branchCode) {
         if (num === '0') {
           data.weeklyTemplate[num] = { dayName: name, isOpen: false, open: '', close: '', pharmacist: '' };
         } else if (num === '6') {
-          data.weeklyTemplate[num] = { dayName: name, isOpen: true, open: '08:00', close: '12:00', pharmacist: defInfo.pharmacist };
+          data.weeklyTemplate[num] = { dayName: name, isOpen: true, open: '08:00', close: '12:00', pharmacist: normalizePharmacistName(defInfo.pharmacist) };
         } else {
-          data.weeklyTemplate[num] = { dayName: name, isOpen: true, open: '08:00', close: '17:00', pharmacist: defInfo.pharmacist };
+          data.weeklyTemplate[num] = { dayName: name, isOpen: true, open: '08:00', close: '17:00', pharmacist: normalizePharmacistName(defInfo.pharmacist) };
         }
+      } else if (data.weeklyTemplate[num].pharmacist) {
+        data.weeklyTemplate[num].pharmacist = normalizePharmacistName(data.weeklyTemplate[num].pharmacist);
       }
     });
     if (!data.dateOverrides) data.dateOverrides = {};
+    else {
+      Object.values(data.dateOverrides).forEach(ov => {
+        if (ov && ov.pharmacist) {
+          ov.pharmacist = normalizePharmacistName(ov.pharmacist);
+        }
+      });
+    }
   }
 
   return data;
@@ -7603,7 +7628,7 @@ function getPharmacistScheduleForDate(branchCode, dateStr) {
         isClosed: false,
         open: ov.open || defInfo.open,
         close: ov.close || defInfo.close,
-        pharmacist: ov.pharmacist || sched.defaultPharmacist || defInfo.pharmacist,
+        pharmacist: normalizePharmacistName(ov.pharmacist || sched.defaultPharmacist || defInfo.pharmacist),
         hasBreak: typeof ov.hasBreak !== 'undefined' ? ov.hasBreak : effHasBreak,
         breakStart: ov.breakStart || effBreakStart,
         breakEnd: ov.breakEnd || effBreakEnd,
@@ -7648,7 +7673,7 @@ function getPharmacistScheduleForDate(branchCode, dateStr) {
           isClosed: false,
           open: tmpl.open || defInfo.open,
           close: tmpl.close || defInfo.close,
-          pharmacist: tmpl.pharmacist || sched.defaultPharmacist || defInfo.pharmacist,
+          pharmacist: normalizePharmacistName(tmpl.pharmacist || sched.defaultPharmacist || defInfo.pharmacist),
           hasBreak: typeof tmpl.hasBreak !== 'undefined' ? tmpl.hasBreak : effHasBreak,
           breakStart: tmpl.breakStart || effBreakStart,
           breakEnd: tmpl.breakEnd || effBreakEnd,
@@ -7669,7 +7694,7 @@ function getPharmacistScheduleForDate(branchCode, dateStr) {
     isClosed: false,
     open: defInfo.open,
     close: defInfo.close,
-    pharmacist: sched.defaultPharmacist || defInfo.pharmacist,
+    pharmacist: normalizePharmacistName(sched.defaultPharmacist || defInfo.pharmacist),
     hasBreak: effHasBreak,
     breakStart: effBreakStart,
     breakEnd: effBreakEnd,
@@ -7762,7 +7787,7 @@ function updateShareBookingUrl() {
     : '';
 
   if (descEl) {
-    descEl.innerHTML = `Consultation Schedule:<br>${scheduleSummary}<br>Duty Pharmacist: <b>${escHtml(sched.defaultPharmacist || info.pharmacist)}</b>${breakNote}${overrideNote}`;
+    descEl.innerHTML = `Consultation Schedule:<br>${scheduleSummary}<br>Duty Pharmacist: <b>${escHtml(normalizePharmacistName(sched.defaultPharmacist || info.pharmacist))}</b>${breakNote}${overrideNote}`;
   }
 
   const baseUrl = window.location.origin + window.location.pathname;
@@ -7802,7 +7827,7 @@ function shareBookingViaWhatsApp() {
   const info = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || BRANCH_SCHEDULES['KS01'];
   const bookingUrl = inputEl ? inputEl.value : '';
 
-  const dutyPharm = sched.defaultPharmacist || info.pharmacist;
+  const dutyPharm = normalizePharmacistName(sched.defaultPharmacist || info.pharmacist);
   let scheduleText = '';
   if (sched && sched.weeklyTemplate) {
     const lines = [];
@@ -8422,19 +8447,19 @@ function populateCustPharmacistSelect(branchCode) {
   // 1. From Schedule Object (Weekly template + Default + Overrides)
   if (sched) {
     if (sched.defaultPharmacist && sched.defaultPharmacist.trim()) {
-      pharmSet.add(sched.defaultPharmacist.trim());
+      pharmSet.add(normalizePharmacistName(sched.defaultPharmacist));
     }
     if (sched.weeklyTemplate) {
       Object.values(sched.weeklyTemplate).forEach(tmpl => {
         if (tmpl && tmpl.pharmacist && tmpl.pharmacist.trim()) {
-          pharmSet.add(tmpl.pharmacist.trim());
+          pharmSet.add(normalizePharmacistName(tmpl.pharmacist));
         }
       });
     }
     if (sched.dateOverrides) {
       Object.values(sched.dateOverrides).forEach(ov => {
         if (ov && ov.pharmacist && ov.pharmacist.trim()) {
-          pharmSet.add(ov.pharmacist.trim());
+          pharmSet.add(normalizePharmacistName(ov.pharmacist));
         }
       });
     }
@@ -8442,7 +8467,7 @@ function populateCustPharmacistSelect(branchCode) {
 
   // 2. From static BRANCH_SCHEDULES
   if (defInfo && defInfo.pharmacist && defInfo.pharmacist.trim()) {
-    pharmSet.add(defInfo.pharmacist.trim());
+    pharmSet.add(normalizePharmacistName(defInfo.pharmacist));
   }
 
   // 3. From USERS config (if matches branch)
@@ -8452,7 +8477,7 @@ function populateCustPharmacistSelect(branchCode) {
       if (uBranch === code || u.branch === 'ALL') {
         if (u.role === 'Pharmacist' || (u.displayName && u.displayName.toLowerCase().includes('pharmacist'))) {
           if (u.displayName && u.displayName.trim()) {
-            pharmSet.add(u.displayName.trim());
+            pharmSet.add(normalizePharmacistName(u.displayName));
           }
         }
       }
@@ -8467,7 +8492,7 @@ function populateCustPharmacistSelect(branchCode) {
     html += `<option value="Duty Pharmacist">Duty Pharmacist</option>`;
   } else {
     validPharms.forEach(p => {
-      const isSelected = (p === currentVal);
+      const isSelected = (normalizePharmacistName(p) === normalizePharmacistName(currentVal));
       html += `<option value="${escHtml(p)}" ${isSelected ? 'selected' : ''}>${escHtml(p)}</option>`;
     });
   }
@@ -8527,7 +8552,7 @@ function updateCustBookHours() {
   }
 
   const preferredPharmEl = document.getElementById('custPharmacistSelect');
-  const attendingPharm = (preferredPharmEl && preferredPharmEl.value) ? preferredPharmEl.value : (schedForDate.pharmacist || 'Duty Pharmacist');
+  const attendingPharm = normalizePharmacistName((preferredPharmEl && preferredPharmEl.value) ? preferredPharmEl.value : (schedForDate.pharmacist || 'Duty Pharmacist'));
   const hasBreak = schedForDate.hasBreak !== false && schedForDate.breakStart && schedForDate.breakEnd;
 
   if (descEl) {
@@ -8847,7 +8872,7 @@ async function handleCustomerBookingSubmit(e) {
   }
 
   const preferredPharmEl = document.getElementById('custPharmacistSelect');
-  const preferredPharm = preferredPharmEl && preferredPharmEl.value ? preferredPharmEl.value : (schedForDate.pharmacist || schedForDate.branchName);
+  const preferredPharm = normalizePharmacistName(preferredPharmEl && preferredPharmEl.value ? preferredPharmEl.value : (schedForDate.pharmacist || schedForDate.branchName));
 
   const branchInfo = {
     name: schedForDate.branchName,
@@ -9730,7 +9755,7 @@ async function saveWeeklyTemplate(e) {
     const isOpen = chk ? chk.checked : (num !== '0');
     const openVal = document.getElementById(`tmplTimeOpen_${num}`)?.value || '08:00';
     const closeVal = document.getElementById(`tmplTimeClose_${num}`)?.value || (num === '6' ? '12:00' : '17:00');
-    const pharmVal = document.getElementById(`tmplPharm_${num}`)?.value?.trim() || sched.defaultPharmacist || 'William Chai (Pharmacist)';
+    const pharmVal = normalizePharmacistName(document.getElementById(`tmplPharm_${num}`)?.value?.trim() || sched.defaultPharmacist || 'William Chai Yee Sian (Pharmacist)');
 
     sched.weeklyTemplate[num] = {
       dayName: sched.weeklyTemplate[num]?.dayName || (num === '0' ? 'Sunday' : num === '6' ? 'Saturday' : 'Weekday'),
@@ -9818,7 +9843,7 @@ async function saveDateOverride(e) {
   } else {
     const openVal = document.getElementById('overrideOpenInput')?.value || '08:00';
     const closeVal = document.getElementById('overrideCloseInput')?.value || '17:00';
-    const pharmVal = document.getElementById('overridePharmacistInput')?.value?.trim() || sched.defaultPharmacist || 'William Chai (Pharmacist)';
+    const pharmVal = normalizePharmacistName(document.getElementById('overridePharmacistInput')?.value?.trim() || sched.defaultPharmacist || 'William Chai Yee Sian (Pharmacist)');
 
     sched.dateOverrides[dateStr] = {
       isClosed: false,
