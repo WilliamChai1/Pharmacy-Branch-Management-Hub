@@ -896,25 +896,116 @@
       `;
     }
 
+    // Auto-detect template based on destination and reasons
+    const destUpper = ((ret.destCompany || '') + ' ' + (ret.supplier || '')).toUpperCase();
+    const hasRecall = (ret.items || []).some(it => (it.reason || '').toLowerCase().includes('recall'));
+    const hasAging = (ret.items || []).some(it => (it.reason || '').toLowerCase().includes('slow') || (it.reason || '').toLowerCase().includes('aging'));
+    let detectedDoTemplate = 'SSJ_NORMAL';
+    if (destUpper.includes('SSJ')) {
+      if (hasRecall) detectedDoTemplate = 'SSJ_RECALL';
+      else if (hasAging) detectedDoTemplate = 'SSJ_AGING';
+      else detectedDoTemplate = 'SSJ_NORMAL';
+    } else if (destUpper.includes('PMG') || destUpper.includes('BRANCH') || destUpper.includes('SENTOSA') || destUpper.includes('OUTLET')) {
+      detectedDoTemplate = 'INTERBRANCH';
+    } else {
+      detectedDoTemplate = 'VENDOR_STANDARD';
+    }
+    const doCfg = SSJ_TEMPLATES_CONFIG[detectedDoTemplate] || SSJ_TEMPLATES_CONFIG.SSJ_NORMAL;
+    const targetDoTo = doCfg.to || ret.destCompany || 'SSJ PHARMA SDN BHD (SCD)';
+    const targetDoAttn = doCfg.attn || ret.destAttn || (detectedDoTemplate === 'INTERBRANCH' ? 'BRANCH PHARMACIST / PIC' : 'MR DOUGLAS');
+
     container.innerHTML = `
       <div id="pmgOfficialDoPrintArea" style="font-family: Arial, sans-serif; color: #000; background: #fff; padding: 24px; max-width: 800px; margin: 0 auto; line-height: 1.35;">
         <!-- Header -->
         <div style="font-weight: 900; font-size: 18px; letter-spacing: 0.5px; margin-bottom: 2px;">DELIVERY ORDER</div>
         <div style="font-weight: 900; font-size: 15px; text-transform: uppercase;">${escapeHtml(ret.companyName)}</div>
         <div style="font-size: 12px; font-weight: 600; text-transform: uppercase; max-width: 600px;">${escapeHtml(ret.companyAddress)}</div>
-        
-        <!-- Deliver To / Destination Section -->
-        <div style="margin-top: 10px; margin-bottom: 10px; padding: 8px 12px; background: #fafafa; border: 1.5px solid #000; border-radius: 4px;">
-          <div style="font-size: 10px; font-weight: 900; color: #555; text-transform: uppercase; letter-spacing: 0.5px;">DELIVER TO / DESTINATION:</div>
-          <div style="font-size: 14px; font-weight: 900; color: #000; margin-top: 2px; text-transform: uppercase;">${escapeHtml(ret.destCompany || ret.supplier || 'N/A')}</div>
-          ${ret.destAddress ? `<div style="font-size: 11px; font-weight: 600; color: #222; text-transform: uppercase; margin-top: 1px;">${escapeHtml(ret.destAddress)}</div>` : `<div style="font-size: 10px; font-style: italic; color: #666; margin-top: 1px;">(Warehouse destination to be determined by vendor / transporter)</div>`}
-          ${(ret.destAttn || ret.destPhone) ? `
-            <div style="font-size: 11px; font-weight: bold; color: #333; margin-top: 3px; display: flex; gap: 15px; flex-wrap: wrap;">
-              ${ret.destAttn ? `<span><b>Attn:</b> ${escapeHtml(ret.destAttn)}</span>` : ''}
-              ${ret.destPhone ? `<span><b>Tel:</b> ${escapeHtml(ret.destPhone)}</span>` : ''}
+
+        ${detectedDoTemplate !== 'VENDOR_STANDARD' ? `
+          <!-- HQ Required Top Banner & Color-Coded Header -->
+          <div style="margin-top: 10px; margin-bottom: 6px;">
+            <div style="color: #c00000; font-size: 13px; font-weight: 900; font-style: italic; text-align: center; margin-bottom: 8px; letter-spacing: 0.3px; text-transform: uppercase;">
+              ${doCfg.title}
             </div>
-          ` : ''}
-        </div>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px; border: 2px solid #000; font-size: 12px;">
+              <tbody>
+                <tr>
+                  <td style="width: 210px; padding: 6px 10px; font-weight: 900; background: ${doCfg.categoryBg}; border: 1.5px solid #000; text-transform: uppercase; color: ${doCfg.categoryColor};">
+                    CATEGORY RETURN
+                  </td>
+                  <td style="padding: 6px 10px; font-size: 14px; font-weight: 900; border: 1.5px solid #000; color: ${doCfg.categoryColor}; background: ${doCfg.categoryBg}; text-transform: uppercase;">
+                    ${doCfg.category}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 10px; font-weight: 900; background: ${doCfg.fromBg}; border: 1.5px solid #000; text-transform: uppercase; color: ${doCfg.fromColor};">
+                    FROM
+                  </td>
+                  <td style="padding: 6px 10px; font-weight: 900; border: 1.5px solid #000; color: ${doCfg.fromColor}; background: ${doCfg.fromBg}; text-transform: uppercase;">
+                    ${escapeHtml(ret.companyName || ('PMG PHARMACY (' + (ret.branch || 'BRANCH') + ')'))}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 10px; font-weight: 900; background: ${doCfg.toBg}; border: 1.5px solid #000; text-transform: uppercase; color: ${doCfg.toColor};">
+                    TO
+                  </td>
+                  <td style="padding: 6px 10px; font-weight: 900; border: 1.5px solid #000; color: ${doCfg.toColor}; background: ${doCfg.toBg}; text-transform: uppercase;">
+                    ${escapeHtml(targetDoTo)}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 10px; font-weight: 900; background: ${doCfg.attnBg}; border: 1.5px solid #000; text-transform: uppercase; color: ${doCfg.attnColor};">
+                    ATTENTION
+                  </td>
+                  <td style="padding: 6px 10px; font-weight: 900; border: 1.5px solid #000; color: ${doCfg.attnColor}; background: ${doCfg.attnBg}; text-transform: uppercase;">
+                    ${escapeHtml(targetDoAttn)}
+                  </td>
+                </tr>
+                ${doCfg.showRemarks ? `
+                  <tr>
+                    <td style="padding: 6px 10px; font-weight: 900; background: ${doCfg.remarksBg || '#FFFFFF'}; border: 1.5px solid #000; text-transform: uppercase; color: ${doCfg.remarksColor || '#000'};">
+                      REMARKS
+                    </td>
+                    <td style="padding: 6px 10px; font-weight: 900; border: 1.5px solid #000; color: ${doCfg.remarksColor || '#000'}; background: ${doCfg.remarksBg || '#FFFFFF'}; text-transform: uppercase;">
+                      ${doCfg.remarks || 'HANDLE WITH CARE-FRAGILE ITEM'}${ret.remarks ? ' · ' + escapeHtml(ret.remarks) : ''}
+                    </td>
+                  </tr>
+                ` : ''}
+                ${doCfg.showDeadline ? `
+                  <tr>
+                    <td style="padding: 6px 10px; font-weight: 900; background: ${doCfg.deadlineBg}; border: 1.5px solid #000; text-transform: uppercase; color: ${doCfg.deadlineColor};">
+                      ${doCfg.deadlineLabel || 'DEADLINE RETURN'}
+                    </td>
+                    <td style="padding: 6px 10px; font-weight: 900; border: 1.5px solid #000; color: ${doCfg.deadlineColor}; background: ${doCfg.deadlineBg}; text-transform: uppercase;">
+                      ${escapeHtml(ret.deadlineReturn || ret.pickupDate || 'URGENT / WITHIN 24-48 HOURS')}
+                    </td>
+                  </tr>
+                ` : ''}
+                <tr>
+                  <td style="padding: 6px 10px; font-weight: 900; background: ${doCfg.dateBg}; border: 1.5px solid #000; text-transform: uppercase; color: ${doCfg.dateColor};">
+                    ${doCfg.dateLabel}
+                  </td>
+                  <td style="padding: 6px 10px; font-weight: 900; border: 1.5px solid #000; color: ${doCfg.dateColor}; background: ${doCfg.dateBg}; text-transform: uppercase;">
+                    ${escapeHtml(ret.date)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        ` : `
+          <!-- Deliver To / Destination Section -->
+          <div style="margin-top: 10px; margin-bottom: 10px; padding: 8px 12px; background: #fafafa; border: 1.5px solid #000; border-radius: 4px;">
+            <div style="font-size: 10px; font-weight: 900; color: #555; text-transform: uppercase; letter-spacing: 0.5px;">DELIVER TO / DESTINATION:</div>
+            <div style="font-size: 14px; font-weight: 900; color: #000; margin-top: 2px; text-transform: uppercase;">${escapeHtml(ret.destCompany || ret.supplier || 'N/A')}</div>
+            ${ret.destAddress ? `<div style="font-size: 11px; font-weight: 600; color: #222; text-transform: uppercase; margin-top: 1px;">${escapeHtml(ret.destAddress)}</div>` : `<div style="font-size: 10px; font-style: italic; color: #666; margin-top: 1px;">(Warehouse destination to be determined by vendor / transporter)</div>`}
+            ${(ret.destAttn || ret.destPhone) ? `
+              <div style="font-size: 11px; font-weight: bold; color: #333; margin-top: 3px; display: flex; gap: 15px; flex-wrap: wrap;">
+                ${ret.destAttn ? `<span><b>Attn:</b> ${escapeHtml(ret.destAttn)}</span>` : ''}
+                ${ret.destPhone ? `<span><b>Tel:</b> ${escapeHtml(ret.destPhone)}</span>` : ''}
+              </div>
+            ` : ''}
+          </div>
+        `}
 
         <!-- Metadata -->
         <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 6px; margin-bottom: 6px; font-weight: bold; font-size: 13px;">
@@ -1034,7 +1125,19 @@
       showRemarks: false,
       dateLabel: 'DATE RETURN',
       badgeText: 'SSJ WAREHOUSE VERIFIED',
-      caution: '⚠️ PHARMACEUTICAL RETURN GOODS · RETURNING TO SSJ WAREHOUSE · HANDLE WITH CARE ⚠️'
+      caution: '⚠️ PHARMACEUTICAL RETURN GOODS · RETURNING TO SSJ WAREHOUSE · HANDLE WITH CARE ⚠️',
+      // Exact HQ Color Palette (Orange/Amber: #FFC000)
+      categoryBg: '#FFC000',
+      categoryColor: '#000000',
+      fromBg: '#FFC000',
+      fromColor: '#000000',
+      toBg: '#FFFFFF',
+      toColor: '#000000',
+      attnBg: '#FFFFFF',
+      attnColor: '#000000',
+      dateBg: '#FFFFFF',
+      dateColor: '#000000',
+      excelFileName: 'TEMPLATE USE FOR NORMAL STOCK RETURN SSJ.xlsx'
     },
     SSJ_AGING: {
       title: 'PLEASE USE THIS TEMPLATE WHEN DO NORMAL STOCK RETURN',
@@ -1044,7 +1147,19 @@
       showRemarks: false,
       dateLabel: 'DATE RETURN',
       badgeText: 'SSJ WAREHOUSE AGING STOCK',
-      caution: '⚠️ RETURN STOCK (AGING WITH LONG EXPIRY > 1 YR) · SSJ WAREHOUSE VERIFIED ⚠️'
+      caution: '⚠️ RETURN STOCK (AGING WITH LONG EXPIRY > 1 YR) · SSJ WAREHOUSE VERIFIED ⚠️',
+      // Exact HQ Color Palette (Orange/Amber: #FFC000)
+      categoryBg: '#FFC000',
+      categoryColor: '#000000',
+      fromBg: '#FFC000',
+      fromColor: '#000000',
+      toBg: '#FFFFFF',
+      toColor: '#000000',
+      attnBg: '#FFFFFF',
+      attnColor: '#000000',
+      dateBg: '#FFFFFF',
+      dateColor: '#000000',
+      excelFileName: 'TEMPLATE USE FOR AGING STOCK WITH LONGER EXPIRY.xlsx'
     },
     SSJ_RECALL: {
       title: 'PLEASE USE THIS TEMPLATE WHEN DO ANY RETURN STOCK (PRODUCT RECALL) TO SSJ',
@@ -1053,10 +1168,27 @@
       attn: 'MR DOUGLAS',
       showRemarks: true,
       remarks: 'HANDLE WITH CARE-FRAGILE ITEM',
+      remarksBg: '#FFFFFF',
+      remarksColor: '#000000',
       showDeadline: true,
+      deadlineLabel: 'DEADLINE RETURN',
       dateLabel: 'DATE RETURN',
       badgeText: 'SSJ URGENT PRODUCT RECALL',
-      caution: '🚨 URGENT PRODUCT RECALL RETURN GOODS · PRIORITY SSJ WAREHOUSE RECEIVING 🚨'
+      caution: '🚨 URGENT PRODUCT RECALL RETURN GOODS · PRIORITY SSJ WAREHOUSE RECEIVING 🚨',
+      // Exact HQ Color Palette (Category: Red #FF0000, From/Deadline/Date: Yellow #FFFF00)
+      categoryBg: '#FF0000',
+      categoryColor: '#000000',
+      fromBg: '#FFFF00',
+      fromColor: '#000000',
+      toBg: '#FFFFFF',
+      toColor: '#000000',
+      attnBg: '#FFFFFF',
+      attnColor: '#000000',
+      deadlineBg: '#FFFF00',
+      deadlineColor: '#000000',
+      dateBg: '#FFFF00',
+      dateColor: '#000000',
+      excelFileName: 'TEMPLATE USE FOR PRODUCT RECALL TO SSJ.xlsx'
     },
     INTERBRANCH: {
       title: 'PLEASE USE THIS TEMPLATE WHEN DO STOCK IN-TRANSIT',
@@ -1066,7 +1198,19 @@
       showRemarks: false,
       dateLabel: 'DATE PASS TO DRIVER',
       badgeText: 'INTERBRANCH TRANSIT',
-      caution: '🚚 INTERBRANCH STOCK IN-TRANSIT · OUTLET TO OUTLET DIRECT TRANSFER 🚚'
+      caution: '🚚 INTERBRANCH STOCK IN-TRANSIT · OUTLET TO OUTLET DIRECT TRANSFER 🚚',
+      // Exact HQ Color Palette (Category & TO: Light Green #92D050)
+      categoryBg: '#92D050',
+      categoryColor: '#000000',
+      fromBg: '#FFFFFF',
+      fromColor: '#000000',
+      toBg: '#92D050',
+      toColor: '#000000',
+      attnBg: '#FFFFFF',
+      attnColor: '#000000',
+      dateBg: '#FFFFFF',
+      dateColor: '#000000',
+      excelFileName: 'TEMPLATE USE FOR INTERBRANCH TRANSIT OUTLET TO OUTLET.xlsx'
     }
   };
 
@@ -1195,74 +1339,74 @@
         labelsHtml += `
           <div class="carton-shipping-box" style="page-break-after: always; width: 100%; max-width: 780px; margin: 0 auto 30px auto; border: 4px solid #000; padding: 22px; font-family: Arial, sans-serif; background: #fff; box-sizing: border-box; box-shadow: 0 4px 10px rgba(0,0,0,0.08);">
             
-            <!-- SSJ Official Header Banner (Exact wording from HQ Excel Template) -->
-            <div style="background: #000; color: #fff; text-align: center; font-size: 15px; font-weight: 900; letter-spacing: 0.5px; padding: 9px 14px; margin-bottom: 16px; border-radius: 4px; text-transform: uppercase;">
+            <!-- Red Italic Header Banner (Exact wording from HQ Excel Template) -->
+            <div style="color: #c00000; font-size: 14px; font-weight: 900; font-style: italic; text-align: center; margin-bottom: 12px; letter-spacing: 0.5px; text-transform: uppercase;">
               ${cfg.title}
             </div>
 
-            <!-- Official SSJ Specification Table -->
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; border: 3px solid #000;">
+            <!-- Official HQ Specification Table with Exact Color Coding -->
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; border: 2.5px solid #000;">
               <tbody>
                 <tr>
-                  <td style="width: 210px; padding: 10px 14px; font-size: 13px; font-weight: 900; background: #e2e8f0; border: 2px solid #000; text-transform: uppercase; color: #0f172a;">
+                  <td style="width: 220px; padding: 10px 14px; font-size: 13px; font-weight: 900; background: ${cfg.categoryBg}; border: 1.5px solid #000; text-transform: uppercase; color: ${cfg.categoryColor};">
                     CATEGORY RETURN
                   </td>
-                  <td style="padding: 10px 14px; font-size: 18px; font-weight: 900; border: 2px solid #000; color: #000; text-transform: uppercase; letter-spacing: 0.5px;">
+                  <td style="padding: 10px 14px; font-size: 17px; font-weight: 900; border: 1.5px solid #000; color: ${cfg.categoryColor}; background: ${cfg.categoryBg}; text-transform: uppercase; letter-spacing: 0.5px;">
                     ${cfg.category}
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: #e2e8f0; border: 2px solid #000; text-transform: uppercase; color: #0f172a;">
+                  <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: ${cfg.fromBg}; border: 1.5px solid #000; text-transform: uppercase; color: ${cfg.fromColor};">
                     FROM
                   </td>
-                  <td style="padding: 10px 14px; font-size: 16px; font-weight: 900; border: 2px solid #000; color: #000; text-transform: uppercase;">
+                  <td style="padding: 10px 14px; font-size: 16px; font-weight: 900; border: 1.5px solid #000; color: ${cfg.fromColor}; background: ${cfg.fromBg}; text-transform: uppercase;">
                     <div>${escapeHtml(ret.companyName || ('PMG PHARMACY (' + (ret.branch || 'BRANCH') + ')'))}</div>
-                    <div style="font-size: 12px; font-weight: 600; color: #444; margin-top: 3px;">${escapeHtml(ret.companyAddress || 'Sarawak, Malaysia')}</div>
+                    <div style="font-size: 11px; font-weight: 600; opacity: 0.85; margin-top: 2px;">${escapeHtml(ret.companyAddress || 'Sarawak, Malaysia')}</div>
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: #e2e8f0; border: 2px solid #000; text-transform: uppercase; color: #0f172a;">
+                  <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: ${cfg.toBg}; border: 1.5px solid #000; text-transform: uppercase; color: ${cfg.toColor};">
                     TO
                   </td>
-                  <td style="padding: 10px 14px; font-size: 18px; font-weight: 900; border: 2px solid #000; color: #000; text-transform: uppercase;">
+                  <td style="padding: 10px 14px; font-size: 17px; font-weight: 900; border: 1.5px solid #000; color: ${cfg.toColor}; background: ${cfg.toBg}; text-transform: uppercase;">
                     ${escapeHtml(targetTo)}
-                    ${ret.destAddress && targetTo !== 'SSJ PHARMA SDN BHD (SCD)' ? `<div style="font-size: 12px; font-weight: 600; color: #444; margin-top: 3px;">${escapeHtml(ret.destAddress)}</div>` : ''}
+                    ${ret.destAddress && targetTo !== 'SSJ PHARMA SDN BHD (SCD)' ? `<div style="font-size: 11px; font-weight: 600; opacity: 0.85; margin-top: 2px;">${escapeHtml(ret.destAddress)}</div>` : ''}
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: #e2e8f0; border: 2px solid #000; text-transform: uppercase; color: #0f172a;">
+                  <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: ${cfg.attnBg}; border: 1.5px solid #000; text-transform: uppercase; color: ${cfg.attnColor};">
                     ATTENTION
                   </td>
-                  <td style="padding: 10px 14px; font-size: 17px; font-weight: 900; border: 2px solid #000; color: #000; text-transform: uppercase;">
+                  <td style="padding: 10px 14px; font-size: 16px; font-weight: 900; border: 1.5px solid #000; color: ${cfg.attnColor}; background: ${cfg.attnBg}; text-transform: uppercase;">
                     ${escapeHtml(targetAttn)}
-                    ${ret.destPhone ? `<span style="font-size: 14px; font-weight: bold; margin-left: 14px; font-family: monospace;">(TEL: ${escapeHtml(ret.destPhone)})</span>` : ''}
+                    ${ret.destPhone ? `<span style="font-size: 13px; font-weight: bold; margin-left: 12px; font-family: monospace;">(TEL: ${escapeHtml(ret.destPhone)})</span>` : ''}
                   </td>
                 </tr>
                 ${cfg.showRemarks ? `
                   <tr>
-                    <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: #fee2e2; border: 2px solid #000; text-transform: uppercase; color: #991b1b;">
+                    <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: ${cfg.remarksBg || '#FFFFFF'}; border: 1.5px solid #000; text-transform: uppercase; color: ${cfg.remarksColor || '#000'};">
                       REMARKS
                     </td>
-                    <td style="padding: 10px 14px; font-size: 15px; font-weight: 900; border: 2px solid #000; color: #b91c1c; text-transform: uppercase;">
+                    <td style="padding: 10px 14px; font-size: 14px; font-weight: 900; border: 1.5px solid #000; color: ${cfg.remarksColor || '#000'}; background: ${cfg.remarksBg || '#FFFFFF'}; text-transform: uppercase;">
                       ${cfg.remarks || 'HANDLE WITH CARE-FRAGILE ITEM'}${ret.remarks ? ' · ' + escapeHtml(ret.remarks) : ''}
                     </td>
                   </tr>
                 ` : ''}
                 ${cfg.showDeadline ? `
                   <tr>
-                    <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: #fee2e2; border: 2px solid #000; text-transform: uppercase; color: #991b1b;">
-                      DEADLINE RETURN
+                    <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: ${cfg.deadlineBg}; border: 1.5px solid #000; text-transform: uppercase; color: ${cfg.deadlineColor};">
+                      ${cfg.deadlineLabel || 'DEADLINE RETURN'}
                     </td>
-                    <td style="padding: 10px 14px; font-size: 15px; font-weight: 900; border: 2px solid #000; color: #b91c1c; text-transform: uppercase;">
-                      URGENT / WITHIN 24-48 HOURS
+                    <td style="padding: 10px 14px; font-size: 15px; font-weight: 900; border: 1.5px solid #000; color: ${cfg.deadlineColor}; background: ${cfg.deadlineBg}; text-transform: uppercase;">
+                      ${escapeHtml(ret.deadlineReturn || ret.pickupDate || 'URGENT / WITHIN 24-48 HOURS')}
                     </td>
                   </tr>
                 ` : ''}
                 <tr>
-                  <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: #e2e8f0; border: 2px solid #000; text-transform: uppercase; color: #0f172a;">
+                  <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: ${cfg.dateBg}; border: 1.5px solid #000; text-transform: uppercase; color: ${cfg.dateColor};">
                     ${cfg.dateLabel}
                   </td>
-                  <td style="padding: 10px 14px; font-size: 16px; font-weight: 900; border: 2px solid #000; color: #000;">
+                  <td style="padding: 10px 14px; font-size: 15px; font-weight: 900; border: 1.5px solid #000; color: ${cfg.dateColor}; background: ${cfg.dateBg}; text-transform: uppercase;">
                     ${escapeHtml(ret.date)}
                   </td>
                 </tr>
@@ -1450,6 +1594,166 @@
         `);
         printWin.document.close();
       }
+    }
+  }
+
+  // ─── HQ EXCEL TEMPLATE GENERATION (.XLSX WITH COLOR CODING) ────────────────
+  async function downloadHqExcelTemplate(returnId, templateKey) {
+    if (typeof ExcelJS === 'undefined') {
+      alert('ExcelJS library is still loading. Please try again in a moment.');
+      return;
+    }
+
+    const id = returnId || (activeReturnForLabels ? activeReturnForLabels.id : null) || (activeReturnForDo ? activeReturnForDo.id : null);
+    let ret = returnsData.find(r => r.id === id);
+    if (!ret && returnsData.length > 0) ret = returnsData[0];
+    if (!ret) {
+      alert('Please create or select a return record first.');
+      return;
+    }
+
+    const tpl = templateKey || activeCartonTemplate || 'SSJ_NORMAL';
+    const cfg = SSJ_TEMPLATES_CONFIG[tpl] || SSJ_TEMPLATES_CONFIG.SSJ_NORMAL;
+    const targetTo = cfg.to || ret.destCompany || 'SSJ PHARMA SDN BHD (SCD)';
+    const targetAttn = cfg.attn || ret.destAttn || (tpl === 'INTERBRANCH' ? 'BRANCH PHARMACIST / PIC' : 'MR DOUGLAS');
+    const senderFrom = ret.companyName || ('PMG PHARMACY (' + (ret.branch || 'BRANCH') + ')');
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'PMG Management Hub';
+    const ws = wb.addWorksheet('DO Template', {
+      views: [{ showGridLines: true }]
+    });
+
+    // Match column proportions from HQ spreadsheet photos
+    ws.columns = [
+      { width: 5 },   // A (gutter)
+      { width: 28 },  // B (Field Label)
+      { width: 5 },   // C (spacer)
+      { width: 52 },  // D (Field Value)
+      { width: 14 },  // E
+      { width: 14 }   // F
+    ];
+
+    const thinBorder = {
+      top: { style: 'thin', color: { argb: 'FF000000' } },
+      left: { style: 'thin', color: { argb: 'FF000000' } },
+      bottom: { style: 'thin', color: { argb: 'FF000000' } },
+      right: { style: 'thin', color: { argb: 'FF000000' } }
+    };
+
+    function hexToArgb(hex) {
+      if (!hex) return 'FFFFFFFF';
+      const clean = hex.replace('#', '');
+      return clean.length === 6 ? 'FF' + clean.toUpperCase() : clean.toUpperCase();
+    }
+
+    function addHqRow(rowNum, label, value, fillHexLabel, fillHexVal, isValBold = true) {
+      const cellLabel = ws.getCell(`B${rowNum}`);
+      const cellVal = ws.getCell(`D${rowNum}`);
+      
+      cellLabel.value = label;
+      cellLabel.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF000000' } };
+      cellLabel.alignment = { vertical: 'middle', horizontal: 'center' };
+      cellLabel.border = thinBorder;
+      if (fillHexLabel && fillHexLabel !== '#FFFFFF') {
+        cellLabel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hexToArgb(fillHexLabel) } };
+      }
+
+      cellVal.value = value;
+      cellVal.font = { name: 'Arial', size: 12, bold: isValBold, color: { argb: 'FF000000' } };
+      cellVal.alignment = { vertical: 'middle', horizontal: 'center' };
+      cellVal.border = thinBorder;
+      if (fillHexVal && fillHexVal !== '#FFFFFF') {
+        cellVal.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hexToArgb(fillHexVal) } };
+      }
+      ws.getRow(rowNum).height = 24;
+    }
+
+    // Row 1: Header Title in Red Italic Bold
+    ws.mergeCells('B1:D1');
+    const headerCell = ws.getCell('B1');
+    headerCell.value = cfg.title;
+    headerCell.font = { name: 'Arial', size: 12, italic: true, bold: true, color: { argb: 'FFC00000' } };
+    headerCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    ws.getRow(1).height = 22;
+
+    // Row 3: CATEGORY RETURN
+    addHqRow(3, 'CATEGORY RETURN', cfg.category, cfg.categoryBg, cfg.categoryBg, true);
+
+    // Row 5: FROM
+    addHqRow(5, 'FROM', senderFrom, cfg.fromBg, cfg.fromBg, true);
+
+    // Row 7: TO
+    addHqRow(7, 'TO', targetTo, cfg.toBg, cfg.toBg, true);
+
+    // Row 9: ATTENTION
+    addHqRow(9, 'ATTENTION', targetAttn, cfg.attnBg, cfg.attnBg, true);
+
+    let nextRow = 11;
+    if (cfg.showRemarks) {
+      addHqRow(nextRow, 'REMARKS', cfg.remarks || 'HANDLE WITH CARE-FRAGILE ITEM', cfg.remarksBg, cfg.remarksBg, true);
+      nextRow += 2;
+    }
+    if (cfg.showDeadline) {
+      const deadline = ret.deadlineReturn || ret.pickupDate || 'URGENT / WITHIN 24-48 HOURS';
+      addHqRow(nextRow, 'DEADLINE RETURN', deadline, cfg.deadlineBg, cfg.deadlineBg, true);
+      nextRow += 2;
+    }
+
+    // Date Row
+    addHqRow(nextRow, cfg.dateLabel, ret.date || '', cfg.dateBg, cfg.dateBg, true);
+
+    // Items table below if items exist
+    if (Array.isArray(ret.items) && ret.items.length > 0) {
+      nextRow += 2;
+      ws.getCell(`B${nextRow}`).value = `DO: ${ret.doNumber} · PRN: ${Array.from(new Set(ret.items.map(i => i.prnNumber).filter(Boolean))).join(', ') || 'N/A'}`;
+      ws.getCell(`B${nextRow}`).font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1E3A8A' } };
+      nextRow++;
+
+      const itemHeaders = ['CTN NO', 'ITEM CODE', 'ITEM DESCRIPTION', 'QTY', 'UOM', 'REASON'];
+      const colKeys = ['A', 'B', 'C', 'D', 'E', 'F'];
+      itemHeaders.forEach((h, idx) => {
+        const c = ws.getCell(`${colKeys[idx]}${nextRow}`);
+        c.value = h;
+        c.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+        c.alignment = { vertical: 'middle', horizontal: idx === 1 || idx === 2 ? 'left' : 'center' };
+        c.border = thinBorder;
+      });
+      ws.getRow(nextRow).height = 20;
+
+      ret.items.forEach(it => {
+        nextRow++;
+        const rowVals = [
+          it.cartonNo || 1,
+          it.itemCode || '-',
+          it.itemDescription || '',
+          it.quantity || 1,
+          it.uom || 'BOX',
+          it.reason || 'Return'
+        ];
+        rowVals.forEach((val, idx) => {
+          const c = ws.getCell(`${colKeys[idx]}${nextRow}`);
+          c.value = val;
+          c.font = { name: 'Arial', size: 10, bold: idx === 1 || idx === 3 };
+          c.alignment = { vertical: 'middle', horizontal: idx === 1 || idx === 2 ? 'left' : 'center' };
+          c.border = thinBorder;
+        });
+      });
+    }
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const fileName = cfg.excelFileName || `PMG_DO_${ret.doNumber}.xlsx`;
+    if (window.saveAs) {
+      window.saveAs(blob, fileName);
+    } else {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(url);
     }
   }
 
@@ -1730,7 +2034,8 @@
     closeSettleCnModal: closeSettleCnModal,
     submitSettleCn: submitSettleCn,
     deleteReturn: deleteReturnRecord,
-    exportExcel: exportReturnsToExcel
+    exportExcel: exportReturnsToExcel,
+    downloadHqExcelTemplate: downloadHqExcelTemplate
   };
 
   // Global convenience aliases
@@ -1738,6 +2043,7 @@
   window.deleteReturnRecord = deleteReturnRecord;
   window.viewSignedProof = viewSignedProof;
   window.removeDraftItemRow = removeDraftItemRow;
+  window.downloadHqExcelTemplate = downloadHqExcelTemplate;
 
   // Auto-init on page load if container exists
   document.addEventListener('DOMContentLoaded', () => {

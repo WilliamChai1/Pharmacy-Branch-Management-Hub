@@ -653,6 +653,17 @@
               await wFull.write(JSON.stringify(mergedApps, null, 2));
               await wFull.close();
 
+              // 3. Unpack and write each applicant's real documents into /RECRUITMENT/Applicants/
+              try {
+                if (typeof window.pmgRecruitment?.saveSingleApplicantToOneDrive === 'function') {
+                  for (const app of mergedApps) {
+                    await window.pmgRecruitment.saveSingleApplicantToOneDrive(app, this.rootHandle);
+                  }
+                }
+              } catch (appDocErr) {
+                console.warn('[PMG OneDrive Sync] Applicant documents folder write warning:', appDocErr);
+              }
+
               recruitmentSyncedCount = mergedApps.length;
             }
           }

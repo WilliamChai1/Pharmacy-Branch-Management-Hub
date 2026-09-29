@@ -134,6 +134,120 @@ function promptSetGeminiKey() {
   }
 }
 
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = error => reject(error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function recDataUrlToBlob(dataUrl) {
+  if (typeof window.dataURLtoBlob === 'function') {
+    return window.dataURLtoBlob(dataUrl);
+  }
+  if (!dataUrl || !dataUrl.includes(',')) return null;
+  try {
+    const parts = dataUrl.split(',');
+    const mime = parts[0].match(/:(.*?);/)?.[1] || 'application/octet-stream';
+    const bstr = atob(parts[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], { type: mime });
+  } catch (e) {
+    return null;
+  }
+}
+
+// Save a single applicant's profile and real uploaded document files into OneDrive /RECRUITMENT/Applicants/
+async function saveSingleApplicantToOneDrive(app, rootHandle) {
+  if (!rootHandle || !app) return false;
+  try {
+    const recDir = await rootHandle.getDirectoryHandle('RECRUITMENT', { create: true });
+    const applicantsDir = await recDir.getDirectoryHandle('Applicants', { create: true });
+    
+    const safeName = (app.name || 'Candidate').replace(/[^a-zA-Z0-9_-]/g, '_').toUpperCase();
+    const folderName = `${safeName}_${app.id}`;
+    const appDir = await applicantsDir.getDirectoryHandle(folderName, { create: true });
+
+    // 1. Write Applicant Profile Info Text File
+    const profileText = [
+      `======================================================`,
+      `PMG PHARMACY - JOB APPLICATION PROFILE`,
+      `======================================================`,
+      `Application ID   : ${app.id}`,
+      `Candidate Name   : ${app.name}`,
+      `Position Applied : ${app.position}`,
+      `Preferred Outlet : ${app.preferredBranch || 'Any Kuching Outlet'}`,
+      `Submission Date  : ${app.appliedAt}`,
+      `Status           : ${app.status}`,
+      `------------------------------------------------------`,
+      `CONTACT INFORMATION`,
+      `------------------------------------------------------`,
+      `Phone Number     : ${app.phone}`,
+      `Email Address    : ${app.email}`,
+      `IC Number        : ${app.ic}`,
+      `Date of Birth    : ${app.dob}`,
+      `Gender / Race    : ${app.gender} / ${app.race}`,
+      `Religion         : ${app.religion}`,
+      `Residential Addr : ${app.address || 'N/A'}`,
+      `Own Transport    : ${app.hasTransport || 'Yes'} (Able to travel: ${app.ableToTravel || 'Yes'})`,
+      `Shift Flexibility: ${app.canDoShift || 'Yes'}, 3-Year Commitment: ${app.accept3yr || 'Yes'}`,
+      `------------------------------------------------------`,
+      `ACADEMIC & EDUCATION BACKGROUND`,
+      `------------------------------------------------------`,
+      `Highest Qual     : ${app.highestQual || 'N/A'} (${app.major || ''})`,
+      `University / Inst: ${app.institution || 'N/A'} (CGPA: ${app.cgpa || 'N/A'})`,
+      `SPM Results      :\n${app.spm || 'N/A'}`,
+      `Languages Known  : ${app.languages || 'N/A'}`,
+      `Work Experience  :\n${app.experience || 'None reported'}`,
+      `------------------------------------------------------`,
+      `ATTACHED DOCUMENTS (${(app.docs || []).length} files)`,
+      `------------------------------------------------------`,
+      ...(app.docs || []).map((d, i) => `${i + 1}. [${(d.field || 'doc').replace('file', '').toUpperCase()}] ${d.name} (${Math.round((d.size || 0) / 1024)} KB)`),
+      `======================================================`
+    ].join('\r\n');
+
+    const profileFh = await appDir.getFileHandle('Applicant_Profile.txt', { create: true });
+    const pw = await profileFh.createWritable();
+    await pw.write(profileText);
+    await pw.close();
+
+    // 2. Write each uploaded document as a standalone file (PDF, JPG, PNG)
+    if (Array.isArray(app.docs)) {
+      for (const doc of app.docs) {
+        if (!doc.data) continue;
+        const prefix = (doc.field || 'doc').replace('file', '').toUpperCase();
+        const cleanName = `${prefix}_${(doc.name || 'document.pdf').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        
+        let exists = false;
+        try {
+          await appDir.getFileHandle(cleanName, { create: false });
+          exists = true;
+        } catch (_) { exists = false; }
+
+        if (!exists) {
+          const blob = recDataUrlToBlob(doc.data);
+          if (blob) {
+            const docFh = await appDir.getFileHandle(cleanName, { create: true });
+            const dw = await docFh.createWritable();
+            await dw.write(blob);
+            await dw.close();
+          }
+        }
+      }
+    }
+    return true;
+  } catch (err) {
+    console.warn(`[PMG Recruitment] Error saving files for ${app.name} to OneDrive:`, err);
+    return false;
+  }
+}
+
 // Universal OneDrive Backup — uses window.pmgOneDriveSync (same as Patient Care, Expiry, Returns)
 async function backupRecruitmentToOneDrive() {
   const engine = window.pmgOneDriveSync;
@@ -152,7 +266,7 @@ async function backupRecruitmentToOneDrive() {
   }
 
   try {
-    toast('Syncing recruitment data to OneDrive...', 'info');
+    toast('Syncing recruitment data & documents to OneDrive...', 'info');
     const apps = loadApps();
     const rootHandle = engine.rootHandle;
     const recDir = await rootHandle.getDirectoryHandle('RECRUITMENT', { create: true });
@@ -176,7 +290,14 @@ async function backupRecruitmentToOneDrive() {
     await fullW.write(JSON.stringify(apps, null, 2));
     await fullW.close();
 
-    toast(`Backed up ${apps.length} applications to OneDrive /RECRUITMENT/`, 'success');
+    // 3. Unpack and save all applicants' document files into /RECRUITMENT/Applicants/
+    let totalDocsPushed = 0;
+    for (const app of apps) {
+      const ok = await saveSingleApplicantToOneDrive(app, rootHandle);
+      if (ok && app.docs) totalDocsPushed += app.docs.length;
+    }
+
+    toast(`✅ Backed up ${apps.length} applicants & pushed ${totalDocsPushed} documents to OneDrive /RECRUITMENT/Applicants/`, 'success');
   } catch(e) {
     console.error('[Recruitment OneDrive Backup]', e);
     toast('OneDrive backup error: ' + e.message, 'error');
@@ -1141,6 +1262,16 @@ async function submitPublicForm(e) {
   apps.unshift(app);
   saveApps(apps);
 
+  // Push uploaded documents directly to OneDrive folder /RECRUITMENT/Applicants/ immediately
+  try {
+    const engine = window.pmgOneDriveSync || window.pmgOneDrive;
+    if (engine && engine.rootHandle) {
+      saveSingleApplicantToOneDrive(app, engine.rootHandle);
+    }
+  } catch (odErr) {
+    console.warn('[Recruitment] Instant OneDrive push skipped:', odErr);
+  }
+
   // Show success
   const container = form.closest('#publicJobAppContainer')
                  || form.closest('#recruitmentPublicFormArea')
@@ -1974,6 +2105,7 @@ window.pmgRecruitment = {
   updateScheduleTimeSlots,
   confirmInterviewSchedule,
   backupRecruitmentToOneDrive,
+  saveSingleApplicantToOneDrive,
   copyFormLink,
   shareViaWhatsApp,
   switchRecTab,
