@@ -1182,6 +1182,11 @@
               title="Upload PMG Xilnex Item List CSV/Excel Export">
               <i class="fa-solid fa-file-csv"></i> Import Xilnex CSV
             </button>
+            <button type="button" onclick="window.pmgPricing && window.pmgPricing.syncWithGoogleSheets(true)"
+              class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-2xs"
+              title="Sync Pricing Matrix live with Google Sheets across all computers">
+              <i class="fa-solid fa-arrows-rotate"></i> Google Sheets Sync
+            </button>
             <button type="button" onclick="openAddSkuModal()"
               class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-2xs">
               <i class="fa-solid fa-plus-circle"></i> + Add SKU
@@ -1192,7 +1197,7 @@
               <i class="fa-solid fa-cloud-arrow-down"></i> Backup CSV
             </button>
             <button type="button" onclick="window.pmgPricing.exportPriceMemo()"
-              class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-2xs"
+              class="bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-2xs"
               title="Download standardized price directive memo for all 7 branch managers">
               <i class="fa-solid fa-file-export"></i> Export Memo
             </button>
@@ -1220,7 +1225,12 @@
                     <div>Member SP (RM)</div>
                     <div class="text-[9px] text-gray-400 font-normal lowercase tracking-normal">Standard 7-Outlet SP</div>
                   </th>
-                  <th class="p-3 text-right w-28">Gross Margin %</th>
+                  <th class="p-3 text-right w-32 cursor-pointer hover:bg-slate-200 select-none transition" onclick="window.pmgPricing && window.pmgPricing.toggleMarginSort()" title="Click to sort by Gross Margin (Highest to Lowest / Lowest to Highest)">
+                    <div class="flex items-center justify-end gap-1">
+                      <span>Gross Margin %</span>
+                      <span id="pricingMarginSortIcon"><i class="fa-solid fa-sort text-gray-400"></i></span>
+                    </div>
+                  </th>
                   <th class="p-3 text-right w-36">Supermarket (Farley/Emart)</th>
                   <th class="p-3 text-right w-36">Competitor Chains</th>
                   <th class="p-3 text-center w-28">AI Intelligence</th>
@@ -2228,97 +2238,26 @@ Date visit: 06.01.2026
                   <input type="text" id="encRossmaxAct" placeholder="e.g. ACT 3 / Vascular Age 60" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
                 </div>
 
-                <!-- TEDA TCM & Meridian Wellness Scan -->
+                <!-- TEDA TCM & Meridian Wellness Scan Link -->
                 <div class="sm:col-span-3 border border-amber-200/80 bg-amber-50/40 rounded-xl p-3.5">
-                  <div class="flex justify-between items-center mb-2 flex-wrap gap-2">
+                  <div class="flex justify-between items-center mb-2">
                     <label class="block text-xs sm:text-sm text-amber-950 font-bold flex items-center gap-1.5">
-                      <i class="fa-solid fa-yin-yang text-amber-700"></i> TEDA TCM Wellness & Meridian Scan (气 Qi · 阴阳 Yin-Yang · 经络 Meridians)
+                      <i class="fa-solid fa-yin-yang text-amber-700"></i> TEDA TCM Wellness & Meridian Scan Link
                     </label>
-                    <div class="flex items-center gap-2">
-                      <span id="tedaFetchStatus" class="text-xs text-amber-700 font-medium"></span>
-                      <a href="javascript:void(0)" onclick="openTedaLink()" id="openTedaLinkBtn" class="text-xs text-blue-600 hover:underline hidden font-semibold">
-                        <i class="fa-solid fa-arrow-up-right-from-square"></i> Open Report
-                      </a>
-                    </div>
                   </div>
-                  <div class="space-y-2.5">
+                  <div class="space-y-2">
                     <div>
-                      <label class="block text-xs font-semibold text-gray-600 mb-1">TEDA Web Report Link (e.g. qiaolz.com / reportTv / reportTvMain)</label>
                       <div class="flex items-center gap-2">
-                        <input type="text" id="encTedaLink" oninput="checkTedaUrl(this.value)" placeholder="Paste TEDA link: e.g. https://sg-report.qiaolz.com/#/pages/reportTv/reportTvMain?rid=..." class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-xs sm:text-sm outline-none bg-white text-gray-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500">
-                        <button type="button" id="fetchTedaBtn" onclick="autoAnalyzeTedaLink()" class="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs sm:text-sm font-bold transition flex items-center gap-1.5 shadow-xs whitespace-nowrap">
-                          <i class="fa-solid fa-bolt text-yellow-300"></i> Auto-Analyze Link
+                        <input type="url" id="encTedaLink" placeholder="Paste TEDA report link: e.g. https://sg-report.qiaolz.com/#/pages/reportTv/reportTvMain?rid=..." class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-xs sm:text-sm outline-none bg-white text-gray-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500">
+                        <button type="button" onclick="openTedaLinkInNewTab()" class="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs sm:text-sm font-bold transition flex items-center gap-1.5 shadow-xs whitespace-nowrap" title="Open TEDA report in a new browser tab">
+                          <i class="fa-solid fa-arrow-up-right-from-square"></i> Open Link
                         </button>
-                        <button type="button" id="openTedaAiGrabberBtn" onclick="openTedaAiGrabberModal()" class="px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg text-xs sm:text-sm font-bold transition flex items-center gap-1.5 shadow-xs whitespace-nowrap" title="Capture authentic TEDA report via AI (Screenshot / Vision / Text)">
-                          <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i> AI Smart Grabber
-                        </button>
-                        <button type="button" id="viewTedaTvBtn" onclick="openTedaTvModal()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-xs sm:text-sm font-bold transition flex items-center gap-1.5 shadow-xs whitespace-nowrap" title="View interactive TEDA TV Report">
-                          <i class="fa-solid fa-tv text-amber-600"></i> View TV
-                        </button>
-                        <button type="button" id="syncTedaManualBtn" onclick="openTedaManualSyncModal()" class="px-2.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs sm:text-sm font-bold transition flex items-center gap-1 shadow-xs whitespace-nowrap" title="Quick Sync or edit TEDA metrics">
-                          <i class="fa-solid fa-sliders text-amber-700"></i> Edit / Sync
-                        </button>
-                      </div>
-                      <!-- Verified TEDA Link Ribbon with Full RID & Quick Copy -->
-                      <div id="tedaUrlVerifiedBanner" class="hidden mt-1.5 p-2 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between gap-2 text-xs text-emerald-900">
-                        <div class="flex items-center gap-1.5 overflow-hidden">
-                          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 whitespace-nowrap">
-                            <i class="fa-solid fa-circle-check mr-1"></i> Verified TEDA Report
-                          </span>
-                          <span class="font-mono text-[11px] text-emerald-800 truncate" title="Report ID">
-                            RID: <b id="tedaVerifiedRid"></b>
-                          </span>
-                        </div>
-                        <div class="flex items-center gap-1 shrink-0">
-                          <button type="button" onclick="copyTedaFullUrl()" class="px-2 py-0.5 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded text-[10px] font-medium transition flex items-center gap-1" title="Copy full URL to clipboard">
-                            <i class="fa-regular fa-copy"></i> Copy Link
-                          </button>
-                          <button type="button" onclick="openTedaLink()" class="px-2 py-0.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[10px] font-medium transition flex items-center gap-1" title="Open in browser">
-                            <i class="fa-solid fa-arrow-up-right-from-square"></i> Open
-                          </button>
-                        </div>
                       </div>
                     </div>
-
-                    <!-- Decrypted TEDA Quick Cards / Preview -->
-                    <div id="encTedaDetailsBadge" class="hidden p-3 bg-amber-50/80 border border-amber-200 rounded-xl text-xs sm:text-sm space-y-2">
-                      <div class="flex items-center justify-between flex-wrap gap-1">
-                        <span class="font-bold text-amber-950 flex items-center gap-1">
-                          <i class="fa-solid fa-shield-halved text-amber-600"></i> <span id="tedaImmunityBadge"></span>
-                        </span>
-                        <span id="tedaPrincipleBadge" class="text-xs bg-amber-200/70 text-amber-900 font-bold px-2.5 py-0.5 rounded-full"></span>
-                      </div>
-                      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs sm:text-sm">
-                        <div class="p-2 bg-white rounded-lg border border-amber-100">
-                          <span class="font-bold text-gray-700 block mb-0.5">🫀 脏腑辩证 (Zang-Fu):</span>
-                          <span id="tedaZangfuText" class="text-gray-600"></span>
-                        </div>
-                        <div class="p-2 bg-white rounded-lg border border-amber-100">
-                          <span class="font-bold text-gray-700 block mb-0.5">☯️ 气血体质 (Constitution):</span>
-                          <span id="tedaTizhiText" class="text-gray-600"></span>
-                        </div>
-                        <div class="p-2 bg-white rounded-lg border border-amber-100">
-                          <span class="font-bold text-gray-700 block mb-0.5">🌊 经络淤堵 (Meridians):</span>
-                          <span id="tedaJingluoText" class="text-gray-600"></span>
-                        </div>
-                      </div>
-                    </div>
-
                     <div>
-                      <label class="block text-xs font-semibold text-gray-600 mb-1">TCM Findings & Meridian Notes (Auto-filled from TEDA Link or Edited Manually)</label>
-                      <textarea id="encTeda" rows="3" placeholder="Click 'Auto-Analyze Link' above to auto-extract TCM findings, or type/tap quick tags below..." class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base outline-none bg-white font-sans"></textarea>
+                      <label class="block text-xs font-semibold text-gray-600 mb-1">TCM Findings & Notes (Optional)</label>
+                      <textarea id="encTeda" rows="2" placeholder="Optional clinical observations or notes regarding TEDA TCM scan..." class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs sm:text-sm outline-none bg-white font-sans"></textarea>
                     </div>
-                  </div>
-                  <div class="flex items-center gap-1.5 mt-2.5 flex-wrap text-xs">
-                    <span class="text-amber-800 font-semibold">TCM Quick Tags:</span>
-                    <button type="button" onclick="appendTedaTag('Qi Deficiency (气虚)')" class="px-2.5 py-1 bg-white border border-amber-300 rounded-md text-amber-900 hover:bg-amber-100 font-medium transition">+ 气虚 (Qi Deficient)</button>
-                    <button type="button" onclick="appendTedaTag('Qi Stagnation (气滞)')" class="px-2.5 py-1 bg-white border border-amber-300 rounded-md text-amber-900 hover:bg-amber-100 font-medium transition">+ 气滞 (Qi Stagnant)</button>
-                    <button type="button" onclick="appendTedaTag('Yin Deficiency (阴虚)')" class="px-2.5 py-1 bg-white border border-amber-300 rounded-md text-amber-900 hover:bg-amber-100 font-medium transition">+ 阴虚 (Yin Deficient)</button>
-                    <button type="button" onclick="appendTedaTag('Yang Deficiency (阳虚)')" class="px-2.5 py-1 bg-white border border-amber-300 rounded-md text-amber-900 hover:bg-amber-100 font-medium transition">+ 阳虚 (Yang Deficient)</button>
-                    <button type="button" onclick="appendTedaTag('Liver Fire (肝火旺)')" class="px-2.5 py-1 bg-white border border-amber-300 rounded-md text-amber-900 hover:bg-amber-100 font-medium transition">+ 肝火 (Liver Fire)</button>
-                    <button type="button" onclick="appendTedaTag('Spleen Dampness (脾虚湿盛)')" class="px-2.5 py-1 bg-white border border-amber-300 rounded-md text-amber-900 hover:bg-amber-100 font-medium transition">+ 脾虚湿 (Spleen Damp)</button>
-                    <button type="button" onclick="appendTedaTag('Kidney Yin Weak (肾阴虚)')" class="px-2.5 py-1 bg-white border border-amber-300 rounded-md text-amber-900 hover:bg-amber-100 font-medium transition">+ 肾虚 (Kidney Weak)</button>
-                    <button type="button" onclick="appendTedaTag('Blood Stasis (血瘀)')" class="px-2.5 py-1 bg-white border border-amber-300 rounded-md text-amber-900 hover:bg-amber-100 font-medium transition">+ 血瘀 (Blood Stasis)</button>
                   </div>
                 </div>
 
@@ -2659,314 +2598,7 @@ Date visit: 06.01.2026
     </div>
   </div>
 
-  <!-- Modal: TEDA WellScan Live TV Report Viewer -->
-  <div id="tedaTvModal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-2 sm:p-5 hidden" style="z-index: 70;">
-    <div class="bg-slate-900 rounded-3xl shadow-2xl w-full max-w-5xl h-[92vh] flex flex-col overflow-hidden border border-slate-700">
-      <div class="flex items-center justify-between px-5 py-3 bg-slate-800 border-b border-slate-700 text-white shrink-0">
-        <div class="flex items-center gap-3">
-          <span class="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-base">
-            <i class="fa-solid fa-tv"></i>
-          </span>
-          <div>
-            <h4 class="font-bold text-sm text-slate-100 flex items-center gap-2">
-              <span>TEDA WellScan Live Report</span>
-              <span id="tedaTvModalRidBadge" class="text-[11px] bg-slate-700 text-amber-300 px-2.5 py-0.5 rounded font-mono"></span>
-            </h4>
-            <p class="text-[11px] text-slate-400">Interactive Meridian Radar &amp; Zang-Fu Wellness Analysis</p>
-          </div>
-        </div>
-        <div class="flex items-center gap-2">
-          <button type="button" onclick="autoCaptureTedaScreen()" class="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 shadow-sm" title="1-Click auto screenshot this view without snipping">
-            <i class="fa-solid fa-camera text-yellow-300"></i> 📸 Auto-Capture View <span id="tedaTvCapturedCountBadge" class="hidden text-[10px] bg-white text-emerald-800 font-black px-1.5 py-0.5 rounded-full ml-1">0</span>
-          </button>
-          <button type="button" onclick="openTedaAiGrabberModal()" class="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 shadow-sm">
-            <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i> AI Smart Grabber
-          </button>
-          <button type="button" onclick="quickSyncTedaFromViewer()" class="text-xs bg-amber-500 hover:bg-amber-400 text-slate-950 px-3.5 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 shadow-sm">
-            <i class="fa-solid fa-bolt"></i> Quick Sync to Notes
-          </button>
-          <a id="tedaTvExternalLink" href="#" target="_blank" rel="noopener" class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1.5 rounded-xl font-semibold transition flex items-center gap-1.5">
-            <i class="fa-solid fa-arrow-up-right-from-square"></i> Open in New Tab
-          </a>
-          <button onclick="closeTedaTvModal()" class="text-slate-400 hover:text-white text-xl p-1.5 transition">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-      </div>
-      <div class="flex-1 bg-slate-950 relative">
-        <iframe id="tedaTvIframe" src="" class="w-full h-full border-0" allow="fullscreen"></iframe>
-      </div>
-    </div>
-  </div>
 
-  <!-- Modal: TEDA Manual Sync / Findings Verification -->
-  <div id="tedaManualSyncModal" class="fixed inset-0 z-[75] flex items-center justify-center bg-black/70 p-3 sm:p-5 hidden" style="z-index: 75;">
-    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-xl flex flex-col overflow-hidden border border-amber-200">
-      <div class="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-amber-600 to-amber-700 text-white shrink-0">
-        <div class="flex items-center gap-2.5">
-          <span class="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center text-sm font-bold">
-            <i class="fa-solid fa-sliders text-amber-100"></i>
-          </span>
-          <div>
-            <h4 class="font-bold text-sm sm:text-base text-white flex items-center gap-2">
-              <span>TEDA Findings &amp; Meridian Quick Sync</span>
-            </h4>
-            <p class="text-[11px] text-amber-100 font-mono truncate max-w-xs" id="tedaSyncRidDisplay">Report ID</p>
-          </div>
-        </div>
-        <button onclick="closeTedaManualSyncModal()" class="text-white/80 hover:text-white text-xl p-1 transition">
-          <i class="fa-solid fa-xmark"></i>
-        </button>
-      </div>
-      <div class="p-5 sm:p-6 space-y-4 max-h-[80vh] overflow-y-auto bg-slate-50/50">
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-bold text-gray-700 mb-1">健康指数 (Health Score / 100)</label>
-            <input type="number" id="tedaSyncHealth" min="0" max="100" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-black text-gray-900 bg-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" placeholder="e.g. 78">
-          </div>
-          <div>
-            <label class="block text-xs font-bold text-gray-700 mb-1">免疫力指数 (Immunity / 100)</label>
-            <input type="number" id="tedaSyncImmunity" min="0" max="100" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-black text-gray-900 bg-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" placeholder="e.g. 58">
-            <p class="text-[10px] text-gray-500 mt-0.5">&lt;50 亚健康/偏低，≥50 良好</p>
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-xs font-bold text-gray-700 mb-1">调理建议 (Core Principle)</label>
-          <input type="text" id="tedaSyncAdvice" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-bold text-amber-950 bg-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" placeholder="e.g. 【活血化瘀】">
-          <div class="flex flex-wrap gap-1.5 mt-1.5">
-            <button type="button" onclick="selectTedaAdviceQuickTag('【活血化瘀】')" class="text-[10px] bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-lg border border-amber-200 transition">【活血化瘀】</button>
-            <button type="button" onclick="selectTedaAdviceQuickTag('【健脾化湿】')" class="text-[10px] bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-lg border border-amber-200 transition">【健脾化湿】</button>
-            <button type="button" onclick="selectTedaAdviceQuickTag('【养胃】')" class="text-[10px] bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-lg border border-amber-200 transition">【养胃】</button>
-            <button type="button" onclick="selectTedaAdviceQuickTag('【温煦祛寒】')" class="text-[10px] bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-lg border border-amber-200 transition">【温煦祛寒】</button>
-            <button type="button" onclick="selectTedaAdviceQuickTag('【补虚祛寒，举陷固涩】')" class="text-[10px] bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-lg border border-amber-200 transition">【补虚祛寒】</button>
-            <button type="button" onclick="selectTedaAdviceQuickTag('【滋养津液】')" class="text-[10px] bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-lg border border-amber-200 transition">【滋养津液】</button>
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-xs font-bold text-gray-700 mb-1">脏腑辩证 (Zang-Fu Sub-health)</label>
-          <input type="text" id="tedaSyncZangfu" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs sm:text-sm text-gray-800 bg-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" placeholder="e.g. 小肠虚弱 6.6, 肝虚 7.4, 脾虚 7.7">
-        </div>
-
-        <div>
-          <label class="block text-xs font-bold text-gray-700 mb-1">气血体质 (Constitution)</label>
-          <input type="text" id="tedaSyncTizhi" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs sm:text-sm text-gray-800 bg-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" placeholder="e.g. 血瘀 6.0, 津液亏虚 7.3, 津液停聚 7.4">
-        </div>
-
-        <div>
-          <label class="block text-xs font-bold text-gray-700 mb-1">经络淤堵 (Blocked Meridians)</label>
-          <input type="text" id="tedaSyncJingluo" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs sm:text-sm text-gray-800 bg-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" placeholder="e.g. 足太阳膀胱经 5.9, 手太阴肺经 6.0, 任脉 6.0">
-        </div>
-
-        <div>
-          <label class="block text-xs font-bold text-gray-700 mb-1">脊柱压力 (Spine Pressure)</label>
-          <input type="text" id="tedaSyncSpine" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs sm:text-sm text-gray-800 bg-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" placeholder="e.g. TH6（胸椎） 7.6, C6（颈椎） 7.6, TH3（胸椎） 7.7">
-        </div>
-      </div>
-      <div class="px-6 py-3.5 bg-gray-50 border-t border-gray-200 flex items-center justify-between gap-3 shrink-0">
-        <button type="button" onclick="closeTedaManualSyncModal()" class="px-4 py-2 border border-gray-300 rounded-xl text-xs sm:text-sm font-semibold text-gray-700 hover:bg-gray-100 transition">
-          Cancel
-        </button>
-        <button type="button" onclick="saveTedaManualSync()" class="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition flex items-center gap-1.5">
-          <i class="fa-solid fa-check"></i> Apply to Encounter Notes &amp; Badges
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal: TEDA AI Smart Grabber (Vision & Text Multimodal Extractor) -->
-  <div id="tedaAiGrabberModal" class="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-3 sm:p-5 hidden" style="z-index: 80;">
-    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden border border-indigo-200 max-h-[92vh]">
-      <!-- Header -->
-      <div class="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-purple-700 via-indigo-700 to-blue-700 text-white shrink-0">
-        <div class="flex items-center gap-2.5">
-          <span class="w-9 h-9 rounded-2xl bg-white/20 flex items-center justify-center text-lg font-bold shadow-inner">
-            <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
-          </span>
-          <div>
-            <h4 class="font-bold text-sm sm:text-base text-white flex items-center gap-2">
-              <span>🤖 AI Smart TEDA Report Grabber</span>
-              <span class="text-[10px] bg-amber-400 text-purple-950 font-black px-2 py-0.5 rounded-full uppercase tracking-wider">Vision AI</span>
-            </h4>
-            <p class="text-[11px] text-indigo-100">Instantly capture authentic Immunity, Health Score, Zang-Fu, &amp; Meridians</p>
-          </div>
-        </div>
-        <button onclick="closeTedaAiGrabberModal()" class="text-white/80 hover:text-white text-xl p-1 transition">
-          <i class="fa-solid fa-xmark"></i>
-        </button>
-      </div>
-
-      <!-- Scrollable Body -->
-      <div class="p-5 space-y-4 overflow-y-auto flex-1 text-xs sm:text-sm">
-        <!-- Quick Guidance Tip -->
-        <div class="p-3 bg-indigo-50 border border-indigo-100 rounded-2xl text-indigo-900 flex items-start gap-2.5">
-          <i class="fa-solid fa-lightbulb text-amber-500 text-base shrink-0 mt-0.5"></i>
-          <div class="text-xs leading-relaxed">
-            <p class="font-bold">Automated Multi-Page Interpretation &amp; Capture:</p>
-            <p class="text-indigo-800 mt-0.5">
-              <b>Option A (Fastest &amp; Zero Screenshots):</b> Click <span class="font-bold text-amber-700 bg-amber-100 px-1 py-0.5 rounded">⚡ Direct Auto-Decrypt</span> below to extract 100% authentic data from all interactive tabs (脏腑 Zang-Fu, 经络 Meridians, 体质 Constitution, 脊柱 Spine) straight from the server.<br>
-              <b>Option B (1-Click Auto-Capture):</b> Click <span class="font-bold text-emerald-700 bg-emerald-100 px-1 py-0.5 rounded">📸 1-Click Auto-Capture</span> to grab the screen/tab. Switch tabs in the report (or in <b>View TV</b>) and capture each tab! Gemini AI cross-references and interprets all pages together.
-            </p>
-          </div>
-        </div>
-
-        <!-- Mode Tabs -->
-        <div class="flex border-b border-gray-200">
-          <button type="button" id="tedaAiTabBtnScreenshot" onclick="switchTedaAiTab('screenshot')" class="px-4 py-2 border-b-2 border-indigo-600 font-bold text-indigo-700 text-xs sm:text-sm flex items-center gap-1.5">
-            <i class="fa-solid fa-camera"></i> 1. Auto-Capture &amp; Multi-Page Gallery
-          </button>
-          <button type="button" id="tedaAiTabBtnText" onclick="switchTedaAiTab('text')" class="px-4 py-2 border-b-2 border-transparent font-medium text-gray-500 hover:text-gray-700 text-xs sm:text-sm flex items-center gap-1.5">
-            <i class="fa-solid fa-align-left"></i> 2. Paste Report Text
-          </button>
-        </div>
-
-        <!-- Tab 1: Screenshot / Image Drop & Auto-Capture Multi-Page Gallery -->
-        <div id="tedaAiTabScreenshot" class="space-y-3">
-          <!-- 1-Click Auto-Capture & Action Toolbar -->
-          <div class="flex items-center justify-between gap-2 p-2.5 bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl shadow-xs flex-wrap">
-            <div class="flex items-center gap-2 flex-wrap">
-              <button type="button" onclick="autoCaptureTedaScreen()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition active:scale-95" title="1-Click capture active screen or tab without snipping">
-                <i class="fa-solid fa-camera text-yellow-300"></i> 📸 1-Click Auto-Capture
-              </button>
-              <button type="button" onclick="runTedaDirectDecrypt()" class="px-3 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 transition shadow-sm" title="Zero screenshots needed! Fetch and decrypt all pages directly from TEDA server">
-                <i class="fa-solid fa-bolt"></i> ⚡ Direct Auto-Decrypt
-              </button>
-              <button type="button" onclick="document.getElementById('tedaAiScreenshotInput').click()" class="px-3 py-2 bg-indigo-700 hover:bg-indigo-600 text-white font-semibold rounded-xl text-xs flex items-center gap-1.5 transition">
-                <i class="fa-solid fa-folder-open"></i> Upload Image
-              </button>
-            </div>
-            <div class="flex items-center gap-2">
-              <span id="tedaPageCountBadge" class="text-xs bg-white/20 text-white px-2.5 py-1 rounded-full font-bold">
-                0 Pages Captured
-              </span>
-              <button type="button" id="tedaClearAllPagesBtn" onclick="clearAllTedaPages()" class="hidden text-xs text-rose-300 hover:text-white font-semibold px-2 py-1 rounded hover:bg-white/10 transition">
-                <i class="fa-solid fa-trash-can"></i> Clear All
-              </button>
-            </div>
-          </div>
-
-          <input type="file" id="tedaAiScreenshotInput" accept="image/*" multiple class="hidden" onchange="handleTedaScreenshotFile(this.files)">
-
-          <!-- Multi-Page Collection Gallery Grid Container (shown when pages are captured) -->
-          <div id="tedaMultiPageGalleryContainer" class="hidden space-y-2">
-            <div class="flex items-center justify-between text-xs font-bold text-gray-700">
-              <span class="flex items-center gap-1.5">
-                <i class="fa-solid fa-images text-indigo-600"></i> Captured Pages to Analyze:
-              </span>
-              <span class="text-indigo-600 text-[11px] font-normal">
-                <i class="fa-solid fa-circle-info"></i> All pages will be interpreted together in one comprehensive report
-              </span>
-            </div>
-            <div id="tedaMultiPageThumbnails" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <!-- Dynamically populated page cards -->
-            </div>
-          </div>
-
-          <!-- Drop / Paste Prompt Zone (shown when empty or for drag-and-drop) -->
-          <div id="tedaAiDropZone" onclick="document.getElementById('tedaAiScreenshotInput').click()" ondragover="event.preventDefault(); this.classList.add('border-indigo-500', 'bg-indigo-50/50')" ondragleave="this.classList.remove('border-indigo-500', 'bg-indigo-50/50')" ondrop="handleTedaScreenshotDrop(event)" class="border-2 border-dashed border-indigo-300 hover:border-indigo-500 rounded-2xl p-5 text-center bg-indigo-50/30 cursor-pointer transition flex flex-col items-center justify-center min-h-[130px]">
-            <div id="tedaPastePrompt">
-              <i class="fa-solid fa-layer-group text-3xl text-indigo-500 mb-2"></i>
-              <p class="font-bold text-gray-800 text-xs sm:text-sm">Click <span class="text-emerald-700 font-black">"📸 1-Click Auto-Capture"</span> above, or press <kbd class="px-2 py-0.5 bg-white border border-gray-300 rounded font-mono font-bold text-indigo-700 shadow-xs">Ctrl + V</kbd> to paste</p>
-              <p class="text-xs text-gray-500 mt-1">Switch through the interactive tabs on TEDA (脏腑, 经络, 体质, 脊柱) and capture each one!</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Tab 2: Text / HTML Paste -->
-        <div id="tedaAiTabText" class="hidden space-y-2">
-          <label class="block text-xs font-bold text-gray-700">Paste Text Copied from TEDA Report</label>
-          <textarea id="tedaAiTextInput" rows="6" placeholder="Paste report text here (e.g. 免疫力指数: 58, 健康指数: 78, 调理原则: ..., 脏腑: 脾 6.6, 肾 7.4...)" class="w-full border border-gray-300 rounded-xl p-3 text-xs sm:text-sm font-sans outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white"></textarea>
-        </div>
-
-        <!-- Associated Report Link reference -->
-        <div>
-          <label class="block text-xs font-semibold text-gray-600 mb-1">TEDA Report Web Link (Optional, for reference &amp; direct decryption)</label>
-          <div class="flex items-center gap-2">
-            <input type="text" id="tedaAiModalLinkInput" placeholder="https://sg-report.qiaolz.com/#/pages/reportTv/reportTvMain?rid=..." class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-xs outline-none bg-gray-50 focus:bg-white text-gray-800">
-            <button type="button" onclick="runTedaDirectDecrypt()" class="px-3 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold transition flex items-center gap-1 shrink-0 shadow-xs" title="Decrypt authentic report directly from URL without screenshots">
-              <i class="fa-solid fa-bolt"></i> Decrypt Link
-            </button>
-            <button type="button" onclick="openTedaTvModal()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold transition flex items-center gap-1 shrink-0" title="Open TV view side-by-side to inspect all tabs">
-              <i class="fa-solid fa-tv text-amber-600"></i> View TV
-            </button>
-          </div>
-        </div>
-
-        <!-- Extraction Button & Status -->
-        <div>
-          <button type="button" id="runTedaAiBtn" onclick="runTedaAiGrabber()" class="w-full py-3 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-sm font-bold shadow-md transition flex items-center justify-center gap-2">
-            <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i> ✨ Extract &amp; Interpret All Pages via AI (<span id="tedaAiExtractPageCount">0 Pages</span>)
-          </button>
-          <div id="tedaAiStatus" class="hidden mt-2 p-3 rounded-xl text-xs flex items-center gap-2"></div>
-        </div>
-
-        <!-- Extracted Results Preview & Confirmation Panel -->
-        <div id="tedaAiResultsPanel" class="hidden border border-emerald-200 bg-emerald-50/50 rounded-2xl p-4 space-y-3">
-          <div class="flex items-center justify-between pb-2 border-b border-emerald-200">
-            <div class="flex items-center gap-2 text-emerald-900 font-bold text-xs sm:text-sm">
-              <i class="fa-solid fa-circle-check text-emerald-600 text-base"></i>
-              <span>Authentic Multi-Page Findings Extracted Successfully</span>
-            </div>
-            <span class="text-[11px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-mono font-bold" id="tedaAiExtractedModelBadge">Gemini AI</span>
-          </div>
-
-          <div class="grid grid-cols-2 gap-3 text-xs">
-            <div class="p-2.5 bg-white rounded-xl border border-emerald-100">
-              <span class="text-gray-500 block mb-0.5">Health Score (健康指数)</span>
-              <span id="tedaAiResHealth" class="text-lg font-black text-gray-900">—</span>
-            </div>
-            <div class="p-2.5 bg-white rounded-xl border border-emerald-100">
-              <span class="text-gray-500 block mb-0.5">Immunity Score (免疫力)</span>
-              <span id="tedaAiResImmunity" class="text-lg font-black text-rose-600">—</span>
-            </div>
-          </div>
-
-          <div class="p-2.5 bg-white rounded-xl border border-emerald-100 text-xs">
-            <span class="text-gray-500 block mb-0.5 font-bold">Advice (核心调理原则)</span>
-            <span id="tedaAiResAdvice" class="font-bold text-indigo-950">—</span>
-          </div>
-
-          <div class="space-y-1.5 text-xs">
-            <div class="p-2.5 bg-white rounded-xl border border-emerald-100 flex items-start gap-2">
-              <span class="font-bold text-gray-800 shrink-0">🫀 脏腑辨证 (Zang-Fu):</span>
-              <span id="tedaAiResZangfu" class="text-gray-700 font-medium">—</span>
-            </div>
-            <div class="p-2.5 bg-white rounded-xl border border-emerald-100 flex items-start gap-2">
-              <span class="font-bold text-gray-800 shrink-0">☯️ 气血体质 (Constitution):</span>
-              <span id="tedaAiResTizhi" class="text-gray-700 font-medium">—</span>
-            </div>
-            <div class="p-2.5 bg-white rounded-xl border border-emerald-100 flex items-start gap-2">
-              <span class="font-bold text-gray-800 shrink-0">🌊 经络辨证 (Meridians):</span>
-              <span id="tedaAiResJingluo" class="text-gray-700 font-medium">—</span>
-            </div>
-            <div class="p-2.5 bg-white rounded-xl border border-emerald-100 flex items-start gap-2">
-              <span class="font-bold text-gray-800 shrink-0">🦴 脊柱受压 (Spine):</span>
-              <span id="tedaAiResSpine" class="text-gray-700 font-medium">—</span>
-            </div>
-            <div class="p-2.5 bg-white rounded-xl border border-emerald-100 flex items-start gap-2">
-              <span class="font-bold text-indigo-800 shrink-0">💡 药剂师指导建议:</span>
-              <span id="tedaAiResGuidance" class="text-gray-700 font-medium">—</span>
-            </div>
-          </div>
-
-          <button type="button" onclick="applyTedaAiGrabbedData()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition flex items-center justify-center gap-2">
-            <i class="fa-solid fa-check"></i> Apply to Consultation Form &amp; Badges
-          </button>
-        </div>
-      </div>
-
-      <!-- Footer -->
-      <div class="px-6 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between gap-3 shrink-0">
-        <button type="button" onclick="closeTedaAiGrabberModal()" class="px-4 py-2 border border-gray-300 rounded-xl text-xs sm:text-sm font-semibold text-gray-700 hover:bg-gray-100 transition">
-          Cancel
-        </button>
-        <div class="text-[11px] text-gray-400">
-          Powered by Gemini Vision Multimodal AI
-        </div>
-      </div>
-    </div>
-  </div>
 
   <!-- Modal 3: Book Appointment -->
   <div id="patientAptModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 hidden" style="z-index: 60;">

@@ -1361,10 +1361,30 @@
           (cloudP.medications || []).forEach(m => medMap.set(m.id || m.name, m));
           localP.medications = Array.from(medMap.values());
 
-          // Merge appointments by id
+          // Merge appointments by id safely (preserve Completed/Missed terminal status)
           const aptMap = new Map();
           (localP.appointments || []).forEach(a => aptMap.set(a.id || `${a.date}_${a.time}`, a));
-          (cloudP.appointments || []).forEach(a => aptMap.set(a.id || `${a.date}_${a.time}`, a));
+          (cloudP.appointments || []).forEach(cloudApt => {
+            const key = cloudApt.id || `${cloudApt.date}_${cloudApt.time}`;
+            if (!aptMap.has(key)) {
+              aptMap.set(key, cloudApt);
+            } else {
+              const localApt = aptMap.get(key);
+              const localIsTerminal = localApt.status === 'Completed' || localApt.status === 'Missed' || localApt.status === 'Cancelled';
+              const cloudIsTerminal = cloudApt.status === 'Completed' || cloudApt.status === 'Missed' || cloudApt.status === 'Cancelled';
+              if (localIsTerminal && !cloudIsTerminal) {
+                // Keep local completed/missed appointment
+              } else if (cloudIsTerminal && !localIsTerminal) {
+                aptMap.set(key, cloudApt);
+              } else {
+                const lTime = new Date(localApt.statusUpdatedAt || localApt.lastUpdated || localApt.date || 0).getTime();
+                const cTime = new Date(cloudApt.statusUpdatedAt || cloudApt.lastUpdated || cloudApt.date || 0).getTime();
+                if (cTime > lTime) {
+                  aptMap.set(key, cloudApt);
+                }
+              }
+            }
+          });
           localP.appointments = Array.from(aptMap.values()).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
           // Overwrite scalar profile fields if cloud has updated values

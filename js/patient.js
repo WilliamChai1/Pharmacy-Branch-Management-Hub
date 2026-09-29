@@ -27,32 +27,11 @@ const DEFAULT_PATIENTS_DATA = [
     branch: 'Kota Sentosa',
     conditions: ['Pending Consultation'],
     allergies: 'None recorded',
-    notes: 'Online booking via Customer Portal (Ref: PMG-BK-623179 & PMG-BK-570346)',
+    notes: 'Registered patient',
     createdAt: '2026-09-28',
     encounters: [],
     medications: [],
-    appointments: [
-      {
-        id: 'PMG-BK-623179',
-        date: '2026-09-29',
-        time: '12:30',
-        purpose: 'In-Person Consultation & Health Screening',
-        service: 'In-Person Consultation & Health Screening',
-        pharmacist: 'William Chai (Pharmacist)',
-        status: 'Scheduled',
-        notes: 'Booked via Online Customer Portal (Ref: PMG-BK-623179)'
-      },
-      {
-        id: 'PMG-BK-570346',
-        date: '2026-09-28',
-        time: '12:30',
-        purpose: 'In-Person Consultation & Health Screening',
-        service: 'In-Person Consultation & Health Screening',
-        pharmacist: 'William Chai (Pharmacist)',
-        status: 'Scheduled',
-        notes: 'Booked via Online Customer Portal (Ref: PMG-BK-570346)'
-      }
-    ]
+    appointments: []
   },
   {
     id: 'PT-1001',
@@ -1015,15 +994,7 @@ function loadPatientsData() {
         if (defPt.medications && (!patientsData[idx].medications || !patientsData[idx].medications.length)) {
           patientsData[idx].medications = JSON.parse(JSON.stringify(defPt.medications));
         }
-        if (defPt.appointments && Array.isArray(defPt.appointments)) {
-          if (!patientsData[idx].appointments) patientsData[idx].appointments = [];
-          defPt.appointments.forEach(defApt => {
-            const exists = patientsData[idx].appointments.some(a => a.id === defApt.id || (a.date === defApt.date && a.time === defApt.time && (a.purpose === defApt.purpose || a.service === defApt.service)));
-            if (!exists) {
-              patientsData[idx].appointments.unshift(JSON.parse(JSON.stringify(defApt)));
-            }
-          });
-        }
+        // Do not inject default appointments into existing patients (avoids reviving completed/deleted appointments)
         if (defPt.nextTcaDate && (!patientsData[idx].nextTcaDate || patientsData[idx].nextTcaDate < defPt.nextTcaDate)) {
           patientsData[idx].nextTcaDate = defPt.nextTcaDate;
           patientsData[idx].nextTcaPurpose = defPt.nextTcaPurpose;
@@ -2071,7 +2042,7 @@ function markAppointmentStatus(patientId, appointmentId, newStatus) {
 
   // Push status update to cloud in background so other devices and cloud sync stay in sync
   if (typeof updateAppointmentStatusInCloud === 'function') {
-    updateAppointmentStatusInCloud(appointmentId, newStatus, p.branch).catch(err => {
+    updateAppointmentStatusInCloud(appointmentId, newStatus, p.branch, apt, p).catch(err => {
       console.warn('[markAppointmentStatus] Cloud status update failed:', err);
     });
   }
@@ -3952,49 +3923,28 @@ function checkTedaUrl(url) {
       btn.classList.add('hidden');
     }
   }
+}
 
-  const rid = extractTedaRid(normUrl);
-  const statusEl = document.getElementById('tedaFetchStatus');
-  const verifiedBanner = document.getElementById('tedaUrlVerifiedBanner');
-  const verifiedRidEl = document.getElementById('tedaVerifiedRid');
-
-  const known = (typeof TEDA_KNOWN_REPORTS_MAP !== 'undefined' && TEDA_KNOWN_REPORTS_MAP[rid]) ? TEDA_KNOWN_REPORTS_MAP[rid] : null;
-  let cached = null;
-  if (!known && rid) {
-    try {
-      const lCache = JSON.parse(localStorage.getItem('pmg_teda_reports_cache') || '{}');
-      if (lCache[rid]) cached = lCache[rid];
-    } catch (e) {}
-  }
-  const verified = known || cached;
-
-  if (verifiedBanner) {
-    if (rid) {
-      verifiedBanner.classList.remove('hidden');
-      if (verifiedRidEl) {
-        if (verified) {
-          verifiedRidEl.innerHTML = `<code>${rid}</code> <span class="ml-1.5 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-200 text-emerald-950 border border-emerald-300">Immunity ${verified.immunityScore} · Health ${verified.healthScore} · ${verified.advice}</span>`;
-        } else {
-          verifiedRidEl.textContent = rid;
-        }
-      }
-    } else {
-      verifiedBanner.classList.add('hidden');
-    }
-  }
-
+function openTedaLinkInNewTab() {
   const linkEl = document.getElementById('encTedaLink');
-  if (linkEl && normUrl) {
-    linkEl.title = normUrl;
+  let url = linkEl ? normalizeTedaUrl(linkEl.value.trim()) : '';
+  if (!url) {
+    const tedaEl = document.getElementById('encTeda');
+    const match = tedaEl ? tedaEl.value.match(/(https?:\/\/[^\s]+)/) : null;
+    if (match) url = match[1];
   }
+  if (!url) {
+    alert('Please enter or paste a valid TEDA report link first.');
+    return;
+  }
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = 'https://' + url;
+  }
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
 
-  if (rid && statusEl && !window._cachedTedaReport) {
-    if (verified) {
-      statusEl.innerHTML = `<span class="text-emerald-700 font-semibold"><i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i> Authentic report ready (Immunity ${verified.immunityScore}, Health ${verified.healthScore}). Click <b>"Auto-Analyze Link"</b> to apply.</span>`;
-    } else {
-      statusEl.innerHTML = '<span class="text-amber-700 font-semibold"><i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i> Valid TEDA Report ID detected. Click "Auto-Analyze Link" to interpret.</span>';
-    }
-  }
+function openTedaLink() {
+  openTedaLinkInNewTab();
 }
 
 function copyTedaFullUrl() {
@@ -4009,19 +3959,6 @@ function copyTedaFullUrl() {
   });
 }
 
-function openTedaLink() {
-  const linkEl = document.getElementById('encTedaLink');
-  let url = linkEl ? normalizeTedaUrl(linkEl.value.trim()) : '';
-  if (!url) {
-    const tedaEl = document.getElementById('encTeda');
-    const tedaVal = tedaEl ? tedaEl.value.trim() : '';
-    if (tedaVal.startsWith('http://') || tedaVal.startsWith('https://')) {
-      url = normalizeTedaUrl(tedaVal);
-    }
-  }
-  if (url) window.open(url, '_blank');
-}
-
 function appendTedaTag(tag) {
   const el = document.getElementById('encTeda');
   if (!el) return;
@@ -4032,6 +3969,15 @@ function appendTedaTag(tag) {
     el.value = `${current}\n• ${tag}`;
   }
 }
+
+// Safe stubs for removed TEDA modals & grabber
+function openTedaTvModal() { openTedaLinkInNewTab(); }
+function closeTedaTvModal() {}
+function openTedaManualSyncModal() {}
+function closeTedaManualSyncModal() {}
+function openTedaAiGrabberModal() {}
+function closeTedaAiGrabberModal() {}
+function autoAnalyzeTedaLink() { openTedaLinkInNewTab(); }
 
 // ─── AUTHENTIC DECRYPTED TEDA CLINICAL REPOSITORY ──────────────────────────
 // Pre-decrypted & verified clinical database for known TEDA WellScan reports
@@ -4543,1229 +4489,6 @@ function applyTedaReportToUi(report, rawUrl) {
     jingluoText.textContent = (report.blockedJingluo && report.blockedJingluo.length)
       ? report.blockedJingluo.slice(0, 3).map(x => `${x.name} ${x.score != null ? (!isNaN(Number(x.score)) ? Number(x.score).toFixed(1) : x.score) : ''}`).join(', ')
       : (report.jingluoSummary || 'Smooth');
-  }
-}
-
-async function autoAnalyzeTedaLink() {
-  const linkEl = document.getElementById('encTedaLink');
-  const rawUrl = linkEl ? linkEl.value.trim() : '';
-  const statusEl = document.getElementById('tedaFetchStatus');
-  const btn = document.getElementById('fetchTedaBtn');
-
-  const rid = extractTedaRid(rawUrl);
-  if (!rid) {
-    alert('Please paste a valid TEDA WellScan report link or Report ID (containing "rid=...").\n\nExample: https://sg-report.qiaolz.com/#/pages/reportTv/reportTvMain?rid=8a6b0091-1449-42fa-9972-e2d87b4da5d6&lang=');
-    if (linkEl) linkEl.focus();
-    return;
-  }
-
-  if (btn) {
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Analyzing...';
-  }
-  if (statusEl) {
-    statusEl.className = 'text-[10px] text-amber-700 font-medium';
-    statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying & matching authentic TEDA report…';
-  }
-
-  try {
-    let report = null;
-
-    // 1. Direct match with verified reports map or local storage cache
-    if (typeof TEDA_KNOWN_REPORTS_MAP !== 'undefined' && TEDA_KNOWN_REPORTS_MAP[rid]) {
-      report = TEDA_KNOWN_REPORTS_MAP[rid];
-    } else {
-      try {
-        const lCache = JSON.parse(localStorage.getItem('pmg_teda_reports_cache') || '{}');
-        if (lCache[rid]) report = lCache[rid];
-      } catch (e) {}
-    }
-
-    // 2. If not pre-cached, attempt cryptographic direct fetch & decrypt
-    if (!report) {
-      try {
-        report = await fetchAndDecryptTedaReport(rid);
-        if (report && (report.immunityScore != null || report.healthScore != null || report.advice)) {
-          try {
-            const lCache = JSON.parse(localStorage.getItem('pmg_teda_reports_cache') || '{}');
-            lCache[rid] = report;
-            localStorage.setItem('pmg_teda_reports_cache', JSON.stringify(lCache));
-          } catch (e) {}
-        } else {
-          report = null;
-        }
-      } catch (directErr) {
-        console.warn('[TEDA Direct Decrypt Notice]: Direct API restricted:', directErr);
-        report = null;
-      }
-    }
-
-    // 3. If direct fetch could not decrypt (due to Qiaolz CORS / Referer restrictions), auto-synthesize via Clinical AI
-    if (!report || (!report.immunityScore && !report.advice)) {
-      if (statusEl) {
-        statusEl.className = 'text-[10px] text-indigo-700 font-medium';
-        statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Auto-grabbing authentic TEDA report & synthesizing findings via Clinical AI…';
-      }
-      report = await synthesizeTedaWithGeminiAi(rid, rawUrl);
-    }
-
-    applyTedaReportToUi(report, rawUrl);
-
-    if (statusEl) {
-      if (report.isFallback) {
-        statusEl.className = 'text-[10px] text-amber-800 font-bold';
-        statusEl.innerHTML = `
-          <div class="flex items-center justify-between gap-2 flex-wrap">
-            <span><i class="fa-solid fa-shield-halved text-amber-600"></i> Direct grab restricted by server. Use <b>AI Smart Grabber</b> (Ctrl+V screenshot/text) or <b>View TV</b>:</span>
-            <div class="flex items-center gap-1.5">
-              <button type="button" onclick="openTedaAiGrabberModal()" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-[10px] font-bold transition flex items-center gap-1 shadow-xs">
-                <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i> AI Smart Grabber
-              </button>
-              <button type="button" onclick="openTedaTvModal()" class="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-[10px] font-bold transition flex items-center gap-1 shadow-xs">
-                <i class="fa-solid fa-tv"></i> View TV
-              </button>
-            </div>
-          </div>
-        `;
-        openTedaTvModal();
-      } else {
-        statusEl.className = 'text-[10px] text-emerald-700 font-bold';
-        statusEl.innerHTML = `
-          <div class="flex items-center justify-between gap-2 flex-wrap">
-            <span><i class="fa-solid fa-circle-check text-emerald-600"></i> Authentic TEDA Report Auto-Grabbed &amp; Synced (Immunity ${report.immunityScore != null ? report.immunityScore : '—'}, Health ${report.healthScore != null ? report.healthScore : '—'})</span>
-            <button type="button" onclick="openTedaTvModal()" class="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-[10px] font-bold transition">
-              <i class="fa-solid fa-tv mr-1"></i> View TV
-            </button>
-          </div>
-        `;
-      }
-    }
-
-    checkTedaUrl(rawUrl);
-
-  } catch (err) {
-    console.error('[TEDA Auto-Analyze Error]', err);
-    if (statusEl) {
-      statusEl.className = 'text-[10px] text-rose-700 font-medium';
-      statusEl.innerHTML = '<i class="fa-solid fa-circle-exclamation text-rose-600"></i> Could not auto-analyze. Please open View TV to inspect report.';
-    }
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fa-solid fa-bolt text-yellow-300"></i> Auto-Analyze Link';
-    }
-  }
-}
-
-/**
- * Safe clinical fallback when TEDA direct API is restricted by Qiaolz anti-hotlink headers
- */
-function getTedaClinicalFallbackReport(rid, rawUrl) {
-  return {
-    rid,
-    isFallback: true,
-    reportDate: getTodayDateString(0),
-    immunityScore: null,
-    healthScore: null,
-    advice: '【需从TV核验】',
-    subHealthZangfu: [],
-    subHealthTizhi: [],
-    blockedJingluo: [],
-    spinePressure: [],
-    zangfuSummary: '请在上方点击 "View TV" 查看实时评估数据，并点击 "Quick Sync" 同步至病历。',
-    tizhiSummary: '待从实时报告同步',
-    jingluoSummary: '待从实时报告同步'
-  };
-}
-
-/**
- * Gemini AI Synthesis for authentic TEDA TCM impressions and scores
- */
-async function synthesizeTedaWithGeminiAi(rid, rawUrl) {
-  const patientSelect = document.getElementById('encounterPatientSelect');
-  const patientId = patientSelect ? patientSelect.value : null;
-  const p = (typeof patientsData !== 'undefined' && Array.isArray(patientsData))
-    ? (patientsData.find(pt => pt.id === patientId) || {})
-    : {};
-
-  const name = p.name || 'Patient';
-  const age = p.age || 42;
-  const gender = p.gender || 'Male';
-  const conds = (p.conditions || []).join(', ') || 'Metabolic health review';
-  const bpSys = document.getElementById('encBpSys')?.value || '';
-  const bpDia = document.getElementById('encBpDia')?.value || '';
-  const tc = document.getElementById('encTc')?.value || '';
-  const tg = document.getElementById('encTg')?.value || '';
-  const fbg = document.getElementById('encGlucose')?.value || '';
-  const bmi = document.getElementById('encBmi')?.value || '';
-  const vf = document.getElementById('encVisceralFat')?.value || '';
-
-  const apiKey = (localStorage.getItem('pmg_gemini_key') || '').trim();
-
-  if (apiKey) {
-    try {
-      const prompt = `You are an Integrative Clinical Pharmacist and TCM Specialist at PMG Pharmacy in Malaysia analyzing a patient's TEDA TCM Pulse & Meridian Scan (Report ID: ${rid}, Web link: ${rawUrl}).
-Patient: ${gender}, ${age} yrs, Clinical Conditions: ${conds}.
-Current Vitals & Lab Profile: BP ${bpSys && bpDia ? bpSys + '/' + bpDia : 'Normal'}, FBG ${fbg ? fbg + ' mmol/L' : 'Normal'}, TC ${tc ? tc + ' mmol/L' : 'Normal'}, TG ${tg ? tg + ' mmol/L' : 'Normal'}, BMI ${bmi || 'N/A'}, Visceral Fat ${vf || 'N/A'}.
-
-Perform a clinical and TCM physiological analysis to auto-grab and generate the authentic TEDA TCM scan profile.
-Return strictly valid JSON:
-{
-  "immunityScore": 76,
-  "healthScore": 82,
-  "advice": "【综合调理原则】疏肝健脾，活血化瘀",
-  "zangfuSummary": "肝气稍郁，脾虚湿热",
-  "tizhiSummary": "平和质兼气虚湿热偏颇",
-  "jingluoSummary": "足厥阴肝经、足太阴脾经稍有阻滞",
-  "subHealthZangfu": [
-    {"name": "肝", "score": 3.8},
-    {"name": "脾", "score": 3.5},
-    {"name": "胃", "score": 3.2}
-  ],
-  "subHealthTizhi": [
-    {"name": "气虚质", "score": 3.9},
-    {"name": "痰湿质", "score": 3.5}
-  ],
-  "blockedJingluo": [
-    {"name": "足厥阴肝经", "score": 3.6},
-    {"name": "足太阴脾经", "score": 3.4}
-  ],
-  "spinePressure": [
-    {"name": "颈椎C3-C5", "score": 3.2},
-    {"name": "腰椎L4-L5", "score": 3.6}
-  ]
-}`;
-
-      const primaryModel = typeof AUDIT_PRIMARY_MODEL !== 'undefined' ? AUDIT_PRIMARY_MODEL : 'gemini-3.5-flash-lite';
-      const secondaryModel = typeof AUDIT_SECONDARY_MODEL !== 'undefined' ? AUDIT_SECONDARY_MODEL : 'gemini-3.5-flash';
-      const tertiaryModel = typeof AUDIT_TERTIARY_MODEL !== 'undefined' ? AUDIT_TERTIARY_MODEL : 'gemini-3.1-flash-lite';
-      const models = [primaryModel, secondaryModel, tertiaryModel, 'gemini-2.5-flash', 'gemini-1.5-flash'];
-
-      for (const m of models) {
-        try {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
-            })
-          });
-          if (res.ok) {
-            const data = await res.json();
-            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (text) {
-              const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-              const parsed = JSON.parse(cleanText);
-              if (parsed) {
-                return {
-                  rid,
-                  reportDate: getTodayDateString(0),
-                  immunityScore: parsed.immunityScore || 78,
-                  healthScore: parsed.healthScore || 82,
-                  advice: parsed.advice || '【综合调理原则】疏肝理气，调补气血',
-                  subHealthZangfu: parsed.subHealthZangfu || [],
-                  subHealthTizhi: parsed.subHealthTizhi || [],
-                  blockedJingluo: parsed.blockedJingluo || [],
-                  spinePressure: parsed.spinePressure || [],
-                  zangfuSummary: parsed.zangfuSummary || '',
-                  tizhiSummary: parsed.tizhiSummary || '',
-                  jingluoSummary: parsed.jingluoSummary || '',
-                  raw: parsed
-                };
-              }
-            }
-          }
-        } catch (e) {
-          console.warn(`[TEDA AI Analysis] Model ${m} error:`, e);
-        }
-      }
-    } catch (err) {
-      console.warn('[TEDA AI Synthesis Error]:', err);
-    }
-  }
-
-  return getTedaClinicalFallbackReport(rid, rawUrl);
-}
-
-function openTedaTvModal() {
-  const linkEl = document.getElementById('encTedaLink');
-  let url = linkEl ? linkEl.value.trim() : '';
-  if (!url) {
-    const tedaEl = document.getElementById('encTeda');
-    const match = tedaEl ? tedaEl.value.match(/(https?:\/\/[^\s]+)/) : null;
-    if (match) url = match[1];
-  }
-  if (!url) {
-    alert('Please paste a TEDA web report link first (e.g. https://sg-report.qiaolz.com/#/pages/reportTv/reportTvMain?rid=...)');
-    return;
-  }
-  const modal = document.getElementById('tedaTvModal');
-  const iframe = document.getElementById('tedaTvIframe');
-  const ridBadge = document.getElementById('tedaTvModalRidBadge');
-  const extLink = document.getElementById('tedaTvExternalLink');
-  const rid = extractTedaRid(url) || 'Live Report';
-
-  if (ridBadge) ridBadge.textContent = `ID: ${rid}`;
-  if (extLink) extLink.href = url;
-  if (iframe) iframe.src = url;
-  if (modal) modal.classList.remove('hidden');
-}
-
-function closeTedaTvModal() {
-  const modal = document.getElementById('tedaTvModal');
-  const iframe = document.getElementById('tedaTvIframe');
-  if (iframe) iframe.src = '';
-  if (modal) modal.classList.add('hidden');
-}
-
-/**
- * 1-Click Quick Sync from the Live TV viewer into PMG Hub Encounter Notes
- */
-function quickSyncTedaFromViewer() {
-  const linkEl = document.getElementById('encTedaLink');
-  let url = linkEl ? normalizeTedaUrl(linkEl.value) : '';
-  if (!url) {
-    const tedaEl = document.getElementById('encTeda');
-    const match = tedaEl ? tedaEl.value.match(/(https?:\/\/[^\s]+)/) : null;
-    if (match) url = match[1];
-  }
-  const rid = extractTedaRid(url);
-  if (!rid) {
-    alert('Please enter or attach a valid TEDA report link first.');
-    return;
-  }
-
-  // 1. Check known repository
-  let report = (typeof TEDA_KNOWN_REPORTS_MAP !== 'undefined') ? TEDA_KNOWN_REPORTS_MAP[rid] : null;
-  // 2. Check local storage cache
-  if (!report) {
-    try {
-      const lCache = JSON.parse(localStorage.getItem('pmg_teda_reports_cache') || '{}');
-      if (lCache[rid]) report = lCache[rid];
-    } catch (e) {}
-  }
-
-  if (report) {
-    applyTedaReportToUi(report, url);
-    closeTedaTvModal();
-    if (typeof showToast === 'function') {
-      showToast(`⚡ Authentic TEDA data synced: Immunity ${report.immunityScore}, Health ${report.healthScore}, ${report.advice}!`);
-    } else {
-      alert(`⚡ Synced TEDA data:\n• Immunity: ${report.immunityScore}/100\n• Health: ${report.healthScore}/100\n• Advice: ${report.advice}`);
-    }
-  } else {
-    // Open Quick Sync editor modal
-    openTedaManualSyncModal(rid, url);
-  }
-}
-
-/**
- * Open manual quick sync / edit modal for TEDA values
- */
-function openTedaManualSyncModal(customRid, customUrl) {
-  const linkEl = document.getElementById('encTedaLink');
-  const rawUrl = customUrl || (linkEl ? normalizeTedaUrl(linkEl.value) : '');
-  const rid = customRid || extractTedaRid(rawUrl) || '';
-
-  const modal = document.getElementById('tedaManualSyncModal');
-  if (!modal) return;
-
-  // Prepopulate if existing report is available
-  let report = window._cachedTedaReport;
-  if (!report && rid && typeof TEDA_KNOWN_REPORTS_MAP !== 'undefined' && TEDA_KNOWN_REPORTS_MAP[rid]) {
-    report = TEDA_KNOWN_REPORTS_MAP[rid];
-  }
-  if (!report && rid) {
-    try {
-      const lCache = JSON.parse(localStorage.getItem('pmg_teda_reports_cache') || '{}');
-      if (lCache[rid]) report = lCache[rid];
-    } catch (e) {}
-  }
-
-  const ridEl = document.getElementById('tedaSyncRidDisplay');
-  const healthEl = document.getElementById('tedaSyncHealth');
-  const immEl = document.getElementById('tedaSyncImmunity');
-  const adviceEl = document.getElementById('tedaSyncAdvice');
-  const zangfuEl = document.getElementById('tedaSyncZangfu');
-  const tizhiEl = document.getElementById('tedaSyncTizhi');
-  const jingluoEl = document.getElementById('tedaSyncJingluo');
-  const spineEl = document.getElementById('tedaSyncSpine');
-
-  if (ridEl) ridEl.textContent = rid || 'Unknown Report ID';
-  const hasRealData = report && !report.isFallback;
-  if (healthEl) healthEl.value = (hasRealData && report.healthScore != null) ? report.healthScore : '';
-  if (immEl) immEl.value = (hasRealData && report.immunityScore != null) ? report.immunityScore : '';
-  if (adviceEl) adviceEl.value = (hasRealData && report.advice) ? report.advice : '';
-  if (zangfuEl) {
-    zangfuEl.value = (hasRealData && report.subHealthZangfu && report.subHealthZangfu.length)
-      ? report.subHealthZangfu.map(x => `${x.name} ${x.score != null ? x.score : ''}`).join(', ')
-      : (hasRealData ? (report.zangfuSummary || '') : '');
-  }
-  if (tizhiEl) {
-    tizhiEl.value = (hasRealData && report.subHealthTizhi && report.subHealthTizhi.length)
-      ? report.subHealthTizhi.map(x => `${x.name} ${x.score != null ? x.score : ''}`).join(', ')
-      : (hasRealData ? (report.tizhiSummary || '') : '');
-  }
-  if (jingluoEl) {
-    jingluoEl.value = (hasRealData && report.blockedJingluo && report.blockedJingluo.length)
-      ? report.blockedJingluo.map(x => `${x.name} ${x.score != null ? x.score : ''}`).join(', ')
-      : (hasRealData ? (report.jingluoSummary || '') : '');
-  }
-  if (spineEl) {
-    spineEl.value = (hasRealData && report.spinePressure && report.spinePressure.length)
-      ? report.spinePressure.map(x => `${x.name} ${x.score != null ? x.score : ''}`).join(', ')
-      : '';
-  }
-
-  modal.classList.remove('hidden');
-}
-
-function closeTedaManualSyncModal() {
-  const modal = document.getElementById('tedaManualSyncModal');
-  if (modal) modal.classList.add('hidden');
-}
-
-function selectTedaAdviceQuickTag(tag) {
-  const adviceEl = document.getElementById('tedaSyncAdvice');
-  if (adviceEl) adviceEl.value = tag;
-}
-
-function saveTedaManualSync() {
-  const linkEl = document.getElementById('encTedaLink');
-  const rawUrl = linkEl ? normalizeTedaUrl(linkEl.value) : '';
-  const rid = extractTedaRid(rawUrl) || 'custom-teda-report';
-
-  const healthScore = Number(document.getElementById('tedaSyncHealth')?.value) || 78;
-  const immunityScore = Number(document.getElementById('tedaSyncImmunity')?.value) || 58;
-  const advice = document.getElementById('tedaSyncAdvice')?.value.trim() || '【活血化瘀】';
-  const zangfuStr = document.getElementById('tedaSyncZangfu')?.value.trim() || '';
-  const tizhiStr = document.getElementById('tedaSyncTizhi')?.value.trim() || '';
-  const jingluoStr = document.getElementById('tedaSyncJingluo')?.value.trim() || '';
-  const spineStr = document.getElementById('tedaSyncSpine')?.value.trim() || '';
-
-  // Parse chips into structured array if formatted
-  const parseList = (str) => {
-    if (!str) return [];
-    return str.split(/[,，、]/).map(s => s.trim()).filter(Boolean).map(item => {
-      const match = item.match(/^(.*?)\s*([0-9.]+)?$/);
-      if (match) {
-        return { name: match[1].trim(), score: match[2] ? parseFloat(match[2]) : null };
-      }
-      return { name: item, score: null };
-    });
-  };
-
-  const structured = {
-    rid,
-    reportDate: getTodayDateString(0),
-    healthScore,
-    immunityScore,
-    advice,
-    zangfuSummary: zangfuStr,
-    tizhiSummary: tizhiStr,
-    jingluoSummary: jingluoStr,
-    subHealthZangfu: parseList(zangfuStr),
-    subHealthTizhi: parseList(tizhiStr),
-    blockedJingluo: parseList(jingluoStr),
-    spinePressure: parseList(spineStr)
-  };
-
-  applyTedaReportToUi(structured, rawUrl);
-  closeTedaManualSyncModal();
-  closeTedaTvModal();
-
-  if (typeof showToast === 'function') {
-    showToast(`⚡ TEDA Findings updated: Immunity ${immunityScore}, Health ${healthScore}, ${advice}`);
-  } else {
-    alert(`⚡ TEDA Findings updated:\n• Immunity: ${immunityScore}/100\n• Health: ${healthScore}/100\n• Advice: ${advice}`);
-  }
-}
-
-// ─── TEDA AI SMART GRABBER & MULTI-PAGE AUTO-CAPTURE ─────────────────────────
-let tedaMultiPageImages = []; // Array of { id, dataUrl, mimeType, label, timestamp }
-let currentTedaImageBase64 = null;
-let currentTedaImageMime = 'image/png';
-let tedaAiActiveTab = 'screenshot';
-window._lastTedaAiExtractedData = null;
-
-function openTedaAiGrabberModal() {
-  const modal = document.getElementById('tedaAiGrabberModal');
-  if (!modal) return;
-
-  // Pre-fill link input from encTedaLink if available
-  const encLink = document.getElementById('encTedaLink')?.value || '';
-  const modalLinkInput = document.getElementById('tedaAiModalLinkInput');
-  if (modalLinkInput) modalLinkInput.value = encLink;
-
-  // Clear previous extraction results
-  clearAllTedaPages();
-  const textInput = document.getElementById('tedaAiTextInput');
-  if (textInput) textInput.value = '';
-  const resultsPanel = document.getElementById('tedaAiResultsPanel');
-  if (resultsPanel) resultsPanel.classList.add('hidden');
-  const statusEl = document.getElementById('tedaAiStatus');
-  if (statusEl) { statusEl.classList.add('hidden'); statusEl.innerHTML = ''; }
-
-  switchTedaAiTab('screenshot');
-  modal.classList.remove('hidden');
-
-  // Attach global paste listener
-  window.removeEventListener('paste', handleGlobalTedaPaste);
-  window.addEventListener('paste', handleGlobalTedaPaste);
-}
-
-function closeTedaAiGrabberModal() {
-  const modal = document.getElementById('tedaAiGrabberModal');
-  if (modal) modal.classList.add('hidden');
-  window.removeEventListener('paste', handleGlobalTedaPaste);
-}
-
-function switchTedaAiTab(tab) {
-  tedaAiActiveTab = tab;
-  const btnShot = document.getElementById('tedaAiTabBtnScreenshot');
-  const btnText = document.getElementById('tedaAiTabBtnText');
-  const tabShot = document.getElementById('tedaAiTabScreenshot');
-  const tabText = document.getElementById('tedaAiTabText');
-
-  if (tab === 'screenshot') {
-    btnShot?.classList.add('border-indigo-600', 'text-indigo-700', 'font-bold');
-    btnShot?.classList.remove('border-transparent', 'text-gray-500');
-    btnText?.classList.add('border-transparent', 'text-gray-500');
-    btnText?.classList.remove('border-indigo-600', 'text-indigo-700', 'font-bold');
-    tabShot?.classList.remove('hidden');
-    tabText?.classList.add('hidden');
-  } else {
-    btnText?.classList.add('border-indigo-600', 'text-indigo-700', 'font-bold');
-    btnText?.classList.remove('border-transparent', 'text-gray-500');
-    btnShot?.classList.add('border-transparent', 'text-gray-500');
-    btnShot?.classList.remove('border-indigo-600', 'text-indigo-700', 'font-bold');
-    tabText?.classList.remove('hidden');
-    tabShot?.classList.add('hidden');
-  }
-}
-
-/**
- * 1-Click Native Screen / Tab Auto-Capture
- * Uses standard navigator.mediaDevices.getDisplayMedia to snapshot the screen or browser tab
- * without requiring the user to manually snip or save files!
- */
-async function autoCaptureTedaScreen() {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-    if (typeof showPmgToast === 'function') {
-      showPmgToast('Screen capture is not supported on this browser. Please use Chrome/Edge or paste with Ctrl+V.', 'warning');
-    } else {
-      alert('Screen capture is not supported in this browser. Please use Chrome/Edge or paste with Ctrl+V.');
-    }
-    return;
-  }
-
-  try {
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: { cursor: 'never' },
-      audio: false
-    });
-
-    const video = document.createElement('video');
-    video.srcObject = stream;
-    video.playsInline = true;
-    await video.play();
-
-    // Wait 350ms to ensure video stream renders a sharp frame
-    await new Promise(r => setTimeout(r, 350));
-
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    // Stop all media tracks immediately so recording indicator stops
-    stream.getTracks().forEach(track => track.stop());
-
-    const dataUrl = canvas.toDataURL('image/png', 0.95);
-    const count = tedaMultiPageImages.length;
-    const defaultLabels = [
-      'Overview & Scores (首页)',
-      '脏腑辨证 (Zang-Fu)',
-      '气血体质 (Constitution)',
-      '经络辨证 (Meridians)',
-      '脊柱评估 (Spine)',
-      '健康指导 (Advice)'
-    ];
-    const label = defaultLabels[count] || `Page ${count + 1}`;
-
-    addTedaMultiPageImage(dataUrl, 'image/png', label);
-
-    if (typeof showPmgToast === 'function') {
-      showPmgToast(`📸 Auto-captured "${label}"! Switch tabs in the report to capture more, or click "Extract & Interpret".`, 'success');
-    }
-
-  } catch (err) {
-    if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
-      console.error('[Auto-Capture Error]', err);
-      if (typeof showPmgToast === 'function') {
-        showPmgToast('Screen capture cancelled or error: ' + err.message, 'warning');
-      }
-    }
-  }
-}
-
-/**
- * Add an image to the multi-page collection
- */
-function addTedaMultiPageImage(dataUrl, mimeType = 'image/png', label = '') {
-  if (!dataUrl) return;
-  const id = 'teda_pg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
-  const count = tedaMultiPageImages.length;
-  const defaultLabels = [
-    'Overview & Scores (首页)',
-    '脏腑辨证 (Zang-Fu)',
-    '气血体质 (Constitution)',
-    '经络辨证 (Meridians)',
-    '脊柱评估 (Spine)',
-    '健康指导 (Advice)'
-  ];
-  const finalLabel = label || defaultLabels[count] || `Page ${count + 1}`;
-
-  tedaMultiPageImages.push({
-    id,
-    dataUrl,
-    mimeType: mimeType || 'image/png',
-    label: finalLabel,
-    timestamp: Date.now()
-  });
-
-  currentTedaImageBase64 = dataUrl;
-  currentTedaImageMime = mimeType || 'image/png';
-
-  renderTedaMultiPageGallery();
-}
-
-/**
- * Remove an individual page from the gallery
- */
-function removeTedaPageImage(id) {
-  tedaMultiPageImages = tedaMultiPageImages.filter(p => p.id !== id);
-  if (tedaMultiPageImages.length > 0) {
-    currentTedaImageBase64 = tedaMultiPageImages[tedaMultiPageImages.length - 1].dataUrl;
-    currentTedaImageMime = tedaMultiPageImages[tedaMultiPageImages.length - 1].mimeType;
-  } else {
-    currentTedaImageBase64 = null;
-  }
-  renderTedaMultiPageGallery();
-}
-
-/**
- * Update label for a specific captured page
- */
-function updateTedaPageLabel(id, newLabel) {
-  const item = tedaMultiPageImages.find(p => p.id === id);
-  if (item) item.label = newLabel;
-}
-
-/**
- * Clear all pages from the multi-page gallery
- */
-function clearAllTedaPages() {
-  tedaMultiPageImages = [];
-  currentTedaImageBase64 = null;
-  const fileInput = document.getElementById('tedaAiScreenshotInput');
-  if (fileInput) fileInput.value = '';
-  renderTedaMultiPageGallery();
-}
-
-function clearTedaScreenshot() {
-  clearAllTedaPages();
-}
-
-/**
- * Render the multi-page thumbnails grid and update page counts
- */
-function renderTedaMultiPageGallery() {
-  const container = document.getElementById('tedaMultiPageGalleryContainer');
-  const thumbGrid = document.getElementById('tedaMultiPageThumbnails');
-  const countBadge = document.getElementById('tedaPageCountBadge');
-  const extractCountBadge = document.getElementById('tedaAiExtractPageCount');
-  const tvBadge = document.getElementById('tedaTvCapturedCountBadge');
-  const clearBtn = document.getElementById('tedaClearAllPagesBtn');
-  const dropZone = document.getElementById('tedaAiDropZone');
-
-  const total = tedaMultiPageImages.length;
-
-  if (countBadge) countBadge.textContent = `${total} Page${total === 1 ? '' : 's'} Captured`;
-  if (extractCountBadge) extractCountBadge.textContent = `${total} Page${total === 1 ? '' : 's'}`;
-
-  if (tvBadge) {
-    if (total > 0) {
-      tvBadge.textContent = String(total);
-      tvBadge.classList.remove('hidden');
-    } else {
-      tvBadge.classList.add('hidden');
-    }
-  }
-
-  if (clearBtn) {
-    if (total > 0) clearBtn.classList.remove('hidden');
-    else clearBtn.classList.add('hidden');
-  }
-
-  if (total > 0) {
-    if (container) container.classList.remove('hidden');
-    if (dropZone) dropZone.classList.add('p-3', 'min-h-[70px]');
-    if (dropZone) dropZone.classList.remove('min-h-[130px]');
-  } else {
-    if (container) container.classList.add('hidden');
-    if (dropZone) dropZone.classList.remove('p-3', 'min-h-[70px]');
-    if (dropZone) dropZone.classList.add('min-h-[130px]');
-  }
-
-  if (!thumbGrid) return;
-  thumbGrid.innerHTML = '';
-
-  const tabOptions = [
-    'Overview & Scores (首页)',
-    '脏腑辨证 (Zang-Fu)',
-    '气血体质 (Constitution)',
-    '经络辨证 (Meridians)',
-    '脊柱评估 (Spine)',
-    '健康指导 (Advice)',
-    'Other Page'
-  ];
-
-  tedaMultiPageImages.forEach((pg, index) => {
-    const card = document.createElement('div');
-    card.className = 'bg-white rounded-xl border border-indigo-200 overflow-hidden shadow-xs flex flex-col relative group';
-
-    const optionsHtml = tabOptions.map(opt => `<option value="${opt}" ${pg.label === opt ? 'selected' : ''}>${opt}</option>`).join('');
-
-    card.innerHTML = `
-      <div class="relative bg-slate-900 h-28 flex items-center justify-center overflow-hidden">
-        <img src="${pg.dataUrl}" alt="${pg.label}" class="w-full h-full object-contain cursor-pointer hover:opacity-90 transition" onclick="window.open('${pg.dataUrl}', '_blank')">
-        <span class="absolute top-1.5 left-1.5 bg-slate-900/80 text-white font-mono text-[10px] px-1.5 py-0.5 rounded backdrop-blur-xs">
-          #${index + 1}
-        </span>
-        <button type="button" onclick="removeTedaPageImage('${pg.id}')" class="absolute top-1.5 right-1.5 bg-rose-600 hover:bg-rose-700 text-white w-6 h-6 rounded-full flex items-center justify-center text-[10px] shadow-sm transition active:scale-95" title="Remove this page">
-          <i class="fa-solid fa-trash"></i>
-        </button>
-      </div>
-      <div class="p-2 bg-slate-50 flex flex-col gap-1">
-        <select onchange="updateTedaPageLabel('${pg.id}', this.value)" class="w-full text-[11px] font-bold text-gray-800 bg-white border border-gray-300 rounded px-1.5 py-1 outline-none focus:border-indigo-500">
-          ${optionsHtml}
-        </select>
-      </div>
-    `;
-    thumbGrid.appendChild(card);
-  });
-}
-
-function handleGlobalTedaPaste(e) {
-  const modal = document.getElementById('tedaAiGrabberModal');
-  if (!modal || modal.classList.contains('hidden')) return;
-
-  const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
-  if (!items) return;
-
-  let handledImage = false;
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    if (item.type.indexOf('image') !== -1) {
-      const file = item.getAsFile();
-      if (file) {
-        e.preventDefault();
-        const reader = new FileReader();
-        reader.onload = function(ev) {
-          addTedaMultiPageImage(ev.target.result, file.type, `Page ${tedaMultiPageImages.length + 1}`);
-          switchTedaAiTab('screenshot');
-          if (typeof showPmgToast === 'function') {
-            showPmgToast(`📸 Added Page ${tedaMultiPageImages.length} to collection!`, 'success');
-          }
-        };
-        reader.readAsDataURL(file);
-        handledImage = true;
-      }
-    }
-  }
-  if (handledImage) return;
-
-  // If text is pasted and we are in text tab or no images yet
-  const text = e.clipboardData?.getData('text');
-  if (text && text.trim() && (tedaMultiPageImages.length === 0 || tedaAiActiveTab === 'text')) {
-    const textInput = document.getElementById('tedaAiTextInput');
-    if (textInput && document.activeElement !== textInput) {
-      textInput.value = text;
-      switchTedaAiTab('text');
-      if (typeof showPmgToast === 'function') {
-        showPmgToast('📝 Pasted report text into AI Grabber!', 'info');
-      }
-    }
-  }
-}
-
-function handleTedaScreenshotFile(files) {
-  if (!files || !files.length) return;
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    if (file && file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        addTedaMultiPageImage(e.target.result, file.type, `Page ${tedaMultiPageImages.length + 1}`);
-      };
-      reader.readAsDataURL(file);
-    }
-  }
-}
-
-function handleTedaScreenshotDrop(e) {
-  e.preventDefault();
-  e.stopPropagation();
-  const dropZone = document.getElementById('tedaAiDropZone');
-  if (dropZone) dropZone.classList.remove('border-indigo-500', 'bg-indigo-50/50');
-
-  const files = e.dataTransfer?.files;
-  if (files && files.length) {
-    handleTedaScreenshotFile(files);
-  }
-}
-
-function loadTedaImageFile(file) {
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    addTedaMultiPageImage(e.target.result, file.type || 'image/png', `Page ${tedaMultiPageImages.length + 1}`);
-  };
-  reader.readAsDataURL(file);
-}
-
-/**
- * ⚡ Direct Zero-Click Decryption of TEDA Report straight from server
- * Decrypts 100% of all interactive tabs (Zang-Fu, Meridians, Constitution, Spine, Advice)
- */
-async function runTedaDirectDecrypt() {
-  const linkInput = document.getElementById('tedaAiModalLinkInput');
-  const encLinkInput = document.getElementById('encTedaLink');
-  let rawUrl = (linkInput?.value || encLinkInput?.value || '').trim();
-
-  let rid = extractTedaRid(rawUrl);
-  if (!rid) {
-    const entered = prompt('⚡ Enter TEDA Report Link or RID (e.g. 8a6b0091-1449-42fa-9972-e2d87b4da5d6):', rawUrl || '');
-    if (entered && entered.trim()) {
-      rawUrl = entered.trim();
-      rid = extractTedaRid(rawUrl) || rawUrl;
-      if (linkInput) linkInput.value = rawUrl;
-    } else {
-      return;
-    }
-  }
-
-  const statusEl = document.getElementById('tedaAiStatus');
-  const resultsPanel = document.getElementById('tedaAiResultsPanel');
-  if (statusEl) {
-    statusEl.className = 'mt-2 p-3 rounded-xl text-xs flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-900';
-    statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-amber-600"></i> Connecting to TEDA server and decrypting all interactive sub-page payloads (Zang-Fu, Meridians, Constitution, Spine)...';
-    statusEl.classList.remove('hidden');
-  }
-
-  try {
-    const structured = await fetchAndDecryptTedaReport(rid);
-    if (!structured || (!structured.immunityScore && !structured.healthScore && !structured.advice)) {
-      throw new Error('Decrypted report did not contain standard score fields.');
-    }
-
-    // Set as last extracted data
-    window._lastTedaAiExtractedData = structured;
-
-    // Populate preview panel
-    const modelBadge = document.getElementById('tedaAiExtractedModelBadge');
-    if (modelBadge) modelBadge.textContent = 'Server Direct Decrypt (Zero-Loss)';
-
-    const resHealth = document.getElementById('tedaAiResHealth');
-    if (resHealth) resHealth.textContent = structured.healthScore != null ? `${structured.healthScore} / 100` : '—';
-
-    const resImm = document.getElementById('tedaAiResImmunity');
-    if (resImm) {
-      const imm = structured.immunityScore;
-      const isSub = imm != null && Number(imm) < 50;
-      resImm.className = isSub ? 'text-lg font-black text-rose-600' : 'text-lg font-black text-emerald-600';
-      resImm.textContent = imm != null ? `${imm} / 100 ${isSub ? '(亚健康)' : '(正常)'}` : '—';
-    }
-
-    const resAdvice = document.getElementById('tedaAiResAdvice');
-    if (resAdvice) resAdvice.textContent = structured.advice || '—';
-
-    const resZangfu = document.getElementById('tedaAiResZangfu');
-    if (resZangfu) {
-      if (Array.isArray(structured.subHealthZangfu) && structured.subHealthZangfu.length > 0) {
-        resZangfu.textContent = structured.subHealthZangfu.map(x => `${x.name} ${x.score != null ? (!isNaN(Number(x.score)) ? Number(x.score).toFixed(1) : x.score) : ''}`).join(', ');
-      } else {
-        resZangfu.textContent = structured.zangfuSummary || '正常';
-      }
-    }
-
-    const resTizhi = document.getElementById('tedaAiResTizhi');
-    if (resTizhi) {
-      if (Array.isArray(structured.subHealthTizhi) && structured.subHealthTizhi.length > 0) {
-        resTizhi.textContent = structured.subHealthTizhi.map(x => `${x.name} ${x.score != null ? (!isNaN(Number(x.score)) ? Number(x.score).toFixed(1) : x.score) : ''}`).join(', ');
-      } else {
-        resTizhi.textContent = structured.tizhiSummary || '平和质';
-      }
-    }
-
-    const resJingluo = document.getElementById('tedaAiResJingluo');
-    if (resJingluo) {
-      if (Array.isArray(structured.blockedJingluo) && structured.blockedJingluo.length > 0) {
-        resJingluo.textContent = structured.blockedJingluo.map(x => `${x.name} ${x.score != null ? (!isNaN(Number(x.score)) ? Number(x.score).toFixed(1) : x.score) : ''}`).join(', ');
-      } else {
-        resJingluo.textContent = structured.jingluoSummary || '畅通';
-      }
-    }
-
-    const resSpine = document.getElementById('tedaAiResSpine');
-    if (resSpine) {
-      if (Array.isArray(structured.spinePressure) && structured.spinePressure.length > 0) {
-        resSpine.textContent = structured.spinePressure.map(x => `${x.name} ${x.score != null ? (!isNaN(Number(x.score)) ? Number(x.score).toFixed(1) : x.score) : ''}`).join(', ');
-      } else {
-        resSpine.textContent = structured.jizhuSummary || '正常无显著受压';
-      }
-    }
-
-    const resGuidance = document.getElementById('tedaAiResGuidance');
-    if (resGuidance) {
-      resGuidance.textContent = structured.advice ? '根据上述脏腑虚实与经络淤堵，建议予以针对性调理，配合生活作息改善与药膳建议。' : '—';
-    }
-
-    if (statusEl) {
-      statusEl.className = 'mt-2 p-3 rounded-xl text-xs flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800';
-      statusEl.innerHTML = '<i class="fa-solid fa-circle-check text-emerald-600"></i> Direct Decryption successful! All 100% authentic interactive pages decrypted from server without screenshots. Click "Apply to Consultation Form" below.';
-    }
-
-    if (resultsPanel) resultsPanel.classList.remove('hidden');
-
-    if (typeof showPmgToast === 'function') {
-      showPmgToast('⚡ TEDA Report decrypted with 100% precision from server!', 'success');
-    }
-
-  } catch (err) {
-    console.warn('[Direct Decrypt Notice]:', err);
-    if (statusEl) {
-      statusEl.className = 'mt-2 p-3 rounded-xl text-xs flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-900';
-      statusEl.innerHTML = '<i class="fa-solid fa-circle-info text-amber-600"></i> Server direct fetch was restricted by browser domain rules. Please use the <b>📸 1-Click Auto-Capture</b> button above to capture the interactive tabs.';
-    }
-  }
-}
-
-/**
- * Run Gemini AI Vision Multimodal Extraction across ALL captured pages simultaneously
- */
-async function runTedaAiGrabber() {
-  const btn = document.getElementById('runTedaAiBtn');
-  const statusEl = document.getElementById('tedaAiStatus');
-  const resultsPanel = document.getElementById('tedaAiResultsPanel');
-
-  const apiKey = (localStorage.getItem('pmg_gemini_key') || '').trim()
-    || (document.getElementById('geminiApiKey')?.value || '').trim();
-
-  if (!apiKey) {
-    const entered = prompt('🔑 Please enter your Google Gemini API Key to enable AI Vision extraction:\n\n(Key will be securely saved in this browser)', '');
-    if (entered && entered.trim()) {
-      localStorage.setItem('pmg_gemini_key', entered.trim());
-      const keyEl = document.getElementById('geminiApiKey');
-      if (keyEl) keyEl.value = entered.trim();
-    } else {
-      alert('A Google Gemini API Key is required for AI Vision extraction. Please enter your API Key.');
-      return;
-    }
-  }
-
-  const effectiveApiKey = (localStorage.getItem('pmg_gemini_key') || '').trim();
-
-  // Validate input
-  const textInputVal = (document.getElementById('tedaAiTextInput')?.value || '').trim();
-  const hasImages = tedaMultiPageImages.length > 0 || !!currentTedaImageBase64;
-
-  if (tedaAiActiveTab === 'screenshot' && !hasImages) {
-    if (textInputVal) {
-      switchTedaAiTab('text');
-    } else {
-      alert('Please click "📸 1-Click Auto-Capture" or paste a screenshot (Ctrl+V) of the TEDA report first.');
-      return;
-    }
-  } else if (tedaAiActiveTab === 'text' && !textInputVal) {
-    if (hasImages) {
-      switchTedaAiTab('screenshot');
-    } else {
-      alert('Please paste the copied text from the TEDA report.');
-      return;
-    }
-  }
-
-  const totalPages = tedaMultiPageImages.length || (currentTedaImageBase64 ? 1 : 0);
-
-  if (btn) {
-    btn.disabled = true;
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Interpreting ${totalPages} Page${totalPages === 1 ? '' : 's'} via Gemini AI...`;
-  }
-  if (statusEl) {
-    statusEl.className = 'mt-2 p-3 rounded-xl text-xs flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-900';
-    statusEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-indigo-600"></i> Reading and cross-referencing all ${totalPages} interactive pages with Gemini Vision AI…`;
-    statusEl.classList.remove('hidden');
-  }
-  if (resultsPanel) resultsPanel.classList.add('hidden');
-
-  const multiPageSystemPrompt = `You are an expert Clinical Pharmacist and TCM Diagnostic Specialist at PMG Pharmacy in Malaysia.
-You are analyzing authentic images/pages from an interactive TEDA TCM Pulse & Meridian Scan Report (经络评估 / 脏腑辩证 / 脉诊健康评估 / 脊柱评估 / 气血体质辨识).
-
-The user has captured multiple interactive tabs from the web report:
-- Overview / 首页 (Immunity score, Health score, general advice)
-- 脏腑辨证 (Zang-Fu 10 organs: Liver 肝, Heart 心, Spleen 脾, Lung 肺, Kidney 肾, Gallbladder 胆, Stomach 胃, Large Intestine 大肠, Small Intestine 小肠, Bladder 膀胱)
-- 气血体质辨识 (10 Constitution types: Balanced 平和, Qi deficiency 气虚, Yang deficiency 阳虚, Yin deficiency 阴虚, Phlegm-damp 痰湿, Damp-heat 湿热, Blood stasis 血瘀, Qi stagnation 气郁, Allergic 特禀)
-- 经络辨证 (14 Meridians: Lung, Large Intestine, Stomach, Spleen, Heart, Small Intestine, Bladder, Kidney, Pericardium, Triple Burner, Gallbladder, Liver, Du, Ren)
-- 脊柱受压评估 (Spine vertebrae pressure: Cervical C1-C7, Thoracic T1-T12, Lumbar L1-L5, Sacrum)
-- 调理指导 / 建议 (Diet, lifestyle, sleep, exercise, herbal supplements)
-
-Carefully cross-reference ALL provided images and synthesize ALL authentic findings across all pages into a single, cohesive, exhaustive clinical diagnosis JSON.
-
-Return strictly valid JSON with this format:
-{
-  "immunityScore": number or null (e.g. 58. Look for 免疫力 / 免疫力指数),
-  "healthScore": number or null (e.g. 78. Look for 健康指数 / 身心健康指数),
-  "advice": string (核心调理原则 / 专家建议 / 调理方案, e.g. "【调理原则】疏肝理气，健脾和胃"),
-  "zangfuSummary": string (脏腑辩证总结, e.g. "脾虚湿盛，肝郁化火"),
-  "tizhiSummary": string (气血体质辨识总结, e.g. "气虚质偏颇兼痰湿"),
-  "jingluoSummary": string (经络淤堵总结, e.g. "足太阴脾经、足厥阴肝经阻滞"),
-  "spineSummary": string (脊柱评估总结, e.g. "胸椎TH6及颈椎C6受压偏高"),
-  "subHealthZangfu": [
-    {"name": "脾", "score": 6.6, "level": "亚健康"},
-    {"name": "肾", "score": 7.4, "level": "正常"}
-  ],
-  "subHealthTizhi": [
-    {"name": "气虚质", "score": 6.0, "level": "亚健康"},
-    {"name": "痰湿质", "score": 7.3, "level": "轻度偏颇"}
-  ],
-  "blockedJingluo": [
-    {"name": "足太阴脾经", "score": 5.9, "level": "淤堵"},
-    {"name": "足厥阴肝经", "score": 6.0, "level": "阻滞"}
-  ],
-  "spinePressure": [
-    {"name": "TH6(胸椎)", "score": 7.6, "level": "受压"},
-    {"name": "C6(颈椎)", "score": 7.6, "level": "受压"}
-  ],
-  "pharmacistRecommendations": [
-    "健脾祛湿，建议选用白术、茯苓、山药等药食同源配方",
-    "注意劳逸结合，避免熬夜伤肝",
-    "针对TH6胸椎受压，建议保持端正坐姿，配合适度肩背拉伸"
-  ]
-}
-
-CRITICAL RULES:
-- Output authentic numbers and organ names exactly as shown on the images.
-- Do NOT fabricate or estimate any scores.
-- If a metric is visible in any of the provided images, extract it!
-- Return ONLY valid JSON, no markdown formatting or commentary.`;
-
-  const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
-  let parsedResult = null;
-  let successfulModel = '';
-
-  for (const model of models) {
-    try {
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveApiKey}`;
-      let parts = [{ text: multiPageSystemPrompt }];
-
-      if (tedaAiActiveTab === 'screenshot' && hasImages) {
-        if (tedaMultiPageImages.length > 0) {
-          tedaMultiPageImages.forEach((img, idx) => {
-            const rawBase64 = img.dataUrl.replace(/^data:[^;]+;base64,/, '');
-            parts.push({
-              text: `--- PAGE ${idx + 1} (${img.label || 'Tab ' + (idx + 1)}) ---`
-            });
-            parts.push({
-              inlineData: {
-                mimeType: img.mimeType || 'image/png',
-                data: rawBase64
-              }
-            });
-          });
-        } else if (currentTedaImageBase64) {
-          const rawBase64 = currentTedaImageBase64.replace(/^data:[^;]+;base64,/, '');
-          parts.push({
-            inlineData: {
-              mimeType: currentTedaImageMime,
-              data: rawBase64
-            }
-          });
-        }
-      } else {
-        parts.push({
-          text: `Report Text to parse:\n${textInputVal}`
-        });
-      }
-
-      const payload = {
-        contents: [{ parts }],
-        generationConfig: {
-          response_mime_type: "application/json"
-        }
-      };
-
-      const res = await fetch(geminiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      const resData = await res.json();
-      if (!res.ok || resData.error || !resData.candidates || !resData.candidates[0]) {
-        throw new Error(resData.error?.message || `Model ${model} returned empty.`);
-      }
-
-      const rawText = resData.candidates[0].content?.parts?.[0]?.text || '';
-      const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-      parsedResult = JSON.parse(cleanJson);
-      successfulModel = model;
-      break;
-    } catch (modelErr) {
-      console.warn(`[TEDA AI Grabber] ${model} attempt error:`, modelErr);
-    }
-  }
-
-  if (!parsedResult) {
-    if (statusEl) {
-      statusEl.className = 'mt-2 p-3 rounded-xl text-xs flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-800';
-      statusEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-rose-600"></i> AI extraction failed. Please ensure the captured screenshots clearly show the TEDA report values and your Gemini API key is valid.';
-    }
-    if (btn) {
-      btn.disabled = false;
-      btn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i> Extract &amp; Interpret All Pages via AI (${totalPages} Pages)`;
-    }
-    return;
-  }
-
-  // Store parsed result
-  window._lastTedaAiExtractedData = parsedResult;
-
-  // Populate preview panel
-  const modelBadge = document.getElementById('tedaAiExtractedModelBadge');
-  if (modelBadge) modelBadge.textContent = `${successfulModel} (${totalPages} pg)`;
-
-  const resHealth = document.getElementById('tedaAiResHealth');
-  if (resHealth) resHealth.textContent = parsedResult.healthScore != null ? `${parsedResult.healthScore} / 100` : '—';
-
-  const resImm = document.getElementById('tedaAiResImmunity');
-  if (resImm) {
-    const imm = parsedResult.immunityScore;
-    const isSub = imm != null && Number(imm) < 50;
-    resImm.className = isSub ? 'text-lg font-black text-rose-600' : 'text-lg font-black text-emerald-600';
-    resImm.textContent = imm != null ? `${imm} / 100 ${isSub ? '(亚健康)' : '(正常)'}` : '—';
-  }
-
-  const resAdvice = document.getElementById('tedaAiResAdvice');
-  if (resAdvice) resAdvice.textContent = parsedResult.advice || '—';
-
-  const resZangfu = document.getElementById('tedaAiResZangfu');
-  if (resZangfu) {
-    if (Array.isArray(parsedResult.subHealthZangfu) && parsedResult.subHealthZangfu.length > 0) {
-      resZangfu.textContent = parsedResult.subHealthZangfu.map(x => `${x.name} ${x.score != null ? x.score : ''}`).join(', ');
-    } else {
-      resZangfu.textContent = parsedResult.zangfuSummary || '正常';
-    }
-  }
-
-  const resTizhi = document.getElementById('tedaAiResTizhi');
-  if (resTizhi) {
-    if (Array.isArray(parsedResult.subHealthTizhi) && parsedResult.subHealthTizhi.length > 0) {
-      resTizhi.textContent = parsedResult.subHealthTizhi.map(x => `${x.name} ${x.score != null ? x.score : ''}`).join(', ');
-    } else {
-      resTizhi.textContent = parsedResult.tizhiSummary || '平和质';
-    }
-  }
-
-  const resJingluo = document.getElementById('tedaAiResJingluo');
-  if (resJingluo) {
-    if (Array.isArray(parsedResult.blockedJingluo) && parsedResult.blockedJingluo.length > 0) {
-      resJingluo.textContent = parsedResult.blockedJingluo.map(x => `${x.name} ${x.score != null ? x.score : ''}`).join(', ');
-    } else {
-      resJingluo.textContent = parsedResult.jingluoSummary || '畅通';
-    }
-  }
-
-  const resSpine = document.getElementById('tedaAiResSpine');
-  if (resSpine) {
-    if (Array.isArray(parsedResult.spinePressure) && parsedResult.spinePressure.length > 0) {
-      resSpine.textContent = parsedResult.spinePressure.map(x => `${x.name} ${x.score != null ? x.score : ''}`).join(', ');
-    } else {
-      resSpine.textContent = parsedResult.spineSummary || '正常无显著受压';
-    }
-  }
-
-  const resGuidance = document.getElementById('tedaAiResGuidance');
-  if (resGuidance) {
-    if (Array.isArray(parsedResult.pharmacistRecommendations) && parsedResult.pharmacistRecommendations.length > 0) {
-      resGuidance.textContent = parsedResult.pharmacistRecommendations.join('； ');
-    } else {
-      resGuidance.textContent = '建议按调理原则予以针对性改善生活起居与药膳调养。';
-    }
-  }
-
-  if (statusEl) {
-    statusEl.className = 'mt-2 p-3 rounded-xl text-xs flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800';
-    statusEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-600"></i> Successfully extracted and interpreted all ${totalPages} pages via ${successfulModel}! Click "Apply to Consultation Form" below to save.`;
-  }
-
-  if (resultsPanel) resultsPanel.classList.remove('hidden');
-
-  if (btn) {
-    btn.disabled = false;
-    btn.innerHTML = `<i class="fa-solid fa-rotate-right mr-1"></i> Re-Extract &amp; Interpret All (${totalPages} Pages)`;
-  }
-}
-
-function applyTedaAiGrabbedData() {
-  const data = window._lastTedaAiExtractedData;
-  if (!data) return;
-
-  const rawUrl = (document.getElementById('tedaAiModalLinkInput')?.value || document.getElementById('encTedaLink')?.value || '').trim();
-  const rid = extractTedaRid(rawUrl) || ('teda-' + Date.now());
-
-  // Also sync link back to encounter form if provided in modal
-  if (rawUrl) {
-    const mainLinkEl = document.getElementById('encTedaLink');
-    if (mainLinkEl) mainLinkEl.value = rawUrl;
-  }
-
-  const structured = {
-    rid,
-    reportDate: getTodayDateString(0),
-    immunityScore: data.immunityScore,
-    healthScore: data.healthScore,
-    advice: data.advice || '',
-    zangfuSummary: data.zangfuSummary || '',
-    tizhiSummary: data.tizhiSummary || '',
-    jingluoSummary: data.jingluoSummary || '',
-    spineSummary: data.spineSummary || '',
-    subHealthZangfu: data.subHealthZangfu || [],
-    subHealthTizhi: data.subHealthTizhi || [],
-    blockedJingluo: data.blockedJingluo || [],
-    spinePressure: data.spinePressure || [],
-    pharmacistRecommendations: data.pharmacistRecommendations || [],
-    isAiExtracted: true
-  };
-
-  applyTedaReportToUi(structured, rawUrl);
-  checkTedaUrl(rawUrl);
-
-  const statusEl = document.getElementById('tedaFetchStatus');
-  if (statusEl) {
-    statusEl.className = 'text-[10px] text-emerald-700 font-bold';
-    statusEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-600"></i> Authentic TEDA Findings Captured &amp; Interpreted via AI (Immunity: ${data.immunityScore ?? '—'}, Health: ${data.healthScore ?? '—'})`;
-  }
-
-  closeTedaAiGrabberModal();
-
-  if (typeof showPmgToast === 'function') {
-    showPmgToast('✅ Multi-page authentic TEDA findings captured and applied to consultation!', 'success');
-  } else {
-    alert('✅ Multi-page authentic TEDA findings captured and applied to consultation!');
   }
 }
 
@@ -10090,34 +8813,71 @@ async function pushBookingToCloud(bookingData) {
  * (e.g. Scheduled -> Completed / Missed / Approved).
  * Keeps cross-device status synchronized and prevents Completed appointments from reverting on refresh.
  */
-async function updateAppointmentStatusInCloud(appointmentId, newStatus, branchCode) {
+async function updateAppointmentStatusInCloud(appointmentId, newStatus, branchCode, aptData = null, patientData = null) {
   if (!PMG_SCHEDULE_API_URL || !appointmentId) return false;
   try {
     const branch = normalizeBranchCode(branchCode || 'Kota Sentosa');
-    const sched = (await fetchScheduleFromSheets(branch)) || getPharmacistSchedule(branch) || {};
-    if (!Array.isArray(sched.onlineBookings)) {
-      sched.onlineBookings = [];
-    }
-    const idx = sched.onlineBookings.findIndex(b => (b.id && b.id === appointmentId) || (b.ref && b.ref === appointmentId));
-    if (idx >= 0) {
-      sched.onlineBookings[idx].status = newStatus;
-      sched.onlineBookings[idx].statusUpdatedAt = new Date().toISOString();
-      const session = typeof getSession === 'function' ? getSession() : null;
-      const payload = {
+    const session = typeof getSession === 'function' ? getSession() : null;
+    const nowIso = new Date().toISOString();
+
+    const postPayload = {
+      action: 'updateAppointmentStatus',
+      appointmentId: appointmentId,
+      status: newStatus,
+      statusUpdatedAt: nowIso,
+      branch: branch,
+      updatedBy: (session && session.displayName) || 'Pharmacist',
+      appointment: {
+        id: appointmentId,
+        patientId: (patientData && patientData.id) || '',
+        patientName: (patientData && patientData.name) || '',
+        patientPhone: (patientData && patientData.phone) || '',
+        patientIc: (patientData && patientData.ic) || '',
         branch: branch,
-        schedule: sched,
-        updatedBy: (session && session.displayName) || 'Pharmacist'
-      };
-      await fetch(PMG_SCHEDULE_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload),
-        redirect: 'follow'
-      });
-      console.log(`[PMG Cloud] Updated appointment ${appointmentId} to ${newStatus} in cloud.`);
-      return true;
-    }
-    return false;
+        date: (aptData && aptData.date) || getTodayDateString(0),
+        time: (aptData && aptData.time) || '',
+        purpose: (aptData && aptData.purpose) || (aptData && aptData.service) || 'Consultation',
+        service: (aptData && aptData.service) || (aptData && aptData.purpose) || 'Consultation',
+        pharmacist: (aptData && aptData.pharmacist) || (session && session.displayName) || 'William Chai (Pharmacist)',
+        status: newStatus,
+        notes: (aptData && aptData.notes) || '',
+        bookingType: (aptData && aptData.bookingType) || 'in_person',
+        createdAt: (aptData && aptData.createdAt) || nowIso
+      }
+    };
+
+    // 1. Post to update Appointment in Patient_Appointments tab on Google Sheets
+    await fetch(PMG_SCHEDULE_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(postPayload),
+      redirect: 'follow'
+    });
+
+    // 2. Also keep PharmacistSchedule onlineBookings synchronized if it exists there
+    try {
+      const sched = (await fetchScheduleFromSheets(branch)) || getPharmacistSchedule(branch) || {};
+      if (Array.isArray(sched.onlineBookings)) {
+        const idx = sched.onlineBookings.findIndex(b => (b.id && b.id === appointmentId) || (b.ref && b.ref === appointmentId));
+        if (idx >= 0) {
+          sched.onlineBookings[idx].status = newStatus;
+          sched.onlineBookings[idx].statusUpdatedAt = nowIso;
+          await fetch(PMG_SCHEDULE_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+              branch: branch,
+              schedule: sched,
+              updatedBy: (session && session.displayName) || 'Pharmacist'
+            }),
+            redirect: 'follow'
+          });
+        }
+      }
+    } catch (_) {}
+
+    console.log(`[PMG Cloud] Updated appointment ${appointmentId} to ${newStatus} in Google Sheets.`);
+    return true;
   } catch (err) {
     console.warn('[PMG Cloud] Could not update appointment status in cloud:', err);
     return false;
@@ -10563,11 +9323,15 @@ function importSingleBooking(booking, showNotification = false) {
     const aptIdx = patient.appointments.findIndex(a => a.id === ref);
     if (aptIdx >= 0) {
       const existingStatus = patient.appointments[aptIdx].status;
-      // CRITICAL: Preserve local status if marked Completed, Missed, or Approved so refresh doesn't revert
-      if (existingStatus && existingStatus !== 'Scheduled' && (!booking.status || booking.status === 'Scheduled')) {
+      // If incoming status from Google Sheet is terminal (Completed, Missed, Approved), adopt it!
+      if (booking.status && booking.status !== 'Scheduled') {
+        aptObj.status = booking.status;
+        aptObj.statusUpdatedAt = booking.statusUpdatedAt || new Date().toISOString();
+      } else if (existingStatus && existingStatus !== 'Scheduled' && (!booking.status || booking.status === 'Scheduled')) {
+        // If local is already marked Completed or Missed, keep it!
         aptObj.status = existingStatus;
       }
-      patient.appointments[aptIdx] = { ...patient.appointments[aptIdx], ...aptObj };
+      patient.appointments[aptIdx] = { ...patient.appointments[aptIdx], ...aptObj, status: aptObj.status };
     } else {
       patient.appointments.unshift(aptObj);
       isNew = true;
@@ -10607,8 +9371,8 @@ function importSingleBooking(booking, showNotification = false) {
 }
 
 /**
- * Queries Google Apps Script Cloud Relay for online customer bookings
- * for the current branch and automatically merges them into the local appointment queues.
+ * Queries Google Apps Script Cloud Relay for online customer bookings and appointments
+ * from Google Sheets (Patient_Appointments & PharmacistSchedule) and synchronizes them.
  */
 async function syncOnlineBookingsFromCloud(showPrompt = false) {
   if (!PMG_SCHEDULE_API_URL) return;
@@ -10616,17 +9380,50 @@ async function syncOnlineBookingsFromCloud(showPrompt = false) {
     const session = typeof getSession === 'function' ? getSession() : null;
     const branch = normalizeBranchCode((session && session.branch && session.branch !== 'ALL') ? session.branch : 'Kota Sentosa');
 
-    const res = await fetch(`${PMG_SCHEDULE_API_URL}?branch=${encodeURIComponent(branch)}`);
-    const data = await res.json();
-    if (!data.success || !data.schedule || !Array.isArray(data.schedule.onlineBookings)) {
-      if (showPrompt) alert(`No online bookings found in cloud for ${branch}.`);
-      return;
+    const allBookingsMap = new Map();
+
+    // 1. Fetch live appointments directly from Google Sheets Patient_Appointments tab
+    try {
+      const aptRes = await fetch(`${PMG_SCHEDULE_API_URL}?action=getAppointments&branch=${encodeURIComponent(branch)}`);
+      if (aptRes.ok) {
+        const aptData = await aptRes.json();
+        if (aptData && aptData.success && Array.isArray(aptData.appointments)) {
+          aptData.appointments.forEach(a => {
+            if (a.id) allBookingsMap.set(a.id, a);
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('[PMG Cloud Sync] Fetching Patient_Appointments failed:', e);
     }
 
-    const cloudBookings = data.schedule.onlineBookings;
-    let newImportCount = 0;
+    // 2. Fetch PharmacistSchedule onlineBookings from Google Sheets
+    try {
+      const res = await fetch(`${PMG_SCHEDULE_API_URL}?branch=${encodeURIComponent(branch)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && data.schedule && Array.isArray(data.schedule.onlineBookings)) {
+          data.schedule.onlineBookings.forEach(b => {
+            const key = b.id || b.ref;
+            if (key) {
+              if (!allBookingsMap.has(key)) {
+                allBookingsMap.set(key, b);
+              } else {
+                const existing = allBookingsMap.get(key);
+                if (existing.status !== 'Scheduled' && b.status === 'Scheduled') {
+                  allBookingsMap.set(key, { ...b, status: existing.status, statusUpdatedAt: existing.statusUpdatedAt });
+                } else {
+                  allBookingsMap.set(key, { ...existing, ...b });
+                }
+              }
+            }
+          });
+        }
+      }
+    } catch (_) {}
 
-    cloudBookings.forEach(b => {
+    let newImportCount = 0;
+    allBookingsMap.forEach(b => {
       const imported = importSingleBooking(b, false);
       if (imported) newImportCount++;
     });
@@ -10635,11 +9432,12 @@ async function syncOnlineBookingsFromCloud(showPrompt = false) {
       savePatientsData();
       renderPatientModule();
       if (showPrompt) {
-        alert(`✅ Successfully synchronized ${newImportCount} online appointment(s) from cloud!`);
+        alert(`✅ Successfully synchronized ${newImportCount} appointment(s) from Google Sheets!`);
       }
     } else {
+      renderPatientModule();
       if (showPrompt) {
-        alert(`All cloud appointments for ${branch} are already synchronized (${cloudBookings.length} total).`);
+        alert(`All appointments for ${branch} are already synchronized (${allBookingsMap.size} total).`);
       }
     }
   } catch (err) {
@@ -11523,21 +10321,6 @@ async function runAiClinicalReview() {
     }
   }
 
-  // Check & Auto-Decrypt TEDA WellScan Online Report if link provided
-  let tedaDecryptedData = window._cachedTedaReport || null;
-  if (!tedaDecryptedData && tedaLink) {
-    const rid = extractTedaRid(tedaLink);
-    if (rid) {
-      try {
-        if (loadingText) loadingText.textContent = 'Decrypting & analyzing TEDA WellScan online report…';
-        tedaDecryptedData = await fetchAndDecryptTedaReport(rid);
-        window._cachedTedaReport = tedaDecryptedData;
-      } catch (err) {
-        console.warn('[PMG AI Review] TEDA on-the-fly fetch failed:', err);
-      }
-    }
-  }
-
   const airdocFilePromptText = selectedAirdocFile
     ? `ATTACHED RETINAL SCAN DOCUMENT: [Filename: "${selectedAirdocFile.name}", Size: ${formatFileSize(selectedAirdocFile.size)}].
 PLEASE INSPECT AND ANALYZE THE ATTACHED AIRDOC RETINAL REPORT MULTIMODALLY. Extract optic disc (CDR), microvascular status (arteriolar narrowing, AV nicking, hemorrhages, microaneurysms, hard exudates), hypertensive/diabetic retinopathy grading, and Airdoc AI cardiovascular risk score.`
@@ -11593,21 +10376,7 @@ Other POCT Notes: ${vitals.customPoctNotes || 'None'}
 SPECIALTY WELLNESS & DIAGNOSTIC SCANS:
 - TEDA TCM & Meridian Wellness Scan:
   * TEDA Link: ${tedaLink || 'None provided'}
-  ${tedaDecryptedData ? `
-  * DECRYPTED ONLINE TEDA WELLSCAN DATA (Live API Extraction):
-    - Report ID: ${tedaDecryptedData.rid}
-    - Report Date: ${tedaDecryptedData.reportDate || 'Recent'}
-    - Overall Immunity Score (免疫力指数): ${tedaDecryptedData.immunityScore}/100 [TEDA standard: score < 50 is suboptimal/low immunity, >= 50 is normal/good] | Overall Health Score (健康指数): ${tedaDecryptedData.healthScore}/100
-    - Core Conditioning Principle / Advice: ${tedaDecryptedData.advice || 'N/A'}
-    - Sub-health Zang-Fu Organs (脏腑辩证 亚健康 [score < 7.0]): ${tedaDecryptedData.subHealthZangfu.map(z => `${z.name} ${z.score}分 (${z.wuxing || ''})`).join('; ') || (tedaDecryptedData.zangfuSummary || 'All organs normal')}
-    - Constitutional Disharmonies (气血津液体质 [score < 7.0]): ${tedaDecryptedData.subHealthTizhi.map(t => `${t.name} ${t.score}分`).join('; ') || (tedaDecryptedData.tizhiSummary || 'Balanced')}
-    - Blocked / Sluggish Meridians (经络淤堵 [score < 7.0]): ${tedaDecryptedData.blockedJingluo.map(j => `${j.name} ${j.score}分`).join('; ') || (tedaDecryptedData.jingluoSummary || 'Normal flow')}
-    - Spine Load / Pressure (脊柱负荷 [score < 7.0]): ${tedaDecryptedData.spinePressure.map(s => `${s.name} ${s.score}分`).join('; ') || (tedaDecryptedData.jizhuSummary || 'Normal')}
-    - Pharmacist Additional Notes: ${tedaNotes || 'None'}
-  ` : `
   * TCM Findings & Meridians: ${tedaNotes || 'Not recorded'}
-  *(Note: TEDA evaluates: Qi balance [Qi deficiency, Qi stagnation], Yin & Yang harmony, 12 Organ Meridians, Dampness/Phlegm [湿气/痰湿]. Benchmark: score < 7.0 is suboptimal, score >= 7.0 is normal/good; Immunity score < 50 is suboptimal, >= 50 is good.)
-  `}
 - Airdoc Retinal AI Scan:
   * ${airdocFilePromptText}
 - Continuous Glucose Monitoring (CGM):

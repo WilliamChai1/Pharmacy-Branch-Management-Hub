@@ -2,9 +2,10 @@
 'use strict';
 
 (function(window) {
-  // ─── LOCAL STORAGE KEYS ───────────────────────────────────────────────────────
+  // ─── LOCAL STORAGE & API CONFIGURATION ─────────────────────────────────────────
   const STORAGE_KEY_PRICING_SKUS = 'pmg_pricing_skus_master';
   const STORAGE_KEY_GEMINI = 'pmg_gemini_key';
+  const PMG_SCHEDULE_API_URL = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
 
   // ─── DEFAULT BENCHMARK SKUs (Clean Slate for Area Manager Xilnex Import) ─────
   const DEFAULT_SKUS = [];
@@ -385,12 +386,16 @@
       this.selectedSkuForAi = null;
       this.currentPage = 1;
       this.pageSize = 50;
+      this.marginSortOrder = 'none'; // 'none' | 'desc' | 'asc'
+      this.isSyncingWithSheets = false;
       this.init();
     }
 
     async init() {
       await this.loadSkusFromStorage();
       this.render();
+      // Auto sync from Google Sheets in background
+      this.fetchPricingFromSheets(false);
     }
 
     async loadSkusFromStorage() {
@@ -447,6 +452,11 @@
 
       if (!skipAutoBackup) {
         this.triggerAutoBackup();
+        // Debounce push to Google Sheets
+        if (this.sheetsPushTimeout) clearTimeout(this.sheetsPushTimeout);
+        this.sheetsPushTimeout = setTimeout(() => {
+          this.pushPricingToSheets(false);
+        }, 1500);
       }
     }
 
@@ -520,6 +530,97 @@
           badge.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200 transition-all';
           badge.innerHTML = `<i class="fa-solid fa-shield-halved text-blue-600"></i> Auto-backed up (<span id="pricingLastBackupTime">${timeStr}</span>)`;
         }
+      }
+    }
+
+    // ─── GOOGLE SHEETS LIVE SYNC ──────────────────────────────────────────────
+    async fetchPricingFromSheets(showToast = false) {
+      if (!PMG_SCHEDULE_API_URL) return;
+      try {
+        this.isSyncingWithSheets = true;
+        const res = await fetch(`${PMG_SCHEDULE_API_URL}?action=getPricingMatrix`, {
+          method: 'GET'
+        });
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.skus)) {
+          if (data.skus.length > 0) {
+            this.skus = data.skus;
+            await setPricingSkusToIdb(this.skus);
+            this.renderSummaryCards();
+            this.renderTableOnly();
+            if (showToast && typeof showExpiryToast === 'function') {
+              showExpiryToast(`✅ Synced ${data.skus.length} SKUs from Google Sheets.`);
+            }
+          } else if (this.skus.length > 0) {
+            // Sheet is empty but local has items -> populate Google Sheet
+            await this.pushPricingToSheets(false);
+          }
+        }
+      } catch (err) {
+        console.warn('[PMG Pricing Sheets Sync] Fetch warning:', err.message);
+        if (showToast && typeof showExpiryToast === 'function') {
+          showExpiryToast('⚠️ Could not connect to Google Sheets. Using local cache.');
+        }
+      } finally {
+        this.isSyncingWithSheets = false;
+      }
+    }
+
+    async pushPricingToSheets(showToast = false) {
+      if (!PMG_SCHEDULE_API_URL || !this.skus || this.skus.length === 0) return;
+      try {
+        const session = typeof getSession === 'function' ? getSession() : null;
+        const updatedBy = (session && session.displayName) || localStorage.getItem('pmg_user_name') || 'Area Manager';
+        const payload = {
+          action: 'savePricingMatrix',
+          skus: this.skus,
+          updatedBy: updatedBy
+        };
+        await fetch(PMG_SCHEDULE_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify(payload),
+          redirect: 'follow'
+        });
+        if (showToast && typeof showExpiryToast === 'function') {
+          showExpiryToast(`✅ Saved ${this.skus.length} SKUs to Google Sheets.`);
+        }
+      } catch (err) {
+        console.warn('[PMG Pricing Sheets Sync] Push warning:', err.message);
+      }
+    }
+
+    async syncWithGoogleSheets(manual = false) {
+      if (manual && typeof showExpiryToast === 'function') {
+        showExpiryToast('🔄 Connecting to Google Sheets Pricing Matrix...');
+      }
+      await this.fetchPricingFromSheets(manual);
+    }
+
+    // ─── GROSS MARGIN SORTING ──────────────────────────────────────────────────
+    toggleMarginSort() {
+      if (this.marginSortOrder === 'none' || !this.marginSortOrder) {
+        this.marginSortOrder = 'desc';
+      } else if (this.marginSortOrder === 'desc') {
+        this.marginSortOrder = 'asc';
+      } else {
+        this.marginSortOrder = 'none';
+      }
+      const iconEl = document.getElementById('pricingMarginSortIcon');
+      if (iconEl) {
+        if (this.marginSortOrder === 'desc') {
+          iconEl.innerHTML = '<i class="fa-solid fa-arrow-down-wide-short text-indigo-600"></i>';
+        } else if (this.marginSortOrder === 'asc') {
+          iconEl.innerHTML = '<i class="fa-solid fa-arrow-up-wide-short text-indigo-600"></i>';
+        } else {
+          iconEl.innerHTML = '<i class="fa-solid fa-sort text-gray-400"></i>';
+        }
+      }
+      this.currentPage = 1;
+      this.renderTableOnly();
+      if (typeof showExpiryToast === 'function') {
+        const label = this.marginSortOrder === 'desc' ? 'Highest to Lowest' : this.marginSortOrder === 'asc' ? 'Lowest to Highest' : 'Default Order';
+        showExpiryToast(`Sorted Gross Margin: ${label}`);
       }
     }
 
@@ -638,6 +739,7 @@
       localStorage.removeItem(STORAGE_KEY_PRICING_SKUS);
       localStorage.removeItem('pmg_pricing_skus_meta');
       await setPricingSkusToIdb([]);
+      this.pushPricingToSheets(false);
       this.currentPage = 1;
       this.render();
       if (typeof showExpiryToast === 'function') {
@@ -651,18 +753,21 @@
 
     // ─── CALCULATE MARGIN ───────────────────────────────────────────────────────
     calculateMargin(cost, sp) {
-      if (!sp || sp <= 0 || !cost) return 0;
-      return (((sp - cost) / sp) * 100).toFixed(1);
+      const c = parseFloat(cost) || 0;
+      const s = parseFloat(sp) || 0;
+      if (s <= 0) return '0.0';
+      return (((s - c) / s) * 100).toFixed(1);
     }
 
     calculateProfit(cost, sp) {
-      if (!sp || !cost) return 0;
-      return (sp - cost).toFixed(2);
+      const c = parseFloat(cost) || 0;
+      const s = parseFloat(sp) || 0;
+      return (s - c).toFixed(2);
     }
 
     // ─── FILTER SKUs ────────────────────────────────────────────────────────────
     getFilteredSkus() {
-      return this.skus.filter(s => {
+      let list = this.skus.filter(s => {
         // Search filter
         if (this.searchQuery) {
           const q = this.searchQuery.toLowerCase();
@@ -683,6 +788,34 @@
         }
         return true;
       });
+
+      if (this.marginSortOrder === 'desc') {
+        list.sort((a, b) => {
+          const spA = parseFloat(a.standardSp) || 0;
+          const costA = parseFloat(a.costPrice) || 0;
+          const mA = spA > 0 ? ((spA - costA) / spA) : -999;
+
+          const spB = parseFloat(b.standardSp) || 0;
+          const costB = parseFloat(b.costPrice) || 0;
+          const mB = spB > 0 ? ((spB - costB) / spB) : -999;
+
+          return mB - mA;
+        });
+      } else if (this.marginSortOrder === 'asc') {
+        list.sort((a, b) => {
+          const spA = parseFloat(a.standardSp) || 0;
+          const costA = parseFloat(a.costPrice) || 0;
+          const mA = spA > 0 ? ((spA - costA) / spA) : -999;
+
+          const spB = parseFloat(b.standardSp) || 0;
+          const costB = parseFloat(b.costPrice) || 0;
+          const mB = spB > 0 ? ((spB - costB) / spB) : -999;
+
+          return mA - mB;
+        });
+      }
+
+      return list;
     }
 
     // ─── UPDATE SKU PRICE & COST IN MEMORY & STORAGE ───────────────────────────
@@ -808,20 +941,30 @@
         cost: -1,             // PMG Custom Cost
         price: -1,            // PMG Member Price (Selling Price)
         nonMemberPrice: -1,   // PMG Non-Member Price
+        qty: -1,
+        margin: -1,
+        isNetSoldPrice: false,
         supplier: -1,
         supermarket: -1,
         chain: -1
       };
 
-      // Pass 1: PMG-specific header priority (Custom Cost, Member Price, Non-Member Price)
+      // Pass 1: PMG-specific header priority (Custom Cost, Member Price, Non-Member Price, Net Sold Price, Qty)
       headerRow.forEach((rawCol, idx) => {
         const col = rawCol.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (col === 'customcost' || col.includes('customcost') || col === 'customcostrm') {
+        if (col === 'unitcustomcost' || col === 'customcost' || col === 'customcostrm' || col.includes('customcost')) {
           mapping.cost = idx;
-        } else if (col === 'memberprice' || col.includes('memberprice') || col === 'memberpricerm' || col === 'memberp' || col === 'member') {
+        } else if (col === 'memberprice' || col.includes('memberprice') || col === 'memberpricerm' || col === 'memberp' || col === 'membersellingprice') {
           mapping.price = idx;
-        } else if (col === 'nonmemberprice' || col.includes('nonmember') || col === 'nonmemberpricerm' || col === 'nonmemberp') {
+        } else if (col === 'nonmemberprice' || col.includes('nonmember') || col === 'nonmemberpricerm' || col === 'nonmemberp' || col === 'nonmembersellingprice') {
           mapping.nonMemberPrice = idx;
+        } else if (col === 'netsoldprice' || col === 'soldprice' || col.includes('netsoldprice')) {
+          mapping.price = idx;
+          mapping.isNetSoldPrice = true;
+        } else if (col === 'qty' || col === 'quantity' || col === 'soldqty' || col === 'salesqty') {
+          mapping.qty = idx;
+        } else if (col.includes('grossprofitmargin') || col.includes('profitmargin') || col === 'grossmargin' || col === 'margin') {
+          mapping.margin = idx;
         }
       });
 
@@ -830,11 +973,11 @@
         const col = rawCol.toLowerCase().replace(/[^a-z0-9]/g, '');
         if (mapping.code === -1 && (col === 'itemcode' || col === 'code' || col === 'barcode' || col === 'itembarcode' || col === 'sku' || col === 'productcode' || col === 'itemno')) {
           mapping.code = idx;
-        } else if (mapping.name === -1 && (col === 'description' || col === 'itemdescription' || col === 'itemname' || col === 'name' || col === 'productname' || col === 'itemdesc')) {
+        } else if (mapping.name === -1 && (col === 'itemname' || col === 'description' || col === 'itemdescription' || col === 'name' || col === 'productname' || col === 'itemdesc')) {
           mapping.name = idx;
         } else if (mapping.brand === -1 && (col === 'brand' || col === 'brandname' || col === 'principal' || col === 'manufacturer' || col === 'mfg')) {
           mapping.brand = idx;
-        } else if (mapping.category === -1 && (col === 'category' || col === 'group' || col === 'department' || col === 'itemgroup' || col === 'itemtype' || col === 'type' || col === 'dept')) {
+        } else if (mapping.category === -1 && (col === 'category' || col === 'group' || col === 'department' || col === 'itemgroup' || col === 'itemtype' || col === 'type' || col === 'dept' || col === 'division')) {
           mapping.category = idx;
         } else if (mapping.cost === -1 && (col === 'cost' || col === 'costprice' || col === 'basecost' || col === 'unitcost' || col === 'avgcost' || col === 'averagecost' || col === 'standardcost' || col === 'stdcost' || col === 'lastcost' || col === 'purchaseprice' || col === 'buyprice')) {
           mapping.cost = idx;
@@ -859,28 +1002,91 @@
         return null;
       }
 
-      const headers = rows[0];
-      const mapping = this.detectXilnexColumns(headers);
+      // Search up to the first 50 rows to find the actual table header row
+      // (Xilnex report exports often have 15-20 rows of title/metadata headers before the data table)
+      let headerIndex = -1;
+      let mapping = null;
+      for (let r = 0; r < Math.min(rows.length, 50); r++) {
+        const m = this.detectXilnexColumns(rows[r]);
+        if (m.name !== -1 || m.code !== -1) {
+          headerIndex = r;
+          mapping = m;
+          break;
+        }
+      }
 
-      if (mapping.name === -1 && mapping.code === -1) {
-        alert('Could not detect Product Description or Item Code in CSV headers. Please ensure the CSV contains columns like "Description" or "ItemCode".');
+      if (headerIndex === -1 || !mapping) {
+        alert('Could not detect Product Description or Item Code in CSV headers. Please ensure the CSV contains columns like "Description", "Item Name", or "Item Code".');
         return null;
       }
 
+      const headers = rows[headerIndex];
       const parsedSkus = [];
-      for (let r = 1; r < rows.length; r++) {
+
+      for (let r = headerIndex + 1; r < rows.length; r++) {
         const row = rows[r];
-        if (!row || row.length === 0 || !row.some(c => c.trim())) continue;
+        if (!row || row.length === 0 || !row.some(c => c && c.trim())) continue;
 
         const code = mapping.code !== -1 ? (row[mapping.code] || '').trim() : `XIL-${r}`;
         const name = mapping.name !== -1 ? (row[mapping.name] || '').trim() : (code || `Item ${r}`);
         if (!name && !code) continue;
 
-        const brand = mapping.brand !== -1 ? (row[mapping.brand] || 'General').trim() : 'General';
-        const category = mapping.category !== -1 ? (row[mapping.category] || 'General OTC').trim() : 'General OTC';
+        // Skip grand total, subtotal summaries, and empty code total lines
+        const cLow = code.toLowerCase();
+        const nLow = name.toLowerCase();
+        if (cLow.includes('grand total') || nLow.includes('grand total')) continue;
+        if (nLow.endsWith(' total') || cLow.endsWith(' total')) continue;
+        if ((mapping.code === -1 || !row[mapping.code]) && nLow.includes('total')) continue;
+
+        let brand = mapping.brand !== -1 ? (row[mapping.brand] || '').trim() : '';
+        let category = mapping.category !== -1 ? (row[mapping.category] || '').trim() : '';
+        
+        // Smart inference for Brand if missing
+        if (!brand) {
+          const upperName = name.toUpperCase();
+          if (upperName.includes('BLACKMORES')) brand = 'Blackmores';
+          else if (upperName.includes('ACCU-CHEK')) brand = 'Accu-Chek';
+          else if (upperName.includes('PANADOL') || upperName.includes('GSK')) brand = 'GSK';
+          else if (upperName.includes('OXY')) brand = 'Rohto Oxy';
+          else if (upperName.includes('NOVOFINE') || upperName.includes('NOVO')) brand = 'Novo Nordisk';
+          else if (upperName.includes('APPETON')) brand = 'Appeton';
+          else if (upperName.includes('SCOTT')) brand = 'Scotts';
+          else if (upperName.includes('DIFFLAM')) brand = 'Difflam';
+          else {
+            const firstWord = name.split(/[\s-]/)[0];
+            brand = (firstWord && firstWord.length > 2 && isNaN(firstWord)) ? firstWord : 'General';
+          }
+        }
+
+        // Smart inference for Category if missing
+        if (!category) {
+          const upper = name.toUpperCase();
+          if (upper.includes('STRIP') || upper.includes('LANCET') || upper.includes('NEEDLE') || upper.includes('METER') || upper.includes('SYRINGE')) {
+            category = 'Medical Devices';
+          } else if (upper.includes('VIT') || upper.includes('OMEGA') || upper.includes('FISH OIL') || upper.includes('LECITHIN') || upper.includes('CALCIUM')) {
+            category = 'Supplements';
+          } else if (upper.includes('TAB') || upper.includes('CAP') || upper.includes('SYRUP') || upper.includes('SUSP') || upper.includes('CREAM') || upper.includes('OINT')) {
+            category = 'Chronic Disease';
+          } else if (upper.includes('WASH') || upper.includes('SHAMPOO') || upper.includes('LOTION') || upper.includes('CLEANSER')) {
+            category = 'Personal Care';
+          } else {
+            category = 'General OTC';
+          }
+        }
+
         const cost = mapping.cost !== -1 ? this.cleanNumber(row[mapping.cost]) : 0; // PMG Custom Cost
-        const sp = mapping.price !== -1 ? this.cleanNumber(row[mapping.price]) : 0;  // PMG Member Price (Selling Price)
-        const nonMemberSp = mapping.nonMemberPrice !== -1 ? this.cleanNumber(row[mapping.nonMemberPrice]) : null;
+        let sp = mapping.price !== -1 ? this.cleanNumber(row[mapping.price]) : 0;     // Net Sold Price or Member Price
+        const qty = mapping.qty !== -1 ? Math.abs(this.cleanNumber(row[mapping.qty])) : 0;
+
+        // If Net Sold Price from sales report, compute unit selling price = Net Sold Price / Qty
+        if (mapping.isNetSoldPrice && qty > 0) {
+          sp = parseFloat((sp / qty).toFixed(2));
+        }
+
+        const nonMemberSp = mapping.nonMemberPrice !== -1 
+          ? this.cleanNumber(row[mapping.nonMemberPrice]) 
+          : (sp > 0 ? parseFloat((sp * 1.1).toFixed(2)) : null);
+
         const supplier = mapping.supplier !== -1 ? (row[mapping.supplier] || 'Standard Distributor').trim() : 'Standard Distributor';
         const supermarket = mapping.supermarket !== -1 ? this.cleanNumber(row[mapping.supermarket]) : null;
         const chain = mapping.chain !== -1 ? this.cleanNumber(row[mapping.chain]) : null;
@@ -950,10 +1156,11 @@
 
       localStorage.setItem('pmg_pricing_demo_purged', 'true');
       this.saveSkusToStorage();
+      this.pushPricingToSheets(true);
       this.render();
 
       if (typeof showExpiryToast === 'function') {
-        showExpiryToast(`Successfully imported ${this.pendingXilnexSkus.length} SKUs into Pricing Matrix.`);
+        showExpiryToast(`Successfully imported ${this.pendingXilnexSkus.length} SKUs into Pricing Matrix & synced to Google Sheets.`);
       }
 
       this.pendingXilnexSkus = null;
