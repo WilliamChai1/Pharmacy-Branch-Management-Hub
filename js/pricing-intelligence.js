@@ -423,6 +423,21 @@
       } catch (err) {
         console.warn('[PMG Pricing] Could not parse stored SKUs:', err);
       }
+
+      // 3. Fallback to OneDrive (if switching to another PC that has OneDrive synced)
+      try {
+        if (window.pmgOneDrive && typeof window.pmgOneDrive.readPricingMasterFromOneDrive === 'function') {
+          const odSkus = await window.pmgOneDrive.readPricingMasterFromOneDrive();
+          if (Array.isArray(odSkus) && odSkus.length > 0) {
+            this.skus = odSkus;
+            await setPricingSkusToIdb(this.skus);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('[PMG Pricing] OneDrive read fallback:', err);
+      }
+
       this.skus = [];
     }
 
@@ -590,8 +605,24 @@
         const session = typeof getSession === 'function' ? getSession() : null;
         const updatedBy = (session && session.displayName) || localStorage.getItem('pmg_user_name') || 'Area Manager';
         
-        // Sync up to 5,000 active benchmark SKUs to Google Sheets to keep sheet fast and stay within Apps Script timeout
-        const skusToSync = this.skus.length > 5000 ? this.skus.slice(0, 5000) : this.skus;
+        // Prioritize any customized, edited, or strategic role SKUs first so NO user changes are ever omitted!
+        const modifiedSkus = [];
+        const standardSkus = [];
+        for (const s of this.skus) {
+          const isCustomized = s.customModified || s.isCustom || 
+                               (s.strategyTag && s.strategyTag !== 'core_rx') || 
+                               s.supermarketPrice || s.chainPharmacyPrice || 
+                               (s.notes && s.notes.trim() !== '');
+          if (isCustomized) {
+            modifiedSkus.push(s);
+          } else {
+            standardSkus.push(s);
+          }
+        }
+        const prioritized = [...modifiedSkus, ...standardSkus];
+        const MAX_SHEET_SKUS = 5000;
+        const skusToSync = prioritized.length > MAX_SHEET_SKUS ? prioritized.slice(0, MAX_SHEET_SKUS) : prioritized;
+
         const payload = {
           action: 'savePricingMatrix',
           skus: skusToSync,
@@ -847,6 +878,7 @@
       if (sku) {
         sku.standardSp = parsedSp;
         sku.currentBranchSp = parsedSp;
+        sku.customModified = true;
         this.saveSkusToStorage();
         this.renderSummaryCards();
         this.renderTableOnly();
@@ -859,6 +891,7 @@
       const sku = this.skus.find(s => s.id === skuId);
       if (sku) {
         sku.costPrice = parsedCost;
+        sku.customModified = true;
         this.saveSkusToStorage();
         this.renderSummaryCards();
         this.renderTableOnly();
@@ -872,6 +905,7 @@
       const sku = this.skus.find(s => s.id === skuId);
       if (sku) {
         sku.supplier = (newSupplier || '').trim();
+        sku.customModified = true;
         this.saveSkusToStorage();
       }
     }

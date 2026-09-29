@@ -680,7 +680,7 @@
 
         // ─── STEP J: UNIVERSAL SYNC — STOCK EXPIRY & DISPOSAL TRACKER ──────────
         try {
-          const rawExpiry = localStorage.getItem('pmg_expiry_entries_v1');
+          const rawExpiry = localStorage.getItem('pmg_stock_expiry_data') || localStorage.getItem('pmg_expiry_entries_v1');
           if (rawExpiry && this.rootHandle) {
             let expDir = this.rootHandle;
             try {
