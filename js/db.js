@@ -217,3 +217,12 @@ async function importAllDocuments(docsList = []) {
   });
 }
 
+// Expose on window for cross-module & OneDrive sync engine access
+window.exportAllDocuments = exportAllDocuments;
+window.importAllDocuments = importAllDocuments;
+window.dataURLtoBlob = dataURLtoBlob;
+window.blobToDataURL = blobToDataURL;
+window.savePatientDocument = savePatientDocument;
+window.getPatientDocuments = getPatientDocuments;
+window.getDocumentById = getDocumentById;
+

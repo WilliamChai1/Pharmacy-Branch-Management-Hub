@@ -2,6 +2,7 @@
 'use strict';
 
 const PATIENTS_STORAGE_KEY = 'pmg_patients_data_v1';
+var PMG_SCHEDULE_API_URL = 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
 
 // Helper to get formatted date string (YYYY-MM-DD)
 function getTodayDateString(offsetDays = 0) {
@@ -1640,15 +1641,21 @@ function renderPatientDirectory(patients) {
       `;
     }
 
-    // 2. Medication List (with wrapping)
+    // 2. Medication List: Strictly reflect the latest consultation regimen
     let medsList = [];
-    if (p.medications && p.medications.length) {
-      medsList = p.medications.map(m => typeof m === 'string' ? m : `${m.name} ${m.dosage || ''}`.trim());
-    } else if (lastEnc && lastEnc.planMedications) {
-      medsList = lastEnc.planMedications.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    if (p.encounters && p.encounters.length > 0) {
+      const latestEnc = p.encounters[0];
+      if (latestEnc && latestEnc.planMedications && latestEnc.planMedications.trim()) {
+        medsList = latestEnc.planMedications.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      } else {
+        // If latest consultation has no medications entered, patient is no longer on medications
+        medsList = [];
+      }
+    } else if (p.medications && p.medications.length) {
+      medsList = p.medications.map(m => typeof m === 'string' ? m : `${m.name} ${m.dosage || ''}`.trim()).filter(Boolean);
     }
 
-    let medsHtml = '<span class="text-xs text-gray-400 italic">None recorded</span>';
+    let medsHtml = '<span class="text-[11px] text-gray-400 italic flex items-center gap-1"><i class="fa-solid fa-ban text-[10px] text-gray-300"></i> No active meds</span>';
     if (medsList.length) {
       medsHtml = `
         <div class="space-y-1.5 min-w-[150px] max-w-[280px]">
@@ -3109,6 +3116,396 @@ function saveNewPatient() {
 // ─── CLINICAL ENCOUNTER (SOAP + POCT) MODAL ──────────────────────────────────
 let editingEncounterId = null;
 
+// Safe HTML escape helper
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
+ * ══════════════════════════════════════════════════════════════════════════════
+ * CONSULTATION HISTORICAL PARAMETERS & CLINICAL COMPARISON SUITE
+ * ══════════════════════════════════════════════════════════════════════════════
+ */
+window._lastEncounterPreviousMeds = '';
+window._lastEncounterPreviousSupps = '';
+window._pastEncountersCount = 0;
+
+function copyPreviousMedsToCurrentPlan(customMedsText) {
+  const targetText = customMedsText !== undefined ? customMedsText : window._lastEncounterPreviousMeds;
+  const planEl = document.getElementById('encPlanMeds');
+  if (!planEl) return;
+  if (!targetText || !targetText.trim()) {
+    if (typeof showPmgToast === 'function') {
+      showPmgToast('No medications recorded in previous encounter to copy.', 'info');
+    } else {
+      alert('No medications recorded in previous encounter to copy.');
+    }
+    return;
+  }
+  planEl.value = targetText.trim();
+  planEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  planEl.focus();
+  planEl.classList.add('ring-2', 'ring-indigo-500');
+  setTimeout(() => planEl.classList.remove('ring-2', 'ring-indigo-500'), 1500);
+
+  if (typeof showPmgToast === 'function') {
+    showPmgToast('📋 Copied previous medications into current consultation plan!', 'success');
+  }
+}
+
+function copyPreviousSuppsToCurrentPlan(customSuppsText) {
+  const targetText = customSuppsText !== undefined ? customSuppsText : window._lastEncounterPreviousSupps;
+  const planEl = document.getElementById('encPlanSupps');
+  if (!planEl) return;
+  if (!targetText || !targetText.trim()) {
+    if (typeof showPmgToast === 'function') {
+      showPmgToast('No supplements recorded in previous encounter to copy.', 'info');
+    } else {
+      alert('No supplements recorded in previous encounter to copy.');
+    }
+    return;
+  }
+  planEl.value = targetText.trim();
+  planEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  planEl.focus();
+  planEl.classList.add('ring-2', 'ring-teal-500');
+  setTimeout(() => planEl.classList.remove('ring-2', 'ring-teal-500'), 1500);
+
+  if (typeof showPmgToast === 'function') {
+    showPmgToast('📋 Copied previous supplements into current consultation plan!', 'success');
+  }
+}
+
+function togglePastVisitsHistoryTable() {
+  const tableContainer = document.getElementById('encPastVisitsTableContainer');
+  const toggleText = document.getElementById('pastVisitsTableToggleText');
+  if (!tableContainer) return;
+  const isHidden = tableContainer.classList.contains('hidden');
+  if (isHidden) {
+    tableContainer.classList.remove('hidden');
+    if (toggleText) toggleText.textContent = 'Hide All Visits';
+  } else {
+    tableContainer.classList.add('hidden');
+    if (toggleText) toggleText.textContent = `Compare All Visits (${window._pastEncountersCount || 0})`;
+  }
+}
+
+function renderEncounterPastRecords(patientId) {
+  const container = document.getElementById('encPastRecordsPanel');
+  if (!container) return;
+
+  const p = (typeof patientsData !== 'undefined' && Array.isArray(patientsData))
+    ? patientsData.find(pt => pt.id === patientId)
+    : null;
+
+  if (!p) {
+    container.classList.add('hidden');
+    container.innerHTML = '';
+    return;
+  }
+
+  // Filter out the encounter currently being edited (if editing an existing one)
+  const allEncs = Array.isArray(p.encounters) ? p.encounters : [];
+  const pastEncs = editingEncounterId
+    ? allEncs.filter(e => e.id !== editingEncounterId)
+    : allEncs;
+
+  window._pastEncountersCount = pastEncs.length;
+  container.classList.remove('hidden');
+
+  if (pastEncs.length === 0) {
+    window._lastEncounterPreviousMeds = '';
+    window._lastEncounterPreviousSupps = '';
+    container.innerHTML = `
+      <div class="p-3.5 bg-gradient-to-r from-blue-50/80 to-indigo-50/50 border border-blue-200/80 rounded-2xl text-blue-950 text-xs flex items-center justify-between gap-3 shadow-xs">
+        <div class="flex items-center gap-2.5">
+          <span class="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center text-sm shrink-0">
+            <i class="fa-solid fa-seedling"></i>
+          </span>
+          <div>
+            <p class="font-bold text-gray-900">Baseline Consultation · 首次就诊记录</p>
+            <p class="text-[11px] text-gray-600 mt-0.5">No previous consultation records found for <b>${p.name}</b>. Today's entry will establish their comprehensive clinical baseline.</p>
+          </div>
+        </div>
+        <span class="text-[11px] bg-blue-100 text-blue-800 px-2.5 py-1 rounded-full font-bold whitespace-nowrap border border-blue-200">
+          1st Visit
+        </span>
+      </div>
+    `;
+    return;
+  }
+
+  const latest = pastEncs[0];
+  const totalVisits = pastEncs.length;
+
+  window._lastEncounterPreviousMeds = (latest.planMedications || '').trim();
+  window._lastEncounterPreviousSupps = (latest.planSupplements || '').trim();
+
+  // 1. Blood Pressure with clinical staging
+  const bpSys = latest.vitals?.bpSys || '';
+  const bpDia = latest.vitals?.bpDia || '';
+  let bpHtml = '<span class="text-gray-400 font-normal">Not measured</span>';
+  if (bpSys || bpDia) {
+    const s = parseInt(bpSys, 10) || 0;
+    const d = parseInt(bpDia, 10) || 0;
+    let bpClass = 'text-emerald-700 bg-emerald-50 border-emerald-200';
+    let bpLabel = 'Normal (<130/80)';
+    if (s >= 140 || d >= 90) {
+      bpClass = 'text-rose-700 bg-rose-50 border-rose-200';
+      bpLabel = 'Stage 2 HTN (≥140/90)';
+    } else if (s >= 130 || d >= 80) {
+      bpClass = 'text-amber-700 bg-amber-50 border-amber-200';
+      bpLabel = 'Stage 1 HTN (130-139/80-89)';
+    }
+    bpHtml = `
+      <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg border font-mono font-bold text-xs ${bpClass}">
+        ${bpSys}/${bpDia} mmHg <span class="text-[10px] font-medium font-sans">(${bpLabel})</span>
+      </span>
+    `;
+  }
+
+  // 2. Heart Rate / Pulse
+  const pulseHtml = latest.vitals?.pulse
+    ? `<span class="font-mono font-bold text-gray-900">${latest.vitals.pulse}</span> <span class="text-[11px] text-gray-500">bpm</span>`
+    : '<span class="text-gray-400 font-normal">—</span>';
+
+  // 3. Weight & BMI
+  const weightHtml = latest.vitals?.weight
+    ? `<span class="font-mono font-bold text-gray-900">${latest.vitals.weight}</span> <span class="text-[11px] text-gray-500">kg</span>`
+    : '';
+  const bmiHtml = latest.vitals?.bmi
+    ? `<span class="font-mono font-bold text-indigo-700">BMI ${latest.vitals.bmi}</span>`
+    : '';
+  const weightBmiCombined = (weightHtml && bmiHtml)
+    ? `${weightHtml} · ${bmiHtml}`
+    : (weightHtml || bmiHtml || '<span class="text-gray-400 font-normal">—</span>');
+
+  // 4. Glucose (FBG/PBG) & HbA1c
+  const glucVal = latest.glycemicHeme?.glucose || '';
+  const glucType = latest.glycemicHeme?.glucoseType || 'FBG';
+  let glucHtml = '<span class="text-gray-400 font-normal">—</span>';
+  if (glucVal) {
+    const g = parseFloat(glucVal) || 0;
+    const gClass = g > 7.0 ? 'text-rose-700 bg-rose-50 border-rose-200' : 'text-emerald-700 bg-emerald-50 border-emerald-200';
+    glucHtml = `
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border font-mono font-bold text-xs ${gClass}">
+        ${glucVal} mmol/L <span class="text-[10px] font-sans font-normal">(${glucType})</span>
+      </span>
+    `;
+  }
+  const hba1cHtml = latest.glycemicHeme?.hba1c
+    ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border font-mono font-bold text-xs ${parseFloat(latest.glycemicHeme.hba1c) >= 7.0 ? 'text-rose-700 bg-rose-50 border-rose-200' : 'text-emerald-700 bg-emerald-50 border-emerald-200'}">HbA1c ${latest.glycemicHeme.hba1c}%</span>`
+    : '';
+  const glycemicCombined = [glucHtml, hba1cHtml].filter(Boolean).join(' ');
+
+  // 5. Lipid Panel
+  const tc = latest.lipidPanel?.tc || '';
+  const tg = latest.lipidPanel?.tg || '';
+  const ldl = latest.lipidPanel?.ldl || '';
+  const hdl = latest.lipidPanel?.hdl || '';
+  const lipidItems = [];
+  if (tc) lipidItems.push(`TC: <b class="font-mono">${tc}</b>`);
+  if (tg) lipidItems.push(`TG: <b class="font-mono">${tg}</b>`);
+  if (ldl) lipidItems.push(`LDL: <b class="font-mono">${ldl}</b>`);
+  if (hdl) lipidItems.push(`HDL: <b class="font-mono">${hdl}</b>`);
+  const lipidHtml = lipidItems.length > 0
+    ? lipidItems.join(' · ') + ' <span class="text-[10px] text-gray-500">mmol/L</span>'
+    : '<span class="text-gray-400 font-normal">—</span>';
+
+  // 6. Renal Panel & Uric Acid
+  const ua = latest.kidneyPanel?.ua || '';
+  const cr = latest.kidneyPanel?.creatinine || '';
+  const egfr = latest.kidneyPanel?.egfr || '';
+  const renalItems = [];
+  if (ua) renalItems.push(`UA: <b class="font-mono text-purple-700">${ua}</b> µmol/L`);
+  if (cr) renalItems.push(`Cr: <b class="font-mono text-blue-700">${cr}</b> µmol/L`);
+  if (egfr) renalItems.push(`eGFR: <b class="font-mono">${egfr}</b>`);
+  const renalHtml = renalItems.length > 0
+    ? renalItems.join(' · ')
+    : '<span class="text-gray-400 font-normal">—</span>';
+
+  // 7. Liver Panel
+  const ast = latest.liverPanel?.ast || '';
+  const alt = latest.liverPanel?.alt || '';
+  const liverItems = [];
+  if (ast) liverItems.push(`AST: <b class="font-mono">${ast}</b>`);
+  if (alt) liverItems.push(`ALT: <b class="font-mono">${alt}</b>`);
+  const liverHtml = liverItems.length > 0
+    ? liverItems.join(' · ') + ' <span class="text-[10px] text-gray-500">U/L</span>'
+    : '';
+
+  // 8. TEDA TCM & Specialty Scans
+  const tedaSummary = latest.specialtyScans?.teda || '';
+  const airdocPresent = Array.isArray(latest.attachedDocs) && latest.attachedDocs.some(d => d.name && d.name.toLowerCase().includes('airdoc'));
+
+  // 9. Previous Medications
+  const hasMeds = window._lastEncounterPreviousMeds.length > 0;
+  const medsDisplayHtml = hasMeds
+    ? `<div class="p-2.5 bg-indigo-50/70 border border-indigo-200/80 rounded-xl text-xs font-mono text-indigo-950 whitespace-pre-line leading-relaxed">${escapeHtml(window._lastEncounterPreviousMeds)}</div>`
+    : `<div class="p-2 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-400 italic flex items-center gap-1.5"><i class="fa-solid fa-ban text-[11px] text-gray-300"></i> No medications recorded at previous visit</div>`;
+
+  // 10. Multi-visit rows for historical trend comparison table
+  const historyTableRows = pastEncs.map((enc, idx) => {
+    const eBp = (enc.vitals?.bpSys && enc.vitals?.bpDia) ? `${enc.vitals.bpSys}/${enc.vitals.bpDia}` : '—';
+    const eGluc = enc.glycemicHeme?.glucose ? `${enc.glycemicHeme.glucose} (${enc.glycemicHeme.glucoseType || 'FBG'})` : (enc.glycemicHeme?.hba1c ? `HbA1c ${enc.glycemicHeme.hba1c}%` : '—');
+    const eLipid = enc.lipidPanel?.tc ? `TC ${enc.lipidPanel.tc} / TG ${enc.lipidPanel?.tg || '—'}` : '—';
+    const eUa = enc.kidneyPanel?.ua ? `${enc.kidneyPanel.ua} µmol/L` : (enc.kidneyPanel?.creatinine ? `Cr ${enc.kidneyPanel.creatinine}` : '—');
+    const eWeight = enc.vitals?.weight ? `${enc.vitals.weight} kg` : '—';
+    const eMeds = (enc.planMedications || '').trim();
+    const encodedMeds = encodeURIComponent(eMeds);
+
+    return `
+      <tr class="border-b border-gray-100 hover:bg-indigo-50/30 transition text-xs">
+        <td class="py-2.5 px-3 whitespace-nowrap">
+          <div class="font-bold text-gray-900">${enc.date}</div>
+          <div class="text-[10px] text-gray-500">${escapeHtml(enc.recordedBy || 'Pharmacist')}</div>
+        </td>
+        <td class="py-2.5 px-3 font-mono font-bold text-gray-800 whitespace-nowrap">${eBp}</td>
+        <td class="py-2.5 px-3 font-mono text-gray-800 whitespace-nowrap">${eGluc}</td>
+        <td class="py-2.5 px-3 font-mono text-gray-700 whitespace-nowrap">${eLipid}</td>
+        <td class="py-2.5 px-3 font-mono text-gray-700 whitespace-nowrap">${eUa}</td>
+        <td class="py-2.5 px-3 font-mono text-gray-700 whitespace-nowrap">${eWeight}</td>
+        <td class="py-2.5 px-3 text-[11px] text-gray-700 max-w-xs truncate" title="${escapeHtml(eMeds)}">${eMeds ? escapeHtml(eMeds.replace(/\r?\n/g, ', ')) : '<span class="text-gray-400 italic">None</span>'}</td>
+        <td class="py-2.5 px-3 text-right whitespace-nowrap">
+          ${eMeds ? `
+            <button type="button" onclick="copyPreviousMedsToCurrentPlan(decodeURIComponent('${encodedMeds}'))" class="px-2 py-1 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 rounded text-[11px] font-bold transition flex items-center gap-1 inline-flex shadow-xs" title="Copy this visit's medications to current plan">
+              <i class="fa-regular fa-copy"></i> Copy
+            </button>
+          ` : '—'}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="border border-indigo-200/80 bg-gradient-to-br from-indigo-50/60 via-white to-blue-50/30 rounded-2xl p-4 space-y-3.5 shadow-xs">
+      <!-- Header & Action Buttons -->
+      <div class="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-indigo-100">
+        <div class="flex items-center gap-2">
+          <span class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-sm font-bold shadow-xs">
+            <i class="fa-solid fa-clock-rotate-left"></i>
+          </span>
+          <div>
+            <h4 class="font-bold text-xs sm:text-sm text-indigo-950 flex items-center gap-2">
+              <span>Previous Consultation Parameters &amp; Clinical Regimen</span>
+              <span class="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full border border-indigo-200">${totalVisits} Prior Visit${totalVisits > 1 ? 's' : ''}</span>
+            </h4>
+            <p class="text-[11px] text-gray-500">
+              Last Visit: <b class="text-gray-800">${latest.date}</b> &middot; Attending: <span class="text-gray-700">${escapeHtml(latest.recordedBy || 'Pharmacist')}</span>
+              ${latest.chiefComplaint ? ` &middot; CC: <span class="text-indigo-900 font-medium italic">"${escapeHtml(latest.chiefComplaint)}"</span>` : ''}
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5 flex-wrap">
+          ${hasMeds ? `
+            <button type="button" onclick="copyPreviousMedsToCurrentPlan()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs whitespace-nowrap">
+              <i class="fa-regular fa-copy"></i> Copy Previous Meds
+            </button>
+          ` : ''}
+          ${window._lastEncounterPreviousSupps ? `
+            <button type="button" onclick="copyPreviousSuppsToCurrentPlan()" class="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs whitespace-nowrap">
+              <i class="fa-regular fa-copy"></i> Copy Supps
+            </button>
+          ` : ''}
+          <button type="button" onclick="togglePastVisitsHistoryTable()" class="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs whitespace-nowrap">
+            <i class="fa-solid fa-chart-line text-indigo-600"></i>
+            <span id="pastVisitsTableToggleText">Compare All Visits (${totalVisits})</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Key Clinical Parameters Comparison Matrix -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <div class="p-2.5 bg-white rounded-xl border border-indigo-100/90 shadow-2xs">
+          <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+            <i class="fa-solid fa-heart-pulse text-rose-500"></i> Blood Pressure
+          </div>
+          <div>${bpHtml}</div>
+          <div class="text-[10px] text-gray-500 mt-1">Pulse: ${pulseHtml}</div>
+        </div>
+
+        <div class="p-2.5 bg-white rounded-xl border border-indigo-100/90 shadow-2xs">
+          <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+            <i class="fa-solid fa-droplet text-red-500"></i> Glycemic Panel
+          </div>
+          <div>${glycemicCombined || '<span class="text-gray-400 font-normal">—</span>'}</div>
+          <div class="text-[10px] text-gray-500 mt-1">Weight: ${weightBmiCombined}</div>
+        </div>
+
+        <div class="p-2.5 bg-white rounded-xl border border-indigo-100/90 shadow-2xs">
+          <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+            <i class="fa-solid fa-vial text-amber-500"></i> Lipid Profile
+          </div>
+          <div class="text-xs text-gray-800 leading-tight">${lipidHtml}</div>
+          ${liverHtml ? `<div class="text-[10px] text-gray-600 mt-1">${liverHtml}</div>` : ''}
+        </div>
+
+        <div class="p-2.5 bg-white rounded-xl border border-indigo-100/90 shadow-2xs">
+          <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+            <i class="fa-solid fa-kidneys text-purple-600"></i> Renal &amp; Uric Acid
+          </div>
+          <div class="text-xs text-gray-800 leading-tight">${renalHtml}</div>
+          <div class="text-[10px] text-gray-500 mt-1 flex items-center gap-2">
+            ${airdocPresent ? '<span class="text-emerald-700 font-bold"><i class="fa-solid fa-eye text-emerald-600"></i> Airdoc Synced</span>' : ''}
+            ${tedaSummary ? '<span class="text-amber-800 font-bold truncate"><i class="fa-solid fa-yin-yang text-amber-600"></i> TEDA On File</span>' : ''}
+          </div>
+        </div>
+      </div>
+
+      <!-- Previous Prescribed Medications Banner -->
+      <div class="bg-white rounded-xl border border-indigo-100 p-3 space-y-1.5 shadow-2xs">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+            <i class="fa-solid fa-pills text-indigo-600"></i> Previous Prescribed Medication Regimen:
+          </span>
+          ${hasMeds ? `
+            <button type="button" onclick="copyPreviousMedsToCurrentPlan()" class="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 transition">
+              <i class="fa-regular fa-copy"></i> Copy into Current Consultation Plan
+            </button>
+          ` : ''}
+        </div>
+        ${medsDisplayHtml}
+      </div>
+
+      <!-- Collapsible Multi-Visit Historical Trend Comparison Table -->
+      <div id="encPastVisitsTableContainer" class="hidden pt-2 border-t border-indigo-100 space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+            <i class="fa-solid fa-table-list text-indigo-600"></i> Multi-Visit Chronological Parameters Table
+          </span>
+          <span class="text-[10px] text-gray-400">Chronological history (newest to oldest)</span>
+        </div>
+        <div class="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-gray-50 border-b border-gray-200 text-[10px] font-bold text-gray-600 uppercase tracking-wider">
+                <th class="py-2 px-3">Date &amp; Clinician</th>
+                <th class="py-2 px-3">BP (mmHg)</th>
+                <th class="py-2 px-3">Glucose / HbA1c</th>
+                <th class="py-2 px-3">Lipids</th>
+                <th class="py-2 px-3">UA / Cr</th>
+                <th class="py-2 px-3">Weight</th>
+                <th class="py-2 px-3">Prescribed Regimen</th>
+                <th class="py-2 px-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${historyTableRows}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function showNewEncounterModal(patientId) {
   editingEncounterId = null;
   const modal = document.getElementById('patientEncounterModal');
@@ -3265,6 +3662,8 @@ function showNewEncounterModal(patientId) {
   if (aiLoading) aiLoading.classList.add('hidden');
   currentAiReviewResult = null;
 
+  renderEncounterPastRecords(curPId);
+
   modal.classList.remove('hidden');
 }
 
@@ -3308,6 +3707,7 @@ function onEncounterPatientChange() {
   if (waLangEl) {
     waLangEl.value = normalizeLanguage(p.language || getPatientLanguageByRace(p));
   }
+  renderEncounterPastRecords(pId);
 }
 
 function editEncounterRecord(patientId, encounterId) {
@@ -3479,6 +3879,8 @@ function editEncounterRecord(patientId, encounterId) {
   tempAttachedFiles = [];
   renderTempAttachedFiles();
 
+  renderEncounterPastRecords(patientId);
+
   modal.classList.remove('hidden');
 }
 
@@ -3488,6 +3890,12 @@ function closeEncounterModal() {
   editingEncounterId = null;
   const selectEl = document.getElementById('encounterPatientSelect');
   if (selectEl) selectEl.disabled = false;
+
+  const pastRecPanel = document.getElementById('encPastRecordsPanel');
+  if (pastRecPanel) {
+    pastRecPanel.classList.add('hidden');
+    pastRecPanel.innerHTML = '';
+  }
 
   // Seamlessly restore profile modal if user came from profile view
   if (returnToProfilePatientId) {
@@ -4202,10 +4610,15 @@ async function autoAnalyzeTedaLink() {
         statusEl.className = 'text-[10px] text-amber-800 font-bold';
         statusEl.innerHTML = `
           <div class="flex items-center justify-between gap-2 flex-wrap">
-            <span><i class="fa-solid fa-shield-halved text-amber-600"></i> TEDA anti-hotlink protected direct grab. Opening <b>View TV</b> &mdash; click <b>"Quick Sync"</b> to confirm authentic scores!</span>
-            <button type="button" onclick="openTedaTvModal()" class="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-[10px] font-bold transition">
-              <i class="fa-solid fa-tv mr-1"></i> View TV
-            </button>
+            <span><i class="fa-solid fa-shield-halved text-amber-600"></i> Direct grab restricted by server. Use <b>AI Smart Grabber</b> (Ctrl+V screenshot/text) or <b>View TV</b>:</span>
+            <div class="flex items-center gap-1.5">
+              <button type="button" onclick="openTedaAiGrabberModal()" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-[10px] font-bold transition flex items-center gap-1 shadow-xs">
+                <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i> AI Smart Grabber
+              </button>
+              <button type="button" onclick="openTedaTvModal()" class="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-[10px] font-bold transition flex items-center gap-1 shadow-xs">
+                <i class="fa-solid fa-tv"></i> View TV
+              </button>
+            </div>
           </div>
         `;
         openTedaTvModal();
@@ -4563,6 +4976,420 @@ function saveTedaManualSync() {
   }
 }
 
+// ─── TEDA AI SMART GRABBER (VISION & MULTIMODAL EXTRACTION) ─────────────────
+let currentTedaImageBase64 = null;
+let currentTedaImageMime = 'image/png';
+let tedaAiActiveTab = 'screenshot';
+window._lastTedaAiExtractedData = null;
+
+function openTedaAiGrabberModal() {
+  const modal = document.getElementById('tedaAiGrabberModal');
+  if (!modal) return;
+
+  // Pre-fill link input from encTedaLink if available
+  const encLink = document.getElementById('encTedaLink')?.value || '';
+  const modalLinkInput = document.getElementById('tedaAiModalLinkInput');
+  if (modalLinkInput) modalLinkInput.value = encLink;
+
+  // Clear previous extraction results
+  clearTedaScreenshot();
+  const textInput = document.getElementById('tedaAiTextInput');
+  if (textInput) textInput.value = '';
+  const resultsPanel = document.getElementById('tedaAiResultsPanel');
+  if (resultsPanel) resultsPanel.classList.add('hidden');
+  const statusEl = document.getElementById('tedaAiStatus');
+  if (statusEl) { statusEl.classList.add('hidden'); statusEl.innerHTML = ''; }
+
+  switchTedaAiTab('screenshot');
+  modal.classList.remove('hidden');
+
+  // Attach global paste listener
+  window.removeEventListener('paste', handleGlobalTedaPaste);
+  window.addEventListener('paste', handleGlobalTedaPaste);
+}
+
+function closeTedaAiGrabberModal() {
+  const modal = document.getElementById('tedaAiGrabberModal');
+  if (modal) modal.classList.add('hidden');
+  window.removeEventListener('paste', handleGlobalTedaPaste);
+}
+
+function switchTedaAiTab(tab) {
+  tedaAiActiveTab = tab;
+  const btnShot = document.getElementById('tedaAiTabBtnScreenshot');
+  const btnText = document.getElementById('tedaAiTabBtnText');
+  const tabShot = document.getElementById('tedaAiTabScreenshot');
+  const tabText = document.getElementById('tedaAiTabText');
+
+  if (tab === 'screenshot') {
+    btnShot?.classList.add('border-indigo-600', 'text-indigo-700', 'font-bold');
+    btnShot?.classList.remove('border-transparent', 'text-gray-500');
+    btnText?.classList.add('border-transparent', 'text-gray-500');
+    btnText?.classList.remove('border-indigo-600', 'text-indigo-700', 'font-bold');
+    tabShot?.classList.remove('hidden');
+    tabText?.classList.add('hidden');
+  } else {
+    btnText?.classList.add('border-indigo-600', 'text-indigo-700', 'font-bold');
+    btnText?.classList.remove('border-transparent', 'text-gray-500');
+    btnShot?.classList.add('border-transparent', 'text-gray-500');
+    btnShot?.classList.remove('border-indigo-600', 'text-indigo-700', 'font-bold');
+    tabText?.classList.remove('hidden');
+    tabShot?.classList.add('hidden');
+  }
+}
+
+function handleGlobalTedaPaste(e) {
+  const modal = document.getElementById('tedaAiGrabberModal');
+  if (!modal || modal.classList.contains('hidden')) return;
+
+  const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+  if (!items) return;
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (item.type.indexOf('image') !== -1) {
+      const file = item.getAsFile();
+      if (file) {
+        e.preventDefault();
+        loadTedaImageFile(file);
+        switchTedaAiTab('screenshot');
+        return;
+      }
+    }
+  }
+
+  // If text is pasted and we are in text tab or no image was pasted
+  const text = e.clipboardData?.getData('text');
+  if (text && text.trim() && (!currentTedaImageBase64 || tedaAiActiveTab === 'text')) {
+    const textInput = document.getElementById('tedaAiTextInput');
+    if (textInput && document.activeElement !== textInput) {
+      textInput.value = text;
+      switchTedaAiTab('text');
+      if (typeof showPmgToast === 'function') {
+        showPmgToast('📝 Pasted report text into AI Grabber!', 'info');
+      }
+    }
+  }
+}
+
+function handleTedaScreenshotFile(files) {
+  if (!files || !files[0]) return;
+  loadTedaImageFile(files[0]);
+}
+
+function handleTedaScreenshotDrop(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const dropZone = document.getElementById('tedaAiDropZone');
+  if (dropZone) dropZone.classList.remove('border-indigo-500', 'bg-indigo-50/50');
+
+  const files = e.dataTransfer?.files;
+  if (files && files[0] && files[0].type.startsWith('image/')) {
+    loadTedaImageFile(files[0]);
+  }
+}
+
+function loadTedaImageFile(file) {
+  currentTedaImageMime = file.type || 'image/png';
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    currentTedaImageBase64 = e.target.result;
+    const previewImg = document.getElementById('tedaScreenshotPreviewImg');
+    const previewBox = document.getElementById('tedaScreenshotPreviewBox');
+    const promptBox = document.getElementById('tedaPastePrompt');
+    if (previewImg) previewImg.src = currentTedaImageBase64;
+    if (previewBox) previewBox.classList.remove('hidden');
+    if (promptBox) promptBox.classList.add('hidden');
+
+    if (typeof showPmgToast === 'function') {
+      showPmgToast('📷 TEDA Screenshot loaded! Click "Extract Authentic Data" to analyze.', 'success');
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearTedaScreenshot() {
+  currentTedaImageBase64 = null;
+  const previewImg = document.getElementById('tedaScreenshotPreviewImg');
+  const previewBox = document.getElementById('tedaScreenshotPreviewBox');
+  const promptBox = document.getElementById('tedaPastePrompt');
+  const fileInput = document.getElementById('tedaAiScreenshotInput');
+  if (fileInput) fileInput.value = '';
+  if (previewImg) previewImg.src = '';
+  if (previewBox) previewBox.classList.add('hidden');
+  if (promptBox) promptBox.classList.remove('hidden');
+}
+
+async function runTedaAiGrabber() {
+  const btn = document.getElementById('runTedaAiBtn');
+  const statusEl = document.getElementById('tedaAiStatus');
+  const resultsPanel = document.getElementById('tedaAiResultsPanel');
+
+  const apiKey = (localStorage.getItem('pmg_gemini_key') || '').trim()
+    || (document.getElementById('geminiApiKey')?.value || '').trim();
+
+  if (!apiKey) {
+    const entered = prompt('🔑 Please enter your Google Gemini API Key to enable AI Vision extraction:\n\n(Key will be securely saved in this browser)', '');
+    if (entered && entered.trim()) {
+      localStorage.setItem('pmg_gemini_key', entered.trim());
+      const keyEl = document.getElementById('geminiApiKey');
+      if (keyEl) keyEl.value = entered.trim();
+    } else {
+      alert('A Google Gemini API Key is required for AI Vision extraction. Please enter your API Key.');
+      return;
+    }
+  }
+
+  const effectiveApiKey = (localStorage.getItem('pmg_gemini_key') || '').trim();
+
+  // Validate input
+  const textInputVal = (document.getElementById('tedaAiTextInput')?.value || '').trim();
+  if (tedaAiActiveTab === 'screenshot' && !currentTedaImageBase64) {
+    if (textInputVal) {
+      switchTedaAiTab('text');
+    } else {
+      alert('Please paste a screenshot (Ctrl+V) or upload an image of the TEDA report first.');
+      return;
+    }
+  } else if (tedaAiActiveTab === 'text' && !textInputVal) {
+    if (currentTedaImageBase64) {
+      switchTedaAiTab('screenshot');
+    } else {
+      alert('Please paste the copied text from the TEDA report.');
+      return;
+    }
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Extracting Authentic TEDA Data via AI...';
+  }
+  if (statusEl) {
+    statusEl.className = 'mt-2 p-3 rounded-xl text-xs flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-900';
+    statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-indigo-600"></i> Reading report values with Gemini Vision AI…';
+    statusEl.classList.remove('hidden');
+  }
+  if (resultsPanel) resultsPanel.classList.add('hidden');
+
+  const systemPrompt = `You are an expert Clinical Pharmacist and TCM Diagnostic Specialist at PMG Pharmacy in Malaysia.
+Carefully examine the provided authentic TEDA TCM Pulse & Meridian Scan Report (also known as Qiaolz / 经络评估 / 脏腑辩证 / 脉诊健康评估).
+
+Extract ALL authentic scores, values, and clinical findings from this report with 100% precision.
+Return strictly a valid JSON object with the following fields:
+{
+  "immunityScore": number or null (e.g. 58 or 76. Do not confuse with health score. Look for 免疫力 / 免疫力指数),
+  "healthScore": number or null (e.g. 78 or 85. Look for 健康指数 / 身心健康指数),
+  "advice": string (核心调理原则 / 专家建议 / 调理方案, e.g. "【调理原则】疏肝理气，健脾和胃"),
+  "zangfuSummary": string (脏腑辩证总结, e.g. "脾虚湿盛，肝郁化火"),
+  "tizhiSummary": string (气血体质辨识总结, e.g. "气虚质偏颇兼痰湿"),
+  "jingluoSummary": string (经络淤堵总结, e.g. "足太阴脾经、足厥阴肝经阻滞"),
+  "subHealthZangfu": [
+    {"name": "脾", "score": 6.6},
+    {"name": "肾", "score": 7.4}
+  ],
+  "subHealthTizhi": [
+    {"name": "气虚质", "score": 6.0},
+    {"name": "痰湿质", "score": 7.3}
+  ],
+  "blockedJingluo": [
+    {"name": "足太阴脾经", "score": 5.9},
+    {"name": "足厥阴肝经", "score": 6.0}
+  ],
+  "spinePressure": [
+    {"name": "TH6(胸椎)", "score": 7.6},
+    {"name": "C6(颈椎)", "score": 7.6}
+  ]
+}
+
+CRITICAL RULES:
+- Output authentic numbers exactly as shown on the report.
+- Do NOT fabricate or estimate any scores.
+- Return ONLY valid JSON, no markdown formatting or commentary.`;
+
+  const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-3.5-flash'];
+  let parsedResult = null;
+  let successfulModel = '';
+
+  for (const model of models) {
+    try {
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveApiKey}`;
+      let parts = [];
+
+      if (tedaAiActiveTab === 'screenshot' && currentTedaImageBase64) {
+        const rawBase64 = currentTedaImageBase64.replace(/^data:[^;]+;base64,/, '');
+        parts = [
+          { text: systemPrompt },
+          {
+            inlineData: {
+              mimeType: currentTedaImageMime,
+              data: rawBase64
+            }
+          }
+        ];
+      } else {
+        parts = [
+          { text: systemPrompt },
+          { text: `Report Text to parse:\n${textInputVal}` }
+        ];
+      }
+
+      const payload = {
+        contents: [{ parts }],
+        generationConfig: {
+          response_mime_type: "application/json"
+        }
+      };
+
+      const res = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const resData = await res.json();
+      if (!res.ok || resData.error || !resData.candidates || !resData.candidates[0]) {
+        throw new Error(resData.error?.message || `Model ${model} returned empty.`);
+      }
+
+      const rawText = resData.candidates[0].content?.parts?.[0]?.text || '';
+      const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+      parsedResult = JSON.parse(cleanJson);
+      successfulModel = model;
+      break;
+    } catch (modelErr) {
+      console.warn(`[TEDA AI Grabber] ${model} attempt error:`, modelErr);
+    }
+  }
+
+  if (!parsedResult) {
+    if (statusEl) {
+      statusEl.className = 'mt-2 p-3 rounded-xl text-xs flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-800';
+      statusEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-rose-600"></i> AI extraction failed. Please ensure the screenshot clearly shows the TEDA report scores and your Gemini API key is valid.';
+    }
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i> Extract Authentic TEDA Data via AI';
+    }
+    return;
+  }
+
+  // Store parsed result
+  window._lastTedaAiExtractedData = parsedResult;
+
+  // Populate preview panel
+  const modelBadge = document.getElementById('tedaAiExtractedModelBadge');
+  if (modelBadge) modelBadge.textContent = successfulModel;
+
+  const resHealth = document.getElementById('tedaAiResHealth');
+  if (resHealth) resHealth.textContent = parsedResult.healthScore != null ? `${parsedResult.healthScore} / 100` : '—';
+
+  const resImm = document.getElementById('tedaAiResImmunity');
+  if (resImm) {
+    const imm = parsedResult.immunityScore;
+    const isSub = imm != null && Number(imm) < 50;
+    resImm.className = isSub ? 'text-lg font-black text-rose-600' : 'text-lg font-black text-emerald-600';
+    resImm.textContent = imm != null ? `${imm} / 100 ${isSub ? '(亚健康)' : '(正常)'}` : '—';
+  }
+
+  const resAdvice = document.getElementById('tedaAiResAdvice');
+  if (resAdvice) resAdvice.textContent = parsedResult.advice || '—';
+
+  const resZangfu = document.getElementById('tedaAiResZangfu');
+  if (resZangfu) {
+    if (Array.isArray(parsedResult.subHealthZangfu) && parsedResult.subHealthZangfu.length > 0) {
+      resZangfu.textContent = parsedResult.subHealthZangfu.map(x => `${x.name} ${x.score != null ? x.score : ''}`).join(', ');
+    } else {
+      resZangfu.textContent = parsedResult.zangfuSummary || '正常';
+    }
+  }
+
+  const resTizhi = document.getElementById('tedaAiResTizhi');
+  if (resTizhi) {
+    if (Array.isArray(parsedResult.subHealthTizhi) && parsedResult.subHealthTizhi.length > 0) {
+      resTizhi.textContent = parsedResult.subHealthTizhi.map(x => `${x.name} ${x.score != null ? x.score : ''}`).join(', ');
+    } else {
+      resTizhi.textContent = parsedResult.tizhiSummary || '平和质';
+    }
+  }
+
+  const resJingluo = document.getElementById('tedaAiResJingluo');
+  if (resJingluo) {
+    if (Array.isArray(parsedResult.blockedJingluo) && parsedResult.blockedJingluo.length > 0) {
+      resJingluo.textContent = parsedResult.blockedJingluo.map(x => `${x.name} ${x.score != null ? x.score : ''}`).join(', ');
+    } else {
+      resJingluo.textContent = parsedResult.jingluoSummary || '畅通';
+    }
+  }
+
+  const resSpine = document.getElementById('tedaAiResSpine');
+  if (resSpine) {
+    if (Array.isArray(parsedResult.spinePressure) && parsedResult.spinePressure.length > 0) {
+      resSpine.textContent = parsedResult.spinePressure.map(x => `${x.name} ${x.score != null ? x.score : ''}`).join(', ');
+    } else {
+      resSpine.textContent = '正常无显著受压';
+    }
+  }
+
+  if (statusEl) {
+    statusEl.className = 'mt-2 p-3 rounded-xl text-xs flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800';
+    statusEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-600"></i> Extracted via ${successfulModel}. Click "Apply to Consultation Form" below to save!`;
+  }
+
+  if (resultsPanel) resultsPanel.classList.remove('hidden');
+
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-rotate-right mr-1"></i> Re-Extract';
+  }
+}
+
+function applyTedaAiGrabbedData() {
+  const data = window._lastTedaAiExtractedData;
+  if (!data) return;
+
+  const rawUrl = (document.getElementById('tedaAiModalLinkInput')?.value || document.getElementById('encTedaLink')?.value || '').trim();
+  const rid = extractTedaRid(rawUrl) || ('teda-' + Date.now());
+
+  // Also sync link back to encounter form if provided in modal
+  if (rawUrl) {
+    const mainLinkEl = document.getElementById('encTedaLink');
+    if (mainLinkEl) mainLinkEl.value = rawUrl;
+  }
+
+  const structured = {
+    rid,
+    reportDate: getTodayDateString(0),
+    immunityScore: data.immunityScore,
+    healthScore: data.healthScore,
+    advice: data.advice || '',
+    zangfuSummary: data.zangfuSummary || '',
+    tizhiSummary: data.tizhiSummary || '',
+    jingluoSummary: data.jingluoSummary || '',
+    subHealthZangfu: data.subHealthZangfu || [],
+    subHealthTizhi: data.subHealthTizhi || [],
+    blockedJingluo: data.blockedJingluo || [],
+    spinePressure: data.spinePressure || [],
+    isAiExtracted: true
+  };
+
+  applyTedaReportToUi(structured, rawUrl);
+  checkTedaUrl(rawUrl);
+
+  const statusEl = document.getElementById('tedaFetchStatus');
+  if (statusEl) {
+    statusEl.className = 'text-[10px] text-emerald-700 font-bold';
+    statusEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-600"></i> Authentic TEDA Data Captured via AI (Immunity: ${data.immunityScore ?? '—'}, Health: ${data.healthScore ?? '—'})`;
+  }
+
+  closeTedaAiGrabberModal();
+
+  if (typeof showPmgToast === 'function') {
+    showPmgToast('✅ Authentic TEDA findings captured and applied to consultation!', 'success');
+  } else {
+    alert('✅ Authentic TEDA findings captured and applied to consultation!');
+  }
+}
+
 // ─── AIRDOC RETINAL REPORT PDF HELPERS ───────────────────────────────────────
 function handleAirdocFile(files) {
   if (!files || !files[0]) return;
@@ -4894,7 +5721,22 @@ async function saveNewEncounter() {
         targetEnc.nextTcaPurpose = tcaPurpose;
       }
 
+      // Update patient's active medications if editing the latest encounter
+      if (p.encounters && p.encounters[0] && p.encounters[0].id === editingEncounterId) {
+        p.medications = planMedsVal
+          ? planMedsVal.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(m => ({
+              name: m,
+              dosage: '',
+              frequency: '',
+              indication: 'Active Consultation Regimen'
+            }))
+          : [];
+      }
+
       savePatientsData();
+      if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.triggerSync === 'function') {
+        window.pmgOneDriveSync.triggerSync();
+      }
       const pidToReturn = returnToProfilePatientId || (viewingPatientId === pId ? pId : null);
       returnToProfilePatientId = null;
       editingEncounterId = null;
@@ -4940,6 +5782,17 @@ async function saveNewEncounter() {
   if (!p.encounters) p.encounters = [];
   p.encounters.unshift(newEnc);
 
+  // Update patient's active medications to strictly match the latest consultation
+  // If no medications were entered, they are no longer on those medications
+  p.medications = planMedsVal
+    ? planMedsVal.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(m => ({
+        name: m,
+        dosage: '',
+        frequency: '',
+        indication: 'Active Consultation Regimen'
+      }))
+    : [];
+
   // Update patient's preferred language if selected in encounter
   const waLangEl = document.getElementById('encWaLanguage');
   if (waLangEl && waLangEl.value) {
@@ -4958,6 +5811,9 @@ async function saveNewEncounter() {
   }
 
   savePatientsData();
+  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.triggerSync === 'function') {
+    window.pmgOneDriveSync.triggerSync();
+  }
   closeEncounterModal();
   renderPatientModule();
 
@@ -5803,6 +6659,9 @@ async function uploadPatientDocDirect(event, patientId) {
     await savePatientDocument(patientId, file, notes || '');
     const p = patientsData.find(pt => pt.id === patientId);
     if (p) renderProfileDocs(p);
+    if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.triggerSync === 'function') {
+      window.pmgOneDriveSync.triggerSync();
+    }
   } catch (err) {
     alert('Failed to save document: ' + err.message);
   }
@@ -5810,9 +6669,23 @@ async function uploadPatientDocDirect(event, patientId) {
 
 async function previewDoc(docId) {
   try {
-    const doc = await getDocumentById(docId);
+    let doc = await getDocumentById(docId);
+
+    // If not found in local IndexedDB, attempt immediate OneDrive pull if connected
+    if ((!doc || !doc.blob) && window.pmgOneDriveSync && window.pmgOneDriveSync.mode !== 'DISCONNECTED') {
+      try {
+        if (typeof showExpiryToast === 'function') {
+          showExpiryToast('🔄 Pulling report from branch OneDrive...');
+        }
+        await window.pmgOneDriveSync.syncAllBranchData(false);
+        doc = await getDocumentById(docId);
+      } catch (syncErr) {
+        console.warn('Could not auto-pull document from OneDrive:', syncErr);
+      }
+    }
+
     if (!doc || !doc.blob) {
-      alert('Document not found in storage.');
+      alert('Document not found in local storage.\n\nTip: If this report was uploaded on another computer (e.g. Consultation PC), please ensure your branch folder is connected via "OneDrive Live Sync" to automatically sync reports across your devices.');
       return;
     }
 
@@ -5823,7 +6696,7 @@ async function previewDoc(docId) {
 
     if (titleEl) titleEl.textContent = doc.name;
 
-    if (doc.type.includes('pdf')) {
+    if (doc.type && doc.type.includes('pdf')) {
       container.innerHTML = `<iframe src="${url}" class="w-full h-[75vh] rounded-lg border"></iframe>`;
     } else {
       container.innerHTML = `<img src="${url}" alt="Lab Report" class="max-w-full max-h-[75vh] mx-auto rounded-lg shadow">`;
@@ -7250,7 +8123,7 @@ function parseLarkCustomer(text, defaultBranch = 'Kota Sentosa') {
  * Customer opens booking link → fetches latest schedule from Google Sheets.
  * No patient data is ever sent here — working hours only.
  */
-const PMG_SCHEDULE_API_URL = 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+window.PMG_SCHEDULE_API_URL = PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
 
 const BRANCH_SCHEDULES = {
   'Kota Sentosa':  { name: 'Kota Sentosa',  open: '08:00', close: '17:00', pharmacist: 'William Chai Yee Sian (Pharmacist)', phone: '601110990693', hasBreak: true, breakStart: '12:30', breakEnd: '13:30', breakLabel: '休息/午餐时间 (Rest / Lunch Break)' },

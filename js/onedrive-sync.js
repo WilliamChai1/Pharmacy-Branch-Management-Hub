@@ -505,6 +505,83 @@
             console.warn(`[PMG OneDrive Sync] Schedule sync warning for ${branchName}:`, schedSyncErr);
           }
 
+          // Step G: Bidirectional sync of patient documents & clinical reports (Airdoc, Blood tests, Lab PDFs)
+          try {
+            const branchPatientIds = new Set(mergedBranchPatients.map(p => p.id));
+
+            // 1. Read existing patient_documents.json from OneDrive
+            let cloudDocs = [];
+            try {
+              const docHandle = await dirHandle.getFileHandle('patient_documents.json', { create: false });
+              const dFile = await docHandle.getFile();
+              const dText = await dFile.text();
+              if (dText && dText.trim()) {
+                const parsedDocs = JSON.parse(dText);
+                cloudDocs = Array.isArray(parsedDocs.documents) ? parsedDocs.documents : [];
+              }
+            } catch (_) {}
+
+            // 2. Export local documents from IndexedDB
+            const allLocalDocs = (typeof window.exportAllDocuments === 'function') ? await window.exportAllDocuments() : [];
+            const localBranchDocs = allLocalDocs.filter(d => branchPatientIds.has(d.patientId));
+            const localDocIdMap = new Map(localBranchDocs.map(d => [d.id, d]));
+
+            // 3. Import missing cloud docs into local IndexedDB
+            const docsToImport = cloudDocs.filter(cd => !localDocIdMap.has(cd.id));
+            if (docsToImport.length > 0 && typeof window.importAllDocuments === 'function') {
+              await window.importAllDocuments(docsToImport);
+              console.log(`[PMG OneDrive Sync] Imported ${docsToImport.length} cloud patient document(s) into local IndexedDB for ${branchName}`);
+            }
+
+            // 4. Merge all documents
+            const mergedDocsMap = new Map();
+            cloudDocs.forEach(d => mergedDocsMap.set(d.id, d));
+            localBranchDocs.forEach(d => mergedDocsMap.set(d.id, d));
+            const finalMergedDocs = Array.from(mergedDocsMap.values());
+
+            // 5. Write merged patient_documents.json back to OneDrive
+            const docFileHandle = await dirHandle.getFileHandle('patient_documents.json', { create: true });
+            const docWritable = await docFileHandle.createWritable();
+            await docWritable.write(JSON.stringify({
+              branch: branchName,
+              lastSync: nowIso,
+              count: finalMergedDocs.length,
+              documents: finalMergedDocs
+            }, null, 2));
+            await docWritable.close();
+
+            // 6. Write standalone report files into Patient_Reports folder for easy opening in Windows File Explorer
+            try {
+              const reportsFolder = await dirHandle.getDirectoryHandle('Patient_Reports', { create: true });
+              for (const doc of finalMergedDocs) {
+                if (doc.dataUrl && typeof window.dataURLtoBlob === 'function') {
+                  try {
+                    const safeName = `${doc.patientId}_${(doc.name || 'report.pdf').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+                    let fileExists = false;
+                    try {
+                      await reportsFolder.getFileHandle(safeName, { create: false });
+                      fileExists = true;
+                    } catch (_) { fileExists = false; }
+
+                    if (!fileExists) {
+                      const blob = window.dataURLtoBlob(doc.dataUrl);
+                      const reportFileHandle = await reportsFolder.getFileHandle(safeName, { create: true });
+                      const rw = await reportFileHandle.createWritable();
+                      await rw.write(blob);
+                      await rw.close();
+                    }
+                  } catch (fErr) {
+                    console.warn('[PMG OneDrive Sync] Individual file write skipped:', fErr);
+                  }
+                }
+              }
+            } catch (dirErr) {
+              console.warn('[PMG OneDrive Sync] Patient_Reports directory write error:', dirErr);
+            }
+          } catch (docSyncErr) {
+            console.warn(`[PMG OneDrive Sync] Document sync notice for ${branchName}:`, docSyncErr);
+          }
+
           totalMergedPatients += mergedBranchPatients.length;
           syncedBranches.push(branchName);
         }
