@@ -81,10 +81,15 @@ function applyRoleUI(session) {
 
   // Pre-fill stock expiry branch filter
   const expBranchFilter = document.getElementById('expiryBranchFilter');
-  if (expBranchFilter && session.branch && session.branch !== 'ALL') {
-    expBranchFilter.value = session.branch;
-    if (typeof activeExpiryFilter !== 'undefined') {
-      activeExpiryFilter.branch = session.branch;
+  if (expBranchFilter) {
+    if (session.branch && session.branch !== 'ALL') {
+      expBranchFilter.value = session.branch;
+      expBranchFilter.disabled = true;
+      if (typeof activeExpiryFilter !== 'undefined') {
+        activeExpiryFilter.branch = session.branch;
+      }
+    } else {
+      expBranchFilter.disabled = false;
     }
   }
 
@@ -183,6 +188,9 @@ function setGlobalActiveBranch(branchCodeOrName) {
 window.setGlobalActiveBranch = setGlobalActiveBranch;
 
 // ─── LOGIN HANDLER ────────────────────────────────────────────────────────────
+// Connects to live PMG Master Staff in Google Sheets (shared with PMG Sales WebApp)
+const PMG_MASTER_AUTH_URL = 'https://script.google.com/macros/s/AKfycbwhxfd5OQrDJw3bYPuzCd8DQqhWfOmtkQpQUTu7ke9s2bE_egFmvWeubaEtjMvBzADS/exec';
+
 async function login() {
   const usernameEl = document.getElementById('loginUsername');
   const passwordEl = document.getElementById('loginPassword');
@@ -198,67 +206,129 @@ async function login() {
   }
 
   loginBtn.disabled = true;
-  loginBtn.innerHTML = '<span class="loader-sm border-2 border-white border-t-blue-300 rounded-full w-4 h-4 inline-block animate-spin mr-2"></span>Verifying...';
+  loginBtn.innerHTML = '<span class="loader-sm border-2 border-white border-t-blue-300 rounded-full w-4 h-4 inline-block animate-spin mr-2"></span>Connecting to Master Staff...';
 
   let matchedUser = null;
+  let accessDeniedMessage = null;
 
-  // 1. Try remote CSV (public Google Sheets export)
+  // 1. Live Authentication via PMG Master Staff Cloud Relay (Google Sheets API)
   try {
-    const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/PLACEHOLDER/pub?output=csv';
     const resp = await Promise.race([
-      fetch(SHEET_CSV_URL),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+      fetch(PMG_MASTER_AUTH_URL, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'login', username, password })
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 7000))
     ]);
+
     if (resp.ok) {
-      const text = await resp.text();
-      const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
-      for (const row of parsed.data) {
-        if (row.Username && row.Username.toLowerCase() === username.toLowerCase() &&
-            String(row.Password).trim() === String(password).trim()) {
-          const branchVal = row.AssignedBranch || row.Branch || '';
-          const isAM = (row.Role && row.Role.toUpperCase() === 'AM') ||
-                       branchVal.toUpperCase() === 'ALL' ||
-                       row.Username.toLowerCase() === 'williamchai' ||
-                       row.Username.toLowerCase() === 'am';
+      const result = await resp.json();
+      if (result.success && result.user) {
+        const u = result.user;
+        const rawRole = (u.position || u.role || '').trim();
+        const roleLower = rawRole.toLowerCase();
+
+        // ── ROLE-BASED ACCESS CONTROL FOR PMG MANAGEMENT HUB ──
+        // • Area Manager: Full access across all 6 modules & all branches
+        // • Branch Manager / ABM: Inventory, Roster (Rymnet), Stock Expiry, Record CN (PRN/DO)
+        // • Pharmacist: Inventory, Roster (Rymnet), Stock Expiry, Record CN (PRN/DO) (Patient Care hidden - pilot stage)
+        // • Staff (normal assistant), Nutritionist, Dietitian: RESTRICTED to PMG Sales WebApp only!
+        if (roleLower === 'area manager' || roleLower === 'am' || u.username.toLowerCase() === 'williamchai') {
           matchedUser = {
-            username:    row.Username,
-            displayName: row.DisplayName || row.Username,
-            branch:      branchVal || 'ALL',
-            role:        isAM ? 'AM' : 'BM',
+            username:    u.username,
+            displayName: u.name || u.username,
+            branch:      (u.branch && u.branch.toUpperCase() !== 'ALL') ? u.branch : 'ALL',
+            role:        'AM',
+            position:    'Area Manager',
+            empId:       u.empId || '',
           };
-          break;
+        } else if (roleLower.includes('manager') || roleLower === 'bm' || roleLower === 'abm') {
+          matchedUser = {
+            username:    u.username,
+            displayName: u.name || u.username,
+            branch:      u.branch || 'Kota Sentosa',
+            role:        'BM',
+            position:    rawRole,
+            empId:       u.empId || '',
+          };
+        } else if (roleLower.includes('pharmacist')) {
+          matchedUser = {
+            username:    u.username,
+            displayName: u.name || u.username,
+            branch:      u.branch || 'Kota Sentosa',
+            role:        'Pharmacist',
+            position:    'Pharmacist',
+            empId:       u.empId || '',
+          };
+        } else {
+          // Staff (Normal Pharmacist Assistant), Nutritionist, Dietitian
+          accessDeniedMessage = `Access Restricted: ${u.name || u.username} (${rawRole}) is authorized for the PMG Sales WebApp only. PMG Management Hub is restricted to Area Managers, Branch Managers, and Pharmacists.`;
+        }
+      } else if (result.message) {
+        if (result.message.toLowerCase().includes('pending') || result.message.toLowerCase().includes('inactive')) {
+          accessDeniedMessage = result.message;
         }
       }
     }
-  } catch (_) {
-    // Remote unavailable — fall through to local
+  } catch (err) {
+    console.warn('[Auth] Remote verification unavailable or timed out, trying local fallback:', err);
   }
 
-  // 2. Fallback: local USERS array from data.js
+  // If remote returned an explicit restriction or pending status, inform the user immediately
+  if (accessDeniedMessage) {
+    loginBtn.disabled = false;
+    loginBtn.innerHTML = '<span>Sign In</span>';
+    showLoginError(accessDeniedMessage);
+    passwordEl.value = '';
+    return;
+  }
+
+  // 2. Offline Fallback: local USERS array from data.js
   if (!matchedUser) {
     const found = USERS.find(u =>
       u.username.toLowerCase() === username.toLowerCase() &&
       String(u.password).trim() === String(password).trim()
     );
     if (found) {
-      const isAM = found.role === 'AM' ||
+      const rawRole = (found.position || found.role || '').trim();
+      const roleLower = rawRole.toLowerCase();
+
+      // Check role restriction in offline mode too
+      if (roleLower === 'staff' || roleLower === 'nutritionist' || roleLower === 'dietitian') {
+        loginBtn.disabled = false;
+        loginBtn.innerHTML = '<span>Sign In</span>';
+        showLoginError(`Access Restricted: ${found.displayName || found.username} (${rawRole}) is authorized for the PMG Sales WebApp only.`);
+        passwordEl.value = '';
+        return;
+      }
+
+      const isAM = roleLower === 'am' ||
+                   roleLower === 'area manager' ||
                    found.branch === 'ALL' ||
                    found.username.toLowerCase() === 'williamchai' ||
                    found.username.toLowerCase() === 'am';
+
+      const isBM = roleLower === 'bm' || roleLower === 'abm' || roleLower.includes('manager');
+      const isPharm = roleLower.includes('pharmacist');
+
       matchedUser = {
         username:    found.username,
-        displayName: found.displayName,
-        branch:      found.branch,
-        role:        isAM ? 'AM' : (found.role || 'BM'),
+        displayName: found.displayName || found.username,
+        branch:      found.branch || (isAM ? 'ALL' : 'Kota Sentosa'),
+        role:        isAM ? 'AM' : (isPharm ? 'Pharmacist' : 'BM'),
+        position:    rawRole || (isAM ? 'Area Manager' : (isPharm ? 'Pharmacist' : 'Branch Manager')),
+        empId:       found.empNo || '',
       };
     }
   }
 
   loginBtn.disabled = false;
-  loginBtn.innerHTML = '<span>Login</span>';
+  loginBtn.innerHTML = '<span>Sign In</span>';
 
   if (!matchedUser) {
-    showLoginError('Invalid username or password. Please try again.');
+    showLoginError('Invalid username or password. Please verify your credentials or ensure your account is approved in PMG Master Staff.');
     passwordEl.value = '';
     passwordEl.focus();
     return;

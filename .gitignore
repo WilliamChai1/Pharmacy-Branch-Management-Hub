@@ -1,0 +1,12 @@
+# Credentials & Keys
+*.json
+!manifest.json
+!package.json
+!teda_compact_cache.json
+!teda_verified_cache.json
+*.key
+*.pem
+.env*
+
+# Node modules
+node_modules/

@@ -64,6 +64,12 @@ let USERS = [
   { username: 'BR04',        password: '1234',   branch: 'Branch 04',    role: 'BM',         displayName: 'Manager BR04' },
   { username: 'BR05',        password: '1234',   branch: 'Branch 05',    role: 'BM',         displayName: 'Manager BR05' },
   { username: 'BR06',        password: '1234',   branch: 'Branch 06',    role: 'BM',         displayName: 'Manager BR06' },
+
+  // ── Regular Branch Staff (Restricted to PMG Sales WebApp only) ──
+  { username: 'Fiona',       password: '267524', branch: 'Kota Sentosa', role: 'Staff',      displayName: 'Fiona Fiena (Staff)',          empNo: 'PMG01780' },
+  { username: 'Janet',       password: '120904', branch: 'Kota Sentosa', role: 'Staff',      displayName: 'Daniela Janet (Staff)',        empNo: 'PMG03062' },
+  { username: 'Penny',       password: '692692', branch: 'Kota Sentosa', role: 'Staff',      displayName: 'Jong Pei Choo (Staff)',        empNo: 'PMG02694' },
+  { username: 'Nurhafizah',  password: '161799', branch: 'Kota Sentosa', role: 'Staff',      displayName: 'Nurhafizah (Staff)',           empNo: 'PMG02070' },
 ];
 
 // ─── STAFF NICKNAME → RYMNET MAPPING (offline fallback) ──────────────────────
