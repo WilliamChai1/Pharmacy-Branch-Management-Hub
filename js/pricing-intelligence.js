@@ -544,7 +544,25 @@
         const data = await res.json();
         if (data && data.success && Array.isArray(data.skus)) {
           if (data.skus.length > 0) {
-            this.skus = data.skus;
+            if (this.skus.length > data.skus.length) {
+              // Merge Google Sheets price/cost updates into our large local catalog without losing items
+              const sheetMap = new Map();
+              data.skus.forEach(s => { if (s.code) sheetMap.set(s.code, s); });
+              this.skus.forEach(s => {
+                if (s.code && sheetMap.has(s.code)) {
+                  const updated = sheetMap.get(s.code);
+                  s.standardSp = updated.standardSp;
+                  s.currentBranchSp = updated.standardSp;
+                  s.costPrice = updated.costPrice;
+                  if (updated.nonMemberPrice) s.nonMemberPrice = updated.nonMemberPrice;
+                  if (updated.strategyTag) s.strategyTag = updated.strategyTag;
+                  if (updated.supermarketPrice) s.supermarketPrice = updated.supermarketPrice;
+                  if (updated.chainPharmacyPrice) s.chainPharmacyPrice = updated.chainPharmacyPrice;
+                }
+              });
+            } else {
+              this.skus = data.skus;
+            }
             await setPricingSkusToIdb(this.skus);
             this.renderSummaryCards();
             this.renderTableOnly();
@@ -571,9 +589,12 @@
       try {
         const session = typeof getSession === 'function' ? getSession() : null;
         const updatedBy = (session && session.displayName) || localStorage.getItem('pmg_user_name') || 'Area Manager';
+        
+        // Sync up to 5,000 active benchmark SKUs to Google Sheets to keep sheet fast and stay within Apps Script timeout
+        const skusToSync = this.skus.length > 5000 ? this.skus.slice(0, 5000) : this.skus;
         const payload = {
           action: 'savePricingMatrix',
-          skus: this.skus,
+          skus: skusToSync,
           updatedBy: updatedBy
         };
         await fetch(PMG_SCHEDULE_API_URL, {
@@ -583,7 +604,7 @@
           redirect: 'follow'
         });
         if (showToast && typeof showExpiryToast === 'function') {
-          showExpiryToast(`✅ Saved ${this.skus.length} SKUs to Google Sheets.`);
+          showExpiryToast(`✅ Saved ${skusToSync.length} benchmark SKUs to Google Sheets.`);
         }
       } catch (err) {
         console.warn('[PMG Pricing Sheets Sync] Push warning:', err.message);
@@ -936,11 +957,12 @@
       const mapping = {
         code: -1,
         name: -1,
+        description: -1,
         brand: -1,
         category: -1,
         cost: -1,             // PMG Custom Cost
         price: -1,            // PMG Member Price (Selling Price)
-        nonMemberPrice: -1,   // PMG Non-Member Price
+        nonMemberPrice: -1,   // PMG Non-Member Price / Normal Price
         qty: -1,
         margin: -1,
         isNetSoldPrice: false,
@@ -949,45 +971,81 @@
         chain: -1
       };
 
-      // Pass 1: PMG-specific header priority (Custom Cost, Member Price, Non-Member Price, Net Sold Price, Qty)
+      // Pass 1: PMG-specific & Xilnex export header priority
       headerRow.forEach((rawCol, idx) => {
         const col = rawCol.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (col === 'unitcustomcost' || col === 'customcost' || col === 'customcostrm' || col.includes('customcost')) {
+
+        // 1. Margin MUST be matched before cost so 'Profit Margin % (Custom Cost)' is never caught as cost
+        if (col.includes('grossprofitmargin') || col.includes('profitmargin') || col === 'grossmargin' || col === 'margin') {
+          mapping.margin = idx;
+        }
+        // 2. Cost (must NOT contain margin or profit)
+        else if (!col.includes('margin') && !col.includes('profit') &&
+                 (col === 'unitcustomcost' || col === 'customcost' || col === 'customcostrm' || col.includes('customcost') || col === 'unitcost' || col === 'costprice' || col === 'cost')) {
           mapping.cost = idx;
-        } else if (col === 'memberprice' || col.includes('memberprice') || col === 'memberpricerm' || col === 'memberp' || col === 'membersellingprice') {
+        }
+        // 3. Member Price / Member Selling Price
+        else if (col === 'memberprice' || col.includes('memberprice') || col === 'memberpricerm' || col === 'memberp' || col === 'membersellingprice') {
           mapping.price = idx;
-        } else if (col === 'nonmemberprice' || col.includes('nonmember') || col === 'nonmemberpricerm' || col === 'nonmemberp' || col === 'nonmembersellingprice') {
+        }
+        // 4. Normal Price / Non-Member Price
+        else if (col === 'normalprice' || col === 'normalsellingprice' || col === 'normalp' || col === 'nonmemberprice' || col.includes('nonmember') || col === 'nonmemberpricerm' || col === 'nonmemberp' || col === 'nonmembersellingprice' || col === 'retailprice' || col === 'rsp') {
           mapping.nonMemberPrice = idx;
-        } else if (col === 'netsoldprice' || col === 'soldprice' || col.includes('netsoldprice')) {
+        }
+        // 5. Net Sold Price (from sales report)
+        else if (col === 'netsoldprice' || col === 'soldprice' || col.includes('netsoldprice')) {
           mapping.price = idx;
           mapping.isNetSoldPrice = true;
-        } else if (col === 'qty' || col === 'quantity' || col === 'soldqty' || col === 'salesqty') {
+        }
+        // 6. Qty
+        else if (col === 'qty' || col === 'quantity' || col === 'soldqty' || col === 'salesqty') {
           mapping.qty = idx;
-        } else if (col.includes('grossprofitmargin') || col.includes('profitmargin') || col === 'grossmargin' || col === 'margin') {
-          mapping.margin = idx;
+        }
+        // 7. Category (strict)
+        else if (col === 'category' || col === 'itemcategory') {
+          mapping.category = idx;
+        }
+        // 8. Preferred Vendor / Supplier
+        else if (col === 'preferredvendor' || col === 'vendor' || col === 'vendorname' || col === 'supplier' || col === 'suppliername') {
+          mapping.supplier = idx;
+        }
+        // 9. Specific Item Name vs Description
+        else if (col === 'name' || col === 'itemname' || col === 'productname') {
+          mapping.name = idx;
         }
       });
 
       // Pass 2: Fallback to standard headers if not matched by PMG-specific headers
       headerRow.forEach((rawCol, idx) => {
         const col = rawCol.toLowerCase().replace(/[^a-z0-9]/g, '');
+
         if (mapping.code === -1 && (col === 'itemcode' || col === 'code' || col === 'barcode' || col === 'itembarcode' || col === 'sku' || col === 'productcode' || col === 'itemno')) {
           mapping.code = idx;
-        } else if (mapping.name === -1 && (col === 'itemname' || col === 'description' || col === 'itemdescription' || col === 'name' || col === 'productname' || col === 'itemdesc')) {
+        }
+        if (mapping.name === -1 && (col === 'description' || col === 'itemdescription' || col === 'itemdesc')) {
           mapping.name = idx;
-        } else if (mapping.brand === -1 && (col === 'brand' || col === 'brandname' || col === 'principal' || col === 'manufacturer' || col === 'mfg')) {
+        } else if (mapping.description === -1 && (col === 'description' || col === 'itemdescription' || col === 'itemdesc')) {
+          mapping.description = idx;
+        }
+        if (mapping.brand === -1 && (col === 'brand' || col === 'brandname' || col === 'principal' || col === 'manufacturer' || col === 'mfg')) {
           mapping.brand = idx;
-        } else if (mapping.category === -1 && (col === 'category' || col === 'group' || col === 'department' || col === 'itemgroup' || col === 'itemtype' || col === 'type' || col === 'dept' || col === 'division')) {
+        }
+        if (mapping.category === -1 && (col === 'group' || col === 'department' || col === 'itemgroup' || col === 'itemtype' || col === 'type' || col === 'dept' || col === 'division')) {
           mapping.category = idx;
-        } else if (mapping.cost === -1 && (col === 'cost' || col === 'costprice' || col === 'basecost' || col === 'unitcost' || col === 'avgcost' || col === 'averagecost' || col === 'standardcost' || col === 'stdcost' || col === 'lastcost' || col === 'purchaseprice' || col === 'buyprice')) {
+        }
+        if (mapping.cost === -1 && !col.includes('margin') && !col.includes('profit') && (col === 'basecost' || col === 'avgcost' || col === 'averagecost' || col === 'standardcost' || col === 'stdcost' || col === 'lastcost' || col === 'purchaseprice' || col === 'buyprice')) {
           mapping.cost = idx;
-        } else if (mapping.price === -1 && (col === 'sellingprice' || col === 'price' || col === 'normalprice' || col === 'normalsellingprice' || col === 'retailprice' || col === 'standardprice' || col === 'sp' || col === 'unitprice' || col === 'rsp' || col === 'srp')) {
+        }
+        if (mapping.price === -1 && (col === 'sellingprice' || col === 'price' || col === 'standardprice' || col === 'sp' || col === 'unitprice' || col === 'srp')) {
           mapping.price = idx;
-        } else if (mapping.supplier === -1 && (col === 'supplier' || col === 'suppliername' || col === 'vendor' || col === 'vendorname' || col === 'preferredvendor' || col === 'distributor')) {
+        }
+        if (mapping.supplier === -1 && (col === 'distributor' || col.includes('vendor') || col.includes('supplier'))) {
           mapping.supplier = idx;
-        } else if (mapping.supermarket === -1 && (col.includes('supermarket') || col.includes('farley') || col.includes('emart'))) {
+        }
+        if (mapping.supermarket === -1 && (col.includes('supermarket') || col.includes('farley') || col.includes('emart'))) {
           mapping.supermarket = idx;
-        } else if (mapping.chain === -1 && (col.includes('chain') || col.includes('watsons') || col.includes('guardian') || col.includes('alpro') || col.includes('competitor'))) {
+        }
+        if (mapping.chain === -1 && (col.includes('chain') || col.includes('watsons') || col.includes('guardian') || col.includes('alpro') || col.includes('competitor'))) {
           mapping.chain = idx;
         }
       });
@@ -1041,10 +1099,40 @@
         let brand = mapping.brand !== -1 ? (row[mapping.brand] || '').trim() : '';
         let category = mapping.category !== -1 ? (row[mapping.category] || '').trim() : '';
         
-        // Smart inference for Brand if missing
-        if (!brand) {
+        // Normalize Category codes from Xilnex
+        if (category) {
+          const catUpper = category.toUpperCase();
+          if (catUpper === 'FIR-AID' || catUpper.includes('FIRST AID')) category = 'First Aid / Wound Care';
+          else if (catUpper === 'PERSONAL' || catUpper.includes('PERSONAL')) category = 'Personal Care';
+          else if (catUpper === 'F & B' || catUpper === 'F&B' || catUpper.includes('FOOD')) category = 'Food & Beverage';
+          else if (catUpper.includes('HEALTH') || catUpper.includes('SUPP')) category = 'Health & Supplements';
+          else if (catUpper.includes('RX') || catUpper.includes('DISPENS') || catUpper.includes('POM')) category = 'Prescription (Rx)';
+        } else {
+          // Smart inference for Category if missing
+          const upper = name.toUpperCase();
+          if (upper.includes('STRIP') || upper.includes('LANCET') || upper.includes('NEEDLE') || upper.includes('METER') || upper.includes('SYRINGE') || upper.includes('MASK')) {
+            category = 'Medical Devices';
+          } else if (upper.includes('VIT') || upper.includes('OMEGA') || upper.includes('FISH OIL') || upper.includes('LECITHIN') || upper.includes('CALCIUM')) {
+            category = 'Supplements';
+          } else if (upper.includes('TAB') || upper.includes('CAP') || upper.includes('SYRUP') || upper.includes('SUSP') || upper.includes('CREAM') || upper.includes('OINT')) {
+            category = 'Chronic Disease';
+          } else if (upper.includes('WASH') || upper.includes('SHAMPOO') || upper.includes('LOTION') || upper.includes('CLEANSER') || upper.includes('TOOTHPASTE')) {
+            category = 'Personal Care';
+          } else {
+            category = 'General OTC';
+          }
+        }
+
+        // Smart inference for Brand if missing or 'General'
+        if (!brand || brand === 'General') {
           const upperName = name.toUpperCase();
-          if (upperName.includes('BLACKMORES')) brand = 'Blackmores';
+          if (upperName.includes('SURGIPLUS')) brand = 'Surgiplus';
+          else if (upperName.includes('MEDICOS')) brand = 'Medicos';
+          else if (upperName.includes('FLAMINGO')) brand = 'Flamingo';
+          else if (upperName.includes('SENSODYNE')) brand = 'Sensodyne';
+          else if (upperName.includes('NIVEA')) brand = 'Nivea';
+          else if (upperName.includes('TAISHIN')) brand = 'Taishin';
+          else if (upperName.includes('BLACKMORES')) brand = 'Blackmores';
           else if (upperName.includes('ACCU-CHEK')) brand = 'Accu-Chek';
           else if (upperName.includes('PANADOL') || upperName.includes('GSK')) brand = 'GSK';
           else if (upperName.includes('OXY')) brand = 'Rohto Oxy';
@@ -1055,22 +1143,6 @@
           else {
             const firstWord = name.split(/[\s-]/)[0];
             brand = (firstWord && firstWord.length > 2 && isNaN(firstWord)) ? firstWord : 'General';
-          }
-        }
-
-        // Smart inference for Category if missing
-        if (!category) {
-          const upper = name.toUpperCase();
-          if (upper.includes('STRIP') || upper.includes('LANCET') || upper.includes('NEEDLE') || upper.includes('METER') || upper.includes('SYRINGE')) {
-            category = 'Medical Devices';
-          } else if (upper.includes('VIT') || upper.includes('OMEGA') || upper.includes('FISH OIL') || upper.includes('LECITHIN') || upper.includes('CALCIUM')) {
-            category = 'Supplements';
-          } else if (upper.includes('TAB') || upper.includes('CAP') || upper.includes('SYRUP') || upper.includes('SUSP') || upper.includes('CREAM') || upper.includes('OINT')) {
-            category = 'Chronic Disease';
-          } else if (upper.includes('WASH') || upper.includes('SHAMPOO') || upper.includes('LOTION') || upper.includes('CLEANSER')) {
-            category = 'Personal Care';
-          } else {
-            category = 'General OTC';
           }
         }
 
@@ -1087,9 +1159,10 @@
           ? this.cleanNumber(row[mapping.nonMemberPrice]) 
           : (sp > 0 ? parseFloat((sp * 1.1).toFixed(2)) : null);
 
-        const supplier = mapping.supplier !== -1 ? (row[mapping.supplier] || 'Standard Distributor').trim() : 'Standard Distributor';
+        const supplier = mapping.supplier !== -1 ? (row[mapping.supplier] || '').trim() || 'Direct' : 'Direct';
         const supermarket = mapping.supermarket !== -1 ? this.cleanNumber(row[mapping.supermarket]) : null;
         const chain = mapping.chain !== -1 ? this.cleanNumber(row[mapping.chain]) : null;
+        const internalNotes = mapping.description !== -1 ? (row[mapping.description] || '').trim() : '';
 
         // Auto assign strategic role based on initial gross margin
         let strategyTag = 'core_rx';
@@ -1099,23 +1172,27 @@
           else if (m < 15) strategyTag = 'kvi_defensive';
         }
 
+        const notesStr = internalNotes 
+          ? `${internalNotes}${filename ? ' · Imported from ' + filename : ''}`
+          : `Imported from Xilnex${filename ? ' (' + filename + ')' : ''}`;
+
         parsedSkus.push({
           id: 'xilnex-' + (code ? code.replace(/[^a-zA-Z0-9_-]/g, '_') : Date.now() + '-' + r),
           code: code || 'N/A',
           name: name.toUpperCase(),
           brand: brand || 'General',
           category: category || 'General OTC',
-          supplier: supplier || 'Standard Distributor',
+          supplier: supplier || 'Direct',
           costPrice: cost,                  // PMG Custom Cost
           standardSp: sp,                   // PMG Member Price (Selling Price)
-          nonMemberPrice: nonMemberSp,      // PMG Non-Member Price
+          nonMemberPrice: nonMemberSp,      // PMG Non-Member Price / Normal Price
           currentBranchSp: sp,
           supermarketPrice: supermarket,
           chainPharmacyPrice: chain,
           competitorName: 'Local Competitors',
           strategyTag,
           elasticity: 'Moderate',
-          notes: `Imported from Xilnex${filename ? ' (' + filename + ')' : ''}`
+          notes: notesStr
         });
       }
 
