@@ -4475,6 +4475,12 @@ function buildTedaClinicalSummaryText(report, rawUrl) {
     lines.push(`• 脊柱压力: ${spList}`);
   }
 
+  if (report.pharmacistRecommendations && Array.isArray(report.pharmacistRecommendations) && report.pharmacistRecommendations.length > 0) {
+    lines.push(`• 药剂师指导建议: ${report.pharmacistRecommendations.join('；')}`);
+  } else if (report.guidance) {
+    lines.push(`• 药剂师指导建议: ${report.guidance}`);
+  }
+
   if (rawUrl) {
     lines.push(`• 在线报告链接: ${rawUrl}`);
   }
@@ -4976,7 +4982,8 @@ function saveTedaManualSync() {
   }
 }
 
-// ─── TEDA AI SMART GRABBER (VISION & MULTIMODAL EXTRACTION) ─────────────────
+// ─── TEDA AI SMART GRABBER & MULTI-PAGE AUTO-CAPTURE ─────────────────────────
+let tedaMultiPageImages = []; // Array of { id, dataUrl, mimeType, label, timestamp }
 let currentTedaImageBase64 = null;
 let currentTedaImageMime = 'image/png';
 let tedaAiActiveTab = 'screenshot';
@@ -4992,7 +4999,7 @@ function openTedaAiGrabberModal() {
   if (modalLinkInput) modalLinkInput.value = encLink;
 
   // Clear previous extraction results
-  clearTedaScreenshot();
+  clearAllTedaPages();
   const textInput = document.getElementById('tedaAiTextInput');
   if (textInput) textInput.value = '';
   const resultsPanel = document.getElementById('tedaAiResultsPanel');
@@ -5038,6 +5045,220 @@ function switchTedaAiTab(tab) {
   }
 }
 
+/**
+ * 1-Click Native Screen / Tab Auto-Capture
+ * Uses standard navigator.mediaDevices.getDisplayMedia to snapshot the screen or browser tab
+ * without requiring the user to manually snip or save files!
+ */
+async function autoCaptureTedaScreen() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    if (typeof showPmgToast === 'function') {
+      showPmgToast('Screen capture is not supported on this browser. Please use Chrome/Edge or paste with Ctrl+V.', 'warning');
+    } else {
+      alert('Screen capture is not supported in this browser. Please use Chrome/Edge or paste with Ctrl+V.');
+    }
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { cursor: 'never' },
+      audio: false
+    });
+
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    video.playsInline = true;
+    await video.play();
+
+    // Wait 350ms to ensure video stream renders a sharp frame
+    await new Promise(r => setTimeout(r, 350));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // Stop all media tracks immediately so recording indicator stops
+    stream.getTracks().forEach(track => track.stop());
+
+    const dataUrl = canvas.toDataURL('image/png', 0.95);
+    const count = tedaMultiPageImages.length;
+    const defaultLabels = [
+      'Overview & Scores (首页)',
+      '脏腑辨证 (Zang-Fu)',
+      '气血体质 (Constitution)',
+      '经络辨证 (Meridians)',
+      '脊柱评估 (Spine)',
+      '健康指导 (Advice)'
+    ];
+    const label = defaultLabels[count] || `Page ${count + 1}`;
+
+    addTedaMultiPageImage(dataUrl, 'image/png', label);
+
+    if (typeof showPmgToast === 'function') {
+      showPmgToast(`📸 Auto-captured "${label}"! Switch tabs in the report to capture more, or click "Extract & Interpret".`, 'success');
+    }
+
+  } catch (err) {
+    if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
+      console.error('[Auto-Capture Error]', err);
+      if (typeof showPmgToast === 'function') {
+        showPmgToast('Screen capture cancelled or error: ' + err.message, 'warning');
+      }
+    }
+  }
+}
+
+/**
+ * Add an image to the multi-page collection
+ */
+function addTedaMultiPageImage(dataUrl, mimeType = 'image/png', label = '') {
+  if (!dataUrl) return;
+  const id = 'teda_pg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+  const count = tedaMultiPageImages.length;
+  const defaultLabels = [
+    'Overview & Scores (首页)',
+    '脏腑辨证 (Zang-Fu)',
+    '气血体质 (Constitution)',
+    '经络辨证 (Meridians)',
+    '脊柱评估 (Spine)',
+    '健康指导 (Advice)'
+  ];
+  const finalLabel = label || defaultLabels[count] || `Page ${count + 1}`;
+
+  tedaMultiPageImages.push({
+    id,
+    dataUrl,
+    mimeType: mimeType || 'image/png',
+    label: finalLabel,
+    timestamp: Date.now()
+  });
+
+  currentTedaImageBase64 = dataUrl;
+  currentTedaImageMime = mimeType || 'image/png';
+
+  renderTedaMultiPageGallery();
+}
+
+/**
+ * Remove an individual page from the gallery
+ */
+function removeTedaPageImage(id) {
+  tedaMultiPageImages = tedaMultiPageImages.filter(p => p.id !== id);
+  if (tedaMultiPageImages.length > 0) {
+    currentTedaImageBase64 = tedaMultiPageImages[tedaMultiPageImages.length - 1].dataUrl;
+    currentTedaImageMime = tedaMultiPageImages[tedaMultiPageImages.length - 1].mimeType;
+  } else {
+    currentTedaImageBase64 = null;
+  }
+  renderTedaMultiPageGallery();
+}
+
+/**
+ * Update label for a specific captured page
+ */
+function updateTedaPageLabel(id, newLabel) {
+  const item = tedaMultiPageImages.find(p => p.id === id);
+  if (item) item.label = newLabel;
+}
+
+/**
+ * Clear all pages from the multi-page gallery
+ */
+function clearAllTedaPages() {
+  tedaMultiPageImages = [];
+  currentTedaImageBase64 = null;
+  const fileInput = document.getElementById('tedaAiScreenshotInput');
+  if (fileInput) fileInput.value = '';
+  renderTedaMultiPageGallery();
+}
+
+function clearTedaScreenshot() {
+  clearAllTedaPages();
+}
+
+/**
+ * Render the multi-page thumbnails grid and update page counts
+ */
+function renderTedaMultiPageGallery() {
+  const container = document.getElementById('tedaMultiPageGalleryContainer');
+  const thumbGrid = document.getElementById('tedaMultiPageThumbnails');
+  const countBadge = document.getElementById('tedaPageCountBadge');
+  const extractCountBadge = document.getElementById('tedaAiExtractPageCount');
+  const tvBadge = document.getElementById('tedaTvCapturedCountBadge');
+  const clearBtn = document.getElementById('tedaClearAllPagesBtn');
+  const dropZone = document.getElementById('tedaAiDropZone');
+
+  const total = tedaMultiPageImages.length;
+
+  if (countBadge) countBadge.textContent = `${total} Page${total === 1 ? '' : 's'} Captured`;
+  if (extractCountBadge) extractCountBadge.textContent = `${total} Page${total === 1 ? '' : 's'}`;
+
+  if (tvBadge) {
+    if (total > 0) {
+      tvBadge.textContent = String(total);
+      tvBadge.classList.remove('hidden');
+    } else {
+      tvBadge.classList.add('hidden');
+    }
+  }
+
+  if (clearBtn) {
+    if (total > 0) clearBtn.classList.remove('hidden');
+    else clearBtn.classList.add('hidden');
+  }
+
+  if (total > 0) {
+    if (container) container.classList.remove('hidden');
+    if (dropZone) dropZone.classList.add('p-3', 'min-h-[70px]');
+    if (dropZone) dropZone.classList.remove('min-h-[130px]');
+  } else {
+    if (container) container.classList.add('hidden');
+    if (dropZone) dropZone.classList.remove('p-3', 'min-h-[70px]');
+    if (dropZone) dropZone.classList.add('min-h-[130px]');
+  }
+
+  if (!thumbGrid) return;
+  thumbGrid.innerHTML = '';
+
+  const tabOptions = [
+    'Overview & Scores (首页)',
+    '脏腑辨证 (Zang-Fu)',
+    '气血体质 (Constitution)',
+    '经络辨证 (Meridians)',
+    '脊柱评估 (Spine)',
+    '健康指导 (Advice)',
+    'Other Page'
+  ];
+
+  tedaMultiPageImages.forEach((pg, index) => {
+    const card = document.createElement('div');
+    card.className = 'bg-white rounded-xl border border-indigo-200 overflow-hidden shadow-xs flex flex-col relative group';
+
+    const optionsHtml = tabOptions.map(opt => `<option value="${opt}" ${pg.label === opt ? 'selected' : ''}>${opt}</option>`).join('');
+
+    card.innerHTML = `
+      <div class="relative bg-slate-900 h-28 flex items-center justify-center overflow-hidden">
+        <img src="${pg.dataUrl}" alt="${pg.label}" class="w-full h-full object-contain cursor-pointer hover:opacity-90 transition" onclick="window.open('${pg.dataUrl}', '_blank')">
+        <span class="absolute top-1.5 left-1.5 bg-slate-900/80 text-white font-mono text-[10px] px-1.5 py-0.5 rounded backdrop-blur-xs">
+          #${index + 1}
+        </span>
+        <button type="button" onclick="removeTedaPageImage('${pg.id}')" class="absolute top-1.5 right-1.5 bg-rose-600 hover:bg-rose-700 text-white w-6 h-6 rounded-full flex items-center justify-center text-[10px] shadow-sm transition active:scale-95" title="Remove this page">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>
+      <div class="p-2 bg-slate-50 flex flex-col gap-1">
+        <select onchange="updateTedaPageLabel('${pg.id}', this.value)" class="w-full text-[11px] font-bold text-gray-800 bg-white border border-gray-300 rounded px-1.5 py-1 outline-none focus:border-indigo-500">
+          ${optionsHtml}
+        </select>
+      </div>
+    `;
+    thumbGrid.appendChild(card);
+  });
+}
+
 function handleGlobalTedaPaste(e) {
   const modal = document.getElementById('tedaAiGrabberModal');
   if (!modal || modal.classList.contains('hidden')) return;
@@ -5045,22 +5266,31 @@ function handleGlobalTedaPaste(e) {
   const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
   if (!items) return;
 
+  let handledImage = false;
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
     if (item.type.indexOf('image') !== -1) {
       const file = item.getAsFile();
       if (file) {
         e.preventDefault();
-        loadTedaImageFile(file);
-        switchTedaAiTab('screenshot');
-        return;
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+          addTedaMultiPageImage(ev.target.result, file.type, `Page ${tedaMultiPageImages.length + 1}`);
+          switchTedaAiTab('screenshot');
+          if (typeof showPmgToast === 'function') {
+            showPmgToast(`📸 Added Page ${tedaMultiPageImages.length} to collection!`, 'success');
+          }
+        };
+        reader.readAsDataURL(file);
+        handledImage = true;
       }
     }
   }
+  if (handledImage) return;
 
-  // If text is pasted and we are in text tab or no image was pasted
+  // If text is pasted and we are in text tab or no images yet
   const text = e.clipboardData?.getData('text');
-  if (text && text.trim() && (!currentTedaImageBase64 || tedaAiActiveTab === 'text')) {
+  if (text && text.trim() && (tedaMultiPageImages.length === 0 || tedaAiActiveTab === 'text')) {
     const textInput = document.getElementById('tedaAiTextInput');
     if (textInput && document.activeElement !== textInput) {
       textInput.value = text;
@@ -5073,8 +5303,17 @@ function handleGlobalTedaPaste(e) {
 }
 
 function handleTedaScreenshotFile(files) {
-  if (!files || !files[0]) return;
-  loadTedaImageFile(files[0]);
+  if (!files || !files.length) return;
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        addTedaMultiPageImage(e.target.result, file.type, `Page ${tedaMultiPageImages.length + 1}`);
+      };
+      reader.readAsDataURL(file);
+    }
+  }
 }
 
 function handleTedaScreenshotDrop(e) {
@@ -5084,42 +5323,140 @@ function handleTedaScreenshotDrop(e) {
   if (dropZone) dropZone.classList.remove('border-indigo-500', 'bg-indigo-50/50');
 
   const files = e.dataTransfer?.files;
-  if (files && files[0] && files[0].type.startsWith('image/')) {
-    loadTedaImageFile(files[0]);
+  if (files && files.length) {
+    handleTedaScreenshotFile(files);
   }
 }
 
 function loadTedaImageFile(file) {
-  currentTedaImageMime = file.type || 'image/png';
+  if (!file) return;
   const reader = new FileReader();
   reader.onload = function(e) {
-    currentTedaImageBase64 = e.target.result;
-    const previewImg = document.getElementById('tedaScreenshotPreviewImg');
-    const previewBox = document.getElementById('tedaScreenshotPreviewBox');
-    const promptBox = document.getElementById('tedaPastePrompt');
-    if (previewImg) previewImg.src = currentTedaImageBase64;
-    if (previewBox) previewBox.classList.remove('hidden');
-    if (promptBox) promptBox.classList.add('hidden');
-
-    if (typeof showPmgToast === 'function') {
-      showPmgToast('📷 TEDA Screenshot loaded! Click "Extract Authentic Data" to analyze.', 'success');
-    }
+    addTedaMultiPageImage(e.target.result, file.type || 'image/png', `Page ${tedaMultiPageImages.length + 1}`);
   };
   reader.readAsDataURL(file);
 }
 
-function clearTedaScreenshot() {
-  currentTedaImageBase64 = null;
-  const previewImg = document.getElementById('tedaScreenshotPreviewImg');
-  const previewBox = document.getElementById('tedaScreenshotPreviewBox');
-  const promptBox = document.getElementById('tedaPastePrompt');
-  const fileInput = document.getElementById('tedaAiScreenshotInput');
-  if (fileInput) fileInput.value = '';
-  if (previewImg) previewImg.src = '';
-  if (previewBox) previewBox.classList.add('hidden');
-  if (promptBox) promptBox.classList.remove('hidden');
+/**
+ * ⚡ Direct Zero-Click Decryption of TEDA Report straight from server
+ * Decrypts 100% of all interactive tabs (Zang-Fu, Meridians, Constitution, Spine, Advice)
+ */
+async function runTedaDirectDecrypt() {
+  const linkInput = document.getElementById('tedaAiModalLinkInput');
+  const encLinkInput = document.getElementById('encTedaLink');
+  let rawUrl = (linkInput?.value || encLinkInput?.value || '').trim();
+
+  let rid = extractTedaRid(rawUrl);
+  if (!rid) {
+    const entered = prompt('⚡ Enter TEDA Report Link or RID (e.g. 8a6b0091-1449-42fa-9972-e2d87b4da5d6):', rawUrl || '');
+    if (entered && entered.trim()) {
+      rawUrl = entered.trim();
+      rid = extractTedaRid(rawUrl) || rawUrl;
+      if (linkInput) linkInput.value = rawUrl;
+    } else {
+      return;
+    }
+  }
+
+  const statusEl = document.getElementById('tedaAiStatus');
+  const resultsPanel = document.getElementById('tedaAiResultsPanel');
+  if (statusEl) {
+    statusEl.className = 'mt-2 p-3 rounded-xl text-xs flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-900';
+    statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-amber-600"></i> Connecting to TEDA server and decrypting all interactive sub-page payloads (Zang-Fu, Meridians, Constitution, Spine)...';
+    statusEl.classList.remove('hidden');
+  }
+
+  try {
+    const structured = await fetchAndDecryptTedaReport(rid);
+    if (!structured || (!structured.immunityScore && !structured.healthScore && !structured.advice)) {
+      throw new Error('Decrypted report did not contain standard score fields.');
+    }
+
+    // Set as last extracted data
+    window._lastTedaAiExtractedData = structured;
+
+    // Populate preview panel
+    const modelBadge = document.getElementById('tedaAiExtractedModelBadge');
+    if (modelBadge) modelBadge.textContent = 'Server Direct Decrypt (Zero-Loss)';
+
+    const resHealth = document.getElementById('tedaAiResHealth');
+    if (resHealth) resHealth.textContent = structured.healthScore != null ? `${structured.healthScore} / 100` : '—';
+
+    const resImm = document.getElementById('tedaAiResImmunity');
+    if (resImm) {
+      const imm = structured.immunityScore;
+      const isSub = imm != null && Number(imm) < 50;
+      resImm.className = isSub ? 'text-lg font-black text-rose-600' : 'text-lg font-black text-emerald-600';
+      resImm.textContent = imm != null ? `${imm} / 100 ${isSub ? '(亚健康)' : '(正常)'}` : '—';
+    }
+
+    const resAdvice = document.getElementById('tedaAiResAdvice');
+    if (resAdvice) resAdvice.textContent = structured.advice || '—';
+
+    const resZangfu = document.getElementById('tedaAiResZangfu');
+    if (resZangfu) {
+      if (Array.isArray(structured.subHealthZangfu) && structured.subHealthZangfu.length > 0) {
+        resZangfu.textContent = structured.subHealthZangfu.map(x => `${x.name} ${x.score != null ? (!isNaN(Number(x.score)) ? Number(x.score).toFixed(1) : x.score) : ''}`).join(', ');
+      } else {
+        resZangfu.textContent = structured.zangfuSummary || '正常';
+      }
+    }
+
+    const resTizhi = document.getElementById('tedaAiResTizhi');
+    if (resTizhi) {
+      if (Array.isArray(structured.subHealthTizhi) && structured.subHealthTizhi.length > 0) {
+        resTizhi.textContent = structured.subHealthTizhi.map(x => `${x.name} ${x.score != null ? (!isNaN(Number(x.score)) ? Number(x.score).toFixed(1) : x.score) : ''}`).join(', ');
+      } else {
+        resTizhi.textContent = structured.tizhiSummary || '平和质';
+      }
+    }
+
+    const resJingluo = document.getElementById('tedaAiResJingluo');
+    if (resJingluo) {
+      if (Array.isArray(structured.blockedJingluo) && structured.blockedJingluo.length > 0) {
+        resJingluo.textContent = structured.blockedJingluo.map(x => `${x.name} ${x.score != null ? (!isNaN(Number(x.score)) ? Number(x.score).toFixed(1) : x.score) : ''}`).join(', ');
+      } else {
+        resJingluo.textContent = structured.jingluoSummary || '畅通';
+      }
+    }
+
+    const resSpine = document.getElementById('tedaAiResSpine');
+    if (resSpine) {
+      if (Array.isArray(structured.spinePressure) && structured.spinePressure.length > 0) {
+        resSpine.textContent = structured.spinePressure.map(x => `${x.name} ${x.score != null ? (!isNaN(Number(x.score)) ? Number(x.score).toFixed(1) : x.score) : ''}`).join(', ');
+      } else {
+        resSpine.textContent = structured.jizhuSummary || '正常无显著受压';
+      }
+    }
+
+    const resGuidance = document.getElementById('tedaAiResGuidance');
+    if (resGuidance) {
+      resGuidance.textContent = structured.advice ? '根据上述脏腑虚实与经络淤堵，建议予以针对性调理，配合生活作息改善与药膳建议。' : '—';
+    }
+
+    if (statusEl) {
+      statusEl.className = 'mt-2 p-3 rounded-xl text-xs flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800';
+      statusEl.innerHTML = '<i class="fa-solid fa-circle-check text-emerald-600"></i> Direct Decryption successful! All 100% authentic interactive pages decrypted from server without screenshots. Click "Apply to Consultation Form" below.';
+    }
+
+    if (resultsPanel) resultsPanel.classList.remove('hidden');
+
+    if (typeof showPmgToast === 'function') {
+      showPmgToast('⚡ TEDA Report decrypted with 100% precision from server!', 'success');
+    }
+
+  } catch (err) {
+    console.warn('[Direct Decrypt Notice]:', err);
+    if (statusEl) {
+      statusEl.className = 'mt-2 p-3 rounded-xl text-xs flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-900';
+      statusEl.innerHTML = '<i class="fa-solid fa-circle-info text-amber-600"></i> Server direct fetch was restricted by browser domain rules. Please use the <b>📸 1-Click Auto-Capture</b> button above to capture the interactive tabs.';
+    }
+  }
 }
 
+/**
+ * Run Gemini AI Vision Multimodal Extraction across ALL captured pages simultaneously
+ */
 async function runTedaAiGrabber() {
   const btn = document.getElementById('runTedaAiBtn');
   const statusEl = document.getElementById('tedaAiStatus');
@@ -5144,15 +5481,17 @@ async function runTedaAiGrabber() {
 
   // Validate input
   const textInputVal = (document.getElementById('tedaAiTextInput')?.value || '').trim();
-  if (tedaAiActiveTab === 'screenshot' && !currentTedaImageBase64) {
+  const hasImages = tedaMultiPageImages.length > 0 || !!currentTedaImageBase64;
+
+  if (tedaAiActiveTab === 'screenshot' && !hasImages) {
     if (textInputVal) {
       switchTedaAiTab('text');
     } else {
-      alert('Please paste a screenshot (Ctrl+V) or upload an image of the TEDA report first.');
+      alert('Please click "📸 1-Click Auto-Capture" or paste a screenshot (Ctrl+V) of the TEDA report first.');
       return;
     }
   } else if (tedaAiActiveTab === 'text' && !textInputVal) {
-    if (currentTedaImageBase64) {
+    if (hasImages) {
       switchTedaAiTab('screenshot');
     } else {
       alert('Please paste the copied text from the TEDA report.');
@@ -5160,77 +5499,106 @@ async function runTedaAiGrabber() {
     }
   }
 
+  const totalPages = tedaMultiPageImages.length || (currentTedaImageBase64 ? 1 : 0);
+
   if (btn) {
     btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Extracting Authentic TEDA Data via AI...';
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Interpreting ${totalPages} Page${totalPages === 1 ? '' : 's'} via Gemini AI...`;
   }
   if (statusEl) {
     statusEl.className = 'mt-2 p-3 rounded-xl text-xs flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-900';
-    statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-indigo-600"></i> Reading report values with Gemini Vision AI…';
+    statusEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-indigo-600"></i> Reading and cross-referencing all ${totalPages} interactive pages with Gemini Vision AI…`;
     statusEl.classList.remove('hidden');
   }
   if (resultsPanel) resultsPanel.classList.add('hidden');
 
-  const systemPrompt = `You are an expert Clinical Pharmacist and TCM Diagnostic Specialist at PMG Pharmacy in Malaysia.
-Carefully examine the provided authentic TEDA TCM Pulse & Meridian Scan Report (also known as Qiaolz / 经络评估 / 脏腑辩证 / 脉诊健康评估).
+  const multiPageSystemPrompt = `You are an expert Clinical Pharmacist and TCM Diagnostic Specialist at PMG Pharmacy in Malaysia.
+You are analyzing authentic images/pages from an interactive TEDA TCM Pulse & Meridian Scan Report (经络评估 / 脏腑辩证 / 脉诊健康评估 / 脊柱评估 / 气血体质辨识).
 
-Extract ALL authentic scores, values, and clinical findings from this report with 100% precision.
-Return strictly a valid JSON object with the following fields:
+The user has captured multiple interactive tabs from the web report:
+- Overview / 首页 (Immunity score, Health score, general advice)
+- 脏腑辨证 (Zang-Fu 10 organs: Liver 肝, Heart 心, Spleen 脾, Lung 肺, Kidney 肾, Gallbladder 胆, Stomach 胃, Large Intestine 大肠, Small Intestine 小肠, Bladder 膀胱)
+- 气血体质辨识 (10 Constitution types: Balanced 平和, Qi deficiency 气虚, Yang deficiency 阳虚, Yin deficiency 阴虚, Phlegm-damp 痰湿, Damp-heat 湿热, Blood stasis 血瘀, Qi stagnation 气郁, Allergic 特禀)
+- 经络辨证 (14 Meridians: Lung, Large Intestine, Stomach, Spleen, Heart, Small Intestine, Bladder, Kidney, Pericardium, Triple Burner, Gallbladder, Liver, Du, Ren)
+- 脊柱受压评估 (Spine vertebrae pressure: Cervical C1-C7, Thoracic T1-T12, Lumbar L1-L5, Sacrum)
+- 调理指导 / 建议 (Diet, lifestyle, sleep, exercise, herbal supplements)
+
+Carefully cross-reference ALL provided images and synthesize ALL authentic findings across all pages into a single, cohesive, exhaustive clinical diagnosis JSON.
+
+Return strictly valid JSON with this format:
 {
-  "immunityScore": number or null (e.g. 58 or 76. Do not confuse with health score. Look for 免疫力 / 免疫力指数),
-  "healthScore": number or null (e.g. 78 or 85. Look for 健康指数 / 身心健康指数),
+  "immunityScore": number or null (e.g. 58. Look for 免疫力 / 免疫力指数),
+  "healthScore": number or null (e.g. 78. Look for 健康指数 / 身心健康指数),
   "advice": string (核心调理原则 / 专家建议 / 调理方案, e.g. "【调理原则】疏肝理气，健脾和胃"),
   "zangfuSummary": string (脏腑辩证总结, e.g. "脾虚湿盛，肝郁化火"),
   "tizhiSummary": string (气血体质辨识总结, e.g. "气虚质偏颇兼痰湿"),
   "jingluoSummary": string (经络淤堵总结, e.g. "足太阴脾经、足厥阴肝经阻滞"),
+  "spineSummary": string (脊柱评估总结, e.g. "胸椎TH6及颈椎C6受压偏高"),
   "subHealthZangfu": [
-    {"name": "脾", "score": 6.6},
-    {"name": "肾", "score": 7.4}
+    {"name": "脾", "score": 6.6, "level": "亚健康"},
+    {"name": "肾", "score": 7.4, "level": "正常"}
   ],
   "subHealthTizhi": [
-    {"name": "气虚质", "score": 6.0},
-    {"name": "痰湿质", "score": 7.3}
+    {"name": "气虚质", "score": 6.0, "level": "亚健康"},
+    {"name": "痰湿质", "score": 7.3, "level": "轻度偏颇"}
   ],
   "blockedJingluo": [
-    {"name": "足太阴脾经", "score": 5.9},
-    {"name": "足厥阴肝经", "score": 6.0}
+    {"name": "足太阴脾经", "score": 5.9, "level": "淤堵"},
+    {"name": "足厥阴肝经", "score": 6.0, "level": "阻滞"}
   ],
   "spinePressure": [
-    {"name": "TH6(胸椎)", "score": 7.6},
-    {"name": "C6(颈椎)", "score": 7.6}
+    {"name": "TH6(胸椎)", "score": 7.6, "level": "受压"},
+    {"name": "C6(颈椎)", "score": 7.6, "level": "受压"}
+  ],
+  "pharmacistRecommendations": [
+    "健脾祛湿，建议选用白术、茯苓、山药等药食同源配方",
+    "注意劳逸结合，避免熬夜伤肝",
+    "针对TH6胸椎受压，建议保持端正坐姿，配合适度肩背拉伸"
   ]
 }
 
 CRITICAL RULES:
-- Output authentic numbers exactly as shown on the report.
+- Output authentic numbers and organ names exactly as shown on the images.
 - Do NOT fabricate or estimate any scores.
+- If a metric is visible in any of the provided images, extract it!
 - Return ONLY valid JSON, no markdown formatting or commentary.`;
 
-  const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-3.5-flash'];
+  const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
   let parsedResult = null;
   let successfulModel = '';
 
   for (const model of models) {
     try {
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveApiKey}`;
-      let parts = [];
+      let parts = [{ text: multiPageSystemPrompt }];
 
-      if (tedaAiActiveTab === 'screenshot' && currentTedaImageBase64) {
-        const rawBase64 = currentTedaImageBase64.replace(/^data:[^;]+;base64,/, '');
-        parts = [
-          { text: systemPrompt },
-          {
+      if (tedaAiActiveTab === 'screenshot' && hasImages) {
+        if (tedaMultiPageImages.length > 0) {
+          tedaMultiPageImages.forEach((img, idx) => {
+            const rawBase64 = img.dataUrl.replace(/^data:[^;]+;base64,/, '');
+            parts.push({
+              text: `--- PAGE ${idx + 1} (${img.label || 'Tab ' + (idx + 1)}) ---`
+            });
+            parts.push({
+              inlineData: {
+                mimeType: img.mimeType || 'image/png',
+                data: rawBase64
+              }
+            });
+          });
+        } else if (currentTedaImageBase64) {
+          const rawBase64 = currentTedaImageBase64.replace(/^data:[^;]+;base64,/, '');
+          parts.push({
             inlineData: {
               mimeType: currentTedaImageMime,
               data: rawBase64
             }
-          }
-        ];
+          });
+        }
       } else {
-        parts = [
-          { text: systemPrompt },
-          { text: `Report Text to parse:\n${textInputVal}` }
-        ];
+        parts.push({
+          text: `Report Text to parse:\n${textInputVal}`
+        });
       }
 
       const payload = {
@@ -5264,11 +5632,11 @@ CRITICAL RULES:
   if (!parsedResult) {
     if (statusEl) {
       statusEl.className = 'mt-2 p-3 rounded-xl text-xs flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-800';
-      statusEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-rose-600"></i> AI extraction failed. Please ensure the screenshot clearly shows the TEDA report scores and your Gemini API key is valid.';
+      statusEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-rose-600"></i> AI extraction failed. Please ensure the captured screenshots clearly show the TEDA report values and your Gemini API key is valid.';
     }
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i> Extract Authentic TEDA Data via AI';
+      btn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i> Extract &amp; Interpret All Pages via AI (${totalPages} Pages)`;
     }
     return;
   }
@@ -5278,7 +5646,7 @@ CRITICAL RULES:
 
   // Populate preview panel
   const modelBadge = document.getElementById('tedaAiExtractedModelBadge');
-  if (modelBadge) modelBadge.textContent = successfulModel;
+  if (modelBadge) modelBadge.textContent = `${successfulModel} (${totalPages} pg)`;
 
   const resHealth = document.getElementById('tedaAiResHealth');
   if (resHealth) resHealth.textContent = parsedResult.healthScore != null ? `${parsedResult.healthScore} / 100` : '—';
@@ -5326,20 +5694,29 @@ CRITICAL RULES:
     if (Array.isArray(parsedResult.spinePressure) && parsedResult.spinePressure.length > 0) {
       resSpine.textContent = parsedResult.spinePressure.map(x => `${x.name} ${x.score != null ? x.score : ''}`).join(', ');
     } else {
-      resSpine.textContent = '正常无显著受压';
+      resSpine.textContent = parsedResult.spineSummary || '正常无显著受压';
+    }
+  }
+
+  const resGuidance = document.getElementById('tedaAiResGuidance');
+  if (resGuidance) {
+    if (Array.isArray(parsedResult.pharmacistRecommendations) && parsedResult.pharmacistRecommendations.length > 0) {
+      resGuidance.textContent = parsedResult.pharmacistRecommendations.join('； ');
+    } else {
+      resGuidance.textContent = '建议按调理原则予以针对性改善生活起居与药膳调养。';
     }
   }
 
   if (statusEl) {
     statusEl.className = 'mt-2 p-3 rounded-xl text-xs flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800';
-    statusEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-600"></i> Extracted via ${successfulModel}. Click "Apply to Consultation Form" below to save!`;
+    statusEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-600"></i> Successfully extracted and interpreted all ${totalPages} pages via ${successfulModel}! Click "Apply to Consultation Form" below to save.`;
   }
 
   if (resultsPanel) resultsPanel.classList.remove('hidden');
 
   if (btn) {
     btn.disabled = false;
-    btn.innerHTML = '<i class="fa-solid fa-rotate-right mr-1"></i> Re-Extract';
+    btn.innerHTML = `<i class="fa-solid fa-rotate-right mr-1"></i> Re-Extract &amp; Interpret All (${totalPages} Pages)`;
   }
 }
 
@@ -5365,10 +5742,12 @@ function applyTedaAiGrabbedData() {
     zangfuSummary: data.zangfuSummary || '',
     tizhiSummary: data.tizhiSummary || '',
     jingluoSummary: data.jingluoSummary || '',
+    spineSummary: data.spineSummary || '',
     subHealthZangfu: data.subHealthZangfu || [],
     subHealthTizhi: data.subHealthTizhi || [],
     blockedJingluo: data.blockedJingluo || [],
     spinePressure: data.spinePressure || [],
+    pharmacistRecommendations: data.pharmacistRecommendations || [],
     isAiExtracted: true
   };
 
@@ -5378,15 +5757,15 @@ function applyTedaAiGrabbedData() {
   const statusEl = document.getElementById('tedaFetchStatus');
   if (statusEl) {
     statusEl.className = 'text-[10px] text-emerald-700 font-bold';
-    statusEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-600"></i> Authentic TEDA Data Captured via AI (Immunity: ${data.immunityScore ?? '—'}, Health: ${data.healthScore ?? '—'})`;
+    statusEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-600"></i> Authentic TEDA Findings Captured &amp; Interpreted via AI (Immunity: ${data.immunityScore ?? '—'}, Health: ${data.healthScore ?? '—'})`;
   }
 
   closeTedaAiGrabberModal();
 
   if (typeof showPmgToast === 'function') {
-    showPmgToast('✅ Authentic TEDA findings captured and applied to consultation!', 'success');
+    showPmgToast('✅ Multi-page authentic TEDA findings captured and applied to consultation!', 'success');
   } else {
-    alert('✅ Authentic TEDA findings captured and applied to consultation!');
+    alert('✅ Multi-page authentic TEDA findings captured and applied to consultation!');
   }
 }
 

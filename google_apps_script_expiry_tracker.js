@@ -42,6 +42,30 @@ function doOptions(e) {
 
 function doGet(e) {
   try {
+    // ── ACTION: PROXY TEDA REPORT DATA ──
+    const action = (e.parameter && e.parameter.action ? e.parameter.action : '').trim();
+    if (action === 'proxyTeda') {
+      const rid = (e.parameter.rid || '').trim();
+      if (!rid) {
+        return buildResponse({ success: false, error: 'Missing rid parameter' });
+      }
+      try {
+        const endpoint = 'https://sg-app.qiaolz.com/report/result2?rid=' + encodeURIComponent(rid) + '&mac=&lang=&v=3.0.0';
+        const res = UrlFetchApp.fetch(endpoint, {
+          method: 'get',
+          headers: {
+            'Referer': 'https://sg-report.qiaolz.com/'
+          },
+          muteHttpExceptions: true
+        });
+        const bytes = res.getContent();
+        const base64Data = Utilities.base64Encode(bytes);
+        return buildResponse({ success: true, rid: rid, data: base64Data, size: bytes.length });
+      } catch (fErr) {
+        return buildResponse({ success: false, error: fErr.message });
+      }
+    }
+
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const branch = (e.parameter.branch || '').trim();
     const status = (e.parameter.status || '').trim(); // 'Active', 'Cleared', or '' (all)
