@@ -17,11 +17,69 @@
   // ─── SUPPLIER & WAREHOUSE DESTINATION PRESETS ─────────────────────────────────
   // Delivery destination address is optional; vendor/transporter decides warehouse
   const DESTINATION_PRESETS = [
+    // PMG Branches (In-Transit Transfers)
+    {
+      name: 'PMG PHARMACY (KOTA SENTOSA)',
+      companyName: 'PMG PHARMACY (KOTA SENTOSA) SDN BHD',
+      address: 'GROUND FLOOR, NO. 7, LOT 39, BLOCK 233, KNLD, 7TH MILE BAZAAR, PENRISSEN ROAD, 93250 KUCHING, SARAWAK.',
+      attn: 'BRANCH PHARMACIST / PIC',
+      phone: '082-629888'
+    },
+    {
+      name: 'PMG PHARMACY (MATANG JAYA)',
+      companyName: 'PMG PHARMACY (MATANG JAYA) SDN BHD',
+      address: 'LOT 694G, BLOCK C, LOT 6798, SYNERGY SQUARE, MATANG JAYA, 93050 KUCHING, SARAWAK.',
+      attn: 'BRANCH PHARMACIST / PIC',
+      phone: '082-648888'
+    },
+    {
+      name: 'PMG PHARMACY (SUNGAI MOYAN)',
+      companyName: 'PMG PHARMACY (SUNGAI MOYAN) SDN BHD',
+      address: 'E-1-45, LOT 4568, GROUND FLOOR, BLOCK 10, MLD, GENESIS WALK, JALAN BATU KAWA/MATANG, 93250 KUCHING, SARAWAK.',
+      attn: 'BRANCH PHARMACIST / PIC',
+      phone: '082-536888'
+    },
+    {
+      name: 'PMG PHARMACY (MALIHAH)',
+      companyName: 'PMG PHARMACY (MALIHAH) SDN BHD',
+      address: 'NO. 44-45, LOT 4792-4793, GROUND FLOOR, BLOCK 8, MATANG LAND DISTRICT, TAMAN SUNGAI TENGAH VALLEY, BATU 7, JALAN BELATOK, 93050 KUCHING, SARAWAK.',
+      attn: 'BRANCH PHARMACIST / PIC',
+      phone: '082-528888'
+    },
+    {
+      name: 'PMG PHARMACY (METROCITY)',
+      companyName: 'PMG PHARMACY (METROCITY) SDN BHD',
+      address: 'LOT 22, METROCITY COMMERCIAL CENTRE, JALAN MATANG, 93050 KUCHING, SARAWAK.',
+      attn: 'BRANCH PHARMACIST / PIC',
+      phone: '082-513888'
+    },
+    {
+      name: 'PMG PHARMACY (ASTANA)',
+      companyName: 'PMG PHARMACY (ASTANA) SDN BHD',
+      address: 'LOT 10000, GROUND FLOOR, SECTION 65, KTLD, JALAN ASTANA, PETRA JAYA, 93050 KUCHING, SARAWAK.',
+      attn: 'BRANCH PHARMACIST / PIC',
+      phone: '082-550888'
+    },
+    {
+      name: 'PMG PHARMACY (SAMARIANG)',
+      companyName: 'PMG PHARMACY (SAMARIANG) SDN BHD',
+      address: 'GROUND FLOOR, SUBLOT 18, LOT 5587, AREA S3B, BANDAR BARU SAMARIANG, JALAN SULTAN TENGAH, 93050 KUCHING, SARAWAK.',
+      attn: 'BRANCH PHARMACIST / PIC',
+      phone: '082-512888'
+    },
+    {
+      name: 'PMG CENTRAL WAREHOUSE / HQ',
+      companyName: 'PMG HEALTHCARE SDN BHD (CENTRAL WAREHOUSE)',
+      address: 'LOT 1234, JALAN SETIA RAJA, MUARA TABUAN LIGHT INDUSTRIAL PARK, 93350 KUCHING, SARAWAK.',
+      attn: 'WAREHOUSE LOGISTICS SUPERVISOR',
+      phone: '082-368888'
+    },
+    // External Suppliers & SSJ Warehouse
     {
       name: 'SSJ PHARMA SDN BHD',
-      companyName: 'SSJ PHARMA SDN BHD',
+      companyName: 'SSJ PHARMA SDN BHD (SCD)',
       address: '',
-      attn: '',
+      attn: 'MR DOUGLAS',
       phone: ''
     },
     {
@@ -72,15 +130,112 @@
       address: '',
       attn: '',
       phone: ''
-    },
-    {
-      name: 'PMG CENTRAL WAREHOUSE / HQ',
-      companyName: 'PMG HEALTHCARE SDN BHD (CENTRAL WAREHOUSE)',
-      address: '',
-      attn: '',
-      phone: ''
     }
   ];
+
+  // ─── RETURN REASONS CONFIG (WITH OFFICIAL HQ COLOR COMPLIANCE) ────────────────
+  const RETURN_REASONS = [
+    {
+      value: 'In-Transit',
+      label: 'Stock In-Transit (Outlet-to-Outlet)',
+      shortLabel: 'IN-TRANSIT',
+      bgColor: '#92D050', // Exact HQ Photo 2 Lime Green
+      textColor: '#000000',
+      borderColor: '#70A638',
+      excelBg: 'FF92D050',
+      excelFont: 'FF000000',
+      template: 'INTERBRANCH'
+    },
+    {
+      value: 'Supplier Recall',
+      label: 'Supplier / Product Recall (Urgent to SSJ)',
+      shortLabel: 'PRODUCT RECALL',
+      bgColor: '#FF0000', // Exact HQ Photo 3 Red
+      textColor: '#FFFFFF',
+      borderColor: '#990000',
+      excelBg: 'FFFF0000',
+      excelFont: 'FFFFFFFF',
+      template: 'SSJ_RECALL'
+    },
+    {
+      value: 'Slow Moving Stock',
+      label: 'Slow Moving / Aging Stock (>1 Yr)',
+      shortLabel: 'AGING STOCK > 1 YR',
+      bgColor: '#FFC000', // Exact HQ Photo 4 Amber/Gold
+      textColor: '#000000',
+      borderColor: '#D97706',
+      excelBg: 'FFFFC000',
+      excelFont: 'FF000000',
+      template: 'SSJ_AGING'
+    },
+    {
+      value: 'Near Expiry',
+      label: 'Near Expiry',
+      shortLabel: 'NEAR EXPIRY',
+      bgColor: '#FFF2CC',
+      textColor: '#92400E',
+      borderColor: '#FCD34D',
+      excelBg: 'FFFFF2CC',
+      excelFont: 'FF92400E',
+      template: 'SSJ_NORMAL'
+    },
+    {
+      value: 'Expired',
+      label: 'Expired Stock',
+      shortLabel: 'EXPIRED',
+      bgColor: '#FEE2E2',
+      textColor: '#991B1B',
+      borderColor: '#F87171',
+      excelBg: 'FFFEE2E2',
+      excelFont: 'FF991B1B',
+      template: 'SSJ_NORMAL'
+    },
+    {
+      value: 'Damaged Goods',
+      label: 'Damaged Goods / Leaking',
+      shortLabel: 'DAMAGED',
+      bgColor: '#FEE2E2',
+      textColor: '#991B1B',
+      borderColor: '#F87171',
+      excelBg: 'FFFEE2E2',
+      excelFont: 'FF991B1B',
+      template: 'SSJ_NORMAL'
+    },
+    {
+      value: 'Wrong Delivery',
+      label: 'Wrong Delivery / Overstock',
+      shortLabel: 'WRONG DLVRY',
+      bgColor: '#E0F2FE',
+      textColor: '#0369A1',
+      borderColor: '#7DD3FC',
+      excelBg: 'FFE0F2FE',
+      excelFont: 'FF0369A1',
+      template: 'SSJ_NORMAL'
+    },
+    {
+      value: 'Other',
+      label: 'Other Reasons',
+      shortLabel: 'OTHER',
+      bgColor: '#F3F4F6',
+      textColor: '#374151',
+      borderColor: '#D1D5DB',
+      excelBg: 'FFF3F4F6',
+      excelFont: 'FF374151',
+      template: 'SSJ_NORMAL'
+    }
+  ];
+
+  function getReasonConfig(reasonStr) {
+    const str = (reasonStr || '').toLowerCase().trim();
+    if (str.includes('transit')) return RETURN_REASONS[0]; // In-Transit
+    if (str.includes('recall')) return RETURN_REASONS[1]; // Supplier Recall
+    if (str.includes('slow') || str.includes('aging')) return RETURN_REASONS[2]; // Slow Moving / Aging
+    if (str.includes('damage') || str.includes('leak')) return RETURN_REASONS[5]; // Damaged Goods
+    if (str === 'expired') return RETURN_REASONS[4]; // Expired
+    if (str.includes('wrong') || str.includes('overstock')) return RETURN_REASONS[6]; // Wrong Delivery
+    if (str.includes('near') || str.includes('expiry')) return RETURN_REASONS[3]; // Near Expiry
+    return RETURN_REASONS.find(r => r.value.toLowerCase() === str) || RETURN_REASONS[7];
+  }
 
   // ─── INITIAL SEED DATA ────────────────────────────────────────────────────────
   const SEED_RETURNS = [];
@@ -438,12 +593,27 @@
       const firstItem = ret.items && ret.items[0] ? ret.items[0].itemDescription : '';
       const itemPreview = itemCount > 1 ? `${firstItem} <b class="text-blue-600">+${itemCount - 1} more</b>` : firstItem;
 
+      // Check reasons for color-compliant badges
+      const hasTransit = (ret.items || []).some(it => (it.reason || '').toLowerCase().includes('transit'));
+      const hasRecall = (ret.items || []).some(it => (it.reason || '').toLowerCase().includes('recall'));
+      const hasAging = (ret.items || []).some(it => (it.reason || '').toLowerCase().includes('slow') || (it.reason || '').toLowerCase().includes('aging'));
+      
+      let typeBadge = '';
+      if (hasTransit) {
+        typeBadge = `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black shadow-sm" style="background-color: #92D050; color: #000; border: 1px solid #70A638;" title="Stock In-Transit (Outlet-to-Outlet Transfer)"><i class="fa-solid fa-truck-arrow-right"></i> IN-TRANSIT</span>`;
+      } else if (hasRecall) {
+        typeBadge = `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black bg-red-600 text-white shadow-sm" title="Supplier / Product Recall"><i class="fa-solid fa-triangle-exclamation"></i> RECALL</span>`;
+      } else if (hasAging) {
+        typeBadge = `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black shadow-sm" style="background-color: #FFC000; color: #000; border: 1px solid #D97706;" title="Slow Moving / Aging Stock"><i class="fa-solid fa-hourglass-half"></i> AGING &gt;1YR</span>`;
+      }
+
       return `
         <tr class="border-b border-gray-100 hover:bg-slate-50/80 transition text-sm">
           <td class="py-3 px-4">
-            <div class="font-bold text-blue-900 font-mono flex items-center gap-1.5">
+            <div class="font-bold text-blue-900 font-mono flex items-center gap-1.5 flex-wrap">
               <i class="fa-solid fa-file-invoice text-blue-600 text-xs"></i>
-              ${escapeHtml(ret.doNumber)}
+              <span>${escapeHtml(ret.doNumber)}</span>
+              ${typeBadge}
             </div>
             <div class="text-xs text-gray-500 mt-0.5">${escapeHtml(ret.date)} · <span class="font-medium text-gray-700">${escapeHtml(ret.branch)}</span></div>
           </td>
@@ -571,8 +741,25 @@
       document.getElementById('nrDestAttn').value = preset.attn || '';
       document.getElementById('nrDestPhone').value = preset.phone || '';
       const supplierInput = document.getElementById('nrSupplier');
-      if (supplierInput && !supplierInput.value.trim()) {
-        supplierInput.value = preset.name;
+      if (supplierInput) {
+        if (preset.name.includes('PMG PHARMACY') || preset.name.includes('CENTRAL WAREHOUSE')) {
+          supplierInput.value = 'INTERBRANCH TRANSFER';
+        } else if (!supplierInput.value.trim() || supplierInput.value === 'INTERBRANCH TRANSFER') {
+          supplierInput.value = preset.name;
+        }
+      }
+      // If destination is a PMG Branch, automatically switch default items to 'In-Transit'
+      if (preset.name.includes('PMG PHARMACY') || preset.name.includes('CENTRAL WAREHOUSE')) {
+        let changed = false;
+        draftItems.forEach(it => {
+          if (!it.reason || it.reason === 'Near Expiry') {
+            it.reason = 'In-Transit';
+            changed = true;
+          }
+        });
+        if (changed) {
+          renderDraftItemsTable();
+        }
       }
     }
   }
@@ -651,6 +838,24 @@
     if (field === 'cartonNo' || field === 'prnNumber') {
       checkPrnLimitsAndCartons();
     }
+    if (field === 'reason') {
+      const rCfg = getReasonConfig(value);
+      const rows = document.querySelectorAll('#nrItemsTableBody tr');
+      if (rows[index]) {
+        const sel = rows[index].querySelector('[data-field="reason"]');
+        if (sel) {
+          sel.style.backgroundColor = rCfg.bgColor;
+          sel.style.color = rCfg.textColor;
+          sel.style.borderColor = rCfg.borderColor;
+        }
+      }
+      if (rCfg.value === 'In-Transit') {
+        const supplierInput = document.getElementById('nrSupplier');
+        if (supplierInput && (!supplierInput.value.trim() || supplierInput.value.trim() === 'SSJ PHARMA SDN BHD')) {
+          supplierInput.value = 'INTERBRANCH TRANSFER';
+        }
+      }
+    }
   }
 
   // PRN 3-SKU LIMIT CHECKER & CARTON COUNTER
@@ -720,7 +925,9 @@
     const tbody = document.getElementById('nrItemsTableBody');
     if (!tbody) return;
 
-    tbody.innerHTML = draftItems.map((item, index) => `
+    tbody.innerHTML = draftItems.map((item, index) => {
+      const rCfg = getReasonConfig(item.reason);
+      return `
       <tr class="border-b border-gray-100 text-xs">
         <td class="py-2 px-2 text-center">
           <input data-field="cartonNo" type="number" min="1" max="99" value="${item.cartonNo || 1}" oninput="pmgReturns.updateDraftItem(${index}, 'cartonNo', this.value)" onchange="pmgReturns.updateDraftItem(${index}, 'cartonNo', this.value)" class="w-12 text-center border border-gray-300 rounded px-1 py-1 font-bold text-gray-700">
@@ -749,14 +956,12 @@
           <input data-field="prnNumber" type="text" placeholder="e.g. PRN-0412" value="${escapeHtml(item.prnNumber || '')}" oninput="pmgReturns.updateDraftItem(${index}, 'prnNumber', this.value)" onchange="pmgReturns.updateDraftItem(${index}, 'prnNumber', this.value)" class="w-24 border border-gray-300 rounded px-2 py-1 font-mono font-bold text-amber-800 bg-amber-50/50">
         </td>
         <td class="py-2 px-2">
-          <select data-field="reason" onchange="pmgReturns.updateDraftItem(${index}, 'reason', this.value)" class="w-full border border-gray-300 rounded px-1.5 py-1 text-xs">
-            <option value="Near Expiry" ${item.reason === 'Near Expiry' ? 'selected' : ''}>Near Expiry</option>
-            <option value="Expired" ${item.reason === 'Expired' ? 'selected' : ''}>Expired</option>
-            <option value="Damaged Goods" ${item.reason === 'Damaged Goods' ? 'selected' : ''}>Damaged Goods</option>
-            <option value="Supplier Recall" ${item.reason === 'Supplier Recall' ? 'selected' : ''}>Supplier Recall</option>
-            <option value="Slow Moving Stock" ${item.reason === 'Slow Moving Stock' ? 'selected' : ''}>Slow Moving</option>
-            <option value="Wrong Delivery" ${item.reason === 'Wrong Delivery' ? 'selected' : ''}>Wrong Delivery</option>
-            <option value="Other" ${item.reason === 'Other' ? 'selected' : ''}>Other</option>
+          <select data-field="reason" onchange="pmgReturns.updateDraftItem(${index}, 'reason', this.value)" style="background-color: ${rCfg.bgColor}; color: ${rCfg.textColor}; border-color: ${rCfg.borderColor}; font-weight: 700;" class="w-full border rounded px-1.5 py-1 text-xs shadow-sm transition">
+            ${RETURN_REASONS.map(r => `
+              <option value="${r.value}" style="background-color: ${r.bgColor}; color: ${r.textColor}; font-weight: bold;" ${(r.value === item.reason) || (r.value === 'In-Transit' && (item.reason || '').toLowerCase().includes('transit')) ? 'selected' : ''}>
+                ${r.label}
+              </option>
+            `).join('')}
           </select>
         </td>
         <td class="py-2 px-2 text-center">
@@ -765,7 +970,8 @@
           </button>
         </td>
       </tr>
-    `).join('');
+      `;
+    }).join('');
 
     checkPrnLimitsAndCartons();
   }
@@ -872,12 +1078,18 @@
     const tableRows = (ret.items || []).map(item => {
       const ctnDisplay = (item.cartonNo !== currentCtn) ? item.cartonNo : '';
       currentCtn = item.cartonNo;
+      const rCfg = getReasonConfig(item.reason);
       return `
         <tr>
-          <td style="border: 1px solid #111; padding: 6px 8px; text-align: center; font-weight: bold; width: 75px;">${ctnDisplay}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace; font-weight: bold; width: 110px;">${escapeHtml(item.itemCode || '-')}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; text-align: center; font-weight: bold; width: 65px;">${ctnDisplay}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace; font-weight: bold; width: 105px;">${escapeHtml(item.itemCode || '-')}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; font-weight: 600;">${escapeHtml(item.itemDescription || '')}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; text-align: center; font-weight: bold; width: 100px;">${item.quantity || 1} ${escapeHtml(item.uom || 'BOX')}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; text-align: center; font-weight: bold; width: 85px;">${item.quantity || 1} ${escapeHtml(item.uom || 'BOX')}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; text-align: center; width: 115px;">
+            <span style="background: ${rCfg.bgColor}; color: ${rCfg.textColor}; font-weight: 900; padding: 2px 8px; border-radius: 4px; font-size: 10px; display: inline-block; border: 1px solid ${rCfg.borderColor}; text-transform: uppercase;">
+              ${escapeHtml(rCfg.shortLabel)}
+            </span>
+          </td>
         </tr>
       `;
     }).join('');
@@ -892,16 +1104,20 @@
           <td style="border: 1px solid #111; padding: 6px 8px;"></td>
           <td style="border: 1px solid #111; padding: 6px 8px;"></td>
           <td style="border: 1px solid #111; padding: 6px 8px;"></td>
+          <td style="border: 1px solid #111; padding: 6px 8px;"></td>
         </tr>
       `;
     }
 
     // Auto-detect template based on destination and reasons
     const destUpper = ((ret.destCompany || '') + ' ' + (ret.supplier || '')).toUpperCase();
+    const hasTransit = (ret.items || []).some(it => (it.reason || '').toLowerCase().includes('transit'));
     const hasRecall = (ret.items || []).some(it => (it.reason || '').toLowerCase().includes('recall'));
     const hasAging = (ret.items || []).some(it => (it.reason || '').toLowerCase().includes('slow') || (it.reason || '').toLowerCase().includes('aging'));
     let detectedDoTemplate = 'SSJ_NORMAL';
-    if (destUpper.includes('SSJ')) {
+    if (hasTransit) {
+      detectedDoTemplate = 'INTERBRANCH';
+    } else if (destUpper.includes('SSJ')) {
       if (hasRecall) detectedDoTemplate = 'SSJ_RECALL';
       else if (hasAging) detectedDoTemplate = 'SSJ_AGING';
       else detectedDoTemplate = 'SSJ_NORMAL';
@@ -911,8 +1127,8 @@
       detectedDoTemplate = 'VENDOR_STANDARD';
     }
     const doCfg = SSJ_TEMPLATES_CONFIG[detectedDoTemplate] || SSJ_TEMPLATES_CONFIG.SSJ_NORMAL;
-    const targetDoTo = doCfg.to || ret.destCompany || 'SSJ PHARMA SDN BHD (SCD)';
-    const targetDoAttn = doCfg.attn || ret.destAttn || (detectedDoTemplate === 'INTERBRANCH' ? 'BRANCH PHARMACIST / PIC' : 'MR DOUGLAS');
+    const targetDoTo = doCfg.to || (detectedDoTemplate === 'INTERBRANCH' ? (ret.destCompany && !ret.destCompany.includes('SSJ') ? ret.destCompany : 'PMG PHARMACY (RECEIVING BRANCH)') : (ret.destCompany || 'SSJ PHARMA SDN BHD (SCD)'));
+    const targetDoAttn = doCfg.attn || (detectedDoTemplate === 'INTERBRANCH' ? (ret.destAttn || 'BRANCH PHARMACIST / PIC') : (ret.destAttn || 'MR DOUGLAS'));
 
     container.innerHTML = `
       <div id="pmgOfficialDoPrintArea" style="font-family: Arial, sans-serif; color: #000; background: #fff; padding: 24px; max-width: 800px; margin: 0 auto; line-height: 1.35;">
@@ -1023,10 +1239,11 @@
         <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; font-size: 12px; margin-top: 4px;">
           <thead>
             <tr style="background: #f0f0f0;">
-              <th style="border: 1px solid #111; padding: 6px 8px; text-align: center; width: 75px; font-weight: 900;">CTN NO</th>
-              <th style="border: 1px solid #111; padding: 6px 8px; text-align: left; width: 110px; font-weight: 900;">ITEM CODE</th>
+              <th style="border: 1px solid #111; padding: 6px 8px; text-align: center; width: 65px; font-weight: 900;">CTN NO</th>
+              <th style="border: 1px solid #111; padding: 6px 8px; text-align: left; width: 105px; font-weight: 900;">ITEM CODE</th>
               <th style="border: 1px solid #111; padding: 6px 8px; text-align: left; font-weight: 900;">ITEM DESCRIPTION</th>
-              <th style="border: 1px solid #111; padding: 6px 8px; text-align: center; width: 100px; font-weight: 900;">QUANTITY</th>
+              <th style="border: 1px solid #111; padding: 6px 8px; text-align: center; width: 85px; font-weight: 900;">QUANTITY</th>
+              <th style="border: 1px solid #111; padding: 6px 8px; text-align: center; width: 115px; font-weight: 900;">REASON</th>
             </tr>
           </thead>
           <tbody>
@@ -1304,21 +1521,30 @@
                 <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
                   <thead>
                     <tr style="background: #f8fafc; border-bottom: 1px solid #000;">
-                      <th style="padding: 4px 8px; text-align: left; width: 110px; border-right: 1px solid #ddd;">ITEM CODE</th>
+                      <th style="padding: 4px 8px; text-align: left; width: 100px; border-right: 1px solid #ddd;">ITEM CODE</th>
                       <th style="padding: 4px 8px; text-align: left; border-right: 1px solid #ddd;">ITEM DESCRIPTION</th>
-                      <th style="padding: 4px 8px; text-align: center; width: 90px; border-right: 1px solid #ddd;">PRN NO</th>
-                      <th style="padding: 4px 8px; text-align: right; width: 80px;">QTY</th>
+                      <th style="padding: 4px 8px; text-align: center; width: 85px; border-right: 1px solid #ddd;">PRN NO</th>
+                      <th style="padding: 4px 8px; text-align: right; width: 65px; border-right: 1px solid #ddd;">QTY</th>
+                      <th style="padding: 4px 8px; text-align: center; width: 95px;">REASON</th>
                     </tr>
                   </thead>
                   <tbody>
-                    ${itemsInThisCarton.map(it => `
+                    ${itemsInThisCarton.map(it => {
+                      const rCfg = getReasonConfig(it.reason);
+                      return `
                       <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 4px 8px; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${escapeHtml(it.itemCode || '-')}</td>
                         <td style="padding: 4px 8px; font-weight: 600; border-right: 1px solid #ddd;">${escapeHtml(it.itemDescription || '')}</td>
                         <td style="padding: 4px 8px; text-align: center; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${escapeHtml(it.prnNumber || '-')}</td>
-                        <td style="padding: 4px 8px; text-align: right; font-weight: bold;">${it.quantity || 1} ${escapeHtml(it.uom || 'BOX')}</td>
+                        <td style="padding: 4px 8px; text-align: right; font-weight: bold; border-right: 1px solid #ddd;">${it.quantity || 1} ${escapeHtml(it.uom || 'BOX')}</td>
+                        <td style="padding: 4px 8px; text-align: center;">
+                          <span style="background: ${rCfg.bgColor}; color: ${rCfg.textColor}; font-weight: 800; padding: 2px 6px; border-radius: 3px; font-size: 10px; display: inline-block; border: 1px solid ${rCfg.borderColor};">
+                            ${escapeHtml(rCfg.shortLabel)}
+                          </span>
+                        </td>
                       </tr>
-                    `).join('')}
+                      `;
+                    }).join('')}
                   </tbody>
                 </table>
               </div>
@@ -1437,21 +1663,30 @@
                 <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
                   <thead>
                     <tr style="background: #f8fafc; border-bottom: 1px solid #000;">
-                      <th style="padding: 5px 8px; text-align: left; width: 110px; border-right: 1px solid #ddd;">ITEM CODE</th>
+                      <th style="padding: 5px 8px; text-align: left; width: 100px; border-right: 1px solid #ddd;">ITEM CODE</th>
                       <th style="padding: 5px 8px; text-align: left; border-right: 1px solid #ddd;">ITEM DESCRIPTION</th>
-                      <th style="padding: 5px 8px; text-align: center; width: 90px; border-right: 1px solid #ddd;">PRN NO</th>
-                      <th style="padding: 5px 8px; text-align: right; width: 80px;">QTY</th>
+                      <th style="padding: 5px 8px; text-align: center; width: 85px; border-right: 1px solid #ddd;">PRN NO</th>
+                      <th style="padding: 5px 8px; text-align: right; width: 65px; border-right: 1px solid #ddd;">QTY</th>
+                      <th style="padding: 5px 8px; text-align: center; width: 95px;">REASON</th>
                     </tr>
                   </thead>
                   <tbody>
-                    ${itemsInThisCarton.map(it => `
+                    ${itemsInThisCarton.map(it => {
+                      const rCfg = getReasonConfig(it.reason);
+                      return `
                       <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 5px 8px; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${escapeHtml(it.itemCode || '-')}</td>
                         <td style="padding: 5px 8px; font-weight: 600; border-right: 1px solid #ddd;">${escapeHtml(it.itemDescription || '')}</td>
                         <td style="padding: 5px 8px; text-align: center; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${escapeHtml(it.prnNumber || '-')}</td>
-                        <td style="padding: 5px 8px; text-align: right; font-weight: bold;">${it.quantity || 1} ${escapeHtml(it.uom || 'BOX')}</td>
+                        <td style="padding: 5px 8px; text-align: right; font-weight: bold; border-right: 1px solid #ddd;">${it.quantity || 1} ${escapeHtml(it.uom || 'BOX')}</td>
+                        <td style="padding: 5px 8px; text-align: center;">
+                          <span style="background: ${rCfg.bgColor}; color: ${rCfg.textColor}; font-weight: 800; padding: 2px 6px; border-radius: 3px; font-size: 10px; display: inline-block; border: 1px solid ${rCfg.borderColor};">
+                            ${escapeHtml(rCfg.shortLabel)}
+                          </span>
+                        </td>
                       </tr>
-                    `).join('')}
+                      `;
+                    }).join('')}
                   </tbody>
                 </table>
               </div>
@@ -1492,10 +1727,13 @@
     // Auto-detect template based on destination and reasons
     let detectedTemplate = 'SSJ_NORMAL';
     const destUpper = ((ret.destCompany || '') + ' ' + (ret.supplier || '')).toUpperCase();
+    const hasTransit = (ret.items || []).some(it => (it.reason || '').toLowerCase().includes('transit'));
     const hasRecall = (ret.items || []).some(it => (it.reason || '').toLowerCase().includes('recall'));
     const hasAging = (ret.items || []).some(it => (it.reason || '').toLowerCase().includes('slow') || (it.reason || '').toLowerCase().includes('aging'));
 
-    if (destUpper.includes('SSJ')) {
+    if (hasTransit) {
+      detectedTemplate = 'INTERBRANCH';
+    } else if (destUpper.includes('SSJ')) {
       if (hasRecall) detectedTemplate = 'SSJ_RECALL';
       else if (hasAging) detectedTemplate = 'SSJ_AGING';
       else detectedTemplate = 'SSJ_NORMAL';
@@ -1612,10 +1850,26 @@
       return;
     }
 
-    const tpl = templateKey || activeCartonTemplate || 'SSJ_NORMAL';
+    // Auto-detect template if not passed explicitly
+    const destUpper = ((ret.destCompany || '') + ' ' + (ret.supplier || '')).toUpperCase();
+    const hasTransit = (ret.items || []).some(it => (it.reason || '').toLowerCase().includes('transit'));
+    const hasRecall = (ret.items || []).some(it => (it.reason || '').toLowerCase().includes('recall'));
+    const hasAging = (ret.items || []).some(it => (it.reason || '').toLowerCase().includes('slow') || (it.reason || '').toLowerCase().includes('aging'));
+    let defaultTpl = 'SSJ_NORMAL';
+    if (hasTransit) {
+      defaultTpl = 'INTERBRANCH';
+    } else if (destUpper.includes('SSJ')) {
+      if (hasRecall) defaultTpl = 'SSJ_RECALL';
+      else if (hasAging) defaultTpl = 'SSJ_AGING';
+      else defaultTpl = 'SSJ_NORMAL';
+    } else if (destUpper.includes('PMG') || destUpper.includes('BRANCH') || destUpper.includes('SENTOSA') || destUpper.includes('OUTLET')) {
+      defaultTpl = 'INTERBRANCH';
+    }
+
+    const tpl = templateKey || activeCartonTemplate || defaultTpl;
     const cfg = SSJ_TEMPLATES_CONFIG[tpl] || SSJ_TEMPLATES_CONFIG.SSJ_NORMAL;
-    const targetTo = cfg.to || ret.destCompany || 'SSJ PHARMA SDN BHD (SCD)';
-    const targetAttn = cfg.attn || ret.destAttn || (tpl === 'INTERBRANCH' ? 'BRANCH PHARMACIST / PIC' : 'MR DOUGLAS');
+    const targetTo = cfg.to || (tpl === 'INTERBRANCH' ? (ret.destCompany && !ret.destCompany.includes('SSJ') ? ret.destCompany : 'PMG PHARMACY (RECEIVING BRANCH)') : (ret.destCompany || 'SSJ PHARMA SDN BHD (SCD)'));
+    const targetAttn = cfg.attn || (tpl === 'INTERBRANCH' ? (ret.destAttn || 'BRANCH PHARMACIST / PIC') : (ret.destAttn || 'MR DOUGLAS'));
     const senderFrom = ret.companyName || ('PMG PHARMACY (' + (ret.branch || 'BRANCH') + ')');
 
     const wb = new ExcelJS.Workbook();
@@ -1724,20 +1978,25 @@
 
       ret.items.forEach(it => {
         nextRow++;
+        const rCfg = getReasonConfig(it.reason);
         const rowVals = [
           it.cartonNo || 1,
           it.itemCode || '-',
           it.itemDescription || '',
           it.quantity || 1,
           it.uom || 'BOX',
-          it.reason || 'Return'
+          rCfg.shortLabel
         ];
         rowVals.forEach((val, idx) => {
           const c = ws.getCell(`${colKeys[idx]}${nextRow}`);
           c.value = val;
-          c.font = { name: 'Arial', size: 10, bold: idx === 1 || idx === 3 };
+          c.font = { name: 'Arial', size: 10, bold: idx === 1 || idx === 3 || idx === 5 };
           c.alignment = { vertical: 'middle', horizontal: idx === 1 || idx === 2 ? 'left' : 'center' };
           c.border = thinBorder;
+          if (idx === 5) {
+            c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rCfg.excelBg } };
+            c.font = { name: 'Arial', size: 10, bold: true, color: { argb: rCfg.excelFont } };
+          }
         });
       });
     }

@@ -4255,19 +4255,30 @@ Date visit: 06.01.2026
           
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <div>
-              <label class="block font-semibold text-gray-700 mb-1">Preset Supplier / Vendor</label>
+              <label class="block font-semibold text-gray-700 mb-1">Preset Supplier / Destination</label>
               <select id="nrDestPreset" onchange="pmgReturns.onDestPresetChanged(this.value)" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white outline-none focus:ring-2 focus:ring-teal-500">
-                <option value="">-- Choose Supplier Preset or Custom --</option>
-                <option value="SSJ PHARMA SDN BHD">SSJ PHARMA SDN BHD</option>
-                <option value="DKSH MALAYSIA SDN BHD">DKSH MALAYSIA SDN BHD</option>
-                <option value="ZUELLIG PHARMA SDN BHD">ZUELLIG PHARMA SDN BHD</option>
-                <option value="APEX PHARMACY MARKETING SDN BHD">APEX PHARMACY MARKETING SDN BHD</option>
-                <option value="SUNWARD PHARMACEUTICAL (M) SDN BHD">SUNWARD PHARMACEUTICAL (M) SDN BHD</option>
-                <option value="DUOPHARMA (M) SENDIRIAN BERHAD">DUOPHARMA (M) SENDIRIAN BERHAD</option>
-                <option value="KOTRA PHARMA (M) SDN BHD">KOTRA PHARMA (M) SDN BHD</option>
-                <option value="PHARMANIAGA LOGISTICS SDN BHD">PHARMANIAGA LOGISTICS SDN BHD</option>
-                <option value="PMG CENTRAL WAREHOUSE / HQ">PMG CENTRAL DISTRIBUTION WAREHOUSE / HQ</option>
-                <option value="CUSTOM">Custom / Other Destination...</option>
+                <option value="">-- Choose Destination Preset or Custom --</option>
+                <optgroup label="🚚 PMG Branches (Stock In-Transit Transfers)">
+                  <option value="PMG PHARMACY (KOTA SENTOSA)">PMG Pharmacy – Kota Sentosa</option>
+                  <option value="PMG PHARMACY (MATANG JAYA)">PMG Pharmacy – Matang Jaya</option>
+                  <option value="PMG PHARMACY (SUNGAI MOYAN)">PMG Pharmacy – Sungai Moyan</option>
+                  <option value="PMG PHARMACY (MALIHAH)">PMG Pharmacy – Malihah</option>
+                  <option value="PMG PHARMACY (METROCITY)">PMG Pharmacy – Metrocity</option>
+                  <option value="PMG PHARMACY (ASTANA)">PMG Pharmacy – Astana</option>
+                  <option value="PMG PHARMACY (SAMARIANG)">PMG Pharmacy – Samariang</option>
+                  <option value="PMG CENTRAL WAREHOUSE / HQ">PMG Central Distribution Warehouse / HQ</option>
+                </optgroup>
+                <optgroup label="🏢 External Suppliers & SSJ Warehouse">
+                  <option value="SSJ PHARMA SDN BHD">SSJ PHARMA SDN BHD</option>
+                  <option value="DKSH MALAYSIA SDN BHD">DKSH MALAYSIA SDN BHD</option>
+                  <option value="ZUELLIG PHARMA SDN BHD">ZUELLIG PHARMA SDN BHD</option>
+                  <option value="APEX PHARMACY MARKETING SDN BHD">APEX PHARMACY MARKETING SDN BHD</option>
+                  <option value="SUNWARD PHARMACEUTICAL (M) SDN BHD">SUNWARD PHARMACEUTICAL (M) SDN BHD</option>
+                  <option value="DUOPHARMA (M) SENDIRIAN BERHAD">DUOPHARMA (M) SENDIRIAN BERHAD</option>
+                  <option value="KOTRA PHARMA (M) SDN BHD">KOTRA PHARMA (M) SDN BHD</option>
+                  <option value="PHARMANIAGA LOGISTICS SDN BHD">PHARMANIAGA LOGISTICS SDN BHD</option>
+                  <option value="CUSTOM">Custom / Other Destination...</option>
+                </optgroup>
               </select>
             </div>
             <div>
