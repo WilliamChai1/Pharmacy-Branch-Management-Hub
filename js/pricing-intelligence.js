@@ -910,6 +910,48 @@
       }
     }
 
+    updateSkuSupermarketPrice(skuId, newPrice) {
+      const parsed = parseFloat(newPrice);
+      const sku = this.skus.find(s => s.id === skuId);
+      if (sku) {
+        sku.supermarketPrice = (isNaN(parsed) || parsed <= 0) ? null : parsed;
+        sku.customModified = true;
+        this.saveSkusToStorage();
+        this.renderTableOnly();
+      }
+    }
+
+    updateSkuChainPrice(skuId, newPrice) {
+      const parsed = parseFloat(newPrice);
+      const sku = this.skus.find(s => s.id === skuId);
+      if (sku) {
+        sku.chainPharmacyPrice = (isNaN(parsed) || parsed <= 0) ? null : parsed;
+        sku.customModified = true;
+        this.saveSkusToStorage();
+        this.renderTableOnly();
+      }
+    }
+
+    applyAiCompetitorPrices(skuId, superPrice, chainPrice, competitorName) {
+      const sku = this.skus.find(s => s.id === skuId);
+      if (!sku) return;
+      if (superPrice && !isNaN(parseFloat(superPrice)) && parseFloat(superPrice) > 0) {
+        sku.supermarketPrice = parseFloat(superPrice);
+      }
+      if (chainPrice && !isNaN(parseFloat(chainPrice)) && parseFloat(chainPrice) > 0) {
+        sku.chainPharmacyPrice = parseFloat(chainPrice);
+      }
+      if (competitorName) sku.competitorName = competitorName;
+      sku.customModified = true;
+      this.saveSkusToStorage();
+      this.renderTableOnly();
+      const modal = document.getElementById('pricingAiModal');
+      if (modal) modal.classList.add('hidden');
+      if (typeof showExpiryToast === 'function') {
+        showExpiryToast(`✅ Saved competitor prices for ${sku.name}`);
+      }
+    }
+
     addNewSku(skuData) {
       const newId = 'sku-custom-' + Date.now();
       const newSku = {
@@ -1448,35 +1490,47 @@
           tagBadge = '<span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200" title="Standard Prescription / Community OTC"><i class="fa-solid fa-prescription-bottle-medical text-blue-600"></i> Core OTC/Rx</span>';
         }
 
-        // Supermarket price comparison pill
-        let superComp = '<span class="text-gray-400 font-mono text-[11px]">—</span>';
+        // Supermarket price input & comparison pill
+        let superDiffHtml = '';
         if (s.supermarketPrice) {
           const diff = (s.standardSp - s.supermarketPrice).toFixed(2);
           const isHigher = s.standardSp > s.supermarketPrice;
-          const diffClass = isHigher ? 'text-rose-600' : 'text-emerald-700';
+          const diffClass = isHigher ? 'text-rose-600' : 'text-emerald-700 font-bold';
           const diffSign = isHigher ? '+' : '';
-          superComp = `
-            <div class="leading-tight">
-              <span class="font-bold text-gray-800 font-mono">RM ${s.supermarketPrice.toFixed(2)}</span>
-              <span class="text-[10px] font-bold ${diffClass} block">${diffSign}RM ${diff} vs Farley/Emart</span>
-            </div>
-          `;
+          superDiffHtml = `<span class="text-[10px] font-bold ${diffClass} block mt-0.5">${diffSign}RM ${diff} vs Farley</span>`;
         }
 
-        // Chain pharmacy comparison pill
-        let chainComp = '<span class="text-gray-400 font-mono text-[11px]">—</span>';
+        const superComp = `
+          <div class="inline-flex items-center gap-1 justify-end">
+            <span class="text-gray-400 text-xs font-mono">RM</span>
+            <input type="number" step="0.10" value="${s.supermarketPrice ? s.supermarketPrice.toFixed(2) : ''}" placeholder="Farley..."
+              onchange="window.pmgPricing.updateSkuSupermarketPrice('${s.id}', this.value)"
+              class="w-20 text-right font-mono font-bold text-gray-800 border border-gray-200 rounded px-1.5 py-1 focus:ring-2 focus:ring-blue-400 outline-none bg-slate-50/50 hover:bg-white transition"
+              title="Farley / Emart benchmark price (Click to edit)">
+          </div>
+          ${superDiffHtml}
+        `;
+
+        // Chain pharmacy input & comparison pill
+        let chainDiffHtml = '';
         if (s.chainPharmacyPrice) {
           const diff = (s.standardSp - s.chainPharmacyPrice).toFixed(2);
           const isHigher = s.standardSp > s.chainPharmacyPrice;
           const diffClass = isHigher ? 'text-amber-600' : 'text-emerald-700 font-bold';
           const diffSign = isHigher ? '+' : '';
-          chainComp = `
-            <div class="leading-tight">
-              <span class="font-bold text-gray-800 font-mono">RM ${s.chainPharmacyPrice.toFixed(2)}</span>
-              <span class="text-[10px] ${diffClass} block">${diffSign}RM ${diff} (${s.competitorName || 'Chains'})</span>
-            </div>
-          `;
+          chainDiffHtml = `<span class="text-[10px] ${diffClass} block mt-0.5">${diffSign}RM ${diff} (${s.competitorName || 'Chains'})</span>`;
         }
+
+        const chainComp = `
+          <div class="inline-flex items-center gap-1 justify-end">
+            <span class="text-gray-400 text-xs font-mono">RM</span>
+            <input type="number" step="0.10" value="${s.chainPharmacyPrice ? s.chainPharmacyPrice.toFixed(2) : ''}" placeholder="Watsons..."
+              onchange="window.pmgPricing.updateSkuChainPrice('${s.id}', this.value)"
+              class="w-20 text-right font-mono font-bold text-gray-800 border border-gray-200 rounded px-1.5 py-1 focus:ring-2 focus:ring-blue-400 outline-none bg-slate-50/50 hover:bg-white transition"
+              title="Chain Pharmacy benchmark price (Click to edit)">
+          </div>
+          ${chainDiffHtml}
+        `;
 
         // Margin pill color
         let marginColor = 'text-blue-700 bg-blue-50';
@@ -1533,11 +1587,18 @@
               ${chainComp}
             </td>
             <td class="p-3 text-center">
-              <button type="button" onclick="window.pmgPricing.launchAiResearch('${s.id}')"
-                class="bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 px-2.5 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 mx-auto shadow-2xs"
-                title="Run deep competitor research on this SKU with Gemini AI">
-                <i class="fa-solid fa-wand-magic-sparkles text-purple-600"></i> AI Deep Check
-              </button>
+              <div class="flex items-center justify-center gap-1.5 flex-wrap">
+                <button type="button" onclick="window.pmgPricing.launchAiCompetitorPriceCheck('${s.id}')"
+                  class="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer whitespace-nowrap"
+                  title="Deep analyze competitor prices (Farley, Emart, Watsons, Caring)">
+                  <i class="fa-solid fa-tags text-blue-600"></i> Competitor Prices
+                </button>
+                <button type="button" onclick="window.pmgPricing.launchAiMarketStrategy('${s.id}')"
+                  class="bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer whitespace-nowrap"
+                  title="Further strategic analysis based on market dynamics, price elasticity & basket building">
+                  <i class="fa-solid fa-chart-line text-purple-600"></i> Market Strategy
+                </button>
+              </div>
             </td>
           </tr>
         `;
@@ -1767,7 +1828,7 @@
     }
 
     // ─── GEMINI AI DEEP RESEARCH RUNNER ─────────────────────────────────────────
-    async launchAiResearch(skuId) {
+    launchAiCompetitorPriceCheck(skuId) {
       const sku = this.skus.find(s => s.id === skuId);
       if (!sku) return;
 
@@ -1776,27 +1837,86 @@
       const title = document.getElementById('pricingAiModalTitle');
       const input = document.getElementById('pricingAiPromptInput');
 
-      if (title) title.textContent = `AI Pricing & Competitor Intelligence: ${sku.name}`;
+      if (title) title.textContent = `Competitor Price Benchmark Analysis: ${sku.name}`;
       if (input) {
-        input.value = `Perform a deep competitor price research and retail pricing optimization for:
-SKU: ${sku.name} (Code: ${sku.code})
+        input.value = `Perform a deep competitor price intelligence check for this retail pharmacy SKU in Sarawak, Malaysia:
+Product: ${sku.name} (Code: ${sku.code})
 Supplier/Distributor: ${sku.supplier || 'Standard Distributor'}
-Cost Price: RM ${sku.costPrice.toFixed(2)}
+PMG Custom Cost Price: RM ${sku.costPrice.toFixed(2)}
 Current PMG Standard Selling Price: RM ${sku.standardSp.toFixed(2)}
-Supermarket Benchmark (Farley / Emart): ${sku.supermarketPrice ? 'RM ' + sku.supermarketPrice.toFixed(2) : 'N/A'}
-Competitor Pharmacy Benchmark (Watsons / Caring / Alpro): ${sku.chainPharmacyPrice ? 'RM ' + sku.chainPharmacyPrice.toFixed(2) : 'N/A'}
-Region: Kuching & Padawan, Sarawak, Malaysia (7 Outlets: Kota Sentosa, Matang Jaya, Sungai Moyan, Malihah, Metrocity, Astana, Samariang).
+Supermarket Benchmark (Farley / Emart): ${sku.supermarketPrice ? 'RM ' + sku.supermarketPrice.toFixed(2) : 'Not recorded'}
+Competitor Chain Benchmark (Watsons / Caring / Guardian / Alpro): ${sku.chainPharmacyPrice ? 'RM ' + sku.chainPharmacyPrice.toFixed(2) : 'Not recorded'}
 
-Please advise:
-1. Supplier Cost Evaluation: With our cost of RM ${sku.costPrice.toFixed(2)} from ${sku.supplier || 'distributor'}, evaluate if there is margin squeeze or room for volume trade deals/rebates.
-2. Is our current PMG standard price competitive against supermarkets and chain pharmacies?
-3. Recommended Standardized Area Retail Price to maximize both customer volume and gross margin.
-4. Bundle and Basket Building Strategy (what high-margin companion item should be paired with it?).
-5. Script for branch counter staff when a customer claims Farley/Emart is cheaper.`;
+Region: Kuching & Padawan, Sarawak (Outlets: Kota Sentosa, Matang Jaya, Sungai Moyan, Malihah, Metrocity, Astana, Samariang).
+
+Please provide:
+1. Grounded Competitor Price Benchmarking:
+   - Farley Supermarket / Emart Hypermarket estimated retail price (Kuching/Sarawak price level).
+   - Chain Pharmacy retail price (Watsons, Guardian, Caring, Alpro Pharmacy).
+   - E-commerce / Official Shopee Mall & Lazada baseline price.
+2. Price Differential & Vulnerability Check:
+   - Is PMG's RM ${sku.standardSp.toFixed(2)} higher, parity, or lower than Farley and Watsons?
+   - How price-sensitive are Sarawak local walk-in customers on this specific SKU?
+3. Recommended PMG 7-Branch Defensive Price:
+   - Suggested standardized selling price to defend foot-traffic against Farley while preserving gross profit.
+   - Recommended promotional price (e.g., weekend member special or twin-pack).
+
+IMPORTANT: Return the detected competitor price numbers at the end inside a strict JSON code block so PMG can auto-apply them to this SKU:
+\`\`\`json
+{
+  "supermarketPrice": 0.00,
+  "chainPharmacyPrice": 0.00,
+  "competitorName": "Farley / Watsons",
+  "suggestedPmgSp": 0.00
+}
+\`\`\``;
       }
 
       if (modal) modal.classList.remove('hidden');
       this.executeAiResearch();
+    }
+
+    launchAiMarketStrategy(skuId) {
+      const sku = this.skus.find(s => s.id === skuId);
+      if (!sku) return;
+
+      this.selectedSkuForAi = sku;
+      const modal = document.getElementById('pricingAiModal');
+      const title = document.getElementById('pricingAiModalTitle');
+      const input = document.getElementById('pricingAiPromptInput');
+
+      if (title) title.textContent = `Market Strategy & Commercial Dynamics: ${sku.name}`;
+      if (input) {
+        input.value = `Perform an in-depth commercial market dynamics, basket building, and counter-strategy analysis for:
+Product: ${sku.name} (Code: ${sku.code})
+Supplier/Distributor: ${sku.supplier || 'Standard Distributor'}
+PMG Custom Cost Price: RM ${sku.costPrice.toFixed(2)}
+Current PMG Standard Selling Price: RM ${sku.standardSp.toFixed(2)}
+Supermarket Benchmark (Farley / Emart): ${sku.supermarketPrice ? 'RM ' + sku.supermarketPrice.toFixed(2) : 'N/A'}
+Competitor Chain Benchmark: ${sku.chainPharmacyPrice ? 'RM ' + sku.chainPharmacyPrice.toFixed(2) : 'N/A'}
+Target Market: Kuching & Padawan, Sarawak (7 Outlets: Kota Sentosa, Matang Jaya, Sungai Moyan, Malihah, Metrocity, Astana, Samariang).
+
+Please provide an actionable 7-outlet battle plan:
+1. Customer Price Elasticity & Psychology:
+   - Are customers in suburban Sarawak (e.g. Moyan, Malihah, Sentosa) sensitive to this product?
+   - Does this item qualify as a Key Value Item (KVI) where price image determines store perception?
+2. Basket Building & Companion Cross-Selling:
+   - What high-margin companion items (vitamins, minerals, diagnostic test, or clinical services) should pharmacists bundle with this SKU to recoup any low margins?
+3. Floor Staff Counter-Script vs Farley/Emart:
+   - Script for branch dispensers and counter staff when a customer says: "Why is Farley cheaper by RM 1.50?" (Focus on genuine medicine safety, direct distributor supply, storage temperatures, pharmacist counseling, loyalty member points).
+4. Outlet-Specific Merchandising Directives:
+   - High-density residential branches (Matang Jaya, Moyan, Samariang) vs Commercial centers (Metrocity, Kota Sentosa).
+5. Wholesaler / Supplier Deal Negotiation:
+   - With PMG purchasing for 7 branches, what bulk deal (e.g. 10+1 free, 12+2 bonus, or quarter-end rebate) should Area Manager negotiate with ${sku.supplier || 'the distributor'}?`;
+      }
+
+      if (modal) modal.classList.remove('hidden');
+      this.executeAiResearch();
+    }
+
+    async launchAiResearch(skuId) {
+      // Legacy wrapper fallback
+      this.launchAiCompetitorPriceCheck(skuId);
     }
 
     async launchAiSwotPlan(branchKey) {
@@ -2008,10 +2128,56 @@ Our objective as Area Manager:
 
       if (statusPill) statusPill.textContent = `Completed (${usedModel})`;
 
+      // Parse possible JSON code block with competitor prices
+      let parsedJson = null;
+      try {
+        const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        const jsonStr = jsonMatch ? jsonMatch[1].trim() : (responseText.startsWith('{') && responseText.endsWith('}') ? responseText : null);
+        if (jsonStr) {
+          const testObj = JSON.parse(jsonStr);
+          if (testObj && (testObj.supermarketPrice !== undefined || testObj.chainPharmacyPrice !== undefined)) {
+            parsedJson = testObj;
+          }
+        }
+      } catch (e) {
+        // Not a JSON block or invalid JSON, ignore
+      }
+
+      let applyBannerHtml = '';
+      if (parsedJson && this.selectedSkuForAi) {
+        const sku = this.selectedSkuForAi;
+        const superP = parseFloat(parsedJson.supermarketPrice) || 0;
+        const chainP = parseFloat(parsedJson.chainPharmacyPrice) || 0;
+        const compName = (parsedJson.competitorName || 'Farley / Watsons').replace(/"/g, '&quot;');
+        const pmgSp = parseFloat(parsedJson.suggestedPmgSp) || 0;
+
+        if (superP > 0 || chainP > 0) {
+          applyBannerHtml = `
+            <div class="mb-4 p-3.5 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border-2 border-indigo-300 rounded-xl flex items-center justify-between gap-3 shadow-xs">
+              <div class="space-y-1">
+                <div class="font-bold text-indigo-950 text-xs flex items-center gap-1.5">
+                  <i class="fa-solid fa-tags text-indigo-600"></i> AI Detected Competitor Benchmarks for <span class="text-blue-900 font-extrabold">${sku.name}</span>
+                </div>
+                <div class="text-[11px] text-indigo-900 flex items-center gap-3 flex-wrap">
+                  <span>Farley/Emart: <b class="font-mono text-gray-900 bg-white px-1.5 py-0.5 rounded border border-indigo-200">RM ${superP > 0 ? superP.toFixed(2) : 'N/A'}</b></span>
+                  <span>Chains (${compName}): <b class="font-mono text-gray-900 bg-white px-1.5 py-0.5 rounded border border-indigo-200">RM ${chainP > 0 ? chainP.toFixed(2) : 'N/A'}</b></span>
+                  ${pmgSp > 0 ? `<span>Suggested Defensive SP: <b class="font-mono text-emerald-800 bg-white px-1.5 py-0.5 rounded border border-emerald-200">RM ${pmgSp.toFixed(2)}</b></span>` : ''}
+                </div>
+              </div>
+              <button type="button" onclick="window.pmgPricing.applyAiCompetitorPrices('${sku.id}', ${superP}, ${chainP}, '${compName.replace(/'/g, "\\'")}')"
+                class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-xs rounded-xl transition shadow-xs whitespace-nowrap flex items-center gap-1.5 cursor-pointer">
+                <i class="fa-solid fa-check-double text-indigo-200"></i> Apply to SKU Table
+              </button>
+            </div>
+          `;
+        }
+      }
+
       // Render Markdown-styled response
       const formattedHtml = this.formatMarkdownToHtml(responseText);
       if (resultContainer) {
         resultContainer.innerHTML = `
+          ${applyBannerHtml}
           <div class="prose prose-sm max-w-none text-xs text-gray-800 leading-relaxed space-y-2">
             ${formattedHtml}
           </div>

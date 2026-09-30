@@ -3323,13 +3323,78 @@ function renderEncounterPastRecords(patientId) {
 
   // 10. Multi-visit rows for historical trend comparison table
   const historyTableRows = pastEncs.map((enc, idx) => {
-    const eBp = (enc.vitals?.bpSys && enc.vitals?.bpDia) ? `${enc.vitals.bpSys}/${enc.vitals.bpDia}` : '—';
+    const bpStr = (enc.vitals?.bpSys && enc.vitals?.bpDia) ? `${enc.vitals.bpSys}/${enc.vitals.bpDia}` : '—';
+    const pulseStr = enc.vitals?.pulse ? `<div class="text-[10px] text-rose-600 font-semibold flex items-center gap-1 mt-0.5"><i class="fa-solid fa-heart-pulse text-[9px]"></i> ${enc.vitals.pulse} bpm</div>` : '';
+    const spo2Str = enc.vitals?.spo2 ? `<div class="text-[9px] text-sky-600">SpO2: ${enc.vitals.spo2}%</div>` : '';
+    const eBp = `<div class="font-mono font-bold text-gray-900">${bpStr}</div>${pulseStr}${spo2Str}`;
+
     const eGluc = enc.glycemicHeme?.glucose ? `${enc.glycemicHeme.glucose} (${enc.glycemicHeme.glucoseType || 'FBG'})` : (enc.glycemicHeme?.hba1c ? `HbA1c ${enc.glycemicHeme.hba1c}%` : '—');
-    const eLipid = enc.lipidPanel?.tc ? `TC ${enc.lipidPanel.tc} / TG ${enc.lipidPanel?.tg || '—'}` : '—';
+    
+    // FULL Lipid Panel: TC, TG, HDL, LDL, AI, R-CHD
+    let eLipid = '—';
+    if (enc.lipidPanel && (enc.lipidPanel.tc || enc.lipidPanel.tg || enc.lipidPanel.hdl || enc.lipidPanel.ldl || enc.lipidPanel.ai || enc.lipidPanel.rchd || enc.lipidPanel.rChd)) {
+      const lp = enc.lipidPanel;
+      const l1 = [
+        lp.tc ? `TC: <b>${lp.tc}</b>` : '',
+        lp.tg ? `TG: <b>${lp.tg}</b>` : ''
+      ].filter(Boolean).join(' · ');
+      const l2 = [
+        lp.hdl ? `HDL: <b>${lp.hdl}</b>` : '',
+        lp.ldl ? `LDL: <b>${lp.ldl}</b>` : ''
+      ].filter(Boolean).join(' · ');
+      const l3 = [
+        lp.ai ? `AI: <b>${lp.ai}</b>` : '',
+        (lp.rChd || lp.rchd) ? `R-CHD: <b>${lp.rChd || lp.rchd}</b>` : ''
+      ].filter(Boolean).join(' · ');
+
+      eLipid = `
+        <div class="space-y-0.5 text-[11px] leading-tight font-mono text-gray-800">
+          ${l1 ? `<div>${l1}</div>` : ''}
+          ${l2 ? `<div class="text-gray-600">${l2}</div>` : ''}
+          ${l3 ? `<div class="text-[10px] text-indigo-700 font-semibold">${l3}</div>` : ''}
+        </div>
+      `;
+    }
+
     const eUa = enc.kidneyPanel?.ua ? `${enc.kidneyPanel.ua} µmol/L` : (enc.kidneyPanel?.creatinine ? `Cr ${enc.kidneyPanel.creatinine}` : '—');
     const eWeight = enc.vitals?.weight ? `${enc.vitals.weight} kg` : '—';
     const eMeds = (enc.planMedications || '').trim();
     const encodedMeds = encodeURIComponent(eMeds);
+
+    // TEDA & Airdoc & Reports detection for this encounter
+    const tedaUrl = enc.specialtyScans?.tedaLink || (typeof enc.specialtyScans?.teda === 'string' && enc.specialtyScans.teda.startsWith('http') ? enc.specialtyScans.teda : null);
+    const tedaText = enc.specialtyScans?.teda && !tedaUrl ? enc.specialtyScans.teda : null;
+
+    // Airdoc doc in attachedDocs
+    const airdocDoc = Array.isArray(enc.attachedDocs) ? enc.attachedDocs.find(d => d.name && d.name.toLowerCase().includes('airdoc')) : null;
+    const airdocText = enc.specialtyScans?.airdoc && !airdocDoc ? enc.specialtyScans.airdoc : null;
+
+    // Other attached docs
+    const otherDocs = Array.isArray(enc.attachedDocs) ? enc.attachedDocs.filter(d => !airdocDoc || d.id !== airdocDoc.id) : [];
+
+    let scansHtml = [];
+    if (tedaUrl) {
+      scansHtml.push(`<a href="${escapeHtml(tedaUrl)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded text-[10px] font-bold transition shadow-2xs whitespace-nowrap"><i class="fa-solid fa-arrow-up-right-from-square text-amber-600"></i> Open TEDA</a>`);
+    } else if (tedaText) {
+      scansHtml.push(`<span class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 rounded text-[10px] whitespace-nowrap" title="${escapeHtml(tedaText)}"><i class="fa-solid fa-yin-yang text-amber-600"></i> TEDA: ${escapeHtml(tedaText.slice(0, 16))}</span>`);
+    }
+
+    if (airdocDoc) {
+      scansHtml.push(`<button type="button" onclick="previewDoc('${airdocDoc.id}')" class="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded text-[10px] font-bold transition shadow-2xs whitespace-nowrap cursor-pointer"><i class="fa-solid fa-eye text-emerald-600"></i> View Airdoc</button>`);
+    } else if (airdocText) {
+      scansHtml.push(`<span class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded text-[10px] whitespace-nowrap" title="${escapeHtml(airdocText)}"><i class="fa-solid fa-eye text-emerald-600"></i> Airdoc: ${escapeHtml(airdocText.slice(0, 16))}</span>`);
+    }
+
+    if (otherDocs.length > 0) {
+      otherDocs.forEach(od => {
+        const cleanName = (od.name || 'Doc').replace(/\[.*?\]\s*/, '').slice(0, 14);
+        scansHtml.push(`<button type="button" onclick="previewDoc('${od.id}')" class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded text-[10px] whitespace-nowrap cursor-pointer" title="${escapeHtml(od.name)}"><i class="fa-solid fa-file-pdf text-indigo-500"></i> ${escapeHtml(cleanName)}</button>`);
+      });
+    }
+
+    const scansDisplay = scansHtml.length > 0
+      ? `<div class="flex flex-col gap-1 items-start">${scansHtml.join('')}</div>`
+      : '<span class="text-gray-400 font-mono text-[11px]">—</span>';
 
     return `
       <tr class="border-b border-gray-100 hover:bg-indigo-50/30 transition text-xs">
@@ -3337,11 +3402,12 @@ function renderEncounterPastRecords(patientId) {
           <div class="font-bold text-gray-900">${enc.date}</div>
           <div class="text-[10px] text-gray-500">${escapeHtml(enc.recordedBy || 'Pharmacist')}</div>
         </td>
-        <td class="py-2.5 px-3 font-mono font-bold text-gray-800 whitespace-nowrap">${eBp}</td>
+        <td class="py-2.5 px-3 whitespace-nowrap">${eBp}</td>
         <td class="py-2.5 px-3 font-mono text-gray-800 whitespace-nowrap">${eGluc}</td>
-        <td class="py-2.5 px-3 font-mono text-gray-700 whitespace-nowrap">${eLipid}</td>
+        <td class="py-2.5 px-3 whitespace-nowrap">${eLipid}</td>
         <td class="py-2.5 px-3 font-mono text-gray-700 whitespace-nowrap">${eUa}</td>
         <td class="py-2.5 px-3 font-mono text-gray-700 whitespace-nowrap">${eWeight}</td>
+        <td class="py-2.5 px-3 whitespace-nowrap">${scansDisplay}</td>
         <td class="py-2.5 px-3 text-[11px] text-gray-700 max-w-xs truncate" title="${escapeHtml(eMeds)}">${eMeds ? escapeHtml(eMeds.replace(/\r?\n/g, ', ')) : '<span class="text-gray-400 italic">None</span>'}</td>
         <td class="py-2.5 px-3 text-right whitespace-nowrap">
           ${eMeds ? `
@@ -3396,7 +3462,7 @@ function renderEncounterPastRecords(patientId) {
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
         <div class="p-2.5 bg-white rounded-xl border border-indigo-100/90 shadow-2xs">
           <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 flex items-center gap-1">
-            <i class="fa-solid fa-heart-pulse text-rose-500"></i> Blood Pressure
+            <i class="fa-solid fa-heart-pulse text-rose-500"></i> Blood Pressure &amp; Pulse
           </div>
           <div>${bpHtml}</div>
           <div class="text-[10px] text-gray-500 mt-1">Pulse: ${pulseHtml}</div>
@@ -3412,7 +3478,7 @@ function renderEncounterPastRecords(patientId) {
 
         <div class="p-2.5 bg-white rounded-xl border border-indigo-100/90 shadow-2xs">
           <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 flex items-center gap-1">
-            <i class="fa-solid fa-vial text-amber-500"></i> Lipid Profile
+            <i class="fa-solid fa-vial text-amber-500"></i> Full Lipid Profile
           </div>
           <div class="text-xs text-gray-800 leading-tight">${lipidHtml}</div>
           ${liverHtml ? `<div class="text-[10px] text-gray-600 mt-1">${liverHtml}</div>` : ''}
@@ -3420,12 +3486,12 @@ function renderEncounterPastRecords(patientId) {
 
         <div class="p-2.5 bg-white rounded-xl border border-indigo-100/90 shadow-2xs">
           <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 flex items-center gap-1">
-            <i class="fa-solid fa-kidneys text-purple-600"></i> Renal &amp; Uric Acid
+            <i class="fa-solid fa-kidneys text-purple-600"></i> Renal, Scans &amp; Reports
           </div>
           <div class="text-xs text-gray-800 leading-tight">${renalHtml}</div>
-          <div class="text-[10px] text-gray-500 mt-1 flex items-center gap-2">
-            ${airdocPresent ? '<span class="text-emerald-700 font-bold"><i class="fa-solid fa-eye text-emerald-600"></i> Airdoc Synced</span>' : ''}
-            ${tedaSummary ? '<span class="text-amber-800 font-bold truncate"><i class="fa-solid fa-yin-yang text-amber-600"></i> TEDA On File</span>' : ''}
+          <div class="text-[10px] text-gray-500 mt-1.5 flex items-center gap-1.5 flex-wrap">
+            ${(Array.isArray(latest.attachedDocs) && latest.attachedDocs.find(d => d.name && d.name.toLowerCase().includes('airdoc'))) ? `<button type="button" onclick="previewDoc('${latest.attachedDocs.find(d => d.name && d.name.toLowerCase().includes('airdoc')).id}')" class="px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded font-bold inline-flex items-center gap-1 text-[10px] cursor-pointer"><i class="fa-solid fa-eye text-emerald-600"></i> View Airdoc</button>` : (airdocPresent ? '<span class="text-emerald-700 font-bold"><i class="fa-solid fa-eye text-emerald-600"></i> Airdoc Synced</span>' : '')}
+            ${(latest.specialtyScans?.tedaLink || (typeof latest.specialtyScans?.teda === 'string' && latest.specialtyScans.teda.startsWith('http'))) ? `<a href="${escapeHtml(latest.specialtyScans?.tedaLink || latest.specialtyScans.teda)}" target="_blank" rel="noopener noreferrer" class="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded font-bold inline-flex items-center gap-1 text-[10px] cursor-pointer"><i class="fa-solid fa-arrow-up-right-from-square text-amber-600"></i> Open TEDA</a>` : (tedaSummary ? '<span class="text-amber-800 font-bold truncate"><i class="fa-solid fa-yin-yang text-amber-600"></i> TEDA On File</span>' : '')}
           </div>
         </div>
       </div>
@@ -3458,11 +3524,12 @@ function renderEncounterPastRecords(patientId) {
             <thead>
               <tr class="bg-gray-50 border-b border-gray-200 text-[10px] font-bold text-gray-600 uppercase tracking-wider">
                 <th class="py-2 px-3">Date &amp; Clinician</th>
-                <th class="py-2 px-3">BP (mmHg)</th>
+                <th class="py-2 px-3">BP &amp; Pulse</th>
                 <th class="py-2 px-3">Glucose / HbA1c</th>
                 <th class="py-2 px-3">Lipids</th>
                 <th class="py-2 px-3">UA / Cr</th>
                 <th class="py-2 px-3">Weight</th>
+                <th class="py-2 px-3">TEDA / Airdoc / Reports</th>
                 <th class="py-2 px-3">Prescribed Regimen</th>
                 <th class="py-2 px-3 text-right">Action</th>
               </tr>
@@ -5918,19 +5985,19 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
 
   if (lang === 'Chinese') {
     let msg = `尊敬的 ${name}，这是您于 ${date} 在【${branchName}】的健康咨询与检查报告小结：\n\n`;
-    msg += `🩺 *测量与化验数据 (Vitals & POCT)：*\n`;
+    msg += `*测量与化验数据 (Vitals & POCT)：*\n`;
     if (v.bpSys && v.bpDia) {
       const bp = getBpClassification(v.bpSys, v.bpDia);
-      msg += `• 血压 (BP)：${v.bpSys}/${v.bpDia} mmHg (${bp.label})\n`;
+      msg += `- 血压 (BP)：${v.bpSys}/${v.bpDia} mmHg [${bp.label}]\n`;
     }
-    if (v.pulse) msg += `• 脉搏 (Pulse)：${v.pulse} bpm\n`;
-    if (v.spo2) msg += `• 血氧 (SpO2)：${v.spo2}%\n`;
+    if (v.pulse) msg += `- 脉搏 (Pulse)：${v.pulse} bpm\n`;
+    if (v.spo2) msg += `- 血氧 (SpO2)：${v.spo2}%\n`;
     if (g.glucose) {
       const isFasting = (g.glucoseType || '').toLowerCase().includes('fasting');
       const isHigh = isFasting ? g.glucose >= 5.6 : g.glucose >= 7.8;
-      msg += `• 血糖 (${g.glucoseType || 'Fasting'})：${g.glucose} mmol/L ${isHigh ? '⚠️(偏高)' : '✅(正常)'}\n`;
+      msg += `- 血糖 (${g.glucoseType || 'Fasting'})：${g.glucose} mmol/L ${isHigh ? '[偏高]' : '[正常]'}\n`;
     }
-    if (g.hba1c) msg += `• 糖化血红蛋白 HbA1c：${g.hba1c}%\n`;
+    if (g.hba1c) msg += `- 糖化血红蛋白 HbA1c：${g.hba1c}%\n`;
 
     // Full Lipid Panel in Chinese
     if (l.tc || l.tg || l.hdl || l.ldl) {
@@ -5941,37 +6008,37 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
       const aiVal = parseFloat(l.ai);
       const rchdVal = parseFloat(l.rChd || l.rchd);
 
-      msg += `• 血脂全套指标 (Full Lipid Profile)：\n`;
-      if (!isNaN(tcVal)) msg += `  - 总胆固醇 (TC): ${l.tc} mmol/L ${tcVal >= 5.2 ? '⚠️(偏高，目标 < 5.2)' : '✅(正常)'}\n`;
-      if (!isNaN(tgVal)) msg += `  - 甘油三酯 (TG): ${l.tg} mmol/L ${tgVal >= 1.7 ? '⚠️(偏高，目标 < 1.7)' : '✅(正常)'}\n`;
-      if (!isNaN(hdlVal)) msg += `  - 高密度好胆固醇 (HDL): ${l.hdl} mmol/L ${hdlVal < 1.0 ? '⚠️(偏低，目标 >= 1.0)' : '✅(良好)'}\n`;
-      if (!isNaN(ldlVal)) msg += `  - 低密度坏胆固醇 (LDL): ${l.ldl} mmol/L ${ldlVal >= 2.6 ? '⚠️(偏高，目标 < 2.6)' : '✅(理想)'}\n`;
-      if (!isNaN(aiVal)) msg += `  - 动脉硬化指数 (AI): ${l.ai} ${aiVal >= 4.0 ? '⚠️(偏高)' : '✅(低风险)'}\n`;
-      if (!isNaN(rchdVal)) msg += `  - 冠心病风险比率 (R-CHD): ${l.rChd || l.rchd} ${rchdVal >= 5.0 ? '⚠️(偏高)' : '✅(良好)'}\n`;
+      msg += `- 血脂全套指标 (Full Lipid Profile)：\n`;
+      if (!isNaN(tcVal)) msg += `  * 总胆固醇 (TC): ${l.tc} mmol/L ${tcVal >= 5.2 ? '[偏高，目标 < 5.2]' : '[正常]'}\n`;
+      if (!isNaN(tgVal)) msg += `  * 甘油三酯 (TG): ${l.tg} mmol/L ${tgVal >= 1.7 ? '[偏高，目标 < 1.7]' : '[正常]'}\n`;
+      if (!isNaN(hdlVal)) msg += `  * 高密度好胆固醇 (HDL): ${l.hdl} mmol/L ${hdlVal < 1.0 ? '[偏低，目标 >= 1.0]' : '[良好]'}\n`;
+      if (!isNaN(ldlVal)) msg += `  * 低密度坏胆固醇 (LDL): ${l.ldl} mmol/L ${ldlVal >= 2.6 ? '[偏高，目标 < 2.6]' : '[理想]'}\n`;
+      if (!isNaN(aiVal)) msg += `  * 动脉硬化指数 (AI): ${l.ai} ${aiVal >= 4.0 ? '[偏高]' : '[低风险]'}\n`;
+      if (!isNaN(rchdVal)) msg += `  * 冠心病风险比率 (R-CHD): ${l.rChd || l.rchd} ${rchdVal >= 5.0 ? '[偏高]' : '[良好]'}\n`;
     }
 
-    if (enc.planCounselling) msg += `\n🗣️ *饮食与生活注意：*\n${enc.planCounselling}\n`;
+    if (enc.planCounselling) msg += `\n*饮食与生活注意：*\n${enc.planCounselling}\n`;
 
-    msg += `\n🌟 *如果您对我们今天的健康咨询与检测服务满意，诚挚邀请您为我们留下 5 星好评支持：*\n⭐ 谷歌5星好评：${googleReviewLink}\n\n`;
-    msg += `👥 *欢迎加入我们的健康关怀 WhatsApp 社区（获取最新健康资讯与用药指导）：*\n👉 社区链接：${waCommunityLink}\n\n`;
-    msg += `📱 *关注我们获取更多保健知识：*\n• 药剂师主页：${personalFbLink}\n• PMG Kota Sentosa 专页：${outletFbLink}\n\n`;
+    msg += `\n*如果您对我们今天的健康咨询与检测服务满意，诚挚邀请您为我们留下 5 星好评支持：*\n- 谷歌5星好评：${googleReviewLink}\n\n`;
+    msg += `*欢迎加入我们的健康关怀 WhatsApp 社区（获取最新健康资讯与用药指导）：*\n- 社区链接：${waCommunityLink}\n\n`;
+    msg += `*关注我们获取更多保健知识：*\n- 药剂师主页：${personalFbLink}\n- PMG Kota Sentosa 专页：${outletFbLink}\n\n`;
     msg += `祝您身体健康！如有任何用药疑问，欢迎随时联系我们。`;
     return msg;
   } else if (lang === 'Malay') {
     let msg = `Salam ${name}, ini adalah ringkasan konsultasi kesihatan anda pada ${date} di 【${branchName}】：\n\n`;
-    msg += `🩺 *Keputusan Pemeriksaan (Vitals & POCT):*\n`;
+    msg += `*Keputusan Pemeriksaan (Vitals & POCT):*\n`;
     if (v.bpSys && v.bpDia) {
       const bp = getBpClassification(v.bpSys, v.bpDia);
-      msg += `• Tekanan Darah (BP): ${v.bpSys}/${v.bpDia} mmHg (${bp.label})\n`;
+      msg += `- Tekanan Darah (BP): ${v.bpSys}/${v.bpDia} mmHg [${bp.label}]\n`;
     }
-    if (v.pulse) msg += `• Nadi: ${v.pulse} bpm\n`;
-    if (v.spo2) msg += `• Oksigen SpO2: ${v.spo2}%\n`;
+    if (v.pulse) msg += `- Nadi: ${v.pulse} bpm\n`;
+    if (v.spo2) msg += `- Oksigen SpO2: ${v.spo2}%\n`;
     if (g.glucose) {
       const isFasting = (g.glucoseType || '').toLowerCase().includes('fasting');
       const isHigh = isFasting ? g.glucose >= 5.6 : g.glucose >= 7.8;
-      msg += `• Gula Darah (${g.glucoseType || 'Fasting'}): ${g.glucose} mmol/L ${isHigh ? '⚠️(Tinggi)' : '✅(Normal)'}\n`;
+      msg += `- Gula Darah (${g.glucoseType || 'Fasting'}): ${g.glucose} mmol/L ${isHigh ? '[Tinggi]' : '[Normal]'}\n`;
     }
-    if (g.hba1c) msg += `• HbA1c: ${g.hba1c}%\n`;
+    if (g.hba1c) msg += `- HbA1c: ${g.hba1c}%\n`;
 
     // Full Lipid Panel in Malay
     if (l.tc || l.tg || l.hdl || l.ldl) {
@@ -5982,37 +6049,37 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
       const aiVal = parseFloat(l.ai);
       const rchdVal = parseFloat(l.rChd || l.rchd);
 
-      msg += `• Profil Penuh Kolesterol (Full Lipid Profile):\n`;
-      if (!isNaN(tcVal)) msg += `  - Jumlah Kolesterol (TC): ${l.tc} mmol/L ${tcVal >= 5.2 ? '⚠️(Tinggi, sasaran < 5.2)' : '✅(Normal)'}\n`;
-      if (!isNaN(tgVal)) msg += `  - Trigliserida (TG): ${l.tg} mmol/L ${tgVal >= 1.7 ? '⚠️(Tinggi, sasaran < 1.7)' : '✅(Normal)'}\n`;
-      if (!isNaN(hdlVal)) msg += `  - Kolesterol Baik (HDL): ${l.hdl} mmol/L ${hdlVal < 1.0 ? '⚠️(Rendah, sasaran >= 1.0)' : '✅(Baik)'}\n`;
-      if (!isNaN(ldlVal)) msg += `  - Kolesterol Jahat (LDL): ${l.ldl} mmol/L ${ldlVal >= 2.6 ? '⚠️(Tinggi, sasaran < 2.6)' : '✅(Optimum)'}\n`;
-      if (!isNaN(aiVal)) msg += `  - Indeks Aterogenik (AI): ${l.ai}\n`;
-      if (!isNaN(rchdVal)) msg += `  - Nisbah Risiko Jantung (R-CHD): ${l.rChd || l.rchd}\n`;
+      msg += `- Profil Penuh Kolesterol (Full Lipid Profile):\n`;
+      if (!isNaN(tcVal)) msg += `  * Jumlah Kolesterol (TC): ${l.tc} mmol/L ${tcVal >= 5.2 ? '[Tinggi, sasaran < 5.2]' : '[Normal]'}\n`;
+      if (!isNaN(tgVal)) msg += `  * Trigliserida (TG): ${l.tg} mmol/L ${tgVal >= 1.7 ? '[Tinggi, sasaran < 1.7]' : '[Normal]'}\n`;
+      if (!isNaN(hdlVal)) msg += `  * Kolesterol Baik (HDL): ${l.hdl} mmol/L ${hdlVal < 1.0 ? '[Rendah, sasaran >= 1.0]' : '[Baik]'}\n`;
+      if (!isNaN(ldlVal)) msg += `  * Kolesterol Jahat (LDL): ${l.ldl} mmol/L ${ldlVal >= 2.6 ? '[Tinggi, sasaran < 2.6]' : '[Optimum]'}\n`;
+      if (!isNaN(aiVal)) msg += `  * Indeks Aterogenik (AI): ${l.ai}\n`;
+      if (!isNaN(rchdVal)) msg += `  * Nisbah Risiko Jantung (R-CHD): ${l.rChd || l.rchd}\n`;
     }
 
-    if (enc.planCounselling) msg += `\n🗣️ *Nasihat Gaya Hidup:*\n${enc.planCounselling}\n`;
+    if (enc.planCounselling) msg += `\n*Nasihat Gaya Hidup:*\n${enc.planCounselling}\n`;
 
-    msg += `\n🌟 *Jika anda berpuas hati dengan perkhidmatan dan ujian kesihatan kami, sudilah berikan kami penilaian 5 bintang di Google:*\n⭐ Ulasan Google 5 Bintang: ${googleReviewLink}\n\n`;
-    msg += `👥 *Sertai Komuniti WhatsApp Kesihatan Kami (dapatkan tips kesihatan & nasihat ubatan terkini):*\n👉 Pautan Komuniti: ${waCommunityLink}\n\n`;
-    msg += `📱 *Ikuti kami di Facebook untuk info kesihatan harian:*\n• Profil Ahli Farmasi: ${personalFbLink}\n• Halaman PMG Kota Sentosa: ${outletFbLink}\n\n`;
+    msg += `\n*Jika anda berpuas hati dengan perkhidmatan dan ujian kesihatan kami, sudilah berikan kami penilaian 5 bintang di Google:*\n- Ulasan Google 5 Bintang: ${googleReviewLink}\n\n`;
+    msg += `*Sertai Komuniti WhatsApp Kesihatan Kami (dapatkan tips kesihatan & nasihat ubatan terkini):*\n- Pautan Komuniti: ${waCommunityLink}\n\n`;
+    msg += `*Ikuti kami di Facebook untuk info kesihatan harian:*\n- Profil Ahli Farmasi: ${personalFbLink}\n- Halaman PMG Kota Sentosa: ${outletFbLink}\n\n`;
     msg += `Semoga sihat selalu! Hubungi kami jika ada sebarang pertanyaan.`;
     return msg;
   } else {
     let msg = `Dear ${name}, here is your health consultation summary from ${branchName} on ${date}:\n\n`;
-    msg += `🩺 *Health Vitals & POCT Readings:*\n`;
+    msg += `*Health Vitals & POCT Readings:*\n`;
     if (v.bpSys && v.bpDia) {
       const bp = getBpClassification(v.bpSys, v.bpDia);
-      msg += `• Blood Pressure (BP): ${v.bpSys}/${v.bpDia} mmHg (${bp.label})\n`;
+      msg += `- Blood Pressure (BP): ${v.bpSys}/${v.bpDia} mmHg [${bp.label}]\n`;
     }
-    if (v.pulse) msg += `• Pulse: ${v.pulse} bpm\n`;
-    if (v.spo2) msg += `• Oxygen SpO2: ${v.spo2}%\n`;
+    if (v.pulse) msg += `- Pulse: ${v.pulse} bpm\n`;
+    if (v.spo2) msg += `- Oxygen SpO2: ${v.spo2}%\n`;
     if (g.glucose) {
       const isFasting = (g.glucoseType || '').toLowerCase().includes('fasting');
       const isHigh = isFasting ? g.glucose >= 5.6 : g.glucose >= 7.8;
-      msg += `• Blood Glucose (${g.glucoseType || 'Fasting'}): ${g.glucose} mmol/L ${isHigh ? '⚠️(High)' : '✅(Normal)'}\n`;
+      msg += `- Blood Glucose (${g.glucoseType || 'Fasting'}): ${g.glucose} mmol/L ${isHigh ? '[High]' : '[Normal]'}\n`;
     }
-    if (g.hba1c) msg += `• HbA1c: ${g.hba1c}%\n`;
+    if (g.hba1c) msg += `- HbA1c: ${g.hba1c}%\n`;
 
     // Full Lipid Panel in English
     if (l.tc || l.tg || l.hdl || l.ldl) {
@@ -6023,20 +6090,20 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
       const aiVal = parseFloat(l.ai);
       const rchdVal = parseFloat(l.rChd || l.rchd);
 
-      msg += `• Full Lipid Profile:\n`;
-      if (!isNaN(tcVal)) msg += `  - Total Cholesterol (TC): ${l.tc} mmol/L ${tcVal >= 5.2 ? '⚠️(High, target < 5.2)' : '✅(Normal)'}\n`;
-      if (!isNaN(tgVal)) msg += `  - Triglycerides (TG): ${l.tg} mmol/L ${tgVal >= 1.7 ? '⚠️(High, target < 1.7)' : '✅(Normal)'}\n`;
-      if (!isNaN(hdlVal)) msg += `  - HDL "Good" Cholesterol: ${l.hdl} mmol/L ${hdlVal < 1.0 ? '⚠️(Low, target >= 1.0)' : '✅(Good)'}\n`;
-      if (!isNaN(ldlVal)) msg += `  - LDL "Bad" Cholesterol: ${l.ldl} mmol/L ${ldlVal >= 2.6 ? '⚠️(High, target < 2.6)' : '✅(Optimal)'}\n`;
-      if (!isNaN(aiVal)) msg += `  - Atherogenic Index (AI): ${l.ai} ${aiVal >= 4.0 ? '⚠️(Elevated Risk)' : '✅(Low Risk)'}\n`;
-      if (!isNaN(rchdVal)) msg += `  - CHD Risk Ratio (R-CHD): ${l.rChd || l.rchd} ${rchdVal >= 5.0 ? '⚠️(Elevated Risk)' : '✅(Low Risk)'}\n`;
+      msg += `- Full Lipid Profile:\n`;
+      if (!isNaN(tcVal)) msg += `  * Total Cholesterol (TC): ${l.tc} mmol/L ${tcVal >= 5.2 ? '[High, target < 5.2]' : '[Normal]'}\n`;
+      if (!isNaN(tgVal)) msg += `  * Triglycerides (TG): ${l.tg} mmol/L ${tgVal >= 1.7 ? '[High, target < 1.7]' : '[Normal]'}\n`;
+      if (!isNaN(hdlVal)) msg += `  * HDL "Good" Cholesterol: ${l.hdl} mmol/L ${hdlVal < 1.0 ? '[Low, target >= 1.0]' : '[Good]'}\n`;
+      if (!isNaN(ldlVal)) msg += `  * LDL "Bad" Cholesterol: ${l.ldl} mmol/L ${ldlVal >= 2.6 ? '[High, target < 2.6]' : '[Optimal]'}\n`;
+      if (!isNaN(aiVal)) msg += `  * Atherogenic Index (AI): ${l.ai} ${aiVal >= 4.0 ? '[Elevated Risk]' : '[Low Risk]'}\n`;
+      if (!isNaN(rchdVal)) msg += `  * CHD Risk Ratio (R-CHD): ${l.rChd || l.rchd} ${rchdVal >= 5.0 ? '[Elevated Risk]' : '[Low Risk]'}\n`;
     }
 
-    if (enc.planCounselling) msg += `\n🗣️ *Lifestyle & Dietary Advice:*\n${enc.planCounselling}\n`;
+    if (enc.planCounselling) msg += `\n*Lifestyle & Dietary Advice:*\n${enc.planCounselling}\n`;
 
-    msg += `\n🌟 *If you are satisfied with our health consultation and testing service today, we would greatly appreciate your 5-star Google review:*\n⭐ Rate 5 Stars on Google: ${googleReviewLink}\n\n`;
-    msg += `👥 *Join our WhatsApp Health Community (for the latest health tips & updates):*\n👉 Community Link: ${waCommunityLink}\n\n`;
-    msg += `📱 *Follow us on Facebook for daily healthcare updates:*\n• Pharmacist Profile: ${personalFbLink}\n• PMG Kota Sentosa Page: ${outletFbLink}\n\n`;
+    msg += `\n*If you are satisfied with our health consultation and testing service today, we would greatly appreciate your 5-star Google review:*\n- Rate 5 Stars on Google: ${googleReviewLink}\n\n`;
+    msg += `*Join our WhatsApp Health Community (for the latest health tips & updates):*\n- Community Link: ${waCommunityLink}\n\n`;
+    msg += `*Follow us on Facebook for daily healthcare updates:*\n- Pharmacist Profile: ${personalFbLink}\n- PMG Kota Sentosa Page: ${outletFbLink}\n\n`;
     msg += `Stay healthy! Feel free to message us if you have any questions.`;
     return msg;
   }
