@@ -932,7 +932,7 @@
       }
     }
 
-    applyAiCompetitorPrices(skuId, superPrice, chainPrice, competitorName) {
+    applyAiCompetitorPrices(skuId, superPrice, chainPrice, competitorName, promoNote) {
       const sku = this.skus.find(s => s.id === skuId);
       if (!sku) return;
       if (superPrice && !isNaN(parseFloat(superPrice)) && parseFloat(superPrice) > 0) {
@@ -942,6 +942,9 @@
         sku.chainPharmacyPrice = parseFloat(chainPrice);
       }
       if (competitorName) sku.competitorName = competitorName;
+      if (promoNote !== undefined && promoNote !== null) {
+        sku.promoNote = promoNote;
+      }
       sku.customModified = true;
       this.saveSkusToStorage();
       this.renderTableOnly();
@@ -1325,7 +1328,7 @@
         alert('Pricing matrix is empty. Nothing to export.');
         return;
       }
-      let csv = "Item Code,Description,Brand,Category,Supplier,Custom Cost (RM),Member SP (RM),Non-Member Price (RM),Gross Margin %,Supermarket Benchmark (RM),Competitor Chain Benchmark (RM),Strategic Role,Notes\n";
+      let csv = "Item Code,Description,Brand,Category,Supplier,Custom Cost (RM),Member SP (RM),Non-Member Price (RM),Gross Margin %,Supermarket Benchmark (RM),Competitor Pharmacy Benchmark (RM),Competitor Name,Promotional Factor,Strategic Role,Notes\n";
       this.skus.forEach(s => {
         const margin = this.calculateMargin(s.costPrice, s.standardSp);
         const escapeCsv = (str) => `"${String(str || '').replace(/"/g, '""')}"`;
@@ -1341,6 +1344,8 @@
           margin + '%',
           s.supermarketPrice ? s.supermarketPrice.toFixed(2) : '',
           s.chainPharmacyPrice ? s.chainPharmacyPrice.toFixed(2) : '',
+          escapeCsv(s.competitorName || ''),
+          escapeCsv(s.promoNote || ''),
           escapeCsv(s.strategyTag),
           escapeCsv(s.notes)
         ].join(',') + '\n';
@@ -1511,25 +1516,37 @@
           ${superDiffHtml}
         `;
 
-        // Chain pharmacy input & comparison pill
+        // Pharmacy competitor input & comparison pill
         let chainDiffHtml = '';
         if (s.chainPharmacyPrice) {
           const diff = (s.standardSp - s.chainPharmacyPrice).toFixed(2);
           const isHigher = s.standardSp > s.chainPharmacyPrice;
           const diffClass = isHigher ? 'text-amber-600' : 'text-emerald-700 font-bold';
           const diffSign = isHigher ? '+' : '';
-          chainDiffHtml = `<span class="text-[10px] ${diffClass} block mt-0.5">${diffSign}RM ${diff} (${s.competitorName || 'Chains'})</span>`;
+          chainDiffHtml = `<span class="text-[10px] ${diffClass} block mt-0.5">${diffSign}RM ${diff} (${s.competitorName || 'Alpro/Ting'})</span>`;
+        }
+
+        let promoPillHtml = '';
+        if (s.promoNote && s.promoNote.trim()) {
+          promoPillHtml = `
+            <div class="mt-1 flex items-center justify-end" title="${s.promoNote.replace(/"/g, '&quot;')}">
+              <span class="inline-flex items-center gap-1 text-[9px] font-bold text-amber-900 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded truncate max-w-[150px]">
+                <i class="fa-solid fa-fire text-amber-600"></i> ${s.promoNote}
+              </span>
+            </div>
+          `;
         }
 
         const chainComp = `
           <div class="inline-flex items-center gap-1 justify-end">
             <span class="text-gray-400 text-xs font-mono">RM</span>
-            <input type="number" step="0.10" value="${s.chainPharmacyPrice ? s.chainPharmacyPrice.toFixed(2) : ''}" placeholder="Watsons..."
+            <input type="number" step="0.10" value="${s.chainPharmacyPrice ? s.chainPharmacyPrice.toFixed(2) : ''}" placeholder="Alpro/Ting..."
               onchange="window.pmgPricing.updateSkuChainPrice('${s.id}', this.value)"
               class="w-20 text-right font-mono font-bold text-gray-800 border border-gray-200 rounded px-1.5 py-1 focus:ring-2 focus:ring-blue-400 outline-none bg-slate-50/50 hover:bg-white transition"
-              title="Chain Pharmacy benchmark price (Click to edit)">
+              title="Competitor Pharmacy (Alpro/Caring/BIG/Ting) benchmark price (Click to edit)">
           </div>
           ${chainDiffHtml}
+          ${promoPillHtml}
         `;
 
         // Margin pill color
@@ -1845,28 +1862,39 @@ Supplier/Distributor: ${sku.supplier || 'Standard Distributor'}
 PMG Custom Cost Price: RM ${sku.costPrice.toFixed(2)}
 Current PMG Standard Selling Price: RM ${sku.standardSp.toFixed(2)}
 Supermarket Benchmark (Farley / Emart): ${sku.supermarketPrice ? 'RM ' + sku.supermarketPrice.toFixed(2) : 'Not recorded'}
-Competitor Chain Benchmark (Watsons / Caring / Guardian / Alpro): ${sku.chainPharmacyPrice ? 'RM ' + sku.chainPharmacyPrice.toFixed(2) : 'Not recorded'}
+Competitor Pharmacy Benchmark (Alpro / Caring / BIG / Ting / Watsons): ${sku.chainPharmacyPrice ? 'RM ' + sku.chainPharmacyPrice.toFixed(2) : 'Not recorded'}
 
-Region: Kuching & Padawan, Sarawak (Outlets: Kota Sentosa, Matang Jaya, Sungai Moyan, Malihah, Metrocity, Astana, Samariang).
+Target Competitors in Kuching & Padawan, Sarawak:
+1. Supermarkets / Hypermarkets: Farley Supermarket, Emart Hypermarket, Everwin (Sarawak retail benchmarks).
+2. Competitor Retail Pharmacies:
+   - Alpro Pharmacy (Major chain in Sarawak)
+   - Caring Pharmacy (Vivacity / The Spring / Sarawak)
+   - BIG Pharmacy (Aggressive price-cutting competitor)
+   - Ting Pharmacy (Prominent Kuching local pharmacy competitor)
+   - Watsons & Guardian (National health & beauty chains)
+3. Promotional & Deal Factors:
+   - Check if competitors are currently or frequently running promotional offers on this item (e.g. PWP, "Buy 2 Save More", bundle deals, weekend flash sales, or member vouchers).
+   - If on promotion, evaluate both regular shelf price AND promotional / deal unit price!
 
 Please provide:
 1. Grounded Competitor Price Benchmarking:
    - Farley Supermarket / Emart Hypermarket estimated retail price (Kuching/Sarawak price level).
-   - Chain Pharmacy retail price (Watsons, Guardian, Caring, Alpro Pharmacy).
-   - E-commerce / Official Shopee Mall & Lazada baseline price.
+   - Pharmacy Competitor retail & promotional prices (Alpro, Caring, BIG Pharmacy, Ting Pharmacy, Watsons).
+   - Active competitor promotion / campaign factor on this item (if applicable).
 2. Price Differential & Vulnerability Check:
-   - Is PMG's RM ${sku.standardSp.toFixed(2)} higher, parity, or lower than Farley and Watsons?
+   - Is PMG's RM ${sku.standardSp.toFixed(2)} higher, parity, or lower than Farley, Alpro, and Ting Pharmacy?
    - How price-sensitive are Sarawak local walk-in customers on this specific SKU?
 3. Recommended PMG 7-Branch Defensive Price:
-   - Suggested standardized selling price to defend foot-traffic against Farley while preserving gross profit.
-   - Recommended promotional price (e.g., weekend member special or twin-pack).
+   - Suggested standardized selling price to defend foot-traffic against Farley, Alpro, and Ting while preserving margin.
+   - Recommended promotional campaign (e.g., weekend member special, twin-pack, or PWP companion).
 
 IMPORTANT: Return the detected competitor price numbers at the end inside a strict JSON code block so PMG can auto-apply them to this SKU:
 \`\`\`json
 {
   "supermarketPrice": 0.00,
   "chainPharmacyPrice": 0.00,
-  "competitorName": "Farley / Watsons",
+  "competitorName": "Alpro / Ting Pharmacy",
+  "promoNote": "Buy 2 @ RM 28 (Promo)",
   "suggestedPmgSp": 0.00
 }
 \`\`\``;
@@ -1963,19 +1991,7 @@ Our objective as Area Manager:
 
       if (!promptText) return;
 
-      let apiKey = (localStorage.getItem(STORAGE_KEY_GEMINI) || '').trim();
-      const REVOKED_KEYS = [
-        'AIzaSyBxKYPJWxi3ILfxPTlQFytzoXJvIZ72m4k',
-        'AIzaSyAfJqs6YnY5J_URsuvmSMi8WM3BckVwKY4'
-      ];
-      if (REVOKED_KEYS.includes(apiKey)) {
-        apiKey = '';
-        localStorage.removeItem(STORAGE_KEY_GEMINI);
-      }
-
-      if (!apiKey && typeof PMG_GLOBAL_FALLBACK_KEY !== 'undefined' && PMG_GLOBAL_FALLBACK_KEY && !REVOKED_KEYS.includes(PMG_GLOBAL_FALLBACK_KEY)) {
-        apiKey = PMG_GLOBAL_FALLBACK_KEY;
-      }
+      let apiKey = this.getValidGeminiApiKey();
 
       if (!apiKey) {
         if (resultContainer) {
@@ -2148,23 +2164,25 @@ Our objective as Area Manager:
         const sku = this.selectedSkuForAi;
         const superP = parseFloat(parsedJson.supermarketPrice) || 0;
         const chainP = parseFloat(parsedJson.chainPharmacyPrice) || 0;
-        const compName = (parsedJson.competitorName || 'Farley / Watsons').replace(/"/g, '&quot;');
+        const compName = (parsedJson.competitorName || 'Alpro / Ting Pharmacy').replace(/"/g, '&quot;');
+        const promoNote = (parsedJson.promoNote || '').replace(/"/g, '&quot;');
         const pmgSp = parseFloat(parsedJson.suggestedPmgSp) || 0;
 
         if (superP > 0 || chainP > 0) {
           applyBannerHtml = `
-            <div class="mb-4 p-3.5 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border-2 border-indigo-300 rounded-xl flex items-center justify-between gap-3 shadow-xs">
+            <div class="mb-4 p-3.5 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border-2 border-indigo-300 rounded-xl flex items-center justify-between gap-3 shadow-xs flex-wrap">
               <div class="space-y-1">
                 <div class="font-bold text-indigo-950 text-xs flex items-center gap-1.5">
                   <i class="fa-solid fa-tags text-indigo-600"></i> AI Detected Competitor Benchmarks for <span class="text-blue-900 font-extrabold">${sku.name}</span>
                 </div>
                 <div class="text-[11px] text-indigo-900 flex items-center gap-3 flex-wrap">
                   <span>Farley/Emart: <b class="font-mono text-gray-900 bg-white px-1.5 py-0.5 rounded border border-indigo-200">RM ${superP > 0 ? superP.toFixed(2) : 'N/A'}</b></span>
-                  <span>Chains (${compName}): <b class="font-mono text-gray-900 bg-white px-1.5 py-0.5 rounded border border-indigo-200">RM ${chainP > 0 ? chainP.toFixed(2) : 'N/A'}</b></span>
+                  <span>Competitor Pharmacy (${compName}): <b class="font-mono text-gray-900 bg-white px-1.5 py-0.5 rounded border border-indigo-200">RM ${chainP > 0 ? chainP.toFixed(2) : 'N/A'}</b></span>
+                  ${promoNote ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-300"><i class="fa-solid fa-fire text-amber-600"></i> ${promoNote}</span>` : ''}
                   ${pmgSp > 0 ? `<span>Suggested Defensive SP: <b class="font-mono text-emerald-800 bg-white px-1.5 py-0.5 rounded border border-emerald-200">RM ${pmgSp.toFixed(2)}</b></span>` : ''}
                 </div>
               </div>
-              <button type="button" onclick="window.pmgPricing.applyAiCompetitorPrices('${sku.id}', ${superP}, ${chainP}, '${compName.replace(/'/g, "\\'")}')"
+              <button type="button" onclick="window.pmgPricing.applyAiCompetitorPrices('${sku.id}', ${superP}, ${chainP}, '${compName.replace(/'/g, "\\'")}', '${promoNote.replace(/'/g, "\\'")}')"
                 class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-xs rounded-xl transition shadow-xs whitespace-nowrap flex items-center gap-1.5 cursor-pointer">
                 <i class="fa-solid fa-check-double text-indigo-200"></i> Apply to SKU Table
               </button>
@@ -2197,6 +2215,314 @@ Our objective as Area Manager:
         .replace(/^\s*-\s+(.*?)$/gm, '<li class="ml-4 list-disc text-gray-700">$1</li>')
         .replace(/^\s*\d+\.\s+(.*?)$/gm, '<li class="ml-4 list-decimal text-gray-700">$1</li>')
         .replace(/\n\n/g, '<br><br>');
+    }
+
+    getValidGeminiApiKey() {
+      let apiKey = (localStorage.getItem(STORAGE_KEY_GEMINI) || '').trim();
+      const REVOKED_KEYS = [
+        'AIzaSyBxKYPJWxi3ILfxPTlQFytzoXJvIZ72m4k',
+        'AIzaSyAfJqs6YnY5J_URsuvmSMi8WM3BckVwKY4'
+      ];
+      if (REVOKED_KEYS.includes(apiKey)) {
+        apiKey = '';
+        localStorage.removeItem(STORAGE_KEY_GEMINI);
+      }
+      if (!apiKey && typeof PMG_GLOBAL_FALLBACK_KEY !== 'undefined' && PMG_GLOBAL_FALLBACK_KEY && !REVOKED_KEYS.includes(PMG_GLOBAL_FALLBACK_KEY)) {
+        apiKey = PMG_GLOBAL_FALLBACK_KEY;
+      }
+      return apiKey;
+    }
+
+    // ─── BATCH COMPETITOR & PROMOTIONS SCANNER ─────────────────────────────────
+    openBatchCompetitorScanModal() {
+      const pageSkus = this.getFilteredSkus().slice((this.currentPage - 1) * this.pageSize, this.currentPage * this.pageSize);
+      const missingCount = this.skus.filter(s => !s.supermarketPrice || !s.chainPharmacyPrice).length;
+      const filteredCount = this.getFilteredSkus().length;
+
+      const elPage = document.getElementById('batchScopePageCount');
+      const elMissing = document.getElementById('batchScopeMissingCount');
+      const elFiltered = document.getElementById('batchScopeFilteredCount');
+
+      if (elPage) elPage.textContent = `${pageSkus.length} items (Page ${this.currentPage})`;
+      if (elMissing) elMissing.textContent = `${missingCount} items catalog-wide`;
+      if (elFiltered) elFiltered.textContent = `${filteredCount} items matching search`;
+
+      const modal = document.getElementById('pricingBatchAiModal');
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    closeBatchCompetitorScanModal() {
+      if (this.isBatchScanning) {
+        if (!confirm('Batch competitor scan is currently running. Stop scan?')) return;
+        this.cancelBatchCompetitorScan();
+      }
+      const modal = document.getElementById('pricingBatchAiModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    cancelBatchCompetitorScan() {
+      this.batchScanCancelled = true;
+      const statusBadge = document.getElementById('pricingBatchAiStatusBadge');
+      if (statusBadge) statusBadge.textContent = 'Stopping...';
+      const label = document.getElementById('pricingBatchProgressLabel');
+      if (label) label.innerHTML = '<span class="text-rose-600 font-bold"><i class="fa-solid fa-hand mr-1"></i> Scan Stopped by User</span>';
+    }
+
+    async startBatchCompetitorScan() {
+      const apiKey = this.getValidGeminiApiKey();
+      if (!apiKey) {
+        alert('Please paste a free Google AI Studio Gemini API key first using the single item research modal or settings.');
+        return;
+      }
+
+      // Determine selected scope
+      const scopeRadios = document.getElementsByName('batchScope');
+      let selectedScope = 'page';
+      for (const r of scopeRadios) {
+        if (r.checked) {
+          selectedScope = r.value;
+          break;
+        }
+      }
+
+      let targetSkus = [];
+      if (selectedScope === 'page') {
+        const start = (this.currentPage - 1) * this.pageSize;
+        targetSkus = this.getFilteredSkus().slice(start, start + this.pageSize);
+      } else if (selectedScope === 'missing') {
+        targetSkus = this.skus.filter(s => !s.supermarketPrice || !s.chainPharmacyPrice);
+      } else {
+        targetSkus = this.getFilteredSkus();
+      }
+
+      if (targetSkus.length === 0) {
+        alert('No SKUs found matching the selected scope.');
+        return;
+      }
+
+      const includePromo = document.getElementById('batchIncludePromoFactor')?.checked ?? true;
+
+      // UI setup
+      this.isBatchScanning = true;
+      this.batchScanCancelled = false;
+
+      const startBtn = document.getElementById('pricingBatchStartBtn');
+      const cancelBtn = document.getElementById('pricingBatchCancelBtn');
+      const progressArea = document.getElementById('pricingBatchProgressArea');
+      const progressBar = document.getElementById('pricingBatchProgressBar');
+      const progressLabel = document.getElementById('pricingBatchProgressLabel');
+      const progressPercent = document.getElementById('pricingBatchProgressPercent');
+      const itemCounter = document.getElementById('pricingBatchItemCounter');
+      const tbody = document.getElementById('pricingBatchResultsTbody');
+      const statusBadge = document.getElementById('pricingBatchAiStatusBadge');
+      const scrollBox = document.getElementById('pricingBatchResultsScroll');
+
+      if (startBtn) startBtn.classList.add('hidden');
+      if (cancelBtn) cancelBtn.classList.remove('hidden');
+      if (progressArea) progressArea.classList.remove('hidden');
+      if (statusBadge) statusBadge.textContent = 'Scanning...';
+      if (tbody) tbody.innerHTML = '';
+
+      const totalItems = targetSkus.length;
+      let processedCount = 0;
+      let updatedCount = 0;
+
+      const CHUNK_SIZE = 8;
+      const chunks = [];
+      for (let i = 0; i < targetSkus.length; i += CHUNK_SIZE) {
+        chunks.push(targetSkus.slice(i, i + CHUNK_SIZE));
+      }
+
+      const modelsToTry = [
+        { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
+        { code: 'gemini-3.5-flash',      name: 'Gemini 3.5 Flash' },
+        { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' },
+        { code: 'gemini-3.8-flash',      name: 'Gemini 3.8 Flash' }
+      ];
+
+      for (let c = 0; c < chunks.length; c++) {
+        if (this.batchScanCancelled) break;
+
+        const currentChunk = chunks[c];
+        const chunkStart = c * CHUNK_SIZE + 1;
+        const chunkEnd = Math.min((c + 1) * CHUNK_SIZE, totalItems);
+
+        if (progressLabel) {
+          progressLabel.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-indigo-600 mr-1.5"></i> Scanning items ${chunkStart} to ${chunkEnd} of ${totalItems} (Farley, Alpro, Caring, BIG, Ting, Watsons)...`;
+        }
+
+        // Build chunk prompt
+        let itemListText = '';
+        currentChunk.forEach((s, idx) => {
+          itemListText += `${idx + 1}. Code: "${s.code}" | Name: "${s.name}" | Brand: "${s.brand}" | PMG Cost: RM ${s.costPrice.toFixed(2)} | PMG Standard SP: RM ${s.standardSp.toFixed(2)}\n`;
+        });
+
+        const prompt = `You are the Senior Commercial Pharmacy Pricing Director for PMG Pharmacy (7 Outlets in Kuching & Padawan, Sarawak, Malaysia).
+Benchmark competitor market prices AND promotional campaign pricing for these ${currentChunk.length} pharmaceutical / healthcare / OTC products in Sarawak:
+
+Competitors to factor:
+1. Supermarket / Hypermarket Benchmark: Farley Supermarket, Emart Hypermarket, Everwin (Sarawak retail market).
+2. Competitor Pharmacies: Alpro Pharmacy, Caring Pharmacy, BIG Pharmacy, Ting Pharmacy (Kuching local pharmacy), Watsons, Guardian.
+${includePromo ? '3. CRITICAL: Include active competitor promotional price factors: PWP (Purchase-With-Purchase), multi-buys ("Buy 2 Save More"), member special pricing, weekend flash discounts, or flyer promos.' : ''}
+
+Items to Benchmark:
+${itemListText}
+
+Respond STRICTLY with a valid JSON array of objects with no extraneous markdown outside the JSON block. Format:
+\`\`\`json
+[
+  {
+    "code": "ITEM_CODE",
+    "supermarketPrice": 14.50,
+    "chainPharmacyPrice": 15.20,
+    "competitorName": "Alpro Pharmacy",
+    "promoNote": "Buy 2 @ RM 28 (Promo)",
+    "suggestedPmgSp": 14.90
+  }
+]
+\`\`\``;
+
+        let responseText = '';
+        for (const m of modelsToTry) {
+          try {
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.code}:generateContent?key=${apiKey}`;
+            const res = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                generationConfig: { temperature: 0.2, maxOutputTokens: 2048 }
+              })
+            });
+            if (res.ok) {
+              const data = await res.json();
+              const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (text && text.trim()) {
+                responseText = text.trim();
+                break;
+              }
+            }
+          } catch (e) {
+            console.warn(`[PMG Batch AI] Error on model ${m.code}:`, e);
+          }
+        }
+
+        // Parse results
+        let parsedResults = [];
+        if (responseText) {
+          try {
+            const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+            const jsonStr = jsonMatch ? jsonMatch[1].trim() : (responseText.startsWith('[') && responseText.endsWith(']') ? responseText : null);
+            if (jsonStr) {
+              parsedResults = JSON.parse(jsonStr);
+            }
+          } catch (e) {
+            console.warn('[PMG Batch AI] JSON parse error:', e, responseText);
+          }
+        }
+
+        // Apply results to currentChunk
+        currentChunk.forEach(sku => {
+          let r = null;
+          if (Array.isArray(parsedResults)) {
+            r = parsedResults.find(p => String(p.code).trim().toLowerCase() === String(sku.code).trim().toLowerCase());
+            if (!r) {
+              r = parsedResults.find(p => p.name && sku.name.toLowerCase().includes(p.name.toLowerCase()));
+            }
+          }
+
+          if (r) {
+            if (r.supermarketPrice && !isNaN(parseFloat(r.supermarketPrice)) && parseFloat(r.supermarketPrice) > 0) {
+              sku.supermarketPrice = parseFloat(r.supermarketPrice);
+            }
+            if (r.chainPharmacyPrice && !isNaN(parseFloat(r.chainPharmacyPrice)) && parseFloat(r.chainPharmacyPrice) > 0) {
+              sku.chainPharmacyPrice = parseFloat(r.chainPharmacyPrice);
+            }
+            if (r.competitorName) {
+              sku.competitorName = r.competitorName;
+            }
+            if (r.promoNote) {
+              sku.promoNote = r.promoNote;
+            }
+            sku.customModified = true;
+            updatedCount++;
+          }
+
+          processedCount++;
+
+          // Append live stream row in modal
+          if (tbody) {
+            const superTxt = sku.supermarketPrice ? `RM ${sku.supermarketPrice.toFixed(2)}` : '<span class="text-gray-300">N/A</span>';
+            const chainTxt = sku.chainPharmacyPrice ? `RM ${sku.chainPharmacyPrice.toFixed(2)}` : '<span class="text-gray-300">N/A</span>';
+            const compTxt = sku.competitorName || 'Alpro / Ting';
+            const promoBadge = sku.promoNote 
+              ? `<span class="inline-flex items-center gap-1 text-[9px] font-bold text-amber-900 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded"><i class="fa-solid fa-fire text-amber-600"></i> ${sku.promoNote}</span>`
+              : '<span class="text-gray-300">-</span>';
+
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-indigo-50/50 transition border-b border-gray-100 text-[11px]';
+            tr.innerHTML = `
+              <td class="p-2">
+                <div class="font-bold text-gray-900 truncate max-w-[200px]">${sku.name}</div>
+                <div class="text-[10px] text-gray-400 font-mono">${sku.code}</div>
+              </td>
+              <td class="p-2 text-right font-mono font-bold text-blue-900">RM ${sku.standardSp.toFixed(2)}</td>
+              <td class="p-2 text-right font-mono font-semibold text-gray-800">${superTxt}</td>
+              <td class="p-2 text-right font-mono font-semibold text-gray-800">
+                ${chainTxt}
+                <div class="text-[9px] text-gray-400 font-sans font-normal">${compTxt}</div>
+              </td>
+              <td class="p-2">${promoBadge}</td>
+              <td class="p-2 text-center">
+                <span class="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  <i class="fa-solid fa-check text-emerald-600"></i> Synced
+                </span>
+              </td>
+            `;
+            tbody.appendChild(tr);
+          }
+        });
+
+        // Update progress bar
+        const pct = Math.round((processedCount / totalItems) * 100);
+        if (progressBar) progressBar.style.width = `${pct}%`;
+        if (progressPercent) progressPercent.textContent = `${pct}%`;
+        if (itemCounter) itemCounter.textContent = `${processedCount} / ${totalItems} processed (${updatedCount} updated)`;
+        if (scrollBox) scrollBox.scrollTop = scrollBox.scrollHeight;
+
+        // Save progress to storage periodically
+        this.saveSkusToStorage();
+
+        // Brief delay between batches to respect rate limits
+        if (c < chunks.length - 1 && !this.batchScanCancelled) {
+          await new Promise(resolve => setTimeout(resolve, 800));
+        }
+      }
+
+      // Finished or Stopped
+      this.isBatchScanning = false;
+      if (cancelBtn) cancelBtn.classList.add('hidden');
+      if (startBtn) {
+        startBtn.classList.remove('hidden');
+        startBtn.innerHTML = '<i class="fa-solid fa-rotate-right mr-1"></i> Scan Again';
+      }
+
+      if (this.batchScanCancelled) {
+        if (statusBadge) statusBadge.textContent = 'Stopped';
+        if (typeof showExpiryToast === 'function') {
+          showExpiryToast(`⚠️ Scan stopped. Saved ${updatedCount} competitor benchmark updates.`);
+        }
+      } else {
+        if (statusBadge) statusBadge.textContent = 'Completed';
+        if (progressLabel) progressLabel.innerHTML = `<span class="text-emerald-700 font-bold"><i class="fa-solid fa-circle-check text-emerald-600"></i> Completed! Successfully analyzed ${updatedCount} SKUs.</span>`;
+        if (typeof showExpiryToast === 'function') {
+          showExpiryToast(`✅ Batch competitor scan completed! Saved ${updatedCount} benchmark items.`);
+        }
+      }
+
+      // Re-render table and trigger sheets sync
+      this.renderTableOnly();
+      this.saveSkusToStorage();
     }
 
     // ─── EXPORT 7-BRANCH PRICE BROADCAST MEMO ──────────────────────────────────
