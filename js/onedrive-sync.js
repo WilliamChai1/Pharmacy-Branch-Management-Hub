@@ -190,6 +190,7 @@
             await this._inspectAndConfigureHandle(savedHandle);
             this._startBackgroundWatcher();
             await this.syncWithOneDriveFolder(true);
+            await this.syncStockExpiryWithOneDrive(true);
             return;
           } else {
             // Permission in 'prompt' state; wait for user click to request permission
@@ -691,17 +692,7 @@
 
         // ─── STEP J: UNIVERSAL SYNC — STOCK EXPIRY & DISPOSAL TRACKER ──────────
         try {
-          const rawExpiry = localStorage.getItem('pmg_stock_expiry_data') || localStorage.getItem('pmg_expiry_entries_v1');
-          if (rawExpiry && this.rootHandle) {
-            let expDir = this.rootHandle;
-            try {
-              expDir = await this.rootHandle.getDirectoryHandle('EXPIRY_BACKUP', { create: true });
-            } catch (_) { expDir = this.rootHandle; }
-            const expHandle = await expDir.getFileHandle('stock_expiry_master.json', { create: true });
-            const expW = await expHandle.createWritable();
-            await expW.write(rawExpiry);
-            await expW.close();
-          }
+          await this.syncStockExpiryWithOneDrive(true);
         } catch (expErr) {
           console.warn('[PMG OneDrive Sync] Universal sync: Expiry warning:', expErr);
         }
@@ -1192,6 +1183,315 @@
       }
     }
 
+    // ─── SAVE STOCK EXPIRY MASTER & BRANCH BACKUP TO ONEDRIVE ────────────────
+    async saveStockExpiryToOneDrive(targetBranchName = null) {
+      if (!this.rootHandle || this.mode === 'DISCONNECTED') return false;
+      try {
+        const hasPerm = await this._verifyPermission(this.rootHandle, true, false);
+        if (!hasPerm) return false;
+
+        let localItems = [];
+        try {
+          const raw = localStorage.getItem('pmg_stock_expiry_data');
+          if (raw) localItems = JSON.parse(raw);
+        } catch (_) {}
+        if (!Array.isArray(localItems) || localItems.length === 0) {
+          if (typeof expiryItems !== 'undefined' && Array.isArray(expiryItems)) {
+            localItems = expiryItems;
+          }
+        }
+        if (!localItems || localItems.length === 0) return false;
+
+        const session = typeof getSession === 'function' ? getSession() : null;
+        const nowIso = new Date().toISOString();
+        const updatedBy = session?.displayName || localStorage.getItem('pmg_user_name') || 'Staff';
+
+        // 1. In PARENT mode (Area Manager Master View):
+        if (this.mode === 'PARENT') {
+          // A: Save master backup in EXPIRY_BACKUP/stock_expiry_master.json
+          let expDir = this.rootHandle;
+          try {
+            expDir = await this.rootHandle.getDirectoryHandle('EXPIRY_BACKUP', { create: true });
+          } catch (_) { expDir = this.rootHandle; }
+
+          const masterPayload = {
+            title: 'PMG 7-Branch Stock Expiry Master Database',
+            lastUpdated: nowIso,
+            updatedBy: updatedBy,
+            totalRecords: localItems.length,
+            items: localItems
+          };
+
+          const expHandle = await expDir.getFileHandle('stock_expiry_master.json', { create: true });
+          const expW = await expHandle.createWritable();
+          await expW.write(JSON.stringify(masterPayload, null, 2));
+          await expW.close();
+
+          // B: Save partitioned branch files under each branch folder: [BRANCH]/EXPIRY/stock_expiry.json
+          const branchesToProcess = targetBranchName ? [targetBranchName] : KNOWN_BRANCH_FOLDERS;
+          for (const bName of branchesToProcess) {
+            const canonical = BRANCH_FOLDER_MAP[bName.toUpperCase()] || bName.toUpperCase();
+            const dirHandle = await this._getTargetBranchDirectoryHandle(canonical);
+            if (!dirHandle) continue;
+
+            try {
+              let bExpDir = dirHandle;
+              try {
+                bExpDir = await dirHandle.getDirectoryHandle('EXPIRY', { create: true });
+              } catch (_) { bExpDir = dirHandle; }
+
+              const bItems = localItems.filter(it => {
+                const itB = (it.branch || '').trim().toUpperCase();
+                return itB === canonical || (BRANCH_FOLDER_MAP[itB] === canonical);
+              });
+
+              const bPayload = {
+                branch: canonical,
+                lastUpdated: nowIso,
+                updatedBy: updatedBy,
+                totalRecords: bItems.length,
+                items: bItems
+              };
+
+              const fh1 = await bExpDir.getFileHandle(`stock_expiry_${canonical.replace(/\s+/g, '_')}.json`, { create: true });
+              const w1 = await fh1.createWritable();
+              await w1.write(JSON.stringify(bPayload, null, 2));
+              await w1.close();
+
+              const fhStd = await bExpDir.getFileHandle('stock_expiry.json', { create: true });
+              const wStd = await fhStd.createWritable();
+              await wStd.write(JSON.stringify(bPayload, null, 2));
+              await wStd.close();
+            } catch (bErr) {
+              console.warn(`[PMG OneDrive Sync] Branch expiry write notice for ${canonical}:`, bErr);
+            }
+          }
+        } else {
+          // 2. In BRANCH mode (Outlet computer connected directly to branch folder e.g. KOTA SENTOSA):
+          const bFolder = this.activeBranchFolder || this._resolveCurrentBranchName() || 'KOTA SENTOSA';
+          let bExpDir = this.rootHandle;
+          try {
+            bExpDir = await this.rootHandle.getDirectoryHandle('EXPIRY', { create: true });
+          } catch (_) { bExpDir = this.rootHandle; }
+
+          const bPayload = {
+            branch: bFolder,
+            lastUpdated: nowIso,
+            updatedBy: updatedBy,
+            totalRecords: localItems.length,
+            items: localItems
+          };
+
+          const fh1 = await bExpDir.getFileHandle(`stock_expiry_${bFolder.replace(/\s+/g, '_')}.json`, { create: true });
+          const w1 = await fh1.createWritable();
+          await w1.write(JSON.stringify(bPayload, null, 2));
+          await w1.close();
+
+          const fhStd = await bExpDir.getFileHandle('stock_expiry.json', { create: true });
+          const wStd = await fhStd.createWritable();
+          await wStd.write(JSON.stringify(bPayload, null, 2));
+          await wStd.close();
+
+          // Also save stock_expiry_master.json in root or EXPIRY_BACKUP if present
+          try {
+            const expBak = await this.rootHandle.getDirectoryHandle('EXPIRY_BACKUP', { create: true });
+            const mb = await expBak.getFileHandle('stock_expiry_master.json', { create: true });
+            const mw = await mb.createWritable();
+            await mw.write(JSON.stringify(bPayload, null, 2));
+            await mw.close();
+          } catch (_) {
+            try {
+              const rootMb = await this.rootHandle.getFileHandle('stock_expiry_master.json', { create: true });
+              const rw = await rootMb.createWritable();
+              await rw.write(JSON.stringify(bPayload, null, 2));
+              await rw.close();
+            } catch (_) {}
+          }
+        }
+
+        console.log(`[PMG OneDrive Sync] ✅ Successfully saved stock expiry data to OneDrive (${this.mode} mode)`);
+        return true;
+      } catch (err) {
+        console.warn('[PMG OneDrive Sync] Could not save stock expiry to OneDrive:', err);
+        return false;
+      }
+    }
+
+    // ─── LOAD STOCK EXPIRY MASTER / BRANCH FILE FROM ONEDRIVE ────────────────
+    async loadStockExpiryFromOneDrive(targetBranchName = null) {
+      if (!this.rootHandle || this.mode === 'DISCONNECTED') return null;
+      try {
+        const hasPerm = await this._verifyPermission(this.rootHandle, false, false);
+        if (!hasPerm) return null;
+
+        let cloudItems = [];
+
+        if (this.mode === 'PARENT') {
+          let expDir = this.rootHandle;
+          try {
+            expDir = await this.rootHandle.getDirectoryHandle('EXPIRY_BACKUP', { create: false });
+          } catch (_) { expDir = this.rootHandle; }
+
+          try {
+            const fh = await expDir.getFileHandle('stock_expiry_master.json', { create: false });
+            const file = await fh.getFile();
+            const text = await file.text();
+            if (text && text.trim()) {
+              const parsed = JSON.parse(text);
+              if (Array.isArray(parsed.items)) cloudItems = parsed.items;
+              else if (Array.isArray(parsed)) cloudItems = parsed;
+            }
+          } catch (_) {}
+
+          // Also merge branch-level files if target branch or all
+          const branchesToScan = targetBranchName ? [targetBranchName] : KNOWN_BRANCH_FOLDERS;
+          for (const bName of branchesToScan) {
+            try {
+              const dirHandle = await this._getTargetBranchDirectoryHandle(bName);
+              if (!dirHandle) continue;
+
+              let bExpDir = dirHandle;
+              try { bExpDir = await dirHandle.getDirectoryHandle('EXPIRY', { create: false }); } catch (_) {}
+
+              let bFh = null;
+              try {
+                bFh = await bExpDir.getFileHandle(`stock_expiry_${bName.replace(/\s+/g, '_')}.json`, { create: false });
+              } catch (_) {
+                try { bFh = await bExpDir.getFileHandle('stock_expiry.json', { create: false }); } catch (_) {}
+              }
+
+              if (bFh) {
+                const bf = await bFh.getFile();
+                const bt = await bf.text();
+                if (bt && bt.trim()) {
+                  const bp = JSON.parse(bt);
+                  const arr = Array.isArray(bp.items) ? bp.items : (Array.isArray(bp) ? bp : []);
+                  if (arr.length > 0) {
+                    const mergeFn = typeof mergeExpiryDatasets === 'function' ? mergeExpiryDatasets : (window.pmgExpiry?.mergeDatasets || null);
+                    if (mergeFn) cloudItems = mergeFn(cloudItems, arr);
+                    else cloudItems.push(...arr);
+                  }
+                }
+              }
+            } catch (_) {}
+          }
+        } else {
+          // BRANCH MODE
+          const bFolder = this.activeBranchFolder || this._resolveCurrentBranchName() || 'KOTA SENTOSA';
+          let bExpDir = this.rootHandle;
+          try { bExpDir = await this.rootHandle.getDirectoryHandle('EXPIRY', { create: false }); } catch (_) {}
+
+          const candidateFileNames = [
+            `stock_expiry_${bFolder.replace(/\s+/g, '_')}.json`,
+            'stock_expiry.json',
+            'stock_expiry_master.json'
+          ];
+
+          for (const fn of candidateFileNames) {
+            try {
+              let fh = null;
+              try { fh = await bExpDir.getFileHandle(fn, { create: false }); } catch (_) {}
+              if (!fh && bExpDir !== this.rootHandle) {
+                try { fh = await this.rootHandle.getFileHandle(fn, { create: false }); } catch (_) {}
+              }
+              if (fh) {
+                const f = await fh.getFile();
+                const t = await f.text();
+                if (t && t.trim()) {
+                  const p = JSON.parse(t);
+                  const arr = Array.isArray(p.items) ? p.items : (Array.isArray(p) ? p : []);
+                  if (arr.length > 0) {
+                    cloudItems = arr;
+                    break;
+                  }
+                }
+              }
+            } catch (_) {}
+          }
+
+          if (cloudItems.length === 0) {
+            try {
+              const bakDir = await this.rootHandle.getDirectoryHandle('EXPIRY_BACKUP', { create: false });
+              const fh = await bakDir.getFileHandle('stock_expiry_master.json', { create: false });
+              const f = await fh.getFile();
+              const t = await f.text();
+              if (t && t.trim()) {
+                const p = JSON.parse(t);
+                cloudItems = Array.isArray(p.items) ? p.items : (Array.isArray(p) ? p : []);
+              }
+            } catch (_) {}
+          }
+        }
+
+        return cloudItems;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // ─── BIDIRECTIONAL SYNC & MERGE STOCK EXPIRY WITH ONEDRIVE ───────────────
+    async syncStockExpiryWithOneDrive(silent = false) {
+      if (!this.rootHandle || this.mode === 'DISCONNECTED') return false;
+      try {
+        const cloudItems = await this.loadStockExpiryFromOneDrive();
+        if (!cloudItems || cloudItems.length === 0) {
+          // If no cloud items exist yet, seed cloud with local data
+          const writePerm = await this._verifyPermission(this.rootHandle, true, false);
+          if (writePerm) {
+            await this.saveStockExpiryToOneDrive();
+          }
+          return false;
+        }
+
+        let localItems = [];
+        try {
+          const raw = localStorage.getItem('pmg_stock_expiry_data');
+          if (raw) localItems = JSON.parse(raw);
+        } catch (_) {}
+        if (!Array.isArray(localItems) || localItems.length === 0) {
+          if (typeof expiryItems !== 'undefined' && Array.isArray(expiryItems)) localItems = expiryItems;
+        }
+
+        const mergeFn = typeof mergeExpiryDatasets === 'function' ? mergeExpiryDatasets : (window.pmgExpiry?.mergeDatasets || null);
+        let merged = [];
+        if (mergeFn) {
+          merged = mergeFn(localItems, cloudItems);
+        } else {
+          const map = new Map();
+          (localItems || []).forEach(it => map.set(it.rowId || it.itemCode, it));
+          (cloudItems || []).forEach(it => map.set(it.rowId || it.itemCode, it));
+          merged = Array.from(map.values());
+        }
+
+        // Update local memory and localStorage
+        if (typeof expiryItems !== 'undefined') {
+          expiryItems = merged;
+        }
+        localStorage.setItem('pmg_stock_expiry_data', JSON.stringify(merged));
+
+        // Re-render UI
+        if (typeof renderExpiryUI === 'function') {
+          renderExpiryUI();
+        }
+
+        console.log(`[PMG OneDrive Sync] ✅ Synced ${merged.length} stock expiry items from OneDrive.`);
+        if (!silent && typeof showExpiryToast === 'function') {
+          showExpiryToast(`🔄 OneDrive Expiry Synced (${merged.length} items)`);
+        }
+
+        // Write the merged result back so cloud is also up-to-date
+        const writePerm = await this._verifyPermission(this.rootHandle, true, false);
+        if (writePerm) {
+          await this.saveStockExpiryToOneDrive();
+        }
+
+        return true;
+      } catch (err) {
+        console.warn('[PMG OneDrive Sync] Stock expiry sync error:', err);
+        return false;
+      }
+    }
+
     _formatCurrentMonthString() {
       const d = new Date();
       const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -1304,6 +1604,11 @@
               console.log(`[PMG OneDrive Sync] Auto-updated schedule for ${bCode} from OneDrive`);
             }
           }
+        } catch (_) {}
+
+        // Also check and sync stock expiry in background
+        try {
+          await this.syncStockExpiryWithOneDrive(true);
         } catch (_) {}
 
         // If file modified timestamp is not newer and not forced, skip reading
