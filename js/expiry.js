@@ -16,11 +16,18 @@ const EXPIRY_OCR_TERTIARY_MODEL  = 'gemini-3.1-flash-lite';
 const PMG_GLOBAL_FALLBACK_KEY    = ''; // Revoked/leaked fallback key neutralized
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
+const HQ_RETURN_POLICY_STORAGE_KEY = 'pmg_hq_return_policy_data';
+const HQ_RETURN_SHEET_URL_STORAGE_KEY = 'pmg_hq_return_sheet_url';
+let hqReturnPolicyList = [];
+let hqReturnPolicyCodeMap = new Map();
+let hqReturnPolicyDescMap = new Map();
+
 let expiryItems = [];
 let pendingOcrItems = [];
 let activeExpiryFilter = {
   branch: '',
   horizon: '9months', // '9months', '12months', 'critical', 'all', 'cleared'
+  returnPolicy: 'all', // 'all', 'non_returnable', 'returnable', 'special', 'unlisted'
   search: ''
 };
 let expiryCurrentPage = 1;
@@ -28,6 +35,7 @@ const EXPIRY_PAGE_SIZE = 100;
 
 // ─── INITIALIZATION ───────────────────────────────────────────────────────────
 function initExpiryModule() {
+  initHqReturnPolicy();
   loadLocalExpiryData();
   setupExpiryEventListeners();
   renderExpiryUI();
@@ -70,6 +78,365 @@ function saveLocalExpiryData() {
   } catch (e) {
     console.warn('[PMG Expiry] Error saving local expiry data:', e);
   }
+}
+
+// ─── HQ RETURN POLICY ENGINE (LIVE GOOGLE SHEET CROSS-REFERENCE) ───────────────
+function initHqReturnPolicy() {
+  try {
+    const raw = localStorage.getItem(HQ_RETURN_POLICY_STORAGE_KEY);
+    if (raw) {
+      hqReturnPolicyList = JSON.parse(raw);
+    }
+  } catch (e) {
+    console.warn('[PMG Expiry] Error reading stored HQ policy data:', e);
+  }
+
+  // If local storage is empty, fallback to pre-seeded rules from hq_return_policy.js
+  if ((!hqReturnPolicyList || hqReturnPolicyList.length === 0) && Array.isArray(window.PMG_HQ_RETURN_POLICY_SEED)) {
+    hqReturnPolicyList = window.PMG_HQ_RETURN_POLICY_SEED;
+    try {
+      localStorage.setItem(HQ_RETURN_POLICY_STORAGE_KEY, JSON.stringify(hqReturnPolicyList));
+    } catch (e) {}
+  }
+
+  buildHqReturnPolicyMaps();
+  updateHqPolicyHeaderBadge();
+}
+
+function buildHqReturnPolicyMaps() {
+  hqReturnPolicyCodeMap.clear();
+  hqReturnPolicyDescMap.clear();
+
+  if (!Array.isArray(hqReturnPolicyList)) return;
+
+  for (const item of hqReturnPolicyList) {
+    if (!item) continue;
+    const code = String(item.code || '').trim();
+    if (code && code !== 'N/A') {
+      hqReturnPolicyCodeMap.set(code, item);
+      const stripped = code.replace(/^0+/, '');
+      if (stripped && !hqReturnPolicyCodeMap.has(stripped)) {
+        hqReturnPolicyCodeMap.set(stripped, item);
+      }
+    }
+    const desc = String(item.desc || '').trim().toUpperCase();
+    if (desc) {
+      if (!hqReturnPolicyDescMap.has(desc)) {
+        hqReturnPolicyDescMap.set(desc, item);
+      }
+    }
+  }
+}
+
+function updateHqPolicyHeaderBadge() {
+  const pill = document.getElementById('hqReturnStatusCountPill');
+  const modalBadge = document.getElementById('modalHqPolicyCountBadge');
+  const lastSyncEl = document.getElementById('hqReturnLastSyncTime');
+
+  const count = Array.isArray(hqReturnPolicyList) ? hqReturnPolicyList.length : 0;
+  if (pill) pill.textContent = `${count} Rules Active`;
+  if (modalBadge) modalBadge.textContent = `${count} Items`;
+
+  const lastSync = localStorage.getItem('pmg_hq_return_last_sync');
+  if (lastSyncEl && lastSync) {
+    try {
+      const d = new Date(lastSync);
+      lastSyncEl.textContent = `Synced: ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    } catch (e) {
+      lastSyncEl.textContent = 'Live Google Sheet';
+    }
+  }
+}
+
+function getHqPolicyForItem(it) {
+  if (!it) return null;
+  const code = String(it.itemCode || '').trim();
+  if (code && code !== 'N/A') {
+    if (hqReturnPolicyCodeMap.has(code)) return hqReturnPolicyCodeMap.get(code);
+    const stripped = code.replace(/^0+/, '');
+    if (stripped && hqReturnPolicyCodeMap.has(stripped)) return hqReturnPolicyCodeMap.get(stripped);
+  }
+  const desc = String(it.itemDescription || '').trim().toUpperCase();
+  if (desc && hqReturnPolicyDescMap.has(desc)) return hqReturnPolicyDescMap.get(desc);
+
+  return null;
+}
+
+function getItemHqReturnStatus(it) {
+  const pol = getHqPolicyForItem(it);
+  if (!pol) return 'UNLISTED';
+  return String(pol.status || 'NON-RETURNABLE').trim().toUpperCase();
+}
+
+function renderHqReturnPolicyBadge(it) {
+  const pol = getHqPolicyForItem(it);
+  if (!pol) {
+    return `
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-500 border border-slate-200" title="Item not explicitly listed in HQ return matrix. Standard brand terms apply.">
+        <i class="fa-regular fa-circle-question text-[9px] text-slate-400"></i> Unlisted
+      </span>`;
+  }
+
+  const status = (pol.status || 'NON-RETURNABLE').toUpperCase();
+  const brand = escHtml(pol.brand || '');
+  const tooltip = escHtml(pol.policy || pol.summary || 'HQ Policy Rule');
+
+  if (status === 'NON-RETURNABLE') {
+    return `
+      <div class="inline-flex flex-col items-center">
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200" title="${tooltip}">
+          <i class="fa-solid fa-ban text-[9px] text-rose-600"></i> Non-Returnable
+        </span>
+        ${brand ? `<span class="text-[9px] font-mono text-gray-400 mt-0.5">${brand}</span>` : ''}
+      </div>`;
+  }
+
+  if (status === 'RETURNABLE') {
+    return `
+      <div class="inline-flex flex-col items-center">
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200" title="${tooltip}">
+          <i class="fa-solid fa-circle-check text-[9px] text-emerald-600"></i> Returnable
+        </span>
+        ${brand ? `<span class="text-[9px] font-mono text-emerald-700 mt-0.5">${brand}</span>` : ''}
+      </div>`;
+  }
+
+  return `
+    <div class="inline-flex flex-col items-center">
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200" title="${tooltip}">
+        <i class="fa-solid fa-triangle-exclamation text-[9px] text-amber-600"></i> Special
+      </span>
+      ${brand ? `<span class="text-[9px] font-mono text-amber-700 mt-0.5">${brand}</span>` : ''}
+    </div>`;
+}
+
+function parseCsvLines(csvText) {
+  const lines = [];
+  let currentRow = [];
+  let currentVal = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < csvText.length; i++) {
+    const char = csvText[i];
+    const nextChar = csvText[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        currentVal += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      currentRow.push(currentVal.trim());
+      currentVal = '';
+    } else if ((char === '\r' || char === '\n') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') i++;
+      currentRow.push(currentVal.trim());
+      if (currentRow.some(col => col.length > 0)) {
+        lines.push(currentRow);
+      }
+      currentRow = [];
+      currentVal = '';
+    } else {
+      currentVal += char;
+    }
+  }
+  if (currentVal || currentRow.length > 0) {
+    currentRow.push(currentVal.trim());
+    if (currentRow.some(col => col.length > 0)) {
+      lines.push(currentRow);
+    }
+  }
+  return lines;
+}
+
+function parseHqReturnPolicyCsvText(csvText) {
+  const rows = parseCsvLines(csvText);
+  const results = [];
+  let currentBrand = '';
+  let currentPolicy = 'NON-RETURNABLE';
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.length === 0) continue;
+    const colA = (row[0] || '').trim();
+    const colB = (row[1] || '').trim();
+    const colC = (row[2] || '').trim();
+
+    if (colA.includes('ALL PRODUCT THAT COME IN SET') || colA.includes('Person in Charge') || colA.includes('Manufactory Defect') || colA.includes('NO MOVING')) {
+      continue;
+    }
+
+    if (colA && !colB && !/^\d{5,8}$/.test(colA)) {
+      currentBrand = colA;
+      if (colC) currentPolicy = colC;
+      continue;
+    }
+
+    if (colC && (colC.toUpperCase().includes('RETURN') || colC.toUpperCase().includes('INFORM') || colC.length > 5)) {
+      currentPolicy = colC;
+    }
+
+    const isItemCode = /^\d{5,8}$/.test(colA);
+    const hasDesc = colB.length > 2 && !colB.toUpperCase().includes('DESCRIPTION');
+
+    if (isItemCode || (hasDesc && colA && !colA.toUpperCase().includes('CODE'))) {
+      const itemCode = isItemCode ? colA : (colA.length <= 10 ? colA : '');
+      const itemDesc = colB;
+      const policyText = colC || currentPolicy || 'NON-RETURNABLE';
+      const upperPolicy = policyText.toUpperCase();
+
+      let status = 'NON-RETURNABLE';
+      if (upperPolicy.includes('INFORM SALES REP') || upperPolicy.includes('THOMAS')) {
+        status = 'SPECIAL';
+      } else if (upperPolicy.includes('NON-RETURNABLE') || upperPolicy.includes('NON RETURNABLE') || upperPolicy.includes('NO RETURN')) {
+        status = 'NON-RETURNABLE';
+      } else if (upperPolicy.includes('RETURNABLE')) {
+        status = 'RETURNABLE';
+      }
+
+      results.push({
+        code: itemCode,
+        desc: itemDesc,
+        brand: currentBrand || 'Direct',
+        policy: policyText,
+        status: status,
+        summary: policyText.length > 80 ? policyText.substring(0, 77) + '...' : policyText
+      });
+    }
+  }
+
+  return results;
+}
+
+async function syncHqReturnPolicy(showToast = true) {
+  const customUrl = localStorage.getItem(HQ_RETURN_SHEET_URL_STORAGE_KEY);
+  const rawUrl = customUrl || (window.PMG_DEFAULT_HQ_RETURN_SHEET_URL || 'https://docs.google.com/spreadsheets/d/1u2wfNbx77eiah3g3NPofbS391uESt7tA/edit?gid=179261997#gid=179261997');
+  
+  let csvUrl = rawUrl;
+  if (!csvUrl.includes('format=csv')) {
+    const gidMatch = csvUrl.match(/[?&#]gid=([0-9]+)/);
+    const gid = gidMatch ? gidMatch[1] : '179261997';
+    const idMatch = csvUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (idMatch) {
+      csvUrl = `https://docs.google.com/spreadsheets/d/${idMatch[1]}/export?format=csv&gid=${gid}`;
+    }
+  }
+
+  if (showToast) {
+    showExpiryToast('🔄 Fetching live HQ Return Policy sheet...');
+  }
+
+  try {
+    const res = await fetch(csvUrl);
+    if (!res.ok) throw new Error(`HTTP status ${res.status}`);
+    const text = await res.text();
+
+    const parsedRules = parseHqReturnPolicyCsvText(text);
+    if (parsedRules.length === 0) {
+      throw new Error('No valid product rules parsed from sheet.');
+    }
+
+    hqReturnPolicyList = parsedRules;
+    localStorage.setItem(HQ_RETURN_POLICY_STORAGE_KEY, JSON.stringify(hqReturnPolicyList));
+    localStorage.setItem('pmg_hq_return_last_sync', new Date().toISOString());
+
+    buildHqReturnPolicyMaps();
+    updateHqPolicyHeaderBadge();
+    renderExpiryUI();
+
+    if (showToast) {
+      showExpiryToast(`✅ HQ Return Policy synced! (${hqReturnPolicyList.length} rules active)`);
+    }
+  } catch (err) {
+    console.warn('[PMG Expiry] Failed to fetch live HQ sheet:', err);
+    if (!hqReturnPolicyList || hqReturnPolicyList.length === 0) {
+      if (Array.isArray(window.PMG_HQ_RETURN_POLICY_SEED)) {
+        hqReturnPolicyList = window.PMG_HQ_RETURN_POLICY_SEED;
+        buildHqReturnPolicyMaps();
+        updateHqPolicyHeaderBadge();
+        renderExpiryUI();
+      }
+    }
+    if (showToast) {
+      showExpiryToast(`⚠️ Live sync failed (${err.message}). Using cached policy rules.`);
+    }
+  }
+}
+
+function openHqReturnPolicyModal() {
+  const modal = document.getElementById('modalHqReturnPolicy');
+  if (!modal) return;
+  const input = document.getElementById('hqReturnSheetUrlInput');
+  const storedUrl = localStorage.getItem(HQ_RETURN_SHEET_URL_STORAGE_KEY) || window.PMG_DEFAULT_HQ_RETURN_SHEET_URL || 'https://docs.google.com/spreadsheets/d/1u2wfNbx77eiah3g3NPofbS391uESt7tA/edit?gid=179261997#gid=179261997';
+  if (input) input.value = storedUrl;
+
+  const extLink = document.getElementById('hqReturnSheetExternalLink');
+  if (extLink) extLink.href = storedUrl;
+
+  const searchInput = document.getElementById('modalHqPolicySearchInput');
+  if (searchInput) searchInput.value = '';
+
+  filterHqPolicyModalRows('');
+  modal.classList.remove('hidden');
+}
+
+function closeHqReturnPolicyModal() {
+  const modal = document.getElementById('modalHqReturnPolicy');
+  if (modal) modal.classList.add('hidden');
+}
+
+function saveHqReturnSheetUrlAndSync() {
+  const input = document.getElementById('hqReturnSheetUrlInput');
+  if (!input) return;
+  const val = input.value.trim();
+  if (val) {
+    localStorage.setItem(HQ_RETURN_SHEET_URL_STORAGE_KEY, val);
+    const extLink = document.getElementById('hqReturnSheetExternalLink');
+    if (extLink) extLink.href = val;
+  }
+  syncHqReturnPolicy(true);
+}
+
+function filterHqPolicyModalRows(query) {
+  const tbody = document.getElementById('modalHqPolicyTbody');
+  if (!tbody) return;
+  const q = (query || '').toLowerCase().trim();
+
+  const filtered = (hqReturnPolicyList || []).filter(item => {
+    if (!q) return true;
+    const c = String(item.code || '').toLowerCase();
+    const d = String(item.desc || '').toLowerCase();
+    const b = String(item.brand || '').toLowerCase();
+    const p = String(item.policy || '').toLowerCase();
+    return c.includes(q) || d.includes(q) || b.includes(q) || p.includes(q);
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-gray-400">No policy rules found matching "${escHtml(q)}"</td></tr>`;
+    return;
+  }
+
+  const displayRows = filtered.slice(0, 200);
+  tbody.innerHTML = displayRows.map(it => {
+    const isNonRet = it.status === 'NON-RETURNABLE';
+    const isRet = it.status === 'RETURNABLE';
+    const badgeHtml = isNonRet
+      ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">NON-RETURNABLE</span>`
+      : isRet
+      ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">RETURNABLE</span>`
+      : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">${escHtml(it.status)}</span>`;
+
+    return `
+      <tr class="hover:bg-slate-50 transition border-b border-gray-100">
+        <td class="p-2 font-mono font-bold text-blue-900">${escHtml(it.code || '—')}</td>
+        <td class="p-2 font-medium text-gray-900">${escHtml(it.desc || '—')}</td>
+        <td class="p-2 font-mono text-gray-600">${escHtml(it.brand || '—')}</td>
+        <td class="p-2 text-center whitespace-nowrap">${badgeHtml}</td>
+        <td class="p-2 text-gray-600 text-[11px]">${escHtml(it.policy || it.summary || '—')}</td>
+      </tr>`;
+  }).join('');
 }
 
 // ─── UNIQUE KEY & SMART MERGE ENGINE ─────────────────────────────────────────
@@ -1160,7 +1527,16 @@ function filterExpiryItems() {
       if (activeExpiryFilter.horizon === 'critical' && horizon.monthsLeft >= 6) return false;
     }
 
-    // 3. Search filter
+    // 3. HQ Return Policy filter
+    if (activeExpiryFilter.returnPolicy && activeExpiryFilter.returnPolicy !== 'all') {
+      const returnStatus = getItemHqReturnStatus(it);
+      if (activeExpiryFilter.returnPolicy === 'non_returnable' && returnStatus !== 'NON-RETURNABLE') return false;
+      if (activeExpiryFilter.returnPolicy === 'returnable' && returnStatus !== 'RETURNABLE') return false;
+      if (activeExpiryFilter.returnPolicy === 'special' && returnStatus !== 'SPECIAL') return false;
+      if (activeExpiryFilter.returnPolicy === 'unlisted' && returnStatus !== 'UNLISTED') return false;
+    }
+
+    // 4. Search filter
     if (activeExpiryFilter.search) {
       const q = activeExpiryFilter.search.toLowerCase().trim();
       const code = String(it.itemCode || '').toLowerCase();
@@ -1224,7 +1600,7 @@ function renderExpiryTable() {
   if (items.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="8" class="text-center py-12 text-gray-400">
+        <td colspan="9" class="text-center py-12 text-gray-400">
           <i class="fa-solid fa-box-open text-4xl mb-3 text-gray-300 block"></i>
           No expiry stock records found matching your filters.
           <p class="text-xs text-gray-400 mt-1">Upload a PDF invoice or click "+ Quick Add" to begin tracking.</p>
@@ -1275,6 +1651,9 @@ function renderExpiryTable() {
         <td class="p-3 text-xs font-semibold text-gray-800 ${isCleared ? 'line-through text-gray-400' : ''}">
           ${escHtml(it.itemDescription)}
           <div class="text-[10px] text-gray-400 font-mono mt-0.5">Batch: ${escHtml(it.batchNumber || 'N/A')} · File: ${escHtml(it.sourceFile || 'Direct')}</div>
+        </td>
+        <td class="p-3 text-center whitespace-nowrap text-xs">
+          ${renderHqReturnPolicyBadge(it)}
         </td>
         <td class="p-3 text-xs font-bold text-center whitespace-nowrap">
           ${isCleared ? `
@@ -1540,6 +1919,15 @@ function setupExpiryEventListeners() {
     });
   }
 
+  const returnPolicySelect = document.getElementById('expiryReturnPolicyFilter');
+  if (returnPolicySelect) {
+    returnPolicySelect.addEventListener('change', e => {
+      activeExpiryFilter.returnPolicy = e.target.value;
+      expiryCurrentPage = 1;
+      renderExpiryUI();
+    });
+  }
+
   const searchInput = document.getElementById('expirySearchInput');
   if (searchInput) {
     searchInput.addEventListener('input', e => {
@@ -1774,6 +2162,16 @@ window.copyAccountsWhatsAppSummary = copyAccountsWhatsAppSummary;
 window.promptSetOneDriveShareLink = promptSetOneDriveShareLink;
 window.handleBatchInvoiceAndCnUpload = handleBatchInvoiceAndCnUpload;
 
+// HQ Return Policy Engine exports
+window.syncHqReturnPolicy = syncHqReturnPolicy;
+window.openHqReturnPolicyModal = openHqReturnPolicyModal;
+window.closeHqReturnPolicyModal = closeHqReturnPolicyModal;
+window.saveHqReturnSheetUrlAndSync = saveHqReturnSheetUrlAndSync;
+window.filterHqPolicyModalRows = filterHqPolicyModalRows;
+window.getHqPolicyForItem = getHqPolicyForItem;
+window.getItemHqReturnStatus = getItemHqReturnStatus;
+window.initHqReturnPolicy = initHqReturnPolicy;
+
 window.pmgExpiry = {
   getItems: () => expiryItems,
   setItems: (items) => { expiryItems = items; saveLocalExpiryData(); renderExpiryUI(); },
@@ -1783,7 +2181,10 @@ window.pmgExpiry = {
   syncFromOneDrive: () => window.pmgOneDriveSync?.syncStockExpiryWithOneDrive(false),
   saveToOneDrive: (branch) => window.pmgOneDriveSync?.saveStockExpiryToOneDrive(branch),
   syncFromSheets: syncExpiryFromSheets,
-  getShortDatedStock: getShortDatedStockForReplenishment
+  getShortDatedStock: getShortDatedStockForReplenishment,
+  syncHqReturnPolicy: syncHqReturnPolicy,
+  getHqPolicyForItem: getHqPolicyForItem,
+  getItemHqReturnStatus: getItemHqReturnStatus
 };
 
 
