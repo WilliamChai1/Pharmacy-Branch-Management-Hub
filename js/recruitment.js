@@ -70,17 +70,22 @@ const SPM_GRADES = ['A+', 'A', 'A-', 'B+', 'B', 'C+', 'C', 'D', 'E', 'G', 'TH'];
 function createSpmRowHtml(subject = '', grade = '') {
   return `
     <div class="spm-subject-row flex items-center gap-2 bg-white p-1.5 rounded-lg border border-gray-200 shadow-2xs">
-      <input type="text" name="spmSubject" value="${sanitize(subject)}" placeholder="e.g. Fizik / Prinsip Perakaunan" class="rec-input text-xs flex-1">
-      <select name="spmGrade" class="rec-input text-xs font-bold font-mono w-28 bg-slate-50 border-gray-300">
+      <input type="text" name="spmSubject" value="${sanitize(subject)}" placeholder="e.g. Fizik / Prinsip Perakaunan"
+        class="text-xs min-w-0 flex-1"
+        style="border:1px solid #d1d5db; border-radius:.5rem; padding:.45rem .7rem; font-size:.8rem; color:#111827; background:#fff; outline:none; transition:box-shadow .15s;"
+        onfocus="this.style.boxShadow='0 0 0 2px #3b82f6'; this.style.borderColor='#3b82f6';"
+        onblur="this.style.boxShadow=''; this.style.borderColor='#d1d5db';">
+      <select name="spmGrade" class="rec-input text-xs font-bold font-mono w-28 bg-slate-50 border-gray-300" style="width:7rem;flex-shrink:0;">
         <option value="">-- Grade --</option>
         ${SPM_GRADES.map(g => `<option value="${g}" ${g === grade ? 'selected' : ''}>${g}</option>`).join('')}
       </select>
-      <button type="button" onclick="this.closest('.spm-subject-row').remove()" class="text-rose-500 hover:text-rose-700 hover:bg-rose-50 p-1.5 rounded text-xs transition cursor-pointer" title="Remove Subject">
+      <button type="button" onclick="this.closest('.spm-subject-row').remove()" class="text-rose-500 hover:text-rose-700 hover:bg-rose-50 p-1.5 rounded text-xs transition cursor-pointer flex-shrink-0" title="Remove Subject">
         <i class="fa-solid fa-trash-can"></i>
       </button>
     </div>
   `;
 }
+
 function toast(msg, type='info') {
   const t = document.createElement('div');
   const colors = { info:'bg-blue-700', success:'bg-emerald-700', error:'bg-red-700', warn:'bg-amber-600' };

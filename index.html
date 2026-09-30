@@ -650,6 +650,10 @@
           .rec-input { display:block; width:100%; border:1px solid #d1d5db; border-radius:.5rem; padding:.45rem .7rem; font-size:.8rem; color:#111827; background:#fff; outline:none; transition: box-shadow .15s; }
           .rec-input:focus { box-shadow:0 0 0 2px #3b82f6; border-color:#3b82f6; }
           .rec-file-input { display:block; width:100%; border:1px dashed #d1d5db; border-radius:.5rem; padding:.45rem .7rem; font-size:.75rem; color:#374151; background:#f9fafb; cursor:pointer; }
+          /* Fix: SPM subject text input inside flex row must shrink properly */
+          .spm-subject-row input[type="text"] { display:block; width:auto; min-width:0; flex:1 1 0%; color:#111827 !important; }
+          .spm-subject-row select { flex-shrink:0; width:7rem; }
+          .spm-subject-row button { flex-shrink:0; }
         </style>
         <div id="recruitmentPublicFormArea">
           <div class="flex items-center justify-center py-16 text-gray-400">
