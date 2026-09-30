@@ -1174,6 +1174,40 @@
               <option value="margin_builder">⭐ Margin Builder (&gt; 50%)</option>
               <option value="clinical_bundle">💎 Clinical Moat</option>
             </select>
+
+            <!-- Competitor / Deviation Filter -->
+            <select id="pricingCompetitorFilter"
+              onchange="window.pmgPricing.activeCompetitorFilter = this.value; window.pmgPricing.currentPage = 1; window.pmgPricing.renderTableOnly();"
+              class="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white outline-none"
+              title="Filter by competitor price deviation">
+              <option value="ALL">All Competitor Status</option>
+              <option value="OVER_SUPER">🔴 PMG More Expensive than Farley (&gt; Farley)</option>
+              <option value="UNDER_SUPER">🟢 PMG Cheaper than Farley (&lt; Farley)</option>
+              <option value="OVER_CHAIN">🟠 PMG More Expensive than Pharmacy (&gt; Alpro/Ting)</option>
+              <option value="UNDER_CHAIN">🟢 PMG Cheaper than Pharmacy (&lt; Alpro/Ting)</option>
+              <option value="HIGH_DEVIATION">⚠️ High Deviation (≥ 10% Gap)</option>
+              <option value="EXTREME_DEVIATION">🚨 Extreme Deviation (≥ 20% Gap)</option>
+              <option value="MATCHED">⚖️ Price Parity (Within ±2%)</option>
+              <option value="HAS_PROMO">🔥 Competitor On Promotion</option>
+              <option value="HAS_SUPER">🛒 Farley Benchmark Recorded</option>
+              <option value="HAS_CHAIN">💊 Pharmacy Benchmark Recorded</option>
+              <option value="MISSING_ANY">❓ Missing Benchmark Price</option>
+            </select>
+
+            <!-- Sort By Select -->
+            <select id="pricingSortSelect"
+              onchange="window.pmgPricing && window.pmgPricing.setSortCriteria(this.value);"
+              class="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white outline-none"
+              title="Sort products by competitor deviation or margin">
+              <option value="default">Sort: Default Order</option>
+              <option value="super_dev_desc">Sort: Farley Overpriced First (+% Dev)</option>
+              <option value="super_dev_asc">Sort: Farley Cheaper First (-% Dev)</option>
+              <option value="chain_dev_desc">Sort: Pharmacy Overpriced First (+% Dev)</option>
+              <option value="chain_dev_asc">Sort: Pharmacy Cheaper First (-% Dev)</option>
+              <option value="abs_dev_desc">Sort: Largest Price Gap First (|% Dev|)</option>
+              <option value="margin_desc">Sort: Highest Gross Margin %</option>
+              <option value="margin_asc">Sort: Lowest Gross Margin %</option>
+            </select>
           </div>
 
           <div class="flex items-center gap-2 flex-wrap">
@@ -1236,8 +1270,20 @@
                       <span id="pricingMarginSortIcon"><i class="fa-solid fa-sort text-gray-400"></i></span>
                     </div>
                   </th>
-                  <th class="p-3 text-right w-36">Supermarket (Farley/Emart)</th>
-                  <th class="p-3 text-right w-44">Pharmacy Competitors<div class="text-[9px] text-gray-400 font-normal normal-case tracking-normal">Alpro · Caring · BIG · Ting</div></th>
+                  <th class="p-3 text-right w-44 cursor-pointer hover:bg-slate-200 select-none transition" onclick="window.pmgPricing && window.pmgPricing.toggleSupermarketDeviationSort()" title="Click to sort by Farley / Emart Price Deviation (+% PMG Overpriced / -% PMG Cheaper)">
+                    <div class="flex items-center justify-end gap-1">
+                      <span>Supermarket (Farley)</span>
+                      <span id="pricingSupermarketSortIcon"><i class="fa-solid fa-sort text-gray-400"></i></span>
+                    </div>
+                    <div class="text-[9px] text-gray-400 font-normal lowercase tracking-normal">Click to sort by % deviation</div>
+                  </th>
+                  <th class="p-3 text-right w-48 cursor-pointer hover:bg-slate-200 select-none transition" onclick="window.pmgPricing && window.pmgPricing.toggleChainDeviationSort()" title="Click to sort by Pharmacy Competitors Deviation (+% PMG Overpriced / -% PMG Cheaper)">
+                    <div class="flex items-center justify-end gap-1">
+                      <span>Pharmacy Competitors</span>
+                      <span id="pricingChainSortIcon"><i class="fa-solid fa-sort text-gray-400"></i></span>
+                    </div>
+                    <div class="text-[9px] text-gray-400 font-normal normal-case tracking-normal">Alpro · Caring · BIG · Ting</div>
+                  </th>
                   <th class="p-3 text-center w-64 min-w-[240px]">AI Strategic Intelligence</th>
                 </tr>
               </thead>
@@ -2038,19 +2084,19 @@ Date visit: 06.01.2026
                   <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div>
                       <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">BP Systolic (mmHg)</label>
-                      <input type="number" id="encBpSys" placeholder="e.g. 135" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                      <input type="text" id="encBpSys" placeholder="e.g. 135" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
                     </div>
                     <div>
                       <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">BP Diastolic (mmHg)</label>
-                      <input type="number" id="encBpDia" placeholder="e.g. 85" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                      <input type="text" id="encBpDia" placeholder="e.g. 85" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
                     </div>
                     <div>
                       <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Pulse Rate (bpm)</label>
-                      <input type="number" id="encPulse" placeholder="e.g. 74" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                      <input type="text" id="encPulse" placeholder="e.g. 74 or < 50" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
                     </div>
                     <div>
                       <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">SpO2 Oxygen (%)</label>
-                      <input type="number" id="encSpo2" placeholder="e.g. 98" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                      <input type="text" id="encSpo2" placeholder="e.g. 98 or < 90" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
                     </div>
                   </div>
                 </div>
@@ -2108,19 +2154,19 @@ Date visit: 06.01.2026
               <div id="panelLipid" class="p-3.5 grid grid-cols-2 sm:grid-cols-3 gap-3 bg-white">
                 <div>
                   <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Total Cholesterol (mmol/L)</label>
-                  <input type="number" step="0.1" id="encTc" placeholder="e.g. 5.4" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                  <input type="text" id="encTc" placeholder="e.g. 5.4 or < 2.59" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none" title="Accepts numeric values and symbols such as < 2.59 or > 10.36">
                 </div>
                 <div>
                   <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Triglycerides (mmol/L)</label>
-                  <input type="number" step="0.1" id="encTg" placeholder="e.g. 1.8" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                  <input type="text" id="encTg" placeholder="e.g. 1.8 or < 0.5" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none" title="Accepts numeric values and symbols such as < 0.5 or > 5.6">
                 </div>
                 <div>
                   <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">HDL-C (mmol/L)</label>
-                  <input type="number" step="0.1" id="encHdl" placeholder="e.g. 1.1" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                  <input type="text" id="encHdl" placeholder="e.g. 1.1 or > 2.5" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none" title="Accepts numeric values and symbols such as < 0.65 or > 2.5">
                 </div>
                 <div>
                   <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">LDL-C (mmol/L)</label>
-                  <input type="number" step="0.1" id="encLdl" placeholder="e.g. 3.5" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                  <input type="text" id="encLdl" placeholder="e.g. 3.5 or < 1.0" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none" title="Accepts numeric values and symbols such as < 1.0 or > 6.0">
                 </div>
                 <div>
                   <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">AI (Arteriosclerosis Index)</label>
@@ -2142,19 +2188,19 @@ Date visit: 06.01.2026
               <div id="panelKidney" class="p-3.5 grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white">
                 <div>
                   <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Uric Acid (umol/L)</label>
-                  <input type="number" id="encUa" placeholder="e.g. 380" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                  <input type="text" id="encUa" placeholder="e.g. 380 or > 500" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none" title="Accepts numeric values and symbols such as < 120 or > 595">
                 </div>
                 <div>
                   <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Creatinine (umol/L)</label>
-                  <input type="number" id="encCreatinine" placeholder="e.g. 88" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                  <input type="text" id="encCreatinine" placeholder="e.g. 88 or < 40" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
                 </div>
                 <div>
                   <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Urea (mmol/L)</label>
-                  <input type="number" step="0.1" id="encUrea" placeholder="e.g. 5.4" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                  <input type="text" id="encUrea" placeholder="e.g. 5.4 or > 25" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
                 </div>
                 <div>
                   <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">eGFR (mL/min/1.73m²)</label>
-                  <input type="number" id="encEgfr" placeholder="Auto / manual" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base bg-gray-50 font-bold text-indigo-700 outline-none">
+                  <input type="text" id="encEgfr" placeholder="Auto / manual (e.g. > 90 or < 15)" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base bg-gray-50 font-bold text-indigo-700 outline-none">
                 </div>
               </div>
             </div>
@@ -2168,15 +2214,15 @@ Date visit: 06.01.2026
               <div id="panelLiver" class="p-3.5 grid grid-cols-3 gap-3 bg-white">
                 <div>
                   <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">AST / SGOT (U/L)</label>
-                  <input type="number" id="encAst" placeholder="e.g. 28" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                  <input type="text" id="encAst" placeholder="e.g. 28 or > 500" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
                 </div>
                 <div>
                   <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">ALT / SGPT (U/L)</label>
-                  <input type="number" id="encAlt" placeholder="e.g. 32" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                  <input type="text" id="encAlt" placeholder="e.g. 32 or > 500" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
                 </div>
                 <div>
                   <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Albumin (ALB, g/L)</label>
-                  <input type="number" id="encAlb" placeholder="e.g. 42" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                  <input type="text" id="encAlb" placeholder="e.g. 42 or < 20" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
                 </div>
               </div>
             </div>
@@ -2190,7 +2236,7 @@ Date visit: 06.01.2026
               <div id="panelGlycemic" class="p-3.5 grid grid-cols-2 sm:grid-cols-5 gap-3 bg-white">
                 <div>
                   <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Blood Glucose (mmol/L)</label>
-                  <input type="number" step="0.1" id="encGlucose" placeholder="e.g. 6.8" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                  <input type="text" id="encGlucose" placeholder="e.g. 6.8 or > 33.3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none" title="Accepts numeric values and symbols such as < 1.1 or > 33.3">
                 </div>
                 <div>
                   <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Glucose Type</label>
@@ -2202,15 +2248,15 @@ Date visit: 06.01.2026
                 </div>
                 <div>
                   <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">HbA1c (%)</label>
-                  <input type="number" step="0.1" id="encHba1c" placeholder="e.g. 6.9" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                  <input type="text" id="encHba1c" placeholder="e.g. 6.9 or > 14.0" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
                 </div>
                 <div>
                   <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Haemoglobin (Hb, g/dL)</label>
-                  <input type="number" step="0.1" id="encHb" placeholder="e.g. 14.2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                  <input type="text" id="encHb" placeholder="e.g. 14.2 or < 7.0" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
                 </div>
                 <div>
                   <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Haematocrit (HCT, %)</label>
-                  <input type="number" step="0.1" id="encHct" placeholder="e.g. 42.5" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                  <input type="text" id="encHct" placeholder="e.g. 42.5" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
                 </div>
               </div>
             </div>

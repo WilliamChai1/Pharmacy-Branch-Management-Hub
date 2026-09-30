@@ -381,12 +381,16 @@
       this.activeBranchKey = 'KOTA SENTOSA';
       this.activeCategoryFilter = 'ALL';
       this.activeStrategyFilter = 'ALL';
+      this.activeCompetitorFilter = 'ALL';
       this.searchQuery = '';
       this.isAiRunning = false;
       this.selectedSkuForAi = null;
       this.currentPage = 1;
       this.pageSize = 50;
+      this.sortField = 'none'; // 'none' | 'margin' | 'supermarket_dev' | 'chain_dev' | 'abs_dev'
       this.marginSortOrder = 'none'; // 'none' | 'desc' | 'asc'
+      this.supermarketDevSortOrder = 'none'; // 'none' | 'desc' | 'asc'
+      this.chainDevSortOrder = 'none'; // 'none' | 'desc' | 'asc'
       this.isSyncingWithSheets = false;
       this.init();
     }
@@ -649,30 +653,176 @@
       await this.fetchPricingFromSheets(manual);
     }
 
-    // ─── GROSS MARGIN SORTING ──────────────────────────────────────────────────
+    // ─── MATRIX SORTING (GROSS MARGIN & COMPETITOR DEVIATIONS) ─────────────────
     toggleMarginSort() {
+      this.sortField = 'margin';
+      this.supermarketDevSortOrder = 'none';
+      this.chainDevSortOrder = 'none';
+
       if (this.marginSortOrder === 'none' || !this.marginSortOrder) {
         this.marginSortOrder = 'desc';
       } else if (this.marginSortOrder === 'desc') {
         this.marginSortOrder = 'asc';
       } else {
         this.marginSortOrder = 'none';
+        this.sortField = 'none';
       }
-      const iconEl = document.getElementById('pricingMarginSortIcon');
-      if (iconEl) {
-        if (this.marginSortOrder === 'desc') {
-          iconEl.innerHTML = '<i class="fa-solid fa-arrow-down-wide-short text-indigo-600"></i>';
-        } else if (this.marginSortOrder === 'asc') {
-          iconEl.innerHTML = '<i class="fa-solid fa-arrow-up-wide-short text-indigo-600"></i>';
-        } else {
-          iconEl.innerHTML = '<i class="fa-solid fa-sort text-gray-400"></i>';
-        }
-      }
+      this.updateSortIcons();
       this.currentPage = 1;
       this.renderTableOnly();
       if (typeof showExpiryToast === 'function') {
         const label = this.marginSortOrder === 'desc' ? 'Highest to Lowest' : this.marginSortOrder === 'asc' ? 'Lowest to Highest' : 'Default Order';
         showExpiryToast(`Sorted Gross Margin: ${label}`);
+      }
+    }
+
+    toggleSupermarketDeviationSort() {
+      this.sortField = 'supermarket_dev';
+      this.marginSortOrder = 'none';
+      this.chainDevSortOrder = 'none';
+
+      if (this.supermarketDevSortOrder === 'none' || !this.supermarketDevSortOrder) {
+        this.supermarketDevSortOrder = 'desc';
+      } else if (this.supermarketDevSortOrder === 'desc') {
+        this.supermarketDevSortOrder = 'asc';
+      } else {
+        this.supermarketDevSortOrder = 'none';
+        this.sortField = 'none';
+      }
+      this.updateSortIcons();
+      this.currentPage = 1;
+      this.renderTableOnly();
+      if (typeof showExpiryToast === 'function') {
+        const label = this.supermarketDevSortOrder === 'desc' 
+          ? 'PMG Higher than Farley First (+% Deviation)' 
+          : this.supermarketDevSortOrder === 'asc' 
+          ? 'PMG Cheaper than Farley First (-% Deviation)' 
+          : 'Default Order';
+        showExpiryToast(`Sorted Supermarket Deviation: ${label}`);
+      }
+    }
+
+    toggleChainDeviationSort() {
+      this.sortField = 'chain_dev';
+      this.marginSortOrder = 'none';
+      this.supermarketDevSortOrder = 'none';
+
+      if (this.chainDevSortOrder === 'none' || !this.chainDevSortOrder) {
+        this.chainDevSortOrder = 'desc';
+      } else if (this.chainDevSortOrder === 'desc') {
+        this.chainDevSortOrder = 'asc';
+      } else {
+        this.chainDevSortOrder = 'none';
+        this.sortField = 'none';
+      }
+      this.updateSortIcons();
+      this.currentPage = 1;
+      this.renderTableOnly();
+      if (typeof showExpiryToast === 'function') {
+        const label = this.chainDevSortOrder === 'desc' 
+          ? 'PMG Higher than Pharmacy Competitors (+% Deviation)' 
+          : this.chainDevSortOrder === 'asc' 
+          ? 'PMG Cheaper than Pharmacy Competitors (-% Deviation)' 
+          : 'Default Order';
+        showExpiryToast(`Sorted Pharmacy Deviation: ${label}`);
+      }
+    }
+
+    setSortCriteria(criteria) {
+      if (criteria === 'super_dev_desc') {
+        this.sortField = 'supermarket_dev';
+        this.supermarketDevSortOrder = 'desc';
+        this.chainDevSortOrder = 'none';
+        this.marginSortOrder = 'none';
+      } else if (criteria === 'super_dev_asc') {
+        this.sortField = 'supermarket_dev';
+        this.supermarketDevSortOrder = 'asc';
+        this.chainDevSortOrder = 'none';
+        this.marginSortOrder = 'none';
+      } else if (criteria === 'chain_dev_desc') {
+        this.sortField = 'chain_dev';
+        this.chainDevSortOrder = 'desc';
+        this.supermarketDevSortOrder = 'none';
+        this.marginSortOrder = 'none';
+      } else if (criteria === 'chain_dev_asc') {
+        this.sortField = 'chain_dev';
+        this.chainDevSortOrder = 'asc';
+        this.supermarketDevSortOrder = 'none';
+        this.marginSortOrder = 'none';
+      } else if (criteria === 'abs_dev_desc') {
+        this.sortField = 'abs_dev';
+        this.supermarketDevSortOrder = 'none';
+        this.chainDevSortOrder = 'none';
+        this.marginSortOrder = 'none';
+      } else if (criteria === 'margin_desc') {
+        this.sortField = 'margin';
+        this.marginSortOrder = 'desc';
+        this.supermarketDevSortOrder = 'none';
+        this.chainDevSortOrder = 'none';
+      } else if (criteria === 'margin_asc') {
+        this.sortField = 'margin';
+        this.marginSortOrder = 'asc';
+        this.supermarketDevSortOrder = 'none';
+        this.chainDevSortOrder = 'none';
+      } else {
+        this.sortField = 'none';
+        this.marginSortOrder = 'none';
+        this.supermarketDevSortOrder = 'none';
+        this.chainDevSortOrder = 'none';
+      }
+      this.updateSortIcons();
+      this.currentPage = 1;
+      this.renderTableOnly();
+    }
+
+    updateSortIcons() {
+      const marginIcon = document.getElementById('pricingMarginSortIcon');
+      const superIcon = document.getElementById('pricingSupermarketSortIcon');
+      const chainIcon = document.getElementById('pricingChainSortIcon');
+      const sortSelect = document.getElementById('pricingSortSelect');
+
+      if (marginIcon) {
+        if (this.sortField === 'margin' && this.marginSortOrder === 'desc') {
+          marginIcon.innerHTML = '<i class="fa-solid fa-arrow-down-wide-short text-indigo-600"></i>';
+        } else if (this.sortField === 'margin' && this.marginSortOrder === 'asc') {
+          marginIcon.innerHTML = '<i class="fa-solid fa-arrow-up-wide-short text-indigo-600"></i>';
+        } else {
+          marginIcon.innerHTML = '<i class="fa-solid fa-sort text-gray-400"></i>';
+        }
+      }
+
+      if (superIcon) {
+        if (this.sortField === 'supermarket_dev' && this.supermarketDevSortOrder === 'desc') {
+          superIcon.innerHTML = '<i class="fa-solid fa-arrow-down-wide-short text-indigo-600"></i>';
+        } else if (this.sortField === 'supermarket_dev' && this.supermarketDevSortOrder === 'asc') {
+          superIcon.innerHTML = '<i class="fa-solid fa-arrow-up-wide-short text-indigo-600"></i>';
+        } else {
+          superIcon.innerHTML = '<i class="fa-solid fa-sort text-gray-400"></i>';
+        }
+      }
+
+      if (chainIcon) {
+        if (this.sortField === 'chain_dev' && this.chainDevSortOrder === 'desc') {
+          chainIcon.innerHTML = '<i class="fa-solid fa-arrow-down-wide-short text-indigo-600"></i>';
+        } else if (this.sortField === 'chain_dev' && this.chainDevSortOrder === 'asc') {
+          chainIcon.innerHTML = '<i class="fa-solid fa-arrow-up-wide-short text-indigo-600"></i>';
+        } else {
+          chainIcon.innerHTML = '<i class="fa-solid fa-sort text-gray-400"></i>';
+        }
+      }
+
+      if (sortSelect) {
+        if (this.sortField === 'supermarket_dev') {
+          sortSelect.value = this.supermarketDevSortOrder === 'asc' ? 'super_dev_asc' : 'super_dev_desc';
+        } else if (this.sortField === 'chain_dev') {
+          sortSelect.value = this.chainDevSortOrder === 'asc' ? 'chain_dev_asc' : 'chain_dev_desc';
+        } else if (this.sortField === 'abs_dev') {
+          sortSelect.value = 'abs_dev_desc';
+        } else if (this.sortField === 'margin') {
+          sortSelect.value = this.marginSortOrder === 'asc' ? 'margin_asc' : 'margin_desc';
+        } else {
+          sortSelect.value = 'default';
+        }
       }
     }
 
@@ -838,33 +988,134 @@
         if (this.activeStrategyFilter !== 'ALL' && s.strategyTag !== this.activeStrategyFilter) {
           return false;
         }
+        // Competitor & Deviation filter
+        if (this.activeCompetitorFilter && this.activeCompetitorFilter !== 'ALL') {
+          const sp = parseFloat(s.standardSp) || 0;
+          const sm = parseFloat(s.supermarketPrice) || 0;
+          const ch = parseFloat(s.chainPharmacyPrice) || 0;
+
+          if (this.activeCompetitorFilter === 'HAS_SUPER' && sm <= 0) return false;
+          if (this.activeCompetitorFilter === 'HAS_CHAIN' && ch <= 0) return false;
+          if (this.activeCompetitorFilter === 'HAS_PROMO' && (!s.promoNote || !s.promoNote.trim())) return false;
+          if (this.activeCompetitorFilter === 'OVER_SUPER') {
+            if (sm <= 0 || sp <= sm) return false;
+          }
+          if (this.activeCompetitorFilter === 'UNDER_SUPER') {
+            if (sm <= 0 || sp >= sm) return false;
+          }
+          if (this.activeCompetitorFilter === 'OVER_CHAIN') {
+            if (ch <= 0 || sp <= ch) return false;
+          }
+          if (this.activeCompetitorFilter === 'UNDER_CHAIN') {
+            if (ch <= 0 || sp >= ch) return false;
+          }
+          if (this.activeCompetitorFilter === 'HIGH_DEVIATION') {
+            const smDev = (sm > 0 && sp > 0) ? Math.abs((sp - sm) / sp) : 0;
+            const chDev = (ch > 0 && sp > 0) ? Math.abs((sp - ch) / sp) : 0;
+            if (smDev < 0.10 && chDev < 0.10) return false;
+          }
+          if (this.activeCompetitorFilter === 'EXTREME_DEVIATION') {
+            const smDev = (sm > 0 && sp > 0) ? Math.abs((sp - sm) / sp) : 0;
+            const chDev = (ch > 0 && sp > 0) ? Math.abs((sp - ch) / sp) : 0;
+            if (smDev < 0.20 && chDev < 0.20) return false;
+          }
+          if (this.activeCompetitorFilter === 'MATCHED') {
+            const smDev = (sm > 0 && sp > 0) ? Math.abs((sp - sm) / sp) : null;
+            const chDev = (ch > 0 && sp > 0) ? Math.abs((sp - ch) / sp) : null;
+            const isSmMatch = smDev !== null && smDev <= 0.02;
+            const isChMatch = chDev !== null && chDev <= 0.02;
+            if (!isSmMatch && !isChMatch) return false;
+          }
+          if (this.activeCompetitorFilter === 'MISSING_ANY') {
+            if (sm > 0 && ch > 0) return false;
+          }
+        }
         return true;
       });
 
-      if (this.marginSortOrder === 'desc') {
+      // Sorting
+      if (this.sortField === 'supermarket_dev') {
         list.sort((a, b) => {
           const spA = parseFloat(a.standardSp) || 0;
-          const costA = parseFloat(a.costPrice) || 0;
-          const mA = spA > 0 ? ((spA - costA) / spA) : -999;
+          const smA = parseFloat(a.supermarketPrice) || 0;
+          const hasSmA = smA > 0 && spA > 0;
+          const devA = hasSmA ? ((spA - smA) / smA) : -999999;
 
           const spB = parseFloat(b.standardSp) || 0;
-          const costB = parseFloat(b.costPrice) || 0;
-          const mB = spB > 0 ? ((spB - costB) / spB) : -999;
+          const smB = parseFloat(b.supermarketPrice) || 0;
+          const hasSmB = smB > 0 && spB > 0;
+          const devB = hasSmB ? ((spB - smB) / smB) : -999999;
 
-          return mB - mA;
+          if (!hasSmA && hasSmB) return 1;
+          if (hasSmA && !hasSmB) return -1;
+          if (!hasSmA && !hasSmB) return 0;
+
+          return this.supermarketDevSortOrder === 'asc' ? devA - devB : devB - devA;
         });
-      } else if (this.marginSortOrder === 'asc') {
+      } else if (this.sortField === 'chain_dev') {
         list.sort((a, b) => {
           const spA = parseFloat(a.standardSp) || 0;
-          const costA = parseFloat(a.costPrice) || 0;
-          const mA = spA > 0 ? ((spA - costA) / spA) : -999;
+          const chA = parseFloat(a.chainPharmacyPrice) || 0;
+          const hasChA = chA > 0 && spA > 0;
+          const devA = hasChA ? ((spA - chA) / chA) : -999999;
 
           const spB = parseFloat(b.standardSp) || 0;
-          const costB = parseFloat(b.costPrice) || 0;
-          const mB = spB > 0 ? ((spB - costB) / spB) : -999;
+          const chB = parseFloat(b.chainPharmacyPrice) || 0;
+          const hasChB = chB > 0 && spB > 0;
+          const devB = hasChB ? ((spB - chB) / chB) : -999999;
 
-          return mA - mB;
+          if (!hasChA && hasChB) return 1;
+          if (hasChA && !hasChB) return -1;
+          if (!hasChA && !hasChB) return 0;
+
+          return this.chainDevSortOrder === 'asc' ? devA - devB : devB - devA;
         });
+      } else if (this.sortField === 'abs_dev') {
+        list.sort((a, b) => {
+          const spA = parseFloat(a.standardSp) || 0;
+          const smA = parseFloat(a.supermarketPrice) || 0;
+          const chA = parseFloat(a.chainPharmacyPrice) || 0;
+          const devA = Math.max(
+            smA > 0 && spA > 0 ? Math.abs(spA - smA) / spA : 0,
+            chA > 0 && spA > 0 ? Math.abs(spA - chA) / spA : 0
+          );
+
+          const spB = parseFloat(b.standardSp) || 0;
+          const smB = parseFloat(b.supermarketPrice) || 0;
+          const chB = parseFloat(b.chainPharmacyPrice) || 0;
+          const devB = Math.max(
+            smB > 0 && spB > 0 ? Math.abs(spB - smB) / spB : 0,
+            chB > 0 && spB > 0 ? Math.abs(spB - chB) / spB : 0
+          );
+
+          return devB - devA;
+        });
+      } else if (this.sortField === 'margin' || this.marginSortOrder !== 'none') {
+        if (this.marginSortOrder === 'desc') {
+          list.sort((a, b) => {
+            const spA = parseFloat(a.standardSp) || 0;
+            const costA = parseFloat(a.costPrice) || 0;
+            const mA = spA > 0 ? ((spA - costA) / spA) : -999;
+
+            const spB = parseFloat(b.standardSp) || 0;
+            const costB = parseFloat(b.costPrice) || 0;
+            const mB = spB > 0 ? ((spB - costB) / spB) : -999;
+
+            return mB - mA;
+          });
+        } else if (this.marginSortOrder === 'asc') {
+          list.sort((a, b) => {
+            const spA = parseFloat(a.standardSp) || 0;
+            const costA = parseFloat(a.costPrice) || 0;
+            const mA = spA > 0 ? ((spA - costA) / spA) : -999;
+
+            const spB = parseFloat(b.standardSp) || 0;
+            const costB = parseFloat(b.costPrice) || 0;
+            const mB = spB > 0 ? ((spB - costB) / spB) : -999;
+
+            return mA - mB;
+          });
+        }
       }
 
       return list;
@@ -1497,12 +1748,17 @@
 
         // Supermarket price input & comparison pill
         let superDiffHtml = '';
-        if (s.supermarketPrice) {
-          const diff = (s.standardSp - s.supermarketPrice).toFixed(2);
-          const isHigher = s.standardSp > s.supermarketPrice;
-          const diffClass = isHigher ? 'text-rose-600' : 'text-emerald-700 font-bold';
-          const diffSign = isHigher ? '+' : '';
-          superDiffHtml = `<span class="text-[10px] font-bold ${diffClass} block mt-0.5">${diffSign}RM ${diff} vs Farley</span>`;
+        if (s.supermarketPrice && s.supermarketPrice > 0) {
+          const diffNum = s.standardSp - s.supermarketPrice;
+          const diff = Math.abs(diffNum).toFixed(2);
+          const pct = ((diffNum / s.supermarketPrice) * 100).toFixed(1);
+          const isHigher = diffNum > 0.05;
+          const isLower = diffNum < -0.05;
+          const badgeClass = isHigher 
+            ? 'text-rose-700 bg-rose-50 border border-rose-200' 
+            : (isLower ? 'text-emerald-700 bg-emerald-50 border border-emerald-200' : 'text-slate-600 bg-slate-50 border border-slate-200');
+          const diffSign = diffNum > 0.05 ? '+' : (diffNum < -0.05 ? '-' : '');
+          superDiffHtml = `<span class="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded ${badgeClass} mt-1">${diffSign}RM ${diff} (${diffSign}${pct}%) vs Farley</span>`;
         }
 
         const superComp = `
@@ -1518,12 +1774,17 @@
 
         // Pharmacy competitor input & comparison pill
         let chainDiffHtml = '';
-        if (s.chainPharmacyPrice) {
-          const diff = (s.standardSp - s.chainPharmacyPrice).toFixed(2);
-          const isHigher = s.standardSp > s.chainPharmacyPrice;
-          const diffClass = isHigher ? 'text-amber-600' : 'text-emerald-700 font-bold';
-          const diffSign = isHigher ? '+' : '';
-          chainDiffHtml = `<span class="text-[10px] ${diffClass} block mt-0.5">${diffSign}RM ${diff} (${s.competitorName || 'Alpro/Ting'})</span>`;
+        if (s.chainPharmacyPrice && s.chainPharmacyPrice > 0) {
+          const diffNum = s.standardSp - s.chainPharmacyPrice;
+          const diff = Math.abs(diffNum).toFixed(2);
+          const pct = ((diffNum / s.chainPharmacyPrice) * 100).toFixed(1);
+          const isHigher = diffNum > 0.05;
+          const isLower = diffNum < -0.05;
+          const badgeClass = isHigher 
+            ? 'text-amber-800 bg-amber-50 border border-amber-200' 
+            : (isLower ? 'text-emerald-700 bg-emerald-50 border border-emerald-200' : 'text-slate-600 bg-slate-50 border border-slate-200');
+          const diffSign = diffNum > 0.05 ? '+' : (diffNum < -0.05 ? '-' : '');
+          chainDiffHtml = `<span class="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded ${badgeClass} mt-1">${diffSign}RM ${diff} (${diffSign}${pct}%) (${s.competitorName || 'Alpro/Ting'})</span>`;
         }
 
         let promoPillHtml = '';

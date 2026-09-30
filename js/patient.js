@@ -14,6 +14,31 @@ function getTodayDateString(offsetDays = 0) {
   return `${y}-${m}-${day}`;
 }
 
+// Helper to extract numeric value from clinical input that may contain <, >, <=, >= symbols
+function extractNumericVal(val) {
+  if (val == null) return null;
+  if (typeof val === 'number') return isNaN(val) ? null : val;
+  const s = String(val).trim();
+  if (!s) return null;
+  const match = s.match(/([0-9]+(?:\.[0-9]+)?)/);
+  if (match) {
+    const n = parseFloat(match[1]);
+    return isNaN(n) ? null : n;
+  }
+  return null;
+}
+
+// Helper to format clinical measurement value, preserving machine limit symbols (<, >, etc.)
+function formatClinicalInputValue(raw) {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  if (!isNaN(Number(s))) {
+    return Number(s);
+  }
+  return s;
+}
+
 const DEFAULT_PATIENTS_DATA = [
   {
     id: 'PT-JONGHUIWAN',
@@ -1139,13 +1164,17 @@ function setupEncounterAutoCalculations() {
   const aiEl = document.getElementById('encAi');
   const rChdEl = document.getElementById('encRchd');
   const calcLipid = () => {
-    const tc = parseFloat(tcEl.value);
-    const hdl = parseFloat(hdlEl.value);
-    if (tc > 0 && hdl > 0) {
-      const ai = ((tc - hdl) / hdl).toFixed(2);
-      const rchd = (tc / hdl).toFixed(2);
-      if (aiEl) aiEl.value = ai;
-      if (rChdEl) rChdEl.value = rchd;
+    const rawTc = tcEl ? tcEl.value.trim() : '';
+    const rawHdl = hdlEl ? hdlEl.value.trim() : '';
+    const tcNum = extractNumericVal(rawTc);
+    const hdlNum = extractNumericVal(rawHdl);
+
+    if (tcNum > 0 && hdlNum > 0) {
+      const ai = ((tcNum - hdlNum) / hdlNum).toFixed(2);
+      const rchd = (tcNum / hdlNum).toFixed(2);
+      const prefix = (rawTc.startsWith('<') || rawHdl.startsWith('>')) ? '< ' : (rawTc.startsWith('>') || rawHdl.startsWith('<')) ? '> ' : '';
+      if (aiEl) aiEl.value = `${prefix}${ai}`;
+      if (rChdEl) rChdEl.value = `${prefix}${rchd}`;
     }
   };
   if (tcEl) tcEl.addEventListener('input', calcLipid);
@@ -4781,51 +4810,51 @@ async function saveNewEncounter() {
   }
 
   const vitalsObj = {
-    bpSys: Number(document.getElementById('encBpSys').value) || null,
-    bpDia: Number(document.getElementById('encBpDia').value) || null,
-    pulse: Number(document.getElementById('encPulse').value) || null,
-    spo2: Number(document.getElementById('encSpo2').value) || null,
-    weight: Number(document.getElementById('encWeight').value) || null,
-    height: Number(document.getElementById('encHeight').value) || null,
-    bmi: Number(document.getElementById('encBmi').value) || null
+    bpSys: formatClinicalInputValue(document.getElementById('encBpSys')?.value),
+    bpDia: formatClinicalInputValue(document.getElementById('encBpDia')?.value),
+    pulse: formatClinicalInputValue(document.getElementById('encPulse')?.value),
+    spo2: formatClinicalInputValue(document.getElementById('encSpo2')?.value),
+    weight: formatClinicalInputValue(document.getElementById('encWeight')?.value),
+    height: formatClinicalInputValue(document.getElementById('encHeight')?.value),
+    bmi: formatClinicalInputValue(document.getElementById('encBmi')?.value)
   };
 
   const bcaObj = {
-    bodyFat: Number(document.getElementById('encBodyFat')?.value) || null,
-    visceralFat: Number(document.getElementById('encVisceralFat')?.value) || null,
-    muscleMass: Number(document.getElementById('encMuscleMass')?.value) || null,
-    metabolicAge: Number(document.getElementById('encMetabolicAge')?.value) || null,
+    bodyFat: formatClinicalInputValue(document.getElementById('encBodyFat')?.value),
+    visceralFat: formatClinicalInputValue(document.getElementById('encVisceralFat')?.value),
+    muscleMass: formatClinicalInputValue(document.getElementById('encMuscleMass')?.value),
+    metabolicAge: formatClinicalInputValue(document.getElementById('encMetabolicAge')?.value),
     bmrWater: document.getElementById('encBmrWater') ? document.getElementById('encBmrWater').value.trim() : ''
   };
 
   const lipidObj = {
-    tc: Number(document.getElementById('encTc').value) || null,
-    tg: Number(document.getElementById('encTg').value) || null,
-    hdl: Number(document.getElementById('encHdl').value) || null,
-    ldl: Number(document.getElementById('encLdl').value) || null,
-    ai: Number(document.getElementById('encAi').value) || null,
-    rChd: Number(document.getElementById('encRchd').value) || null
+    tc: formatClinicalInputValue(document.getElementById('encTc')?.value),
+    tg: formatClinicalInputValue(document.getElementById('encTg')?.value),
+    hdl: formatClinicalInputValue(document.getElementById('encHdl')?.value),
+    ldl: formatClinicalInputValue(document.getElementById('encLdl')?.value),
+    ai: formatClinicalInputValue(document.getElementById('encAi')?.value),
+    rChd: formatClinicalInputValue(document.getElementById('encRchd')?.value)
   };
 
   const liverObj = {
-    ast: Number(document.getElementById('encAst').value) || null,
-    alt: Number(document.getElementById('encAlt').value) || null,
-    alb: Number(document.getElementById('encAlb').value) || null
+    ast: formatClinicalInputValue(document.getElementById('encAst')?.value),
+    alt: formatClinicalInputValue(document.getElementById('encAlt')?.value),
+    alb: formatClinicalInputValue(document.getElementById('encAlb')?.value)
   };
 
   const kidneyObj = {
-    ua: Number(document.getElementById('encUa').value) || null,
-    creatinine: Number(document.getElementById('encCreatinine').value) || null,
-    urea: Number(document.getElementById('encUrea').value) || null,
-    egfr: Number(document.getElementById('encEgfr').value) || null
+    ua: formatClinicalInputValue(document.getElementById('encUa')?.value),
+    creatinine: formatClinicalInputValue(document.getElementById('encCreatinine')?.value),
+    urea: formatClinicalInputValue(document.getElementById('encUrea')?.value),
+    egfr: formatClinicalInputValue(document.getElementById('encEgfr')?.value)
   };
 
   const glycemicObj = {
-    glucose: Number(document.getElementById('encGlucose').value) || null,
-    glucoseType: document.getElementById('encGlucoseType').value,
-    hba1c: Number(document.getElementById('encHba1c').value) || null,
-    hb: Number(document.getElementById('encHb').value) || null,
-    hct: Number(document.getElementById('encHct').value) || null
+    glucose: formatClinicalInputValue(document.getElementById('encGlucose')?.value),
+    glucoseType: document.getElementById('encGlucoseType')?.value || 'Fasting',
+    hba1c: formatClinicalInputValue(document.getElementById('encHba1c')?.value),
+    hb: formatClinicalInputValue(document.getElementById('encHb')?.value),
+    hct: formatClinicalInputValue(document.getElementById('encHct')?.value)
   };
 
   const specialtyObj = {
@@ -5662,59 +5691,73 @@ function renderProfileTrends(p) {
     const g = enc.glycemicHeme || {};
     const bpCls = (v.bpSys && v.bpDia) ? getBpClassification(v.bpSys, v.bpDia) : { badge: 'bg-gray-100 text-gray-500' };
 
-    const tc = l.tc != null ? Number(l.tc) : null;
-    const tg = l.tg != null ? Number(l.tg) : null;
-    const hdl = l.hdl != null ? Number(l.hdl) : null;
-    let ldl = l.ldl != null ? Number(l.ldl) : null;
+    const tc = extractNumericVal(l.tc);
+    const tg = extractNumericVal(l.tg);
+    const hdl = extractNumericVal(l.hdl);
+    let ldl = extractNumericVal(l.ldl);
     if (ldl == null && tc != null && hdl != null && tg != null && tg < 4.5) {
       ldl = +(tc - hdl - (tg / 2.2)).toFixed(2);
     }
-    let ai = l.ai != null ? Number(l.ai) : null;
+    let ai = extractNumericVal(l.ai);
     if (ai == null && tc != null && hdl != null && hdl > 0) {
       ai = +((tc - hdl) / hdl).toFixed(2);
     }
-    let rChd = (l.rChd != null || l.rchd != null) ? Number(l.rChd || l.rchd) : null;
+    let rChd = extractNumericVal(l.rChd || l.rchd);
     if (rChd == null && tc != null && hdl != null && hdl > 0) {
       rChd = +(tc / hdl).toFixed(2);
     }
+
+    const dispTc = l.tc != null ? escHtml(String(l.tc)) : (tc != null ? tc : null);
+    const dispTg = l.tg != null ? escHtml(String(l.tg)) : (tg != null ? tg : null);
+    const dispHdl = l.hdl != null ? escHtml(String(l.hdl)) : (hdl != null ? hdl : null);
+    const dispLdl = l.ldl != null ? escHtml(String(l.ldl)) : (ldl != null ? ldl : null);
+    const dispAi = l.ai != null ? escHtml(String(l.ai)) : (ai != null ? ai : null);
+    const dispRchd = (l.rChd != null || l.rchd != null) ? escHtml(String(l.rChd || l.rchd)) : (rChd != null ? rChd : null);
+
+    const gluNum = extractNumericVal(g.glucose);
+    const dispGlu = g.glucose != null ? escHtml(String(g.glucose)) : null;
+    const isGluHigh = gluNum != null && ((g.glucoseType === 'Fasting' && gluNum >= 5.6) || gluNum >= 7.8);
+
+    const uaNum = extractNumericVal(k.ua);
+    const dispUa = k.ua != null ? escHtml(String(k.ua)) : null;
 
     return `
       <tr class="border-b border-gray-100 hover:bg-gray-50 text-sm">
         <td class="px-4 py-3 font-bold text-gray-900 whitespace-nowrap">${enc.date}</td>
         <td class="px-4 py-3 whitespace-nowrap">
           <span class="inline-block px-2.5 py-1 rounded-lg text-xs font-bold ${bpCls.badge}">${v.bpSys || '—'}/${v.bpDia || '—'}</span>
-          <span class="text-xs text-gray-500 font-medium ml-1">${v.pulse ? v.pulse + ' bpm' : ''}</span>
+          <span class="text-xs text-gray-500 font-medium ml-1">${v.pulse ? escHtml(String(v.pulse)) + ' bpm' : ''}</span>
         </td>
-        <td class="px-4 py-3 font-semibold ${g.glucose && ((g.glucoseType === 'Fasting' && g.glucose >= 5.6) || g.glucose >= 7.8) ? 'text-amber-700 font-bold' : 'text-gray-800'}">
-          ${g.glucose ? `${g.glucose} (${g.glucoseType || 'Random'})` : '—'}
+        <td class="px-4 py-3 font-semibold ${isGluHigh ? 'text-amber-700 font-bold' : 'text-gray-800'}">
+          ${dispGlu ? `${dispGlu} (${escHtml(g.glucoseType || 'Random')})` : '—'}
         </td>
-        <td class="px-4 py-3 font-bold ${g.hba1c && g.hba1c >= 6.3 ? 'text-rose-700' : (g.hba1c && g.hba1c >= 5.7 ? 'text-amber-700' : 'text-purple-700')}">
-          ${g.hba1c ? `${g.hba1c}%` : '—'}
+        <td class="px-4 py-3 font-bold ${g.hba1c && extractNumericVal(g.hba1c) >= 6.3 ? 'text-rose-700' : (g.hba1c && extractNumericVal(g.hba1c) >= 5.7 ? 'text-amber-700' : 'text-purple-700')}">
+          ${g.hba1c ? `${escHtml(String(g.hba1c))}%` : '—'}
         </td>
         <td class="px-4 py-3">
-          ${tc != null ? `
+          ${dispTc != null ? `
             <div class="space-y-0.5 text-xs">
               <div>
-                <span class="${tc >= 5.2 ? 'text-amber-700 font-black' : 'text-gray-900 font-bold'}">TC: ${tc}${tc >= 5.2 ? ' ⬆' : ''}</span>
-                ${tg != null ? `<span class="ml-1 ${tg >= 1.7 ? 'text-amber-700 font-bold' : 'text-gray-600'}">| TG: ${tg}${tg >= 1.7 ? ' ⬆' : ''}</span>` : ''}
+                <span class="${tc != null && tc >= 5.2 ? 'text-amber-700 font-black' : 'text-gray-900 font-bold'}">TC: ${dispTc}${tc != null && tc >= 5.2 ? ' ⬆' : ''}</span>
+                ${dispTg != null ? `<span class="ml-1 ${tg != null && tg >= 1.7 ? 'text-amber-700 font-bold' : 'text-gray-600'}">| TG: ${dispTg}${tg != null && tg >= 1.7 ? ' ⬆' : ''}</span>` : ''}
               </div>
               <div class="text-gray-500">
-                <span class="${hdl != null && hdl < 1.0 ? 'text-amber-700 font-bold' : ''}">HDL: ${hdl ?? '—'}${hdl != null && hdl < 1.0 ? ' ⬇' : ''}</span>
-                ${ldl != null ? `<span class="ml-1 ${ldl >= 2.6 ? 'text-amber-700 font-bold' : ''}">| LDL: ${ldl}${ldl >= 2.6 ? ' ⬆' : ''}</span>` : ''}
+                <span class="${hdl != null && hdl < 1.0 ? 'text-amber-700 font-bold' : ''}">HDL: ${dispHdl ?? '—'}${hdl != null && hdl < 1.0 ? ' ⬇' : ''}</span>
+                ${dispLdl != null ? `<span class="ml-1 ${ldl != null && ldl >= 2.6 ? 'text-amber-700 font-bold' : ''}">| LDL: ${dispLdl}${ldl != null && ldl >= 2.6 ? ' ⬆' : ''}</span>` : ''}
               </div>
             </div>
           ` : '—'}
         </td>
         <td class="px-4 py-3 font-mono">
-          ${ai != null ? `
+          ${dispAi != null ? `
             <div class="text-xs">
-              <span class="${ai >= 3.5 ? 'text-rose-700 font-black' : 'text-blue-700 font-bold'}">AI: ${ai}${ai >= 3.5 ? ' ⬆' : ''}</span>
-              ${rChd != null ? `<div class="${rChd >= 4.5 ? 'text-rose-700 font-bold' : 'text-purple-700 font-semibold'}">R-CHD: ${rChd}${rChd >= 4.5 ? ' ⬆' : ''}</div>` : ''}
+              <span class="${ai != null && ai >= 3.5 ? 'text-rose-700 font-black' : 'text-blue-700 font-bold'}">AI: ${dispAi}${ai != null && ai >= 3.5 ? ' ⬆' : ''}</span>
+              ${dispRchd != null ? `<div class="${rChd != null && rChd >= 4.5 ? 'text-rose-700 font-bold' : 'text-purple-700 font-semibold'}">R-CHD: ${dispRchd}${rChd != null && rChd >= 4.5 ? ' ⬆' : ''}</div>` : ''}
             </div>
           ` : '—'}
         </td>
-        <td class="px-4 py-3 font-bold ${k.ua && Number(k.ua) > 420 ? 'text-rose-700' : 'text-gray-800'}">${k.ua ? `${k.ua} umol/L` : '—'}</td>
-        <td class="px-4 py-3 text-indigo-700 font-semibold">${k.creatinine ? `${k.creatinine} (eGFR: ${k.egfr || '—'})` : '—'}</td>
+        <td class="px-4 py-3 font-bold ${uaNum != null && uaNum > 420 ? 'text-rose-700' : 'text-gray-800'}">${dispUa ? `${dispUa} umol/L` : '—'}</td>
+        <td class="px-4 py-3 text-indigo-700 font-semibold">${k.creatinine ? `${escHtml(String(k.creatinine))} (eGFR: ${k.egfr ? escHtml(String(k.egfr)) : '—'})` : '—'}</td>
       </tr>
     `;
   }).join('');
@@ -5977,6 +6020,7 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
   const v = enc.vitals || {};
   const g = enc.glycemicHeme || {};
   const l = enc.lipidPanel || {};
+  const k = enc.kidneyPanel || {};
 
   const googleReviewLink = 'https://g.page/r/CUU3ygRE9IC6EBM/review';
   const waCommunityLink = 'https://chat.whatsapp.com/D1d7scuEzrQ15rwFndmSHr';
@@ -5993,28 +6037,36 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
     if (v.pulse) msg += `- 脉搏 (Pulse)：${v.pulse} bpm\n`;
     if (v.spo2) msg += `- 血氧 (SpO2)：${v.spo2}%\n`;
     if (g.glucose) {
+      const gluNum = extractNumericVal(g.glucose);
       const isFasting = (g.glucoseType || '').toLowerCase().includes('fasting');
-      const isHigh = isFasting ? g.glucose >= 5.6 : g.glucose >= 7.8;
+      const isHigh = gluNum != null ? (isFasting ? gluNum >= 5.6 : gluNum >= 7.8) : false;
       msg += `- 血糖 (${g.glucoseType || 'Fasting'})：${g.glucose} mmol/L ${isHigh ? '[偏高]' : '[正常]'}\n`;
     }
     if (g.hba1c) msg += `- 糖化血红蛋白 HbA1c：${g.hba1c}%\n`;
 
+    // Uric Acid in Chinese
+    if (k.ua) {
+      const uaNum = extractNumericVal(k.ua);
+      const isUaHigh = uaNum != null ? uaNum > 420 : false;
+      msg += `- 尿酸 (Uric Acid)：${k.ua} umol/L ${isUaHigh ? '[偏高，参考 120-420]' : '[正常]'}\n`;
+    }
+
     // Full Lipid Panel in Chinese
     if (l.tc || l.tg || l.hdl || l.ldl) {
-      const tcVal = parseFloat(l.tc);
-      const tgVal = parseFloat(l.tg);
-      const hdlVal = parseFloat(l.hdl);
-      const ldlVal = parseFloat(l.ldl);
-      const aiVal = parseFloat(l.ai);
-      const rchdVal = parseFloat(l.rChd || l.rchd);
+      const tcVal = extractNumericVal(l.tc);
+      const tgVal = extractNumericVal(l.tg);
+      const hdlVal = extractNumericVal(l.hdl);
+      const ldlVal = extractNumericVal(l.ldl);
+      const aiVal = extractNumericVal(l.ai);
+      const rchdVal = extractNumericVal(l.rChd || l.rchd);
 
       msg += `- 血脂全套指标 (Full Lipid Profile)：\n`;
-      if (!isNaN(tcVal)) msg += `  * 总胆固醇 (TC): ${l.tc} mmol/L ${tcVal >= 5.2 ? '[偏高，目标 < 5.2]' : '[正常]'}\n`;
-      if (!isNaN(tgVal)) msg += `  * 甘油三酯 (TG): ${l.tg} mmol/L ${tgVal >= 1.7 ? '[偏高，目标 < 1.7]' : '[正常]'}\n`;
-      if (!isNaN(hdlVal)) msg += `  * 高密度好胆固醇 (HDL): ${l.hdl} mmol/L ${hdlVal < 1.0 ? '[偏低，目标 >= 1.0]' : '[良好]'}\n`;
-      if (!isNaN(ldlVal)) msg += `  * 低密度坏胆固醇 (LDL): ${l.ldl} mmol/L ${ldlVal >= 2.6 ? '[偏高，目标 < 2.6]' : '[理想]'}\n`;
-      if (!isNaN(aiVal)) msg += `  * 动脉硬化指数 (AI): ${l.ai} ${aiVal >= 4.0 ? '[偏高]' : '[低风险]'}\n`;
-      if (!isNaN(rchdVal)) msg += `  * 冠心病风险比率 (R-CHD): ${l.rChd || l.rchd} ${rchdVal >= 5.0 ? '[偏高]' : '[良好]'}\n`;
+      if (tcVal != null) msg += `  * 总胆固醇 (TC): ${l.tc} mmol/L ${tcVal >= 5.2 ? '[偏高，目标 < 5.2]' : '[正常]'}\n`;
+      if (tgVal != null) msg += `  * 甘油三酯 (TG): ${l.tg} mmol/L ${tgVal >= 1.7 ? '[偏高，目标 < 1.7]' : '[正常]'}\n`;
+      if (hdlVal != null) msg += `  * 高密度好胆固醇 (HDL): ${l.hdl} mmol/L ${hdlVal < 1.0 ? '[偏低，目标 >= 1.0]' : '[良好]'}\n`;
+      if (ldlVal != null) msg += `  * 低密度坏胆固醇 (LDL): ${l.ldl} mmol/L ${ldlVal >= 2.6 ? '[偏高，目标 < 2.6]' : '[理想]'}\n`;
+      if (aiVal != null) msg += `  * 动脉硬化指数 (AI): ${l.ai} ${aiVal >= 4.0 ? '[偏高]' : '[低风险]'}\n`;
+      if (rchdVal != null) msg += `  * 冠心病风险比率 (R-CHD): ${l.rChd || l.rchd} ${rchdVal >= 5.0 ? '[偏高]' : '[良好]'}\n`;
     }
 
     if (enc.planCounselling) msg += `\n*饮食与生活注意：*\n${enc.planCounselling}\n`;
@@ -6034,28 +6086,36 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
     if (v.pulse) msg += `- Nadi: ${v.pulse} bpm\n`;
     if (v.spo2) msg += `- Oksigen SpO2: ${v.spo2}%\n`;
     if (g.glucose) {
+      const gluNum = extractNumericVal(g.glucose);
       const isFasting = (g.glucoseType || '').toLowerCase().includes('fasting');
-      const isHigh = isFasting ? g.glucose >= 5.6 : g.glucose >= 7.8;
+      const isHigh = gluNum != null ? (isFasting ? gluNum >= 5.6 : gluNum >= 7.8) : false;
       msg += `- Gula Darah (${g.glucoseType || 'Fasting'}): ${g.glucose} mmol/L ${isHigh ? '[Tinggi]' : '[Normal]'}\n`;
     }
     if (g.hba1c) msg += `- HbA1c: ${g.hba1c}%\n`;
 
+    // Uric Acid in Malay
+    if (k.ua) {
+      const uaNum = extractNumericVal(k.ua);
+      const isUaHigh = uaNum != null ? uaNum > 420 : false;
+      msg += `- Asid Urik (Uric Acid): ${k.ua} umol/L ${isUaHigh ? '[Tinggi, rujukan 120-420]' : '[Normal]'}\n`;
+    }
+
     // Full Lipid Panel in Malay
     if (l.tc || l.tg || l.hdl || l.ldl) {
-      const tcVal = parseFloat(l.tc);
-      const tgVal = parseFloat(l.tg);
-      const hdlVal = parseFloat(l.hdl);
-      const ldlVal = parseFloat(l.ldl);
-      const aiVal = parseFloat(l.ai);
-      const rchdVal = parseFloat(l.rChd || l.rchd);
+      const tcVal = extractNumericVal(l.tc);
+      const tgVal = extractNumericVal(l.tg);
+      const hdlVal = extractNumericVal(l.hdl);
+      const ldlVal = extractNumericVal(l.ldl);
+      const aiVal = extractNumericVal(l.ai);
+      const rchdVal = extractNumericVal(l.rChd || l.rchd);
 
       msg += `- Profil Penuh Kolesterol (Full Lipid Profile):\n`;
-      if (!isNaN(tcVal)) msg += `  * Jumlah Kolesterol (TC): ${l.tc} mmol/L ${tcVal >= 5.2 ? '[Tinggi, sasaran < 5.2]' : '[Normal]'}\n`;
-      if (!isNaN(tgVal)) msg += `  * Trigliserida (TG): ${l.tg} mmol/L ${tgVal >= 1.7 ? '[Tinggi, sasaran < 1.7]' : '[Normal]'}\n`;
-      if (!isNaN(hdlVal)) msg += `  * Kolesterol Baik (HDL): ${l.hdl} mmol/L ${hdlVal < 1.0 ? '[Rendah, sasaran >= 1.0]' : '[Baik]'}\n`;
-      if (!isNaN(ldlVal)) msg += `  * Kolesterol Jahat (LDL): ${l.ldl} mmol/L ${ldlVal >= 2.6 ? '[Tinggi, sasaran < 2.6]' : '[Optimum]'}\n`;
-      if (!isNaN(aiVal)) msg += `  * Indeks Aterogenik (AI): ${l.ai}\n`;
-      if (!isNaN(rchdVal)) msg += `  * Nisbah Risiko Jantung (R-CHD): ${l.rChd || l.rchd}\n`;
+      if (tcVal != null) msg += `  * Jumlah Kolesterol (TC): ${l.tc} mmol/L ${tcVal >= 5.2 ? '[Tinggi, sasaran < 5.2]' : '[Normal]'}\n`;
+      if (tgVal != null) msg += `  * Trigliserida (TG): ${l.tg} mmol/L ${tgVal >= 1.7 ? '[Tinggi, sasaran < 1.7]' : '[Normal]'}\n`;
+      if (hdlVal != null) msg += `  * Kolesterol Baik (HDL): ${l.hdl} mmol/L ${hdlVal < 1.0 ? '[Rendah, sasaran >= 1.0]' : '[Baik]'}\n`;
+      if (ldlVal != null) msg += `  * Kolesterol Jahat (LDL): ${l.ldl} mmol/L ${ldlVal >= 2.6 ? '[Tinggi, sasaran < 2.6]' : '[Optimum]'}\n`;
+      if (aiVal != null) msg += `  * Indeks Aterogenik (AI): ${l.ai}\n`;
+      if (rchdVal != null) msg += `  * Nisbah Risiko Jantung (R-CHD): ${l.rChd || l.rchd}\n`;
     }
 
     if (enc.planCounselling) msg += `\n*Nasihat Gaya Hidup:*\n${enc.planCounselling}\n`;
@@ -6075,28 +6135,36 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
     if (v.pulse) msg += `- Pulse: ${v.pulse} bpm\n`;
     if (v.spo2) msg += `- Oxygen SpO2: ${v.spo2}%\n`;
     if (g.glucose) {
+      const gluNum = extractNumericVal(g.glucose);
       const isFasting = (g.glucoseType || '').toLowerCase().includes('fasting');
-      const isHigh = isFasting ? g.glucose >= 5.6 : g.glucose >= 7.8;
+      const isHigh = gluNum != null ? (isFasting ? gluNum >= 5.6 : gluNum >= 7.8) : false;
       msg += `- Blood Glucose (${g.glucoseType || 'Fasting'}): ${g.glucose} mmol/L ${isHigh ? '[High]' : '[Normal]'}\n`;
     }
     if (g.hba1c) msg += `- HbA1c: ${g.hba1c}%\n`;
 
+    // Uric Acid in English
+    if (k.ua) {
+      const uaNum = extractNumericVal(k.ua);
+      const isUaHigh = uaNum != null ? uaNum > 420 : false;
+      msg += `- Uric Acid: ${k.ua} umol/L ${isUaHigh ? '[High, ref 120-420]' : '[Normal]'}\n`;
+    }
+
     // Full Lipid Panel in English
     if (l.tc || l.tg || l.hdl || l.ldl) {
-      const tcVal = parseFloat(l.tc);
-      const tgVal = parseFloat(l.tg);
-      const hdlVal = parseFloat(l.hdl);
-      const ldlVal = parseFloat(l.ldl);
-      const aiVal = parseFloat(l.ai);
-      const rchdVal = parseFloat(l.rChd || l.rchd);
+      const tcVal = extractNumericVal(l.tc);
+      const tgVal = extractNumericVal(l.tg);
+      const hdlVal = extractNumericVal(l.hdl);
+      const ldlVal = extractNumericVal(l.ldl);
+      const aiVal = extractNumericVal(l.ai);
+      const rchdVal = extractNumericVal(l.rChd || l.rchd);
 
       msg += `- Full Lipid Profile:\n`;
-      if (!isNaN(tcVal)) msg += `  * Total Cholesterol (TC): ${l.tc} mmol/L ${tcVal >= 5.2 ? '[High, target < 5.2]' : '[Normal]'}\n`;
-      if (!isNaN(tgVal)) msg += `  * Triglycerides (TG): ${l.tg} mmol/L ${tgVal >= 1.7 ? '[High, target < 1.7]' : '[Normal]'}\n`;
-      if (!isNaN(hdlVal)) msg += `  * HDL "Good" Cholesterol: ${l.hdl} mmol/L ${hdlVal < 1.0 ? '[Low, target >= 1.0]' : '[Good]'}\n`;
-      if (!isNaN(ldlVal)) msg += `  * LDL "Bad" Cholesterol: ${l.ldl} mmol/L ${ldlVal >= 2.6 ? '[High, target < 2.6]' : '[Optimal]'}\n`;
-      if (!isNaN(aiVal)) msg += `  * Atherogenic Index (AI): ${l.ai} ${aiVal >= 4.0 ? '[Elevated Risk]' : '[Low Risk]'}\n`;
-      if (!isNaN(rchdVal)) msg += `  * CHD Risk Ratio (R-CHD): ${l.rChd || l.rchd} ${rchdVal >= 5.0 ? '[Elevated Risk]' : '[Low Risk]'}\n`;
+      if (tcVal != null) msg += `  * Total Cholesterol (TC): ${l.tc} mmol/L ${tcVal >= 5.2 ? '[High, target < 5.2]' : '[Normal]'}\n`;
+      if (tgVal != null) msg += `  * Triglycerides (TG): ${l.tg} mmol/L ${tgVal >= 1.7 ? '[High, target < 1.7]' : '[Normal]'}\n`;
+      if (hdlVal != null) msg += `  * HDL "Good" Cholesterol: ${l.hdl} mmol/L ${hdlVal < 1.0 ? '[Low, target >= 1.0]' : '[Good]'}\n`;
+      if (ldlVal != null) msg += `  * LDL "Bad" Cholesterol: ${l.ldl} mmol/L ${ldlVal >= 2.6 ? '[High, target < 2.6]' : '[Optimal]'}\n`;
+      if (aiVal != null) msg += `  * Atherogenic Index (AI): ${l.ai} ${aiVal >= 4.0 ? '[Elevated Risk]' : '[Low Risk]'}\n`;
+      if (rchdVal != null) msg += `  * CHD Risk Ratio (R-CHD): ${l.rChd || l.rchd} ${rchdVal >= 5.0 ? '[Elevated Risk]' : '[Low Risk]'}\n`;
     }
 
     if (enc.planCounselling) msg += `\n*Lifestyle & Dietary Advice:*\n${enc.planCounselling}\n`;
@@ -7048,30 +7116,39 @@ function parseLarkCustomer(text, defaultBranch = 'Kota Sentosa') {
     }
 
     // Extract Lipids
-    const tcM = assessment.match(/\bTC[:：\s]*([\d\.]+)/i);
-    const tgM = assessment.match(/\bTG[:：\s]*([\d\.]+)/i);
-    const hdlM = assessment.match(/\bHDL[:：\s]*([\d\.]+)/i);
-    const ldlM = assessment.match(/\bLDL[:：\s]*([\d\.]+)/i);
-    const aiM = assessment.match(/\bAI[:：\s]*([\d\.]+)/i);
-    const rchdM = assessment.match(/(?:R-?CHD|CHD)[:：\s]*([\d\.]+)/i);
+    const tcM = assessment.match(/\bTC[:：\s]*([<>]?\s*[\d\.]+)/i);
+    const tgM = assessment.match(/\bTG[:：\s]*([<>]?\s*[\d\.]+)/i);
+    const hdlM = assessment.match(/\bHDL[:：\s]*([<>]?\s*[\d\.]+)/i);
+    const ldlM = assessment.match(/\bLDL[:：\s]*([<>]?\s*[\d\.]+)/i);
+    const aiM = assessment.match(/\bAI[:：\s]*([<>]?\s*[\d\.]+)/i);
+    const rchdM = assessment.match(/(?:R-?CHD|CHD)[:：\s]*([<>]?\s*[\d\.]+)/i);
 
-    const tc = tcM ? parseFloat(tcM[1]) : null;
-    const tg = tgM ? parseFloat(tgM[1]) : null;
-    const hdl = hdlM ? parseFloat(hdlM[1]) : null;
-    const ldl = ldlM ? parseFloat(ldlM[1]) : null;
-    let ai = aiM ? parseFloat(aiM[1]) : null;
-    let rChd = rchdM ? parseFloat(rchdM[1]) : null;
-    if (!ai && tc && hdl) ai = +((tc - hdl) / hdl).toFixed(2);
-    if (!rChd && tc && hdl) rChd = +(tc / hdl).toFixed(2);
+    const tc = tcM ? (tcM[1].includes('<') || tcM[1].includes('>') ? tcM[1].trim() : parseFloat(tcM[1])) : null;
+    const tg = tgM ? (tgM[1].includes('<') || tgM[1].includes('>') ? tgM[1].trim() : parseFloat(tgM[1])) : null;
+    const hdl = hdlM ? (hdlM[1].includes('<') || hdlM[1].includes('>') ? hdlM[1].trim() : parseFloat(hdlM[1])) : null;
+    const ldl = ldlM ? (ldlM[1].includes('<') || ldlM[1].includes('>') ? ldlM[1].trim() : parseFloat(ldlM[1])) : null;
+    let ai = aiM ? (aiM[1].includes('<') || aiM[1].includes('>') ? aiM[1].trim() : parseFloat(aiM[1])) : null;
+    let rChd = rchdM ? (rchdM[1].includes('<') || rchdM[1].includes('>') ? rchdM[1].trim() : parseFloat(rchdM[1])) : null;
+    const numTc = extractNumericVal(tc);
+    const numHdl = extractNumericVal(hdl);
+    if (!ai && numTc && numHdl) ai = +((numTc - numHdl) / numHdl).toFixed(2);
+    if (!rChd && numTc && numHdl) rChd = +(numTc / numHdl).toFixed(2);
 
     // Extract Glycemic
-    const gluM = assessment.match(/(?:Glu|Fbg|Glucose)[:：\s]*([\d\.]+)/i);
-    const glucose = gluM ? parseFloat(gluM[1]) : null;
+    const gluM = assessment.match(/(?:Glu|Fbg|Glucose)[:：\s]*([<>]?\s*[\d\.]+)/i);
+    const glucose = gluM ? (gluM[1].includes('<') || gluM[1].includes('>') ? gluM[1].trim() : parseFloat(gluM[1])) : null;
+
+    // Extract Kidney (Uric Acid, Creatinine, Urea)
+    const uaM = assessment.match(/(?:UA|Uric Acid)[:：\s]*([<>]?\s*[\d\.]+)/i);
+    const ua = uaM ? (uaM[1].includes('<') || uaM[1].includes('>') ? uaM[1].trim() : parseFloat(uaM[1])) : null;
 
     // Extract Liver
-    const altM = assessment.match(/\bALT[:：\s]*([\d\.]+)/i);
-    const astM = assessment.match(/\bAST[:：\s]*([\d\.]+)/i);
-    const albM = assessment.match(/\bALB[:：\s]*([\d\.]+)/i);
+    const altM = assessment.match(/\bALT[:：\s]*([<>]?\s*[\d\.]+)/i);
+    const astM = assessment.match(/\bAST[:：\s]*([<>]?\s*[\d\.]+)/i);
+    const albM = assessment.match(/\bALB[:：\s]*([<>]?\s*[\d\.]+)/i);
+    const alt = altM ? (altM[1].includes('<') || altM[1].includes('>') ? altM[1].trim() : parseFloat(altM[1])) : null;
+    const ast = astM ? (astM[1].includes('<') || astM[1].includes('>') ? astM[1].trim() : parseFloat(astM[1])) : null;
+    const alb = albM ? (albM[1].includes('<') || albM[1].includes('>') ? albM[1].trim() : parseFloat(albM[1])) : null;
 
     // Extract Body Composition
     const fatPctM = assessment.match(/\bFat%?[:：\s]*([\d\.]+)%/i);
