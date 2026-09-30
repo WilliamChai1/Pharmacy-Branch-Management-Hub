@@ -85,7 +85,7 @@
       this.lastKnownModified = 0;
       this.isSyncing = false;
       this.watcherInterval = null;
-      this.autoSyncSeconds = 30;
+      this.autoSyncSeconds = 60;
       this.initDone = false;
     }
 
@@ -353,18 +353,21 @@
 
       if (this.mode === 'PARENT') {
         if (this.branchSubHandles[targetName]) {
+          this._cleanupConflictFiles(this.branchSubHandles[targetName]).catch(() => {});
           return this.branchSubHandles[targetName];
         }
         // Try creating or getting subfolder if permitted
         try {
           const sub = await this.rootHandle.getDirectoryHandle(targetName, { create: true });
           this.branchSubHandles[targetName] = sub;
+          this._cleanupConflictFiles(sub).catch(() => {});
           return sub;
         } catch (err) {
           console.warn(`[PMG OneDrive Sync] Could not access subfolder ${targetName}:`, err.message || err);
           return null;
         }
       } else if (this.mode === 'BRANCH') {
+        this._cleanupConflictFiles(this.rootHandle).catch(() => {});
         return this.rootHandle;
       }
       return null;
@@ -446,22 +449,31 @@
           }
 
           // Step E: Write merged branch records back to OneDrive patients_master.json
-          const syncPayload = {
-            branch: branchName,
-            lastSync: nowIso,
-            syncedBy: session?.displayName || 'Pharmacist',
-            device: navigator.userAgent.includes('Edg') ? 'Edge Windows' : 'Chrome Windows',
-            count: mergedBranchPatients.length,
-            patients: mergedBranchPatients
-          };
+          // SMART WRITE GUARD: Only write if there are actual new/modified patient records
+          const needsPatientWrite = (cloudPatients.length === 0 && mergedBranchPatients.length > 0) ||
+                                    !this._arePatientArraysEqual(mergedBranchPatients, cloudPatients);
 
-          const fileHandle = await dirHandle.getFileHandle('patients_master.json', { create: true });
-          const writable = await fileHandle.createWritable();
-          await writable.write(JSON.stringify(syncPayload, null, 2));
-          await writable.close();
+          if (needsPatientWrite) {
+            const syncPayload = {
+              branch: branchName,
+              lastSync: nowIso,
+              syncedBy: session?.displayName || 'Pharmacist',
+              device: navigator.userAgent.includes('Edg') ? 'Edge Windows' : 'Chrome Windows',
+              count: mergedBranchPatients.length,
+              patients: mergedBranchPatients
+            };
 
-          const writtenFile = await fileHandle.getFile();
-          this.lastKnownModified = writtenFile.lastModified;
+            const fileHandle = await dirHandle.getFileHandle('patients_master.json', { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(JSON.stringify(syncPayload, null, 2));
+            await writable.close();
+
+            const writtenFile = await fileHandle.getFile();
+            this.lastKnownModified = writtenFile.lastModified;
+            console.log(`[PMG OneDrive Sync] manualSync: Saved ${mergedBranchPatients.length} patient records to ${branchName}`);
+          } else {
+            console.log(`[PMG OneDrive Sync] manualSync: Skipped writing patients_master.json for ${branchName} (Data is identical)`);
+          }
 
           // Step F: Bidirectional sync of schedule_settings.json (working hours & overrides)
           try {
@@ -788,6 +800,15 @@
           if (typeof PATIENTS_STORAGE_KEY !== 'undefined') {
             localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
           }
+        }
+
+        // SMART WRITE GUARD: If cloud already has data and records are 100% equal, skip disk write
+        if (cloudPatients.length > 0 && this._arePatientArraysEqual(mergedBranchPatients, cloudPatients)) {
+          console.log(`[PMG OneDrive Sync] saveToOneDrive: Skipped disk write for ${targetBranch} (Data is identical)`);
+          const timeStr = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+          this._updateBadge('CONNECTED', `OneDrive: Synced ${timeStr} (${targetBranch})`);
+          this._cleanupConflictFiles(dirHandle).catch(() => {});
+          return true;
         }
 
         const syncPayload = {
@@ -1214,18 +1235,35 @@
             expDir = await this.rootHandle.getDirectoryHandle('EXPIRY_BACKUP', { create: true });
           } catch (_) { expDir = this.rootHandle; }
 
-          const masterPayload = {
-            title: 'PMG 7-Branch Stock Expiry Master Database',
-            lastUpdated: nowIso,
-            updatedBy: updatedBy,
-            totalRecords: localItems.length,
-            items: localItems
-          };
+          let masterNeedsWrite = true;
+          try {
+            const exMasterFh = await expDir.getFileHandle('stock_expiry_master.json', { create: false });
+            const exMasterFile = await exMasterFh.getFile();
+            const exMasterText = await exMasterFile.text();
+            if (exMasterText && exMasterText.trim()) {
+              const exParsed = JSON.parse(exMasterText);
+              const exItems = Array.isArray(exParsed.items) ? exParsed.items : (Array.isArray(exParsed) ? exParsed : []);
+              if (this._areExpiryArraysEqual(localItems, exItems)) {
+                masterNeedsWrite = false;
+              }
+            }
+          } catch (_) {}
 
-          const expHandle = await expDir.getFileHandle('stock_expiry_master.json', { create: true });
-          const expW = await expHandle.createWritable();
-          await expW.write(JSON.stringify(masterPayload, null, 2));
-          await expW.close();
+          if (masterNeedsWrite) {
+            const masterPayload = {
+              title: 'PMG 7-Branch Stock Expiry Master Database',
+              lastUpdated: nowIso,
+              updatedBy: updatedBy,
+              totalRecords: localItems.length,
+              items: localItems
+            };
+
+            const expHandle = await expDir.getFileHandle('stock_expiry_master.json', { create: true });
+            const expW = await expHandle.createWritable();
+            await expW.write(JSON.stringify(masterPayload, null, 2));
+            await expW.close();
+            console.log(`[PMG OneDrive Sync] Saved stock_expiry_master.json (${localItems.length} records)`);
+          }
 
           // B: Save partitioned branch files under each branch folder: [BRANCH]/EXPIRY/stock_expiry.json
           const branchesToProcess = targetBranchName ? [targetBranchName] : KNOWN_BRANCH_FOLDERS;
@@ -1239,29 +1277,47 @@
               try {
                 bExpDir = await dirHandle.getDirectoryHandle('EXPIRY', { create: true });
               } catch (_) { bExpDir = dirHandle; }
+              this._cleanupConflictFiles(bExpDir).catch(() => {});
 
               const bItems = localItems.filter(it => {
                 const itB = (it.branch || '').trim().toUpperCase();
                 return itB === canonical || (BRANCH_FOLDER_MAP[itB] === canonical);
               });
 
-              const bPayload = {
-                branch: canonical,
-                lastUpdated: nowIso,
-                updatedBy: updatedBy,
-                totalRecords: bItems.length,
-                items: bItems
-              };
+              let branchNeedsWrite = true;
+              try {
+                const exFh = await bExpDir.getFileHandle('stock_expiry.json', { create: false });
+                const exF = await exFh.getFile();
+                const exT = await exF.text();
+                if (exT && exT.trim()) {
+                  const exP = JSON.parse(exT);
+                  const exItems = Array.isArray(exP.items) ? exP.items : (Array.isArray(exP) ? exP : []);
+                  if (this._areExpiryArraysEqual(bItems, exItems)) {
+                    branchNeedsWrite = false;
+                  }
+                }
+              } catch (_) {}
 
-              const fh1 = await bExpDir.getFileHandle(`stock_expiry_${canonical.replace(/\s+/g, '_')}.json`, { create: true });
-              const w1 = await fh1.createWritable();
-              await w1.write(JSON.stringify(bPayload, null, 2));
-              await w1.close();
+              if (branchNeedsWrite) {
+                const bPayload = {
+                  branch: canonical,
+                  lastUpdated: nowIso,
+                  updatedBy: updatedBy,
+                  totalRecords: bItems.length,
+                  items: bItems
+                };
 
-              const fhStd = await bExpDir.getFileHandle('stock_expiry.json', { create: true });
-              const wStd = await fhStd.createWritable();
-              await wStd.write(JSON.stringify(bPayload, null, 2));
-              await wStd.close();
+                const fh1 = await bExpDir.getFileHandle(`stock_expiry_${canonical.replace(/\s+/g, '_')}.json`, { create: true });
+                const w1 = await fh1.createWritable();
+                await w1.write(JSON.stringify(bPayload, null, 2));
+                await w1.close();
+
+                const fhStd = await bExpDir.getFileHandle('stock_expiry.json', { create: true });
+                const wStd = await fhStd.createWritable();
+                await wStd.write(JSON.stringify(bPayload, null, 2));
+                await wStd.close();
+                console.log(`[PMG OneDrive Sync] Saved branch expiry for ${canonical} (${bItems.length} records)`);
+              }
             } catch (bErr) {
               console.warn(`[PMG OneDrive Sync] Branch expiry write notice for ${canonical}:`, bErr);
             }
@@ -1273,39 +1329,41 @@
           try {
             bExpDir = await this.rootHandle.getDirectoryHandle('EXPIRY', { create: true });
           } catch (_) { bExpDir = this.rootHandle; }
+          this._cleanupConflictFiles(bExpDir).catch(() => {});
 
-          const bPayload = {
-            branch: bFolder,
-            lastUpdated: nowIso,
-            updatedBy: updatedBy,
-            totalRecords: localItems.length,
-            items: localItems
-          };
-
-          const fh1 = await bExpDir.getFileHandle(`stock_expiry_${bFolder.replace(/\s+/g, '_')}.json`, { create: true });
-          const w1 = await fh1.createWritable();
-          await w1.write(JSON.stringify(bPayload, null, 2));
-          await w1.close();
-
-          const fhStd = await bExpDir.getFileHandle('stock_expiry.json', { create: true });
-          const wStd = await fhStd.createWritable();
-          await wStd.write(JSON.stringify(bPayload, null, 2));
-          await wStd.close();
-
-          // Also save stock_expiry_master.json in root or EXPIRY_BACKUP if present
+          let branchNeedsWrite = true;
           try {
-            const expBak = await this.rootHandle.getDirectoryHandle('EXPIRY_BACKUP', { create: true });
-            const mb = await expBak.getFileHandle('stock_expiry_master.json', { create: true });
-            const mw = await mb.createWritable();
-            await mw.write(JSON.stringify(bPayload, null, 2));
-            await mw.close();
-          } catch (_) {
-            try {
-              const rootMb = await this.rootHandle.getFileHandle('stock_expiry_master.json', { create: true });
-              const rw = await rootMb.createWritable();
-              await rw.write(JSON.stringify(bPayload, null, 2));
-              await rw.close();
-            } catch (_) {}
+            const exFh = await bExpDir.getFileHandle('stock_expiry.json', { create: false });
+            const exF = await exFh.getFile();
+            const exT = await exF.text();
+            if (exT && exT.trim()) {
+              const exP = JSON.parse(exT);
+              const exItems = Array.isArray(exP.items) ? exP.items : (Array.isArray(exP) ? exP : []);
+              if (this._areExpiryArraysEqual(localItems, exItems)) {
+                branchNeedsWrite = false;
+              }
+            }
+          } catch (_) {}
+
+          if (branchNeedsWrite) {
+            const bPayload = {
+              branch: bFolder,
+              lastUpdated: nowIso,
+              updatedBy: updatedBy,
+              totalRecords: localItems.length,
+              items: localItems
+            };
+
+            const fh1 = await bExpDir.getFileHandle(`stock_expiry_${bFolder.replace(/\s+/g, '_')}.json`, { create: true });
+            const w1 = await fh1.createWritable();
+            await w1.write(JSON.stringify(bPayload, null, 2));
+            await w1.close();
+
+            const fhStd = await bExpDir.getFileHandle('stock_expiry.json', { create: true });
+            const wStd = await fhStd.createWritable();
+            await wStd.write(JSON.stringify(bPayload, null, 2));
+            await wStd.close();
+            console.log(`[PMG OneDrive Sync] Saved branch expiry for ${bFolder} (${localItems.length} records)`);
           }
         }
 
@@ -1479,10 +1537,13 @@
           showExpiryToast(`🔄 OneDrive Expiry Synced (${merged.length} items)`);
         }
 
-        // Write the merged result back so cloud is also up-to-date
-        const writePerm = await this._verifyPermission(this.rootHandle, true, false);
-        if (writePerm) {
-          await this.saveStockExpiryToOneDrive();
+        // Write the merged result back ONLY IF local had modifications that cloud didn't have!
+        const hasLocalModifications = !this._areExpiryArraysEqual(merged, cloudItems);
+        if (hasLocalModifications) {
+          const writePerm = await this._verifyPermission(this.rootHandle, true, false);
+          if (writePerm) {
+            await this.saveStockExpiryToOneDrive();
+          }
         }
 
         return true;
@@ -1575,13 +1636,12 @@
 
       try {
         let fileHandle;
+        this._cleanupConflictFiles(dirHandle).catch(() => {});
+
         try {
           fileHandle = await dirHandle.getFileHandle('patients_master.json', { create: false });
         } catch (e) {
-          // File does not exist yet on OneDrive. If we have local data, write it!
-          if (typeof patientsData !== 'undefined' && patientsData.length > 0) {
-            await this.saveToOneDrive(patientsData);
-          }
+          // File does not exist yet or is being synced by OneDrive. Background watcher is strictly read-only!
           return false;
         }
 
@@ -1720,11 +1780,112 @@
       return Array.from(map.values());
     }
 
+    // ─── CONFLICT-PREVENTION DIRTY-CHECKING HELPERS ─────────────────────────
+    _arePatientArraysEqual(arrA, arrB) {
+      if (!Array.isArray(arrA) || !Array.isArray(arrB)) return false;
+      if (arrA.length !== arrB.length) return false;
+      if (arrA.length === 0 && arrB.length === 0) return true;
+
+      const mapB = new Map();
+      for (const b of arrB) {
+        if (b && b.id) mapB.set(b.id, b);
+      }
+      if (mapB.size !== arrA.length) return false;
+
+      // Recursive helper to normalize object key order so property permutation doesn't cause false negatives
+      const normalize = (obj) => {
+        if (obj === null || typeof obj !== 'object') return obj;
+        if (Array.isArray(obj)) return obj.map(normalize);
+        const sorted = {};
+        Object.keys(obj).sort().forEach(k => {
+          sorted[k] = normalize(obj[k]);
+        });
+        return sorted;
+      };
+
+      for (const a of arrA) {
+        if (!a || !a.id) return false;
+        const b = mapB.get(a.id);
+        if (!b) return false;
+
+        // Fast field checks
+        if (a.name !== b.name || a.phone !== b.phone || a.ic !== b.ic || a.gender !== b.gender) return false;
+        if (a.nextTcaDate !== b.nextTcaDate || a.nextTcaPurpose !== b.nextTcaPurpose) return false;
+        if (a.allergies !== b.allergies || a.notes !== b.notes) return false;
+
+        // Sub-array lengths
+        if ((a.encounters?.length || 0) !== (b.encounters?.length || 0)) return false;
+        if ((a.appointments?.length || 0) !== (b.appointments?.length || 0)) return false;
+        if ((a.medications?.length || 0) !== (b.medications?.length || 0)) return false;
+
+        // Deep normalized JSON comparison
+        if (JSON.stringify(normalize(a)) !== JSON.stringify(normalize(b))) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    _areExpiryArraysEqual(arrA, arrB) {
+      if (!Array.isArray(arrA) || !Array.isArray(arrB)) return false;
+      if (arrA.length !== arrB.length) return false;
+      if (arrA.length === 0 && arrB.length === 0) return true;
+
+      const getKey = (it) => {
+        return it.rowId || `${it.itemCode || ''}|${it.batchNumber || ''}|${it.expiryDate || ''}|${it.branch || ''}`;
+      };
+
+      const mapB = new Map();
+      for (const b of arrB) {
+        if (b) mapB.set(String(getKey(b)), b);
+      }
+      if (mapB.size !== arrA.length) return false;
+
+      for (const a of arrA) {
+        if (!a) return false;
+        const b = mapB.get(String(getKey(a)));
+        if (!b) return false;
+
+        if (a.status !== b.status) return false;
+        if (!!a.cleared !== !!b.cleared) return false;
+        if (a.quantity !== b.quantity) return false;
+        if (a.expiryDate !== b.expiryDate) return false;
+        if (a.batchNumber !== b.batchNumber) return false;
+        if (a.actionPlan !== b.actionPlan) return false;
+        if (a.clearancePrice !== b.clearancePrice) return false;
+        if (a.remarks !== b.remarks) return false;
+      }
+      return true;
+    }
+
+    async _cleanupConflictFiles(dirHandle) {
+      if (!dirHandle || typeof dirHandle.entries !== 'function') return;
+      try {
+        const toDelete = [];
+        for await (const [name, entry] of dirHandle.entries()) {
+          if (entry.kind === 'file') {
+            if (/-(William-Chai|KOTASENTOSAPIPC1|PQ0147MI-CP004)(-\d+)?\.json$/i.test(name) ||
+                /^(patients_master|stock_expiry|returns_credit_notes|schedule_settings)-.+\.json$/i.test(name)) {
+              toDelete.push(name);
+            }
+          }
+        }
+        for (const fname of toDelete) {
+          try {
+            await dirHandle.removeEntry(fname);
+            console.log(`[PMG OneDrive Sync] 🧹 Auto-cleaned conflict duplicate: ${fname}`);
+          } catch (_) {}
+        }
+      } catch (err) {
+        // Silently skip if cannot iterate
+      }
+    }
+
     // ─── BACKGROUND LIVE WATCHER ─────────────────────────────────────────────
     _startBackgroundWatcher() {
       if (this.watcherInterval) clearInterval(this.watcherInterval);
 
-      // Periodic check every 30 seconds
+      // Periodic check every 60 seconds
       this.watcherInterval = setInterval(() => {
         if (!document.hidden) {
           this.syncWithOneDriveFolder(false);
