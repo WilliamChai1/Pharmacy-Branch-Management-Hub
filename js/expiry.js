@@ -481,7 +481,22 @@ function mergeExpiryDatasets(localList, remoteList) {
       const locTs = loc.lastUpdated ? new Date(loc.lastUpdated).getTime() : 0;
       const remTs = rem.lastUpdated ? new Date(rem.lastUpdated).getTime() : 0;
 
-      if (remTs > locTs) {
+      // CRITICAL: If local is Cleared, ALWAYS preserve it — even if remote is newer.
+      // This prevents the background Sheets sync from reverting a just-cleared item.
+      if (loc.status === 'Cleared' && rem.status !== 'Cleared') {
+        // Local cleared state wins. Keep local as-is.
+      } else if (rem.status === 'Cleared' && loc.status !== 'Cleared') {
+        // Remote cleared takes priority over local Active
+        map.set(key, {
+          ...loc,
+          status: 'Cleared',
+          quantity: 0,
+          clearedAt: rem.clearedAt || rem.lastUpdated,
+          lastUpdated: rem.lastUpdated || loc.lastUpdated,
+          updatedBy: rem.updatedBy || loc.updatedBy,
+          rowId: loc.rowId || rem.rowId
+        });
+      } else if (remTs > locTs) {
         // Remote is strictly newer: adopt remote fields
         map.set(key, {
           ...loc,
@@ -491,22 +506,10 @@ function mergeExpiryDatasets(localList, remoteList) {
       } else if (locTs > remTs) {
         // Local is strictly newer: retain local
       } else {
-        // Timestamps are equal or absent
-        // Critical Clearance Rule: If either is Cleared, Cleared wins over default Active!
-        if (rem.status === 'Cleared' && loc.status !== 'Cleared') {
-          loc.status = 'Cleared';
-          loc.quantity = 0;
-          if (rem.clearedAt) loc.clearedAt = rem.clearedAt;
-          if (rem.lastUpdated) loc.lastUpdated = rem.lastUpdated;
-          if (rem.updatedBy) loc.updatedBy = rem.updatedBy;
-        } else if (loc.status === 'Cleared') {
-          // Local is already cleared: keep cleared
-        } else {
-          // Both active: merge non-empty values
-          if (rem.quantity !== undefined && loc.quantity === undefined) loc.quantity = rem.quantity;
-          if (rem.expiryDate && !loc.expiryDate) loc.expiryDate = rem.expiryDate;
-          if (rem.batchNumber && (!loc.batchNumber || loc.batchNumber === 'N/A')) loc.batchNumber = rem.batchNumber;
-        }
+        // Timestamps are equal or absent — merge non-empty values
+        if (rem.quantity !== undefined && loc.quantity === undefined) loc.quantity = rem.quantity;
+        if (rem.expiryDate && !loc.expiryDate) loc.expiryDate = rem.expiryDate;
+        if (rem.batchNumber && (!loc.batchNumber || loc.batchNumber === 'N/A')) loc.batchNumber = rem.batchNumber;
       }
     }
   });

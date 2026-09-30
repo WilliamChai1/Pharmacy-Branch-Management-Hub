@@ -1240,6 +1240,11 @@
               title="Download standardized price directive memo for all 7 branch managers">
               <i class="fa-solid fa-file-export"></i> Export Memo
             </button>
+            <button type="button" onclick="window.pmgPricing && window.pmgPricing.exportPriceChangedSkus()"
+              class="bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-2xs"
+              title="Export only the items whose price or cost was changed — includes previous vs new price, change amount, and timestamp">
+              <i class="fa-solid fa-arrow-right-arrow-left"></i> Export Changed Prices
+            </button>
             <button type="button" onclick="window.pmgPricing.clearAllSkus()"
               class="text-rose-600 hover:bg-rose-50 text-xs px-2.5 py-1.5 rounded border border-rose-300 font-semibold transition"
               title="Clear all SKUs in Pricing Matrix to start fresh">

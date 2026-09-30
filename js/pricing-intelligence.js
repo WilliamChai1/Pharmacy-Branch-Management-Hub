@@ -1127,9 +1127,14 @@
       if (isNaN(parsedSp) || parsedSp < 0) return;
       const sku = this.skus.find(s => s.id === skuId);
       if (sku) {
+        const prev = parseFloat(sku.standardSp) || 0;
+        if (Math.abs(parsedSp - prev) < 0.001) return; // No real change
+        if (!sku.originalSp) sku.originalSp = prev; // First change: preserve original
+        sku.previousSp = prev;
         sku.standardSp = parsedSp;
         sku.currentBranchSp = parsedSp;
         sku.customModified = true;
+        sku.priceChangedAt = new Date().toISOString();
         this.saveSkusToStorage();
         this.renderSummaryCards();
         this.renderTableOnly();
@@ -1141,8 +1146,12 @@
       if (isNaN(parsedCost) || parsedCost < 0) return;
       const sku = this.skus.find(s => s.id === skuId);
       if (sku) {
+        const prev = parseFloat(sku.costPrice) || 0;
+        if (!sku.originalCost) sku.originalCost = prev;
+        sku.previousCost = prev;
         sku.costPrice = parsedCost;
         sku.customModified = true;
+        sku.priceChangedAt = new Date().toISOString();
         this.saveSkusToStorage();
         this.renderSummaryCards();
         this.renderTableOnly();
@@ -2818,6 +2827,95 @@ Respond STRICTLY with a valid JSON array of objects with no extraneous markdown 
         a.href = url;
         a.download = `PMG_7_Branches_Standardized_Pricing_Memo.txt`;
         a.click();
+      }
+    }
+
+    // ─── EXPORT PRICE-CHANGED SKUS ─────────────────────────────────────────────
+    exportPriceChangedSkus() {
+      const changed = this.skus.filter(s => s.customModified && (s.previousSp !== undefined || s.previousCost !== undefined));
+
+      if (changed.length === 0) {
+        alert('No price changes recorded yet.\n\nEdit any "Member SP" or "Custom Cost" field in the Price Matrix to start tracking changes. Then use this button to export a change log.');
+        return;
+      }
+
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('en-GB');
+      const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+      let csv = `PMG PHARMACY — PRICE CHANGE LOG\n`;
+      csv += `Exported by: Area Manager William Chai | Date: ${dateStr} ${timeStr}\n`;
+      csv += `Total Changed Items: ${changed.length}\n\n`;
+      csv += `"Item Code","Description","Brand","Category","Supplier","Previous SP (RM)","New SP (RM)","SP Change (RM)","SP Change (%)","Previous Cost (RM)","New Cost (RM)","Cost Change (RM)","New Margin (%)","Old Margin (%)","Changed At"\n`;
+
+      changed.forEach(s => {
+        const escapeCsv = (v) => `"${String(v || '').replace(/"/g, '""')}"`;
+
+        const prevSp = s.previousSp !== undefined ? parseFloat(s.previousSp) : parseFloat(s.standardSp);
+        const newSp = parseFloat(s.standardSp) || 0;
+        const spChange = (newSp - prevSp).toFixed(2);
+        const spPct = prevSp > 0 ? (((newSp - prevSp) / prevSp) * 100).toFixed(1) + '%' : 'N/A';
+
+        const prevCost = s.previousCost !== undefined ? parseFloat(s.previousCost) : parseFloat(s.costPrice);
+        const newCost = parseFloat(s.costPrice) || 0;
+        const costChange = (newCost - prevCost).toFixed(2);
+
+        const newMargin = newSp > 0 ? (((newSp - newCost) / newSp) * 100).toFixed(1) + '%' : 'N/A';
+        const oldMargin = prevSp > 0 ? (((prevSp - prevCost) / prevSp) * 100).toFixed(1) + '%' : 'N/A';
+
+        const changedAt = s.priceChangedAt
+          ? new Date(s.priceChangedAt).toLocaleString('en-GB')
+          : dateStr;
+
+        csv += [
+          escapeCsv(s.code),
+          escapeCsv(s.name),
+          escapeCsv(s.brand),
+          escapeCsv(s.category),
+          escapeCsv(s.supplier),
+          prevSp.toFixed(2),
+          newSp.toFixed(2),
+          (parseFloat(spChange) >= 0 ? '+' : '') + spChange,
+          (parseFloat(spChange) >= 0 ? '+' : '') + spPct,
+          prevCost.toFixed(2),
+          newCost.toFixed(2),
+          (parseFloat(costChange) >= 0 ? '+' : '') + costChange,
+          newMargin,
+          oldMargin,
+          escapeCsv(changedAt)
+        ].join(',') + '\n';
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const filename = `PMG_Price_Change_Log_${now.toISOString().slice(0, 10)}.csv`;
+      if (window.saveAs) {
+        window.saveAs(blob, filename);
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+      }
+
+      if (typeof showExpiryToast === 'function') {
+        showExpiryToast(`✅ Exported ${changed.length} price-changed SKUs to CSV.`);
+      }
+    }
+
+    clearPriceChangelog() {
+      if (!confirm(`Clear price change history for all ${this.skus.filter(s => s.customModified && (s.previousSp !== undefined || s.previousCost !== undefined)).length} modified SKUs? (Export first if you need the log!)`)) return;
+      this.skus.forEach(s => {
+        delete s.previousSp;
+        delete s.originalSp;
+        delete s.previousCost;
+        delete s.originalCost;
+        delete s.priceChangedAt;
+      });
+      this.saveSkusToStorage();
+      this.renderTableOnly();
+      if (typeof showExpiryToast === 'function') {
+        showExpiryToast('Price change history cleared.');
       }
     }
   }
