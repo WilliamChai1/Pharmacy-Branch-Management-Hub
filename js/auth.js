@@ -22,7 +22,7 @@ function clearSession() {
 // ─── ROLE-BASED UI CONTROL ────────────────────────────────────────────────────
 function applyRoleUI(session) {
   const role = session.role;
-  const isAM = role === 'AM';
+  const isAuthorized = role === 'AM' || role === 'PIC' || role === 'Pharmacist' || role === 'BM';
 
   // Show / hide tabs based on role
   const tabAudit = document.getElementById('tab-audit');
@@ -32,74 +32,43 @@ function applyRoleUI(session) {
   const headerBranchSelector = document.getElementById('branchSelector');
   const amBadge = document.getElementById('amBranchSwitcher');
 
-  if (tabAudit) tabAudit.style.display = isAM ? '' : 'none';
-  if (auditContent && !isAM) auditContent.classList.add('hidden');
-  if (tabPatient) tabPatient.style.display = isAM ? '' : 'none';
-  if (patientContent && !isAM) patientContent.classList.add('hidden');
-  if (headerBranchSelector) headerBranchSelector.style.display = isAM ? '' : 'none';
-  if (amBadge) amBadge.style.display = isAM ? '' : 'none';
-
-  // Populate branch selector for AM
-  if (isAM && headerBranchSelector) {
-    headerBranchSelector.innerHTML = '<option value="">All Branches</option>';
-    BRANCHES.forEach(b => {
-      const opt = document.createElement('option');
-      opt.value = b.code;
-      opt.textContent = (b.code && b.code !== b.name && b.code.length <= 5) ? `${b.code} – ${b.name}` : b.name;
-      headerBranchSelector.appendChild(opt);
-    });
-
-    const savedGlobalBranch = localStorage.getItem('pmg_global_branch');
-    if (savedGlobalBranch) {
-      headerBranchSelector.value = savedGlobalBranch;
-    }
-
-    headerBranchSelector.onchange = (e) => {
-      setGlobalActiveBranch(e.target.value);
-    };
-  }
+  if (tabAudit) tabAudit.style.display = isAuthorized ? '' : 'none';
+  if (auditContent && !isAuthorized) auditContent.classList.add('hidden');
+  if (tabPatient) tabPatient.style.display = isAuthorized ? '' : 'none';
+  if (patientContent && !isAuthorized) patientContent.classList.add('hidden');
+  if (headerBranchSelector) headerBranchSelector.style.display = 'none'; // strictly Kota Sentosa
+  if (amBadge) amBadge.style.display = 'none';
 
   // Update header user display
   const userSpan = document.getElementById('loggedInUser');
   if (userSpan) {
-    const branchLabel = session.branch === 'ALL' ? 'All Branches' : session.branch;
-    userSpan.textContent = `${session.displayName} · ${branchLabel} · ${role}`;
+    const roleLabel = session.role === 'PIC' ? 'Pharmacist-in-Charge' : (session.role === 'AM' ? 'Branch In-Charge' : session.role);
+    userSpan.textContent = `${session.displayName} · Kota Sentosa · ${roleLabel}`;
   }
 
   // Update active branch badge in roster module
   const badge = document.getElementById('activeBranchBadge');
   if (badge) {
-    badge.textContent = session.branch === 'ALL' ? 'Area Manager – All Branches' : session.branch;
+    badge.textContent = 'PMG Kota Sentosa';
   }
 
   // Pre-fill roster branch input
   const rosterBranchInput = document.getElementById('rosterBranchCode');
-  if (rosterBranchInput && session.branch !== 'ALL') {
-    const bObj = BRANCHES.find(b => b.name === session.branch || b.code === session.branch);
-    if (bObj) rosterBranchInput.value = bObj.code;
+  if (rosterBranchInput) {
+    rosterBranchInput.value = 'KS01';
   }
 
   // Pre-fill stock expiry branch filter
   const expBranchFilter = document.getElementById('expiryBranchFilter');
   if (expBranchFilter) {
-    if (session.branch && session.branch !== 'ALL') {
-      expBranchFilter.value = session.branch;
-      expBranchFilter.disabled = true;
-      if (typeof activeExpiryFilter !== 'undefined') {
-        activeExpiryFilter.branch = session.branch;
-      }
-    } else {
-      expBranchFilter.disabled = false;
+    expBranchFilter.value = 'Kota Sentosa';
+    if (typeof activeExpiryFilter !== 'undefined') {
+      activeExpiryFilter.branch = 'Kota Sentosa';
     }
   }
 
-  // Apply saved global branch if AM
-  if (isAM) {
-    const saved = localStorage.getItem('pmg_global_branch');
-    if (saved) {
-      setTimeout(() => setGlobalActiveBranch(saved), 300);
-    }
-  }
+  // Always ensure Kota Sentosa is the active branch
+  setGlobalActiveBranch('KS01');
 }
 
 // ─── GLOBAL ACTIVE BRANCH SYNCHRONIZATION ────────────────────────────────────
@@ -239,9 +208,9 @@ async function login() {
           matchedUser = {
             username:    u.username,
             displayName: u.name || u.username,
-            branch:      (u.branch && u.branch.toUpperCase() !== 'ALL') ? u.branch : 'ALL',
-            role:        'AM',
-            position:    'Area Manager',
+            branch:      'Kota Sentosa',
+            role:        'PIC',
+            position:    'Pharmacist-in-Charge',
             empId:       u.empId || '',
           };
         } else if (roleLower.includes('manager') || roleLower === 'bm' || roleLower === 'abm') {
@@ -304,9 +273,8 @@ async function login() {
         return;
       }
 
-      const isAM = roleLower === 'am' ||
+      const isWilliam = roleLower === 'am' ||
                    roleLower === 'area manager' ||
-                   found.branch === 'ALL' ||
                    found.username.toLowerCase() === 'williamchai' ||
                    found.username.toLowerCase() === 'am';
 
@@ -316,9 +284,9 @@ async function login() {
       matchedUser = {
         username:    found.username,
         displayName: found.displayName || found.username,
-        branch:      found.branch || (isAM ? 'ALL' : 'Kota Sentosa'),
-        role:        isAM ? 'AM' : (isPharm ? 'Pharmacist' : 'BM'),
-        position:    rawRole || (isAM ? 'Area Manager' : (isPharm ? 'Pharmacist' : 'Branch Manager')),
+        branch:      'Kota Sentosa',
+        role:        isWilliam ? 'PIC' : (isPharm ? 'Pharmacist' : 'BM'),
+        position:    isWilliam ? 'Pharmacist-in-Charge' : (rawRole || (isPharm ? 'Pharmacist' : 'Branch Manager')),
         empId:       found.empNo || '',
       };
     }

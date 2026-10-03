@@ -69,12 +69,12 @@ const SPM_GRADES = ['A+', 'A', 'A-', 'B+', 'B', 'C+', 'C', 'D', 'E', 'G', 'TH'];
 
 function createSpmRowHtml(subject = '', grade = '') {
   return `
-    <div class="spm-subject-row flex items-center gap-2 bg-white p-1.5 rounded-lg border border-gray-200 shadow-2xs">
+    <div class="spm-subject-row flex items-center gap-2 bg-white p-1.5 rounded-lg border border-gray-300 shadow-2xs">
       <input type="text" name="spmSubject" value="${sanitize(subject)}" placeholder="e.g. Fizik / Prinsip Perakaunan"
-        class="text-xs min-w-0 flex-1"
-        style="border:1px solid #d1d5db; border-radius:.5rem; padding:.45rem .7rem; font-size:.8rem; color:#111827; background:#fff; outline:none; transition:box-shadow .15s;"
+        class="text-xs min-w-0 flex-1 font-semibold"
+        style="border:1px solid #9ca3af; border-radius:.5rem; padding:.5rem .75rem; font-size:.85rem; font-weight:600; color:#111827 !important; background:#ffffff !important; outline:none; -webkit-text-fill-color:#111827 !important; transition:box-shadow .15s;"
         onfocus="this.style.boxShadow='0 0 0 2px #3b82f6'; this.style.borderColor='#3b82f6';"
-        onblur="this.style.boxShadow=''; this.style.borderColor='#d1d5db';">
+        onblur="this.style.boxShadow=''; this.style.borderColor='#9ca3af';">
       <select name="spmGrade" class="rec-input text-xs font-bold font-mono w-28 bg-slate-50 border-gray-300" style="width:7rem;flex-shrink:0;">
         <option value="">-- Grade --</option>
         ${SPM_GRADES.map(g => `<option value="${g}" ${g === grade ? 'selected' : ''}>${g}</option>`).join('')}
@@ -365,6 +365,38 @@ function getNumerologyInfo(dob) {
   return { number: num, ...profile };
 }
 
+function detectMissingSpmCoreSubjects(spmText) {
+  const text = (spmText || '').toLowerCase();
+  const missing = [];
+
+  // 1. Bahasa Melayu
+  if (!text.includes('melayu') && !text.includes('bm')) {
+    missing.push('Bahasa Melayu (BM)');
+  }
+  // 2. Bahasa Inggeris
+  if (!text.includes('inggeris') && !text.includes('english') && !text.includes('bi')) {
+    missing.push('Bahasa Inggeris (BI)');
+  }
+  // 3. Matematik
+  if (!text.includes('matematik') && !text.includes('math') && !text.includes('hisab')) {
+    missing.push('Matematik (Mathematics)');
+  }
+  // 4. Sains / Science
+  if (!text.includes('sains') && !text.includes('science') && !text.includes('fizik') && !text.includes('kimia') && !text.includes('biologi')) {
+    missing.push('Sains (Science / Pure Sciences)');
+  }
+  // 5. Sejarah
+  if (!text.includes('sejarah') && !text.includes('history')) {
+    missing.push('Sejarah (History)');
+  }
+  // 6. Pendidikan Moral / Islam
+  if (!text.includes('moral') && !text.includes('islam') && !text.includes('agama')) {
+    missing.push('Pendidikan Moral / Pendidikan Islam');
+  }
+
+  return missing;
+}
+
 async function runAiEvaluation(app, apiKey, modelKey = 'lite') {
   // Primary: lite. Fallback to flash if lite fails.
   const modelsToTry = modelKey === 'lite'
@@ -372,7 +404,11 @@ async function runAiEvaluation(app, apiKey, modelKey = 'lite') {
     : [GEMINI_MODELS.flash.id, GEMINI_MODELS.lite.id];
 
   const spmRaw = app.spm || '';
-  const spmSummary = spmRaw ? `SPM Results: ${spmRaw}` : 'SPM Results: Not provided';
+  const missingCore = detectMissingSpmCoreSubjects(spmRaw);
+  let spmSummary = spmRaw ? `SPM Results: ${spmRaw}` : 'SPM Results: Not provided';
+  if (missingCore.length > 0) {
+    spmSummary += `\n⚠️ MISSING CORE SPM SUBJECTS DETECTED: ${missingCore.join(', ')}.\nCRITICAL MALAYSIAN SPM RULE: Malaysian candidates are mandated to take 6 core SPM subjects (BM, BI, Maths, Science, Sejarah, Moral/Islam). Any core subject omitted from the applicant's results means they FAILED THAT SUBJECT ('G' / Fail) and concealed it. Treat these missing subjects as FAILED ('G').`;
+  }
 
   // Numerology
   const numInfo = getNumerologyInfo(app.dob);
@@ -394,11 +430,12 @@ IMPORTANT CONTEXT:
 - This is a community pharmacy in Sarawak, East Malaysia
 - Local Kuching universities (e.g., Cyberjaya College Kuching, UNIMAS, Curtin Sarawak) are BELOW international standards. Do NOT overweight local CGPA.
 - SPM is often a BETTER indicator of aptitude than local diploma/degree GPA. Analyze Sciences (Bio, Chem, Add Maths) and English grades carefully.
+- CRITICAL SPM FAILURE RULE: In Malaysia, SPM has 6 compulsory core subjects: Bahasa Melayu, Bahasa Inggeris, Matematik, Sains (or Pure Science), Sejarah, and Pendidikan Moral/Islam. If ANY of these 6 core subjects is missing or omitted from the candidate's declared SPM results, IT MEANS THEY FAILED THAT SUBJECT (Grade G / Fail) and concealed it. You MUST treat every missing core subject as a FAIL ('G'). Strictly penalize their Qualification Fit and Plan Execution scores, flag this under concerns, and explicitly state which core subjects were failed/omitted in spmAnalysis.
 - Pharmacy Assistant: SPM primary. 3B+ in relevant subjects is good.
 - Pharmacist: Must have BPharm degree + valid Malaysia Pharmacy Board APC.
 - Nutritionist/Dietitian: Relevant degree required; local diploma treated cautiously.
 - Sarawak demographics: Iban, Bidayuh, Chinese, Malay. Multi-language is a strong plus.
-- Travel between 7 branches and shift work required.
+- Travel between branches and shift work required.
 - 3-year contract is standard. Govt job applicants = HIGH retention risk.
 
 ═══════════════════════════════════════
@@ -570,6 +607,58 @@ function getAvailableSlots(dateStr) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// IC AUTO-CALCULATION (DOB, AGE, GENDER)
+// ─────────────────────────────────────────────────────────────────────────────
+function onIcInput(inputEl) {
+  if (!inputEl) return;
+  const raw = inputEl.value.replace(/[^0-9]/g, '');
+  const form = inputEl.closest('form');
+  if (!form) return;
+
+  if (raw.length >= 6) {
+    const yy = parseInt(raw.slice(0, 2), 10);
+    const mm = parseInt(raw.slice(2, 4), 10);
+    const dd = parseInt(raw.slice(4, 6), 10);
+
+    const currentYear = new Date().getFullYear();
+    const currentCentury = Math.floor(currentYear / 100) * 100;
+    const current2DigitYear = currentYear % 100;
+
+    // Malaysian IC century rule:
+    // If yy <= current 2-digit year (e.g. 26), 2000s; otherwise 1900s
+    const fullYear = (yy <= current2DigitYear) ? (currentCentury + yy) : (currentCentury - 100 + yy);
+
+    if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+      const birthDate = new Date(fullYear, mm - 1, dd);
+      if (birthDate.getFullYear() === fullYear && birthDate.getMonth() === mm - 1 && birthDate.getDate() === dd) {
+        const formattedDob = `${fullYear}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+        const dobInput = form.querySelector('input[name="dob"]');
+        if (dobInput) dobInput.value = formattedDob;
+
+        // Calculate age
+        const today = new Date();
+        let age = today.getFullYear() - fullYear;
+        const m = today.getMonth() - (mm - 1);
+        if (m < 0 || (m === 0 && today.getDate() < dd)) {
+          age--;
+        }
+        const ageInput = form.querySelector('input[name="age"]');
+        if (ageInput && age >= 0 && age < 120) ageInput.value = age;
+      }
+    }
+  }
+
+  // 12th digit represents gender: Odd = Male, Even = Female
+  if (raw.length >= 12) {
+    const genderDigit = parseInt(raw.charAt(11), 10);
+    const genderSelect = form.querySelector('select[name="gender"]');
+    if (genderSelect && !isNaN(genderDigit)) {
+      genderSelect.value = (genderDigit % 2 !== 0) ? 'Male / Lelaki' : 'Female / Perempuan';
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // APPLICATION FORM RENDER (PUBLIC LINK VIEW & STANDALONE PORTAL)
 // ─────────────────────────────────────────────────────────────────────────────
 function renderPublicForm(targetContainerId) {
@@ -637,7 +726,7 @@ function renderPublicForm(targetContainerId) {
         </div>
         <div>
           <label class="rec-label">NRIC / Passport No. *</label>
-          <input type="text" name="ic" required class="rec-input" placeholder="e.g. 030904-13-1234">
+          <input type="text" name="ic" required class="rec-input" placeholder="e.g. 030904-13-1234" oninput="window.pmgRecruitment.onIcInput(this)">
         </div>
         <div>
           <label class="rec-label">Date of Birth / Tarikh Lahir *</label>
@@ -841,19 +930,29 @@ function renderPublicForm(targetContainerId) {
               <th class="p-1 text-center">Excellent</th><th class="p-1 text-center">Good</th><th class="p-1 text-center">Average</th>
             </tr>
           </thead>
-          <tbody>
-            ${['Malay / BM','English / BI','Mandarin','Iban','Bidayuh'].map(lang=>`
-            <tr class="border-t border-gray-100">
-              <td class="p-2 font-medium text-gray-700">${lang}</td>
-              ${['wExcel','wGood','wAvg','sExcel','sGood','sAvg'].map(k=>`
-              <td class="p-1 text-center"><input type="checkbox" name="lang_${lang.replace(/[^a-z]/gi,'')}_${k}" class="h-3.5 w-3.5 rounded accent-blue-600"></td>`).join('')}
-            </tr>`).join('')}
+            ${['Malay / BM','English / BI','Mandarin','Iban','Bidayuh'].map(lang=>{
+              const key = lang.replace(/[^a-z]/gi,'');
+              return `
+              <tr class="border-t border-gray-100">
+                <td class="p-2 font-medium text-gray-700">${lang}</td>
+                <td class="p-1 text-center"><input type="radio" name="lang_${key}_written" value="Excellent" class="h-3.5 w-3.5 accent-blue-600"></td>
+                <td class="p-1 text-center"><input type="radio" name="lang_${key}_written" value="Good" class="h-3.5 w-3.5 accent-blue-600"></td>
+                <td class="p-1 text-center"><input type="radio" name="lang_${key}_written" value="Average" class="h-3.5 w-3.5 accent-blue-600"></td>
+                <td class="p-1 text-center"><input type="radio" name="lang_${key}_spoken" value="Excellent" class="h-3.5 w-3.5 accent-blue-600"></td>
+                <td class="p-1 text-center"><input type="radio" name="lang_${key}_spoken" value="Good" class="h-3.5 w-3.5 accent-blue-600"></td>
+                <td class="p-1 text-center"><input type="radio" name="lang_${key}_spoken" value="Average" class="h-3.5 w-3.5 accent-blue-600"></td>
+              </tr>`;
+            }).join('')}
             <tr class="border-t border-gray-100 bg-slate-50/50">
               <td class="p-1.5 font-medium text-gray-700">
                 <input type="text" name="lang_other_custom" placeholder="Others (specify language/dialect)" class="rec-input text-xs py-1">
               </td>
-              ${['wExcel','wGood','wAvg','sExcel','sGood','sAvg'].map(k=>`
-              <td class="p-1 text-center"><input type="checkbox" name="lang_Others_${k}" class="h-3.5 w-3.5 rounded accent-blue-600"></td>`).join('')}
+              <td class="p-1 text-center"><input type="radio" name="lang_Others_written" value="Excellent" class="h-3.5 w-3.5 accent-blue-600"></td>
+              <td class="p-1 text-center"><input type="radio" name="lang_Others_written" value="Good" class="h-3.5 w-3.5 accent-blue-600"></td>
+              <td class="p-1 text-center"><input type="radio" name="lang_Others_written" value="Average" class="h-3.5 w-3.5 accent-blue-600"></td>
+              <td class="p-1 text-center"><input type="radio" name="lang_Others_spoken" value="Excellent" class="h-3.5 w-3.5 accent-blue-600"></td>
+              <td class="p-1 text-center"><input type="radio" name="lang_Others_spoken" value="Good" class="h-3.5 w-3.5 accent-blue-600"></td>
+              <td class="p-1 text-center"><input type="radio" name="lang_Others_spoken" value="Average" class="h-3.5 w-3.5 accent-blue-600"></td>
             </tr>
           </tbody>
         </table>
@@ -1115,19 +1214,23 @@ async function submitPublicForm(e) {
     return `${name} | ${occ} | ${rel} | ${phone} | ${yrs} yrs`;
   }).filter(Boolean).join('\n');
 
-  // Language proficiency — including custom input and text notes
-  const langKeys = ['Malay/BM','English/BI','Mandarin','Iban','Bidayuh'];
-  const langItems = langKeys.map(lang => {
+  // Language proficiency
+  const langKeys = ['Malay / BM','English / BI','Mandarin','Iban','Bidayuh'];
+  const langItems = [];
+  langKeys.forEach(lang => {
     const key = lang.replace(/[^a-z]/gi,'');
-    const skills = ['wExcel','wGood','wAvg','sExcel','sGood','sAvg'];
-    const ticked = skills.filter(s => fd.get(`lang_${key}_${s}`)).join(', ');
-    return ticked ? `${lang}: ${ticked}` : '';
-  }).filter(Boolean);
+    const w = fd.get(`lang_${key}_written`);
+    const s = fd.get(`lang_${key}_spoken`);
+    if (w || s) {
+      langItems.push(`${lang}: Written (${w || '—'}), Spoken (${s || '—'})`);
+    }
+  });
 
   const customLang = get('lang_other_custom').trim();
-  const otherTicked = ['wExcel','wGood','wAvg','sExcel','sGood','sAvg'].filter(s => fd.get(`lang_Others_${s}`)).join(', ');
-  if (customLang) {
-    langItems.push(`${customLang}${otherTicked ? ': ' + otherTicked : ''}`);
+  const customW = fd.get('lang_Others_written');
+  const customS = fd.get('lang_Others_spoken');
+  if (customLang && (customW || customS)) {
+    langItems.push(`${customLang}: Written (${customW || '—'}), Spoken (${customS || '—'})`);
   }
   const langText = get('langOthersText').trim();
   if (langText) {
@@ -1267,6 +1370,20 @@ async function submitPublicForm(e) {
   apps.unshift(app);
   saveApps(apps);
 
+  // Cloud Sync: push application to Google Sheets so it instantly appears on William's PC
+  try {
+    const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+    await fetch(apiUrl, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'submitJobApplication',
+        application: app
+      })
+    });
+  } catch (cloudErr) {
+    console.warn('[Recruitment] Cloud submission error:', cloudErr);
+  }
+
   // Push uploaded documents directly to OneDrive folder /RECRUITMENT/Applicants/ immediately
   try {
     const engine = window.pmgOneDriveSync || window.pmgOneDrive;
@@ -1372,6 +1489,9 @@ ${!apiKey ? `
         <option value="all" ${filterVal==='all'?'selected':''}>All Status</option>
         ${Object.entries(STATUS_META).map(([k,m])=>`<option value="${k}" ${filterVal===k?'selected':''}>${m.label}</option>`).join('')}
       </select>
+      <button type="button" onclick="window.pmgRecruitment.syncAppsFromCloud(true)" class="border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg px-2.5 py-1.5 text-xs font-bold transition flex items-center gap-1.5" title="Refresh & Sync from Cloud">
+        <i class="fa-solid fa-arrows-rotate"></i> Sync Cloud
+      </button>
     </div>
     <span class="text-xs text-gray-400">${filtered.length} application${filtered.length!==1?'s':''}</span>
   </div>
@@ -1572,12 +1692,25 @@ function viewApp(appId) {
   const docsSection = app.docs && app.docs.length > 0 ? `
 <div class="mb-4">
   <h4 class="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1"><i class="fa-solid fa-paperclip text-gray-400"></i>Uploaded Documents (${app.docs.length})</h4>
-  <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
     ${app.docs.map((d,i)=>`
-    <a href="${d.data}" download="${sanitize(d.name)}" class="flex items-center gap-2 p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition text-xs">
-      <i class="fa-solid ${d.type.includes('pdf')?'fa-file-pdf text-red-500':'fa-file-image text-blue-500'}"></i>
-      <span class="truncate text-gray-700">${sanitize(d.name)}</span>
-    </a>`).join('')}
+    <div class="flex items-center justify-between p-2.5 border border-gray-200 rounded-lg hover:bg-gray-50 transition text-xs bg-white shadow-2xs">
+      <div class="flex items-center gap-2 min-w-0 flex-1 mr-2">
+        <i class="fa-solid ${d.type && d.type.includes('pdf')?'fa-file-pdf text-red-500 text-base':'fa-file-image text-blue-500 text-base'} shrink-0"></i>
+        <div class="min-w-0">
+          <p class="truncate font-semibold text-gray-800">${sanitize(d.name)}</p>
+          <p class="text-[10px] text-gray-400 uppercase">${sanitize((d.field || 'doc').replace('file', ''))} &bull; ${Math.round((d.size||0)/1024)} KB</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-1 shrink-0">
+        <button type="button" onclick="window.pmgRecruitment.viewDoc('${app.id}', ${i})" class="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded text-[11px] transition flex items-center gap-1" title="Preview Document">
+          <i class="fa-solid fa-eye"></i> View
+        </button>
+        <a href="${d.data}" download="${sanitize(d.name)}" class="p-1 text-gray-400 hover:text-gray-700 rounded transition" title="Download">
+          <i class="fa-solid fa-download"></i>
+        </a>
+      </div>
+    </div>`).join('')}
   </div>
 </div>` : '<p class="text-xs text-gray-400 mb-4">No documents uploaded.</p>';
 
@@ -2059,21 +2192,318 @@ function resetPublicForm() {
 function printApp(appId) {
   const apps = loadApps();
   const app = apps.find(a => a.id === appId);
-  if (!app) return;
-  const w = window.open('','_blank');
-  w.document.write(`<html><head><title>PMG Application — ${app.name}</title></head><body style="font-family:Arial;font-size:12px;padding:20px">
-    <h2>Job Application</h2>
-    <p><strong>Ref:</strong> ${app.id} | <strong>Candidate:</strong> ${app.name} | <strong>Applied:</strong> ${fmtDateTime(app.appliedAt)}</p>
-    <hr>
-    <pre>${JSON.stringify(app, null, 2)}</pre>
-  </body></html>`);
+  if (!app) {
+    toast('Application not found', 'error');
+    return;
+  }
+
+  const w = window.open('', '_blank');
+  if (!w) {
+    alert('Please allow popups for this site to export or print candidate applications.');
+    return;
+  }
+
+  const m = STATUS_META[app.status] || STATUS_META.new;
+  const ai = app.aiReport || null;
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>PMG Candidate Dossier — ${sanitize(app.name)} (${sanitize(app.id)})</title>
+  <style>
+    @page { size: A4 portrait; margin: 12mm 15mm; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 10.5pt;
+      line-height: 1.45;
+      color: #1f2937;
+      margin: 0;
+      padding: 16px;
+      background: #ffffff;
+    }
+    .header {
+      border-bottom: 2px solid #1e3a8a;
+      padding-bottom: 10px;
+      margin-bottom: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .title { font-size: 18pt; font-weight: 800; color: #1e3a8a; margin: 0; }
+    .subtitle { font-size: 9pt; color: #6b7280; margin: 2px 0 0 0; text-transform: uppercase; letter-spacing: 0.05em; }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 9pt;
+      font-weight: 700;
+      background: #e0e7ff;
+      color: #3730a3;
+      border: 1px solid #c7d2fe;
+    }
+    .section-title {
+      font-size: 11pt;
+      font-weight: 700;
+      color: #1e3a8a;
+      border-bottom: 1.5px solid #e5e7eb;
+      padding-bottom: 4px;
+      margin-top: 14px;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 9.5pt; }
+    th, td { padding: 4px 8px; text-align: left; vertical-align: top; }
+    .prop-table td:first-child { width: 28%; font-weight: 600; color: #4b5563; }
+    .prop-table td:last-child { width: 72%; color: #111827; }
+    .data-table th { background: #f3f4f6; font-weight: 700; border: 1px solid #d1d5db; color: #374151; }
+    .data-table td { border: 1px solid #e5e7eb; }
+    .ai-box {
+      background: #f8fafc;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 10px;
+      page-break-inside: avoid;
+    }
+    .ai-score {
+      font-size: 20pt;
+      font-weight: 900;
+      color: #1e3a8a;
+    }
+    .pill { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 8.5pt; font-weight: 600; background: #e2e8f0; margin-right: 4px; }
+    ul { margin: 4px 0 8px 18px; padding: 0; }
+    li { margin-bottom: 2px; }
+    @media print {
+      body { padding: 0; }
+      .no-print { display: none !important; }
+      .page-break { page-break-before: always; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="margin-bottom: 15px; padding: 10px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+    <div><strong>Ready to print or save as PDF.</strong> Click the button below or press Ctrl+P.</div>
+    <div>
+      <button onclick="window.print()" style="padding: 6px 14px; font-weight: 700; background: #1e3a8a; color: white; border: none; border-radius: 4px; cursor: pointer;">Print / Save as PDF</button>
+      <button onclick="window.close()" style="padding: 6px 12px; margin-left: 6px; font-weight: 600; background: #e5e7eb; color: #374151; border: none; border-radius: 4px; cursor: pointer;">Close</button>
+    </div>
+  </div>
+
+  <div class="header">
+    <div>
+      <h1 class="title">PMG PHARMACY</h1>
+      <p class="subtitle">Candidate Application Dossier &bull; PMG Kota Sentosa</p>
+    </div>
+    <div style="text-align: right;">
+      <span class="badge">${sanitize(m.label)}</span>
+      <p style="font-size: 8.5pt; color: #6b7280; margin: 4px 0 0 0;">Ref: <strong>${sanitize(app.id)}</strong></p>
+      <p style="font-size: 8.5pt; color: #6b7280; margin: 2px 0 0 0;">Applied: ${fmtDateTime(app.appliedAt)}</p>
+    </div>
+  </div>
+
+  <div class="section-title">1. Position & Placement</div>
+  <table class="prop-table">
+    <tr><td>Position Applied:</td><td><strong>${sanitize(app.position)}</strong></td></tr>
+    <tr><td>Preferred Branch:</td><td>${sanitize(app.preferredBranch || 'Kota Sentosa')}</td></tr>
+    <tr><td>Willing to Travel:</td><td>${sanitize(app.willingToTravel || app.ableToTravel || 'Yes')}</td></tr>
+  </table>
+
+  <div class="section-title">2. Personal Particulars</div>
+  <table class="prop-table">
+    <tr><td>Full Name:</td><td><strong>${sanitize(app.name)}</strong></td></tr>
+    <tr><td>NRIC / Passport:</td><td>${sanitize(app.ic || 'N/A')}</td></tr>
+    <tr><td>Date of Birth / Age:</td><td>${sanitize(app.dob || 'N/A')} (${sanitize(String(app.age || ''))} years old)</td></tr>
+    <tr><td>Gender / Race / Religion:</td><td>${sanitize(app.gender || 'N/A')} / ${sanitize(app.race || 'N/A')} / ${sanitize(app.religion || 'N/A')}</td></tr>
+    <tr><td>Marital Status:</td><td>${sanitize(app.maritalStatus || 'Single')}</td></tr>
+    <tr><td>Contact Phone / Email:</td><td>${sanitize(app.phone || 'N/A')} &bull; ${sanitize(app.email || 'N/A')}</td></tr>
+    <tr><td>Residential Address:</td><td>${sanitize(app.address || 'N/A')}</td></tr>
+    <tr><td>Transport & License:</td><td>${sanitize(app.hasTransport || 'Yes')} (License: ${sanitize(app.drivingLicense || 'None')})</td></tr>
+  </table>
+
+  <div class="section-title">3. Education & SPM Results</div>
+  <table class="prop-table">
+    <tr><td>Highest Qualification:</td><td><strong>${sanitize(app.highestQual || 'N/A')}</strong> (${sanitize(app.major || '')})</td></tr>
+    <tr><td>Institution / University:</td><td>${sanitize(app.institution || 'N/A')} (CGPA: ${sanitize(app.cgpa || 'N/A')})</td></tr>
+    <tr><td>SPM Results:</td><td style="white-space: pre-line; font-family: monospace, sans-serif;">${sanitize(app.spm || 'Not specified')}</td></tr>
+    <tr><td>Language Proficiency:</td><td>${sanitize(app.languages || 'Not specified')}</td></tr>
+  </table>
+
+  <div class="section-title">4. Operational & Contractual Readiness</div>
+  <table class="prop-table">
+    <tr><td>Shift Work (incl. Weekends):</td><td><strong>${sanitize(app.canDoShift || 'Yes')}</strong></td></tr>
+    <tr><td>3-Year Commitment:</td><td><strong>${sanitize(app.accept3yr || 'Yes')}</strong></td></tr>
+    <tr><td>Smokes / Vapes:</td><td>${app.smokes === 'Yes' ? '<strong style="color:red;">YES (Flagged)</strong>' : 'No'}</td></tr>
+    <tr><td>Health Declaration:</td><td>${sanitize(app.healthDeclaration || 'Good health')} ${app.healthDeclarationDetail ? `(${sanitize(app.healthDeclarationDetail)})` : ''}</td></tr>
+    <tr><td>Future Study / Govt Plan:</td><td>${sanitize(app.futurePlan || 'No')} ${app.futurePlanDetail ? `(${sanitize(app.futurePlanDetail)})` : ''}</td></tr>
+    <tr><td>Emergency Contact:</td><td>${sanitize(app.emergencyContact || 'N/A')}</td></tr>
+  </table>
+
+  ${ai ? `
+  <div class="section-title">5. AI Screening & Executive Evaluation</div>
+  <div class="ai-box">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #cbd5e1; padding-bottom: 8px; margin-bottom: 8px;">
+      <div>
+        <div style="font-size: 8.5pt; text-transform: uppercase; color: #64748b; font-weight: 700;">Evaluation Verdict</div>
+        <div style="font-size: 13pt; font-weight: 800; color: #0f172a;">${sanitize(ai.verdict || 'Reviewed')}</div>
+      </div>
+      <div style="text-align: right;">
+        <div style="font-size: 8.5pt; text-transform: uppercase; color: #64748b; font-weight: 700;">Overall Fit Score</div>
+        <div class="ai-score">${ai.score !== undefined ? ai.score : '—'}<span style="font-size: 12pt; color: #64748b;">/100</span></div>
+      </div>
+    </div>
+
+    ${ai.summary ? `<p style="font-size: 9.5pt; margin-top: 4px; color: #334155; line-height: 1.4;">${sanitize(ai.summary)}</p>` : ''}
+
+    <div style="margin-top: 8px;">
+      <strong>Key Strengths:</strong>
+      <ul>${(ai.strengths || []).map(s => `<li>${sanitize(s)}</li>`).join('')}</ul>
+    </div>
+
+    <div style="margin-top: 6px;">
+      <strong style="color: #b91c1c;">Areas of Concern / Red Flags:</strong>
+      <ul>${(ai.concerns || []).map(c => `<li>${sanitize(c)}</li>`).join('')}</ul>
+    </div>
+
+    ${ai.spmAnalysis ? `
+    <div style="margin-top: 6px;">
+      <strong>SPM Aptitude Analysis:</strong>
+      <p style="margin: 2px 0 6px 0; font-size: 9.5pt; color: #334155;">${sanitize(ai.spmAnalysis)}</p>
+    </div>` : ''}
+
+    ${ai.interviewQuestions && ai.interviewQuestions.length > 0 ? `
+    <div style="margin-top: 6px;">
+      <strong>Suggested Probing Interview Questions:</strong>
+      <ol style="margin: 2px 0 0 18px; padding: 0; font-size: 9.5pt;">${ai.interviewQuestions.map(q => `<li>${sanitize(q)}</li>`).join('')}</ol>
+    </div>` : ''}
+  </div>` : ''}
+
+  <div style="margin-top: 24px; padding-top: 8px; border-top: 1px dashed #cbd5e1; font-size: 8pt; color: #94a3b8; display: flex; justify-content: space-between;">
+    <span>Public Medicare Group (PMG) &bull; Kota Sentosa PIC Portal</span>
+    <span>Confidential &bull; Generated on ${new Date().toLocaleDateString('en-GB')}</span>
+  </div>
+
+  <script>
+    window.addEventListener('load', function() {
+      setTimeout(function() {
+        window.focus();
+        window.print();
+      }, 400);
+    });
+  <\/script>
+</body>
+</html>`;
+
+  w.document.open();
+  w.document.write(html);
   w.document.close();
-  w.print();
 }
 
 function exportAppPdf(appId) {
-  // Simple: open print with formatted data
+  // Directly opens styled candidate dossier ready for Print / Save as PDF
   printApp(appId);
+}
+
+function viewDoc(appId, docIdx) {
+  const apps = loadApps();
+  const app = apps.find(a => a.id === appId);
+  if (!app || !app.docs || !app.docs[docIdx]) {
+    toast('Document not found', 'error');
+    return;
+  }
+
+  const doc = app.docs[docIdx];
+  const modal = el('modalRecDocViewer');
+  const title = el('recDocModalTitle');
+  const subtitle = el('recDocModalSubtitle');
+  const body = el('recDocModalBody');
+  const dlBtn = el('recDocModalDownloadBtn');
+
+  if (!modal || !body) return;
+
+  const docTypeLabel = (doc.field || 'Document').replace('file', '').toUpperCase();
+  title.textContent = `${docTypeLabel} — ${doc.name}`;
+  subtitle.textContent = `Candidate: ${app.name} (${app.id}) • Size: ${Math.round((doc.size || 0)/1024)} KB`;
+
+  if (dlBtn) {
+    dlBtn.href = doc.data || '#';
+    dlBtn.download = doc.name || 'document';
+  }
+
+  const isPdf = (doc.type && doc.type.toLowerCase().includes('pdf')) || (doc.name && doc.name.toLowerCase().endsWith('.pdf'));
+
+  if (isPdf) {
+    body.innerHTML = `
+      <iframe src="${doc.data}" class="w-full h-full rounded-lg border border-slate-300 bg-white" title="${sanitize(doc.name)}">
+        <p class="p-4 text-center text-sm text-gray-500">Your browser does not support inline PDF preview. <a href="${doc.data}" download="${sanitize(doc.name)}" class="text-blue-600 underline font-bold">Click here to download</a>.</p>
+      </iframe>`;
+  } else {
+    body.innerHTML = `
+      <div class="w-full h-full flex items-center justify-center overflow-auto p-2">
+        <img src="${doc.data}" alt="${sanitize(doc.name)}" class="max-h-[80vh] max-w-full object-contain rounded-lg shadow-sm border border-slate-200 bg-white">
+      </div>`;
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function closeDocViewer() {
+  const modal = el('modalRecDocViewer');
+  if (modal) {
+    modal.classList.add('hidden');
+    const body = el('recDocModalBody');
+    if (body) body.innerHTML = '';
+  }
+}
+
+async function syncAppsFromCloud(force = false) {
+  try {
+    const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+    if (!apiUrl) return;
+
+    const res = await fetch(`${apiUrl}?action=getJobApplications`);
+    if (!res.ok) return;
+
+    const data = await res.json();
+    if (data && data.success && Array.isArray(data.applications)) {
+      const localApps = loadApps();
+      const localMap = new Map(localApps.map(a => [a.id, a]));
+      let changesCount = 0;
+
+      data.applications.forEach(remoteApp => {
+        if (!remoteApp || !remoteApp.id) return;
+        const existing = localMap.get(remoteApp.id);
+        if (!existing) {
+          localMap.set(remoteApp.id, remoteApp);
+          changesCount++;
+        } else {
+          if (remoteApp.aiReport && !existing.aiReport) {
+            localMap.set(remoteApp.id, { ...existing, ...remoteApp });
+            changesCount++;
+          }
+        }
+      });
+
+      if (changesCount > 0 || force) {
+        const merged = Array.from(localMap.values());
+        merged.sort((a,b) => new Date(b.appliedAt || 0) - new Date(a.appliedAt || 0));
+        localStorage.setItem(REC_KEY, JSON.stringify(merged));
+
+        // Push new applicant files to OneDrive if handle available
+        const engine = window.pmgOneDriveSync || window.pmgOneDrive;
+        if (engine && engine.rootHandle) {
+          merged.forEach(app => saveSingleApplicantToOneDrive(app, engine.rootHandle));
+        }
+
+        renderAmDashboard();
+        if (force) toast(`Synced ${data.applications.length} applications from cloud.`, 'success');
+      }
+    }
+  } catch(e) {
+    console.warn('[Recruitment] Cloud sync error:', e);
+    if (force) toast('Could not fetch cloud applications: ' + e.message, 'error');
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2081,6 +2511,9 @@ function exportAppPdf(appId) {
 // ─────────────────────────────────────────────────────────────────────────────
 function init() {
   patchOneDriveWithRecruitment();
+
+  // Initial cloud sync
+  syncAppsFromCloud(false);
 
   // Check URL for apply view
   const urlParams = new URLSearchParams(window.location.search);
@@ -2122,13 +2555,16 @@ window.pmgRecruitment = {
   printApp,
   exportAppPdf,
   submitPublicForm,
+  onIcInput,
+  viewDoc,
+  closeDocViewer,
+  syncAppsFromCloud,
   loadApps,
   saveApps,
   loadSlots,
   getGlobalGeminiKey,
   promptSetGeminiKey,
 };
-
 
 // Auto-init when DOM ready
 if (document.readyState === 'loading') {

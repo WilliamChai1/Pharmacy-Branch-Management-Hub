@@ -995,8 +995,18 @@ function loadPatientsData() {
       }
     });
 
+    // Respect permanently deleted profiles
+    let deletedIds = [];
+    try {
+      deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_patient_ids') || '[]');
+    } catch (_) {}
+    if (deletedIds.length) {
+      patientsData = patientsData.filter(p => !deletedIds.includes(p.id));
+    }
+
     // Auto-merge any default patient profiles (e.g. Liew Pay Sze, Jackson Ling) if not yet in user localStorage
     DEFAULT_PATIENTS_DATA.forEach(defPt => {
+      if (deletedIds.includes(defPt.id)) return;
       const idx = patientsData.findIndex(p => {
         const icA = String(p.ic || '').replace(/\D/g, '');
         const icB = String(defPt.ic || '').replace(/\D/g, '');
@@ -1184,7 +1194,7 @@ function setupEncounterAutoCalculations() {
   const creatEl = document.getElementById('encCreatinine');
   const egfrEl = document.getElementById('encEgfr');
   const calcEgfr = () => {
-    const creat = parseFloat(creatEl.value);
+    const creat = extractNumericVal(creatEl ? creatEl.value : null);
     if (creat > 0) {
       // Simplified adult Cockcroft-Gault / CKD-EPI estimate:
       // ~ (140 - age) * weight / (72 * (creat/88.4)) [* 0.85 if female]
@@ -1353,7 +1363,7 @@ function renderPatientModule() {
     });
 
     (p.medications || []).forEach(med => {
-      if (med.nextRefillDate) {
+      if (med.nextRefillDate && !med.cleared && !med.overdueDismissed) {
         if (med.nextRefillDate < todayStr) {
           const exists = overdueList.some(item => item.patient.id === p.id && item.medication && item.medication.id === med.id);
           if (!exists) {
@@ -1519,7 +1529,13 @@ function renderUpcomingQueue(items) {
               title="Approve Refill & 1-Month Extension">
               <i class="fa-solid fa-check"></i> Approve (+1 Mo)
             </button>
-          ` : ''}
+          ` : `
+            <button onclick="markAppointmentStatus('${p.id}', '${apt.id}', 'Completed')"
+              class="bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 text-xs font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 transition mr-1"
+              title="Mark Appointment as Completed / Done">
+              <i class="fa-solid fa-check"></i> Done
+            </button>
+          `}
           <a href="${waUrl}" target="_blank" rel="noopener"
             class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 transition"
             title="Send WhatsApp Reminder">
@@ -1553,6 +1569,7 @@ function renderOverdueQueue(items) {
 
     const dateStr = apt ? apt.date : (med ? med.nextRefillDate : '—');
     const details = apt ? (apt.purpose || 'Missed Appointment') : (med ? `${med.name} (Due: ${med.nextRefillDate})` : 'Overdue');
+    const recordId = apt ? apt.id : (med ? med.id : '');
 
     return `
       <tr class="hover:bg-rose-50/30 transition border-b border-gray-100">
@@ -1573,6 +1590,11 @@ function renderOverdueQueue(items) {
           <span class="bg-rose-50 text-rose-700 text-xs font-bold px-2 py-0.5 rounded">Requires Follow-up</span>
         </td>
         <td class="px-4 py-3 text-right whitespace-nowrap">
+          <button onclick="clearOverdueRecord('${p.id}', '${recordId}', '${item.type}')"
+            class="bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 text-xs font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 transition mr-1"
+            title="Mark as Completed / Clear from Overdue">
+            <i class="fa-solid fa-check"></i> Done
+          </button>
           <a href="${waUrl}" target="_blank" rel="noopener"
             class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg inline-flex items-center gap-1 transition shadow-sm">
             <i class="fa-brands fa-whatsapp text-sm"></i> WhatsApp Recall
@@ -5125,6 +5147,61 @@ function closePatientProfileModal() {
   if (modal) modal.classList.add('hidden');
   viewingPatientId = null;
 }
+
+function deleteCurrentPatientProfile() {
+  if (!viewingPatientId) return;
+  const p = patientsData.find(pt => pt.id === viewingPatientId);
+  if (!p) return;
+
+  const confirmed = confirm(`Are you sure you want to permanently delete the patient profile for "${p.name}" (ID: ${p.id})?\n\nThis will remove all associated encounters, vitals, and appointment history.`);
+  if (!confirmed) return;
+
+  const pid = viewingPatientId;
+  try {
+    const deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_patient_ids') || '[]');
+    if (!deletedIds.includes(pid)) {
+      deletedIds.push(pid);
+      localStorage.setItem('pmg_deleted_patient_ids', JSON.stringify(deletedIds));
+    }
+  } catch (e) {
+    console.warn('[deleteCurrentPatientProfile] error saving deleted ID:', e);
+  }
+
+  patientsData = patientsData.filter(pt => pt.id !== pid);
+  savePatientsData();
+  closePatientProfileModal();
+  renderPatientModule();
+
+  if (typeof showExpiryToast === 'function') {
+    showExpiryToast(`🗑️ Patient profile for "${p.name}" deleted successfully.`);
+  } else {
+    alert(`Patient profile for "${p.name}" deleted successfully.`);
+  }
+}
+window.deleteCurrentPatientProfile = deleteCurrentPatientProfile;
+
+function clearOverdueRecord(patientId, recordId, type) {
+  if (type === 'Missed Appointment') {
+    markAppointmentStatus(patientId, recordId, 'Completed');
+    return;
+  }
+  const p = patientsData.find(pt => pt.id === patientId);
+  if (!p) return;
+  if (type === 'Overdue Refill' && p.medications) {
+    const med = p.medications.find(m => m.id === recordId);
+    if (med) {
+      med.cleared = true;
+      med.overdueDismissed = true;
+      med.clearedAt = new Date().toISOString();
+      savePatientsData();
+      renderPatientModule();
+      if (typeof showExpiryToast === 'function') {
+        showExpiryToast(`✅ Refill follow-up for "${med.name}" marked as completed.`);
+      }
+    }
+  }
+}
+window.clearOverdueRecord = clearOverdueRecord;
 
 function switchProfileTab(tab) {
   activeProfileTab = tab;
@@ -10528,13 +10605,21 @@ SPECIALTY WELLNESS & DIAGNOSTIC SCANS:
 - Zentalog Diet, Exercise & Home Log:
   * ${zentalogFilePromptText}
 
-PRESCRIBED / PROPOSED MEDICATIONS:
-${fullMedsList || 'No prescription medications currently recorded'}
+CURRENT VISIT PRESCRIBED MEDICATIONS (PRIMARY ACTIVE REGIMEN FOR TODAY):
+${planMeds || '(No specific prescription entered for today; refer to historical chronic medications below)'}
 
-CURRENT / PROPOSED SUPPLEMENTS:
-${planSupps || 'None recorded'}
+CURRENT VISIT RECOMMENDED SUPPLEMENTS (PRIMARY ACTIVE PLAN FOR TODAY):
+${planSupps || '(None selected yet during this consultation encounter — PLEASE PROACTIVELY RECOMMEND 2 TO 4 COMPLEMENTARY PMG HOUSE BRAND SUPPLEMENTS)'}
+
+PATIENT HISTORICAL CHRONIC MEDICATIONS (REFERENCE / BACKGROUND ONLY):
+${chronicMeds || 'None listed in patient record'}
 
 CRITICAL CLINICAL INSTRUCTIONS:
+0. PRIMARY REGIMEN & CHRONOTHERAPY RULES:
+   - The PRIMARY CONTEXT is the CURRENT VISIT's prescribed medications and recommended supplements above.
+   - Build the Chronotherapy schedule (Morning, Afternoon, Evening, Bedtime with precise meal/timing instructions) and Drug-Drug / Drug-Supplement interaction analysis based PRIMARILY on the CURRENT VISIT medications and supplements.
+   - If no supplements were selected during the encounter, proactively recommend 2 to 4 complementary PMG House Brand companion supplements (JH Nutrition, V-Infinity, Nutribridge, Livemore, Biowell) to address drug nutrient depletions (e.g. CoQ10 for statin users, Vitamin B12 for metformin users) or support cardiovascular, metabolic, joint, or ocular health.
+
 1. TEDA TCM & MERIDIAN WELLNESS BENCHMARKS & SYNTHESIS:
    - TEDA Benchmark Rules:
      * Component / organ / meridian / spine scores < 7.0 are SUBOPTIMAL (亚健康 / 偏低 / 淤堵) and warrant intervention.

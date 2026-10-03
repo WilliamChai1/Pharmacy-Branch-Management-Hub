@@ -7,6 +7,8 @@
 const TAB_SCHEDULE = 'PharmacistSchedule';
 const TAB_APPOINTMENTS = 'Patient_Appointments';
 const TAB_PRICING = 'Pricing_Matrix';
+const TAB_RECRUITMENT = 'Job_Applications';
+const TAB_PREFERENCES = 'Staff_Preferences';
 
 const APPOINTMENT_HEADERS = [
   'AppointmentId', 'PatientId', 'PatientName', 'PatientPhone', 'PatientIc',
@@ -20,6 +22,13 @@ const PRICING_HEADERS = [
   'Custom Cost', 'Member Price', 'Non-Member Price', 'Gross Margin (%)',
   'Supermarket Price', 'Chain Pharmacy Price', 'Strategy Tag',
   'Competitor Name', 'Notes', 'LastUpdated', 'UpdatedBy'
+];
+
+const RECRUITMENT_HEADERS = [
+  'ApplicationId', 'AppliedAt', 'Name', 'Position', 'Branch',
+  'IC', 'Phone', 'Email', 'DOB', 'Age', 'Gender', 'Race',
+  'Status', 'AIScore', 'AIVerdict', 'SPM', 'Education',
+  'WorkHistory', 'Languages', 'Smoking', 'PayloadJSON', 'LastUpdated'
 ];
 
 function doOptions(e) {
@@ -119,7 +128,75 @@ function doGet(e) {
       return buildResponse({ success: true, count: skus.length, skus: skus });
     }
 
-    // ── 3. DEFAULT: GET PHARMACIST SCHEDULE ──
+    // ── 3. ACTION: GET JOB APPLICATIONS ──
+    if (action === 'getJobApplications') {
+      const recSheet = ss.getSheetByName(TAB_RECRUITMENT);
+      if (!recSheet) {
+        return buildResponse({ success: true, count: 0, applications: [] });
+      }
+      const data = recSheet.getDataRange().getValues();
+      if (data.length <= 1) return buildResponse({ success: true, count: 0, applications: [] });
+
+      const apps = [];
+      for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        if (!row || !row[0]) continue;
+        let appObj = null;
+        try {
+          if (row[20]) appObj = JSON.parse(row[20]);
+        } catch (_) {}
+
+        if (!appObj) {
+          appObj = {
+            id: String(row[0]).trim(),
+            appliedAt: String(row[1] || '').trim(),
+            name: String(row[2] || '').trim(),
+            position: String(row[3] || '').trim(),
+            preferredBranch: String(row[4] || 'Kota Sentosa').trim(),
+            ic: String(row[5] || '').trim(),
+            phone: String(row[6] || '').trim(),
+            email: String(row[7] || '').trim(),
+            dob: String(row[8] || '').trim(),
+            age: row[9] || '',
+            gender: String(row[10] || '').trim(),
+            race: String(row[11] || '').trim(),
+            status: String(row[12] || 'new').trim(),
+            aiScore: row[13] || null,
+            aiVerdict: String(row[14] || '').trim(),
+            spm: String(row[15] || '').trim(),
+            highestQual: String(row[16] || '').trim(),
+            workHistory: String(row[17] || '').trim(),
+            languages: String(row[18] || '').trim(),
+            smokes: String(row[19] || 'No').trim()
+          };
+        }
+        apps.push(appObj);
+      }
+      return buildResponse({ success: true, count: apps.length, applications: apps });
+    }
+
+    // ── 4. ACTION: GET STAFF PREFERENCES ──
+    if (action === 'getStaffPreferences') {
+      const prefSheet = ss.getSheetByName(TAB_PREFERENCES);
+      if (!prefSheet) {
+        return buildResponse({ success: true, preferences: [] });
+      }
+      const data = prefSheet.getDataRange().getValues();
+      const branchParam = (e.parameter.branch || 'KS01').trim().toUpperCase();
+      let prefs = [];
+      for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        if (row && String(row[0]).trim().toUpperCase() === branchParam) {
+          try {
+            prefs = JSON.parse(row[1]);
+          } catch (_) {}
+          break;
+        }
+      }
+      return buildResponse({ success: true, preferences: prefs });
+    }
+
+    // ── 5. DEFAULT: GET PHARMACIST SCHEDULE ──
     const branch = (e.parameter.branch || 'Kota Sentosa').trim();
     let sheet = ss.getSheetByName(TAB_SCHEDULE);
 
@@ -144,6 +221,7 @@ function doGet(e) {
         });
       }
     }
+
     return buildResponse({ success: false, error: 'Branch not found: ' + branch });
   } catch(err) {
     return buildResponse({ success: false, error: err.message });
@@ -334,7 +412,93 @@ function doPost(e) {
       return buildResponse({ success: true, count: rowsToAdd.length });
     }
 
-    // ── 4. DEFAULT: SAVE PHARMACIST SCHEDULE ──
+    // ── 4. ACTION: SUBMIT JOB APPLICATION ──
+    if (action === 'submitJobApplication') {
+      const recSheet = ss.getSheetByName(TAB_RECRUITMENT) || ss.insertSheet(TAB_RECRUITMENT);
+      if (recSheet.getLastRow() === 0) {
+        recSheet.appendRow(RECRUITMENT_HEADERS);
+        recSheet.getRange(1, 1, 1, RECRUITMENT_HEADERS.length).setFontWeight('bold');
+      }
+
+      const a = payload.application || {};
+      const appId = String(a.id || ('APP-' + Date.now())).trim();
+      const payloadStr = JSON.stringify(a);
+
+      const data = recSheet.getDataRange().getValues();
+      let foundRow = 0;
+      for (let i = 1; i < data.length; i++) {
+        if (String(data[i][0]).trim() === appId) {
+          foundRow = i + 1;
+          break;
+        }
+      }
+
+      const rowValues = [
+        appId,
+        a.appliedAt || now,
+        a.name || '',
+        a.position || '',
+        a.preferredBranch || 'Kota Sentosa',
+        a.ic || '',
+        a.phone || '',
+        a.email || '',
+        a.dob || '',
+        a.age || '',
+        a.gender || '',
+        a.race || '',
+        a.status || 'new',
+        a.aiScore || '',
+        a.aiVerdict || '',
+        a.spm || '',
+        a.highestQual || '',
+        a.workHistory || '',
+        a.languages || '',
+        a.smokes || 'No',
+        payloadStr,
+        now
+      ];
+
+      if (foundRow > 1) {
+        recSheet.getRange(foundRow, 1, 1, rowValues.length).setValues([rowValues]);
+      } else {
+        recSheet.appendRow(rowValues);
+      }
+
+      return buildResponse({ success: true, applicationId: appId });
+    }
+
+    // ── 5. ACTION: SAVE STAFF PREFERENCES ──
+    if (action === 'saveStaffPreferences') {
+      const prefSheet = ss.getSheetByName(TAB_PREFERENCES) || ss.insertSheet(TAB_PREFERENCES);
+      if (prefSheet.getLastRow() === 0) {
+        prefSheet.appendRow(['BranchCode', 'PreferencesJSON', 'LastUpdated', 'UpdatedBy']);
+        prefSheet.getRange(1, 1, 1, 4).setFontWeight('bold');
+      }
+
+      const branchCode = String(payload.branch || 'KS01').trim().toUpperCase();
+      const prefsStr = JSON.stringify(payload.preferences || []);
+      const pData = prefSheet.getDataRange().getValues();
+
+      let foundRow = 0;
+      for (let i = 1; i < pData.length; i++) {
+        if (String(pData[i][0]).trim().toUpperCase() === branchCode) {
+          foundRow = i + 1;
+          break;
+        }
+      }
+
+      if (foundRow > 1) {
+        prefSheet.getRange(foundRow, 2).setValue(prefsStr);
+        prefSheet.getRange(foundRow, 3).setValue(now);
+        prefSheet.getRange(foundRow, 4).setValue(updatedBy);
+      } else {
+        prefSheet.appendRow([branchCode, prefsStr, now, updatedBy]);
+      }
+
+      return buildResponse({ success: true, branch: branchCode });
+    }
+
+    // ── 6. DEFAULT: SAVE PHARMACIST SCHEDULE ──
     const branch = (payload.branch || 'Kota Sentosa').trim();
     const sched = payload.schedule;
 
@@ -360,8 +524,6 @@ function doPost(e) {
     }
     if (!found) {
       sheet.appendRow([branch, branchName, schedJson, now, updatedBy]);
-    }
-
     return buildResponse({ success: true, branch: branch, lastUpdated: now });
   } catch(err) {
     return buildResponse({ success: false, error: err.message });

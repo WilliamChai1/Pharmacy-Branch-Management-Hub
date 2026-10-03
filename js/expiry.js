@@ -25,7 +25,7 @@ let hqReturnPolicyDescMap = new Map();
 let expiryItems = [];
 let pendingOcrItems = [];
 let activeExpiryFilter = {
-  branch: '',
+  branch: 'Kota Sentosa',
   horizon: '9months', // '9months', '12months', 'critical', 'all', 'cleared'
   returnPolicy: 'all', // 'all', 'non_returnable', 'returnable', 'special', 'unlisted'
   search: ''
@@ -442,21 +442,18 @@ function filterHqPolicyModalRows(query) {
 // ─── UNIQUE KEY & SMART MERGE ENGINE ─────────────────────────────────────────
 function getExpiryItemKey(item) {
   if (!item) return '';
-  const b = (item.branch || '').trim().toUpperCase();
+  const b = (item.branch || 'Kota Sentosa').trim().toUpperCase();
   const c = (item.itemCode || '').trim().toUpperCase();
   const bt = (item.batchNumber || '').trim().toUpperCase();
-  if (c && c !== 'N/A' && bt && bt !== 'N/A') {
-    return `${b}|${c}|${bt}`;
-  }
   if (c && c !== 'N/A') {
-    const d = (item.itemDescription || '').trim().toUpperCase().slice(0, 30);
-    return `${b}|${c}|${d}`;
+    const batchKey = (bt && bt !== 'N/A') ? bt : 'NO_BATCH';
+    return `${b}|${c}|${batchKey}`;
   }
   if (item.rowId) {
     return `${b}|ID_${item.rowId}`;
   }
   const d = (item.itemDescription || '').trim().toUpperCase().slice(0, 40);
-  return `${b}|${d}|${bt}`;
+  return `${b}|${d}|${bt || 'NO_BATCH'}`;
 }
 
 function mergeExpiryDatasets(localList, remoteList) {
@@ -1371,26 +1368,60 @@ function updateExpiryItemQuantity(rowId, newQty) {
   pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate);
 }
 
-function markExpiryItemCleared(rowId) {
+function getItemActionPlan(it) {
+  if (!it) return '';
+  if (it.actionPlan && String(it.actionPlan).trim() !== '') {
+    return it.actionPlan;
+  }
+  const retStatus = getItemHqReturnStatus(it);
+  if (retStatus === 'RETURNABLE' || retStatus === 'SPECIAL') {
+    return 'Returnable with Condition';
+  }
+  return '';
+}
+
+function updateExpiryActionPlan(rowId, val) {
   const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
   if (!item) return;
+  item.actionPlan = (val || '').trim();
+  item.lastUpdated = new Date().toISOString();
+  saveLocalExpiryData();
+  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
+    window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
+  }
+  pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate, { actionPlan: item.actionPlan });
+}
+
+function markExpiryItemCleared(rowId) {
+  const target = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
+  if (!target) return;
 
   const session = typeof getSession === 'function' ? getSession() : null;
   const nowIso = new Date().toISOString();
+  const userName = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
+  const targetKey = getExpiryItemKey(target);
 
-  item.status = 'Cleared';
-  item.quantity = 0;
-  item.clearedAt = nowIso;
-  item.lastUpdated = nowIso;
-  item.updatedBy = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
+  // Mark all matching rows with same rowId OR same itemCode & branch as cleared to eliminate duplicate ghosts
+  expiryItems.forEach(it => {
+    const isSameId = it.rowId === target.rowId || String(it.rowId) === String(target.rowId);
+    const isSameKey = targetKey && (getExpiryItemKey(it) === targetKey);
+    const isSameCode = it.itemCode && target.itemCode && (String(it.itemCode).trim().toUpperCase() === String(target.itemCode).trim().toUpperCase()) && (String(it.branch).trim().toLowerCase() === String(target.branch).trim().toLowerCase());
+    if (isSameId || isSameKey || isSameCode) {
+      it.status = 'Cleared';
+      it.quantity = 0;
+      it.clearedAt = nowIso;
+      it.lastUpdated = nowIso;
+      it.updatedBy = userName;
+    }
+  });
 
   saveLocalExpiryData();
   renderExpiryUI();
   if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
-    window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
+    window.pmgOneDriveSync.saveStockExpiryToOneDrive(target.branch).catch(console.warn);
   }
-  pushExpiryUpdateToSheets(item.rowId, 0, 'Cleared', item.expiryDate);
-  showExpiryToast(`✅ Marked ${item.itemDescription || item.itemCode} as Cleared!`);
+  pushExpiryUpdateToSheets(target.rowId, 0, 'Cleared', target.expiryDate);
+  showExpiryToast(`✅ Marked ${target.itemDescription || target.itemCode} as Cleared!`);
 }
 
 function reactivateExpiryItem(rowId) {
@@ -1658,6 +1689,19 @@ function renderExpiryTable() {
         <td class="p-3 text-center whitespace-nowrap text-xs">
           ${renderHqReturnPolicyBadge(it)}
         </td>
+        <td class="p-3 text-center text-xs whitespace-nowrap">
+          ${isCleared ? `
+            <span class="text-gray-400 text-xs italic">${escHtml(getItemActionPlan(it) || '—')}</span>
+          ` : `
+            <input type="text"
+              list="actionPlanOptions"
+              value="${escHtml(getItemActionPlan(it))}"
+              placeholder="Action plan remark…"
+              onchange="updateExpiryActionPlan(${it.rowId}, this.value)"
+              class="w-36 text-xs border border-gray-300 rounded px-2 py-1 focus:ring-1 focus:ring-blue-400 focus:border-blue-400 bg-white font-medium text-gray-800"
+              title="Action Plan Remark (e.g. Returnable with Condition, Vendor Return Pending, Clearance Promo / PWP)">
+          `}
+        </td>
         <td class="p-3 text-xs font-bold text-center whitespace-nowrap">
           ${isCleared ? `
             <span class="font-mono text-gray-400">${formatExpiryDateDisplay(it.expiryDate)}</span>
@@ -1789,6 +1833,8 @@ async function exportHqExpiryExcel() {
       { header: 'Batch number', key: 'batch', width: 16 },
       { header: 'Item code', key: 'code', width: 16 },
       { header: 'Item description', key: 'desc', width: 38 },
+      { header: 'HQ Return Policy', key: 'hqPolicy', width: 18 },
+      { header: 'Action Plan Remark', key: 'actionPlan', width: 26 },
       { header: 'Expiry date', key: 'expiry', width: 16 },
       { header: 'Quantity', key: 'qty', width: 14 },
       { header: 'Source File', key: 'file', width: 32 },
@@ -1801,6 +1847,8 @@ async function exportHqExpiryExcel() {
         batch: it.batchNumber || 'N/A',
         code: it.itemCode || 'N/A',
         desc: it.itemDescription || '',
+        hqPolicy: getItemHqReturnStatus(it),
+        actionPlan: getItemActionPlan(it),
         expiry: formatExpiryDateDisplay(it.expiryDate),
         qty: it.quantity || 0,
         file: it.sourceFile || 'Invoice Upload',
@@ -1817,6 +1865,8 @@ async function exportHqExpiryExcel() {
         { header: 'Batch number', key: 'batch', width: 16 },
         { header: 'Item code', key: 'code', width: 16 },
         { header: 'Item description', key: 'desc', width: 38 },
+        { header: 'HQ Return Policy', key: 'hqPolicy', width: 18 },
+        { header: 'Action Plan Remark', key: 'actionPlan', width: 26 },
         { header: 'Expiry date', key: 'expiry', width: 16 },
         { header: 'Quantity', key: 'qty', width: 14 },
         { header: 'Source File', key: 'file', width: 32 },
@@ -1829,6 +1879,8 @@ async function exportHqExpiryExcel() {
           batch: it.batchNumber || 'N/A',
           code: it.itemCode || 'N/A',
           desc: it.itemDescription || '',
+          hqPolicy: getItemHqReturnStatus(it),
+          actionPlan: getItemActionPlan(it),
           expiry: formatExpiryDateDisplay(it.expiryDate),
           qty: it.quantity || 0,
           file: it.sourceFile || 'Invoice Upload',

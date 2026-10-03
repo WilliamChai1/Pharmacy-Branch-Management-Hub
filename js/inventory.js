@@ -9,10 +9,10 @@ let interBranchTransfers = []; // List of near-expiry clearance items transferre
 // ─── PARAMETERS (user-editable) ──────────────────────────────────────────────
 function getParams() {
   return {
-    salesWindow: parseInt(document.getElementById('paramSalesWindow').value, 10) || 90,
-    leadTime:    parseInt(document.getElementById('paramLeadTime').value,    10) || 7,
-    safetyDays:  parseInt(document.getElementById('paramSafetyDays').value,  10) || 45,
-    targetDays:  parseInt(document.getElementById('paramTargetDays').value,  10) || 70,
+    salesWindow: parseInt(document.getElementById('paramSalesWindow')?.value, 10) || 90,
+    leadTime:    parseInt(document.getElementById('paramLeadTime')?.value,    10) || 7,
+    safetyDays:  parseInt(document.getElementById('paramSafetyDays')?.value,  10) || 30,
+    targetDays:  parseInt(document.getElementById('paramTargetDays')?.value,  10) || 60, // HQ Standard: 2.0 months (60 days buffer)
   };
 }
 
@@ -220,7 +220,8 @@ function recalcInventory() {
       const ads            = salesQty / p.salesWindow;
       const ip             = soh + onOrder;
       const rop            = ads * (p.leadTime + p.safetyDays);
-      const targetMax      = ads * p.targetDays;
+      const targetDaysHQ   = Math.min(p.targetDays, 60); // HQ standard 2.0 months buffer maximum
+      const targetMax      = ads * targetDaysHQ;
       const suggestedOrder = (ip <= rop && ads > 0 && isActive) ? Math.ceil(targetMax - ip) : 0;
       const daysCover      = ads > 0 ? Math.round(soh / ads) : 9999;
 
@@ -564,8 +565,13 @@ function escHtml(str) {
 // Format: No,Serial No@Alt Serial No,Item Code,Quantity,Cost,Shelf No,EPC,Item Name,Remark 1,Remark 2,Po Transfer No,Alt Lookup,UOM,Reference PO No,Discount Rate
 function buildOrderCsvContent(rows) {
   const header = 'No,Serial No@Alt Serial No,Item Code,Quantity,Cost,Shelf No,EPC,Item Name,Remark 1,Remark 2,Po Transfer No,Alt Lookup,UOM,Reference PO No,Discount Rate';
-  const dataRows = rows.map(r => {
-    return `,,${csvEscape(r.itemCode)},${r.approvedQty},,,,${csvEscape(r.desc)},,,,,,,`;
+  const dataRows = rows.map((r, idx) => {
+    const lineNo   = idx + 1;
+    const itemCode = csvEscape(r.itemCode);
+    const qty      = r.approvedQty || 0;
+    const itemName = csvEscape(r.desc);
+    const uom      = csvEscape(r.uom || 'PCS');
+    return `${lineNo},,${itemCode},${qty},,,,${itemName},,,,,${uom},,`;
   });
   return header + '\r\n' + dataRows.join('\r\n') + '\r\n';
 }

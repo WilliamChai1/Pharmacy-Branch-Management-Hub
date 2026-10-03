@@ -430,8 +430,9 @@
 
       // 3. Fallback to OneDrive (if switching to another PC that has OneDrive synced)
       try {
-        if (window.pmgOneDrive && typeof window.pmgOneDrive.readPricingMasterFromOneDrive === 'function') {
-          const odSkus = await window.pmgOneDrive.readPricingMasterFromOneDrive();
+        const odSync = window.pmgOneDriveSync || window.pmgOneDrive;
+        if (odSync && typeof odSync.loadPricingMasterFromOneDrive === 'function') {
+          const odSkus = await odSync.loadPricingMasterFromOneDrive();
           if (Array.isArray(odSkus) && odSkus.length > 0) {
             this.skus = odSkus;
             await setPricingSkusToIdb(this.skus);
@@ -524,12 +525,13 @@
 
       // 2. Auto-backup full master database to OneDrive if connected
       let oneDriveSynced = false;
-      if (window.pmgOneDrive && typeof window.pmgOneDrive.savePricingMasterToOneDrive === 'function') {
-        const isConn = typeof window.pmgOneDrive.isConnected === 'function' 
-          ? window.pmgOneDrive.isConnected() 
-          : (window.pmgOneDrive.rootHandle && window.pmgOneDrive.mode !== 'DISCONNECTED');
+      const odSync = window.pmgOneDriveSync || window.pmgOneDrive;
+      if (odSync && typeof odSync.savePricingMasterToOneDrive === 'function') {
+        const isConn = typeof odSync.isConnected === 'function' 
+          ? odSync.isConnected() 
+          : (odSync.rootHandle && odSync.mode !== 'DISCONNECTED');
         if (isConn) {
-          oneDriveSynced = await window.pmgOneDrive.savePricingMasterToOneDrive(this.skus);
+          oneDriveSynced = await odSync.savePricingMasterToOneDrive(this.skus);
         }
       }
 
@@ -2844,7 +2846,7 @@ Respond STRICTLY with a valid JSON array of objects with no extraneous markdown 
       const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
       let csv = `PMG PHARMACY — PRICE CHANGE LOG\n`;
-      csv += `Exported by: Area Manager William Chai | Date: ${dateStr} ${timeStr}\n`;
+      csv += `Exported by: William Chai (Pharmacist-in-Charge, PMG Kota Sentosa) | Date: ${dateStr} ${timeStr}\n`;
       csv += `Total Changed Items: ${changed.length}\n\n`;
       csv += `"Item Code","Description","Brand","Category","Supplier","Previous SP (RM)","New SP (RM)","SP Change (RM)","SP Change (%)","Previous Cost (RM)","New Cost (RM)","Cost Change (RM)","New Margin (%)","Old Margin (%)","Changed At"\n`;
 

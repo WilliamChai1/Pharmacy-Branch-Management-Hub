@@ -353,6 +353,27 @@ function loadTeammates(branchCode) {
   }
 
   renderTeammatesTable();
+
+  // Asynchronously fetch preferences from cloud/Google Apps Script if available to sync across different computers
+  setTimeout(async () => {
+    try {
+      const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+      const resp = await fetch(`${apiUrl}?action=getStaffPreferences&branch=${encodeURIComponent(branchCode || 'KS01')}`);
+      if (resp.ok) {
+        const json = await resp.json();
+        if (json && json.success && Array.isArray(json.preferences) && json.preferences.length > 0) {
+          const cloudPrefs = json.preferences;
+          const localStr = JSON.stringify(currentTeammates);
+          const remoteStr = JSON.stringify(cloudPrefs);
+          if (localStr !== remoteStr) {
+            currentTeammates = cloudPrefs;
+            localStorage.setItem(getStorageKey(branchCode), JSON.stringify(cloudPrefs));
+            renderTeammatesTable();
+          }
+        }
+      }
+    } catch (_) {}
+  }, 1000);
 }
 
 function saveTeammatePreferences() {
@@ -392,10 +413,31 @@ function saveTeammatePreferences() {
   currentTeammates = updated;
   localStorage.setItem(getStorageKey(branchCode), JSON.stringify(currentTeammates));
 
+  // Sync to OneDrive and Google Apps Script in background for cross-device persistence
+  try {
+    const od = window.pmgOneDriveSync || window.pmgOneDrive;
+    if (od && typeof od.saveFileToActiveFolder === 'function') {
+      od.saveFileToActiveFolder(`schedule_preferences_${branchCode}.json`, JSON.stringify(currentTeammates, null, 2)).catch(() => {});
+    }
+  } catch (_) {}
+
+  try {
+    const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+    fetch(apiUrl, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'saveStaffPreferences',
+        branch: branchCode,
+        preferences: currentTeammates,
+        updatedBy: (typeof getSession === 'function' && getSession()?.displayName) || 'William Chai'
+      })
+    }).catch(err => console.warn('[Scheduler Cloud Sync] Cloud push error:', err));
+  } catch (_) {}
+
   const saveBtn = document.getElementById('schedulerSavePrefBtn');
   if (saveBtn) {
     const origHtml = saveBtn.innerHTML;
-    saveBtn.innerHTML = '<i class="fa-solid fa-circle-check text-green-300"></i> Preferences Saved!';
+    saveBtn.innerHTML = '<i class="fa-solid fa-circle-check text-green-300"></i> Preferences Saved (Synced)!';
     saveBtn.classList.replace('bg-blue-700', 'bg-green-700');
     setTimeout(() => {
       saveBtn.innerHTML = origHtml;
@@ -782,6 +824,11 @@ STRICT OPERATIONAL RULES:
    - Max 6 consecutive working days without a Rest Day ('RD').
    - Minimum 1 Rest Day ('RD') per person per 7-day week.
 
+7. MANDATORY GOLDEN CLEANING & 5S MAINTENANCE OVERLAP SLOT (14:00 – 15:30):
+   - The period from 2:00 PM to 3:30 PM (14:00 - 15:30) is the branch's daily Golden Cleaning Slot for 5S deep store cleaning, facing, and stock replenishment while attending to customers.
+   - Every working day MUST maintain sufficient shift overlap between morning staff ('8H_0730-1630') and night staff ('8H_1230-2130').
+   - Ensure a minimum of 2 to 3 staff members are physically on duty during the 14:00–15:30 overlap window. Never leave only 1 staff member during this critical cleaning slot.
+
 SHIFT CODES:
 - '8H_0730-1630' (Full Morning)
 - '8H_1230-2130' (Full Night)
@@ -975,6 +1022,18 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
         stats[t.empNo].consecutiveDays = 0;
       }
     });
+
+    // Guarantee 14:00 - 15:30 Golden Cleaning Slot overlap (minimum 2-3 staff overlapping)
+    const morningCountOnDay = Object.values(dayShifts).filter(s => s === '8H_0730-1630').length;
+    const nightCountOnDay = Object.values(dayShifts).filter(s => s === '8H_1230-2130').length;
+    if (nightCountOnDay === 0 && workingRotating.length > 1) {
+      const candidate = workingRotating.find(s => dayShifts[s.empNo] === '8H_0730-1630' && s.empNo !== 'PMG00831');
+      if (candidate) {
+        dayShifts[candidate.empNo] = '8H_1230-2130';
+        stats[candidate.empNo].morningCount--;
+        stats[candidate.empNo].nightCount++;
+      }
+    }
 
     days.push({
       day: d,
