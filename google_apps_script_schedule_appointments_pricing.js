@@ -215,6 +215,35 @@ function doGet(e) {
       return buildResponse({ success: true, count: apps.length, applications: apps });
     }
 
+    // ── 3B. ACTION: GET DRIVE FILE BASE64 (FOR VISION SCANNING) ──
+    if (action === 'getDriveFileBase64' || action === 'fetchDriveFile') {
+      let fileId = String(e.parameter.fileId || '').trim();
+      const fileUrl = String(e.parameter.url || '').trim();
+      if (!fileId && fileUrl) {
+        const m1 = fileUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+        if (m1 && m1[1]) fileId = m1[1];
+        else {
+          const m2 = fileUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+          if (m2 && m2[1]) fileId = m2[1];
+        }
+      }
+      if (!fileId) return buildResponse({ success: false, error: 'No fileId or valid Drive url provided' });
+      try {
+        const file = DriveApp.getFileById(fileId);
+        const blob = file.getBlob();
+        const b64 = Utilities.base64Encode(blob.getBytes());
+        return buildResponse({
+          success: true,
+          fileId: fileId,
+          name: file.getName(),
+          mimeType: file.getMimeType(),
+          base64: b64
+        });
+      } catch (fErr) {
+        return buildResponse({ success: false, error: 'DriveApp error: ' + fErr.message });
+      }
+    }
+
     // ── 4. ACTION: GET STAFF PREFERENCES ──
     if (action === 'getStaffPreferences') {
       const prefSheet = ss.getSheetByName(TAB_PREFERENCES);

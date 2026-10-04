@@ -594,7 +594,303 @@ Return ONLY valid JSON. No markdown, no extra text.`;
   throw lastErr || new Error('All Gemini models failed');
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MULTIMODAL AI VISION SCANNER FOR MALAYSIAN SPM SLIPS
+// ─────────────────────────────────────────────────────────────────────────────
+function extractDriveFileId(url) {
+  if (!url || typeof url !== 'string') return null;
+  const m1 = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (m1 && m1[1]) return m1[1];
+  const m2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m2 && m2[1]) return m2[1];
+  const m3 = url.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/);
+  if (m3 && m3[1]) return m3[1];
+  const m4 = url.match(/drive\.google\.com\/uc\?(?:[^&]+&)*id=([a-zA-Z0-9_-]+)/);
+  if (m4 && m4[1]) return m4[1];
+  return null;
+}
 
+function getDriveDirectImageUrl(fileId) {
+  if (!fileId) return '';
+  return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1200`;
+}
+
+function getDriveDownloadUrl(fileId) {
+  if (!fileId) return '';
+  return `https://drive.google.com/uc?id=${fileId}&export=download`;
+}
+
+function getCandidateSpmDocument(app) {
+  if (!app) return null;
+  // 1. Explicit fileSPM in docs
+  if (Array.isArray(app.docs)) {
+    const spmDoc = app.docs.find(d => d.field === 'fileSPM' || (d.name && d.name.toLowerCase().includes('spm')));
+    if (spmDoc) return spmDoc;
+  }
+  // 2. Direct spm URL property
+  const directUrl = app.spmSlipUrl || app.spmResultUrl || app.spmUrl || app.spmResult;
+  if (directUrl && typeof directUrl === 'string' && directUrl.startsWith('http')) {
+    return { name: 'SPM_Certificate', url: directUrl, field: 'fileSPM' };
+  }
+  // 3. Embedded URL in app.spm text
+  if (app.spm && typeof app.spm === 'string') {
+    const m = app.spm.match(/https?:\/\/[^\s]+/);
+    if (m) return { name: 'SPM_Certificate_Link', url: m[0], field: 'fileSPM' };
+  }
+  // 4. Resume URL if provided
+  if (app.resumeUrl) {
+    return { name: 'Cloud_Resume_SPM', url: app.resumeUrl, field: 'fileResume' };
+  }
+  // 5. Any first document in docs array
+  if (Array.isArray(app.docs) && app.docs.length > 0) {
+    return app.docs[0];
+  }
+  return null;
+}
+
+async function fetchDocumentBase64(doc) {
+  if (!doc) throw new Error('No document provided for Vision scanning');
+
+  // Case 1: Already has base64 data URI
+  if (doc.data && typeof doc.data === 'string' && doc.data.includes('base64,')) {
+    const parts = doc.data.split('base64,');
+    const mime = (doc.data.split(';')[0].replace('data:', '') || doc.type || 'image/jpeg').trim();
+    return { base64: parts[1], mimeType: mime, previewUrl: doc.data };
+  }
+
+  const targetUrl = doc.url || (doc.data && doc.data.startsWith('http') ? doc.data : null);
+  if (!targetUrl) throw new Error('Document has neither base64 data nor download URL');
+
+  const fileId = extractDriveFileId(targetUrl);
+
+  // Case 2: Fetch through Google Apps Script endpoint to avoid CORS issues
+  if (fileId) {
+    try {
+      const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+      const proxyRes = await fetch(`${apiUrl}?action=getDriveFileBase64&fileId=${encodeURIComponent(fileId)}`);
+      if (proxyRes.ok) {
+        const json = await proxyRes.json();
+        if (json && json.success && json.base64) {
+          const mime = json.mimeType || 'image/jpeg';
+          const preview = getDriveDirectImageUrl(fileId);
+          return { base64: json.base64, mimeType: mime, previewUrl: preview };
+        }
+      }
+    } catch (gasErr) {
+      console.warn('[Vision Scanner] Apps Script fetch error:', gasErr);
+    }
+  }
+
+  // Case 3: Direct fetch as blob
+  try {
+    const directFetchUrl = fileId ? getDriveDirectImageUrl(fileId) : targetUrl;
+    const res = await fetch(directFetchUrl, { mode: 'cors' });
+    if (res.ok) {
+      const blob = await res.blob();
+      const b64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      return { base64: b64, mimeType: blob.type || 'image/jpeg', previewUrl: directFetchUrl };
+    }
+  } catch (corsErr) {
+    console.warn('[Vision Scanner] Direct fetch failed (CORS):', corsErr);
+  }
+
+  // If fileId exists, we can still construct preview URL even if client-side blob was blocked
+  if (fileId) {
+    return {
+      base64: null,
+      mimeType: 'image/jpeg',
+      fileId: fileId,
+      previewUrl: getDriveDirectImageUrl(fileId),
+      error: 'Google Drive file access restricted. Please click "Upload & Scan" to select the downloaded certificate for instant Gemini Vision inspection.'
+    };
+  }
+
+  throw new Error('Unable to retrieve document image stream for AI Vision.');
+}
+
+async function callGeminiVisionSpmScan(base64Data, mimeType, apiKey) {
+  const prompt = `You are an HR auditor evaluating an official Malaysian SPM (Sijil Pelajaran Malaysia / Penyata Keputusan) certificate.
+Task:
+1. Locate and extract all subjects and their letter grades (e.g., Bahasa Melayu, English / Bahasa Inggeris, Sejarah, Matematik / Mathematics, Sains, etc.).
+2. Mandatory Evaluation Rule: Check explicitly for Mathematics / Matematik. If Mathematics is absent, not taken, obscured, or missing from the slip, you MUST flag it strictly as 'FAILED / NOT TAKEN'.
+3. Verify basic SPM certification eligibility (Layak Mendapat Sijil requires passing Bahasa Melayu and Sejarah).
+Output a clean structured JSON:
+{
+  "candidate_name": "Full Name as printed on slip or N/A",
+  "ic_number": "NRIC/IC Number or N/A",
+  "spm_year": "Exam Year or N/A",
+  "layak_sijil": true,
+  "maths_grade": "Grade (e.g. A+, A, B, C) or FAILED / NOT TAKEN",
+  "grades_table": [
+    {"subject": "Bahasa Melayu", "grade": "A"},
+    {"subject": "Bahasa Inggeris", "grade": "B+"}
+  ],
+  "ai_hiring_verdict": "Eligible / Ineligible based on retail pharmacy assistant requirements"
+}
+
+Return ONLY valid JSON. No markdown fences, no explanatory commentary outside the JSON.`;
+
+  const cleanB64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+  const cleanMime = mimeType || 'image/jpeg';
+  const models = ['gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+  let lastErr = null;
+
+  for (const model of models) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const payload = {
+        contents: [
+          {
+            parts: [
+              { text: prompt },
+              {
+                inlineData: {
+                  mimeType: cleanMime,
+                  data: cleanB64
+                }
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 2048,
+          responseMimeType: 'application/json'
+        }
+      };
+
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(`HTTP ${resp.status} (${model}): ${errText.slice(0, 200)}`);
+      }
+
+      const resJson = await resp.json();
+      const rawText = resJson?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const clean = rawText.replace(/^```json?\s*/i, '').replace(/```\s*$/i, '').trim();
+      const parsed = JSON.parse(clean);
+
+      // Mandatory Malaysian SPM Rule Enforcement:
+      // If Mathematics / Matematik is not present or failed, flag strictly as 'FAILED / NOT TAKEN'
+      const hasMathInTable = Array.isArray(parsed.grades_table) && parsed.grades_table.some(row => {
+        const s = (row.subject || '').toLowerCase();
+        return s.includes('math') || s.includes('matematik');
+      });
+
+      const mathGradeRaw = String(parsed.maths_grade || '').trim();
+      if (!hasMathInTable || !mathGradeRaw || mathGradeRaw.toUpperCase().includes('FAIL') || mathGradeRaw.toUpperCase().includes('NOT TAKEN') || mathGradeRaw.toUpperCase().includes('TIADA')) {
+        parsed.maths_grade = 'FAILED / NOT TAKEN';
+      }
+
+      parsed._modelUsed = model;
+      parsed._scannedAt = new Date().toISOString();
+      return parsed;
+    } catch (e) {
+      console.warn(`[Vision Scanner] ${model} attempt failed:`, e.message);
+      lastErr = e;
+    }
+  }
+
+  throw lastErr || new Error('All Gemini Vision models failed to inspect certificate');
+}
+
+async function scanCandidateSpmVision(appId, customFile = null) {
+  const apiKey = getGlobalGeminiKey();
+  if (!apiKey) {
+    promptSetGeminiKey();
+    return;
+  }
+
+  const apps = loadApps();
+  const app = apps.find(a => a.id === appId);
+  if (!app) {
+    toast('Application not found', 'error');
+    return;
+  }
+
+  toast('Scanning SPM Certificate with Multimodal AI Vision…', 'info');
+
+  try {
+    let b64 = null;
+    let mime = 'image/jpeg';
+    let previewUrl = null;
+
+    if (customFile) {
+      const fileDataUri = await fileToBase64(customFile);
+      const parts = fileDataUri.split('base64,');
+      b64 = parts[1];
+      mime = customFile.type || 'image/jpeg';
+      previewUrl = fileDataUri;
+
+      // Add to docs array
+      if (!Array.isArray(app.docs)) app.docs = [];
+      app.docs.unshift({
+        field: 'fileSPM',
+        name: customFile.name,
+        size: customFile.size,
+        type: mime,
+        data: fileDataUri
+      });
+    } else {
+      const doc = getCandidateSpmDocument(app);
+      if (!doc) {
+        toast('No uploaded SPM certificate document or link found. Please select a file to scan.', 'warning');
+        const fileInput = el(`spmVisionFileInput_${appId}`);
+        if (fileInput) fileInput.click();
+        return;
+      }
+
+      const fetched = await fetchDocumentBase64(doc);
+      if (!fetched.base64 && fetched.error) {
+        toast(fetched.error, 'warning');
+        const fileInput = el(`spmVisionFileInput_${appId}`);
+        if (fileInput) fileInput.click();
+        return;
+      }
+
+      b64 = fetched.base64;
+      mime = fetched.mimeType || 'image/jpeg';
+      previewUrl = fetched.previewUrl;
+    }
+
+    const visionResult = await callGeminiVisionSpmScan(b64, mime, apiKey);
+    visionResult.document_preview_url = previewUrl;
+
+    app.spmVisionData = visionResult;
+
+    // Update app.spm with structured text if not yet detailed
+    if (Array.isArray(visionResult.grades_table) && visionResult.grades_table.length > 0) {
+      const tableSummary = visionResult.grades_table.map(g => `${g.subject}: ${g.grade}`).join(', ');
+      app.spm = `[AI Vision Scanned ${visionResult.spm_year || ''}]\n${tableSummary}`;
+      app.spmSubjects = visionResult.grades_table.map(g => `${g.subject}: ${g.grade}`);
+      if (visionResult.spm_year) app.spmYear = visionResult.spm_year;
+    }
+
+    saveApps(apps);
+
+    const mathIsPassing = visionResult.maths_grade && !visionResult.maths_grade.includes('FAILED') && !['D','E','G','TH'].includes(visionResult.maths_grade.toUpperCase().trim());
+    toast(`SPM Vision Scan Complete! Maths: ${visionResult.maths_grade} (${mathIsPassing ? 'Pass' : 'Flagged'})`, mathIsPassing ? 'success' : 'warning');
+    viewApp(appId);
+  } catch (err) {
+    console.error('[Vision Scanner Error]', err);
+    toast('SPM Vision Scan failed: ' + err.message, 'error');
+  }
+}
+
+function onSpmFileSelected(appId, file) {
+  if (!file) return;
+  scanCandidateSpmVision(appId, file);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // INTERVIEW SLOT HELPERS
@@ -1783,7 +2079,175 @@ ${app.docs && app.docs.length > 0 ? `
       </div>
     </div>`).join('')}
   </div>
-</div>` : (app.resumeUrl ? '' : '<p class="text-xs text-gray-400 mb-4">No documents uploaded.</p>')}`;
+</div>` : ''}
+`;
+
+  // Build Multimodal SPM Vision section
+  let spmVisionSectionHtml = '';
+  if (app.spmVisionData) {
+    const v = app.spmVisionData;
+    const mathGrade = String(v.maths_grade || 'FAILED / NOT TAKEN').trim();
+    const isMathPass = !mathGrade.toUpperCase().includes('FAIL') &&
+                       !mathGrade.toUpperCase().includes('NOT TAKEN') &&
+                       !['D','E','G','TH','GAGAL'].includes(mathGrade.toUpperCase());
+
+    const mathAlertBanner = isMathPass ? `
+      <div class="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between text-xs text-emerald-950 shadow-2xs">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-circle-check text-emerald-600 text-lg"></i>
+          <div>
+            <p class="font-bold text-emerald-900">Mathematics / Matematik: <span class="text-sm font-black underline">${sanitize(mathGrade)}</span></p>
+            <p class="text-[11px] text-emerald-700">Meets retail pharmacy numeracy &amp; calculation requirements (Credit C or above).</p>
+          </div>
+        </div>
+        <span class="px-2.5 py-1 bg-emerald-600 text-white font-bold rounded-lg text-[10px] uppercase">PASSED</span>
+      </div>
+    ` : `
+      <div class="p-3 bg-rose-50 border-2 border-rose-500 rounded-xl flex items-start gap-2.5 text-xs text-rose-950 shadow-xs">
+        <i class="fa-solid fa-triangle-exclamation text-rose-600 text-xl mt-0.5 shrink-0"></i>
+        <div class="flex-1">
+          <div class="flex items-center justify-between flex-wrap gap-1">
+            <p class="font-black text-rose-900 tracking-wide">🚨 MANDATORY MATHEMATICS EVALUATION ALERT</p>
+            <span class="px-2 py-0.5 bg-rose-600 text-white font-black rounded text-[10px] uppercase">FAILED / NOT TAKEN</span>
+          </div>
+          <p class="mt-1 font-bold text-rose-800 text-[11px]">Grade Recorded: <span class="underline font-black text-rose-950">${sanitize(mathGrade)}</span></p>
+          <p class="text-[11px] text-rose-700 mt-0.5 leading-relaxed">
+            Per PMG Retail Pharmacy compliance, Mathematics is a non-negotiable core competency for cash register reconciliation, stock inventory calculation, and dosage measurements. The applicant is flagged for numeracy deficiency.
+          </p>
+        </div>
+      </div>
+    `;
+
+    const docPreview = v.document_preview_url ? `
+      <a href="${sanitize(v.document_preview_url)}" target="_blank" title="Click to view full certificate" class="block w-full h-full group relative cursor-pointer">
+        <img src="${sanitize(v.document_preview_url)}" alt="SPM Certificate Preview" class="w-full h-full max-h-[340px] object-contain rounded-lg border border-slate-200 bg-white">
+        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-1 rounded-lg">
+          <i class="fa-solid fa-magnifying-glass-plus"></i> View Full Image
+        </div>
+      </a>
+    ` : `
+      <div class="p-6 text-center text-gray-400">
+        <i class="fa-solid fa-file-invoice text-3xl mb-1 text-gray-300"></i>
+        <p class="text-xs">Document processed via Multimodal Vision</p>
+      </div>
+    `;
+
+    spmVisionSectionHtml = `
+    <!-- Multimodal AI Vision SPM Certificate Auditor (Side-by-Side) -->
+    <div class="bg-white rounded-xl border border-indigo-200 p-4 mb-4 shadow-xs">
+      <div class="flex items-center justify-between pb-3 mb-3 border-b border-indigo-100 flex-wrap gap-2">
+        <div class="flex items-center gap-2.5">
+          <span class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-bold shadow-2xs">
+            <i class="fa-solid fa-eye"></i>
+          </span>
+          <div>
+            <h4 class="text-xs font-bold text-gray-900 uppercase tracking-wide">Multimodal AI Vision SPM Certificate Auditor</h4>
+            <p class="text-[10px] text-gray-500">Official Malaysian SPM Slip (Penyata Keputusan) Vision Extraction &bull; Powered by Gemini 1.5 Flash Vision</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="text-[10px] font-bold px-2.5 py-1 rounded-full ${v.layak_sijil ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">
+            ${v.layak_sijil ? '✓ Layak Mendapat Sijil' : '⚠️ Tidak Layak Sijil (BM/Sejarah)'}
+          </span>
+          <input type="file" id="spmVisionFileInput_${appId}" accept="image/*,application/pdf" class="hidden" onchange="window.pmgRecruitment.onSpmFileSelected('${appId}', this.files[0])">
+          <button type="button" onclick="document.getElementById('spmVisionFileInput_${appId}').click()" class="px-2.5 py-1 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg transition flex items-center gap-1">
+            <i class="fa-solid fa-upload"></i> Re-Scan / Upload
+          </button>
+        </div>
+      </div>
+
+      <!-- Side-by-Side Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Left: Certificate Thumbnail / Preview -->
+        <div class="flex flex-col">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[11px] font-bold text-gray-700 flex items-center gap-1.5"><i class="fa-solid fa-file-invoice text-indigo-500"></i> Certificate Document Preview</span>
+            <span class="text-[10px] text-gray-400">Scanned ${fmtDateTime(v._scannedAt)}</span>
+          </div>
+          <div class="border border-gray-200 rounded-xl overflow-hidden bg-slate-50 flex items-center justify-center min-h-[260px] p-2">
+            ${docPreview}
+          </div>
+          <div class="mt-2 grid grid-cols-2 gap-1 text-[11px] text-gray-600 bg-gray-50 p-2 rounded-lg border border-gray-200">
+            <div><span class="text-[10px] text-gray-400 uppercase">Candidate:</span> <strong>${sanitize(v.candidate_name || app.name)}</strong></div>
+            <div><span class="text-[10px] text-gray-400 uppercase">IC No:</span> <strong>${sanitize(v.ic_number || app.ic || '—')}</strong></div>
+            <div><span class="text-[10px] text-gray-400 uppercase">SPM Year:</span> <strong>${sanitize(v.spm_year || '—')}</strong></div>
+            <div><span class="text-[10px] text-gray-400 uppercase">Vision Model:</span> <span class="font-mono text-indigo-600">${sanitize(v._modelUsed || 'gemini-1.5-flash')}</span></div>
+          </div>
+        </div>
+
+        <!-- Right: Extracted Grades Table & Mandatory Mathematics Rule -->
+        <div class="flex flex-col justify-between">
+          <div class="space-y-2.5">
+            <!-- Mandatory Mathematics Alert -->
+            ${mathAlertBanner}
+
+            <!-- Extracted Subjects Table -->
+            <div class="overflow-x-auto border border-gray-200 rounded-xl max-h-[220px] overflow-y-auto">
+              <table class="w-full text-xs text-left border-collapse">
+                <thead class="bg-slate-100 text-gray-700 font-bold text-[10px] uppercase sticky top-0">
+                  <tr>
+                    <th class="p-2 border-b border-gray-200">#</th>
+                    <th class="p-2 border-b border-gray-200">Subject / Mata Pelajaran</th>
+                    <th class="p-2 text-center border-b border-gray-200">Grade / Gred</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                  ${(v.grades_table || []).map((row, idx) => {
+                    const isMath = (row.subject || '').toLowerCase().includes('math') || (row.subject || '').toLowerCase().includes('matematik');
+                    const gr = String(row.grade || '').trim();
+                    const isHigh = ['A+','A','A-','B+','B','C+','C'].includes(gr.toUpperCase());
+                    const grColor = isMath ? (isHigh ? 'text-emerald-700 bg-emerald-100 font-black' : 'text-red-700 bg-red-100 font-black') : (isHigh ? 'text-blue-700' : 'text-gray-700');
+                    return `
+                      <tr class="${isMath ? 'bg-amber-50/60 font-semibold' : 'hover:bg-gray-50'}">
+                        <td class="p-2 text-gray-400 font-mono text-[10px]">${idx + 1}</td>
+                        <td class="p-2 text-gray-800">${sanitize(row.subject)} ${isMath ? '<span class="text-[9px] bg-amber-200 text-amber-900 px-1 rounded ml-1 font-bold">CORE</span>' : ''}</td>
+                        <td class="p-2 text-center font-mono font-bold"><span class="px-1.5 py-0.5 rounded ${grColor}">${sanitize(gr)}</span></td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- AI Hiring Recommendation Verdict -->
+          <div class="mt-3 p-2.5 rounded-xl border text-xs ${v.ai_hiring_verdict && v.ai_hiring_verdict.toLowerCase().includes('ineligible') ? 'bg-rose-50 border-rose-200 text-rose-950' : 'bg-indigo-50/80 border-indigo-200 text-indigo-950'}">
+            <div class="flex items-center gap-1.5 font-bold mb-0.5 text-xs text-indigo-900">
+              <i class="fa-solid fa-graduation-cap"></i>
+              <span>AI Hiring Verdict (Pharmacy Assistant Competency):</span>
+            </div>
+            <p class="text-[11px] leading-relaxed">${sanitize(v.ai_hiring_verdict || 'Reviewed by Multimodal Vision')}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    `;
+  } else {
+    spmVisionSectionHtml = `
+    <div class="bg-gradient-to-r from-indigo-50 via-purple-50 to-indigo-50 rounded-xl border border-indigo-200 p-4 mb-4 shadow-xs">
+      <div class="flex items-center justify-between flex-wrap gap-3">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-lg font-bold shadow-sm shrink-0">
+            <i class="fa-solid fa-camera"></i>
+          </div>
+          <div>
+            <h4 class="text-xs font-bold text-gray-900 uppercase tracking-wide">Multimodal AI Vision Scanner for Uploaded SPM Slips</h4>
+            <p class="text-[11px] text-gray-600">Inspect &amp; grade uploaded SPM certificates (PDF, JPG, PNG) directly from Google Drive using Gemini Multimodal Vision.</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <input type="file" id="spmVisionFileInput_${appId}" accept="image/*,application/pdf" class="hidden" onchange="window.pmgRecruitment.onSpmFileSelected('${appId}', this.files[0])">
+          <button type="button" onclick="document.getElementById('spmVisionFileInput_${appId}').click()" class="px-3 py-2 bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
+            <i class="fa-solid fa-upload"></i> Upload &amp; Scan
+          </button>
+          <button type="button" onclick="window.pmgRecruitment.scanCandidateSpmVision('${appId}')" class="px-3.5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-2">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Scan from Drive / Docs
+          </button>
+        </div>
+      </div>
+    </div>
+    `;
+  }
 
   const content = el('recAmDetailContent');
   if (!content) return;
@@ -1890,6 +2354,9 @@ ${aiSection}
     <div class="col-span-2 sm:col-span-3"><p class="text-[10px] text-gray-400 uppercase tracking-wide">Emergency Contact</p><p class="font-medium text-gray-800">${sanitize(app.emergencyContact||'—')}</p></div>
   </div>
 </div>
+
+<!-- Multimodal SPM Vision Extraction -->
+${spmVisionSectionHtml}
 
 <!-- Education & SPM -->
 <div class="bg-white rounded-xl border border-gray-200 p-4 mb-4">
@@ -2287,6 +2754,69 @@ function printApp(appId) {
 
   const m = STATUS_META[app.status] || STATUS_META.new;
   const ai = app.aiReport || null;
+  const vData = app.spmVisionData || null;
+
+  let spmPrintHtml = '';
+  if (vData) {
+    const mathGrade = String(vData.maths_grade || 'FAILED / NOT TAKEN').trim();
+    const isMathPass = !mathGrade.toUpperCase().includes('FAIL') &&
+                       !mathGrade.toUpperCase().includes('NOT TAKEN') &&
+                       !['D','E','G','TH','GAGAL'].includes(mathGrade.toUpperCase());
+
+    const mathAlertBox = isMathPass ? `
+      <div style="background: #ecfdf5; border: 1.5px solid #10b981; border-radius: 6px; padding: 6px 10px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <strong style="color: #065f46; font-size: 9.5pt;">MATHEMATICS / MATEMATIK: <span style="text-decoration: underline; font-size: 11pt;">${sanitize(mathGrade)}</span></strong>
+          <span style="color: #047857; font-size: 8.5pt; margin-left: 6px;">&bull; Meets retail pharmacy numeracy &amp; calculation standards (Credit C+)</span>
+        </div>
+        <span style="background: #10b981; color: white; font-weight: 800; font-size: 8pt; padding: 2px 6px; border-radius: 4px;">PASSED</span>
+      </div>
+    ` : `
+      <div style="background: #fff1f2; border: 2px solid #ef4444; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <strong style="color: #991b1b; font-size: 10pt;">🚨 MANDATORY MATHEMATICS EVALUATION ALERT</strong>
+          <span style="background: #ef4444; color: white; font-weight: 800; font-size: 8pt; padding: 2px 6px; border-radius: 4px;">FAILED / NOT TAKEN</span>
+        </div>
+        <p style="margin: 4px 0 0 0; font-size: 8.5pt; color: #b91c1c;">
+          Recorded Grade: <strong>${sanitize(mathGrade)}</strong>. Candidate flagged for numeracy deficit. Does not meet standard cashiering/dispensing requirements without remediation.
+        </p>
+      </div>
+    `;
+
+    spmPrintHtml = `
+      ${mathAlertBox}
+      <div style="display: flex; gap: 10px; margin-bottom: 4px;">
+        <div style="flex: 1;">
+          <table class="data-table" style="font-size: 8.5pt; margin-bottom: 4px;">
+            <thead>
+              <tr>
+                <th style="width: 70%;">Subject / Mata Pelajaran</th>
+                <th style="text-align: center; width: 30%;">Grade</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(vData.grades_table || []).map(row => {
+                const isMath = (row.subject || '').toLowerCase().includes('math') || (row.subject || '').toLowerCase().includes('matematik');
+                const gr = String(row.grade || '').trim();
+                const isHigh = ['A+','A','A-','B+','B','C+','C'].includes(gr.toUpperCase());
+                const bg = isMath ? (isHigh ? '#d1fae5' : '#fee2e2') : (isHigh ? '#f0f9ff' : '#ffffff');
+                const fg = isMath ? (isHigh ? '#065f46' : '#991b1b') : '#111827';
+                return `<tr style="background: ${bg}; color: ${fg}; font-weight: ${isMath ? '700' : 'normal'};">
+                  <td>${sanitize(row.subject)} ${isMath ? '<span style="font-size: 7.5pt; background: #fef3c7; color: #92400e; padding: 1px 4px; border-radius: 3px;">CORE</span>' : ''}</td>
+                  <td style="text-align: center; font-weight: 700;">${sanitize(gr)}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+          <div style="font-size: 8pt; color: #64748b; margin-top: 2px;">
+            Certification: <strong>${vData.layak_sijil ? '✓ Layak Mendapat Sijil' : '⚠️ Tidak Layak Sijil (BM/Sejarah)'}</strong> &bull; SPM Year: <strong>${sanitize(vData.spm_year || '—')}</strong> &bull; Auditor: <strong>Gemini Multimodal Vision</strong>
+          </div>
+        </div>
+      </div>
+    `;
+  } else {
+    spmPrintHtml = `<div style="white-space: pre-line; font-family: monospace, sans-serif; font-size: 9pt;">${sanitize(app.spm || 'Not specified')}</div>`;
+  }
 
   const html = `<!DOCTYPE html>
 <html>
@@ -2408,7 +2938,7 @@ function printApp(appId) {
   <table class="prop-table">
     <tr><td>Highest Qualification:</td><td><strong>${sanitize(app.highestQual || 'N/A')}</strong> (${sanitize(app.major || '')})</td></tr>
     <tr><td>Institution / University:</td><td>${sanitize(app.institution || 'N/A')} (CGPA: ${sanitize(app.cgpa || 'N/A')})</td></tr>
-    <tr><td>SPM Results:</td><td style="white-space: pre-line; font-family: monospace, sans-serif;">${sanitize(app.spm || 'Not specified')}</td></tr>
+    <tr><td>SPM Slip &amp; Subjects:</td><td>${spmPrintHtml}</td></tr>
     <tr><td>Language Proficiency:</td><td>${sanitize(app.languages || 'Not specified')}</td></tr>
   </table>
 
@@ -2646,6 +3176,8 @@ window.pmgRecruitment = {
   loadSlots,
   getGlobalGeminiKey,
   promptSetGeminiKey,
+  scanCandidateSpmVision,
+  onSpmFileSelected,
 };
 
 // Auto-init when DOM ready
