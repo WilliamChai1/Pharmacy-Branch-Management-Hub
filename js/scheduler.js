@@ -48,7 +48,7 @@ const DEFAULT_KS01_TEAMMATES = [
     empName: 'CHAI YEE SIAN',
     position: 'Pharmacist',
     isPharmacist: true,
-    scheduleMode: 'Fixed', // Fixed Schedule
+    scheduleMode: 'Fixed', // Fixed Schedule Anchor (Exempt from 6S)
     race: 'Chinese',
     shiftPref: 'Morning Only',
     restDayPref: 'Sunday',
@@ -70,27 +70,6 @@ const DEFAULT_KS01_TEAMMATES = [
     }
   },
   {
-    empNo: 'PMG02963',
-    nickname: 'KENIX',
-    empName: 'KENIX LING WANG YIING',
-    position: 'Pharmacist',
-    isPharmacist: true,
-    scheduleMode: 'Rotating',
-    race: 'Chinese',
-    shiftPref: 'Night Preferred',
-    restDayPref: 'Monday',
-    halfDayPref: 'None',
-    dayPrefs: {
-      Monday: 'RD',
-      Tuesday: 'Night Preferred',
-      Wednesday: 'Flexible',
-      Thursday: 'Night Preferred',
-      Friday: 'Flexible',
-      Saturday: 'Night Preferred',
-      Sunday: 'Flexible'
-    }
-  },
-  {
     empNo: 'PMG00723',
     nickname: 'TING',
     empName: 'TING KWANG YU',
@@ -98,7 +77,7 @@ const DEFAULT_KS01_TEAMMATES = [
     isPharmacist: false,
     scheduleMode: 'Rotating',
     race: 'Chinese',
-    shiftPref: 'Morning Preferred',
+    shiftPref: 'Flexible',
     restDayPref: 'Sunday',
     halfDayPref: 'None',
     dayPrefs: {
@@ -112,44 +91,65 @@ const DEFAULT_KS01_TEAMMATES = [
     }
   },
   {
-    empNo: 'PMG02694',
-    nickname: 'PENNY',
-    empName: 'JONG PEI CHOO',
-    position: 'Assistant Branch Manager',
-    isPharmacist: false,
+    empNo: 'PMG02963',
+    nickname: 'KENIX',
+    empName: 'KENIX LING WANG YIING',
+    position: 'Pharmacist',
+    isPharmacist: true,
     scheduleMode: 'Rotating',
     race: 'Chinese',
-    shiftPref: 'Morning Preferred',
-    restDayPref: 'Friday',
-    halfDayPref: 'Thursday',
+    shiftPref: 'Flexible',
+    restDayPref: 'Monday',
+    halfDayPref: 'Sunday Morning (4H)',
     dayPrefs: {
-      Monday: 'Flexible',
+      Monday: 'RD',
       Tuesday: 'Flexible',
       Wednesday: 'Flexible',
-      Thursday: 'Morning Half (4H)',
-      Friday: 'RD',
+      Thursday: 'Flexible',
+      Friday: 'Flexible',
       Saturday: 'Flexible',
-      Sunday: 'Flexible'
+      Sunday: 'Morning Half (4H)'
     }
   },
   {
     empNo: 'PMG01294',
     nickname: 'LOUNA',
     empName: 'HANIESHA LOUNA ANAK DAGENG',
-    position: 'Staff',
+    position: 'Assistant Branch Manager',
     isPharmacist: false,
     scheduleMode: 'Rotating',
     race: 'Iban / Bidayuh',
     shiftPref: 'Flexible',
-    restDayPref: 'Tuesday',
-    halfDayPref: 'None',
+    restDayPref: 'Thursday',
+    halfDayPref: 'Wednesday Morning (4H)',
     dayPrefs: {
       Monday: 'Flexible',
-      Tuesday: 'RD',
-      Wednesday: 'Flexible',
-      Thursday: 'Flexible',
+      Tuesday: 'Flexible',
+      Wednesday: 'Morning Half (4H)',
+      Thursday: 'RD',
       Friday: 'Flexible',
       Saturday: 'Flexible',
+      Sunday: 'Flexible'
+    }
+  },
+  {
+    empNo: 'PMG02694',
+    nickname: 'PENNY',
+    empName: 'JONG PEI CHOO',
+    position: 'Staff',
+    isPharmacist: false,
+    scheduleMode: 'Rotating',
+    race: 'Chinese',
+    shiftPref: 'Morning Preferred',
+    restDayPref: 'Tuesday',
+    halfDayPref: 'Monday Morning (4H)',
+    dayPrefs: {
+      Monday: 'Morning Half (4H)',
+      Tuesday: 'RD',
+      Wednesday: 'Morning Preferred',
+      Thursday: 'Flexible',
+      Friday: 'Flexible',
+      Saturday: 'Morning Preferred',
       Sunday: 'Flexible'
     }
   },
@@ -161,34 +161,13 @@ const DEFAULT_KS01_TEAMMATES = [
     isPharmacist: false,
     scheduleMode: 'Rotating',
     race: 'Iban / Bidayuh',
-    shiftPref: 'Morning Preferred',
-    restDayPref: 'Wednesday',
-    halfDayPref: 'None',
-    dayPrefs: {
-      Monday: 'Flexible',
-      Tuesday: 'Flexible',
-      Wednesday: 'RD',
-      Thursday: 'Flexible',
-      Friday: 'Flexible',
-      Saturday: 'Flexible',
-      Sunday: 'Flexible'
-    }
-  },
-  {
-    empNo: 'PMG03062',
-    nickname: 'JANET',
-    empName: 'DANIELA JANET ANAK MUSTAPHA',
-    position: 'Staff',
-    isPharmacist: false,
-    scheduleMode: 'Rotating',
-    race: 'Iban / Bidayuh',
-    shiftPref: 'Night Preferred',
+    shiftPref: 'Flexible',
     restDayPref: 'Thursday',
-    halfDayPref: 'None',
+    halfDayPref: 'Wednesday Morning (4H)',
     dayPrefs: {
       Monday: 'Flexible',
       Tuesday: 'Flexible',
-      Wednesday: 'Flexible',
+      Wednesday: 'Morning Half (4H)',
       Thursday: 'RD',
       Friday: 'Flexible',
       Saturday: 'Flexible',
@@ -203,15 +182,15 @@ const DEFAULT_KS01_TEAMMATES = [
     isPharmacist: false,
     scheduleMode: 'Rotating',
     race: 'Malay',
-    shiftPref: 'Morning Preferred',
-    restDayPref: 'Friday',
+    shiftPref: 'Flexible',
+    restDayPref: 'Monday',
     halfDayPref: 'None',
     dayPrefs: {
-      Monday: 'Flexible',
+      Monday: 'RD',
       Tuesday: 'Flexible',
       Wednesday: 'Flexible',
       Thursday: 'Flexible',
-      Friday: 'RD',
+      Friday: 'Flexible',
       Saturday: 'Flexible',
       Sunday: 'Flexible'
     }
@@ -224,15 +203,36 @@ const DEFAULT_KS01_TEAMMATES = [
     isPharmacist: false,
     scheduleMode: 'Rotating',
     race: 'Malay',
-    shiftPref: 'Night Preferred',
+    shiftPref: 'Flexible',
+    restDayPref: 'Friday',
+    halfDayPref: 'Tuesday Morning (4H)',
+    dayPrefs: {
+      Monday: 'Flexible',
+      Tuesday: 'Morning Half (4H)',
+      Wednesday: 'Flexible',
+      Thursday: 'Flexible',
+      Friday: 'RD',
+      Saturday: 'Flexible',
+      Sunday: 'Flexible'
+    }
+  },
+  {
+    empNo: 'PMG03033',
+    nickname: 'CHRISTINA',
+    empName: 'CHRISTINA LEE YING YING',
+    position: 'Provisional Registered Pharmacist',
+    isPharmacist: true,
+    scheduleMode: 'Rotating',
+    race: 'Chinese',
+    shiftPref: 'Flexible',
     restDayPref: 'Saturday',
-    halfDayPref: 'None',
+    halfDayPref: 'Friday Morning (4H)',
     dayPrefs: {
       Monday: 'Flexible',
       Tuesday: 'Flexible',
       Wednesday: 'Flexible',
       Thursday: 'Flexible',
-      Friday: 'Flexible',
+      Friday: 'Morning Half (4H)',
       Saturday: 'RD',
       Sunday: 'Flexible'
     }
@@ -342,14 +342,74 @@ function loadTeammates(branchCode) {
       ting.position = 'Branch Manager';
     }
     ting.isPharmacist = false;
+    ting.scheduleMode = 'Rotating';
   }
 
-  // Ensure William Chai has his fixed schedule attributes
+  // Ensure William Chai has his fixed schedule attributes (ONLY fixed shift anchor)
   const william = currentTeammates.find(t => t.empNo === 'PMG00831' || t.nickname === 'WILLIAM');
   if (william) {
     william.position = 'Pharmacist';
     william.isPharmacist = true;
     william.scheduleMode = 'Fixed';
+    william.shiftPref = 'Morning Only';
+  }
+
+  // KS01 Specific Realignment & Sanitization
+  if (branchCode === 'KS01') {
+    // 1. Purge Daniela Janet (Resigned)
+    currentTeammates = currentTeammates.filter(t => t.empNo !== 'PMG03062' && t.nickname !== 'JANET');
+
+    // 2. Realignment: Louna is Assistant Branch Manager (ABM) and participates in 6S cleaning
+    const louna = currentTeammates.find(t => t.empNo === 'PMG01294' || t.nickname === 'LOUNA');
+    if (louna) {
+      louna.position = 'Assistant Branch Manager';
+      louna.scheduleMode = 'Rotating';
+      if (!louna.dayPrefs || louna.dayPrefs.Thursday !== 'RD') {
+        louna.restDayPref = 'Thursday';
+        louna.halfDayPref = 'Wednesday Morning (4H)';
+        louna.dayPrefs = {
+          Monday: 'Flexible', Tuesday: 'Flexible', Wednesday: 'Morning Half (4H)',
+          Thursday: 'RD', Friday: 'Flexible', Saturday: 'Flexible', Sunday: 'Flexible'
+        };
+      }
+    }
+
+    // 3. Realignment: Penny is Staff (remove ABM designation, standard rotating pool)
+    const penny = currentTeammates.find(t => t.empNo === 'PMG02694' || t.nickname === 'PENNY');
+    if (penny) {
+      penny.position = 'Staff';
+      penny.scheduleMode = 'Rotating';
+      if (!penny.dayPrefs || penny.dayPrefs.Tuesday !== 'RD') {
+        penny.restDayPref = 'Tuesday';
+        penny.halfDayPref = 'Monday Morning (4H)';
+        penny.shiftPref = 'Morning Preferred';
+        penny.dayPrefs = {
+          Monday: 'Morning Half (4H)', Tuesday: 'RD', Wednesday: 'Morning Preferred',
+          Thursday: 'Flexible', Friday: 'Flexible', Saturday: 'Morning Preferred', Sunday: 'Flexible'
+        };
+      }
+    }
+
+    // 4. Ensure Christina Lee Ying Ying (PRP) is in active teammates list
+    const christina = currentTeammates.find(t => t.empNo === 'PMG03033' || t.nickname === 'CHRISTINA');
+    if (!christina) {
+      currentTeammates.push({
+        empNo: 'PMG03033',
+        nickname: 'CHRISTINA',
+        empName: 'CHRISTINA LEE YING YING',
+        position: 'Provisional Registered Pharmacist',
+        isPharmacist: true,
+        scheduleMode: 'Rotating',
+        race: 'Chinese',
+        shiftPref: 'Flexible',
+        restDayPref: 'Saturday',
+        halfDayPref: 'Friday Morning (4H)',
+        dayPrefs: {
+          Monday: 'Flexible', Tuesday: 'Flexible', Wednesday: 'Flexible',
+          Thursday: 'Flexible', Friday: 'Morning Half (4H)', Saturday: 'RD', Sunday: 'Flexible'
+        }
+      });
+    }
   }
 
   renderTeammatesTable();
@@ -766,9 +826,9 @@ async function generateTimetable() {
 function postProcessSchedule(schedule, branchVal, year, month, totalDays) {
   if (!schedule || !schedule.days) return;
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const staffMembers = currentTeammates.filter(t => t.position === 'Staff' && t.empNo !== 'PMG00831');
+  const rotatingPool = currentTeammates.filter(t => t.empNo !== 'PMG00831' && t.nickname !== 'WILLIAM');
   const cleaningCounts = {};
-  staffMembers.forEach(a => { cleaningCounts[a.empNo] = 0; });
+  rotatingPool.forEach(a => { cleaningCounts[a.empNo] = 0; });
 
   if (!schedule.warnings) schedule.warnings = [];
 
@@ -783,7 +843,7 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays) {
 
     if (!d.shifts) d.shifts = {};
 
-    // 1. Enforce William's immutable anchor schedule
+    // 1. Enforce William's immutable anchor schedule (Fixed Morning AM only)
     if (william) {
       if (isHoliday) {
         d.shifts[william.empNo] = 'PH';
@@ -818,21 +878,21 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays) {
       if (!schedule.warnings.includes(warn)) schedule.warnings.push(warn);
     }
 
-    // 3. Assign 6S Cleaning Slot round-robin among duty pharmacy assistants (2:00 PM – 3:30 PM)
-    if (!d.cleaningDuty || !d.cleaningDuty.empNo) {
-      const dutyAssistants = staffMembers.filter(a => {
+    // 3. Universal 6S Cleaning Rotation: Shared equally among ALL rotating staff (2:00 PM – 3:30 PM). William is exempt.
+    if (!d.cleaningDuty || !d.cleaningDuty.empNo || d.cleaningDuty.empNo === 'PMG00831') {
+      const dutyRotating = rotatingPool.filter(a => {
         const s = d.shifts[a.empNo];
         return s && s !== 'RD' && s !== 'PH' && s !== 'OFF';
       });
 
-      if (dutyAssistants.length > 0) {
-        dutyAssistants.sort((a, b) => {
+      if (dutyRotating.length > 0) {
+        dutyRotating.sort((a, b) => {
           const cA = cleaningCounts[a.empNo] || 0;
           const cB = cleaningCounts[b.empNo] || 0;
           if (cA !== cB) return cA - cB;
           return a.empNo.localeCompare(b.empNo);
         });
-        const cleaner = dutyAssistants[0];
+        const cleaner = dutyRotating[0];
         cleaningCounts[cleaner.empNo] = (cleaningCounts[cleaner.empNo] || 0) + 1;
         d.cleaningDuty = {
           empNo: cleaner.empNo,
@@ -880,7 +940,7 @@ ${JSON.stringify(currentTeammates.map(t => ({
 STRICT OPERATIONAL RULES & HARD CONSTRAINTS:
 
 1. IMMUTABLE STAFF ANCHOR — CHAI YEE SIAN (WILLIAM - PMG00831):
-   - William Chai's schedule is FIXED, IMMUTABLE, and pre-locked first before solving the rest of the roster:
+   - William Chai is the ONLY fixed shift anchor in the outlet. His schedule is FIXED, IMMUTABLE, and pre-locked first before solving the rest of the roster:
      * Monday to Friday: '8H_0730-1630' (07:30 to 16:30)
      * Saturday: '4H_0730-1130' (Morning Half Day 07:30 to 11:30)
      * Sunday: 'RD' (Rest Day)
@@ -895,30 +955,37 @@ STRICT OPERATIONAL RULES & HARD CONSTRAINTS:
    - Flag a warning if total available working staff on any given day makes hitting 3 staff impossible due to approved festive leave (working total < 6).
 
 3. MANDATORY PHARMACIST COVERAGE (100% STORE HOURS):
-   - Licensed Pharmacists: William Chai (PMG00831) and Kenix Ling (PMG02963). Note: Ting Kwang Yu is NOT a pharmacist!
-   - Morning Shift (07:30-16:30): Covered by William (Mon–Sat). On Sundays and Public Holidays when William is off ('RD'/'PH'), Kenix Ling MUST be scheduled for Morning ('8H_0730-1630').
-   - Night Shift (12:30-21:30): Covered by Kenix Ling (when William works morning).
-   - At least 1 licensed Pharmacist must be on duty on every single working shift!
+   - Licensed Pharmacists: William Chai (PMG00831) and Kenix Ling (PMG02963), plus PRP Christina Lee (PMG03033).
+   - Morning Shift (07:30-16:30): Covered by William (Mon–Sat). On Sundays and Public Holidays when William is off ('RD'/'PH'), Kenix Ling or Christina MUST be scheduled for Morning ('8H_0730-1630' or '4H_0730-1130').
+   - Night Shift (12:30-21:30): Covered by Kenix Ling or Christina whenever possible.
+   - At least 1 qualified pharmacist (William, Kenix, or Christina) must be on duty on every single working shift!
 
 4. ANTI-FATIGUE & RECOVERY HARD RULES:
    - FORBID assigning a Night (PM - '8H_1230-2130') shift followed directly by a Morning (AM - '8H_0730-1630' or '4H_0730-1130') shift the next morning (ensure mandatory turnaround rest of at least 15-34 hours through an intervening Rest Day 'RD' or consecutive PM shift).
-   - Kenix Ling must take Saturday as 'RD' before covering Sunday Morning to guarantee turnaround rest.
    - CAP consecutive Night shifts at a maximum of 3 consecutive days before a mandatory Rest Day ('RD') or morning transition.
 
-5. FAIRNESS & SHIFT EQUITY (PARITY):
-   - Shift Balance Parity: Over the ${totalDays}-day month, the distribution of Morning (AM) vs Night (PM) shifts per teammate must be equitable: maximum variance of ±1 shift between teammates in the same role (e.g. Staff Pharmacy Assistants should each receive ~12-13 Morning and ~12-13 Night shifts).
+5. UNIFIED ROTATING COUNTER POOL & SHIFT BALANCE PARITY (NO ARTIFICIAL EXEMPTION BLOCKS):
+   - Completely remove 'Manager Block' and 'Clinical Anchor' shift restrictions for Kenix, Ting, and Penny.
+   - ALL teammates other than William (Ting, Kenix, Louna, Penny, Fiona, Nurhafizah, Farizin, Christina) belong to ONE unified rotating counter pool.
+   - Shift Parity Rule: Over the ${totalDays}-day month, the distribution of Morning (AM) vs Night (PM) shifts per teammate in this rotating pool MUST be equitable: maximum variance of ±1 shift between teammates (every rotating member should receive ~12-13 Morning and ~12-13 Night shifts).
 
-6. GOLDEN HOUR 6S CLEANING & REFILLING OVERLAP SLOT (14:00 – 15:30):
+6. UNIVERSAL 6S CLEANING & REFILLING OVERLAP SLOT (14:00 – 15:30):
    - The overlap period from 2:00 PM to 3:30 PM is dedicated to "Gondola Cleaning & Refilling".
-   - Assign exactly 1 designated duty Pharmacy Assistant each day to this slot.
-   - Implement round-robin rotation so every Pharmacy Assistant (Louna, Fiona, Janet, Nurhafizah, Farizin) shares this duty equally throughout the month. William and Kenix are excluded from this duty.
+   - Assign exactly 1 designated duty teammate each day to this slot.
+   - The 2:00 PM – 3:30 PM Gondola Cleaning & Refill duty must be shared equally among ALL rotating staff (Ting, Kenix, Louna, Penny, Fiona, Nurhafizah, Farizin, Christina). No counter staff is exempted. William is strictly excluded.
 
-7. CULTURAL, RACE & MULTILINGUAL BALANCE:
+7. RESPECT INDIVIDUAL DAY-SPECIFIC PREFERENCES (PRIORITY CONSTRAINTS):
+   - Hafizah: Prefer Rest Day on Monday ('RD'). Must work full shift on weekends (Saturday & Sunday) due to transport.
+   - Louna: Prefer Half Day on Wednesday ('4H_0730-1130'), Rest Day on Thursday ('RD').
+   - Fiona: Prefer Half Day on Wednesday ('4H_0730-1130'), Rest Day on Thursday ('RD').
+   - Farizin: Prefer Half Day on Tuesday ('4H_0730-1130'), Rest Day on Friday ('RD').
+   - Kenix: Prefer Morning Half Day on Sunday ('4H_0730-1130'), Rest Day on Monday ('RD').
+   - Christina: Prefer Morning Half Day on Friday ('4H_0730-1130'), Rest Day on Saturday ('RD').
+   - Penny: Prefer Rest Day on Tuesday ('RD'), Morning Half Day on Monday ('4H_0730-1130'), Morning shifts on Wednesday and Saturday.
+   - Ting: Prefer Rest Day on Sunday ('RD').
+
+8. CULTURAL, RACE & MULTILINGUAL BALANCE:
    - Multilingual customer coverage: Every shift must include at least 1 Chinese speaker and at least 1 Malay or Iban/Bidayuh speaker.
-   - Friday prayers (Solat Jumaat): Non-Muslim staff cover floor/dispensary between 12:30 and 14:30.
-   - Festive holiday leave rotation: CNY (Chinese staff off), Hari Raya (Malay staff off), Gawai (Iban/Bidayuh staff off).
-
-8. LABOR LAW:
    - Maximum 6 consecutive working days without an RD. Minimum 1 Rest Day ('RD') per 7-day period.
 
 SHIFT CODES:
@@ -943,15 +1010,15 @@ Respond ONLY with a valid JSON object matching this schema:
         "PMG02963": "8H_1230-2130",
         "PMG00723": "8H_0730-1630",
         "PMG02694": "8H_1230-2130",
-        "PMG01294": "8H_0730-1630",
-        "PMG01780": "8H_0730-1630",
-        "PMG03062": "8H_1230-2130",
+        "PMG01294": "RD",
+        "PMG01780": "RD",
         "PMG02070": "8H_1230-2130",
-        "PMG03375": "RD"
+        "PMG03375": "8H_0730-1630",
+        "PMG03033": "8H_1230-2130"
       },
       "cleaningDuty": {
-        "empNo": "PMG01294",
-        "nickname": "LOUNA",
+        "empNo": "PMG00723",
+        "nickname": "TING",
         "time": "2:00 PM – 3:30 PM",
         "task": "Gondola Cleaning & Refilling"
       },
@@ -991,13 +1058,26 @@ Respond ONLY with a valid JSON object matching this schema:
 // ─── SMART HEURISTIC SCHEDULE GENERATOR (OFFLINE / FAILOVER) ──────────────────
 function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const staffMembers = currentTeammates.filter(t => t.position === 'Staff' && t.empNo !== 'PMG00831');
-  const cycle5 = ['AM', 'AM', 'PM', 'PM', 'RD'];
+  const william = currentTeammates.find(t => t.empNo === 'PMG00831' || t.nickname === 'WILLIAM');
+  // Unified rotating counter pool: ALL teammates except William (Fixed Anchor)
+  const rotatingPool = currentTeammates.filter(t => t.empNo !== 'PMG00831' && t.nickname !== 'WILLIAM');
 
   const stats = {};
   currentTeammates.forEach(t => {
-    stats[t.empNo] = { am: 0, pm: 0, rd: 0, clean: 0, consecutiveNights: 0, lastShift: null };
+    stats[t.empNo] = {
+      am: 0,
+      pm: 0,
+      rd: 0,
+      clean: 0,
+      consecutiveNights: 0,
+      consecutiveWorkingDays: 0,
+      lastShift: null,
+      fatigueViolations: 0
+    };
   });
+
+  const cleaningCounts = {};
+  rotatingPool.forEach(t => { cleaningCounts[t.empNo] = 0; });
 
   const dailySchedule = [];
   const warnings = [];
@@ -1010,8 +1090,7 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
     const holidayName = isHoliday ? HOLIDAYS_2026_SARAWAK[dateStr] : '';
     const dayShifts = {};
 
-    // 1. William Chai (Fixed Anchor - Immutable)
-    const william = currentTeammates.find(t => t.empNo === 'PMG00831' || t.nickname === 'WILLIAM');
+    // 1. William Chai (Fixed Anchor - Immutable, Morning Only, 6S Exempt)
     if (william) {
       if (isHoliday) {
         dayShifts[william.empNo] = 'PH';
@@ -1032,189 +1111,157 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
       }
     }
 
-    // 2. Kenix Ling (Pharmacist Coverage & Anti-Fatigue)
-    const kenix = currentTeammates.find(t => t.empNo === 'PMG02963' || t.nickname === 'KENIX');
-    let kenixTookRd = false;
-    if (kenix) {
-      const isWilliamOffToday = (william && (dayShifts[william.empNo] === 'RD' || dayShifts[william.empNo] === 'PH'));
-      const tomorrowDateObj = new Date(year, month - 1, d + 1);
-      const tomorrowDayOfWeek = daysOfWeek[tomorrowDateObj.getDay()];
-      const tomorrowDateStr = `${year}-${String(month).padStart(2, '0')}-${String(d + 1).padStart(2, '0')}`;
-      const isWilliamOffTomorrow = (d < totalDays && (tomorrowDayOfWeek === 'Sunday' || !!HOLIDAYS_2026_SARAWAK[tomorrowDateStr]));
+    const isWilliamOffToday = !william || dayShifts[william.empNo] === 'RD' || dayShifts[william.empNo] === 'PH';
 
-      if (isWilliamOffToday) {
-        dayShifts[kenix.empNo] = '8H_0730-1630';
-        stats[kenix.empNo].am++;
-        stats[kenix.empNo].lastShift = 'AM';
-        stats[kenix.empNo].consecutiveNights = 0;
-      } else if (isWilliamOffTomorrow) {
-        // Saturday rest before Sunday morning (guarantees 34 hours turnaround rest)
-        dayShifts[kenix.empNo] = 'RD';
-        stats[kenix.empNo].rd++;
-        stats[kenix.empNo].lastShift = 'RD';
-        stats[kenix.empNo].consecutiveNights = 0;
-        kenixTookRd = true;
-      } else if (dayOfWeek === (kenix.restDayPref || 'Monday') && d > 1) {
-        dayShifts[kenix.empNo] = 'RD';
-        stats[kenix.empNo].rd++;
-        stats[kenix.empNo].lastShift = 'RD';
-        stats[kenix.empNo].consecutiveNights = 0;
-        kenixTookRd = true;
-      } else if (stats[kenix.empNo].consecutiveNights >= 3) {
-        dayShifts[kenix.empNo] = 'RD';
-        stats[kenix.empNo].rd++;
-        stats[kenix.empNo].lastShift = 'RD';
-        stats[kenix.empNo].consecutiveNights = 0;
-        kenixTookRd = true;
+    // 2. Identify Rest Days (RD) for rotating pool on day d
+    // Priority:
+    // a) Mandatory labor law: Max 6 consecutive working days without rest
+    // b) Mandatory anti-fatigue: Max 3 consecutive nights + turnaround protection
+    // c) Teammate prefers RD on dayOfWeek
+    const availableStaff = [];
+
+    rotatingPool.forEach(tm => {
+      const st = stats[tm.empNo];
+      let mustRest = false;
+      const prefersRest = (dayOfWeek === tm.restDayPref);
+
+      if (st.consecutiveWorkingDays >= 6) {
+        mustRest = true;
+      }
+      if (st.consecutiveNights >= 3 && st.lastShift === 'PM') {
+        mustRest = true;
+      }
+
+      if (mustRest || prefersRest) {
+        dayShifts[tm.empNo] = 'RD';
+        st.rd++;
+        st.lastShift = 'RD';
+        st.consecutiveNights = 0;
+        st.consecutiveWorkingDays = 0;
       } else {
-        dayShifts[kenix.empNo] = '8H_1230-2130';
-        stats[kenix.empNo].pm++;
-        stats[kenix.empNo].lastShift = 'PM';
-        stats[kenix.empNo].consecutiveNights++;
-      }
-    }
-
-    // 3. Staff Assistants (5 teammates) using 5-day cycle: 2 AM, 2 PM, 1 RD
-    for (let i = 0; i < staffMembers.length; i++) {
-      const a = staffMembers[i];
-      let shiftType = cycle5[(d - 1 + i) % 5];
-
-      // In 28-day month (February), balance day 24-28 cleanly without fatigue
-      if (totalDays === 28) {
-        if (d === 26 && i === 2) shiftType = 'AM';
-        if (d === 28 && i === 4) shiftType = 'PM';
-      }
-
-      if (shiftType === 'RD') {
-        dayShifts[a.empNo] = 'RD';
-        stats[a.empNo].rd++;
-        stats[a.empNo].lastShift = 'RD';
-        stats[a.empNo].consecutiveNights = 0;
-      } else if (shiftType === 'AM') {
-        dayShifts[a.empNo] = '8H_0730-1630';
-        stats[a.empNo].am++;
-        stats[a.empNo].lastShift = 'AM';
-        stats[a.empNo].consecutiveNights = 0;
-      } else {
-        dayShifts[a.empNo] = '8H_1230-2130';
-        stats[a.empNo].pm++;
-        stats[a.empNo].lastShift = 'PM';
-        stats[a.empNo].consecutiveNights++;
-      }
-    }
-
-    // 4. Managers: Ting & Penny
-    const ting = currentTeammates.find(t => t.empNo === 'PMG00723' || t.nickname === 'TING');
-    if (ting) {
-      const tingPrefRd = (dayOfWeek === (ting.restDayPref || 'Sunday'));
-      if (tingPrefRd || stats[ting.empNo].consecutiveNights >= 3) {
-        dayShifts[ting.empNo] = 'RD';
-        stats[ting.empNo].rd++;
-        stats[ting.empNo].lastShift = 'RD';
-        stats[ting.empNo].consecutiveNights = 0;
-      } else {
-        const wantsAm = (dayOfWeek === 'Monday' || dayOfWeek === 'Tuesday');
-        const canAm = (stats[ting.empNo].lastShift !== 'PM');
-
-        if (kenixTookRd && (dayOfWeek === 'Tuesday' || dayOfWeek === 'Wednesday')) {
-          dayShifts[ting.empNo] = '8H_1230-2130';
-          stats[ting.empNo].pm++;
-          stats[ting.empNo].lastShift = 'PM';
-          stats[ting.empNo].consecutiveNights++;
-        } else if (isHoliday && dayOfWeek === 'Wednesday') {
-          dayShifts[ting.empNo] = '8H_1230-2130';
-          stats[ting.empNo].pm++;
-          stats[ting.empNo].lastShift = 'PM';
-          stats[ting.empNo].consecutiveNights++;
-        } else if (wantsAm && canAm) {
-          dayShifts[ting.empNo] = '8H_0730-1630';
-          stats[ting.empNo].am++;
-          stats[ting.empNo].lastShift = 'AM';
-          stats[ting.empNo].consecutiveNights = 0;
-        } else {
-          dayShifts[ting.empNo] = '8H_1230-2130';
-          stats[ting.empNo].pm++;
-          stats[ting.empNo].lastShift = 'PM';
-          stats[ting.empNo].consecutiveNights++;
-        }
-      }
-    }
-
-    const penny = currentTeammates.find(t => t.empNo === 'PMG02694' || t.nickname === 'PENNY');
-    if (penny) {
-      const pennyPrefRd = (dayOfWeek === (penny.restDayPref || 'Wednesday'));
-      let pennyTakesRd = pennyPrefRd;
-
-      if (stats[penny.empNo].consecutiveNights >= 3) {
-        pennyTakesRd = true;
-      }
-
-      if (pennyTakesRd) {
-        dayShifts[penny.empNo] = 'RD';
-        stats[penny.empNo].rd++;
-        stats[penny.empNo].lastShift = 'RD';
-        stats[penny.empNo].consecutiveNights = 0;
-      } else {
-        const currentPm = Object.values(dayShifts).filter(s => s && s.includes('1230')).length;
-        const canAm = (stats[penny.empNo].lastShift !== 'PM');
-        const canPm = (stats[penny.empNo].consecutiveNights < 3);
-
-        if (currentPm < 3 && canPm) {
-          dayShifts[penny.empNo] = '8H_1230-2130';
-          stats[penny.empNo].pm++;
-          stats[penny.empNo].lastShift = 'PM';
-          stats[penny.empNo].consecutiveNights++;
-        } else if (canAm && (dayOfWeek === 'Thursday' || dayOfWeek === 'Friday' || dayOfWeek === 'Saturday')) {
-          dayShifts[penny.empNo] = '8H_0730-1630';
-          stats[penny.empNo].am++;
-          stats[penny.empNo].lastShift = 'AM';
-          stats[penny.empNo].consecutiveNights = 0;
-        } else if (canPm) {
-          dayShifts[penny.empNo] = '8H_1230-2130';
-          stats[penny.empNo].pm++;
-          stats[penny.empNo].lastShift = 'PM';
-          stats[penny.empNo].consecutiveNights++;
-        } else if (canAm) {
-          dayShifts[penny.empNo] = '8H_0730-1630';
-          stats[penny.empNo].am++;
-          stats[penny.empNo].lastShift = 'AM';
-          stats[penny.empNo].consecutiveNights = 0;
-        } else {
-          dayShifts[penny.empNo] = 'RD';
-          stats[penny.empNo].rd++;
-          stats[penny.empNo].lastShift = 'RD';
-          stats[penny.empNo].consecutiveNights = 0;
-        }
-      }
-    }
-
-    // Fill in any remaining teammates if any
-    currentTeammates.forEach(t => {
-      if (!dayShifts[t.empNo]) {
-        dayShifts[t.empNo] = 'RD';
-        stats[t.empNo].rd++;
-        stats[t.empNo].lastShift = 'RD';
-        stats[t.empNo].consecutiveNights = 0;
+        availableStaff.push(tm);
       }
     });
 
-    // 5. Golden Cleaning Slot (14:00 - 15:30) Round Robin among duty Staff Assistants
-    const dutyAssistants = staffMembers.filter(a => dayShifts[a.empNo] && dayShifts[a.empNo] !== 'RD' && dayShifts[a.empNo] !== 'PH' && dayShifts[a.empNo] !== 'OFF');
+    // Ensure floor manpower density is satisfied (at least 6 working staff, or 5 if William works morning)
+    const minWorkingNeeded = isWilliamOffToday ? 6 : 5;
+    if (availableStaff.length < minWorkingNeeded) {
+      const rested = rotatingPool.filter(tm => dayShifts[tm.empNo] === 'RD' && stats[tm.empNo].consecutiveWorkingDays < 6 && !(stats[tm.empNo].consecutiveNights >= 3 && stats[tm.empNo].lastShift === 'PM'));
+      rested.sort((a, b) => stats[b.empNo].rd - stats[a.empNo].rd);
+      while (availableStaff.length < minWorkingNeeded && rested.length > 0) {
+        const reclaimed = rested.shift();
+        delete dayShifts[reclaimed.empNo];
+        stats[reclaimed.empNo].rd--;
+        availableStaff.push(reclaimed);
+      }
+    }
+
+    // Target morning from rotating pool:
+    // If William works morning: 3 rotating AM (total = 4 AM).
+    // If William off: 4 rotating AM (total = 4 AM).
+    const targetRotatingAm = isWilliamOffToday ? 4 : 3;
+
+    // Filter who CAN work AM (Anti-turnaround: previous shift must NOT be PM)
+    const canWorkAm = availableStaff.filter(tm => stats[tm.empNo].lastShift !== 'PM');
+    const mustWorkPm = availableStaff.filter(tm => stats[tm.empNo].lastShift === 'PM');
+
+    // Pharmacist coverage priority on Sunday/PH when William is off
+    if (isWilliamOffToday) {
+      const rxCandidate = canWorkAm.find(tm => tm.isPharmacist || (tm.position && tm.position.includes('Pharmacist')));
+      if (rxCandidate) {
+        const idx = canWorkAm.indexOf(rxCandidate);
+        if (idx > 0) {
+          canWorkAm.splice(idx, 1);
+          canWorkAm.unshift(rxCandidate);
+        }
+      }
+    }
+
+    // Sort canWorkAm: Half day preferences first, then teammates needing AM for parity balance
+    canWorkAm.sort((a, b) => {
+      const aWantsHalf = (a.halfDayPref === dayOfWeek ||
+        (a.nickname === 'PENNY' && dayOfWeek === 'Monday') ||
+        (a.nickname === 'LOUNA' && dayOfWeek === 'Wednesday') ||
+        (a.nickname === 'FIONA' && dayOfWeek === 'Wednesday') ||
+        (a.nickname === 'FARIZIN' && dayOfWeek === 'Tuesday') ||
+        (a.nickname === 'KENIX' && dayOfWeek === 'Sunday') ||
+        (a.nickname === 'CHRISTINA' && dayOfWeek === 'Friday'));
+      const bWantsHalf = (b.halfDayPref === dayOfWeek ||
+        (b.nickname === 'PENNY' && dayOfWeek === 'Monday') ||
+        (b.nickname === 'LOUNA' && dayOfWeek === 'Wednesday') ||
+        (b.nickname === 'FIONA' && dayOfWeek === 'Wednesday') ||
+        (b.nickname === 'FARIZIN' && dayOfWeek === 'Tuesday') ||
+        (b.nickname === 'KENIX' && dayOfWeek === 'Sunday') ||
+        (b.nickname === 'CHRISTINA' && dayOfWeek === 'Friday'));
+      if (aWantsHalf && !bWantsHalf) return -1;
+      if (!aWantsHalf && bWantsHalf) return 1;
+
+      // Parity balance: assign AM to teammate who has fewer AMs than PMs
+      const diffA = stats[a.empNo].am - stats[a.empNo].pm;
+      const diffB = stats[b.empNo].am - stats[b.empNo].pm;
+      if (diffA !== diffB) return diffA - diffB;
+      return stats[a.empNo].am - stats[b.empNo].am;
+    });
+
+    const assignedAm = canWorkAm.slice(0, Math.min(targetRotatingAm, canWorkAm.length));
+    const assignedPm = [...mustWorkPm, ...canWorkAm.slice(assignedAm.length)];
+
+    assignedAm.forEach(tm => {
+      const st = stats[tm.empNo];
+      let shiftCode = '8H_0730-1630';
+      if (tm.nickname === 'PENNY' && dayOfWeek === 'Monday') shiftCode = '4H_0730-1130';
+      else if (tm.nickname === 'LOUNA' && dayOfWeek === 'Wednesday') shiftCode = '4H_0730-1130';
+      else if (tm.nickname === 'FIONA' && dayOfWeek === 'Wednesday') shiftCode = '4H_0730-1130';
+      else if (tm.nickname === 'FARIZIN' && dayOfWeek === 'Tuesday') shiftCode = '4H_0730-1130';
+      else if (tm.nickname === 'KENIX' && dayOfWeek === 'Sunday') shiftCode = '4H_0730-1130';
+      else if (tm.nickname === 'CHRISTINA' && dayOfWeek === 'Friday') shiftCode = '4H_0730-1130';
+
+      dayShifts[tm.empNo] = shiftCode;
+      st.am++;
+      st.lastShift = 'AM';
+      st.consecutiveNights = 0;
+      st.consecutiveWorkingDays++;
+    });
+
+    assignedPm.forEach(tm => {
+      const st = stats[tm.empNo];
+      dayShifts[tm.empNo] = '8H_1230-2130';
+      st.pm++;
+      st.lastShift = 'PM';
+      st.consecutiveNights++;
+      st.consecutiveWorkingDays++;
+    });
+
+    // 3. Universal 6S Cleaning Rotation (2:00 PM – 3:30 PM): Shared equally among ALL rotating staff
+    const onDutyRotating = rotatingPool.filter(tm => {
+      const s = dayShifts[tm.empNo];
+      return s && s !== 'RD' && s !== 'PH' && s !== 'OFF';
+    });
+
     let cleaner = null;
-    if (dutyAssistants.length > 0) {
-      dutyAssistants.sort((a, b) => {
-        const cA = stats[a.empNo].clean;
-        const cB = stats[b.empNo].clean;
+    if (onDutyRotating.length > 0) {
+      onDutyRotating.sort((a, b) => {
+        const cA = cleaningCounts[a.empNo] || 0;
+        const cB = cleaningCounts[b.empNo] || 0;
         if (cA !== cB) return cA - cB;
         return a.empNo.localeCompare(b.empNo);
       });
-      cleaner = dutyAssistants[0];
+      cleaner = onDutyRotating[0];
+      cleaningCounts[cleaner.empNo] = (cleaningCounts[cleaner.empNo] || 0) + 1;
       stats[cleaner.empNo].clean++;
     }
 
-    const finalAm = Object.values(dayShifts).filter(s => s && s.includes('0730')).length;
-    const finalPm = Object.values(dayShifts).filter(s => s && s.includes('1230')).length;
-    const workingTotal = Object.values(dayShifts).filter(s => s && s !== 'RD' && s !== 'PH' && s !== 'OFF').length;
+    // Counts
+    let amCount = 0;
+    let pmCount = 0;
+    let workingTotal = 0;
+    Object.values(dayShifts).forEach(s => {
+      if (s && s !== 'RD' && s !== 'PH' && s !== 'OFF') {
+        workingTotal++;
+        if (s.includes('0730') || s.includes('0800')) amCount++;
+        if (s.includes('1230') || s.includes('1300') || s.includes('1630')) pmCount++;
+      }
+    });
 
     let dayWarning = null;
     if (workingTotal < 6) {
@@ -1234,8 +1281,8 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
         time: '2:00 PM – 3:30 PM',
         task: 'Gondola Cleaning & Refilling'
       } : null,
-      amCount: finalAm,
-      pmCount: finalPm,
+      amCount,
+      pmCount,
       workingTotal,
       warning: dayWarning
     });
@@ -1247,7 +1294,7 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
     days: dailySchedule,
     warnings,
     stats,
-    summary: 'Heuristically generated schedule: William Chai locked anchor, 100% pharmacist coverage, zero turnaround fatigue (0 PM→AM), max consecutive nights ≤3, shift balance parity ≤1, and round-robin 6S cleaning duty (14:00–15:30).'
+    summary: 'Heuristically generated schedule: William Chai locked anchor, 100% pharmacist coverage, zero turnaround fatigue (0 PM→AM), max consecutive nights ≤3, shift balance parity ≤1 across unified rotating counter pool, and round-robin 6S cleaning duty (14:00–15:30).'
   };
 }
 
@@ -1266,8 +1313,8 @@ function renderScheduleMatrix(schedule) {
   let pharmCoverageDays = 0;
   let langBalancedDays = 0;
 
-  // Track assistant shift parity and fatigue
-  const staffAssistants = currentTeammates.filter(t => t.position === 'Staff' && t.empNo !== 'PMG00831');
+  // Track rotating pool shift parity and fatigue
+  const rotatingPool = currentTeammates.filter(t => t.empNo !== 'PMG00831' && t.nickname !== 'WILLIAM');
   const teammateStats = {};
   currentTeammates.forEach(tm => {
     teammateStats[tm.empNo] = {
@@ -1339,11 +1386,11 @@ function renderScheduleMatrix(schedule) {
     if ((hasMorningChinese && hasMorningBumi) && (hasNightChinese && hasNightBumi)) langBalancedDays++;
   });
 
-  // Calculate Parity
-  const assistantAms = staffAssistants.map(a => teammateStats[a.empNo].mCount);
-  const assistantPms = staffAssistants.map(a => teammateStats[a.empNo].nCount);
-  const amVariance = assistantAms.length ? (Math.max(...assistantAms) - Math.min(...assistantAms)) : 0;
-  const pmVariance = assistantPms.length ? (Math.max(...assistantPms) - Math.min(...assistantPms)) : 0;
+  // Calculate Parity across unified rotating pool
+  const rotatingAms = rotatingPool.map(a => teammateStats[a.empNo].mCount);
+  const rotatingPms = rotatingPool.map(a => teammateStats[a.empNo].nCount);
+  const amVariance = rotatingAms.length ? (Math.max(...rotatingAms) - Math.min(...rotatingAms)) : 0;
+  const pmVariance = rotatingPms.length ? (Math.max(...rotatingPms) - Math.min(...rotatingPms)) : 0;
   const maxStaffVar = Math.max(amVariance, pmVariance);
   const totalFatigueViolations = Object.values(teammateStats).reduce((acc, s) => acc + s.pmToAmFatigueCount, 0);
 
@@ -1559,22 +1606,16 @@ function renderScheduleMatrix(schedule) {
 
     currentTeammates.forEach(tm => {
       const st = teammateStats[tm.empNo];
-      const isFixed = tm.scheduleMode === 'Fixed' || tm.empNo === 'PMG00831';
-      const isPharm = tm.isPharmacist || tm.position === 'Pharmacist';
-      const isStaff = tm.position === 'Staff' && !isFixed;
+      const isFixed = tm.scheduleMode === 'Fixed' || tm.empNo === 'PMG00831' || tm.nickname === 'WILLIAM';
 
       let parityBadge = '';
       if (isFixed) {
         parityBadge = '<span class="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-semibold">Fixed Anchor (Exempt)</span>';
-      } else if (isPharm) {
-        parityBadge = '<span class="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-semibold">Clinical Anchor</span>';
-      } else if (isStaff) {
+      } else {
         const diff = Math.abs(st.mCount - st.nCount);
         parityBadge = diff <= 1
           ? `<span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">✓ Equitable (±${diff})</span>`
           : `<span class="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">⚠️ Imbalance (±${diff})</span>`;
-      } else {
-        parityBadge = '<span class="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-semibold">Manager Block</span>';
       }
 
       const fatigueBadge = st.pmToAmFatigueCount === 0

@@ -67,14 +67,15 @@ let USERS = [
 
   // ── Regular Branch Staff (Restricted to PMG Sales WebApp only) ──
   { username: 'Fiona',       password: '267524', branch: 'Kota Sentosa', role: 'Staff',      displayName: 'Fiona Fiena (Staff)',          empNo: 'PMG01780' },
-  { username: 'Janet',       password: '120904', branch: 'Kota Sentosa', role: 'Staff',      displayName: 'Daniela Janet (Staff)',        empNo: 'PMG03062' },
   { username: 'Penny',       password: '692692', branch: 'Kota Sentosa', role: 'Staff',      displayName: 'Jong Pei Choo (Staff)',        empNo: 'PMG02694' },
   { username: 'Nurhafizah',  password: '161799', branch: 'Kota Sentosa', role: 'Staff',      displayName: 'Nurhafizah (Staff)',           empNo: 'PMG02070' },
+  { username: 'Christina',   password: '303300', branch: 'Kota Sentosa', role: 'Pharmacist', displayName: 'Christina Lee Ying Ying (PRP)', empNo: 'PMG03033' },
 ];
 
 // ─── STAFF NICKNAME → RYMNET MAPPING (offline fallback) ──────────────────────
 // When Google Sheets is reachable, this is overridden by live sheet data.
 // Roselin (PMG03631) and Jamie (PMG03532) have left PMG — removed 19 Sep 2026.
+// Daniela Janet (PMG03062) has resigned — removed 04 Oct 2026.
 let STAFF_MAP = [
   // ── Kota Sentosa (KS01) — active staff only ──
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'TING',       empNo: 'PMG00723', empName: 'TING KWANG YU'                   },
@@ -84,9 +85,8 @@ let STAFF_MAP = [
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'NURHAFIZAH', empNo: 'PMG02070', empName: 'NURHAFIZAH BINTI PAULI'           },
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'PENNY',      empNo: 'PMG02694', empName: 'JONG PEI CHOO'                   },
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'KENIX',      empNo: 'PMG02963', empName: 'KENIX LING WANG YIING'            },
-  { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'JANET',      empNo: 'PMG03062', empName: 'DANIELA JANET ANAK MUSTAPHA'     },
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'FARIZIN',    empNo: 'PMG03375', empName: 'MUHAMMAD NUR FARIZIN BIN ABDULLAH'},
-  { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'CHRISTINA',  empNo: 'PMG03700', empName: 'CHRISTINA'                        },
+  { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'CHRISTINA',  empNo: 'PMG03033', empName: 'CHRISTINA LEE YING YING'          },
   // ── BR02–BR06: add rows here OR just update the Google Sheet ──
 ];
 

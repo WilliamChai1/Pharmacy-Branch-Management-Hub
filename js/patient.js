@@ -5224,11 +5224,12 @@ async function deleteCurrentPatientProfile() {
 
   // 2. Explicit Hard Deletion API call targeting Google Sheet by unique Patient ID / IC
   let writeConfirmed = false;
+  let lastDeleteError = '';
   if (typeof PMG_SCHEDULE_API_URL !== 'undefined' && PMG_SCHEDULE_API_URL) {
     try {
       const session = typeof getSession === 'function' ? getSession() : null;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
+      const timeout = setTimeout(() => controller.abort(), 18000);
       const res = await fetch(PMG_SCHEDULE_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
@@ -5237,6 +5238,7 @@ async function deleteCurrentPatientProfile() {
           patientId: pid,
           patientIc: p.ic || '',
           patientName: p.name || '',
+          patientPhone: p.phone || '',
           branch: p.branch || 'Kota Sentosa',
           updatedBy: session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist'
         }),
@@ -5249,14 +5251,17 @@ async function deleteCurrentPatientProfile() {
         const resJson = await res.json().catch(() => null);
         if (resJson && resJson.success !== false) {
           writeConfirmed = true;
+          console.log('[deleteCurrentPatientProfile] Cascade delete success:', resJson);
         } else {
-          throw new Error(resJson?.error || 'Cloud returned rejection');
+          const errMsg = resJson?.error || (resJson?.tabErrors?.length ? JSON.stringify(resJson.tabErrors) : 'Cloud returned rejection');
+          throw new Error(errMsg);
         }
       } else {
         throw new Error(`HTTP ${res.status}`);
       }
     } catch (apiErr) {
       console.error('[deleteCurrentPatientProfile] Cloud deletion failed:', apiErr);
+      lastDeleteError = apiErr?.message || String(apiErr);
       writeConfirmed = false;
     }
   } else {
@@ -5275,10 +5280,11 @@ async function deleteCurrentPatientProfile() {
     savePatientsData();
     renderPatientModule();
 
+    const errorDetails = lastDeleteError ? ` (${lastDeleteError})` : '';
     if (typeof showExpiryToast === 'function') {
-      showExpiryToast(`❌ Google Sheet sync failed: Could not delete "${p.name}". Profile restored.`);
+      showExpiryToast(`❌ Google Sheet sync failed: Could not delete "${p.name}"${errorDetails}. Profile restored.`);
     } else {
-      alert(`Google Sheet sync failed: Could not delete "${p.name}". Profile has been restored.`);
+      alert(`Google Sheet sync failed: Could not delete "${p.name}"${errorDetails}. Profile has been restored.`);
     }
     return;
   }

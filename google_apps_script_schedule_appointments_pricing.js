@@ -505,96 +505,145 @@ function doPost(e) {
       return buildResponse({ success: true, branch: branchCode });
     }
 
-    // ── 6. ACTION: DELETE PATIENT PROFILE (HARD DELETION) ──
+    // ── 6. ACTION: DELETE PATIENT PROFILE (CASCADE HARD DELETION) ──
     if (action === 'deletePatient') {
       const patientId = String(payload.patientId || '').trim();
       const patientIc = String(payload.patientIc || '').replace(/\D/g, '');
-      const patientName = String(payload.patientName || '').trim().toLowerCase();
+      const patientName = String(payload.patientName || '').trim();
+      const patientNameLower = patientName.toLowerCase();
+      const patientPhone = String(payload.patientPhone || payload.phone || '').trim();
+      const patientPhoneClean = patientPhone.replace(/\D/g, '');
       const branch = String(payload.branch || 'Kota Sentosa').trim();
 
-      if (!patientId && !patientIc) {
-        return buildResponse({ success: false, error: 'Missing patientId or patientIc' });
+      if (!patientId && !patientIc && !patientName && !patientPhone) {
+        return buildResponse({ success: false, error: 'Missing patient identification (ID, IC, Name, or Phone)' });
       }
 
-      let deletedRowsCount = 0;
+      let totalDeletedRows = 0;
+      const tabDetails = {};
+      const tabErrors = [];
 
-      // 1. Delete rows in Patients / Patients_Master / PatientProfiles if present
-      const pTabNames = ['Patients', 'Patients_Master', 'PatientsMaster', 'PatientProfiles'];
-      pTabNames.forEach(tName => {
-        const pSheet = ss.getSheetByName(tName);
-        if (pSheet && pSheet.getLastRow() > 1) {
-          const pData = pSheet.getDataRange().getValues();
-          for (let r = pData.length - 1; r >= 1; r--) {
-            const row = pData[r];
-            const rId = String(row[0] || '').trim();
-            const rIc = String(row[1] || row[4] || '').replace(/\D/g, '');
-            const rName = String(row[2] || '').trim().toLowerCase();
+      function rowMatchesPatient(rowVals) {
+        if (!rowVals || !rowVals.length) return false;
+        for (let col = 0; col < rowVals.length; col++) {
+          const val = rowVals[col];
+          if (val === null || val === undefined || val === '') continue;
+          const valStr = String(val).trim();
+          const valLower = valStr.toLowerCase();
+          const valDigits = valStr.replace(/\D/g, '');
 
-            const matchId = patientId && rId === patientId;
-            const matchIc = patientIc && rIc && rIc === patientIc;
-            const matchName = patientName && rName && rName === patientName;
+          // 1. Exact ID match (case-insensitive)
+          if (patientId && (valStr === patientId || valLower === patientId.toLowerCase())) {
+            return true;
+          }
 
-            if (matchId || matchIc || matchName) {
-              pSheet.deleteRow(r + 1);
-              deletedRowsCount++;
+          // 2. Name match (case-insensitive)
+          if (patientNameLower && (valLower === patientNameLower || valLower.includes(patientNameLower))) {
+            return true;
+          }
+
+          // 3. IC match (digits comparison, min 6 digits)
+          if (patientIc && patientIc.length >= 6 && valDigits === patientIc) {
+            return true;
+          }
+
+          // 4. Phone match (exact digits or 8-digit suffix match)
+          if (patientPhoneClean && patientPhoneClean.length >= 7) {
+            if (valDigits === patientPhoneClean) return true;
+            if (patientPhoneClean.length >= 8 && valDigits.length >= 8) {
+              if (valDigits.endsWith(patientPhoneClean.slice(-8)) || patientPhoneClean.endsWith(valDigits.slice(-8))) {
+                return true;
+              }
             }
           }
         }
-      });
-
-      // 2. Mark DELETED or clear associated appointments in Patient_Appointments tab
-      const aptSheet = ss.getSheetByName(TAB_APPOINTMENTS);
-      if (aptSheet && aptSheet.getLastRow() > 1) {
-        const aData = aptSheet.getDataRange().getValues();
-        for (let r = aData.length - 1; r >= 1; r--) {
-          const row = aData[r];
-          const aptPatId = String(row[1] || '').trim();
-          const aptIc = String(row[4] || '').replace(/\D/g, '');
-          const aptName = String(row[2] || '').trim().toLowerCase();
-
-          const matchId = patientId && aptPatId === patientId;
-          const matchIc = patientIc && aptIc && aptIc === patientIc;
-          const matchName = patientName && aptName && aptName === patientName;
-
-          if (matchId || matchIc || matchName) {
-            aptSheet.getRange(r + 1, 12).setValue('DELETED');
-            aptSheet.getRange(r + 1, 13).setValue(now);
-            aptSheet.getRange(r + 1, 17).setValue(now);
-            aptSheet.getRange(r + 1, 18).setValue(updatedBy);
-            deletedRowsCount++;
-          }
-        }
+        return false;
       }
 
-      // 3. Remove bookings from PharmacistSchedule tab
-      const schedSheet = ss.getSheetByName(TAB_SCHEDULE);
-      if (schedSheet && schedSheet.getLastRow() > 1) {
-        const sData = schedSheet.getDataRange().getValues();
-        for (let r = 1; r < sData.length; r++) {
-          const rowBranch = String(sData[r][0] || '').trim();
-          if (rowBranch.toLowerCase() === branch.toLowerCase() || branch.toLowerCase() === 'all') {
-            try {
-              const sched = JSON.parse(sData[r][2]);
-              if (sched && Array.isArray(sched.onlineBookings)) {
-                const prevLen = sched.onlineBookings.length;
-                sched.onlineBookings = sched.onlineBookings.filter(b => {
-                  const bPatId = String(b.patientId || b.id || '').trim();
-                  const bIc = String(b.patientIc || b.ic || '').replace(/\D/g, '');
-                  const bName = String(b.patientName || b.name || '').trim().toLowerCase();
-                  if (patientId && bPatId === patientId) return false;
-                  if (patientIc && bIc && bIc === patientIc) return false;
-                  if (patientName && bName && bName === patientName) return false;
-                  return true;
-                });
-                if (sched.onlineBookings.length !== prevLen) {
-                  schedSheet.getRange(r + 1, 3).setValue(JSON.stringify(sched));
-                  schedSheet.getRange(r + 1, 4).setValue(now);
-                  schedSheet.getRange(r + 1, 5).setValue(updatedBy);
-                }
+      function processTabDeletion(tabNameList) {
+        tabNameList.forEach(tName => {
+          try {
+            const sheet = ss.getSheetByName(tName);
+            if (!sheet || sheet.getLastRow() <= 1) return;
+
+            const data = sheet.getDataRange().getValues();
+            let countForTab = 0;
+
+            for (let r = data.length - 1; r >= 1; r--) {
+              const row = data[r];
+              if (rowMatchesPatient(row)) {
+                sheet.deleteRow(r + 1);
+                countForTab++;
+                totalDeletedRows++;
               }
-            } catch (_) {}
+            }
+            if (countForTab > 0) {
+              tabDetails[tName] = countForTab;
+            }
+          } catch (tErr) {
+            tabErrors.push({ tab: tName, error: tErr.message });
+          }
+        });
+      }
+
+      // 1. 'Patients' (Master Directory)
+      const patientDirTabs = ['Patients', 'Patients_Master', 'PatientsMaster', 'PatientProfiles', 'Patient Directory', 'Patient_Master'];
+      processTabDeletion(patientDirTabs);
+
+      // 2. 'Overdue_Refills' & 'Appointments' (Active & Missed refills)
+      const overdueRefillTabs = [
+        'Overdue & Missed Refills', 'Overdue_Refills', 'OverdueRefills',
+        'Missed_Refills', 'Missed Refills', 'Refills', 'Active & Missed refills',
+        'Overdue_Missed_Refills', 'Overdue Refills'
+      ];
+      processTabDeletion(overdueRefillTabs);
+
+      const appointmentTabs = ['Patient_Appointments', 'Appointments', 'Patient Appointments'];
+      processTabDeletion(appointmentTabs);
+
+      // 3. 'SOAP_Encounters' / 'Consultation_History'
+      const clinicalTabs = [
+        'SOAP_Encounters', 'SOAP Encounters', 'SOAP',
+        'Consultation_History', 'Consultation History', 'Consultations',
+        'Encounters', 'Patient_Encounters'
+      ];
+      processTabDeletion(clinicalTabs);
+
+      // 4. Remove bookings from PharmacistSchedule tab
+      try {
+        const schedSheet = ss.getSheetByName(TAB_SCHEDULE) || ss.getSheetByName('PharmacistSchedule');
+        if (schedSheet && schedSheet.getLastRow() > 1) {
+          const sData = schedSheet.getDataRange().getValues();
+          for (let r = 1; r < sData.length; r++) {
+            const rowBranch = String(sData[r][0] || '').trim();
+            if (rowBranch.toLowerCase() === branch.toLowerCase() || branch.toLowerCase() === 'all') {
+              try {
+                const sched = JSON.parse(sData[r][2]);
+                if (sched && Array.isArray(sched.onlineBookings)) {
+                  const prevLen = sched.onlineBookings.length;
+                  sched.onlineBookings = sched.onlineBookings.filter(b => {
+                    const bPatId = String(b.patientId || b.id || '').trim();
+                    const bIc = String(b.patientIc || b.ic || '').replace(/\D/g, '');
+                    const bName = String(b.patientName || b.name || '').trim().toLowerCase();
+                    const bPhone = String(b.patientPhone || b.phone || '').replace(/\D/g, '');
+                    if (patientId && bPatId === patientId) return false;
+                    if (patientNameLower && bName === patientNameLower) return false;
+                    if (patientIc && bIc && bIc === patientIc) return false;
+                    if (patientPhoneClean && bPhone && bPhone === patientPhoneClean) return false;
+                    return true;
+                  });
+                  if (sched.onlineBookings.length !== prevLen) {
+                    schedSheet.getRange(r + 1, 3).setValue(JSON.stringify(sched));
+                    schedSheet.getRange(r + 1, 4).setValue(now);
+                    schedSheet.getRange(r + 1, 5).setValue(updatedBy);
+                  }
+                }
+              } catch (_) {}
+            }
           }
         }
+      } catch (sErr) {
+        tabErrors.push({ tab: 'PharmacistSchedule', error: sErr.message });
       }
 
       SpreadsheetApp.flush();
@@ -602,9 +651,11 @@ function doPost(e) {
       return buildResponse({
         success: true,
         patientId: patientId,
-        patientIc: patientIc,
-        deletedRowsCount: deletedRowsCount,
-        message: 'Patient profile hard deletion committed to Google Sheet successfully.'
+        patientName: patientName,
+        deletedRowsCount: totalDeletedRows,
+        tabDetails: tabDetails,
+        tabErrors: tabErrors,
+        message: 'Patient profile cascade deletion committed to Google Sheet successfully.'
       });
     }
 
