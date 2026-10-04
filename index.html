@@ -220,6 +220,12 @@
         <span>Credit Note & Returns (PRN/DO)</span>
         <span class="text-xs bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded font-bold">NEW</span>
       </button>
+      <button onclick="switchTab('admin-utils')" id="tab-admin-utils"
+        class="tab-btn whitespace-nowrap py-3.5 px-4 border-b-2 text-sm flex items-center gap-2">
+        <i class="fa-solid fa-file-signature text-sm text-indigo-600"></i>
+        <span>Commercial & Admin Suite</span>
+        <span class="text-xs bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded font-bold">NEW</span>
+      </button>
     </div>
   </div>
 </nav>
@@ -4924,6 +4930,14 @@ Date visit: 06.01.2026
     </div>
   </div>
 
+  <!-- ─────────────────────────────────────────────────────────────────────────
+       MODULE 7: COMMERCIAL & ADMINISTRATIVE UTILITIES SUITE
+       (Auto 3-Quotation Generator, Manual Invoicing, HQ Incident Report)
+  ───────────────────────────────────────────────────────────────────────────── -->
+  <div id="content-admin-utils" class="tab-content hidden">
+    <!-- Rendered dynamically by window.pmgAdminUtils.init() -->
+  </div>
+
 </main>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
@@ -5780,6 +5794,8 @@ ItemCode,Description,Brand,Category,Cost,SellingPrice,Supplier
 <script src="js/returns-cn.js?v=20261004_v7"></script>
 <script src="js/pricing-intelligence.js?v=20261004_v7"></script>
 <script src="js/recruitment.js?v=20261004_v7"></script>
+<script src="js/admin-assets.js?v=20261005_v1"></script>
+<script src="js/commercial-admin.js?v=20261005_v1"></script>
 
 <script>
 // ─── TAB SWITCHER ─────────────────────────────────────────────────────────────
@@ -5805,6 +5821,9 @@ function switchTab(tab) {
   }
   if (tab === 'returns' && window.pmgReturns && typeof window.pmgReturns.render === 'function') {
     window.pmgReturns.render();
+  }
+  if (tab === 'admin-utils' && window.pmgAdminUtils && typeof window.pmgAdminUtils.init === 'function') {
+    window.pmgAdminUtils.init();
   }
 }
 
