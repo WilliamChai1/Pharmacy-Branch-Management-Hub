@@ -83,6 +83,9 @@ function doGet(e) {
       for (let i = 1; i < data.length; i++) {
         const row = data[i];
         if (!row || !row[0]) continue;
+        const aptStatus = String(row[11] || 'Scheduled').trim();
+        if (aptStatus === 'DELETED') continue;
+
         const b = String(row[5] || '').trim();
         const d = String(row[6] || '').trim();
 
@@ -189,7 +192,15 @@ function doGet(e) {
       const rStatus = String(row[statIdx] || 'Active').trim();
 
       if (branch && branch.toLowerCase() !== 'all' && rBranch.toLowerCase() !== branch.toLowerCase()) continue;
-      if (status && rStatus.toLowerCase() !== status.toLowerCase()) continue;
+      if (status) {
+        const sLower = status.toLowerCase();
+        const rLower = rStatus.toLowerCase();
+        if (sLower === 'active') {
+          if (rLower === 'cleared' || rLower === 'done' || rLower === 'completed') continue;
+        } else if (rLower !== sLower) {
+          continue;
+        }
+      }
 
       items.push({
         rowId: i + 1,
@@ -268,26 +279,31 @@ function doPost(e) {
     }
 
     // ── ACTION: UPDATE QTY / MARK CLEARED / UPDATE EXPIRY / UPDATE ITEM ──
-    if (action === 'update_qty' || action === 'mark_cleared' || action === 'update_expiry' || action === 'update_item') {
+    if (action === 'update_qty' || action === 'mark_cleared' || action === 'update_expiry' || action === 'update_item' || action === 'updateExpiryItem') {
       const rowId = parseInt(payload.rowId, 10);
-      const newQty = payload.quantity !== undefined ? parseFloat(payload.quantity) : null;
+      const isMarkCleared = action === 'mark_cleared' || payload.subAction === 'mark_cleared' || String(payload.status).toUpperCase() === 'DONE' || String(payload.status).toUpperCase() === 'CLEARED' || String(payload.status).toUpperCase() === 'COMPLETED';
+      const newQty = isMarkCleared ? 0 : (payload.quantity !== undefined ? parseFloat(payload.quantity) : null);
       const newExp = payload.expiryDate ? formatDate(payload.expiryDate) : null;
       const newCode = payload.itemCode ? String(payload.itemCode).trim() : null;
       const newDesc = payload.itemDescription ? String(payload.itemDescription).trim() : null;
       const newBatch = payload.batchNumber ? String(payload.batchNumber).trim() : null;
-      const newStatus = action === 'mark_cleared' ? 'Cleared' : (payload.status || 'Active');
+      const newStatus = isMarkCleared ? (payload.status || 'DONE') : (payload.status || 'Active');
 
       let targetRow = (rowId > 1 && rowId <= sheet.getLastRow()) ? rowId : 0;
 
       // Fallback: search for row by Item Code + Batch + Branch if rowId is out of bounds
-      if (targetRow === 0 && (payload.itemCode || payload.batchNumber)) {
+      if (targetRow === 0 && (payload.itemCode || payload.batchNumber || payload.itemDescription)) {
         const data = sheet.getDataRange().getValues();
+        const targetCode = (payload.itemCode ? String(payload.itemCode).trim().toUpperCase() : '');
+        const targetBranch = (payload.branch ? String(payload.branch).trim().toLowerCase() : '');
+
         for (let i = 1; i < data.length; i++) {
           const r = data[i];
-          const matchCode = !payload.itemCode || String(r[2]).trim().toUpperCase() === String(payload.itemCode).trim().toUpperCase();
-          const matchBatch = !payload.batchNumber || String(r[1]).trim().toUpperCase() === String(payload.batchNumber).trim().toUpperCase();
-          const matchBranch = !payload.branch || String(r[0]).trim().toLowerCase() === String(payload.branch).trim().toLowerCase();
-          if (matchCode && matchBatch && matchBranch) {
+          const rCode = String(r[2] || '').trim().toUpperCase();
+          const rBranch = String(r[0] || '').trim().toLowerCase();
+          const matchBranch = !targetBranch || targetBranch === 'all' || rBranch === targetBranch;
+
+          if (targetCode && targetCode !== 'N/A' && rCode === targetCode && matchBranch) {
             targetRow = i + 1;
             break;
           }
@@ -303,8 +319,28 @@ function doPost(e) {
         sheet.getRange(targetRow, 8).setValue(newStatus);
         sheet.getRange(targetRow, 9).setValue(now);
         sheet.getRange(targetRow, 10).setValue(updatedBy);
+        SpreadsheetApp.flush();
         if (!payload.skipDistribution) distributeToMonthlyTabs(ss);
         return buildResponse({ success: true, rowId: targetRow, status: newStatus, expiryDate: newExp, quantity: newQty });
+      }
+
+      // If item was being marked cleared/done but was not in sheet yet, append row as DONE
+      if (isMarkCleared && (payload.itemCode || payload.itemDescription)) {
+        sheet.appendRow([
+          payload.branch || 'Kota Sentosa',
+          payload.batchNumber || 'N/A',
+          payload.itemCode || 'N/A',
+          payload.itemDescription || '',
+          formatDate(payload.expiryDate),
+          0,
+          'Manual Clearance',
+          newStatus,
+          now,
+          updatedBy
+        ]);
+        SpreadsheetApp.flush();
+        targetRow = sheet.getLastRow();
+        return buildResponse({ success: true, rowId: targetRow, status: newStatus, message: 'Row appended and marked ' + newStatus });
       }
     }
 
@@ -439,6 +475,110 @@ function doPost(e) {
         pSheet.getRange(2, 1, rowsToAdd.length, pricingHeaders.length).setValues(rowsToAdd);
       }
       return buildResponse({ success: true, count: rowsToAdd.length });
+    }
+
+    // ── ACTION: DELETE PATIENT PROFILE (HARD DELETION) ──
+    if (action === 'deletePatient') {
+      const patientId = String(payload.patientId || '').trim();
+      const patientIc = String(payload.patientIc || '').replace(/\D/g, '');
+      const patientName = String(payload.patientName || '').trim().toLowerCase();
+      const branch = String(payload.branch || 'Kota Sentosa').trim();
+
+      if (!patientId && !patientIc) {
+        return buildResponse({ success: false, error: 'Missing patientId or patientIc' });
+      }
+
+      let deletedRowsCount = 0;
+
+      // 1. Delete rows in Patients / Patients_Master / PatientProfiles if present
+      const pTabNames = ['Patients', 'Patients_Master', 'PatientsMaster', 'PatientProfiles'];
+      pTabNames.forEach(tName => {
+        const pSheet = ss.getSheetByName(tName);
+        if (pSheet && pSheet.getLastRow() > 1) {
+          const pData = pSheet.getDataRange().getValues();
+          for (let r = pData.length - 1; r >= 1; r--) {
+            const row = pData[r];
+            const rId = String(row[0] || '').trim();
+            const rIc = String(row[1] || row[4] || '').replace(/\D/g, '');
+            const rName = String(row[2] || '').trim().toLowerCase();
+
+            const matchId = patientId && rId === patientId;
+            const matchIc = patientIc && rIc && rIc === patientIc;
+            const matchName = patientName && rName && rName === patientName;
+
+            if (matchId || matchIc || matchName) {
+              pSheet.deleteRow(r + 1);
+              deletedRowsCount++;
+            }
+          }
+        }
+      });
+
+      // 2. Mark DELETED or clear associated appointments in Patient_Appointments tab
+      const aptSheet = ss.getSheetByName('Patient_Appointments');
+      if (aptSheet && aptSheet.getLastRow() > 1) {
+        const aData = aptSheet.getDataRange().getValues();
+        for (let r = aData.length - 1; r >= 1; r--) {
+          const row = aData[r];
+          const aptPatId = String(row[1] || '').trim();
+          const aptIc = String(row[4] || '').replace(/\D/g, '');
+          const aptName = String(row[2] || '').trim().toLowerCase();
+
+          const matchId = patientId && aptPatId === patientId;
+          const matchIc = patientIc && aptIc && aptIc === patientIc;
+          const matchName = patientName && aptName && aptName === patientName;
+
+          if (matchId || matchIc || matchName) {
+            aptSheet.getRange(r + 1, 12).setValue('DELETED');
+            aptSheet.getRange(r + 1, 13).setValue(now);
+            aptSheet.getRange(r + 1, 17).setValue(now);
+            aptSheet.getRange(r + 1, 18).setValue(updatedBy);
+            deletedRowsCount++;
+          }
+        }
+      }
+
+      // 3. Remove bookings from PharmacistSchedule tab
+      const schedSheet = ss.getSheetByName('PharmacistSchedule');
+      if (schedSheet && schedSheet.getLastRow() > 1) {
+        const sData = schedSheet.getDataRange().getValues();
+        for (let r = 1; r < sData.length; r++) {
+          const rowBranch = String(sData[r][0] || '').trim();
+          if (rowBranch.toLowerCase() === branch.toLowerCase() || branch.toLowerCase() === 'all') {
+            try {
+              const sched = JSON.parse(sData[r][2]);
+              if (sched && Array.isArray(sched.onlineBookings)) {
+                const prevLen = sched.onlineBookings.length;
+                sched.onlineBookings = sched.onlineBookings.filter(b => {
+                  const bPatId = String(b.patientId || b.id || '').trim();
+                  const bIc = String(b.patientIc || b.ic || '').replace(/\D/g, '');
+                  const bName = String(b.patientName || b.name || '').trim().toLowerCase();
+                  if (patientId && bPatId === patientId) return false;
+                  if (patientIc && bIc && bIc === patientIc) return false;
+                  if (patientName && bName && bName === patientName) return false;
+                  return true;
+                });
+                if (sched.onlineBookings.length !== prevLen) {
+                  schedSheet.getRange(r + 1, 3).setValue(JSON.stringify(sched));
+                  schedSheet.getRange(r + 1, 4).setValue(now);
+                  schedSheet.getRange(r + 1, 5).setValue(updatedBy);
+                }
+              }
+            } catch (_) {}
+          }
+        }
+      }
+
+      // 4. Force synchronous commit to Google Sheets
+      SpreadsheetApp.flush();
+
+      return buildResponse({
+        success: true,
+        patientId: patientId,
+        patientIc: patientIc,
+        deletedRowsCount: deletedRowsCount,
+        message: 'Patient profile hard deletion committed to Google Sheet successfully.'
+      });
     }
 
     return buildResponse({ success: false, error: 'Unrecognized action or invalid rowId' });

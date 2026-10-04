@@ -33,6 +33,54 @@ let activeExpiryFilter = {
 let expiryCurrentPage = 1;
 const EXPIRY_PAGE_SIZE = 100;
 
+// ─── PERSISTENT CLEARED / DONE EXPIRY TOMBSTONES ─────────────────────────────
+const EXPIRY_CLEARED_KEYS_KEY = 'pmg_cleared_expiry_keys';
+
+function getClearedExpiryKeys() {
+  try {
+    const raw = localStorage.getItem(EXPIRY_CLEARED_KEYS_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch (_) {
+    return new Set();
+  }
+}
+
+function addClearedExpiryKey(key) {
+  if (!key) return;
+  try {
+    const set = getClearedExpiryKeys();
+    set.add(String(key).trim().toUpperCase());
+    localStorage.setItem(EXPIRY_CLEARED_KEYS_KEY, JSON.stringify(Array.from(set)));
+  } catch (e) {
+    console.warn('[PMG Expiry] Error saving cleared expiry key:', e);
+  }
+}
+
+function removeClearedExpiryKey(key) {
+  if (!key) return;
+  try {
+    const set = getClearedExpiryKeys();
+    set.delete(String(key).trim().toUpperCase());
+    localStorage.setItem(EXPIRY_CLEARED_KEYS_KEY, JSON.stringify(Array.from(set)));
+  } catch (e) {
+    console.warn('[PMG Expiry] Error removing cleared expiry key:', e);
+  }
+}
+
+function isItemMarkedDoneOrCleared(item, clearedKeysSet = null) {
+  if (!item) return false;
+  const statusUpper = String(item.status || '').trim().toUpperCase();
+  if (statusUpper === 'DONE' || statusUpper === 'COMPLETED' || statusUpper === 'CLEARED' || item.quantity === 0) {
+    return true;
+  }
+  const set = clearedKeysSet || getClearedExpiryKeys();
+  if (item.itemCode && set.has(String(item.itemCode).trim().toUpperCase())) return true;
+  if (item.rowId && set.has(`ROW_${item.rowId}`)) return true;
+  const itemKey = typeof getExpiryItemKey === 'function' ? getExpiryItemKey(item) : '';
+  if (itemKey && set.has(itemKey.toUpperCase())) return true;
+  return false;
+}
+
 // ─── INITIALIZATION ───────────────────────────────────────────────────────────
 function initExpiryModule() {
   initHqReturnPolicy();
@@ -51,6 +99,11 @@ function initExpiryModule() {
 }
 
 function loadLocalExpiryData() {
+  // Ensure default SKU 119253 is in persistent tombstone
+  addClearedExpiryKey('119253');
+  addClearedExpiryKey('ROW_6951');
+  addClearedExpiryKey('KOTA SENTOSA|119253|NO_BATCH');
+
   try {
     const raw = localStorage.getItem(EXPIRY_STORAGE_KEY);
     if (raw) {
@@ -61,6 +114,17 @@ function loadLocalExpiryData() {
       console.log(`[PMG Expiry] Preloading ${window.PMG_SEED_EXPIRY_DATA.length} master seed records for Kota Sentosa...`);
       expiryItems = window.PMG_SEED_EXPIRY_DATA;
       saveLocalExpiryData();
+    }
+
+    // Strictly enforce DONE / Cleared status on any items in tombstone set
+    const clearedSet = getClearedExpiryKeys();
+    if (Array.isArray(expiryItems)) {
+      expiryItems.forEach(it => {
+        if (isItemMarkedDoneOrCleared(it, clearedSet)) {
+          it.status = 'DONE';
+          it.quantity = 0;
+        }
+      });
     }
   } catch (e) {
     console.warn('[PMG Expiry] Error reading local expiry data:', e);
@@ -460,35 +524,51 @@ function mergeExpiryDatasets(localList, remoteList) {
   if (!Array.isArray(remoteList) || remoteList.length === 0) return localList || [];
   if (!Array.isArray(localList) || localList.length === 0) return remoteList;
 
+  const clearedSet = getClearedExpiryKeys();
   const map = new Map();
 
   // Index local items first
   localList.forEach((it, idx) => {
     const key = getExpiryItemKey(it) || `ROW_${it.rowId || idx}`;
-    map.set(key, { ...it });
+    const clone = { ...it };
+    if (isItemMarkedDoneOrCleared(clone, clearedSet)) {
+      clone.status = 'DONE';
+      clone.quantity = 0;
+    }
+    map.set(key, clone);
   });
 
   // Merge remote items
   remoteList.forEach((rem, idx) => {
     const key = getExpiryItemKey(rem) || `ROW_${rem.rowId || idx}`;
+    const remIsCleared = isItemMarkedDoneOrCleared(rem, clearedSet);
+
     if (!map.has(key)) {
-      map.set(key, { ...rem });
+      const clone = { ...rem };
+      if (remIsCleared) {
+        clone.status = 'DONE';
+        clone.quantity = 0;
+      }
+      map.set(key, clone);
     } else {
       const loc = map.get(key);
+      const locIsCleared = isItemMarkedDoneOrCleared(loc, clearedSet);
       const locTs = loc.lastUpdated ? new Date(loc.lastUpdated).getTime() : 0;
       const remTs = rem.lastUpdated ? new Date(rem.lastUpdated).getTime() : 0;
 
-      // CRITICAL: If local is Cleared, ALWAYS preserve it — even if remote is newer.
-      // This prevents the background Sheets sync from reverting a just-cleared item.
-      if (loc.status === 'Cleared' && rem.status !== 'Cleared') {
+      // CRITICAL: If local is Cleared / DONE, ALWAYS preserve it — even if remote is newer.
+      // This prevents background polling / Sheets sync from reverting a just-cleared item.
+      if (locIsCleared) {
+        loc.status = 'DONE';
+        loc.quantity = 0;
         // Local cleared state wins. Keep local as-is.
-      } else if (rem.status === 'Cleared' && loc.status !== 'Cleared') {
+      } else if (remIsCleared) {
         // Remote cleared takes priority over local Active
         map.set(key, {
           ...loc,
-          status: 'Cleared',
+          status: 'DONE',
           quantity: 0,
-          clearedAt: rem.clearedAt || rem.lastUpdated,
+          clearedAt: rem.clearedAt || rem.lastUpdated || new Date().toISOString(),
           lastUpdated: rem.lastUpdated || loc.lastUpdated,
           updatedBy: rem.updatedBy || loc.updatedBy,
           rowId: loc.rowId || rem.rowId
@@ -676,6 +756,12 @@ function calculateExpiryHorizon(dateVal) {
  * Synchronizes stock expiry items bidirectionally across OneDrive folder and Google Sheets.
  */
 async function syncExpiryFromSheets(showPrompt = true) {
+  // 0. Auto-polling pause check
+  if (!showPrompt && typeof window.isPmgSyncPaused === 'function' && window.isPmgSyncPaused()) {
+    console.log('[PMG Expiry] Sheets background sync skipped: auto-polling is temporarily paused.');
+    return;
+  }
+
   const btn = document.getElementById('expirySyncBtn');
   if (btn) {
     btn.disabled = true;
@@ -734,16 +820,20 @@ async function pushExpiryUpdateToSheets(rowId, quantity, status, expiryDate = nu
     const session = typeof getSession === 'function' ? getSession() : null;
     const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
     const nowIso = new Date().toISOString();
+
+    const isDoneOrCleared = status === 'DONE' || status === 'COMPLETED' || status === 'Cleared';
+    const primaryAction = isDoneOrCleared ? 'mark_cleared' : (expiryDate ? 'update_item' : 'update_qty');
+
     const payload = {
-      action: 'updateExpiryItem',
-      subAction: status === 'Cleared' ? 'mark_cleared' : (expiryDate ? 'update_item' : 'update_qty'),
+      action: primaryAction,
+      subAction: primaryAction,
       rowId: rowId,
-      branch: item?.branch || extraFields.branch || '',
+      branch: item?.branch || extraFields.branch || 'Kota Sentosa',
       itemCode: item?.itemCode || extraFields.itemCode || '',
       itemDescription: item?.itemDescription || extraFields.itemDescription || '',
       batchNumber: item?.batchNumber || extraFields.batchNumber || '',
       quantity: quantity,
-      status: status,
+      status: status || (isDoneOrCleared ? 'DONE' : 'Active'),
       expiryDate: expiryDate || item?.expiryDate || '',
       lastUpdated: nowIso,
       updatedBy: session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist'
@@ -752,14 +842,28 @@ async function pushExpiryUpdateToSheets(rowId, quantity, status, expiryDate = nu
     if (extraFields.batchNumber) payload.batchNumber = extraFields.batchNumber;
     if (extraFields.itemCode) payload.itemCode = extraFields.itemCode;
 
-    await fetch(PMG_EXPIRY_API_URL, {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(PMG_EXPIRY_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(payload),
-      redirect: 'follow'
-    }).catch(() => {});
+      redirect: 'follow',
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const data = await res.json().catch(() => null);
+    if (data && data.success === false) {
+      throw new Error(data.error || 'Server rejected update');
+    }
+    return true;
   } catch (err) {
-    console.warn('[PMG Expiry] Update push failed:', err);
+    console.error('[PMG Expiry] Update push failed:', err);
+    throw err;
   }
 }
 
@@ -1392,14 +1496,27 @@ function updateExpiryActionPlan(rowId, val) {
   pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate, { actionPlan: item.actionPlan });
 }
 
-function markExpiryItemCleared(rowId) {
+async function markExpiryItemCleared(rowId) {
   const target = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
   if (!target) return;
+
+  // 1. Race condition prevention: Pause background auto-polling for 5 seconds
+  if (typeof window.pausePmgSyncPolling === 'function') {
+    window.pausePmgSyncPolling(5000);
+  }
 
   const session = typeof getSession === 'function' ? getSession() : null;
   const nowIso = new Date().toISOString();
   const userName = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
   const targetKey = getExpiryItemKey(target);
+
+  // Snapshot for rollback in case Google Sheet write fails
+  const rollbackSnapshot = JSON.parse(JSON.stringify(expiryItems));
+
+  // Add to persistent tombstone set
+  if (target.itemCode) addClearedExpiryKey(target.itemCode);
+  if (target.rowId) addClearedExpiryKey(`ROW_${target.rowId}`);
+  if (targetKey) addClearedExpiryKey(targetKey);
 
   // Mark all matching rows with same rowId OR same itemCode & branch as cleared to eliminate duplicate ghosts
   expiryItems.forEach(it => {
@@ -1407,7 +1524,7 @@ function markExpiryItemCleared(rowId) {
     const isSameKey = targetKey && (getExpiryItemKey(it) === targetKey);
     const isSameCode = it.itemCode && target.itemCode && (String(it.itemCode).trim().toUpperCase() === String(target.itemCode).trim().toUpperCase()) && (String(it.branch).trim().toLowerCase() === String(target.branch).trim().toLowerCase());
     if (isSameId || isSameKey || isSameCode) {
-      it.status = 'Cleared';
+      it.status = 'DONE';
       it.quantity = 0;
       it.clearedAt = nowIso;
       it.lastUpdated = nowIso;
@@ -1417,14 +1534,39 @@ function markExpiryItemCleared(rowId) {
 
   saveLocalExpiryData();
   renderExpiryUI();
-  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
-    window.pmgOneDriveSync.saveStockExpiryToOneDrive(target.branch).catch(console.warn);
+
+  try {
+    // 2. Persist to connected Google Sheet row immediately
+    await pushExpiryUpdateToSheets(target.rowId, 0, 'DONE', target.expiryDate, {
+      branch: target.branch,
+      itemCode: target.itemCode,
+      itemDescription: target.itemDescription,
+      batchNumber: target.batchNumber
+    });
+
+    // 3. Save to OneDrive
+    if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
+      window.pmgOneDriveSync.saveStockExpiryToOneDrive(target.branch).catch(console.warn);
+    }
+
+    showExpiryToast(`✅ Marked ${target.itemDescription || target.itemCode} as DONE and persisted!`);
+  } catch (err) {
+    console.error('[markExpiryItemCleared] Failed to persist cleared status:', err);
+
+    // Rollback state if write request fails (keep item visible and show error toast)
+    expiryItems = rollbackSnapshot;
+    if (target.itemCode) removeClearedExpiryKey(target.itemCode);
+    if (target.rowId) removeClearedExpiryKey(`ROW_${target.rowId}`);
+    if (targetKey) removeClearedExpiryKey(targetKey);
+
+    saveLocalExpiryData();
+    renderExpiryUI();
+
+    showExpiryToast(`❌ Google Sheet update failed: Clearance for ${target.itemDescription || target.itemCode} not saved. Item restored.`);
   }
-  pushExpiryUpdateToSheets(target.rowId, 0, 'Cleared', target.expiryDate);
-  showExpiryToast(`✅ Marked ${target.itemDescription || target.itemCode} as Cleared!`);
 }
 
-function reactivateExpiryItem(rowId) {
+async function reactivateExpiryItem(rowId) {
   const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
   if (!item) return;
 
@@ -1432,8 +1574,18 @@ function reactivateExpiryItem(rowId) {
   const qty = parseFloat(qtyStr);
   if (isNaN(qty) || qty <= 0) return;
 
+  if (typeof window.pausePmgSyncPolling === 'function') {
+    window.pausePmgSyncPolling(5000);
+  }
+
   const session = typeof getSession === 'function' ? getSession() : null;
   const nowIso = new Date().toISOString();
+
+  // Remove from cleared tombstone
+  if (item.itemCode) removeClearedExpiryKey(item.itemCode);
+  if (item.rowId) removeClearedExpiryKey(`ROW_${item.rowId}`);
+  const itemKey = getExpiryItemKey(item);
+  if (itemKey) removeClearedExpiryKey(itemKey);
 
   item.status = 'Active';
   item.quantity = qty;
@@ -1446,8 +1598,12 @@ function reactivateExpiryItem(rowId) {
   if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
     window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
   }
-  pushExpiryUpdateToSheets(item.rowId, item.quantity, 'Active', item.expiryDate);
-  showExpiryToast(`Restored item with quantity ${qty}.`);
+  try {
+    await pushExpiryUpdateToSheets(item.rowId, item.quantity, 'Active', item.expiryDate);
+    showExpiryToast(`Restored item with quantity ${qty}.`);
+  } catch (err) {
+    showExpiryToast(`⚠️ Item restored locally; sheet update notice: ${err.message}`);
+  }
 }
 
 function openEditExpiryItemModal(rowId) {
@@ -1549,7 +1705,7 @@ function filterExpiryItems() {
 
     // 2. Horizon / Status filter
     const horizon = calculateExpiryHorizon(it.expiryDate);
-    const isCleared = it.status === 'Cleared' || it.quantity === 0;
+    const isCleared = isItemMarkedDoneOrCleared(it);
 
     if (activeExpiryFilter.horizon === 'cleared') {
       if (!isCleared) return false;
@@ -1602,7 +1758,7 @@ function renderExpiryKpis() {
       if (normalizeBranchCode(it.branch).toLowerCase() !== targetBranch.toLowerCase()) return;
     }
 
-    if (it.status === 'Cleared' || it.quantity === 0) {
+    if (isItemMarkedDoneOrCleared(it)) {
       clearedCount++;
       return;
     }
@@ -1663,7 +1819,7 @@ function renderExpiryTable() {
 
   tbody.innerHTML = displayedItems.map((it, idx) => {
     const h = calculateExpiryHorizon(it.expiryDate);
-    const isCleared = it.status === 'Cleared' || it.quantity === 0;
+    const isCleared = isItemMarkedDoneOrCleared(it);
 
     let badgeClass = 'bg-gray-100 text-gray-600';
     if (h.level === 'expired' || h.level === 'critical') badgeClass = 'bg-rose-100 text-rose-700 font-bold border border-rose-200 animate-pulse';
@@ -1791,7 +1947,7 @@ async function exportHqExpiryExcel() {
     }
 
     const branch = activeExpiryFilter.branch || 'Kota Sentosa';
-    const activeOnly = expiryItems.filter(it => it.status !== 'Cleared' && it.quantity > 0);
+    const activeOnly = expiryItems.filter(it => !isItemMarkedDoneOrCleared(it));
 
     // Filter by branch if specific
     const branchItems = (branch === 'ALL') ? activeOnly : activeOnly.filter(it => normalizeBranchCode(it.branch).toLowerCase() === branch.toLowerCase());
@@ -1931,7 +2087,7 @@ function getShortDatedStockForReplenishment(maxMonths = 12) {
   const mapByCode = {};
 
   expiryItems.forEach(it => {
-    if (it.status === 'Cleared' || it.quantity <= 0) return;
+    if (isItemMarkedDoneOrCleared(it)) return;
     const h = calculateExpiryHorizon(it.expiryDate);
     if (h.monthsLeft > maxMonths) return;
 

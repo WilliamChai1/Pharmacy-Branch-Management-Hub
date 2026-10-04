@@ -7,6 +7,19 @@
   const STORE_NAME = 'handles';
   const HANDLE_KEY = 'pmg_onedrive_root_handle';
 
+  // ── UNIVERSAL BACKGROUND POLLING PAUSE GUARD ──
+  window._pmgSyncPausedUntil = 0;
+  window.pausePmgSyncPolling = function(durationMs = 5000) {
+    const target = Date.now() + durationMs;
+    if (target > window._pmgSyncPausedUntil) {
+      window._pmgSyncPausedUntil = target;
+    }
+    console.log(`[PMG Sync Guard] Background polling paused for ${durationMs}ms (until ${new Date(window._pmgSyncPausedUntil).toLocaleTimeString()})`);
+  };
+  window.isPmgSyncPaused = function() {
+    return Date.now() < (window._pmgSyncPausedUntil || 0);
+  };
+
   // Recognized branch folders created in PMG OneDrive (Strictly the 7 Outlets Managed by AM)
   const KNOWN_BRANCH_FOLDERS = [
     'MATANG JAYA',
@@ -1490,6 +1503,9 @@
     // ─── BIDIRECTIONAL SYNC & MERGE STOCK EXPIRY WITH ONEDRIVE ───────────────
     async syncStockExpiryWithOneDrive(silent = false) {
       if (!this.rootHandle || this.mode === 'DISCONNECTED') return false;
+      if (silent && typeof window.isPmgSyncPaused === 'function' && window.isPmgSyncPaused()) {
+        return false;
+      }
       try {
         const cloudItems = await this.loadStockExpiryFromOneDrive();
         if (!cloudItems || cloudItems.length === 0) {
@@ -1515,9 +1531,48 @@
         if (mergeFn) {
           merged = mergeFn(localItems, cloudItems);
         } else {
+          let clearedKeys = [];
+          try {
+            clearedKeys = JSON.parse(localStorage.getItem('pmg_cleared_expiry_keys') || '[]');
+          } catch (_) {}
+          const clearedKeySet = new Set(clearedKeys.map(k => String(k).toUpperCase().trim()));
+
+          const isCleared = (it) => {
+            if (!it) return false;
+            const st = String(it.status || '').toUpperCase().trim();
+            if (st === 'DONE' || st === 'COMPLETED' || st === 'CLEARED' || it.quantity === 0) return true;
+            if (it.itemCode && clearedKeySet.has(String(it.itemCode).toUpperCase().trim())) return true;
+            if (it.rowId && clearedKeySet.has(`ROW_${it.rowId}`)) return true;
+            return false;
+          };
+
           const map = new Map();
-          (localItems || []).forEach(it => map.set(it.rowId || it.itemCode, it));
-          (cloudItems || []).forEach(it => map.set(it.rowId || it.itemCode, it));
+          (localItems || []).forEach(it => {
+            const k = it.rowId || it.itemCode;
+            if (isCleared(it)) {
+              it.status = 'DONE';
+              it.quantity = 0;
+            }
+            map.set(k, { ...it });
+          });
+          (cloudItems || []).forEach(it => {
+            const k = it.rowId || it.itemCode;
+            if (!map.has(k)) {
+              if (isCleared(it)) {
+                it.status = 'DONE';
+                it.quantity = 0;
+              }
+              map.set(k, { ...it });
+            } else {
+              const loc = map.get(k);
+              if (isCleared(loc)) {
+                // Keep local cleared/done
+              } else if (isCleared(it)) {
+                loc.status = 'DONE';
+                loc.quantity = 0;
+              }
+            }
+          });
           merged = Array.from(map.values());
         }
 
@@ -1625,6 +1680,10 @@
     async syncWithOneDriveFolder(force = false) {
       if (!this.rootHandle || this.mode === 'DISCONNECTED') return false;
       if (this.isSyncing) return false;
+      if (!force && typeof window.isPmgSyncPaused === 'function' && window.isPmgSyncPaused()) {
+        console.log('[PMG OneDrive Sync] Watcher skipped: auto-polling is temporarily paused.');
+        return false;
+      }
 
       // Non-prompting permission query for background checks
       const hasPerm = await this._verifyPermission(this.rootHandle, false, false);
@@ -1693,6 +1752,14 @@
             localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
           }
           if (typeof renderPatientModule === 'function') renderPatientModule();
+
+          // If incoming file had deleted records or differences, update OneDrive file with the cleaned array
+          if (!this._arePatientArraysEqual(merged, incomingPatients)) {
+            const writePerm = await this._verifyPermission(this.rootHandle, true, false);
+            if (writePerm) {
+              await this.saveToOneDrive(patientsData);
+            }
+          }
         }
 
         this.lastKnownModified = file.lastModified;
@@ -1710,16 +1777,34 @@
 
     // ─── CONFLICT-FREE RECORD MERGING ALGORITHM ──────────────────────────────
     _mergePatientArrays(localArr, cloudArr) {
+      let deletedIds = [];
+      try {
+        deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_patient_ids') || '[]');
+      } catch (_) {}
+      const deletedSet = new Set(deletedIds.map(x => String(x).toLowerCase().trim()));
+
+      const isRecordDeleted = (p) => {
+        if (!p) return true;
+        if (!p.id || String(p.id).trim() === '') return true; // Null/empty ID
+        if (p.status === 'DELETED' || String(p.status).toUpperCase() === 'DELETED') return true;
+        if (deletedSet.has(String(p.id).toLowerCase().trim())) return true;
+        const cleanIc = String(p.ic || '').replace(/\D/g, '');
+        if (cleanIc && deletedSet.has(cleanIc)) return true;
+        const cleanPhone = String(p.phone || '').replace(/\D/g, '');
+        if (cleanPhone && deletedSet.has(cleanPhone)) return true;
+        return false;
+      };
+
       const map = new Map();
 
-      // Index all local patients
+      // Index all local patients (strictly drop any deleted)
       (localArr || []).forEach(p => {
-        if (p && p.id) map.set(p.id, JSON.parse(JSON.stringify(p)));
+        if (p && p.id && !isRecordDeleted(p)) map.set(p.id, JSON.parse(JSON.stringify(p)));
       });
 
-      // Merge each cloud patient
+      // Merge each cloud patient (strictly skip deleted, null ID, or status: DELETED)
       (cloudArr || []).forEach(cloudP => {
-        if (!cloudP || !cloudP.id) return;
+        if (!cloudP || !cloudP.id || isRecordDeleted(cloudP)) return;
 
         if (!map.has(cloudP.id)) {
           map.set(cloudP.id, JSON.parse(JSON.stringify(cloudP)));
@@ -1739,8 +1824,13 @@
 
           // Merge appointments by id safely (preserve Completed/Missed terminal status)
           const aptMap = new Map();
-          (localP.appointments || []).forEach(a => aptMap.set(a.id || `${a.date}_${a.time}`, a));
+          (localP.appointments || []).forEach(a => {
+            if (a.status !== 'DELETED' && String(a.status).toUpperCase() !== 'DELETED') {
+              aptMap.set(a.id || `${a.date}_${a.time}`, a);
+            }
+          });
           (cloudP.appointments || []).forEach(cloudApt => {
+            if (cloudApt.status === 'DELETED' || String(cloudApt.status).toUpperCase() === 'DELETED') return;
             const key = cloudApt.id || `${cloudApt.date}_${cloudApt.time}`;
             if (!aptMap.has(key)) {
               aptMap.set(key, cloudApt);

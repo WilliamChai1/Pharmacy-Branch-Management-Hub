@@ -973,6 +973,60 @@ function initPatientModule() {
   }
 }
 
+// ─── PERSISTENT DELETED PATIENT TOMBSTONE HELPERS ────────────────────────────
+const DELETED_PATIENTS_STORAGE_KEY = 'pmg_deleted_patient_ids';
+
+function getDeletedPatientIds() {
+  try {
+    const raw = localStorage.getItem(DELETED_PATIENTS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function addDeletedPatientRecord(patientId, ic, phone) {
+  try {
+    const list = getDeletedPatientIds();
+    const set = new Set(list.map(x => String(x).toLowerCase().trim()));
+    if (patientId) set.add(String(patientId).toLowerCase().trim());
+    const cleanIc = String(ic || '').replace(/\D/g, '');
+    if (cleanIc) set.add(cleanIc);
+    const cleanPhone = String(phone || '').replace(/\D/g, '');
+    if (cleanPhone) set.add(cleanPhone);
+    localStorage.setItem(DELETED_PATIENTS_STORAGE_KEY, JSON.stringify(Array.from(set)));
+  } catch (e) {
+    console.warn('[PMG Patient] Error saving deleted patient tombstone:', e);
+  }
+}
+
+function removeDeletedPatientRecord(patientId, ic, phone) {
+  try {
+    const list = getDeletedPatientIds();
+    const set = new Set(list.map(x => String(x).toLowerCase().trim()));
+    if (patientId) set.delete(String(patientId).toLowerCase().trim());
+    const cleanIc = String(ic || '').replace(/\D/g, '');
+    if (cleanIc) set.delete(cleanIc);
+    const cleanPhone = String(phone || '').replace(/\D/g, '');
+    if (cleanPhone) set.delete(cleanPhone);
+    localStorage.setItem(DELETED_PATIENTS_STORAGE_KEY, JSON.stringify(Array.from(set)));
+  } catch (e) {
+    console.warn('[PMG Patient] Error removing deleted patient tombstone:', e);
+  }
+}
+
+function isPatientDeleted(patientId, ic = null, phone = null) {
+  const list = getDeletedPatientIds();
+  if (!list.length) return false;
+  const set = new Set(list.map(x => String(x).toLowerCase().trim()));
+  if (patientId && set.has(String(patientId).toLowerCase().trim())) return true;
+  const cleanIc = String(ic || '').replace(/\D/g, '');
+  if (cleanIc && set.has(cleanIc)) return true;
+  const cleanPhone = String(phone || '').replace(/\D/g, '');
+  if (cleanPhone && set.has(cleanPhone)) return true;
+  return false;
+}
+
 function loadPatientsData() {
   const saved = localStorage.getItem(PATIENTS_STORAGE_KEY);
   if (saved) {
@@ -996,17 +1050,11 @@ function loadPatientsData() {
     });
 
     // Respect permanently deleted profiles
-    let deletedIds = [];
-    try {
-      deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_patient_ids') || '[]');
-    } catch (_) {}
-    if (deletedIds.length) {
-      patientsData = patientsData.filter(p => !deletedIds.includes(p.id));
-    }
+    patientsData = patientsData.filter(p => !isPatientDeleted(p.id, p.ic, p.phone));
 
     // Auto-merge any default patient profiles (e.g. Liew Pay Sze, Jackson Ling) if not yet in user localStorage
     DEFAULT_PATIENTS_DATA.forEach(defPt => {
-      if (deletedIds.includes(defPt.id)) return;
+      if (isPatientDeleted(defPt.id, defPt.ic, defPt.phone)) return;
       const idx = patientsData.findIndex(p => {
         const icA = String(p.ic || '').replace(/\D/g, '');
         const icB = String(defPt.ic || '').replace(/\D/g, '');
@@ -5148,34 +5196,104 @@ function closePatientProfileModal() {
   viewingPatientId = null;
 }
 
-function deleteCurrentPatientProfile() {
+async function deleteCurrentPatientProfile() {
   if (!viewingPatientId) return;
   const p = patientsData.find(pt => pt.id === viewingPatientId);
   if (!p) return;
 
-  const confirmed = confirm(`Are you sure you want to permanently delete the patient profile for "${p.name}" (ID: ${p.id})?\n\nThis will remove all associated encounters, vitals, and appointment history.`);
+  const confirmed = confirm(`Are you sure you want to permanently delete the patient profile for "${p.name}" (ID: ${p.id})?\n\nThis will remove all associated encounters, vitals, and appointment history from Google Sheets, OneDrive, and local storage.`);
   if (!confirmed) return;
 
   const pid = viewingPatientId;
-  try {
-    const deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_patient_ids') || '[]');
-    if (!deletedIds.includes(pid)) {
-      deletedIds.push(pid);
-      localStorage.setItem('pmg_deleted_patient_ids', JSON.stringify(deletedIds));
-    }
-  } catch (e) {
-    console.warn('[deleteCurrentPatientProfile] error saving deleted ID:', e);
+  const patientSnapshot = JSON.parse(JSON.stringify(p));
+  const pIndex = patientsData.findIndex(pt => pt.id === pid);
+
+  // 1. Race-Condition Prevention: Pause background auto-polling for 5 seconds
+  if (typeof window.pausePmgSyncPolling === 'function') {
+    window.pausePmgSyncPolling(5000);
   }
 
+  // Record persistent tombstone immediately
+  addDeletedPatientRecord(p.id, p.ic, p.phone);
+
+  // Optimistically remove from local state and update UI
   patientsData = patientsData.filter(pt => pt.id !== pid);
   savePatientsData();
   closePatientProfileModal();
   renderPatientModule();
 
-  if (typeof showExpiryToast === 'function') {
-    showExpiryToast(`🗑️ Patient profile for "${p.name}" deleted successfully.`);
+  // 2. Explicit Hard Deletion API call targeting Google Sheet by unique Patient ID / IC
+  let writeConfirmed = false;
+  if (typeof PMG_SCHEDULE_API_URL !== 'undefined' && PMG_SCHEDULE_API_URL) {
+    try {
+      const session = typeof getSession === 'function' ? getSession() : null;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(PMG_SCHEDULE_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'deletePatient',
+          patientId: pid,
+          patientIc: p.ic || '',
+          patientName: p.name || '',
+          branch: p.branch || 'Kota Sentosa',
+          updatedBy: session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist'
+        }),
+        redirect: 'follow',
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+
+      if (res.ok) {
+        const resJson = await res.json().catch(() => null);
+        if (resJson && resJson.success !== false) {
+          writeConfirmed = true;
+        } else {
+          throw new Error(resJson?.error || 'Cloud returned rejection');
+        }
+      } else {
+        throw new Error(`HTTP ${res.status}`);
+      }
+    } catch (apiErr) {
+      console.error('[deleteCurrentPatientProfile] Cloud deletion failed:', apiErr);
+      writeConfirmed = false;
+    }
   } else {
-    alert(`Patient profile for "${p.name}" deleted successfully.`);
+    writeConfirmed = true;
+  }
+
+  // 3. Rollback or Finalize
+  if (!writeConfirmed) {
+    // Write failed: keep item visible and display error toast
+    if (pIndex >= 0) {
+      patientsData.splice(pIndex, 0, patientSnapshot);
+    } else {
+      patientsData.push(patientSnapshot);
+    }
+    removeDeletedPatientRecord(p.id, p.ic, p.phone);
+    savePatientsData();
+    renderPatientModule();
+
+    if (typeof showExpiryToast === 'function') {
+      showExpiryToast(`❌ Google Sheet sync failed: Could not delete "${p.name}". Profile restored.`);
+    } else {
+      alert(`Google Sheet sync failed: Could not delete "${p.name}". Profile has been restored.`);
+    }
+    return;
+  }
+
+  // Write confirmed: Sync cleaned array to OneDrive
+  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveToOneDrive === 'function') {
+    window.pmgOneDriveSync.saveToOneDrive(patientsData).catch(err => {
+      console.warn('[PMG OneDrive Sync] Auto-save error after deletion:', err);
+    });
+  }
+
+  if (typeof showExpiryToast === 'function') {
+    showExpiryToast(`🗑️ Patient profile for "${p.name}" permanently deleted.`);
+  } else {
+    alert(`Patient profile for "${p.name}" permanently deleted.`);
   }
 }
 window.deleteCurrentPatientProfile = deleteCurrentPatientProfile;
@@ -9487,6 +9605,11 @@ ${importUrl}
  */
 function importSingleBooking(booking, showNotification = false) {
   if (!booking || !booking.patientName) return false;
+  if (booking.status === 'DELETED' || String(booking.status).toUpperCase() === 'DELETED') return false;
+  if (isPatientDeleted(booking.patientId || booking.id || booking.ref, booking.patientIc, booking.patientPhone)) {
+    console.log(`[PMG Patient] Skipped booking for deleted patient: ${booking.patientName}`);
+    return false;
+  }
   const ref = booking.ref || booking.id || ('PMG-BK-' + Math.floor(100000 + Math.random() * 900000));
   booking.ref = ref;
   booking.id = ref;
@@ -9597,6 +9720,13 @@ function importSingleBooking(booking, showNotification = false) {
  */
 async function syncOnlineBookingsFromCloud(showPrompt = false) {
   if (!PMG_SCHEDULE_API_URL) return;
+
+  // 0. Auto-polling pause check
+  if (!showPrompt && typeof window.isPmgSyncPaused === 'function' && window.isPmgSyncPaused()) {
+    console.log('[PMG Cloud Sync] Background sync skipped: auto-polling is temporarily paused.');
+    return;
+  }
+
   try {
     const session = typeof getSession === 'function' ? getSession() : null;
     const branch = normalizeBranchCode((session && session.branch && session.branch !== 'ALL') ? session.branch : 'Kota Sentosa');
@@ -9610,7 +9740,11 @@ async function syncOnlineBookingsFromCloud(showPrompt = false) {
         const aptData = await aptRes.json();
         if (aptData && aptData.success && Array.isArray(aptData.appointments)) {
           aptData.appointments.forEach(a => {
-            if (a.id) allBookingsMap.set(a.id, a);
+            // Strictly exclude records with null IDs, Status: DELETED, or matching deleted patients
+            if (!a.id || String(a.id).trim() === '') return;
+            if (a.status === 'DELETED' || String(a.status).toUpperCase() === 'DELETED') return;
+            if (isPatientDeleted(a.patientId, a.patientIc, a.patientPhone)) return;
+            allBookingsMap.set(a.id, a);
           });
         }
       }
@@ -9626,16 +9760,18 @@ async function syncOnlineBookingsFromCloud(showPrompt = false) {
         if (data && data.success && data.schedule && Array.isArray(data.schedule.onlineBookings)) {
           data.schedule.onlineBookings.forEach(b => {
             const key = b.id || b.ref;
-            if (key) {
-              if (!allBookingsMap.has(key)) {
-                allBookingsMap.set(key, b);
+            if (!key || String(key).trim() === '') return;
+            if (b.status === 'DELETED' || String(b.status).toUpperCase() === 'DELETED') return;
+            if (isPatientDeleted(b.patientId || b.id || b.ref, b.patientIc, b.patientPhone)) return;
+
+            if (!allBookingsMap.has(key)) {
+              allBookingsMap.set(key, b);
+            } else {
+              const existing = allBookingsMap.get(key);
+              if (existing.status !== 'Scheduled' && b.status === 'Scheduled') {
+                allBookingsMap.set(key, { ...b, status: existing.status, statusUpdatedAt: existing.statusUpdatedAt });
               } else {
-                const existing = allBookingsMap.get(key);
-                if (existing.status !== 'Scheduled' && b.status === 'Scheduled') {
-                  allBookingsMap.set(key, { ...b, status: existing.status, statusUpdatedAt: existing.statusUpdatedAt });
-                } else {
-                  allBookingsMap.set(key, { ...existing, ...b });
-                }
+                allBookingsMap.set(key, { ...existing, ...b });
               }
             }
           });
@@ -9645,6 +9781,8 @@ async function syncOnlineBookingsFromCloud(showPrompt = false) {
 
     let newImportCount = 0;
     allBookingsMap.forEach(b => {
+      if (b.status === 'DELETED' || String(b.status).toUpperCase() === 'DELETED') return;
+      if (isPatientDeleted(b.patientId || b.id || b.ref, b.patientIc, b.patientPhone)) return;
       const imported = importSingleBooking(b, false);
       if (imported) newImportCount++;
     });

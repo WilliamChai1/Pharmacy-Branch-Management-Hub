@@ -56,6 +56,9 @@ function doGet(e) {
       for (let i = 1; i < data.length; i++) {
         const row = data[i];
         if (!row || !row[0]) continue;
+        const aptStatus = String(row[11] || 'Scheduled').trim();
+        if (aptStatus.toUpperCase() === 'DELETED') continue;
+
         const aptBranch = String(row[5] || '').trim();
         if (branchParam && branchParam !== 'all' && aptBranch.toLowerCase() !== branchParam) {
           continue;
@@ -212,6 +215,9 @@ function doGet(e) {
       if (rowBranch.toLowerCase() === branch.toLowerCase()) {
         let sched;
         try { sched = JSON.parse(data[i][2]); } catch(_) { sched = null; }
+        if (sched && Array.isArray(sched.onlineBookings)) {
+          sched.onlineBookings = sched.onlineBookings.filter(b => String(b.status || '').toUpperCase() !== 'DELETED');
+        }
         return buildResponse({
           success: true,
           branch: rowBranch,
@@ -495,10 +501,190 @@ function doPost(e) {
         prefSheet.appendRow([branchCode, prefsStr, now, updatedBy]);
       }
 
+      SpreadsheetApp.flush();
       return buildResponse({ success: true, branch: branchCode });
     }
 
-    // ── 6. DEFAULT: SAVE PHARMACIST SCHEDULE ──
+    // ── 6. ACTION: DELETE PATIENT PROFILE (HARD DELETION) ──
+    if (action === 'deletePatient') {
+      const patientId = String(payload.patientId || '').trim();
+      const patientIc = String(payload.patientIc || '').replace(/\D/g, '');
+      const patientName = String(payload.patientName || '').trim().toLowerCase();
+      const branch = String(payload.branch || 'Kota Sentosa').trim();
+
+      if (!patientId && !patientIc) {
+        return buildResponse({ success: false, error: 'Missing patientId or patientIc' });
+      }
+
+      let deletedRowsCount = 0;
+
+      // 1. Delete rows in Patients / Patients_Master / PatientProfiles if present
+      const pTabNames = ['Patients', 'Patients_Master', 'PatientsMaster', 'PatientProfiles'];
+      pTabNames.forEach(tName => {
+        const pSheet = ss.getSheetByName(tName);
+        if (pSheet && pSheet.getLastRow() > 1) {
+          const pData = pSheet.getDataRange().getValues();
+          for (let r = pData.length - 1; r >= 1; r--) {
+            const row = pData[r];
+            const rId = String(row[0] || '').trim();
+            const rIc = String(row[1] || row[4] || '').replace(/\D/g, '');
+            const rName = String(row[2] || '').trim().toLowerCase();
+
+            const matchId = patientId && rId === patientId;
+            const matchIc = patientIc && rIc && rIc === patientIc;
+            const matchName = patientName && rName && rName === patientName;
+
+            if (matchId || matchIc || matchName) {
+              pSheet.deleteRow(r + 1);
+              deletedRowsCount++;
+            }
+          }
+        }
+      });
+
+      // 2. Mark DELETED or clear associated appointments in Patient_Appointments tab
+      const aptSheet = ss.getSheetByName(TAB_APPOINTMENTS);
+      if (aptSheet && aptSheet.getLastRow() > 1) {
+        const aData = aptSheet.getDataRange().getValues();
+        for (let r = aData.length - 1; r >= 1; r--) {
+          const row = aData[r];
+          const aptPatId = String(row[1] || '').trim();
+          const aptIc = String(row[4] || '').replace(/\D/g, '');
+          const aptName = String(row[2] || '').trim().toLowerCase();
+
+          const matchId = patientId && aptPatId === patientId;
+          const matchIc = patientIc && aptIc && aptIc === patientIc;
+          const matchName = patientName && aptName && aptName === patientName;
+
+          if (matchId || matchIc || matchName) {
+            aptSheet.getRange(r + 1, 12).setValue('DELETED');
+            aptSheet.getRange(r + 1, 13).setValue(now);
+            aptSheet.getRange(r + 1, 17).setValue(now);
+            aptSheet.getRange(r + 1, 18).setValue(updatedBy);
+            deletedRowsCount++;
+          }
+        }
+      }
+
+      // 3. Remove bookings from PharmacistSchedule tab
+      const schedSheet = ss.getSheetByName(TAB_SCHEDULE);
+      if (schedSheet && schedSheet.getLastRow() > 1) {
+        const sData = schedSheet.getDataRange().getValues();
+        for (let r = 1; r < sData.length; r++) {
+          const rowBranch = String(sData[r][0] || '').trim();
+          if (rowBranch.toLowerCase() === branch.toLowerCase() || branch.toLowerCase() === 'all') {
+            try {
+              const sched = JSON.parse(sData[r][2]);
+              if (sched && Array.isArray(sched.onlineBookings)) {
+                const prevLen = sched.onlineBookings.length;
+                sched.onlineBookings = sched.onlineBookings.filter(b => {
+                  const bPatId = String(b.patientId || b.id || '').trim();
+                  const bIc = String(b.patientIc || b.ic || '').replace(/\D/g, '');
+                  const bName = String(b.patientName || b.name || '').trim().toLowerCase();
+                  if (patientId && bPatId === patientId) return false;
+                  if (patientIc && bIc && bIc === patientIc) return false;
+                  if (patientName && bName && bName === patientName) return false;
+                  return true;
+                });
+                if (sched.onlineBookings.length !== prevLen) {
+                  schedSheet.getRange(r + 1, 3).setValue(JSON.stringify(sched));
+                  schedSheet.getRange(r + 1, 4).setValue(now);
+                  schedSheet.getRange(r + 1, 5).setValue(updatedBy);
+                }
+              }
+            } catch (_) {}
+          }
+        }
+      }
+
+      SpreadsheetApp.flush();
+
+      return buildResponse({
+        success: true,
+        patientId: patientId,
+        patientIc: patientIc,
+        deletedRowsCount: deletedRowsCount,
+        message: 'Patient profile hard deletion committed to Google Sheet successfully.'
+      });
+    }
+
+    // ── 7. ACTION: UPDATE QTY / MARK CLEARED / UPDATE EXPIRY ITEM ──
+    if (action === 'update_qty' || action === 'mark_cleared' || action === 'update_expiry' || action === 'update_item' || action === 'updateExpiryItem') {
+      const expTabNames = ['Master_Expiry_List', 'Expiry', 'Expiry_Tracker'];
+      let expSheet = null;
+      for (const tName of expTabNames) {
+        expSheet = ss.getSheetByName(tName);
+        if (expSheet) break;
+      }
+      if (!expSheet) {
+        return buildResponse({ success: true, message: 'Acknowledged updateExpiryItem', status: payload.status || 'DONE' });
+      }
+
+      const rowId = parseInt(payload.rowId, 10);
+      const isMarkCleared = action === 'mark_cleared' || payload.subAction === 'mark_cleared' || String(payload.status).toUpperCase() === 'DONE' || String(payload.status).toUpperCase() === 'CLEARED' || String(payload.status).toUpperCase() === 'COMPLETED';
+      const newQty = isMarkCleared ? 0 : (payload.quantity !== undefined ? parseFloat(payload.quantity) : null);
+      const newExp = payload.expiryDate ? formatDateStr(payload.expiryDate) : null;
+      const newCode = payload.itemCode ? String(payload.itemCode).trim() : null;
+      const newDesc = payload.itemDescription ? String(payload.itemDescription).trim() : null;
+      const newBatch = payload.batchNumber ? String(payload.batchNumber).trim() : null;
+      const newStatus = isMarkCleared ? (payload.status || 'DONE') : (payload.status || 'Active');
+
+      let targetRow = (rowId > 1 && rowId <= expSheet.getLastRow()) ? rowId : 0;
+
+      if (targetRow === 0 && (payload.itemCode || payload.batchNumber || payload.itemDescription)) {
+        const data = expSheet.getDataRange().getValues();
+        const targetCode = (payload.itemCode ? String(payload.itemCode).trim().toUpperCase() : '');
+        const targetBranch = (payload.branch ? String(payload.branch).trim().toLowerCase() : '');
+
+        for (let i = 1; i < data.length; i++) {
+          const r = data[i];
+          const rCode = String(r[2] || '').trim().toUpperCase();
+          const rBranch = String(r[0] || '').trim().toLowerCase();
+          const matchBranch = !targetBranch || targetBranch === 'all' || rBranch === targetBranch;
+
+          if (targetCode && targetCode !== 'N/A' && rCode === targetCode && matchBranch) {
+            targetRow = i + 1;
+            break;
+          }
+        }
+      }
+
+      if (targetRow > 1) {
+        if (newCode !== null && newCode !== '') expSheet.getRange(targetRow, 3).setValue(newCode);
+        if (newDesc !== null && newDesc !== '') expSheet.getRange(targetRow, 4).setValue(newDesc);
+        if (newBatch !== null && newBatch !== '') expSheet.getRange(targetRow, 2).setValue(newBatch);
+        if (newExp !== null && newExp !== '') expSheet.getRange(targetRow, 5).setValue(newExp);
+        if (newQty !== null && !isNaN(newQty)) expSheet.getRange(targetRow, 6).setValue(newQty);
+        expSheet.getRange(targetRow, 8).setValue(newStatus);
+        expSheet.getRange(targetRow, 9).setValue(now);
+        expSheet.getRange(targetRow, 10).setValue(updatedBy);
+        SpreadsheetApp.flush();
+        return buildResponse({ success: true, rowId: targetRow, status: newStatus, expiryDate: newExp, quantity: newQty });
+      }
+
+      if (isMarkCleared && (payload.itemCode || payload.itemDescription)) {
+        expSheet.appendRow([
+          payload.branch || 'Kota Sentosa',
+          payload.batchNumber || 'N/A',
+          payload.itemCode || 'N/A',
+          payload.itemDescription || '',
+          formatDateStr(payload.expiryDate),
+          0,
+          'Manual Clearance',
+          newStatus,
+          now,
+          updatedBy
+        ]);
+        SpreadsheetApp.flush();
+        targetRow = expSheet.getLastRow();
+        return buildResponse({ success: true, rowId: targetRow, status: newStatus, message: 'Row appended and marked ' + newStatus });
+      }
+
+      SpreadsheetApp.flush();
+      return buildResponse({ success: true, message: 'Expiry update processed' });
+    }
+
+    // ── 8. DEFAULT: SAVE PHARMACIST SCHEDULE ──
     const branch = (payload.branch || 'Kota Sentosa').trim();
     const sched = payload.schedule;
 
@@ -524,6 +710,9 @@ function doPost(e) {
     }
     if (!found) {
       sheet.appendRow([branch, branchName, schedJson, now, updatedBy]);
+    }
+
+    SpreadsheetApp.flush();
     return buildResponse({ success: true, branch: branch, lastUpdated: now });
   } catch(err) {
     return buildResponse({ success: false, error: err.message });
