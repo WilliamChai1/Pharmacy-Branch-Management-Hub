@@ -3050,30 +3050,121 @@ function viewDoc(appId, docIdx) {
   const subtitle = el('recDocModalSubtitle');
   const body = el('recDocModalBody');
   const dlBtn = el('recDocModalDownloadBtn');
+  const openExternalBtn = el('recDocModalExternalBtn');
 
   if (!modal || !body) return;
 
   const docTypeLabel = (doc.field || 'Document').replace('file', '').toUpperCase();
-  title.textContent = `${docTypeLabel} — ${doc.name}`;
-  subtitle.textContent = `Candidate: ${app.name} (${app.id}) • Size: ${Math.round((doc.size || 0)/1024)} KB`;
+  const docDisplayName = doc.name || 'SPM_Result_Document';
+  title.textContent = `${docTypeLabel} — ${docDisplayName}`;
+  const fileSizeText = doc.size ? ` • Size: ${Math.round(doc.size / 1024)} KB` : '';
+  subtitle.textContent = `Candidate: ${app.name} (${app.id})${fileSizeText}`;
 
-  if (dlBtn) {
-    dlBtn.href = doc.data || '#';
-    dlBtn.download = doc.name || 'document';
-  }
+  // Resolve source: prioritize data URI / base64, then doc.url, then candidate fields
+  const fileSource = (doc.data || doc.url || app.spm || app.resumeUrl || '').trim();
+  const driveFileId = extractDriveFileId(fileSource);
 
-  const isPdf = (doc.type && doc.type.toLowerCase().includes('pdf')) || (doc.name && doc.name.toLowerCase().endsWith('.pdf'));
+  // Configure external button and download button
+  if (driveFileId) {
+    const drivePreviewUrl = `https://drive.google.com/file/d/${driveFileId}/preview`;
+    const driveViewUrl    = `https://drive.google.com/file/d/${driveFileId}/view?usp=sharing`;
+    const driveDlUrl      = `https://drive.google.com/uc?export=download&id=${driveFileId}`;
 
-  if (isPdf) {
+    if (dlBtn) {
+      dlBtn.href = driveDlUrl;
+      dlBtn.target = '_blank';
+      dlBtn.removeAttribute('download');
+      dlBtn.title = 'Download original file from Google Drive';
+    }
+    if (openExternalBtn) {
+      openExternalBtn.href = driveViewUrl;
+      openExternalBtn.target = '_blank';
+      openExternalBtn.classList.remove('hidden');
+      openExternalBtn.classList.add('flex');
+    }
+
     body.innerHTML = `
-      <iframe src="${doc.data}" class="w-full h-full rounded-lg border border-slate-300 bg-white" title="${sanitize(doc.name)}">
-        <p class="p-4 text-center text-sm text-gray-500">Your browser does not support inline PDF preview. <a href="${doc.data}" download="${sanitize(doc.name)}" class="text-blue-600 underline font-bold">Click here to download</a>.</p>
-      </iframe>`;
-  } else {
-    body.innerHTML = `
-      <div class="w-full h-full flex items-center justify-center overflow-auto p-2">
-        <img src="${doc.data}" alt="${sanitize(doc.name)}" class="max-h-[80vh] max-w-full object-contain rounded-lg shadow-sm border border-slate-200 bg-white">
+      <div class="w-full h-full flex flex-col">
+        <div class="bg-blue-50 border border-blue-200 px-3 py-2 rounded-t-lg flex items-center justify-between text-xs text-blue-900 shrink-0 mb-1">
+          <div class="flex items-center gap-2">
+            <i class="fa-brands fa-google-drive text-blue-600 text-sm"></i>
+            <span class="font-semibold">Google Drive Document Preview</span>
+            <span class="text-[10px] text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded">Drive ID: ${driveFileId.slice(0, 10)}…</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <a href="${driveViewUrl}" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1 bg-white border border-blue-300 text-blue-700 hover:bg-blue-100 rounded font-semibold transition flex items-center gap-1 shadow-2xs">
+              <i class="fa-solid fa-arrow-up-right-from-square"></i> Open in Google Drive
+            </a>
+            <a href="${driveDlUrl}" target="_blank" class="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded font-semibold transition flex items-center gap-1 shadow-2xs">
+              <i class="fa-solid fa-download"></i> Direct Download
+            </a>
+          </div>
+        </div>
+        <div class="flex-1 w-full h-full relative rounded-b-lg overflow-hidden border border-slate-300 bg-white">
+          <iframe src="${drivePreviewUrl}" class="w-full h-full border-0" title="${sanitize(docDisplayName)}" allow="autoplay" loading="lazy">
+            <p class="p-4 text-center text-sm text-gray-500">
+              Unable to display inline preview. 
+              <a href="${driveViewUrl}" target="_blank" class="text-blue-600 underline font-bold">Click here to open the document in Google Drive</a>.
+            </p>
+          </iframe>
+        </div>
       </div>`;
+  } else if (!fileSource) {
+    if (dlBtn) {
+      dlBtn.href = '#';
+      dlBtn.removeAttribute('target');
+    }
+    if (openExternalBtn) openExternalBtn.classList.add('hidden');
+    body.innerHTML = `
+      <div class="p-8 text-center text-gray-500 bg-white rounded-xl border border-gray-200 shadow-sm max-w-md">
+        <i class="fa-solid fa-triangle-exclamation text-amber-500 text-4xl mb-3"></i>
+        <h4 class="font-bold text-gray-800 text-sm">Document Link Unavailable</h4>
+        <p class="text-xs text-gray-500 mt-1">This application did not record a valid file URL or base64 data for this document entry.</p>
+      </div>`;
+  } else {
+    // Non-Drive file (data: URI or direct HTTP link)
+    const isImage = fileSource.startsWith('data:image/') ||
+                    /\.(jpeg|jpg|png|webp|gif|svg)($|\?)/i.test(fileSource) ||
+                    (doc.type && doc.type.toLowerCase().includes('image'));
+
+    const isPdf = fileSource.startsWith('data:application/pdf') ||
+                  /\.pdf($|\?)/i.test(fileSource) ||
+                  (doc.type && doc.type.toLowerCase().includes('pdf')) ||
+                  (doc.name && doc.name.toLowerCase().endsWith('.pdf'));
+
+    if (dlBtn) {
+      dlBtn.href = fileSource;
+      dlBtn.download = docDisplayName;
+      dlBtn.removeAttribute('target');
+    }
+    if (openExternalBtn) {
+      if (fileSource.startsWith('http')) {
+        openExternalBtn.href = fileSource;
+        openExternalBtn.target = '_blank';
+        openExternalBtn.classList.remove('hidden');
+        openExternalBtn.classList.add('flex');
+      } else {
+        openExternalBtn.classList.add('hidden');
+      }
+    }
+
+    if (isImage) {
+      body.innerHTML = `
+        <div class="w-full h-full flex flex-col items-center justify-center overflow-auto p-2">
+          <img src="${fileSource}" alt="${sanitize(docDisplayName)}" class="max-h-[80vh] max-w-full object-contain rounded-lg shadow-sm border border-slate-200 bg-white">
+        </div>`;
+    } else if (isPdf) {
+      body.innerHTML = `
+        <iframe src="${fileSource}" class="w-full h-full rounded-lg border border-slate-300 bg-white" title="${sanitize(docDisplayName)}">
+          <p class="p-4 text-center text-sm text-gray-500">Your browser does not support inline PDF preview. <a href="${fileSource}" download="${sanitize(docDisplayName)}" class="text-blue-600 underline font-bold">Click here to download</a>.</p>
+        </iframe>`;
+    } else {
+      // Fallback for other file types or web links
+      body.innerHTML = `
+        <iframe src="${fileSource}" class="w-full h-full rounded-lg border border-slate-300 bg-white" title="${sanitize(docDisplayName)}">
+          <p class="p-4 text-center text-sm text-gray-500">Preview not supported inline. <a href="${fileSource}" target="_blank" class="text-blue-600 underline font-bold">Click here to view or download file</a>.</p>
+        </iframe>`;
+    }
   }
 
   modal.classList.remove('hidden');
@@ -3087,6 +3178,10 @@ function closeDocViewer() {
     if (body) body.innerHTML = '';
   }
 }
+
+// Global window aliases
+window.viewDoc = viewDoc;
+window.closeDocViewer = closeDocViewer;
 
 function strAppHash(s) {
   let h = 0;
@@ -3164,10 +3259,32 @@ async function syncAppsFromCloud(force = false) {
             const resUrl = String(row['Resume_URL'] || highEduUrl || spmUrl || '').trim();
 
             const docs = [];
-            if (spmUrl) docs.push({ field: 'fileSpm', name: 'SPM_Result.pdf', url: spmUrl });
-            if (highEduUrl) docs.push({ field: 'fileHigherEdu', name: 'Higher_Education.pdf', url: highEduUrl });
+            if (spmUrl) {
+              const isImg = /\.(jpeg|jpg|png|webp|gif)($|\?)/i.test(spmUrl);
+              docs.push({
+                field: 'fileSpm',
+                name: isImg ? 'SPM_Result_Photo.jpg' : 'SPM_Result.pdf',
+                url: spmUrl,
+                type: isImg ? 'image/jpeg' : 'application/pdf'
+              });
+            }
+            if (highEduUrl) {
+              const isImg = /\.(jpeg|jpg|png|webp|gif)($|\?)/i.test(highEduUrl);
+              docs.push({
+                field: 'fileHigherEdu',
+                name: isImg ? 'Higher_Education_Photo.jpg' : 'Higher_Education.pdf',
+                url: highEduUrl,
+                type: isImg ? 'image/jpeg' : 'application/pdf'
+              });
+            }
             if (resUrl && resUrl !== spmUrl && resUrl !== highEduUrl) {
-              docs.push({ field: 'fileResume', name: 'Resume.pdf', url: resUrl });
+              const isImg = /\.(jpeg|jpg|png|webp|gif)($|\?)/i.test(resUrl);
+              docs.push({
+                field: 'fileResume',
+                name: isImg ? 'Resume_Photo.jpg' : 'Resume.pdf',
+                url: resUrl,
+                type: isImg ? 'image/jpeg' : 'application/pdf'
+              });
             }
 
             const workHistoryParts = [
