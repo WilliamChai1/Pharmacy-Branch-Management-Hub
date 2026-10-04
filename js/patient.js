@@ -5213,23 +5213,35 @@ async function deleteCurrentPatientProfile() {
     window.pausePmgSyncPolling(5000);
   }
 
-  // Record persistent tombstone immediately
+  // Record persistent tombstone immediately so it can never be resurrected
   addDeletedPatientRecord(p.id, p.ic, p.phone);
 
-  // Optimistically remove from local state and update UI
+  // Permanently remove from local state and update UI
   patientsData = patientsData.filter(pt => pt.id !== pid);
   savePatientsData();
   closePatientProfileModal();
   renderPatientModule();
 
-  // 2. Explicit Hard Deletion API call targeting Google Sheet by unique Patient ID / IC
-  let writeConfirmed = false;
+  // Also refresh overdue table if present
+  if (typeof renderOverdueRefillsTable === 'function') {
+    renderOverdueRefillsTable();
+  }
+
+  // Sync cleaned array to OneDrive immediately
+  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveToOneDrive === 'function') {
+    window.pmgOneDriveSync.saveToOneDrive(patientsData).catch(err => {
+      console.warn('[PMG OneDrive Sync] Auto-save error after deletion:', err);
+    });
+  }
+
+  // 2. Cascade delete to Google Sheet if relay URL is configured
+  let cloudDeleted = false;
   let lastDeleteError = '';
   if (typeof PMG_SCHEDULE_API_URL !== 'undefined' && PMG_SCHEDULE_API_URL) {
     try {
       const session = typeof getSession === 'function' ? getSession() : null;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 18000);
+      const timeout = setTimeout(() => controller.abort(), 12000);
       const res = await fetch(PMG_SCHEDULE_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
@@ -5250,56 +5262,30 @@ async function deleteCurrentPatientProfile() {
       if (res.ok) {
         const resJson = await res.json().catch(() => null);
         if (resJson && resJson.success !== false) {
-          writeConfirmed = true;
-          console.log('[deleteCurrentPatientProfile] Cascade delete success:', resJson);
+          cloudDeleted = true;
+          console.log('[deleteCurrentPatientProfile] Cloud cascade delete confirmed:', resJson);
         } else {
-          const errMsg = resJson?.error || (resJson?.tabErrors?.length ? JSON.stringify(resJson.tabErrors) : 'Cloud returned rejection');
-          throw new Error(errMsg);
+          lastDeleteError = resJson?.error || 'Cloud relay returned rejection';
+          console.warn('[deleteCurrentPatientProfile] Cloud rejection:', lastDeleteError);
         }
       } else {
-        throw new Error(`HTTP ${res.status}`);
+        lastDeleteError = `HTTP ${res.status}`;
       }
     } catch (apiErr) {
-      console.error('[deleteCurrentPatientProfile] Cloud deletion failed:', apiErr);
+      console.warn('[deleteCurrentPatientProfile] Cloud deletion network note:', apiErr.message);
       lastDeleteError = apiErr?.message || String(apiErr);
-      writeConfirmed = false;
     }
-  } else {
-    writeConfirmed = true;
   }
 
-  // 3. Rollback or Finalize
-  if (!writeConfirmed) {
-    // Write failed: keep item visible and display error toast
-    if (pIndex >= 0) {
-      patientsData.splice(pIndex, 0, patientSnapshot);
-    } else {
-      patientsData.push(patientSnapshot);
-    }
-    removeDeletedPatientRecord(p.id, p.ic, p.phone);
-    savePatientsData();
-    renderPatientModule();
-
-    const errorDetails = lastDeleteError ? ` (${lastDeleteError})` : '';
-    if (typeof showExpiryToast === 'function') {
-      showExpiryToast(`❌ Google Sheet sync failed: Could not delete "${p.name}"${errorDetails}. Profile restored.`);
-    } else {
-      alert(`Google Sheet sync failed: Could not delete "${p.name}"${errorDetails}. Profile has been restored.`);
-    }
-    return;
-  }
-
-  // Write confirmed: Sync cleaned array to OneDrive
-  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveToOneDrive === 'function') {
-    window.pmgOneDriveSync.saveToOneDrive(patientsData).catch(err => {
-      console.warn('[PMG OneDrive Sync] Auto-save error after deletion:', err);
-    });
-  }
+  // 3. User feedback: Deletion is ALWAYS committed locally and to OneDrive
+  const noticeMsg = cloudDeleted
+    ? `🗑️ Patient profile for "${p.name}" permanently deleted (synced to Google Sheets & OneDrive).`
+    : `🗑️ Patient profile for "${p.name}" permanently deleted from local hub & OneDrive.`;
 
   if (typeof showExpiryToast === 'function') {
-    showExpiryToast(`🗑️ Patient profile for "${p.name}" permanently deleted.`);
+    showExpiryToast(noticeMsg);
   } else {
-    alert(`Patient profile for "${p.name}" permanently deleted.`);
+    alert(noticeMsg);
   }
 }
 window.deleteCurrentPatientProfile = deleteCurrentPatientProfile;

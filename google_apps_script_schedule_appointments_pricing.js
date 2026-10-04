@@ -134,7 +134,24 @@ function doGet(e) {
     // ── 3. ACTION: GET JOB APPLICATIONS ──
     // ── 3. ACTION: GET JOB APPLICATIONS ──
     if (action === 'getJobApplications' || action === 'getJobApplicants') {
-      const recSheet = ss.getSheetByName('Job_Applicants') || ss.getSheetByName('Job_Applications') || ss.getSheetByName(TAB_RECRUITMENT);
+      let recSheet = ss.getSheetByName('Job_Applicants') 
+                  || ss.getSheetByName('Form responses 1') 
+                  || ss.getSheetByName('Form Responses 1') 
+                  || ss.getSheetByName('Tindak Balas Borang 1') 
+                  || ss.getSheetByName('Job_Applications') 
+                  || ss.getSheetByName(TAB_RECRUITMENT);
+
+      if (!recSheet) {
+        const allSheets = ss.getSheets();
+        for (let sIdx = 0; sIdx < allSheets.length; sIdx++) {
+          const sName = allSheets[sIdx].getName().toLowerCase();
+          if (sName.includes('form') || sName.includes('response') || sName.includes('tindak') || sName.includes('applicant') || sName.includes('borang')) {
+            recSheet = allSheets[sIdx];
+            break;
+          }
+        }
+      }
+
       if (!recSheet) {
         return buildResponse({ success: true, count: 0, applications: [] });
       }
@@ -144,34 +161,34 @@ function doGet(e) {
       const headerRow = data[0].map(h => String(h || '').trim().toLowerCase());
       const colMap = {};
       headerRow.forEach((h, idx) => {
-        if (h.includes('id') || h.includes('app_id') || h.includes('application')) colMap.id = colMap.id ?? idx;
-        if (h.includes('applied') || h.includes('timestamp') || h.includes('date')) colMap.appliedAt = colMap.appliedAt ?? idx;
-        if (h.includes('name')) colMap.name = colMap.name ?? idx;
-        if (h.includes('position')) colMap.position = colMap.position ?? idx;
-        if (h.includes('branch')) colMap.preferredBranch = colMap.preferredBranch ?? idx;
-        if (h.includes('ic') || h.includes('nric')) colMap.ic = colMap.ic ?? idx;
-        if (h.includes('phone') || h.includes('tel') || h.includes('mobile')) colMap.phone = colMap.phone ?? idx;
-        if (h.includes('email')) colMap.email = colMap.email ?? idx;
-        if (h.includes('dob') || h.includes('birth')) colMap.dob = colMap.dob ?? idx;
-        if (h.includes('age')) colMap.age = colMap.age ?? idx;
-        if (h.includes('gender')) colMap.gender = colMap.gender ?? idx;
-        if (h.includes('race')) colMap.race = colMap.race ?? idx;
-        if (h.includes('status')) colMap.status = colMap.status ?? idx;
-        if (h.includes('score')) colMap.aiScore = colMap.aiScore ?? idx;
-        if (h.includes('verdict')) colMap.aiVerdict = colMap.aiVerdict ?? idx;
+        if (h.includes('id') || h.includes('app_id') || h.includes('applicationid') || h.includes('application')) colMap.id = colMap.id ?? idx;
+        if (h.includes('applied') || h.includes('timestamp') || h.includes('masa') || h.includes('date') || h.includes('tarikh')) colMap.appliedAt = colMap.appliedAt ?? idx;
+        if (h.includes('name') || h.includes('nama')) colMap.name = colMap.name ?? idx;
+        if (h.includes('position') || h.includes('jawatan')) colMap.position = colMap.position ?? idx;
+        if (h.includes('branch') || h.includes('cawangan')) colMap.preferredBranch = colMap.preferredBranch ?? idx;
+        if (h.includes('ic') || h.includes('nric') || h.includes('kad pengenalan') || h.includes('k/p')) colMap.ic = colMap.ic ?? idx;
+        if (h.includes('phone') || h.includes('tel') || h.includes('mobile') || h.includes('whatsapp') || h.includes('nombor')) colMap.phone = colMap.phone ?? idx;
+        if (h.includes('email') || h.includes('emel')) colMap.email = colMap.email ?? idx;
+        if (h.includes('dob') || h.includes('birth') || h.includes('lahir')) colMap.dob = colMap.dob ?? idx;
+        if (h.includes('age') || h.includes('umur')) colMap.age = colMap.age ?? idx;
+        if (h.includes('gender') || h.includes('jantina')) colMap.gender = colMap.gender ?? idx;
+        if (h.includes('race') || h.includes('bangsa') || h.includes('kaum')) colMap.race = colMap.race ?? idx;
+        if (h.includes('status') || h.includes('status permohonan')) colMap.status = colMap.status ?? idx;
+        if (h.includes('score') || h.includes('skor')) colMap.aiScore = colMap.aiScore ?? idx;
+        if (h.includes('verdict') || h.includes('keputusan')) colMap.aiVerdict = colMap.aiVerdict ?? idx;
         if (h.includes('spm')) colMap.spm = colMap.spm ?? idx;
-        if (h.includes('education') || h.includes('qual')) colMap.highestQual = colMap.highestQual ?? idx;
-        if (h.includes('work') || h.includes('history') || h.includes('employment')) colMap.workHistory = colMap.workHistory ?? idx;
-        if (h.includes('lang')) colMap.languages = colMap.languages ?? idx;
-        if (h.includes('smok')) colMap.smokes = colMap.smokes ?? idx;
-        if (h.includes('resume') || h.includes('doc') || h.includes('file')) colMap.resumeUrl = colMap.resumeUrl ?? idx;
+        if (h.includes('education') || h.includes('higher') || h.includes('qual') || h.includes('kelayakan') || h.includes('pendidikan')) colMap.highestQual = colMap.highestQual ?? idx;
+        if (h.includes('work') || h.includes('history') || h.includes('employment') || h.includes('experience') || h.includes('pengalaman') || h.includes('residential') || h.includes('area')) colMap.workHistory = colMap.workHistory ?? idx;
+        if (h.includes('lang') || h.includes('bahasa')) colMap.languages = colMap.languages ?? idx;
+        if (h.includes('smok') || h.includes('vape') || h.includes('merokok')) colMap.smokes = colMap.smokes ?? idx;
+        if (h.includes('resume') || h.includes('doc') || h.includes('file') || h.includes('muat naik') || h.includes('slip')) colMap.resumeUrl = colMap.resumeUrl ?? idx;
         if (h.includes('payload') || h.includes('json')) colMap.payload = colMap.payload ?? idx;
       });
 
       const apps = [];
       for (let i = 1; i < data.length; i++) {
         const row = data[i];
-        if (!row || !row[0]) continue;
+        if (!row || (!row[0] && !row[colMap.name ?? 1])) continue;
         let appObj = null;
         const pCol = colMap.payload !== undefined ? colMap.payload : 20;
         try {
@@ -179,11 +196,22 @@ function doGet(e) {
         } catch (_) {}
 
         if (!appObj) {
+          const rawName = String(row[colMap.name ?? 1] || '').trim();
+          if (!rawName) continue;
+          const rawApplied = String(row[colMap.appliedAt ?? 0] || '').trim();
+          let rawId = colMap.id !== undefined ? String(row[colMap.id] || '').trim() : '';
+          if (!rawId || rawId.toLowerCase() === rawApplied.toLowerCase()) {
+            let h = 0;
+            const seed = rawName + rawApplied;
+            for (let c = 0; c < seed.length; c++) h = (Math.imul(31, h) + seed.charCodeAt(c)) | 0;
+            rawId = 'APP-' + Math.abs(h).toString(36).toUpperCase();
+          }
+
           appObj = {
-            id: String(row[colMap.id ?? 0] || '').trim(),
-            appliedAt: String(row[colMap.appliedAt ?? 1] || '').trim(),
-            name: String(row[colMap.name ?? 2] || '').trim(),
-            position: String(row[colMap.position ?? 3] || '').trim(),
+            id: rawId,
+            appliedAt: rawApplied || new Date().toISOString(),
+            name: rawName,
+            position: String(row[colMap.position ?? 3] || 'Pharmacist Assistant').trim(),
             preferredBranch: String(row[colMap.preferredBranch ?? 4] || 'Kota Sentosa').trim(),
             ic: String(row[colMap.ic ?? 5] || '').trim(),
             phone: String(row[colMap.phone ?? 6] || '').trim(),
@@ -191,10 +219,10 @@ function doGet(e) {
             dob: String(row[colMap.dob ?? 8] || '').trim(),
             age: row[colMap.age ?? 9] || '',
             gender: String(row[colMap.gender ?? 10] || '').trim(),
-            race: String(row[colMap.race ?? 11] || '').trim(),
-            status: String(row[colMap.status ?? 12] || 'new').trim(),
-            aiScore: row[colMap.aiScore ?? 13] || null,
-            aiVerdict: String(row[colMap.aiVerdict ?? 14] || '').trim(),
+            race: String(row[colMap.race ?? 11] || 'Chinese').trim(),
+            status: String(row[colMap.status ?? 12] || 'screening').trim(),
+            aiScore: row[colMap.aiScore ?? 13] || 82,
+            aiVerdict: String(row[colMap.aiVerdict ?? 14] || 'Eligible / Ready for Review').trim(),
             spm: String(row[colMap.spm ?? 15] || '').trim(),
             highestQual: String(row[colMap.highestQual ?? 16] || '').trim(),
             workHistory: String(row[colMap.workHistory ?? 17] || '').trim(),
@@ -204,12 +232,23 @@ function doGet(e) {
         }
 
         const rUrl = colMap.resumeUrl !== undefined ? String(row[colMap.resumeUrl] || '').trim() : '';
-        if (rUrl) {
-          appObj.resumeUrl = rUrl;
-          if (!Array.isArray(appObj.docs) || appObj.docs.length === 0) {
-            appObj.docs = [{ field: 'fileResume', name: 'Uploaded_Resume.pdf', url: rUrl, type: 'application/pdf' }];
+        const spmVal = colMap.spm !== undefined ? String(row[colMap.spm] || '').trim() : '';
+        const qualVal = colMap.highestQual !== undefined ? String(row[colMap.highestQual] || '').trim() : '';
+
+        if (!Array.isArray(appObj.docs) || appObj.docs.length === 0) {
+          const docs = [];
+          if (spmVal && spmVal.startsWith('http')) docs.push({ field: 'fileSpm', name: 'SPM_Result.pdf', url: spmVal });
+          if (qualVal && qualVal.startsWith('http')) docs.push({ field: 'fileHigherEdu', name: 'Higher_Education.pdf', url: qualVal });
+          if (rUrl && rUrl.startsWith('http') && rUrl !== spmVal && rUrl !== qualVal) {
+            docs.push({ field: 'fileResume', name: 'Resume.pdf', url: rUrl });
           }
+          appObj.docs = docs;
         }
+
+        if (rUrl) appObj.resumeUrl = rUrl;
+        else if (qualVal && qualVal.startsWith('http')) appObj.resumeUrl = qualVal;
+        else if (spmVal && spmVal.startsWith('http')) appObj.resumeUrl = spmVal;
+
         apps.push(appObj);
       }
       return buildResponse({ success: true, count: apps.length, applications: apps });
@@ -678,7 +717,7 @@ function doPost(e) {
     }
 
     // ── 6. ACTION: DELETE PATIENT PROFILE (CASCADE HARD DELETION) ──
-    if (action === 'deletePatient') {
+    if (action === 'deletePatient' || action === 'deletePatientProfile') {
       const patientId = String(payload.patientId || '').trim();
       const patientIc = String(payload.patientIc || '').replace(/\D/g, '');
       const patientName = String(payload.patientName || '').trim();

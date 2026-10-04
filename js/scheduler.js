@@ -770,11 +770,14 @@ async function generateTimetable() {
   const branchVal = branchSelect ? branchSelect.value : 'KS01';
   const monthVal  = monthInput?.value || '2026-10';
 
+  if (!currentTeammates || !currentTeammates.length) {
+    loadTeammates(branchVal || 'KS01');
+  }
   saveTeammatePreferences();
 
-  if (!currentTeammates.length) {
-    alert('Please configure at least one teammate before generating the schedule.');
-    return;
+  if (!currentTeammates || !currentTeammates.length) {
+    currentTeammates = JSON.parse(JSON.stringify(DEFAULT_KS01_TEAMMATES));
+    renderTeammatesTable();
   }
 
   // Verify that we have at least one pharmacist
@@ -1510,6 +1513,13 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
 function renderScheduleMatrix(schedule) {
   if (!schedule || !schedule.days) return;
 
+  const resultsPanel = document.getElementById('schedulerResultsPanel');
+  if (resultsPanel) resultsPanel.classList.remove('hidden');
+
+  const [sYearStr, sMonthStr] = (schedule.month || '2026-10').split('-');
+  const schedYear = parseInt(sYearStr, 10) || 2026;
+  const schedMonth = parseInt(sMonthStr, 10) || 10;
+
   const headerRow = document.getElementById('schedulerMatrixHeader');
   const tbody     = document.getElementById('schedulerMatrixBody');
   const summaryEl = document.getElementById('schedulerSummaryText');
@@ -1809,124 +1819,128 @@ function renderScheduleMatrix(schedule) {
   if (tbody) tbody.innerHTML = bodyHtml + densityRow + cleaningRow + coverageRow;
 
   // Render Fairness Parity & 6S Cleaning Rotation Summary Section
-  const paritySection = document.getElementById('schedulerParitySection');
-  if (paritySection) {
-    let parityHtml = `
-      <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div>
-          <h4 class="text-sm font-bold text-gray-900 flex items-center gap-2">
-            <i class="fa-solid fa-scale-balanced text-teal-600"></i>
-            <span>Shift Parity, Anti-Fatigue & 6S Cleaning Rotation Verification</span>
-          </h4>
-          <p class="text-xs text-gray-500 mt-0.5">Audits workload distribution among teammates for Kota Sentosa (Target: Max ±1 shift variance, 0 PM→AM fatigue transitions).</p>
+  try {
+    const paritySection = document.getElementById('schedulerParitySection');
+    if (paritySection) {
+      let parityHtml = `
+        <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div>
+            <h4 class="text-sm font-bold text-gray-900 flex items-center gap-2">
+              <i class="fa-solid fa-scale-balanced text-teal-600"></i>
+              <span>Shift Parity, Anti-Fatigue & 6S Cleaning Rotation Verification</span>
+            </h4>
+            <p class="text-xs text-gray-500 mt-0.5">Audits workload distribution among teammates for Kota Sentosa (Target: Max ±1 shift variance, 0 PM→AM fatigue transitions).</p>
+          </div>
+          <div class="flex items-center gap-2 text-xs flex-wrap">
+            <span class="px-2.5 py-1 rounded-full font-bold ${maxStaffVar <= 1 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+              <i class="fa-solid fa-check-circle mr-1"></i> Shift Parity: ${maxStaffVar <= 1 ? 'Equitable (≤1)' : `Variance ±${maxStaffVar}`}
+            </span>
+            <span class="px-2.5 py-1 rounded-full font-bold ${totalFatigueViolations === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">
+              <i class="fa-solid fa-shield-heart mr-1"></i> Anti-Fatigue: ${totalFatigueViolations === 0 ? 'Zero Violations' : `${totalFatigueViolations} Violations`}
+            </span>
+          </div>
         </div>
-        <div class="flex items-center gap-2 text-xs flex-wrap">
-          <span class="px-2.5 py-1 rounded-full font-bold ${maxStaffVar <= 1 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
-            <i class="fa-solid fa-check-circle mr-1"></i> Shift Parity: ${maxStaffVar <= 1 ? 'Equitable (≤1)' : `Variance ±${maxStaffVar}`}
-          </span>
-          <span class="px-2.5 py-1 rounded-full font-bold ${totalFatigueViolations === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">
-            <i class="fa-solid fa-shield-heart mr-1"></i> Anti-Fatigue: ${totalFatigueViolations === 0 ? 'Zero Violations' : `${totalFatigueViolations} Violations`}
-          </span>
-        </div>
-      </div>
 
-      <div class="overflow-x-auto">
-        <table class="w-full text-xs text-left border-collapse">
-          <thead>
-            <tr class="bg-slate-50 border-b border-gray-200 text-gray-600 uppercase text-[10px] font-bold">
-              <th class="py-2.5 px-3">Teammate</th>
-              <th class="py-2.5 px-3">Role & Mode</th>
-              <th class="py-2.5 px-3 text-center">Morning (AM)</th>
-              <th class="py-2.5 px-3 text-center">Night (PM)</th>
-              <th class="py-2.5 px-3 text-center">Parity Status</th>
-              <th class="py-2.5 px-3 text-center">Full Rest Days (RD)</th>
-              <th class="py-2.5 px-3 text-center">Half Days (HD)</th>
-              <th class="py-2.5 px-3 text-center">Statutory Quota</th>
-              <th class="py-2.5 px-3 text-center">6S Cleaning Duties</th>
-              <th class="py-2.5 px-3 text-center">Anti-Fatigue Status</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-100">
-    `;
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-left border-collapse">
+            <thead>
+              <tr class="bg-slate-50 border-b border-gray-200 text-gray-600 uppercase text-[10px] font-bold">
+                <th class="py-2.5 px-3">Teammate</th>
+                <th class="py-2.5 px-3">Role & Mode</th>
+                <th class="py-2.5 px-3 text-center">Morning (AM)</th>
+                <th class="py-2.5 px-3 text-center">Night (PM)</th>
+                <th class="py-2.5 px-3 text-center">Parity Status</th>
+                <th class="py-2.5 px-3 text-center">Full Rest Days (RD)</th>
+                <th class="py-2.5 px-3 text-center">Half Days (HD)</th>
+                <th class="py-2.5 px-3 text-center">Statutory Quota</th>
+                <th class="py-2.5 px-3 text-center">6S Cleaning Duties</th>
+                <th class="py-2.5 px-3 text-center">Anti-Fatigue Status</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+      `;
 
-    currentTeammates.forEach(tm => {
-      const st = teammateStats[tm.empNo];
-      const isFixed = tm.scheduleMode === 'Fixed' || tm.empNo === 'PMG00831' || tm.nickname === 'WILLIAM';
-      const isPharm = tm.isPharmacist || tm.position === 'Pharmacist' || (tm.position && tm.position.includes('Pharmacist'));
+      currentTeammates.forEach(tm => {
+        const st = teammateStats[tm.empNo] || { mCount: 0, nCount: 0, rdCount: 0, hdCount: 0, cleanCount: 0, pmToAmFatigueCount: 0 };
+        const isFixed = tm.scheduleMode === 'Fixed' || tm.empNo === 'PMG00831' || tm.nickname === 'WILLIAM';
+        const isPharm = tm.isPharmacist || tm.position === 'Pharmacist' || (tm.position && tm.position.includes('Pharmacist'));
 
-      let parityBadge = '';
-      if (isFixed) {
-        parityBadge = '<span class="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-semibold">Fixed Anchor (Exempt)</span>';
-      } else {
-        const diff = Math.abs(st.mCount - st.nCount);
-        parityBadge = diff <= 1
-          ? `<span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">✓ Equitable (±${diff})</span>`
-          : `<span class="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">⚠️ Imbalance (±${diff})</span>`;
-      }
+        let parityBadge = '';
+        if (isFixed) {
+          parityBadge = '<span class="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-semibold">Fixed Anchor (Exempt)</span>';
+        } else {
+          const diff = Math.abs(st.mCount - st.nCount);
+          parityBadge = diff <= 1
+            ? `<span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">✓ Equitable (±${diff})</span>`
+            : `<span class="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">⚠️ Imbalance (±${diff})</span>`;
+        }
 
-      // Check Statutory Sarawak Labour Ordinance Quota: 1 RD + 1 HD per calendar week
-      const calWeeks = getMonthlyCalendarWeeks(currentYear || 2026, currentMonth || 10, schedule.days.length);
-      const missingDetails = [];
-      calWeeks.forEach((weekDays, wIdx) => {
-        const wNum = wIdx + 1;
-        let rdInWeek = 0;
-        let hdInWeek = 0;
-        weekDays.forEach(dNum => {
-          const dItem = schedule.days[dNum - 1];
-          if (!dItem || !dItem.shifts) return;
-          const shiftVal = dItem.shifts[tm.empNo];
-          if (shiftVal === 'RD' || shiftVal === 'PH' || shiftVal === 'OFF') {
-            rdInWeek++;
-          } else if (shiftVal && (shiftVal.includes('4H') || shiftVal.includes('5H') || shiftVal.includes('Half') || shiftVal.includes('0730-1130'))) {
-            hdInWeek++;
-          }
+        // Check Statutory Sarawak Labour Ordinance Quota: 1 RD + 1 HD per calendar week
+        const calWeeks = getMonthlyCalendarWeeks(schedYear, schedMonth, schedule.days.length);
+        const missingDetails = [];
+        calWeeks.forEach((weekDays, wIdx) => {
+          const wNum = wIdx + 1;
+          let rdInWeek = 0;
+          let hdInWeek = 0;
+          weekDays.forEach(dNum => {
+            const dItem = schedule.days[dNum - 1];
+            if (!dItem || !dItem.shifts) return;
+            const shiftVal = dItem.shifts[tm.empNo];
+            if (shiftVal === 'RD' || shiftVal === 'PH' || shiftVal === 'OFF') {
+              rdInWeek++;
+            } else if (shiftVal && (shiftVal.includes('4H') || shiftVal.includes('5H') || shiftVal.includes('Half') || shiftVal.includes('0730-1130'))) {
+              hdInWeek++;
+            }
+          });
+          if (rdInWeek < 1) missingDetails.push(`Missing RD in W${wNum}`);
+          if (hdInWeek < 1) missingDetails.push(`Missing HD in W${wNum}`);
         });
-        if (rdInWeek < 1) missingDetails.push(`Missing RD in W${wNum}`);
-        if (hdInWeek < 1) missingDetails.push(`Missing HD in W${wNum}`);
+
+        let quotaBadge = '';
+        if (missingDetails.length === 0) {
+          quotaBadge = '<span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">✓ Legal Quota Met</span>';
+        } else {
+          quotaBadge = `<span class="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold" title="${missingDetails.join(', ')}">⚠️ Statutory Deficit (${missingDetails[0]})</span>`;
+        }
+
+        const fatigueBadge = st.pmToAmFatigueCount === 0
+          ? '<span class="text-emerald-700 font-bold text-[10px]"><i class="fa-solid fa-check mr-1"></i>Protected (0 PM→AM)</span>'
+          : `<span class="text-rose-700 font-bold text-[10px]"><i class="fa-solid fa-circle-exclamation mr-1"></i>${st.pmToAmFatigueCount} Turnaround Violations</span>`;
+
+        parityHtml += `
+          <tr class="hover:bg-gray-50/70 transition">
+            <td class="py-2.5 px-3 font-bold text-gray-900">
+              ${escHtml(tm.nickname)}
+              <div class="text-[10px] text-gray-400 font-normal">${escHtml(tm.empName)}</div>
+            </td>
+            <td class="py-2.5 px-3 text-gray-600">
+              <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${isFixed ? 'bg-amber-100 text-amber-800' : (isPharm ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700')}">
+                ${escHtml(tm.position)} (${tm.scheduleMode || 'Rotating'})
+              </span>
+            </td>
+            <td class="py-2.5 px-3 text-center font-mono font-bold text-blue-600">${st.mCount}</td>
+            <td class="py-2.5 px-3 text-center font-mono font-bold text-purple-600">${st.nCount}</td>
+            <td class="py-2.5 px-3 text-center">${parityBadge}</td>
+            <td class="py-2.5 px-3 text-center font-mono text-gray-700 font-semibold">${st.rdCount}</td>
+            <td class="py-2.5 px-3 text-center font-mono text-amber-900 font-semibold">${st.hdCount}</td>
+            <td class="py-2.5 px-3 text-center">${quotaBadge}</td>
+            <td class="py-2.5 px-3 text-center font-mono font-bold ${st.cleanCount > 0 ? 'text-teal-700' : 'text-gray-400'}">
+              ${st.cleanCount > 0 ? `🧹 ${st.cleanCount} days` : '—'}
+            </td>
+            <td class="py-2.5 px-3 text-center">${fatigueBadge}</td>
+          </tr>
+        `;
       });
 
-      let quotaBadge = '';
-      if (missingDetails.length === 0) {
-        quotaBadge = '<span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">✓ Legal Quota Met</span>';
-      } else {
-        quotaBadge = `<span class="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold" title="${missingDetails.join(', ')}">⚠️ Statutory Deficit (${missingDetails[0]})</span>`;
-      }
-
-      const fatigueBadge = st.pmToAmFatigueCount === 0
-        ? '<span class="text-emerald-700 font-bold text-[10px]"><i class="fa-solid fa-check mr-1"></i>Protected (0 PM→AM)</span>'
-        : `<span class="text-rose-700 font-bold text-[10px]"><i class="fa-solid fa-circle-exclamation mr-1"></i>${st.pmToAmFatigueCount} Turnaround Violations</span>`;
-
       parityHtml += `
-        <tr class="hover:bg-gray-50/70 transition">
-          <td class="py-2.5 px-3 font-bold text-gray-900">
-            ${escHtml(tm.nickname)}
-            <div class="text-[10px] text-gray-400 font-normal">${escHtml(tm.empName)}</div>
-          </td>
-          <td class="py-2.5 px-3 text-gray-600">
-            <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${isFixed ? 'bg-amber-100 text-amber-800' : (isPharm ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700')}">
-              ${escHtml(tm.position)} (${tm.scheduleMode || 'Rotating'})
-            </span>
-          </td>
-          <td class="py-2.5 px-3 text-center font-mono font-bold text-blue-600">${st.mCount}</td>
-          <td class="py-2.5 px-3 text-center font-mono font-bold text-purple-600">${st.nCount}</td>
-          <td class="py-2.5 px-3 text-center">${parityBadge}</td>
-          <td class="py-2.5 px-3 text-center font-mono text-gray-700 font-semibold">${st.rdCount}</td>
-          <td class="py-2.5 px-3 text-center font-mono text-amber-900 font-semibold">${st.hdCount}</td>
-          <td class="py-2.5 px-3 text-center">${quotaBadge}</td>
-          <td class="py-2.5 px-3 text-center font-mono font-bold ${st.cleanCount > 0 ? 'text-teal-700' : 'text-gray-400'}">
-            ${st.cleanCount > 0 ? `🧹 ${st.cleanCount} days` : '—'}
-          </td>
-          <td class="py-2.5 px-3 text-center">${fatigueBadge}</td>
-        </tr>
+            </tbody>
+          </table>
+        </div>
       `;
-    });
-
-    parityHtml += `
-          </tbody>
-        </table>
-      </div>
-    `;
-    paritySection.innerHTML = parityHtml;
+      paritySection.innerHTML = parityHtml;
+    }
+  } catch (parityErr) {
+    console.warn('[PMG Scheduler] Parity section error:', parityErr);
   }
 }
 

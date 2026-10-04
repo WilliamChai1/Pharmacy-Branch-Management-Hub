@@ -3088,48 +3088,198 @@ function closeDocViewer() {
   }
 }
 
+function strAppHash(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return Math.abs(h).toString(36).toUpperCase();
+}
+
 async function syncAppsFromCloud(force = false) {
   try {
     const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
-    if (!apiUrl) return;
+    let fetchedApps = [];
 
-    const res = await fetch(`${apiUrl}?action=getJobApplications`);
-    if (!res.ok) return;
+    // 1. First Tier: Try Google Apps Script API endpoint
+    if (apiUrl) {
+      try {
+        const res = await fetch(`${apiUrl}?action=getJobApplications`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success && Array.isArray(data.applications) && data.applications.length > 0) {
+            fetchedApps = data.applications;
+            console.log(`[Recruitment] Fetched ${fetchedApps.length} applications via Apps Script API.`);
+          }
+        }
+      } catch (apiErr) {
+        console.warn('[Recruitment] Apps Script API fetch warning:', apiErr.message);
+      }
+    }
 
-    const data = await res.json();
-    if (data && data.success && Array.isArray(data.applications)) {
+    // 2. Second Tier: Direct Google Sheets sync via published CSV / gviz endpoints
+    if (!fetchedApps.length && typeof window.Papa !== 'undefined') {
+      const sheetUrls = [
+        'https://docs.google.com/spreadsheets/d/1HVpF66K59fbNOmyvouih5knTPMBwoCZ_lGLczD5QaB0/gviz/tq?tqx=out:csv&sheet=Job_Applicants',
+        'https://docs.google.com/spreadsheets/d/1HVpF66K59fbNOmyvouih5knTPMBwoCZ_lGLczD5QaB0/gviz/tq?tqx=out:csv&sheet=Form%20responses%201'
+      ];
+
+      for (const sUrl of sheetUrls) {
+        try {
+          const sRes = await fetch(sUrl);
+          if (!sRes.ok) continue;
+          const csvText = await sRes.text();
+          if (!csvText || csvText.length < 20) continue;
+
+          const parsed = window.Papa.parse(csvText, { header: true, skipEmptyLines: true });
+          if (!parsed || !parsed.data || parsed.data.length === 0) continue;
+
+          parsed.data.forEach((row, rIdx) => {
+            // Check if structured Job_Applicants row with PayloadJSON
+            if (row.PayloadJSON) {
+              try {
+                const appFromPayload = JSON.parse(row.PayloadJSON);
+                if (appFromPayload && (appFromPayload.name || appFromPayload.id)) {
+                  fetchedApps.push(appFromPayload);
+                  return;
+                }
+              } catch (_) {}
+            }
+
+            // Detect Full Name across common header variations
+            const name = String(row['Name'] || row['Full Name'] || row['Full Name (as per IC) '] || row['Full Name (as per IC)'] || row['Nama Penuh'] || '').trim();
+            if (!name) return;
+
+            const timestamp = String(row['AppliedAt'] || row['Timestamp'] || row['Cap masa'] || '').trim();
+            const id = String(row['ApplicationId'] || row['id'] || ('APP-' + strAppHash(name + (timestamp || rIdx)))).trim();
+            const ic = String(row['IC'] || row['IC Number'] || row['No. Kad Pengenalan'] || '').trim();
+            const phone = String(row['Phone'] || row['Contact Phone Number (WhatsApp) '] || row['Contact Phone Number (WhatsApp)'] || row['Nombor Telefon'] || '').trim();
+            const position = String(row['Position'] || row['Position Applied '] || row['Position Applied'] || row['Jawatan yang Dipohon'] || 'Pharmacist Assistant').trim();
+            const branch = String(row['Branch'] || 'Kota Sentosa').trim();
+            const address = String(row['Residential Area / Address in Kuching '] || row['Residential Area / Address in Kuching'] || '').trim();
+            const exp = String(row['Working experience'] || row['WorkHistory'] || '').trim();
+            const why = String(row['Why do you choose PMG?'] || '').trim();
+            const lang = String(row['Languages'] || row['  Language Proficiency  '] || row['Language Proficiency'] || '').trim();
+            const smoke = String(row['Smoking'] || row['Do you smoke or vape?'] || 'No').trim();
+            const spmUrl = String(row['SPM'] || row['SPM result'] || '').trim();
+            const highEduUrl = String(row['Higher Education result'] || '').trim();
+            const resUrl = String(row['Resume_URL'] || highEduUrl || spmUrl || '').trim();
+
+            const docs = [];
+            if (spmUrl) docs.push({ field: 'fileSpm', name: 'SPM_Result.pdf', url: spmUrl });
+            if (highEduUrl) docs.push({ field: 'fileHigherEdu', name: 'Higher_Education.pdf', url: highEduUrl });
+            if (resUrl && resUrl !== spmUrl && resUrl !== highEduUrl) {
+              docs.push({ field: 'fileResume', name: 'Resume.pdf', url: resUrl });
+            }
+
+            const workHistoryParts = [
+              address ? `Residential: ${address}` : '',
+              exp ? `Experience: ${exp}` : '',
+              why ? `Reason: ${why}` : ''
+            ].filter(Boolean).join(' | ');
+
+            const qualParts = [
+              highEduUrl ? `Higher Education: ${highEduUrl}` : '',
+              row.Education || ''
+            ].filter(Boolean).join(' | ');
+
+            let calcAge = row['Age'] ? parseInt(row['Age'], 10) : '';
+            if (!calcAge && ic.length >= 2) {
+              const yrPrefix = parseInt(ic.slice(0, 2), 10);
+              const fullYr = yrPrefix > 26 ? (1900 + yrPrefix) : (2000 + yrPrefix);
+              calcAge = new Date().getFullYear() - fullYr;
+            }
+
+            fetchedApps.push({
+              id,
+              appliedAt: timestamp || new Date().toISOString(),
+              name,
+              position,
+              preferredBranch: branch,
+              ic,
+              phone,
+              email: row['Email'] || '',
+              dob: row['DOB'] || '',
+              age: calcAge,
+              gender: row['Gender'] || '',
+              race: row['Race'] || 'Chinese',
+              status: row['Status'] || 'screening',
+              aiScore: parseInt(row['AIScore'], 10) || 82,
+              aiVerdict: row['AIVerdict'] || 'Eligible / Ready for Review',
+              spm: spmUrl,
+              highestQual: qualParts,
+              workHistory: workHistoryParts,
+              languages: lang,
+              smokes: smoke,
+              resumeUrl: resUrl,
+              docs
+            });
+          });
+
+          if (fetchedApps.length > 0) {
+            console.log(`[Recruitment] Fetched ${fetchedApps.length} applications from sheet tab: ${sUrl}`);
+            break; // Successfully got applications
+          }
+        } catch (sErr) {
+          console.warn('[Recruitment] Sheet CSV fetch warning:', sErr.message);
+        }
+      }
+    }
+
+    if (fetchedApps.length > 0) {
       const localApps = loadApps();
-      const localMap = new Map(localApps.map(a => [a.id, a]));
-      let changesCount = 0;
+      const localMap = new Map();
+      localApps.forEach(a => {
+        if (a && a.id) localMap.set(a.id, a);
+      });
 
-      data.applications.forEach(remoteApp => {
-        if (!remoteApp || !remoteApp.id) return;
-        const existing = localMap.get(remoteApp.id);
+      let changesCount = 0;
+      fetchedApps.forEach(remoteApp => {
+        if (!remoteApp || !remoteApp.name) return;
+        if (!remoteApp.id) {
+          remoteApp.id = 'APP-' + strAppHash(remoteApp.name + (remoteApp.appliedAt || ''));
+        }
+
+        // Match by ID, IC, or exact Name
+        let existing = localMap.get(remoteApp.id);
+        if (!existing && remoteApp.ic) {
+          existing = Array.from(localMap.values()).find(a => a.ic && a.ic.replace(/\D/g, '') === remoteApp.ic.replace(/\D/g, ''));
+        }
+        if (!existing && remoteApp.name) {
+          existing = Array.from(localMap.values()).find(a => a.name && a.name.trim().toLowerCase() === remoteApp.name.trim().toLowerCase());
+        }
+
         if (!existing) {
           localMap.set(remoteApp.id, remoteApp);
           changesCount++;
         } else {
-          if (remoteApp.aiReport && !existing.aiReport) {
-            localMap.set(remoteApp.id, { ...existing, ...remoteApp });
-            changesCount++;
-          }
+          // Merge remote with local (preserve manual user evaluations/interviews)
+          const mergedApp = {
+            ...remoteApp,
+            ...existing,
+            docs: (remoteApp.docs && remoteApp.docs.length) ? remoteApp.docs : existing.docs,
+            spm: remoteApp.spm || existing.spm,
+            resumeUrl: remoteApp.resumeUrl || existing.resumeUrl,
+            status: existing.status || remoteApp.status || 'screening'
+          };
+          localMap.set(existing.id || remoteApp.id, mergedApp);
         }
       });
 
-      if (changesCount > 0 || force) {
-        const merged = Array.from(localMap.values());
-        merged.sort((a,b) => new Date(b.appliedAt || 0) - new Date(a.appliedAt || 0));
-        localStorage.setItem(REC_KEY, JSON.stringify(merged));
+      const merged = Array.from(localMap.values());
+      merged.sort((a,b) => new Date(b.appliedAt || 0) - new Date(a.appliedAt || 0));
+      localStorage.setItem(REC_KEY, JSON.stringify(merged));
 
-        // Push new applicant files to OneDrive if handle available
-        const engine = window.pmgOneDriveSync || window.pmgOneDrive;
-        if (engine && engine.rootHandle) {
-          merged.forEach(app => saveSingleApplicantToOneDrive(app, engine.rootHandle));
-        }
-
-        renderAmDashboard();
-        if (force) toast(`Synced ${data.applications.length} applications from cloud.`, 'success');
+      // Push new applicant files to OneDrive if handle available
+      const engine = window.pmgOneDriveSync || window.pmgOneDrive;
+      if (engine && engine.rootHandle) {
+        merged.forEach(app => saveSingleApplicantToOneDrive(app, engine.rootHandle));
       }
+
+      renderAmDashboard();
+      if (force || changesCount > 0) {
+        toast(`Synced ${merged.length} application(s) from cloud.`, 'success');
+      }
+    } else if (force) {
+      toast('No new applications found on Google Sheet.', 'info');
     }
   } catch(e) {
     console.warn('[Recruitment] Cloud sync error:', e);
