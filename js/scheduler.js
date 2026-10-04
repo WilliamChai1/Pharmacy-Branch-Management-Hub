@@ -1258,53 +1258,73 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
 
   // 2. STATUTORY WEEKLY INVARIANT (SARAWAK LABOUR ORDINANCE):
   // Pre-assign exactly 1 Full Rest Day (RD) and exactly 1 Half Day (HD - 4H) per calendar week for each rotating teammate.
-  // In a 31-day month like October (5 calendar weeks), every staff member strictly receives 5 Full RDs and 5 HDs.
+  // Dynamically selects dates strictly within each week's actual calendar bounds, preventing out-of-bounds indexing.
   calendarWeeks.forEach((weekDays, wIdx) => {
+    const weekRdCount = {};
+    const weekHdCount = {};
+    weekDays.forEach(d => {
+      weekRdCount[d] = 0;
+      weekHdCount[d] = 0;
+    });
+
+    if (weekDays.length === 1) {
+      const onlyDay = weekDays[0];
+      const dow = daysOfWeek[new Date(year, month - 1, onlyDay).getDay()];
+      rotatingPool.forEach(tm => {
+        const prefDow = tm.restDayPref || (tm.dayPrefs && Object.keys(tm.dayPrefs).find(k => tm.dayPrefs[k] === 'RD'));
+        if (prefDow === dow && weekRdCount[onlyDay] < 3) {
+          if (dailyAssigned[onlyDay]) {
+            dailyAssigned[onlyDay][tm.empNo] = 'RD';
+            weekRdCount[onlyDay]++;
+          }
+        }
+      });
+      return;
+    }
+
     rotatingPool.forEach(tm => {
       let chosenRd = null;
       let chosenHd = null;
 
-      if (wIdx === 0) {
-        // W1: Days 1-4 (Thu-Sun) - Custom distribution ensuring 0 conflicts and Hafizah transport compliance
-        if (tm.nickname === 'LOUNA') { chosenRd = 1; chosenHd = 3; }
-        else if (tm.nickname === 'FIONA') { chosenRd = 1; chosenHd = 2; }
-        else if (tm.nickname === 'FARIZIN') { chosenRd = 2; chosenHd = 4; }
-        else if (tm.nickname === 'CHRISTINA') { chosenRd = 3; chosenHd = 2; }
-        else if (tm.nickname === 'TING') { chosenRd = 4; chosenHd = 1; }
-        else if (tm.nickname === 'KENIX') { chosenRd = 2; chosenHd = 4; }
-        else if (tm.nickname === 'PENNY') { chosenRd = 3; chosenHd = 1; }
-        else if (tm.nickname === 'NURHAFIZAH') { chosenRd = 2; chosenHd = 1; }
-        else { chosenRd = weekDays[0]; chosenHd = weekDays[1] || weekDays[0]; }
-      } else if (wIdx === calendarWeeks.length - 1 && weekDays.length < 7) {
-        // W5: Partial final week (e.g. Days 26-31 Mon-Sat)
-        if (tm.nickname === 'NURHAFIZAH') { chosenRd = 26; chosenHd = 28; }
-        else if (tm.nickname === 'KENIX') { chosenRd = 26; chosenHd = 28; }
-        else if (tm.nickname === 'PENNY') { chosenRd = 27; chosenHd = 26; }
-        else if (tm.nickname === 'FARIZIN') { chosenRd = 30; chosenHd = 27; }
-        else if (tm.nickname === 'LOUNA') { chosenRd = 29; chosenHd = 28; }
-        else if (tm.nickname === 'FIONA') { chosenRd = 29; chosenHd = 28; }
-        else if (tm.nickname === 'CHRISTINA') { chosenRd = 31; chosenHd = 30; }
-        else if (tm.nickname === 'TING') { chosenRd = 29; chosenHd = 28; }
-        else { chosenRd = weekDays[0]; chosenHd = weekDays[1] || weekDays[0]; }
-      } else {
-        // Standard full weeks (W2, W3, W4: Days 5-11, 12-18, 19-25)
-        weekDays.forEach(d => {
-          const dow = daysOfWeek[new Date(year, month - 1, d).getDay()];
-          if (dow === tm.restDayPref) chosenRd = d;
-          const hdPrefDow = tm.halfDayPref ? tm.halfDayPref.split(' ')[0] : '';
-          if (dow === hdPrefDow) chosenHd = d;
-        });
+      // 1. Choose Rest Day (RD) from days in this calendar week
+      const prefRdDay = weekDays.find(d => {
+        const dow = daysOfWeek[new Date(year, month - 1, d).getDay()];
+        return (tm.dayPrefs && tm.dayPrefs[dow] === 'RD') || dow === tm.restDayPref;
+      });
 
-        // Ting and fallback HD
-        if (!chosenHd) {
-          const tue = weekDays.find(d => daysOfWeek[new Date(year, month - 1, d).getDay()] === 'Tuesday');
-          chosenHd = tue || weekDays[1];
-        }
-        if (!chosenRd) chosenRd = weekDays[0];
+      if (prefRdDay && weekRdCount[prefRdDay] < 3) {
+        chosenRd = prefRdDay;
+      } else {
+        const sortedRd = [...weekDays].sort((a, b) => weekRdCount[a] - weekRdCount[b]);
+        chosenRd = sortedRd[0];
       }
 
-      dailyAssigned[chosenRd][tm.empNo] = 'RD';
-      dailyAssigned[chosenHd][tm.empNo] = '4H_0730-1130';
+      if (chosenRd && dailyAssigned[chosenRd]) {
+        dailyAssigned[chosenRd][tm.empNo] = 'RD';
+        weekRdCount[chosenRd]++;
+      }
+
+      // 2. Choose Half Day (HD) strictly distinct from chosenRd within this calendar week
+      const remainingDays = weekDays.filter(d => d !== chosenRd);
+      if (remainingDays.length > 0) {
+        const prefHdDow = tm.halfDayPref ? tm.halfDayPref.split(' ')[0] : '';
+        const prefHdDay = remainingDays.find(d => {
+          const dow = daysOfWeek[new Date(year, month - 1, d).getDay()];
+          return (tm.dayPrefs && tm.dayPrefs[dow] && tm.dayPrefs[dow].includes('4H')) || dow === prefHdDow;
+        });
+
+        if (prefHdDay && weekHdCount[prefHdDay] < 3) {
+          chosenHd = prefHdDay;
+        } else {
+          const sortedHd = [...remainingDays].sort((a, b) => (weekRdCount[a] + weekHdCount[a]) - (weekRdCount[b] + weekHdCount[b]));
+          chosenHd = sortedHd[0];
+        }
+
+        if (chosenHd && dailyAssigned[chosenHd]) {
+          dailyAssigned[chosenHd][tm.empNo] = '4H_0730-1130';
+          weekHdCount[chosenHd]++;
+        }
+      }
     });
   });
 
@@ -3032,12 +3052,10 @@ window.renderScheduleMatrix = renderScheduleMatrix;
 window.openDayShiftEditorModal = openDayShiftEditorModal;
 window.closeDayShiftEditorModal = closeDayShiftEditorModal;
 window.saveDayShiftEditorModal = saveDayShiftEditorModal;
-window.openTeammateDayPrefModal = openTeammateDayPrefModal;
-window.closeTeammateDayPrefModal = closeTeammateDayPrefModal;
-window.saveTeammateDayPrefModal = saveTeammateDayPrefModal;
+window.openDayPrefsModal = openDayPrefsModal;
+window.closeDayPrefsModal = closeDayPrefsModal;
+window.saveDayPrefsModal = saveDayPrefsModal;
 window.showAddTeammateModal = showAddTeammateModal;
-window.closeAddTeammateModal = closeAddTeammateModal;
-window.saveNewTeammate = saveNewTeammate;
-window.removeTeammate = removeTeammate;
-window.copyScheduleToWhatsApp = copyScheduleToWhatsApp;
+window.copyScheduleWhatsAppSummary = copyScheduleWhatsAppSummary;
+window.copyScheduleToWhatsApp = copyScheduleWhatsAppSummary;
 
