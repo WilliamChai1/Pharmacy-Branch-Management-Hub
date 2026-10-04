@@ -246,6 +246,17 @@ async function saveSingleApplicantToOneDrive(app, rootHandle) {
         }
       }
     }
+
+    // 3. Write internet shortcut for Cloud Resume URL if present
+    if (app.resumeUrl) {
+      try {
+        const linkFh = await appDir.getFileHandle('Resume_Cloud_Link.url', { create: true });
+        const lw = await linkFh.createWritable();
+        await lw.write(`[InternetShortcut]\r\nURL=${app.resumeUrl}\r\n`);
+        await lw.close();
+      } catch (_) {}
+    }
+
     return true;
   } catch (err) {
     console.warn(`[PMG Recruitment] Error saving files for ${app.name} to OneDrive:`, err);
@@ -365,33 +376,36 @@ function getNumerologyInfo(dob) {
   return { number: num, ...profile };
 }
 
-function detectMissingSpmCoreSubjects(spmText) {
+function detectMissingSpmCoreSubjects(spmText, spmSubjectsArray = []) {
   const text = (spmText || '').toLowerCase();
+  const subjsText = Array.isArray(spmSubjectsArray) ? spmSubjectsArray.join(' ').toLowerCase() : '';
+  const combined = `${text} ${subjsText}`;
   const missing = [];
 
-  // 1. Bahasa Melayu
-  if (!text.includes('melayu') && !text.includes('bm')) {
-    missing.push('Bahasa Melayu (BM)');
+  // Core SPM Subjects in Malaysian Curriculum:
+  // 1. Bahasa Melayu (BM)
+  if (!combined.includes('melayu') && !combined.includes('bm')) {
+    missing.push({ subject: 'Bahasa Melayu (BM)', status: 'Failed/Not Taken' });
   }
-  // 2. Bahasa Inggeris
-  if (!text.includes('inggeris') && !text.includes('english') && !text.includes('bi')) {
-    missing.push('Bahasa Inggeris (BI)');
+  // 2. Bahasa Inggeris (BI)
+  if (!combined.includes('inggeris') && !combined.includes('english') && !combined.includes('bi')) {
+    missing.push({ subject: 'Bahasa Inggeris (BI)', status: 'Failed/Not Taken' });
   }
-  // 3. Matematik
-  if (!text.includes('matematik') && !text.includes('math') && !text.includes('hisab')) {
-    missing.push('Matematik (Mathematics)');
+  // 3. Matematik (Mathematics)
+  if (!combined.includes('matematik') && !combined.includes('math') && !combined.includes('hisab')) {
+    missing.push({ subject: 'Matematik (Mathematics)', status: 'Failed/Not Taken' });
   }
-  // 4. Sains / Science
-  if (!text.includes('sains') && !text.includes('science') && !text.includes('fizik') && !text.includes('kimia') && !text.includes('biologi')) {
-    missing.push('Sains (Science / Pure Sciences)');
+  // 4. Sains / Science / Pure Sciences (Fizik, Kimia, Biologi)
+  if (!combined.includes('sains') && !combined.includes('science') && !combined.includes('fizik') && !combined.includes('kimia') && !combined.includes('biologi')) {
+    missing.push({ subject: 'Sains (Science / Pure Sciences)', status: 'Failed/Not Taken' });
   }
-  // 5. Sejarah
-  if (!text.includes('sejarah') && !text.includes('history')) {
-    missing.push('Sejarah (History)');
+  // 5. Sejarah (History)
+  if (!combined.includes('sejarah') && !combined.includes('history')) {
+    missing.push({ subject: 'Sejarah (History)', status: 'Failed/Not Taken' });
   }
-  // 6. Pendidikan Moral / Islam
-  if (!text.includes('moral') && !text.includes('islam') && !text.includes('agama')) {
-    missing.push('Pendidikan Moral / Pendidikan Islam');
+  // 6. Pendidikan Moral / Pendidikan Islam
+  if (!combined.includes('moral') && !combined.includes('islam') && !combined.includes('agama')) {
+    missing.push({ subject: 'Pendidikan Moral / Pendidikan Islam', status: 'Failed/Not Taken' });
   }
 
   return missing;
@@ -404,10 +418,11 @@ async function runAiEvaluation(app, apiKey, modelKey = 'lite') {
     : [GEMINI_MODELS.flash.id, GEMINI_MODELS.lite.id];
 
   const spmRaw = app.spm || '';
-  const missingCore = detectMissingSpmCoreSubjects(spmRaw);
+  const missingCore = detectMissingSpmCoreSubjects(spmRaw, app.spmSubjects);
   let spmSummary = spmRaw ? `SPM Results: ${spmRaw}` : 'SPM Results: Not provided';
   if (missingCore.length > 0) {
-    spmSummary += `\n⚠️ MISSING CORE SPM SUBJECTS DETECTED: ${missingCore.join(', ')}.\nCRITICAL MALAYSIAN SPM RULE: Malaysian candidates are mandated to take 6 core SPM subjects (BM, BI, Maths, Science, Sejarah, Moral/Islam). Any core subject omitted from the applicant's results means they FAILED THAT SUBJECT ('G' / Fail) and concealed it. Treat these missing subjects as FAILED ('G').`;
+    const missingDescriptions = missingCore.map(m => `${m.subject}: [${m.status}]`).join(', ');
+    spmSummary += `\n⚠️ MISSING CORE SPM SUBJECTS DETECTED: ${missingDescriptions}.\nCRITICAL MALAYSIAN SPM RULE: Malaysian candidates are mandated to sit for 6 core compulsory SPM subjects (Bahasa Melayu, Bahasa Inggeris, Matematik, Sains/Pure Sciences, Sejarah, Pendidikan Moral/Islam). Any core SPM subject (such as Mathematics / Matematik) not listed MUST be explicitly flagged as 'Failed/Not Taken' (Grade G / Fail). In your evaluation, treat every omitted core subject strictly as 'Failed/Not Taken' and heavily penalize their Qualification and Plan Execution scores!`;
   }
 
   // Numerology
@@ -430,7 +445,7 @@ IMPORTANT CONTEXT:
 - This is a community pharmacy in Sarawak, East Malaysia
 - Local Kuching universities (e.g., Cyberjaya College Kuching, UNIMAS, Curtin Sarawak) are BELOW international standards. Do NOT overweight local CGPA.
 - SPM is often a BETTER indicator of aptitude than local diploma/degree GPA. Analyze Sciences (Bio, Chem, Add Maths) and English grades carefully.
-- CRITICAL SPM FAILURE RULE: In Malaysia, SPM has 6 compulsory core subjects: Bahasa Melayu, Bahasa Inggeris, Matematik, Sains (or Pure Science), Sejarah, and Pendidikan Moral/Islam. If ANY of these 6 core subjects is missing or omitted from the candidate's declared SPM results, IT MEANS THEY FAILED THAT SUBJECT (Grade G / Fail) and concealed it. You MUST treat every missing core subject as a FAIL ('G'). Strictly penalize their Qualification Fit and Plan Execution scores, flag this under concerns, and explicitly state which core subjects were failed/omitted in spmAnalysis.
+- CRITICAL SPM MISSING SUBJECT RULE: In Malaysia, SPM has 6 compulsory core subjects: Bahasa Melayu, Bahasa Inggeris, Matematik, Sains (or Pure Science), Sejarah, and Pendidikan Moral/Islam. If ANY core subject (such as Mathematics / Matematik) is not listed in the candidate's SPM subjects, YOU MUST EXPLICITLY FLAG IT AS 'Failed/Not Taken' (Grade G / Fail). In your "spmAnalysis", you MUST explicitly list: "Failed/Not Taken: [Subject Name]". Treat this omission as evidence of failing the subject or concealing poor results, reduce the qualificationFit and planExecution scores, and add it to "concerns".
 - Pharmacy Assistant: SPM primary. 3B+ in relevant subjects is good.
 - Pharmacist: Must have BPharm degree + valid Malaysia Pharmacy Board APC.
 - Nutritionist/Dietitian: Relevant degree required; local diploma treated cautiously.
@@ -933,26 +948,26 @@ function renderPublicForm(targetContainerId) {
             ${['Malay / BM','English / BI','Mandarin','Iban','Bidayuh'].map(lang=>{
               const key = lang.replace(/[^a-z]/gi,'');
               return `
-              <tr class="border-t border-gray-100">
+              <tr class="border-t border-gray-100 hover:bg-slate-50/50 transition">
                 <td class="p-2 font-medium text-gray-700">${lang}</td>
-                <td class="p-1 text-center"><input type="radio" name="lang_${key}_written" value="Excellent" class="h-3.5 w-3.5 accent-blue-600"></td>
-                <td class="p-1 text-center"><input type="radio" name="lang_${key}_written" value="Good" class="h-3.5 w-3.5 accent-blue-600"></td>
-                <td class="p-1 text-center"><input type="radio" name="lang_${key}_written" value="Average" class="h-3.5 w-3.5 accent-blue-600"></td>
-                <td class="p-1 text-center"><input type="radio" name="lang_${key}_spoken" value="Excellent" class="h-3.5 w-3.5 accent-blue-600"></td>
-                <td class="p-1 text-center"><input type="radio" name="lang_${key}_spoken" value="Good" class="h-3.5 w-3.5 accent-blue-600"></td>
-                <td class="p-1 text-center"><input type="radio" name="lang_${key}_spoken" value="Average" class="h-3.5 w-3.5 accent-blue-600"></td>
+                <td class="p-0 text-center"><label class="flex items-center justify-center w-full h-full py-2 cursor-pointer hover:bg-blue-50/60 transition"><input type="radio" name="lang_${key}_written" value="Excellent" class="h-4 w-4 accent-blue-600 cursor-pointer"></label></td>
+                <td class="p-0 text-center"><label class="flex items-center justify-center w-full h-full py-2 cursor-pointer hover:bg-blue-50/60 transition"><input type="radio" name="lang_${key}_written" value="Good" class="h-4 w-4 accent-blue-600 cursor-pointer"></label></td>
+                <td class="p-0 text-center"><label class="flex items-center justify-center w-full h-full py-2 cursor-pointer hover:bg-blue-50/60 transition"><input type="radio" name="lang_${key}_written" value="Average" class="h-4 w-4 accent-blue-600 cursor-pointer"></label></td>
+                <td class="p-0 text-center"><label class="flex items-center justify-center w-full h-full py-2 cursor-pointer hover:bg-blue-50/60 transition"><input type="radio" name="lang_${key}_spoken" value="Excellent" class="h-4 w-4 accent-blue-600 cursor-pointer"></label></td>
+                <td class="p-0 text-center"><label class="flex items-center justify-center w-full h-full py-2 cursor-pointer hover:bg-blue-50/60 transition"><input type="radio" name="lang_${key}_spoken" value="Good" class="h-4 w-4 accent-blue-600 cursor-pointer"></label></td>
+                <td class="p-0 text-center"><label class="flex items-center justify-center w-full h-full py-2 cursor-pointer hover:bg-blue-50/60 transition"><input type="radio" name="lang_${key}_spoken" value="Average" class="h-4 w-4 accent-blue-600 cursor-pointer"></label></td>
               </tr>`;
             }).join('')}
             <tr class="border-t border-gray-100 bg-slate-50/50">
               <td class="p-1.5 font-medium text-gray-700">
                 <input type="text" name="lang_other_custom" placeholder="Others (specify language/dialect)" class="rec-input text-xs py-1">
               </td>
-              <td class="p-1 text-center"><input type="radio" name="lang_Others_written" value="Excellent" class="h-3.5 w-3.5 accent-blue-600"></td>
-              <td class="p-1 text-center"><input type="radio" name="lang_Others_written" value="Good" class="h-3.5 w-3.5 accent-blue-600"></td>
-              <td class="p-1 text-center"><input type="radio" name="lang_Others_written" value="Average" class="h-3.5 w-3.5 accent-blue-600"></td>
-              <td class="p-1 text-center"><input type="radio" name="lang_Others_spoken" value="Excellent" class="h-3.5 w-3.5 accent-blue-600"></td>
-              <td class="p-1 text-center"><input type="radio" name="lang_Others_spoken" value="Good" class="h-3.5 w-3.5 accent-blue-600"></td>
-              <td class="p-1 text-center"><input type="radio" name="lang_Others_spoken" value="Average" class="h-3.5 w-3.5 accent-blue-600"></td>
+              <td class="p-0 text-center"><label class="flex items-center justify-center w-full h-full py-2 cursor-pointer hover:bg-blue-50/60 transition"><input type="radio" name="lang_Others_written" value="Excellent" class="h-4 w-4 accent-blue-600 cursor-pointer"></label></td>
+              <td class="p-0 text-center"><label class="flex items-center justify-center w-full h-full py-2 cursor-pointer hover:bg-blue-50/60 transition"><input type="radio" name="lang_Others_written" value="Good" class="h-4 w-4 accent-blue-600 cursor-pointer"></label></td>
+              <td class="p-0 text-center"><label class="flex items-center justify-center w-full h-full py-2 cursor-pointer hover:bg-blue-50/60 transition"><input type="radio" name="lang_Others_written" value="Average" class="h-4 w-4 accent-blue-600 cursor-pointer"></label></td>
+              <td class="p-0 text-center"><label class="flex items-center justify-center w-full h-full py-2 cursor-pointer hover:bg-blue-50/60 transition"><input type="radio" name="lang_Others_spoken" value="Excellent" class="h-4 w-4 accent-blue-600 cursor-pointer"></label></td>
+              <td class="p-0 text-center"><label class="flex items-center justify-center w-full h-full py-2 cursor-pointer hover:bg-blue-50/60 transition"><input type="radio" name="lang_Others_spoken" value="Good" class="h-4 w-4 accent-blue-600 cursor-pointer"></label></td>
+              <td class="p-0 text-center"><label class="flex items-center justify-center w-full h-full py-2 cursor-pointer hover:bg-blue-50/60 transition"><input type="radio" name="lang_Others_spoken" value="Average" class="h-4 w-4 accent-blue-600 cursor-pointer"></label></td>
             </tr>
           </tbody>
         </table>
@@ -1370,18 +1385,56 @@ async function submitPublicForm(e) {
   apps.unshift(app);
   saveApps(apps);
 
-  // Cloud Sync: push application to Google Sheets so it instantly appears on William's PC
+  // Cloud Sync: push application to Google Sheets so it instantly appears on William's PC in 'Job_Applicants'
+  let cloudSuccess = false;
   try {
     const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
-    await fetch(apiUrl, {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 18000);
+    const res = await fetch(apiUrl, {
       method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'submitJobApplication',
         application: app
-      })
+      }),
+      redirect: 'follow',
+      signal: controller.signal
     });
+    clearTimeout(timeout);
+    if (res.ok) {
+      const resJson = await res.json().catch(() => null);
+      if (resJson && resJson.success !== false) {
+        cloudSuccess = true;
+        if (resJson.resumeUrl) {
+          app.resumeUrl = resJson.resumeUrl;
+          saveApps(loadApps().map(a => a.id === app.id ? app : a));
+        }
+      }
+    }
   } catch (cloudErr) {
     console.warn('[Recruitment] Cloud submission error:', cloudErr);
+  }
+
+  // If initial cloud submission failed (e.g. payload too large due to base64 docs), retry with lightweight metadata so Job_Applicants row is always saved
+  if (!cloudSuccess) {
+    try {
+      const lightweightApp = Object.assign({}, app, {
+        docs: (app.docs || []).map(d => ({ field: d.field, name: d.name, size: d.size, type: d.type }))
+      });
+      const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+      await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'submitJobApplication',
+          application: lightweightApp
+        }),
+        redirect: 'follow'
+      });
+    } catch (retryErr) {
+      console.warn('[Recruitment] Lightweight retry error:', retryErr);
+    }
   }
 
   // Push uploaded documents directly to OneDrive folder /RECRUITMENT/Applicants/ immediately
@@ -1535,7 +1588,8 @@ ${!apiKey ? `
             <td class="p-3"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${m.color}"><i class="fa-solid ${m.icon} mr-1"></i>${m.label}</span></td>
             <td class="p-3">
               <div class="flex items-center gap-1">
-                <button onclick="window.pmgRecruitment.viewApp('${app.id}')" title="View" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"><i class="fa-solid fa-eye"></i></button>
+                <button onclick="window.pmgRecruitment.viewApp('${app.id}')" title="View Profile" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"><i class="fa-solid fa-eye"></i></button>
+                ${app.resumeUrl ? `<a href="${sanitize(app.resumeUrl)}" target="_blank" title="Open Cloud Resume / Document" class="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg"><i class="fa-solid fa-file-pdf"></i></a>` : ''}
                 ${!app.aiReport && app.status === 'new' ? `<button onclick="window.pmgRecruitment.runAI('${app.id}')" title="Run AI Evaluation" class="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg"><i class="fa-solid fa-robot"></i></button>` : ''}
                 ${app.status === 'shortlist' ? `<button onclick="window.pmgRecruitment.openScheduleModal('${app.id}')" title="Schedule Interview" class="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"><i class="fa-solid fa-calendar-plus"></i></button>` : ''}
                 <button onclick="window.pmgRecruitment.deleteApp('${app.id}')" title="Delete" class="p-1.5 text-red-400 hover:bg-red-50 rounded-lg"><i class="fa-solid fa-trash"></i></button>
@@ -1559,6 +1613,7 @@ function viewApp(appId) {
   const apiKey = getGlobalGeminiKey();
 
   const m = STATUS_META[app.status] || STATUS_META.new;
+  const missingCore = detectMissingSpmCoreSubjects(app.spm || '', app.spmSubjects || []);
 
   // Render AI report section
   let aiSection = '';
@@ -1689,7 +1744,25 @@ function viewApp(appId) {
 
 
   // Build docs section
-  const docsSection = app.docs && app.docs.length > 0 ? `
+  const cloudResumeBanner = app.resumeUrl ? `
+<div class="mb-4 p-3 bg-gradient-to-r from-rose-50 to-orange-50 border border-rose-200 rounded-xl flex items-center justify-between shadow-2xs">
+  <div class="flex items-center gap-3">
+    <div class="w-10 h-10 rounded-lg bg-rose-100 flex items-center justify-center text-rose-600 shrink-0">
+      <i class="fa-solid fa-file-pdf text-xl"></i>
+    </div>
+    <div>
+      <p class="text-xs font-bold text-gray-900">Applicant Cloud Resume / Documents</p>
+      <p class="text-[11px] text-gray-500">Persisted in Google Drive & Central Google Sheet ('Job_Applicants')</p>
+    </div>
+  </div>
+  <a href="${sanitize(app.resumeUrl)}" target="_blank" class="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs transition flex items-center gap-1.5 shadow-sm">
+    <i class="fa-solid fa-arrow-up-right-from-square"></i> Open Cloud Resume
+  </a>
+</div>` : '';
+
+  const docsSection = `
+${cloudResumeBanner}
+${app.docs && app.docs.length > 0 ? `
 <div class="mb-4">
   <h4 class="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1"><i class="fa-solid fa-paperclip text-gray-400"></i>Uploaded Documents (${app.docs.length})</h4>
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -1706,13 +1779,11 @@ function viewApp(appId) {
         <button type="button" onclick="window.pmgRecruitment.viewDoc('${app.id}', ${i})" class="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded text-[11px] transition flex items-center gap-1" title="Preview Document">
           <i class="fa-solid fa-eye"></i> View
         </button>
-        <a href="${d.data}" download="${sanitize(d.name)}" class="p-1 text-gray-400 hover:text-gray-700 rounded transition" title="Download">
-          <i class="fa-solid fa-download"></i>
-        </a>
+        ${d.data ? `<a href="${d.data}" download="${sanitize(d.name)}" class="p-1 text-gray-400 hover:text-gray-700 rounded transition" title="Download"><i class="fa-solid fa-download"></i></a>` : (d.url ? `<a href="${sanitize(d.url)}" target="_blank" class="p-1 text-blue-500 hover:text-blue-700 rounded transition" title="Open Link"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>` : '')}
       </div>
     </div>`).join('')}
   </div>
-</div>` : '<p class="text-xs text-gray-400 mb-4">No documents uploaded.</p>';
+</div>` : (app.resumeUrl ? '' : '<p class="text-xs text-gray-400 mb-4">No documents uploaded.</p>')}`;
 
   const content = el('recAmDetailContent');
   if (!content) return;
@@ -1823,6 +1894,17 @@ ${aiSection}
 <!-- Education & SPM -->
 <div class="bg-white rounded-xl border border-gray-200 p-4 mb-4">
   <h4 class="text-xs font-bold text-gray-700 mb-3 pb-2 border-b border-gray-100 flex items-center gap-2"><i class="fa-solid fa-graduation-cap text-amber-500"></i>Education</h4>
+  ${missingCore.length > 0 ? `
+  <div class="mb-3 p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2.5 text-xs text-rose-800 shadow-2xs">
+    <i class="fa-solid fa-triangle-exclamation text-rose-600 mt-0.5 text-base shrink-0"></i>
+    <div>
+      <p class="font-bold text-rose-900">⚠️ Missing Core SPM Subject Alert:</p>
+      <p class="text-[11px] mt-0.5 text-rose-700 leading-relaxed">
+        The applicant did not declare the following mandatory core subject(s): <span class="font-bold underline">${missingCore.map(m=>m.subject).join(', ')}</span>.
+        Per PMG HR &amp; Malaysian Education Policy, these omissions are strictly flagged as <strong>'Failed/Not Taken'</strong> (Grade G / Fail).
+      </p>
+    </div>
+  </div>` : ''}
   <div class="bg-amber-50 rounded-lg p-3 mb-3">
     <p class="text-[10px] text-amber-700 font-bold uppercase mb-1">SPM Results</p>
     <p class="text-xs text-gray-800 whitespace-pre-line">${sanitize(app.spm||'Not provided')}</p>

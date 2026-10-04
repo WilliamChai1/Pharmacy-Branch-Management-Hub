@@ -7,7 +7,7 @@
 const TAB_SCHEDULE = 'PharmacistSchedule';
 const TAB_APPOINTMENTS = 'Patient_Appointments';
 const TAB_PRICING = 'Pricing_Matrix';
-const TAB_RECRUITMENT = 'Job_Applications';
+const TAB_RECRUITMENT = 'Job_Applicants';
 const TAB_PREFERENCES = 'Staff_Preferences';
 
 const APPOINTMENT_HEADERS = [
@@ -28,7 +28,7 @@ const RECRUITMENT_HEADERS = [
   'ApplicationId', 'AppliedAt', 'Name', 'Position', 'Branch',
   'IC', 'Phone', 'Email', 'DOB', 'Age', 'Gender', 'Race',
   'Status', 'AIScore', 'AIVerdict', 'SPM', 'Education',
-  'WorkHistory', 'Languages', 'Smoking', 'PayloadJSON', 'LastUpdated'
+  'WorkHistory', 'Languages', 'Smoking', 'Resume_URL', 'PayloadJSON', 'LastUpdated'
 ];
 
 function doOptions(e) {
@@ -132,46 +132,83 @@ function doGet(e) {
     }
 
     // ── 3. ACTION: GET JOB APPLICATIONS ──
-    if (action === 'getJobApplications') {
-      const recSheet = ss.getSheetByName(TAB_RECRUITMENT);
+    // ── 3. ACTION: GET JOB APPLICATIONS ──
+    if (action === 'getJobApplications' || action === 'getJobApplicants') {
+      const recSheet = ss.getSheetByName('Job_Applicants') || ss.getSheetByName('Job_Applications') || ss.getSheetByName(TAB_RECRUITMENT);
       if (!recSheet) {
         return buildResponse({ success: true, count: 0, applications: [] });
       }
       const data = recSheet.getDataRange().getValues();
       if (data.length <= 1) return buildResponse({ success: true, count: 0, applications: [] });
 
+      const headerRow = data[0].map(h => String(h || '').trim().toLowerCase());
+      const colMap = {};
+      headerRow.forEach((h, idx) => {
+        if (h.includes('id') || h.includes('app_id') || h.includes('application')) colMap.id = colMap.id ?? idx;
+        if (h.includes('applied') || h.includes('timestamp') || h.includes('date')) colMap.appliedAt = colMap.appliedAt ?? idx;
+        if (h.includes('name')) colMap.name = colMap.name ?? idx;
+        if (h.includes('position')) colMap.position = colMap.position ?? idx;
+        if (h.includes('branch')) colMap.preferredBranch = colMap.preferredBranch ?? idx;
+        if (h.includes('ic') || h.includes('nric')) colMap.ic = colMap.ic ?? idx;
+        if (h.includes('phone') || h.includes('tel') || h.includes('mobile')) colMap.phone = colMap.phone ?? idx;
+        if (h.includes('email')) colMap.email = colMap.email ?? idx;
+        if (h.includes('dob') || h.includes('birth')) colMap.dob = colMap.dob ?? idx;
+        if (h.includes('age')) colMap.age = colMap.age ?? idx;
+        if (h.includes('gender')) colMap.gender = colMap.gender ?? idx;
+        if (h.includes('race')) colMap.race = colMap.race ?? idx;
+        if (h.includes('status')) colMap.status = colMap.status ?? idx;
+        if (h.includes('score')) colMap.aiScore = colMap.aiScore ?? idx;
+        if (h.includes('verdict')) colMap.aiVerdict = colMap.aiVerdict ?? idx;
+        if (h.includes('spm')) colMap.spm = colMap.spm ?? idx;
+        if (h.includes('education') || h.includes('qual')) colMap.highestQual = colMap.highestQual ?? idx;
+        if (h.includes('work') || h.includes('history') || h.includes('employment')) colMap.workHistory = colMap.workHistory ?? idx;
+        if (h.includes('lang')) colMap.languages = colMap.languages ?? idx;
+        if (h.includes('smok')) colMap.smokes = colMap.smokes ?? idx;
+        if (h.includes('resume') || h.includes('doc') || h.includes('file')) colMap.resumeUrl = colMap.resumeUrl ?? idx;
+        if (h.includes('payload') || h.includes('json')) colMap.payload = colMap.payload ?? idx;
+      });
+
       const apps = [];
       for (let i = 1; i < data.length; i++) {
         const row = data[i];
         if (!row || !row[0]) continue;
         let appObj = null;
+        const pCol = colMap.payload !== undefined ? colMap.payload : 20;
         try {
-          if (row[20]) appObj = JSON.parse(row[20]);
+          if (row[pCol]) appObj = JSON.parse(row[pCol]);
         } catch (_) {}
 
         if (!appObj) {
           appObj = {
-            id: String(row[0]).trim(),
-            appliedAt: String(row[1] || '').trim(),
-            name: String(row[2] || '').trim(),
-            position: String(row[3] || '').trim(),
-            preferredBranch: String(row[4] || 'Kota Sentosa').trim(),
-            ic: String(row[5] || '').trim(),
-            phone: String(row[6] || '').trim(),
-            email: String(row[7] || '').trim(),
-            dob: String(row[8] || '').trim(),
-            age: row[9] || '',
-            gender: String(row[10] || '').trim(),
-            race: String(row[11] || '').trim(),
-            status: String(row[12] || 'new').trim(),
-            aiScore: row[13] || null,
-            aiVerdict: String(row[14] || '').trim(),
-            spm: String(row[15] || '').trim(),
-            highestQual: String(row[16] || '').trim(),
-            workHistory: String(row[17] || '').trim(),
-            languages: String(row[18] || '').trim(),
-            smokes: String(row[19] || 'No').trim()
+            id: String(row[colMap.id ?? 0] || '').trim(),
+            appliedAt: String(row[colMap.appliedAt ?? 1] || '').trim(),
+            name: String(row[colMap.name ?? 2] || '').trim(),
+            position: String(row[colMap.position ?? 3] || '').trim(),
+            preferredBranch: String(row[colMap.preferredBranch ?? 4] || 'Kota Sentosa').trim(),
+            ic: String(row[colMap.ic ?? 5] || '').trim(),
+            phone: String(row[colMap.phone ?? 6] || '').trim(),
+            email: String(row[colMap.email ?? 7] || '').trim(),
+            dob: String(row[colMap.dob ?? 8] || '').trim(),
+            age: row[colMap.age ?? 9] || '',
+            gender: String(row[colMap.gender ?? 10] || '').trim(),
+            race: String(row[colMap.race ?? 11] || '').trim(),
+            status: String(row[colMap.status ?? 12] || 'new').trim(),
+            aiScore: row[colMap.aiScore ?? 13] || null,
+            aiVerdict: String(row[colMap.aiVerdict ?? 14] || '').trim(),
+            spm: String(row[colMap.spm ?? 15] || '').trim(),
+            highestQual: String(row[colMap.highestQual ?? 16] || '').trim(),
+            workHistory: String(row[colMap.workHistory ?? 17] || '').trim(),
+            languages: String(row[colMap.languages ?? 18] || '').trim(),
+            smokes: String(row[colMap.smokes ?? 19] || 'No').trim()
           };
+        }
+
+        const rUrl = colMap.resumeUrl !== undefined ? String(row[colMap.resumeUrl] || '').trim() : '';
+        if (rUrl) {
+          appObj.resumeUrl = rUrl;
+          if (!Array.isArray(appObj.docs) || appObj.docs.length === 0) {
+            appObj.docs = [{ field: 'fileResume', name: 'Uploaded_Resume.pdf', url: rUrl, type: 'application/pdf' }];
+          }
         }
         apps.push(appObj);
       }
@@ -419,8 +456,8 @@ function doPost(e) {
     }
 
     // ── 4. ACTION: SUBMIT JOB APPLICATION ──
-    if (action === 'submitJobApplication') {
-      const recSheet = ss.getSheetByName(TAB_RECRUITMENT) || ss.insertSheet(TAB_RECRUITMENT);
+    if (action === 'submitJobApplication' || action === 'submitJobApplicant') {
+      const recSheet = ss.getSheetByName('Job_Applicants') || ss.getSheetByName('Job_Applications') || ss.insertSheet('Job_Applicants');
       if (recSheet.getLastRow() === 0) {
         recSheet.appendRow(RECRUITMENT_HEADERS);
         recSheet.getRange(1, 1, 1, RECRUITMENT_HEADERS.length).setFontWeight('bold');
@@ -428,41 +465,140 @@ function doPost(e) {
 
       const a = payload.application || {};
       const appId = String(a.id || ('APP-' + Date.now())).trim();
-      const payloadStr = JSON.stringify(a);
 
+      // 1. Upload documents/resume to Google Drive if base64 data is present
+      let resumeUrl = String(a.resumeUrl || '').trim();
+      const processedDocs = [];
+
+      if (Array.isArray(a.docs) && a.docs.length > 0) {
+        let driveFolder = null;
+        try {
+          const folderName = 'PMG_Job_Applicant_Resumes';
+          const folders = DriveApp.getFoldersByName(folderName);
+          if (folders.hasNext()) {
+            driveFolder = folders.next();
+          } else {
+            driveFolder = DriveApp.createFolder(folderName);
+          }
+        } catch (fErr) {
+          console.warn('Drive folder retrieval failed: ' + fErr.message);
+        }
+
+        a.docs.forEach((doc, dIdx) => {
+          if (!doc) return;
+          if (doc.data && driveFolder) {
+            try {
+              const cleanB64 = doc.data.includes(',') ? doc.data.split(',')[1] : doc.data;
+              const decoded = Utilities.base64Decode(cleanB64);
+              const mime = doc.type || 'application/pdf';
+              const cleanFileName = String(doc.name || `document_${dIdx + 1}.pdf`).replace(/[^a-zA-Z0-9._-]/g, '_');
+              const finalFileName = `${appId}_${cleanFileName}`;
+              const blob = Utilities.newBlob(decoded, mime, finalFileName);
+              const file = driveFolder.createFile(blob);
+              file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+              const fileUrl = file.getUrl();
+              if (!resumeUrl) resumeUrl = fileUrl;
+              processedDocs.push({
+                field: doc.field || 'file',
+                name: doc.name || cleanFileName,
+                size: doc.size || 0,
+                type: mime,
+                url: fileUrl
+              });
+            } catch (dErr) {
+              console.warn('Failed saving doc to Drive: ' + dErr.message);
+              processedDocs.push({
+                field: doc.field || 'file',
+                name: doc.name || 'document',
+                size: doc.size || 0,
+                type: doc.type || 'application/octet-stream'
+              });
+            }
+          } else if (doc.url) {
+            if (!resumeUrl) resumeUrl = doc.url;
+            processedDocs.push(doc);
+          } else {
+            processedDocs.push({
+              field: doc.field || 'file',
+              name: doc.name || 'document',
+              size: doc.size || 0,
+              type: doc.type || 'application/octet-stream'
+            });
+          }
+        });
+      }
+
+      // 2. Build lightweight JSON payload (stripping huge base64 strings to prevent 50,000 char cell overflow)
+      const cleanApp = Object.assign({}, a);
+      cleanApp.resumeUrl = resumeUrl;
+      cleanApp.docs = processedDocs;
+      const payloadStr = JSON.stringify(cleanApp);
+
+      // 3. Match columns dynamically
+      const headers = recSheet.getRange(1, 1, 1, recSheet.getLastColumn()).getValues()[0];
+      const headerLower = headers.map(h => String(h || '').trim().toLowerCase());
+      const colMap = {};
+      headerLower.forEach((h, idx) => {
+        if (h.includes('id') || h.includes('app_id') || h.includes('application')) colMap.id = colMap.id ?? idx;
+        if (h.includes('applied') || h.includes('timestamp') || h.includes('date')) colMap.appliedAt = colMap.appliedAt ?? idx;
+        if (h.includes('name')) colMap.name = colMap.name ?? idx;
+        if (h.includes('position')) colMap.position = colMap.position ?? idx;
+        if (h.includes('branch')) colMap.preferredBranch = colMap.preferredBranch ?? idx;
+        if (h.includes('ic') || h.includes('nric')) colMap.ic = colMap.ic ?? idx;
+        if (h.includes('phone') || h.includes('tel') || h.includes('mobile')) colMap.phone = colMap.phone ?? idx;
+        if (h.includes('email')) colMap.email = colMap.email ?? idx;
+        if (h.includes('dob') || h.includes('birth')) colMap.dob = colMap.dob ?? idx;
+        if (h.includes('age')) colMap.age = colMap.age ?? idx;
+        if (h.includes('gender')) colMap.gender = colMap.gender ?? idx;
+        if (h.includes('race')) colMap.race = colMap.race ?? idx;
+        if (h.includes('status')) colMap.status = colMap.status ?? idx;
+        if (h.includes('score')) colMap.aiScore = colMap.aiScore ?? idx;
+        if (h.includes('verdict')) colMap.aiVerdict = colMap.aiVerdict ?? idx;
+        if (h.includes('spm')) colMap.spm = colMap.spm ?? idx;
+        if (h.includes('education') || h.includes('qual')) colMap.highestQual = colMap.highestQual ?? idx;
+        if (h.includes('work') || h.includes('history') || h.includes('employment')) colMap.workHistory = colMap.workHistory ?? idx;
+        if (h.includes('lang')) colMap.languages = colMap.languages ?? idx;
+        if (h.includes('smok')) colMap.smokes = colMap.smokes ?? idx;
+        if (h.includes('resume') || h.includes('doc') || h.includes('file')) colMap.resumeUrl = colMap.resumeUrl ?? idx;
+        if (h.includes('payload') || h.includes('json')) colMap.payload = colMap.payload ?? idx;
+        if (h.includes('lastupdated') || h.includes('updated')) colMap.lastUpdated = colMap.lastUpdated ?? idx;
+      });
+
+      const rowValues = new Array(headers.length).fill('');
+      if (colMap.id !== undefined) rowValues[colMap.id] = appId;
+      if (colMap.appliedAt !== undefined) rowValues[colMap.appliedAt] = a.appliedAt || now;
+      if (colMap.name !== undefined) rowValues[colMap.name] = a.name || '';
+      if (colMap.position !== undefined) rowValues[colMap.position] = a.position || '';
+      if (colMap.preferredBranch !== undefined) rowValues[colMap.preferredBranch] = a.preferredBranch || 'Kota Sentosa';
+      if (colMap.ic !== undefined) rowValues[colMap.ic] = a.ic || '';
+      if (colMap.phone !== undefined) rowValues[colMap.phone] = a.phone || '';
+      if (colMap.email !== undefined) rowValues[colMap.email] = a.email || '';
+      if (colMap.dob !== undefined) rowValues[colMap.dob] = a.dob || '';
+      if (colMap.age !== undefined) rowValues[colMap.age] = a.age || '';
+      if (colMap.gender !== undefined) rowValues[colMap.gender] = a.gender || '';
+      if (colMap.race !== undefined) rowValues[colMap.race] = a.race || '';
+      if (colMap.status !== undefined) rowValues[colMap.status] = a.status || 'new';
+      if (colMap.aiScore !== undefined) rowValues[colMap.aiScore] = a.aiScore || '';
+      if (colMap.aiVerdict !== undefined) rowValues[colMap.aiVerdict] = a.aiVerdict || '';
+      if (colMap.spm !== undefined) rowValues[colMap.spm] = a.spm || '';
+      if (colMap.highestQual !== undefined) rowValues[colMap.highestQual] = a.highestQual || '';
+      if (colMap.workHistory !== undefined) rowValues[colMap.workHistory] = a.workHistory || '';
+      if (colMap.languages !== undefined) rowValues[colMap.languages] = a.languages || '';
+      if (colMap.smokes !== undefined) rowValues[colMap.smokes] = a.smokes || 'No';
+      if (colMap.resumeUrl !== undefined) rowValues[colMap.resumeUrl] = resumeUrl;
+      if (colMap.payload !== undefined) rowValues[colMap.payload] = payloadStr;
+      if (colMap.lastUpdated !== undefined) rowValues[colMap.lastUpdated] = now;
+
+      // Check if row already exists for update vs append
       const data = recSheet.getDataRange().getValues();
       let foundRow = 0;
+      const idIdx = colMap.id !== undefined ? colMap.id : 0;
       for (let i = 1; i < data.length; i++) {
-        if (String(data[i][0]).trim() === appId) {
+        if (String(data[i][idIdx]).trim() === appId) {
           foundRow = i + 1;
           break;
         }
       }
-
-      const rowValues = [
-        appId,
-        a.appliedAt || now,
-        a.name || '',
-        a.position || '',
-        a.preferredBranch || 'Kota Sentosa',
-        a.ic || '',
-        a.phone || '',
-        a.email || '',
-        a.dob || '',
-        a.age || '',
-        a.gender || '',
-        a.race || '',
-        a.status || 'new',
-        a.aiScore || '',
-        a.aiVerdict || '',
-        a.spm || '',
-        a.highestQual || '',
-        a.workHistory || '',
-        a.languages || '',
-        a.smokes || 'No',
-        payloadStr,
-        now
-      ];
 
       if (foundRow > 1) {
         recSheet.getRange(foundRow, 1, 1, rowValues.length).setValues([rowValues]);
@@ -470,7 +606,14 @@ function doPost(e) {
         recSheet.appendRow(rowValues);
       }
 
-      return buildResponse({ success: true, applicationId: appId });
+      SpreadsheetApp.flush();
+
+      return buildResponse({
+        success: true,
+        applicationId: appId,
+        resumeUrl: resumeUrl,
+        message: 'Application recorded to Job_Applicants successfully.'
+      });
     }
 
     // ── 5. ACTION: SAVE STAFF PREFERENCES ──

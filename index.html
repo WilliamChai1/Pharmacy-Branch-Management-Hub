@@ -5763,6 +5763,9 @@ function switchAmSubTab(subtab) {
   if (subtab === 'recruitment' && window.pmgRecruitment) {
     window.pmgRecruitment.switchRecTab('dashboard');
     window.pmgRecruitment.renderAmDashboard();
+    if (typeof window.pmgRecruitment.syncAppsFromCloud === 'function') {
+      window.pmgRecruitment.syncAppsFromCloud(false);
+    }
   }
 }
 
