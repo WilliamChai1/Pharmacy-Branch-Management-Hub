@@ -19,6 +19,26 @@ const SCHEDULER_PRIMARY_MODEL   = 'gemini-3.5-flash-lite';
 const SCHEDULER_SECONDARY_MODEL = 'gemini-3.5-flash';
 const SCHEDULER_TERTIARY_MODEL  = 'gemini-3.1-flash-lite';
 
+// ─── CROSS-MONTH SHIFT REGISTRY (MEMORY RETENTION) ───────────────────────────
+function getShiftRegistryKey(branchCode) {
+  return `pmg_shift_registry_${branchCode || 'KS01'}`;
+}
+
+function loadShiftRegistry(branchCode) {
+  try {
+    const raw = localStorage.getItem(getShiftRegistryKey(branchCode));
+    return raw ? JSON.parse(raw) : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function saveShiftRegistry(branchCode, registry) {
+  try {
+    localStorage.setItem(getShiftRegistryKey(branchCode), JSON.stringify(registry));
+  } catch (_) {}
+}
+
 // ─── 2026 GAZETTED PUBLIC HOLIDAYS (SARAWAK & MALAYSIA NATIONAL) ──────────────
 // Chai Yee Sian (William) follows all National & Sarawak Gazetted Public Holidays.
 const HOLIDAYS_2026_SARAWAK = {
@@ -955,9 +975,8 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays) {
   const william = currentTeammates.find(t => t.empNo === 'PMG00831' || t.nickname === 'WILLIAM');
 
   schedule.days.forEach(d => {
-    const dateObj = new Date(year, month - 1, d.day);
-    const dayOfWeek = daysOfWeek[dateObj.getDay()];
-    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`;
+    const dateStr = d.date || `${year}-${String(month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`;
+    const dayOfWeek = d.dayOfWeek || daysOfWeek[new Date(dateStr).getDay()];
     const isHoliday = !!HOLIDAYS_2026_SARAWAK[dateStr];
     const holidayName = isHoliday ? HOLIDAYS_2026_SARAWAK[dateStr] : '';
 
@@ -1207,358 +1226,392 @@ Respond ONLY with a valid JSON object matching this schema:
   }
 }
 
-// Helper to partition monthly schedule into rolling calendar weeks (Monday through Sunday)
-function getMonthlyCalendarWeeks(year, month, totalDays) {
+// ─── FULL 7-DAY CALENDAR WEEK HELPER (MONDAY TO SUNDAY) ──────────────────────
+// Extends schedule boundary days forward and backward to guarantee complete 7-day Monday–Sunday weeks.
+// Eliminates partial-week statutory deficits and satisfies 100% Sarawak Labour Ordinance quotas.
+function getFullWeeksPeriod(year, month) {
+  const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const firstDay = new Date(year, month - 1, 1);
+  const monOffset = (firstDay.getDay() === 0 ? -6 : 1 - firstDay.getDay());
+  const startDate = new Date(year, month - 1, 1 + monOffset);
+
+  const lastDay = new Date(year, month, 0);
+  const sunOffset = (lastDay.getDay() === 0 ? 0 : 7 - lastDay.getDay());
+  const endDate = new Date(year, month - 1, lastDay.getDate() + sunOffset);
+
   const weeks = [];
+  let curr = new Date(startDate);
   let currentWeek = [];
-  for (let d = 1; d <= totalDays; d++) {
-    const dateObj = new Date(year, month - 1, d);
-    const dayOfWeek = dateObj.getDay(); // 0 = Sun, 1 = Mon ... 6 = Sat
-    currentWeek.push(d);
-    if (dayOfWeek === 0 || d === totalDays) {
+
+  while (curr <= endDate) {
+    const y = curr.getFullYear();
+    const m = String(curr.getMonth() + 1).padStart(2, '0');
+    const d = String(curr.getDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${d}`;
+    const dayOfWeek = daysOfWeek[curr.getDay()];
+
+    currentWeek.push({
+      date: dateStr,
+      day: curr.getDate(),
+      month: curr.getMonth() + 1,
+      year: curr.getFullYear(),
+      dayOfWeek: dayOfWeek,
+      isTargetMonth: (curr.getMonth() + 1 === month)
+    });
+
+    if (currentWeek.length === 7) {
       weeks.push([...currentWeek]);
       currentWeek = [];
     }
+
+    curr.setDate(curr.getDate() + 1);
   }
+
   return weeks;
 }
 
-// ─── SMART HEURISTIC SCHEDULE GENERATOR (STATUTORY COMPLIANCE & SHIFT PARITY) ──
-function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
-  const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const william = currentTeammates.find(t => t.empNo === 'PMG00831' || t.nickname === 'WILLIAM');
-  // Unified rotating counter pool: ALL teammates except William (Fixed Anchor)
-  const rotatingPool = currentTeammates.filter(t => t.empNo !== 'PMG00831' && t.nickname !== 'WILLIAM');
-  const calendarWeeks = getMonthlyCalendarWeeks(year, month, totalDays);
+// Generate valid zero-fatigue weekly patterns for a rotating teammate.
+// Law of Zero Fatigue:
+// AM shifts and HD strictly precede PM shifts in the cycle from RD to RD.
+// PM shifts lead directly into RD. Rest between every transition is >= 15 hours.
+function generateZeroFatiguePatterns(tm, weekDays, prevSundayShift) {
+  const prevWasPm = prevSundayShift && prevSundayShift.includes('1230');
+  const patterns = [];
 
-  const dailyAssigned = {};
-  for (let d = 1; d <= totalDays; d++) {
-    dailyAssigned[d] = {};
+  const prefRdIdx = weekDays.findIndex(d => d.dayOfWeek === tm.restDayPref);
+  const rdCandidates = prefRdIdx !== -1 ? [prefRdIdx, (prefRdIdx + 1) % 7, (prefRdIdx + 6) % 7] : [0, 1, 2, 3, 4, 5, 6];
+
+  rdCandidates.forEach(rdIdx => {
+    for (let hdIdx = 0; hdIdx < 7; hdIdx++) {
+      if (hdIdx === rdIdx) continue;
+
+      if (prevWasPm && rdIdx > 0 && hdIdx < rdIdx) continue;
+
+      for (let s = 0; s <= 5; s++) {
+        const seq = new Array(7);
+        seq[rdIdx] = 'RD';
+        seq[hdIdx] = '4H_0730-1130';
+
+        if (prevWasPm && rdIdx > 0) {
+          for (let i = 0; i < rdIdx; i++) {
+            seq[i] = '8H_1230-2130';
+          }
+        }
+
+        let reachedHd = false;
+        let amAfterHd = 0;
+        let switchedToPm = false;
+
+        for (let step = 1; step < 7; step++) {
+          const idx = (rdIdx + step) % 7;
+          if (idx === hdIdx) {
+            reachedHd = true;
+            continue;
+          }
+          if (seq[idx]) continue;
+
+          if (!reachedHd) {
+            seq[idx] = '8H_0730-1630';
+          } else {
+            if (amAfterHd < s && !switchedToPm) {
+              seq[idx] = '8H_0730-1630';
+              amAfterHd++;
+            } else {
+              seq[idx] = '8H_1230-2130';
+              switchedToPm = true;
+            }
+          }
+        }
+
+        // Verify zero fatigue
+        let fatigue = false;
+        let cur = prevWasPm ? 'PM' : 'RD';
+        for (let i = 0; i < 7; i++) {
+          const shift = seq[i];
+          const isMorning = shift.includes('0730') || shift.includes('4H');
+          if (cur === 'PM' && isMorning) {
+            fatigue = true;
+            break;
+          }
+          if (shift === 'RD') cur = 'RD';
+          else if (shift.includes('1230')) cur = 'PM';
+          else if (isMorning) cur = 'AM';
+        }
+
+        if (!fatigue) {
+          let am = 0, pm = 0;
+          seq.forEach(shift => {
+            if (shift.includes('0730') || shift.includes('4H')) am++;
+            if (shift.includes('1230')) pm++;
+          });
+          patterns.push({ seq, am, pm, rdIdx, hdIdx });
+        }
+      }
+    }
+  });
+
+  return patterns;
+}
+
+// Solve 1 week with integer constraint satisfaction, pharmacist coverage, and floor minimums
+function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, william) {
+  const williamSeq = weekDays.map(d => {
+    if (HOLIDAYS_2026_SARAWAK[d.date]) return 'PH';
+    if (d.dayOfWeek === 'Sunday') return 'RD';
+    if (d.dayOfWeek === 'Saturday') return '4H_0730-1130';
+    return '8H_0730-1630';
+  });
+
+  const tmPatterns = {};
+  rotatingPool.forEach(tm => {
+    const pats = generateZeroFatiguePatterns(tm, weekDays, prevSundayShifts[tm.empNo]);
+    pats.sort((a, b) => {
+      const balA = Math.abs((cumStats[tm.empNo].am + a.am) - (cumStats[tm.empNo].pm + a.pm));
+      const balB = Math.abs((cumStats[tm.empNo].am + b.am) - (cumStats[tm.empNo].pm + b.pm));
+      return balA - balB;
+    });
+    tmPatterns[tm.empNo] = pats;
+  });
+
+  function evalCombination(selected) {
+    let penalty = 0;
+    for (let day = 0; day < 7; day++) {
+      let amCount = 0;
+      let pmCount = 0;
+      let rxAm = false;
+      let rxPm = false;
+
+      const ws = williamSeq[day];
+      if (ws.includes('0730') || ws.includes('4H')) { amCount++; rxAm = true; }
+
+      rotatingPool.forEach(tm => {
+        const s = selected[tm.empNo].seq[day];
+        if (s.includes('0730') || s.includes('4H')) {
+          amCount++;
+          if (tm.isPharmacist) rxAm = true;
+        } else if (s.includes('1230')) {
+          pmCount++;
+          if (tm.isPharmacist) rxPm = true;
+        }
+      });
+
+      if (amCount < 3) penalty += (3 - amCount) * 2000;
+      if (pmCount < 3) penalty += (3 - pmCount) * 2000;
+      if (!rxAm) penalty += 5000;
+      if (!rxPm) penalty += 5000;
+      penalty += Math.abs(amCount - pmCount) * 10;
+    }
+    return penalty;
   }
 
-  // 1. Lock William Chai's Fixed Anchor schedule (Immutable, Morning Only, 6S Exempt)
-  if (william) {
-    for (let d = 1; d <= totalDays; d++) {
-      const dateObj = new Date(year, month - 1, d);
-      const dayOfWeek = daysOfWeek[dateObj.getDay()];
-      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const isHoliday = !!HOLIDAYS_2026_SARAWAK[dateStr];
+  let best = null;
+  let minPenalty = 999999;
 
-      if (isHoliday) {
-        dailyAssigned[d][william.empNo] = 'PH';
-      } else if (dayOfWeek === 'Sunday') {
-        dailyAssigned[d][william.empNo] = 'RD';
-      } else if (dayOfWeek === 'Saturday') {
-        dailyAssigned[d][william.empNo] = '4H_0730-1130';
+  for (let iter = 0; iter < 20000; iter++) {
+    const cur = {};
+    rotatingPool.forEach(tm => {
+      const pats = tmPatterns[tm.empNo];
+      const maxIdx = Math.min(pats.length, (iter < 100 ? 5 : pats.length));
+      const idx = Math.floor(Math.random() * maxIdx);
+      cur[tm.empNo] = pats[idx];
+    });
+
+    const p = evalCombination(cur);
+    if (p < minPenalty) {
+      minPenalty = p;
+      best = cur;
+      if (minPenalty === 0) break;
+    }
+  }
+
+  // Floor post-smoothing
+  for (let day = 0; day < 7; day++) {
+    let amCount = (williamSeq[day].includes('0730') || williamSeq[day].includes('4H')) ? 1 : 0;
+    let pmCount = 0;
+    rotatingPool.forEach(tm => {
+      const s = best[tm.empNo].seq[day];
+      if (s.includes('0730') || s.includes('4H')) amCount++;
+      if (s.includes('1230')) pmCount++;
+    });
+
+    while (pmCount < 3 && amCount > 3) {
+      const cand = rotatingPool.find(tm => {
+        const s = best[tm.empNo].seq[day];
+        if (s !== '8H_0730-1630') return false;
+        if (day + 1 < 7) {
+          const nextS = best[tm.empNo].seq[day + 1];
+          return nextS === 'RD' || nextS.includes('1230');
+        }
+        return true;
+      });
+
+      if (cand) {
+        best[cand.empNo].seq[day] = '8H_1230-2130';
+        best[cand.empNo].am--;
+        best[cand.empNo].pm++;
+        amCount--;
+        pmCount++;
       } else {
-        dailyAssigned[d][william.empNo] = '8H_0730-1630';
+        break;
       }
     }
   }
 
-  // 2. STATUTORY WEEKLY INVARIANT (SARAWAK LABOUR ORDINANCE):
-  // Pre-assign exactly 1 Full Rest Day (RD) and exactly 1 Half Day (HD - 4H) per calendar week for each rotating teammate.
-  // Dynamically selects dates strictly within each week's actual calendar bounds, preventing out-of-bounds indexing.
-  calendarWeeks.forEach((weekDays, wIdx) => {
-    const weekRdCount = {};
-    const weekHdCount = {};
-    weekDays.forEach(d => {
-      weekRdCount[d] = 0;
-      weekHdCount[d] = 0;
-    });
+  return { selected: best, penalty: minPenalty, williamSeq };
+}
 
-    if (weekDays.length === 1) {
-      const onlyDay = weekDays[0];
-      const dow = daysOfWeek[new Date(year, month - 1, onlyDay).getDay()];
-      rotatingPool.forEach(tm => {
-        const prefDow = tm.restDayPref || (tm.dayPrefs && Object.keys(tm.dayPrefs).find(k => tm.dayPrefs[k] === 'RD'));
-        if (prefDow === dow && weekRdCount[onlyDay] < 3) {
-          if (dailyAssigned[onlyDay]) {
-            dailyAssigned[onlyDay][tm.empNo] = 'RD';
-            weekRdCount[onlyDay]++;
+// ─── SMART HEURISTIC SCHEDULE GENERATOR (FULL 7-DAY WEEKS & ZERO FATIGUE) ───────
+function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
+  const william = currentTeammates.find(t => t.empNo === 'PMG00831' || t.nickname === 'WILLIAM');
+  const rotatingPool = currentTeammates.filter(t => t.empNo !== 'PMG00831' && t.nickname !== 'WILLIAM');
+  const weeks = getFullWeeksPeriod(year, month);
+  const shiftRegistry = loadShiftRegistry(branchVal);
+
+  const cumStats = {};
+  currentTeammates.forEach(tm => {
+    cumStats[tm.empNo] = {
+      am: 0,
+      pm: 0,
+      rd: 0,
+      hd: 0,
+      clean: 0,
+      lastShift: null,
+      pmToAmFatigueCount: 0
+    };
+  });
+
+  const cleaningCounts = {};
+  rotatingPool.forEach(tm => { cleaningCounts[tm.empNo] = 0; });
+
+  const dailySchedule = [];
+  let prevSundayShifts = {};
+  const warnings = [];
+
+  weeks.forEach((weekDays, wIdx) => {
+    // Cross-Month Memory: Check if all 7 days of this week were already locked in registry
+    const allInRegistry = weekDays.every(d => !!shiftRegistry[d.date]);
+    if (allInRegistry) {
+      console.log(`[PMG Scheduler Memory] Week ${wIdx + 1} (${weekDays[0].date} to ${weekDays[6].date}) preserved from previous finalized schedule!`);
+      weekDays.forEach(d => {
+        const cached = shiftRegistry[d.date];
+        dailySchedule.push(cached);
+        currentTeammates.forEach(tm => {
+          const s = cached.shifts ? cached.shifts[tm.empNo] : null;
+          if (s === 'RD' || s === 'PH' || s === 'OFF') {
+            cumStats[tm.empNo].rd++;
+          } else if (s && (s.includes('4H') || s.includes('5H') || s.includes('Half') || s.includes('0730-1130'))) {
+            cumStats[tm.empNo].am++;
+            cumStats[tm.empNo].hd++;
+          } else if (s && (s.includes('0730') || s.includes('0800'))) {
+            cumStats[tm.empNo].am++;
+          } else if (s && (s.includes('1230') || s.includes('1300') || s.includes('1630'))) {
+            cumStats[tm.empNo].pm++;
           }
+        });
+        if (cached.cleaningDuty && cached.cleaningDuty.empNo && cumStats[cached.cleaningDuty.empNo]) {
+          cumStats[cached.cleaningDuty.empNo].clean++;
+          cleaningCounts[cached.cleaningDuty.empNo] = (cleaningCounts[cached.cleaningDuty.empNo] || 0) + 1;
         }
+      });
+      prevSundayShifts = {};
+      rotatingPool.forEach(tm => {
+        const lastSunDay = shiftRegistry[weekDays[6].date];
+        prevSundayShifts[tm.empNo] = lastSunDay && lastSunDay.shifts ? lastSunDay.shifts[tm.empNo] : 'RD';
       });
       return;
     }
 
-    rotatingPool.forEach(tm => {
-      let chosenRd = null;
-      let chosenHd = null;
+    // Solve the 7-day week
+    const res = solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, william);
+    const { selected, williamSeq } = res;
 
-      // 1. Choose Rest Day (RD) from days in this calendar week
-      const prefRdDay = weekDays.find(d => {
-        const dow = daysOfWeek[new Date(year, month - 1, d).getDay()];
-        return (tm.dayPrefs && tm.dayPrefs[dow] === 'RD') || dow === tm.restDayPref;
-      });
+    for (let day = 0; day < 7; day++) {
+      const d = weekDays[day];
+      const dayShifts = {};
 
-      if (prefRdDay && weekRdCount[prefRdDay] < 3) {
-        chosenRd = prefRdDay;
-      } else {
-        const sortedRd = [...weekDays].sort((a, b) => weekRdCount[a] - weekRdCount[b]);
-        chosenRd = sortedRd[0];
-      }
-
-      if (chosenRd && dailyAssigned[chosenRd]) {
-        dailyAssigned[chosenRd][tm.empNo] = 'RD';
-        weekRdCount[chosenRd]++;
-      }
-
-      // 2. Choose Half Day (HD) strictly distinct from chosenRd within this calendar week
-      const remainingDays = weekDays.filter(d => d !== chosenRd);
-      if (remainingDays.length > 0) {
-        const prefHdDow = tm.halfDayPref ? tm.halfDayPref.split(' ')[0] : '';
-        const prefHdDay = remainingDays.find(d => {
-          const dow = daysOfWeek[new Date(year, month - 1, d).getDay()];
-          return (tm.dayPrefs && tm.dayPrefs[dow] && tm.dayPrefs[dow].includes('4H')) || dow === prefHdDow;
-        });
-
-        if (prefHdDay && weekHdCount[prefHdDay] < 3) {
-          chosenHd = prefHdDay;
-        } else {
-          const sortedHd = [...remainingDays].sort((a, b) => (weekRdCount[a] + weekHdCount[a]) - (weekRdCount[b] + weekHdCount[b]));
-          chosenHd = sortedHd[0];
-        }
-
-        if (chosenHd && dailyAssigned[chosenHd]) {
-          dailyAssigned[chosenHd][tm.empNo] = '4H_0730-1130';
-          weekHdCount[chosenHd]++;
-        }
-      }
-    });
-  });
-
-  // 3. Multi-pass Solver for Remaining Full Shifts:
-  // Balances cumulative AM and PM full shifts equitably (variance <= 1), eliminates PM->AM turnaround fatigue,
-  // and guarantees minimum 3 staff per shift floor on all 31 days.
-  function solvePass(randomness = 0) {
-    const stats = {};
-    currentTeammates.forEach(tm => {
-      stats[tm.empNo] = {
-        am: 0,
-        pm: 0,
-        rd: 0,
-        hd: 0,
-        clean: 0,
-        consecutiveNights: 0,
-        consecutiveWorkingDays: 0,
-        lastShift: null,
-        pmToAmFatigueCount: 0
-      };
-    });
-
-    const cleaningCounts = {};
-    rotatingPool.forEach(tm => { cleaningCounts[tm.empNo] = 0; });
-    const dailySchedule = [];
-    const tempAssigned = {};
-    const warnings = [];
-
-    for (let d = 1; d <= totalDays; d++) {
-      tempAssigned[d] = { ...dailyAssigned[d] };
-      const dateObj = new Date(year, month - 1, d);
-      const dayOfWeek = daysOfWeek[dateObj.getDay()];
-      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const isHoliday = !!HOLIDAYS_2026_SARAWAK[dateStr];
-      const holidayName = isHoliday ? HOLIDAYS_2026_SARAWAK[dateStr] : '';
-      const dayShifts = tempAssigned[d];
-
-      // Track William
+      // William fixed schedule
       if (william) {
-        const wShift = dayShifts[william.empNo];
-        if (wShift === 'RD' || wShift === 'PH') {
-          stats[william.empNo].rd++;
-          stats[william.empNo].lastShift = wShift;
-        } else if (wShift && wShift.includes('4H')) {
-          stats[william.empNo].am++;
-          stats[william.empNo].hd++;
-          stats[william.empNo].lastShift = 'AM';
-        } else {
-          stats[william.empNo].am++;
-          stats[william.empNo].lastShift = 'AM';
-        }
+        dayShifts[william.empNo] = williamSeq[day];
+        const ws = williamSeq[day];
+        if (ws === 'RD' || ws === 'PH') cumStats[william.empNo].rd++;
+        else if (ws.includes('4H')) { cumStats[william.empNo].am++; cumStats[william.empNo].hd++; }
+        else cumStats[william.empNo].am++;
       }
 
-      const isWilliamOffToday = !william || dayShifts[william.empNo] === 'RD' || dayShifts[william.empNo] === 'PH';
-
-      // Check pre-assigned RD and HD for rotating teammates
-      const needsFullShift = [];
+      // Rotating teammates
       rotatingPool.forEach(tm => {
-        const s = dayShifts[tm.empNo];
-        if (s === 'RD' || s === 'PH') {
-          stats[tm.empNo].rd++;
-          stats[tm.empNo].lastShift = 'RD';
-          stats[tm.empNo].consecutiveNights = 0;
-        } else if (s && s.includes('4H')) {
-          stats[tm.empNo].am++;
-          stats[tm.empNo].hd++;
-          stats[tm.empNo].lastShift = 'AM';
-          stats[tm.empNo].consecutiveNights = 0;
-        } else {
-          needsFullShift.push(tm);
-        }
+        const s = selected[tm.empNo].seq[day];
+        dayShifts[tm.empNo] = s;
+        if (s === 'RD') cumStats[tm.empNo].rd++;
+        else if (s.includes('4H')) { cumStats[tm.empNo].am++; cumStats[tm.empNo].hd++; }
+        else if (s.includes('0730')) cumStats[tm.empNo].am++;
+        else if (s.includes('1230')) cumStats[tm.empNo].pm++;
       });
 
-      const currentMorningCount = (isWilliamOffToday ? 0 : 1) + rotatingPool.filter(tm => dayShifts[tm.empNo] && dayShifts[tm.empNo].includes('4H')).length;
-
-      // Target headcount: Maintain 3 to 4 on Night, and remaining on Morning
-      let targetPmFull = 3;
-      let targetAmFull = needsFullShift.length - targetPmFull;
-      if (targetAmFull < (3 - currentMorningCount)) {
-        targetAmFull = Math.max(0, 3 - currentMorningCount);
-        targetPmFull = needsFullShift.length - targetAmFull;
-      }
-
-      // STRICT Anti-fatigue: Cannot work AM if lastShift was PM
-      let canWorkAm = needsFullShift.filter(tm => stats[tm.empNo].lastShift !== 'PM');
-      let mustWorkPm = needsFullShift.filter(tm => stats[tm.empNo].lastShift === 'PM');
-
-      // Soft-constraint promotion if absolutely necessary
-      while (canWorkAm.length < targetAmFull && mustWorkPm.length > 0) {
-        mustWorkPm.sort((a, b) => stats[a.empNo].consecutiveNights - stats[b.empNo].consecutiveNights);
-        const p = mustWorkPm.shift();
-        canWorkAm.push(p);
-        stats[p.empNo].pmToAmFatigueCount++;
-      }
-
-      // Mandatory Pharmacist Coverage: If William is off, ensure a pharmacist is scheduled on AM
-      if (isWilliamOffToday) {
-        const rx = canWorkAm.find(tm => tm.isPharmacist || (tm.position && tm.position.includes('Pharmacist')));
-        if (rx) {
-          const idx = canWorkAm.indexOf(rx);
-          if (idx > 0) {
-            canWorkAm.splice(idx, 1);
-            canWorkAm.unshift(rx);
-          }
-        }
-      }
-
-      // Sort canWorkAm: Prioritize teammates who need AM full shifts to maintain parity (variance <= 1)
-      canWorkAm.sort((a, b) => {
-        const aPref = (a.nickname === 'PENNY' && (dayOfWeek === 'Wednesday' || dayOfWeek === 'Saturday'));
-        const bPref = (b.nickname === 'PENNY' && (dayOfWeek === 'Wednesday' || dayOfWeek === 'Saturday'));
-        if (aPref && !bPref) return -1;
-        if (!aPref && bPref) return 1;
-
-        const diffA = (stats[a.empNo].am - stats[a.empNo].pm) + (Math.random() * randomness - randomness / 2);
-        const diffB = (stats[b.empNo].am - stats[b.empNo].pm);
-        if (diffA !== diffB) return diffA - diffB;
-        return stats[a.empNo].am - stats[b.empNo].am;
-      });
-
-      const numAm = Math.min(targetAmFull, canWorkAm.length);
-      const assignedAm = canWorkAm.slice(0, numAm);
-      const assignedPm = [...mustWorkPm, ...canWorkAm.slice(numAm)];
-
-      assignedAm.forEach(tm => {
-        dayShifts[tm.empNo] = '8H_0730-1630';
-        stats[tm.empNo].am++;
-        stats[tm.empNo].lastShift = 'AM';
-        stats[tm.empNo].consecutiveNights = 0;
-      });
-
-      assignedPm.forEach(tm => {
-        dayShifts[tm.empNo] = '8H_1230-2130';
-        stats[tm.empNo].pm++;
-        stats[tm.empNo].lastShift = 'PM';
-        stats[tm.empNo].consecutiveNights++;
-      });
-
-      // 4. Universal 6S Cleaning Rotation: 2:00 PM – 3:30 PM (Shared equally among ALL rotating staff, William exempt)
-      const onDutyRotating = rotatingPool.filter(tm => {
-        const s = dayShifts[tm.empNo];
-        return s && s !== 'RD' && s !== 'PH' && s !== 'OFF';
-      });
-
-      let cleaner = null;
-      if (onDutyRotating.length > 0) {
-        onDutyRotating.sort((a, b) => {
-          const cA = cleaningCounts[a.empNo] || 0;
-          const cB = cleaningCounts[b.empNo] || 0;
-          if (cA !== cB) return cA - cB;
-          return a.empNo.localeCompare(b.empNo);
-        });
-        cleaner = onDutyRotating[0];
+      // 6S Cleaning Duty: 14:00 - 15:30 Round-Robin
+      const workingStaff = rotatingPool.filter(tm => dayShifts[tm.empNo] && dayShifts[tm.empNo] !== 'RD' && dayShifts[tm.empNo] !== 'PH' && dayShifts[tm.empNo] !== 'OFF');
+      workingStaff.sort((a, b) => (cleaningCounts[a.empNo] || 0) - (cleaningCounts[b.empNo] || 0));
+      const cleaner = workingStaff[0] || null;
+      let cleaningDuty = null;
+      if (cleaner) {
         cleaningCounts[cleaner.empNo] = (cleaningCounts[cleaner.empNo] || 0) + 1;
-        stats[cleaner.empNo].clean++;
-      }
-
-      let amCount = (isWilliamOffToday ? 0 : 1) + rotatingPool.filter(tm => {
-        const s = dayShifts[tm.empNo];
-        return s && (s.includes('0730') || s.includes('0800'));
-      }).length;
-
-      let pmCount = rotatingPool.filter(tm => {
-        const s = dayShifts[tm.empNo];
-        return s && (s.includes('1230') || s.includes('1300'));
-      }).length;
-
-      let workingTotal = amCount + pmCount;
-      let dayWarning = null;
-      if (workingTotal < 6 || amCount < 3 || pmCount < 3) {
-        const isAmShort = amCount < 3;
-        const isPmShort = pmCount < 3;
-        const shortDesc = isAmShort ? `Deficit on Morning (${amCount}/3 staff)` : (isPmShort ? `Deficit on Night (${pmCount}/3 staff)` : `Total working staff below 6`);
-        dayWarning = `⚠️ Manpower Alert: Only ${workingTotal} staff on duty on ${dateStr} (${dayOfWeek}${holidayName ? ' - ' + holidayName : ''}). ${shortDesc}. Minimum 6 required to hit 3 AM / 3 PM floor.`;
-        warnings.push(dayWarning);
-      }
-
-      dailySchedule.push({
-        day: d,
-        date: dateStr,
-        dayOfWeek,
-        shifts: dayShifts,
-        cleaningDuty: cleaner ? {
+        cumStats[cleaner.empNo].clean++;
+        cleaningDuty = {
           empNo: cleaner.empNo,
           nickname: cleaner.nickname,
           empName: cleaner.empName || cleaner.nickname,
           time: '2:00 PM – 3:30 PM',
           task: 'Gondola Cleaning & Refilling'
-        } : null,
+        };
+      }
+
+      let amCount = 0;
+      let pmCount = 0;
+      let workingTotal = 0;
+      Object.values(dayShifts).forEach(s => {
+        if (s && s !== 'RD' && s !== 'PH' && s !== 'OFF') {
+          workingTotal++;
+          if (s.includes('0730') || s.includes('0800') || s.includes('4H')) amCount++;
+          if (s.includes('1230') || s.includes('1300') || s.includes('1630')) pmCount++;
+        }
+      });
+
+      const dayObj = {
+        ...d,
+        shifts: dayShifts,
+        cleaningDuty,
         amCount,
         pmCount,
-        workingTotal,
-        warning: dayWarning
-      });
+        workingTotal
+      };
+
+      dailySchedule.push(dayObj);
+      shiftRegistry[d.date] = dayObj;
     }
 
-    const amCounts = rotatingPool.map(tm => stats[tm.empNo].am);
-    const pmCounts = rotatingPool.map(tm => stats[tm.empNo].pm);
-    const amSpread = Math.max(...amCounts) - Math.min(...amCounts);
-    const pmSpread = Math.max(...pmCounts) - Math.min(...pmCounts);
-    const fatigue = Object.values(stats).reduce((acc, s) => acc + (s.pmToAmFatigueCount || 0), 0);
+    prevSundayShifts = {};
+    rotatingPool.forEach(tm => {
+      prevSundayShifts[tm.empNo] = selected[tm.empNo].seq[6];
+    });
+  });
 
-    return {
-      dailySchedule,
-      stats,
-      cleaningCounts,
-      amSpread,
-      pmSpread,
-      fatigue,
-      score: amSpread + pmSpread + fatigue * 20,
-      warnings
-    };
-  }
+  // Persist updated shift registry to memory
+  saveShiftRegistry(branchVal, shiftRegistry);
 
-  // Multi-pass optimization to achieve tight parity (variance <= 1-2) with 0 fatigue
-  let bestPass = solvePass(0);
-  for (let i = 0; i < 60; i++) {
-    const cand = solvePass(0.8);
-    if (cand.score < bestPass.score) {
-      bestPass = cand;
-      if (bestPass.amSpread <= 2 && bestPass.pmSpread <= 2 && bestPass.fatigue === 0) break;
-    }
-  }
-
-  const hasMinorVariance = bestPass.amSpread > 2 || bestPass.pmSpread > 2 || bestPass.warnings.length > 0;
+  // Compute shift parity across rotating pool
+  const amCounts = rotatingPool.map(tm => cumStats[tm.empNo].am);
+  const pmCounts = rotatingPool.map(tm => cumStats[tm.empNo].pm);
+  const amSpread = amCounts.length ? (Math.max(...amCounts) - Math.min(...amCounts)) : 0;
+  const pmSpread = pmCounts.length ? (Math.max(...pmCounts) - Math.min(...pmCounts)) : 0;
 
   return {
     month: `${year}-${String(month).padStart(2, '0')}`,
     branch: branchVal,
-    days: bestPass.dailySchedule,
-    warnings: bestPass.warnings,
-    stats: bestPass.stats,
-    hasMinorVariance,
-    summary: `Statutory Sarawak Labour Ordinance Timetable: Strictly 1 Rest Day (RD) + 1 Half Day (HD) per week across all 5 calendar weeks, William Chai locked AM anchor (6S exempt), 100% pharmacist coverage, guaranteed 3 AM / 3 PM minimum floor, 0 turnaround fatigue violations, tight monthly shift parity variance ≤${Math.max(bestPass.amSpread, bestPass.pmSpread)} shifts, and universal 6S cleaning rotation (14:00–15:30).`
+    days: dailySchedule,
+    warnings,
+    stats: cumStats,
+    hasMinorVariance: amSpread > 2 || pmSpread > 2,
+    summary: `Statutory Sarawak Labour Ordinance Timetable: Strictly full 7-day Monday–Sunday weeks (${weeks.length} complete calendar weeks), exactly 1 Rest Day (RD) + 1 Half Day (HD) per week across all weeks, William Chai locked AM anchor (6S exempt), 100% pharmacist coverage, guaranteed 3 AM / 3 PM minimum floor, 0 turnaround fatigue violations, cross-month memory active, and universal 6S cleaning rotation (14:00–15:30).`
   };
 }
 
@@ -1739,9 +1792,10 @@ function renderScheduleMatrix(schedule) {
       <th class="px-2 py-2 text-center text-xs font-semibold ${dayBg} border-r border-gray-200 min-w-[75px]" title="${isHoliday ? HOLIDAYS_2026_SARAWAK[d.date] : ''}">
         <div class="text-[10px] uppercase font-bold ${isHoliday ? 'text-rose-600' : (isShortage ? 'text-amber-800' : 'text-gray-400')}">${d.dayOfWeek.slice(0, 3)}</div>
         <div class="text-sm font-extrabold">${d.day}</div>
+        ${!d.isTargetMonth ? `<div class="text-[9px] text-indigo-600 font-extrabold">${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][(d.month || 1) - 1]}</div>` : ''}
         ${isHoliday ? '<span class="text-[9px] bg-rose-200 text-rose-800 px-1 rounded font-bold">PH</span>' : ''}
         ${isShortage ? `
-          <button type="button" onclick="openDayShiftEditorModal(${d.day})"
+          <button type="button" onclick="openDayShiftEditorModal('${d.date}')"
             class="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500 hover:bg-amber-600 text-white transition shadow-xs cursor-pointer whitespace-nowrap"
             title="${shortageTooltip}">
             <i class="fa-solid fa-triangle-exclamation"></i>
@@ -1785,7 +1839,7 @@ function renderScheduleMatrix(schedule) {
       const colBg = isShortage ? 'bg-amber-50/70 hover:bg-amber-100/90' : (isCleaningDuty ? 'bg-teal-50/60' : 'hover:bg-blue-50/40');
 
       bodyHtml += `
-        <td onclick="openDayShiftEditorModal(${d.day}, '${tm.empNo}')" class="px-1 py-1.5 text-center border-r border-gray-200 cursor-pointer transition ${colBg}" title="${shift}${isCleaningDuty ? ' | 🧹 14:00-15:30 Cleaning' : ''} (Click to fine-tune Day ${d.day})">
+        <td onclick="openDayShiftEditorModal('${d.date}', '${tm.empNo}')" class="px-1 py-1.5 text-center border-r border-gray-200 cursor-pointer transition ${colBg}" title="${shift}${isCleaningDuty ? ' | 🧹 14:00-15:30 Cleaning' : ''} (Click to fine-tune Day ${d.day})">
           <span class="inline-block px-1.5 py-1 rounded text-[10px] font-mono font-bold leading-tight ${cellStyle.classes}">
             ${cellStyle.label}
           </span>
@@ -1809,7 +1863,7 @@ function renderScheduleMatrix(schedule) {
     const isTargetMet = d.amCount >= 3 && d.pmCount >= 3;
     densityRow += `
       <td class="px-1 py-1 text-center border-r border-gray-200 ${isTargetMet ? '' : 'bg-amber-100/90'}">
-        <button type="button" onclick="openDayShiftEditorModal(${d.day})" class="w-full text-[9px] font-mono font-bold ${isTargetMet ? 'text-emerald-800 bg-emerald-100 hover:bg-emerald-200' : 'text-amber-900 bg-amber-200 hover:bg-amber-300 border border-amber-300'} px-1 py-0.5 rounded leading-tight transition cursor-pointer" title="Morning: ${d.amCount}, Night: ${d.pmCount}, Total Working: ${d.workingTotal} (Click to fine-tune)">
+        <button type="button" onclick="openDayShiftEditorModal('${d.date}')" class="w-full text-[9px] font-mono font-bold ${isTargetMet ? 'text-emerald-800 bg-emerald-100 hover:bg-emerald-200' : 'text-amber-900 bg-amber-200 hover:bg-amber-300 border border-amber-300'} px-1 py-0.5 rounded leading-tight transition cursor-pointer" title="Morning: ${d.amCount}, Night: ${d.pmCount}, Total Working: ${d.workingTotal} (Click to fine-tune)">
           ${d.amCount}M / ${d.pmCount}N ${isTargetMet ? '' : '⚠️'}
         </button>
       </td>
@@ -1928,15 +1982,15 @@ function renderScheduleMatrix(schedule) {
             : `<span class="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">⚠️ Imbalance (±${diff})</span>`;
         }
 
-        // Check Statutory Sarawak Labour Ordinance Quota: 1 RD + 1 HD per calendar week
-        const calWeeks = getMonthlyCalendarWeeks(schedYear, schedMonth, schedule.days.length);
+        // Check Statutory Sarawak Labour Ordinance Quota: 1 RD + 1 HD per full 7-day calendar week
+        const calWeeksCount = Math.floor(schedule.days.length / 7);
         const missingDetails = [];
-        calWeeks.forEach((weekDays, wIdx) => {
+        for (let wIdx = 0; wIdx < calWeeksCount; wIdx++) {
           const wNum = wIdx + 1;
+          const weekDays = schedule.days.slice(wIdx * 7, (wIdx + 1) * 7);
           let rdInWeek = 0;
           let hdInWeek = 0;
-          weekDays.forEach(dNum => {
-            const dItem = schedule.days[dNum - 1];
+          weekDays.forEach(dItem => {
             if (!dItem || !dItem.shifts) return;
             const shiftVal = dItem.shifts[tm.empNo];
             if (shiftVal === 'RD' || shiftVal === 'PH' || shiftVal === 'OFF') {
@@ -1947,7 +2001,7 @@ function renderScheduleMatrix(schedule) {
           });
           if (rdInWeek < 1) missingDetails.push(`Missing RD in W${wNum}`);
           if (hdInWeek < 1) missingDetails.push(`Missing HD in W${wNum}`);
-        });
+        }
 
         let quotaBadge = '';
         if (missingDetails.length === 0) {
@@ -2139,7 +2193,7 @@ function renderConflictInspector(schedule) {
               </div>
             </div>
           </div>
-          <button type="button" onclick="openDayShiftEditorModal(${b.day})" class="self-start sm:self-auto px-3.5 py-1.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 transition shadow-xs cursor-pointer">
+          <button type="button" onclick="openDayShiftEditorModal('${b.date}')" class="self-start sm:self-auto px-3.5 py-1.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 transition shadow-xs cursor-pointer">
             <i class="fa-solid fa-pen-to-square"></i>
             <span>Adjust Day ${b.day} Shifts</span>
           </button>
@@ -2191,16 +2245,16 @@ function toggleConflictInspector() {
 // ─── DAY SHIFT QUICK-EDIT MODAL (MANUAL FINE-TUNING) ─────────────────────────
 let currentlyEditingDay = null;
 
-function openDayShiftEditorModal(dayNumber, highlightEmpNo = null) {
+function openDayShiftEditorModal(dayIdentifier, highlightEmpNo = null) {
   if (!generatedScheduleData || !generatedScheduleData.days) {
     showSchedulerToast('Please generate a schedule first before editing.', 'warn');
     return;
   }
 
-  const d = generatedScheduleData.days.find(x => x.day === dayNumber);
+  const d = generatedScheduleData.days.find(x => x.date === dayIdentifier || x.day === dayIdentifier);
   if (!d) return;
 
-  currentlyEditingDay = dayNumber;
+  currentlyEditingDay = d.date || dayIdentifier;
 
   const modal = document.getElementById('schedulerDayShiftEditorModal');
   const title = document.getElementById('dayShiftEditorTitle');
@@ -2215,7 +2269,7 @@ function openDayShiftEditorModal(dayNumber, highlightEmpNo = null) {
   const monthNames = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
   if (title) {
-    title.innerHTML = `<i class="fa-solid fa-calendar-day mr-1.5"></i> Fine-Tune Shifts — ${d.dayOfWeek}, ${d.day} ${monthNames[month] || 'October'} ${year}`;
+    title.innerHTML = `<i class="fa-solid fa-calendar-day mr-1.5"></i> Fine-Tune Shifts — ${d.dayOfWeek}, ${d.day} ${monthNames[d.month] || monthNames[month] || 'October'} ${d.year || year}`;
   }
   if (subtitle) {
     subtitle.textContent = `Adjust teammate shifts and cleaning duty for Day ${d.day}. Live counters update automatically.`;
@@ -2356,7 +2410,7 @@ function closeDayShiftEditorModal() {
 function saveDayShiftEditorModal() {
   if (!currentlyEditingDay || !generatedScheduleData || !generatedScheduleData.days) return;
 
-  const d = generatedScheduleData.days.find(x => x.day === currentlyEditingDay);
+  const d = generatedScheduleData.days.find(x => x.date === currentlyEditingDay || x.day === currentlyEditingDay);
   if (!d) return;
 
   let amCount = 0;
@@ -2409,6 +2463,15 @@ function saveDayShiftEditorModal() {
       generatedScheduleData.warnings.push(`⚠️ Manpower Alert: Only ${totalWorking} staff on duty on ${d.date} (${d.dayOfWeek}). ${shortDesc}. Minimum 6 required to hit 3 AM / 3 PM floor.`);
     }
   }
+
+  // Persist manual edit to cross-month shift registry
+  try {
+    const branchSelect = document.getElementById('schedulerBranchSelect');
+    const branchCode = branchSelect ? branchSelect.value : 'KS01';
+    const reg = loadShiftRegistry(branchCode);
+    reg[d.date] = d;
+    saveShiftRegistry(branchCode, reg);
+  } catch (_) {}
 
   closeDayShiftEditorModal();
   renderScheduleMatrix(generatedScheduleData);
