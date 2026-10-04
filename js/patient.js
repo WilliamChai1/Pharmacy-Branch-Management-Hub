@@ -10566,9 +10566,14 @@ function readFileAsBase64(file) {
 }
 
 async function runAiClinicalReview() {
-  const apiKey = (localStorage.getItem('pmg_gemini_key') || '').trim();
+  const apiKey = (typeof window.getGlobalGeminiKey === 'function' ? window.getGlobalGeminiKey() : '')
+              || (localStorage.getItem('pmg_gemini_key') || '').trim();
   if (!apiKey) {
-    alert('API Key is required to auto generate clinical recommendations.\n\nPlease enter your API Key in the 5S Walkthrough Auditor tab, or load the setup link (index.html?setkey=YOUR_KEY).');
+    if (typeof window.openGlobalGeminiModal === 'function') {
+      window.openGlobalGeminiModal();
+    } else {
+      alert('API Key is required to auto generate clinical recommendations.\n\nPlease enter your API Key in the top header or Gemini settings.');
+    }
     return;
   }
 
@@ -10839,10 +10844,10 @@ RESPONSE MUST BE STRICTLY VALID JSON matching this structure:
 }`;
 
   let parsed = null;
-  const primaryModel = typeof AUDIT_PRIMARY_MODEL !== 'undefined' ? AUDIT_PRIMARY_MODEL : 'gemini-3.5-flash-lite';
-  const secondaryModel = typeof AUDIT_SECONDARY_MODEL !== 'undefined' ? AUDIT_SECONDARY_MODEL : 'gemini-3.5-flash';
-  const tertiaryModel = typeof AUDIT_TERTIARY_MODEL !== 'undefined' ? AUDIT_TERTIARY_MODEL : 'gemini-3.1-flash-lite';
-  const models = [primaryModel, secondaryModel, tertiaryModel, 'gemini-2.5-flash', 'gemini-1.5-flash'];
+  const primaryModel = 'gemini-3.5-flash-lite';
+  const secondaryModel = 'gemini-3.5-flash';
+  const tertiaryModel = 'gemini-3.1-flash-lite';
+  const models = [primaryModel, secondaryModel, tertiaryModel, 'gemini-2.5-flash'];
 
   for (let m of models) {
     try {

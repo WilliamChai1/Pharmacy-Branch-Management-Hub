@@ -2248,9 +2248,13 @@ Our objective as Area Manager:
         alert('Please paste your Gemini API key from Google AI Studio.');
         return;
       }
-      localStorage.setItem(STORAGE_KEY_GEMINI, val);
+      if (typeof window.setGlobalGeminiKey === 'function') {
+        window.setGlobalGeminiKey(val);
+      } else {
+        localStorage.setItem(STORAGE_KEY_GEMINI, val);
+      }
       if (typeof showExpiryToast === 'function') {
-        showExpiryToast('Gemini API key saved to PMG Hub.');
+        showExpiryToast('Gemini API key saved across PMG Hub.');
       }
       this.executeAiResearch();
     }
@@ -2490,6 +2494,12 @@ Our objective as Area Manager:
     }
 
     getValidGeminiApiKey() {
+      if (typeof window.getGlobalGeminiKey === 'function') {
+        const k = window.getGlobalGeminiKey();
+        if (k && !['AIzaSyBxKYPJWxi3ILfxPTlQFytzoXJvIZ72m4k', 'AIzaSyAfJqs6YnY5J_URsuvmSMi8WM3BckVwKY4'].includes(k)) {
+          return k;
+        }
+      }
       let apiKey = (localStorage.getItem(STORAGE_KEY_GEMINI) || '').trim();
       const REVOKED_KEYS = [
         'AIzaSyBxKYPJWxi3ILfxPTlQFytzoXJvIZ72m4k',

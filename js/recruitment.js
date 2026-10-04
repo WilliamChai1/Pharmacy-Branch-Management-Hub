@@ -114,30 +114,44 @@ function saveSlots(slots) { localStorage.setItem(REC_SLOTS_KEY, JSON.stringify(s
 // GLOBAL GEMINI KEY & ONEDRIVE INTEGRATION (Shared with Whole Program)
 // ─────────────────────────────────────────────────────────────────────────────
 function getGlobalGeminiKey() {
-  return localStorage.getItem('pmg_gemini_key')
-    || (document.getElementById('geminiApiKey')?.value)
+  if (typeof window.getGlobalGeminiKey === 'function') {
+    const k = window.getGlobalGeminiKey();
+    if (k) return k;
+  }
+  return (localStorage.getItem('pmg_gemini_key') || '').trim()
+    || (document.getElementById('topGeminiApiKey')?.value || '').trim()
+    || (document.getElementById('geminiApiKey')?.value || '').trim()
     || (window.pmgPricing?.geminiKey)
     || '';
 }
 
 function promptSetGeminiKey() {
+  if (typeof window.openGlobalGeminiModal === 'function') {
+    window.openGlobalGeminiModal();
+    return;
+  }
   const current = getGlobalGeminiKey();
   const entered = prompt('Enter your Gemini API Key (saved globally for the whole PMG Hub):', current);
   if (entered !== null) {
-    const val = entered.trim();
-    if (val) {
-      localStorage.setItem('pmg_gemini_key', val);
-      const elKey = document.getElementById('geminiApiKey');
-      if (elKey) elKey.value = val;
-      toast('Global Gemini API Key saved!', 'success');
-      renderAmDashboard();
+    if (typeof window.setGlobalGeminiKey === 'function') {
+      window.setGlobalGeminiKey(entered);
     } else {
-      localStorage.removeItem('pmg_gemini_key');
-      toast('Gemini API Key cleared.', 'info');
-      renderAmDashboard();
+      const val = entered.trim();
+      if (val) localStorage.setItem('pmg_gemini_key', val);
+      else localStorage.removeItem('pmg_gemini_key');
     }
+    toast('Global Gemini API Key saved across PMG Hub!', 'success');
+    renderAmDashboard();
   }
 }
+
+// Auto-sync dashboard if global key is updated anywhere in webapp
+window.addEventListener('pmg_gemini_key_updated', () => {
+  const dash = document.getElementById('recTab-dashboard');
+  if (dash && !dash.classList.contains('hidden')) {
+    renderAmDashboard();
+  }
+});
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
@@ -737,12 +751,17 @@ Return ONLY valid JSON. No markdown fences, no explanatory commentary outside th
 
   const cleanB64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
   const cleanMime = mimeType || 'image/jpeg';
-  const models = ['gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+  const models = [
+    { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
+    { id: 'gemini-3.5-flash',      name: 'Gemini 3.5 Flash' },
+    { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' },
+    { id: 'gemini-2.5-flash',      name: 'Gemini 2.5 Flash' }
+  ];
   let lastErr = null;
 
-  for (const model of models) {
+  for (const m of models) {
     try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.id}:generateContent?key=${apiKey}`;
       const payload = {
         contents: [
           {
@@ -772,7 +791,7 @@ Return ONLY valid JSON. No markdown fences, no explanatory commentary outside th
 
       if (!resp.ok) {
         const errText = await resp.text();
-        throw new Error(`HTTP ${resp.status} (${model}): ${errText.slice(0, 200)}`);
+        throw new Error(`HTTP ${resp.status} (${m.name}): ${errText.slice(0, 200)}`);
       }
 
       const resJson = await resp.json();
@@ -792,11 +811,11 @@ Return ONLY valid JSON. No markdown fences, no explanatory commentary outside th
         parsed.maths_grade = 'FAILED / NOT TAKEN';
       }
 
-      parsed._modelUsed = model;
+      parsed._modelUsed = m.name;
       parsed._scannedAt = new Date().toISOString();
       return parsed;
     } catch (e) {
-      console.warn(`[Vision Scanner] ${model} attempt failed:`, e.message);
+      console.warn(`[Vision Scanner] ${m.name} attempt failed:`, e.message);
       lastErr = e;
     }
   }
@@ -2142,7 +2161,7 @@ ${app.docs && app.docs.length > 0 ? `
           </span>
           <div>
             <h4 class="text-xs font-bold text-gray-900 uppercase tracking-wide">Multimodal AI Vision SPM Certificate Auditor</h4>
-            <p class="text-[10px] text-gray-500">Official Malaysian SPM Slip (Penyata Keputusan) Vision Extraction &bull; Powered by Gemini 1.5 Flash Vision</p>
+            <p class="text-[10px] text-gray-500">Official Malaysian SPM Slip (Penyata Keputusan) Vision Extraction &bull; Powered by Gemini 3.5 Flash-Lite (Primary) &bull; Gemini 3.5 Flash (Secondary)</p>
           </div>
         </div>
         <div class="flex items-center gap-2 flex-wrap">
@@ -2171,7 +2190,7 @@ ${app.docs && app.docs.length > 0 ? `
             <div><span class="text-[10px] text-gray-400 uppercase">Candidate:</span> <strong>${sanitize(v.candidate_name || app.name)}</strong></div>
             <div><span class="text-[10px] text-gray-400 uppercase">IC No:</span> <strong>${sanitize(v.ic_number || app.ic || '—')}</strong></div>
             <div><span class="text-[10px] text-gray-400 uppercase">SPM Year:</span> <strong>${sanitize(v.spm_year || '—')}</strong></div>
-            <div><span class="text-[10px] text-gray-400 uppercase">Vision Model:</span> <span class="font-mono text-indigo-600">${sanitize(v._modelUsed || 'gemini-1.5-flash')}</span></div>
+            <div><span class="text-[10px] text-gray-400 uppercase">Vision Model:</span> <span class="font-mono text-indigo-600">${sanitize(v._modelUsed || 'Gemini 3.5 Flash-Lite')}</span></div>
           </div>
         </div>
 
@@ -2232,7 +2251,7 @@ ${app.docs && app.docs.length > 0 ? `
           </div>
           <div>
             <h4 class="text-xs font-bold text-gray-900 uppercase tracking-wide">Multimodal AI Vision Scanner for Uploaded SPM Slips</h4>
-            <p class="text-[11px] text-gray-600">Inspect &amp; grade uploaded SPM certificates (PDF, JPG, PNG) directly from Google Drive using Gemini Multimodal Vision.</p>
+            <p class="text-[11px] text-gray-600">Inspect &amp; grade uploaded SPM certificates (PDF, JPG, PNG) directly from Google Drive using Gemini 3.5 Flash-Lite (Primary) &amp; Gemini 3.5 Flash (Secondary).</p>
           </div>
         </div>
         <div class="flex items-center gap-2">
@@ -2809,7 +2828,7 @@ function printApp(appId) {
             </tbody>
           </table>
           <div style="font-size: 8pt; color: #64748b; margin-top: 2px;">
-            Certification: <strong>${vData.layak_sijil ? '✓ Layak Mendapat Sijil' : '⚠️ Tidak Layak Sijil (BM/Sejarah)'}</strong> &bull; SPM Year: <strong>${sanitize(vData.spm_year || '—')}</strong> &bull; Auditor: <strong>Gemini Multimodal Vision</strong>
+            Certification: <strong>${vData.layak_sijil ? '✓ Layak Mendapat Sijil' : '⚠️ Tidak Layak Sijil (BM/Sejarah)'}</strong> &bull; SPM Year: <strong>${sanitize(vData.spm_year || '—')}</strong> &bull; Auditor: <strong>Gemini Multimodal Vision (${sanitize(vData._modelUsed || 'Gemini 3.5 Flash-Lite')})</strong>
           </div>
         </div>
       </div>

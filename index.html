@@ -6120,49 +6120,66 @@ function openPublicApplicationPortal(e) {
 }
 
 // ─── GLOBAL GEMINI AI CONFIGURATION (Universal Across Hub) ────────────────────
-function handleTopGeminiKeyInput(val) {
+function getGlobalGeminiKey() {
+  const k = (localStorage.getItem('pmg_gemini_key') || '').trim();
+  if (k) return k;
+  const topInput = document.getElementById('topGeminiApiKey')?.value.trim();
+  if (topInput) return topInput;
+  const modalInput = document.getElementById('modalGeminiApiKey')?.value.trim();
+  if (modalInput) return modalInput;
+  const auditInput = document.getElementById('geminiApiKey')?.value.trim();
+  if (auditInput) return auditInput;
+  const pricingInput = document.getElementById('pricingInlineApiKeyInput')?.value.trim();
+  if (pricingInput) return pricingInput;
+  return '';
+}
+window.getGlobalGeminiKey = getGlobalGeminiKey;
+
+function setGlobalGeminiKey(val) {
   const clean = (val || '').trim();
   if (clean) {
     localStorage.setItem('pmg_gemini_key', clean);
   } else {
     localStorage.removeItem('pmg_gemini_key');
   }
+
+  const topInput = document.getElementById('topGeminiApiKey');
+  if (topInput && topInput.value !== clean) topInput.value = clean;
   const modalInput = document.getElementById('modalGeminiApiKey');
   if (modalInput && modalInput.value !== clean) modalInput.value = clean;
   const auditInput = document.getElementById('geminiApiKey');
   if (auditInput && auditInput.value !== clean) auditInput.value = clean;
+  const pricingInput = document.getElementById('pricingInlineApiKeyInput');
+  if (pricingInput && pricingInput.value !== clean) pricingInput.value = clean;
 
   updateGlobalGeminiBadge();
+  window.dispatchEvent(new CustomEvent('pmg_gemini_key_updated', { detail: { key: clean } }));
+}
+window.setGlobalGeminiKey = setGlobalGeminiKey;
+
+function handleTopGeminiKeyInput(val) {
+  setGlobalGeminiKey(val);
 }
 
 function handleModalGeminiKeyInput(val) {
-  const clean = (val || '').trim();
-  if (clean) {
-    localStorage.setItem('pmg_gemini_key', clean);
-  } else {
-    localStorage.removeItem('pmg_gemini_key');
-  }
-  const topInput = document.getElementById('topGeminiApiKey');
-  if (topInput && topInput.value !== clean) topInput.value = clean;
-  const auditInput = document.getElementById('geminiApiKey');
-  if (auditInput && auditInput.value !== clean) auditInput.value = clean;
-
-  updateGlobalGeminiBadge();
+  setGlobalGeminiKey(val);
 }
 
 function updateGlobalGeminiBadge() {
-  const key = localStorage.getItem('pmg_gemini_key') || '';
+  const key = getGlobalGeminiKey();
   const topInput = document.getElementById('topGeminiApiKey');
   if (topInput && topInput.value !== key) topInput.value = key;
   const modalInput = document.getElementById('modalGeminiApiKey');
   if (modalInput && modalInput.value !== key) modalInput.value = key;
   const auditInput = document.getElementById('geminiApiKey');
   if (auditInput && auditInput.value !== key) auditInput.value = key;
+  const pricingInput = document.getElementById('pricingInlineApiKeyInput');
+  if (pricingInput && pricingInput.value !== key) pricingInput.value = key;
 
   const statusEl = document.getElementById('modalGeminiKeyStatus');
   if (statusEl) {
     if (key) {
-      statusEl.textContent = `✓ Key active (${key.slice(0, 6)}••••••••). Connected to Pricing, SWOT, Recruitment, Patient Care & Audits.`;
+      statusEl.textContent = `✓ Key active (${key.slice(0, 6)}••••••••). Connected to Pricing, SWOT, Recruitment, Patient Care, Scheduler & Audits.`;
       statusEl.className = 'text-[11px] text-emerald-700 font-semibold';
     } else {
       statusEl.textContent = 'No key set. Enter key to enable AI features across all modules.';
@@ -6175,14 +6192,18 @@ function openGlobalGeminiModal() {
   updateGlobalGeminiBadge();
   document.getElementById('globalGeminiModal')?.classList.remove('hidden');
 }
+window.openGlobalGeminiModal = openGlobalGeminiModal;
 
 function closeGlobalGeminiModal() {
   document.getElementById('globalGeminiModal')?.classList.add('hidden');
 }
+window.closeGlobalGeminiModal = closeGlobalGeminiModal;
 
 function promptUpdateGeminiKey() {
   openGlobalGeminiModal();
 }
+window.promptUpdateGeminiKey = promptUpdateGeminiKey;
+window.promptSetGeminiKey = openGlobalGeminiModal;
 
 function clearGlobalGeminiKey() {
   if (confirm('Clear the global Gemini API key from this device?\n\nAI features in all modules will be paused until a new key is added.')) {

@@ -1007,7 +1007,9 @@ function parseInvoiceOrCnFilename(filename) {
  * Returns array of validated stock items.
  */
 async function extractInvoiceItemsFromPdf(file, branch, onStatus) {
-  const apiKey = (localStorage.getItem('pmg_gemini_key') || '').trim() || PMG_GLOBAL_FALLBACK_KEY;
+  const apiKey = (typeof window.getGlobalGeminiKey === 'function' ? window.getGlobalGeminiKey() : '')
+              || (localStorage.getItem('pmg_gemini_key') || '').trim()
+              || PMG_GLOBAL_FALLBACK_KEY;
   const base64Data = await readFileAsBase64(file);
 
   if (typeof onStatus === 'function') {
@@ -2247,17 +2249,22 @@ async function handleQuickAddSubmit(e) {
 
 // ─── API KEY MANAGEMENT HELPER ───────────────────────────────────────────────
 function promptUpdateGeminiKey() {
-  const current = localStorage.getItem('pmg_gemini_key') || '';
+  if (typeof window.openGlobalGeminiModal === 'function') {
+    window.openGlobalGeminiModal();
+    return;
+  }
+  const current = (typeof window.getGlobalGeminiKey === 'function' ? window.getGlobalGeminiKey() : '')
+               || (localStorage.getItem('pmg_gemini_key') || '');
   const newKey = prompt('🔑 Google Gemini API Key:\n(Leave blank to use the built-in system key)', current);
   if (newKey !== null) {
-    const trimmed = newKey.trim();
-    if (trimmed) {
-      localStorage.setItem('pmg_gemini_key', trimmed);
-      showExpiryToast('✅ Custom Gemini API key saved!');
+    if (typeof window.setGlobalGeminiKey === 'function') {
+      window.setGlobalGeminiKey(newKey);
     } else {
-      localStorage.removeItem('pmg_gemini_key');
-      showExpiryToast('✅ Using built-in default system Gemini API key.');
+      const trimmed = newKey.trim();
+      if (trimmed) localStorage.setItem('pmg_gemini_key', trimmed);
+      else localStorage.removeItem('pmg_gemini_key');
     }
+    showExpiryToast('✅ Global Gemini API key saved across PMG Hub!');
   }
 }
 window.promptUpdateGeminiKey = promptUpdateGeminiKey;

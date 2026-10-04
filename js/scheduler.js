@@ -790,8 +790,10 @@ async function generateTimetable() {
     genBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Generating Schedule…';
   }
 
-  const apiKey = (document.getElementById('geminiApiKey')?.value || '').trim()
-              || localStorage.getItem('pmg_gemini_key') || '';
+  const apiKey = (typeof window.getGlobalGeminiKey === 'function' ? window.getGlobalGeminiKey() : '')
+              || (localStorage.getItem('pmg_gemini_key') || '').trim()
+              || (document.getElementById('topGeminiApiKey')?.value || '').trim()
+              || (document.getElementById('geminiApiKey')?.value || '').trim();
 
   const [yearStr, monthStr] = monthVal.split('-');
   const year = parseInt(yearStr, 10);

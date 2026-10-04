@@ -44,8 +44,12 @@ function initAudit() {
     apiKeyInput.value = saved;
     apiKeyInput.addEventListener('input', () => {
       const val = apiKeyInput.value.trim();
-      if (val) localStorage.setItem('pmg_gemini_key', val);
-      else localStorage.removeItem('pmg_gemini_key');
+      if (typeof window.setGlobalGeminiKey === 'function') {
+        window.setGlobalGeminiKey(val);
+      } else {
+        if (val) localStorage.setItem('pmg_gemini_key', val);
+        else localStorage.removeItem('pmg_gemini_key');
+      }
     });
   }
 
@@ -67,7 +71,8 @@ function initAudit() {
 // ─── TEST API KEY (MULTI-TIER: FLASH-LITE PRIMARY, FLASH SECONDARY) ──────────
 async function testGeminiApiKey() {
   const statusEl = document.getElementById('geminiKeyStatus');
-  const apiKey = (document.getElementById('geminiApiKey')?.value || '').trim()
+  const apiKey = (typeof window.getGlobalGeminiKey === 'function' ? window.getGlobalGeminiKey() : '')
+              || (document.getElementById('geminiApiKey')?.value || '').trim()
               || localStorage.getItem('pmg_gemini_key') || '';
 
   if (!apiKey) {
@@ -277,7 +282,8 @@ function formatTime(sec) {
 
 // ─── RUN AUDIT ────────────────────────────────────────────────────────────────
 async function runAudit() {
-  const apiKey = (document.getElementById('geminiApiKey')?.value || '').trim()
+  const apiKey = (typeof window.getGlobalGeminiKey === 'function' ? window.getGlobalGeminiKey() : '')
+              || (document.getElementById('geminiApiKey')?.value || '').trim()
               || localStorage.getItem('pmg_gemini_key') || '';
 
   const branchSelect = document.getElementById('auditBranchSelect');
@@ -286,7 +292,11 @@ async function runAudit() {
                   || (session ? session.branch : 'Kota Sentosa');
 
   if (!auditVideoFile && !apiKey) {
-    alert('Please upload a walkthrough video and enter your Gemini API key.');
+    if (typeof window.openGlobalGeminiModal === 'function') {
+      window.openGlobalGeminiModal();
+    } else {
+      alert('Please upload a walkthrough video and enter your Gemini API key.');
+    }
     return;
   }
 
