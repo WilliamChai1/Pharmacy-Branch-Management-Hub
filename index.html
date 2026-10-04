@@ -98,7 +98,7 @@
           🔐 Connected to <strong>PMG Master Staff</strong>
         </p>
         <p class="text-[10px] text-gray-500 mt-0.5">
-          Authorized: <b>Area Manager</b>, <b>Branch Manager</b> & <b>Pharmacist</b><br>
+          Authorized: <b>Pharmacist-in-Charge</b> & <b>Branch Manager</b><br>
           <span class="text-gray-400">Signed up via PMG Sales App? Use your username & PIN.</span>
         </p>
       </div>
@@ -695,12 +695,6 @@
             <select id="schedulerBranchSelect"
               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-400 outline-none bg-white font-semibold text-gray-800">
               <option value="KS01" selected>KS01 – Kota Sentosa</option>
-              <option value="MATANG JAYA">MATANG JAYA – Matang Jaya</option>
-              <option value="SUNGAI MOYAN">SUNGAI MOYAN – Sungai Moyan</option>
-              <option value="MALIHAH">MALIHAH – Malihah</option>
-              <option value="METROCITY">METROCITY – Metrocity</option>
-              <option value="ASTANA">ASTANA – Astana</option>
-              <option value="SAMARIANG">SAMARIANG – Samariang</option>
             </select>
           </div>
           <div>
@@ -830,23 +824,28 @@
       <div id="schedulerResultsPanel" class="hidden mb-6">
         
         <!-- KPI Cards -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
-          <div class="bg-white rounded-xl p-4 shadow-sm border border-blue-200">
+        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
+          <div class="bg-white rounded-xl p-3.5 shadow-sm border border-blue-200">
             <p class="text-[11px] text-gray-500 uppercase tracking-wide font-semibold">Pharmacist Coverage</p>
             <p id="kpiSchedulerPharm" class="text-2xl font-black text-blue-700 mt-0.5">100%</p>
             <p class="text-[10px] text-blue-600 mt-1 font-medium">AM & PM covered</p>
           </div>
-          <div class="bg-white rounded-xl p-4 shadow-sm border border-emerald-200">
+          <div class="bg-white rounded-xl p-3.5 shadow-sm border border-teal-200">
+            <p class="text-[11px] text-gray-500 uppercase tracking-wide font-semibold">Shift Equity & Parity</p>
+            <p id="kpiSchedulerParity" class="text-2xl font-black text-teal-700 mt-0.5">100%</p>
+            <p class="text-[10px] text-teal-600 mt-1 font-medium">Variance ≤ 1 shift</p>
+          </div>
+          <div class="bg-white rounded-xl p-3.5 shadow-sm border border-emerald-200">
             <p class="text-[11px] text-gray-500 uppercase tracking-wide font-semibold">Multilingual Balance</p>
             <p id="kpiSchedulerLang" class="text-2xl font-black text-emerald-600 mt-0.5">100%</p>
             <p class="text-[10px] text-emerald-600 mt-1 font-medium">Chinese + Malay/Iban</p>
           </div>
-          <div class="bg-white rounded-xl p-4 shadow-sm border border-purple-200">
+          <div class="bg-white rounded-xl p-3.5 shadow-sm border border-purple-200">
             <p class="text-[11px] text-gray-500 uppercase tracking-wide font-semibold">Total Working Shifts</p>
             <p id="kpiSchedulerShifts" class="text-2xl font-black text-purple-700 mt-0.5">0</p>
-            <p class="text-[10px] text-purple-600 mt-1 font-medium">8H & 5H combined</p>
+            <p class="text-[10px] text-purple-600 mt-1 font-medium">8H & 4H combined</p>
           </div>
-          <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+          <div class="bg-white rounded-xl p-3.5 shadow-sm border border-gray-200">
             <p class="text-[11px] text-gray-500 uppercase tracking-wide font-semibold">Total Rest Days</p>
             <p id="kpiSchedulerRest" class="text-2xl font-black text-gray-700 mt-0.5">0</p>
             <p class="text-[10px] text-gray-500 mt-1 font-medium">RD compliance</p>
@@ -879,6 +878,11 @@
           </div>
         </div>
 
+        <!-- Manpower Density Warning Alert Banner -->
+        <div id="schedulerDensityAlert" class="hidden mb-4 p-4 bg-amber-50 border-l-4 border-amber-500 rounded-r-xl text-amber-900 text-xs">
+          <!-- Dynamically injected if any day has <6 working staff -->
+        </div>
+
         <!-- Interactive Monthly Timetable Matrix -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-5">
           <div class="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
@@ -908,6 +912,11 @@
           </div>
         </div>
 
+        <!-- Fairness Parity & 6S Cleaning Rotation Summary Section -->
+        <div id="schedulerParitySection" class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-5">
+          <!-- Dynamically populated -->
+        </div>
+
       </div><!-- /schedulerResultsPanel -->
 
     </div><!-- /am-view-scheduler -->
@@ -926,9 +935,9 @@
           <div>
             <div class="flex items-center gap-2 mb-0.5">
               <h2 class="text-lg font-bold text-gray-900">5S Outlet Walkthrough AI Auditor</h2>
-              <span class="text-xs bg-amber-100 text-amber-700 font-semibold px-2 py-0.5 rounded">Area Manager</span>
+              <span class="text-xs bg-amber-100 text-amber-700 font-semibold px-2 py-0.5 rounded">Branch 6S Operations</span>
             </div>
-            <p class="text-gray-500 text-sm">Upload a 60–90 second MP4/MOV walkthrough video. Gemini Vision analyses it across 4 compliance categories and generates a timestamped findings report.</p>
+            <p class="text-gray-500 text-sm">Upload a 60–90 second MP4/MOV walkthrough video. Gemini Vision analyses it across official PMG HQ 200-point rubric categories and generates a timestamped findings report.</p>
           </div>
         </div>
       </div>
@@ -939,13 +948,7 @@
           <label class="block text-xs text-gray-600 font-semibold mb-1">Target Branch for Walkthrough Audit</label>
           <select id="auditBranchSelect"
             class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-amber-400 outline-none bg-white min-w-[220px]">
-            <option value="">Select branch…</option>
-            <option value="KS01">Kota Sentosa</option>
-            <option value="BR02">BR02 – Branch 02</option>
-            <option value="BR03">BR03 – Branch 03</option>
-            <option value="BR04">BR04 – Branch 04</option>
-            <option value="BR05">BR05 – Branch 05</option>
-            <option value="BR06">BR06 – Branch 06</option>
+            <option value="KS01" selected>KS01 – Kota Sentosa</option>
           </select>
         </div>
         <div class="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-900">
@@ -1014,9 +1017,11 @@
               <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
                 <div><span class="text-gray-400 text-xs uppercase">Branch</span><br><span id="auditBranch" class="font-semibold">—</span></div>
                 <div><span class="text-gray-400 text-xs uppercase">Date</span><br><span id="auditDate" class="font-semibold">—</span></div>
-                <div><span class="text-gray-400 text-xs uppercase">Overall Score</span><br><span id="auditScoreText" class="font-bold text-lg">—</span></div>
+                <div><span class="text-gray-400 text-xs uppercase">Overall Score</span><br><span id="auditScoreText" class="font-bold text-lg text-blue-800">—</span></div>
                 <div><span class="text-gray-400 text-xs uppercase">AI Engine</span><br><span id="auditEngineText" class="font-semibold text-amber-700">Gemini 3.5 Flash</span></div>
               </div>
+              <!-- Bonus Tier Banner -->
+              <div id="auditBonusTierBanner" class="mt-3 p-2.5 rounded-lg border text-xs font-medium flex items-center justify-between flex-wrap gap-2"></div>
             </div>
             <!-- Action buttons -->
             <div class="flex gap-2 flex-wrap no-print">
@@ -1032,24 +1037,26 @@
           </div>
         </div>
 
-        <!-- Category cards -->
-        <div id="auditCategoryCards" class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5"></div>
+        <!-- Category cards (8 HQ Official Categories) -->
+        <div id="auditCategoryCards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-5"></div>
 
         <!-- Timestamped findings table -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-5">
-          <div class="px-5 py-3 border-b border-gray-100">
+          <div class="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
             <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              <i class="fa-solid fa-table-list text-amber-500"></i> Timestamped Findings
+              <i class="fa-solid fa-table-list text-amber-500"></i> Timestamped Deductions & Observations
             </h3>
+            <span class="text-xs text-gray-400 font-mono">Deductions aligned with PMG HQ Marking Criteria</span>
           </div>
           <div class="overflow-x-auto">
             <table class="w-full text-sm">
               <thead class="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Time</th>
-                  <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Category</th>
-                  <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Observation</th>
-                  <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 uppercase">Severity</th>
+                  <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-20">Time</th>
+                  <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-48">HQ Item / Category</th>
+                  <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Audit Observation</th>
+                  <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 uppercase w-28">Deduction</th>
+                  <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-72">Corrective Action (HQ SLA)</th>
                 </tr>
               </thead>
               <tbody id="auditFindingsBody"></tbody>
@@ -1060,16 +1067,18 @@
         <!-- Priority actions -->
         <div class="bg-red-50 border border-red-200 rounded-xl p-5 mb-5">
           <h3 class="text-sm font-bold text-red-700 mb-3 flex items-center gap-2">
-            <i class="fa-solid fa-triangle-exclamation"></i> Top Priority Actions
+            <i class="fa-solid fa-triangle-exclamation"></i> Top Priority Rectifications (Immediate Action Required)
           </h3>
           <div id="auditPriorityActions"></div>
         </div>
 
         <!-- Actionable checklist -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-5">
-          <h3 class="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
-            <i class="fa-solid fa-clipboard-check text-green-600"></i> Floor Rectification Checklist
-            <span class="text-xs text-gray-400">(tick off as completed)</span>
+          <h3 class="text-sm font-semibold text-gray-700 mb-4 flex items-center justify-between flex-wrap gap-2">
+            <span class="flex items-center gap-2">
+              <i class="fa-solid fa-clipboard-check text-green-600"></i> Pre-Audit Correction Checklist (HQ Pre-Audit Preparation)
+            </span>
+            <span class="text-xs text-gray-400">(Duty teammates must verify and tick off before official audit)</span>
           </h3>
           <div id="auditChecklist" class="space-y-3"></div>
         </div>
@@ -1092,10 +1101,10 @@
             </div>
             <div>
               <div class="flex items-center gap-2 mb-0.5 flex-wrap">
-                <h2 class="text-lg font-bold text-gray-900">Area Manager Pricing Intelligence & Strategic SWOT Matrix</h2>
-                <span class="text-xs bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded border border-emerald-200">7 Outlets Master</span>
+                <h2 class="text-lg font-bold text-gray-900">Pricing Intelligence & Strategic SWOT Matrix</h2>
+                <span class="text-xs bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded border border-emerald-200">Kota Sentosa & Regional Scope</span>
               </div>
-              <p class="text-gray-500 text-xs">Standardize pricing across your 7 managed branches in Kuching & Padawan, benchmark against local hypermarkets (Farley, Emart, H&L) and pharmacy chains, and execute branch-by-branch SWOT battle plans.</p>
+              <p class="text-gray-500 text-xs">Benchmark against local hypermarkets (Farley, Emart, H&L) and pharmacy chains, optimize SKU gross margin, and execute Kota Sentosa SWOT battle plans.</p>
             </div>
           </div>
           <!-- Clean actions handled globally from Top Navigation Bar -->
@@ -1107,10 +1116,10 @@
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
           <div class="text-xs text-gray-500 font-semibold uppercase mb-1">Monitored SKUs</div>
           <div id="pricingSummaryTotalSkus" class="text-2xl font-bold text-gray-900 font-mono">—</div>
-          <div class="text-[11px] text-gray-400 mt-0.5">Across 7 PMG Outlets</div>
+          <div class="text-[11px] text-gray-400 mt-0.5">Across Monitored Outlets</div>
         </div>
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <div class="text-xs text-gray-500 font-semibold uppercase mb-1">Area Avg Gross Margin</div>
+          <div class="text-xs text-gray-500 font-semibold uppercase mb-1">Branch Avg Gross Margin</div>
           <div id="pricingSummaryAvgMargin" class="text-2xl font-bold text-emerald-600 font-mono">—</div>
           <div class="text-[11px] text-emerald-700 mt-0.5">Target: &ge; 25.0%</div>
         </div>
@@ -1134,7 +1143,7 @@
         </button>
         <button type="button" id="pricingInnerTabBtn-swot" onclick="switchPricingInnerTab('swot')"
           class="px-4 py-2 text-xs font-bold rounded-lg transition text-gray-600 hover:text-gray-900 bg-gray-100 whitespace-nowrap">
-          <i class="fa-solid fa-map-location-dot mr-1.5 text-blue-600"></i> 2. The 7 Branches SWOT & Action Plans
+          <i class="fa-solid fa-map-location-dot mr-1.5 text-blue-600"></i> 2. Branch SWOT & Strategic Positioning
         </button>
         <button type="button" id="pricingInnerTabBtn-playbook" onclick="switchPricingInnerTab('playbook')"
           class="px-4 py-2 text-xs font-bold rounded-lg transition text-gray-600 hover:text-gray-900 bg-gray-100 whitespace-nowrap">
@@ -1330,7 +1339,7 @@
       <div id="pricingTabPanel-playbook" class="hidden">
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
           <h3 class="font-bold text-base text-gray-900 mb-1 flex items-center gap-2">
-            <i class="fa-solid fa-chess-queen text-purple-700"></i> Area Manager Competitive Battle Playbook
+            <i class="fa-solid fa-chess-queen text-purple-700"></i> Branch Competitive Battle Playbook
           </h3>
           <p class="text-xs text-gray-500 mb-4">Tactical protocols to protect pharmacy margins while effectively countering supermarket loss-leader pricing and aggressive chain pharmacy campaigns in Greater Kuching.</p>
           <div id="pricingPlaybookContainer">
@@ -3369,7 +3378,7 @@ Date visit: 06.01.2026
     </div>
   </div>
 
-  <!-- ─── ONEDRIVE BACKUP & AREA MANAGER SHARING GUIDE MODAL ──────────────── -->
+  <!-- ─── ONEDRIVE BACKUP & CLOUD SYNC GUIDE MODAL ──────────────────────── -->
   <div id="oneDriveGuideModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 hidden">
     <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[92vh]">
       <!-- Header -->
@@ -3379,7 +3388,7 @@ Date visit: 06.01.2026
             <i class="fa-brands fa-microsoft"></i>
           </div>
           <div>
-            <h3 class="text-base font-bold">OneDrive Daily Backup & Area Manager Sync</h3>
+            <h3 class="text-base font-bold">OneDrive Daily Backup & Cloud Sync</h3>
             <p class="text-xs text-sky-100 mt-0.5">Automated cloud backup without physical USB pen drives</p>
           </div>
         </div>
@@ -3402,7 +3411,7 @@ Date visit: 06.01.2026
           </p>
           <div class="ml-8 mt-2 p-2.5 bg-white rounded-lg border border-sky-200 font-mono text-[11px] text-sky-900 flex items-center gap-2">
             <i class="fa-solid fa-folder-open text-sky-600"></i>
-            <span>OneDrive - PMG Pharmacy \ PatientCare_Backups \ [Branch_Name]</span>
+            <span>OneDrive - PMG Pharmacy \ PatientCare_Backups \ Kota_Sentosa</span>
           </div>
           <p class="text-[11px] text-gray-500 ml-8 mt-1.5">
             Windows OneDrive automatically uploads and synchronizes the <code class="bg-sky-100 text-sky-800 px-1 py-0.5 rounded font-mono">.pmgbak</code> file to Microsoft Cloud within seconds.
@@ -3413,17 +3422,17 @@ Date visit: 06.01.2026
         <div class="p-4 bg-blue-50/60 rounded-xl border border-blue-100">
           <div class="flex items-center gap-2 mb-1.5">
             <span class="w-6 h-6 rounded-full bg-blue-700 text-white flex items-center justify-center font-bold text-xs">2</span>
-            <h4 class="font-bold text-gray-900 text-sm">How Area Manager Receives Your Daily Backups</h4>
+            <h4 class="font-bold text-gray-900 text-sm">How Cloud Storage Receives Your Daily Backups</h4>
           </div>
           <ul class="ml-8 space-y-2 text-gray-600 leading-relaxed list-disc">
             <li>
-              <b>Area Manager Setup:</b> William Chai creates a master OneDrive folder named <code class="bg-blue-100 text-blue-900 px-1 py-0.5 rounded font-mono">PMG_PatientCare_Backups</code> with branch subfolders (e.g., <code class="bg-blue-100 text-blue-900 px-1 py-0.5 rounded font-mono">Kota_Sentosa</code>, <code class="bg-blue-100 text-blue-900 px-1 py-0.5 rounded font-mono">Branch_02</code>).
+              <b>Cloud Backup Setup:</b> Pharmacist Chai Yee Sian (William) connects to designated folder <code class="bg-blue-100 text-blue-900 px-1 py-0.5 rounded font-mono">PMG_PatientCare_Backups\Kota_Sentosa</code>.
             </li>
             <li>
-              <b>One-Time Sharing:</b> William shares each branch folder with that branch's Microsoft 365 login. The branch clicks <i>"Add shortcut to My files"</i> in OneDrive web once.
+              <b>Seamless Synchronization:</b> The branch folder syncs with Microsoft 365 cloud storage via local OneDrive desktop agent.
             </li>
             <li>
-              <b>Zero USB Dependency:</b> Whenever your branch saves its daily backup, it instantly appears in William's OneDrive. As Area Manager, William can inspect or restore any branch's data directly from his laptop or mobile.
+              <b>Zero USB Dependency:</b> Whenever your branch saves its daily backup, it instantly syncs to OneDrive. Pharmacist William can inspect or restore branch data directly from branch computers or mobile.
             </li>
           </ul>
         </div>
@@ -3550,7 +3559,7 @@ Date visit: 06.01.2026
             <div class="flex items-center gap-1.5"><i class="fa-solid fa-check text-emerald-600"></i> <b>Pricing & SWOT:</b> KVI & Strategy matrix</div>
             <div class="flex items-center gap-1.5"><i class="fa-solid fa-check text-emerald-600"></i> <b>HR Recruitment:</b> CV & SPM AI evaluation</div>
             <div class="flex items-center gap-1.5"><i class="fa-solid fa-check text-emerald-600"></i> <b>Patient Care:</b> Consultation summaries</div>
-            <div class="flex items-center gap-1.5"><i class="fa-solid fa-check text-emerald-600"></i> <b>AM Audit:</b> Video & 5S inspection AI</div>
+            <div class="flex items-center gap-1.5"><i class="fa-solid fa-check text-emerald-600"></i> <b>5S Audit:</b> Video & 5S inspection AI</div>
             <div class="flex items-center gap-1.5"><i class="fa-solid fa-check text-emerald-600"></i> <b>Roster:</b> AI shift conflict resolver</div>
             <div class="flex items-center gap-1.5"><i class="fa-solid fa-check text-emerald-600"></i> <b>Credit Notes:</b> OCR document parsing</div>
           </div>
@@ -3652,7 +3661,7 @@ Date visit: 06.01.2026
           <p class="font-bold flex items-center gap-1.5"><i class="fa-solid fa-circle-info text-amber-600"></i> Single Unified Sync:</p>
           <ul class="list-disc pl-4 space-y-1 text-gray-700">
             <li><b>For Branch Pharmacists:</b> Click "Link / Change Folder" and choose your specific branch folder (e.g. <code>KOTA SENTOSA</code>).</li>
-            <li><b>For Area Manager William:</b> Choose the parent folder to automatically sync and monitor all 7 branches.</li>
+            <li><b>For Pharmacist William:</b> Choose the designated branch folder to automatically sync and preserve Kota Sentosa records.</li>
             <li>Once linked, clicking <b>"Sync Now"</b> or editing data auto-syncs all modules (patients, jobs, returns, pricing, expirations) directly into your OneDrive without clicking individual backup buttons!</li>
           </ul>
         </div>
@@ -5108,7 +5117,7 @@ Date visit: 06.01.2026
     <!-- Staff login redirect -->
     <div class="text-center mt-6">
       <a href="index.html" class="text-xs text-blue-600 hover:underline">
-        <i class="fa-solid fa-lock text-[10px] mr-1"></i> PMG Staff / Area Manager Sign In
+        <i class="fa-solid fa-lock text-[10px] mr-1"></i> PMG Staff / Branch Management Sign In
       </a>
     </div>
   </main>
@@ -5135,7 +5144,7 @@ Date visit: 06.01.2026
 
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     AREA MANAGER PRICING INTELLIGENCE & AI MODALS
+     PRICING INTELLIGENCE & AI MODALS
 ══════════════════════════════════════════════════════════════════════════════ -->
 
 <!-- Modal 1: Gemini AI Deep Pricing & SWOT Research Runner -->
@@ -5428,7 +5437,7 @@ Date visit: 06.01.2026
       </div>
 
       <div>
-        <label class="block text-gray-600 mb-1">Area Manager Notes & Directives</label>
+        <label class="block text-gray-600 mb-1">Branch Management Notes & Directives</label>
         <input type="text" id="addSkuNotes" placeholder="e.g. Pair with cotton pads; display on eye-level shelf"
           class="w-full border border-gray-300 rounded-lg px-3 py-1.5">
       </div>
@@ -5438,7 +5447,7 @@ Date visit: 06.01.2026
           Cancel
         </button>
         <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-xs transition">
-          Save SKU to 7 Branches
+          Save SKU to Master Matrix
         </button>
       </div>
     </form>

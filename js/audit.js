@@ -341,64 +341,134 @@ async function runAudit() {
 // ─── GEMINI GENERATE WITH KEYFRAMES (DUAL-TIER: 3.5 FLASH & 3.5 FLASH-LITE) ──
 async function callGeminiGenerateWithFrames(frames, branchName, apiKey, setStatus) {
   const today = new Date().toISOString().slice(0, 10);
-  const systemPrompt = `You are a professional retail pharmacy 5S compliance auditor for PMG Pharmacy.
-Analyse the provided sequence of keyframe images extracted from a store walkthrough video (with timestamp labels) and produce a detailed structured JSON audit report.
+  const systemPrompt = `You are an official compliance auditor for PMG PHARMACY SDN BHD.
+Analyse the provided sequence of keyframe images extracted from a store walkthrough video (with timestamp labels) and produce a detailed structured JSON audit report strictly calibrated against the official PMG HQ Branch Compliance Audit Marking Scheme.
+This audit score directly determines outlet performance grading and team bonus payout.
 
-Evaluate across FOUR mandatory categories:
-1. DISPENSARY_HYGIENE: Paperwork clutter, prescription organisation, compounding area cleanliness, expired stock on shelves, unorganised medications.
-2. MERCHANDISING_SHELVING: Shelf gaps, face-forward product alignment, missing price tags, planogram compliance, dusty displays.
-3. FLOOR_SAFETY: Corridor clearances (min 1m walkway), supplier cartons on floor, wet hazards, emergency exit obstruction.
-4. POP_MARKETING: Current promotional displays, expired posters removed, POP material condition and placement.
+═══════════════════════════════════════════════════════════════════════════
+OFFICIAL PMG HQ AUDIT MARKING SCHEME & CATEGORIES (TOTAL: 200 POINTS):
+═══════════════════════════════════════════════════════════════════════════
+1. Stock Management (72 Points) [Passing threshold: 80% = 57.6 pts]
+   - 1.1 Stock Expiry Control and Management (3 pts): Check expiry color tags, clearance basket, no expired items on shelves.
+   - 1.2 Stock Cycle (3 pts): Optimal range 1.5 - 2.5 months (buffer 2.0 mo standard).
+   - 1.3 Stock Aging (3 pts): No stagnant or dead stock left unaddressed.
+   - 1.4 Controlled Substance Storage / Cold Chain (3 pts): Poison cabinet locked; fridge temperature between 2°C–8°C.
+   - 1.5 Stock Accuracy (60 pts, 1 pt/SKU): Physical stock must tally with system records.
 
-Return ONLY valid JSON matching this schema exactly:
+2. Customer Service (6 Points) [Passing threshold: 80% = 4.8 pts]
+   - 2.1 Customer Greeting (3 pts): Warm professional greeting within 3 seconds.
+   - 2.2 Customer Request / Special Order Items (3 pts): Special order request book updated.
+
+3. Display (48 Points) [Passing threshold: 80% = 38.4 pts]
+   - 3.1 Display at Cashier (3 pts): QR code payment display, marketing QR codes visible.
+   - 3.2 Licensing Display Up-to-date (6 pts):
+       a) Business Registration / Trading License / Body Corporate (3 pts)
+       b) Poison A License / ARC / FRP / Pharmacist on Duty Display (3 pts)
+   - 3.3 Fire Extinguisher License Up-to-date & Unobstructed (3 pts)
+   - 3.4 Price Tag Display Up-to-Date (30 pts, 1 pt/SKU): Every item must have price tag; barcode sticker price must MATCH gondola price tag exactly.
+   - 3.5 Marketing Display (6 pts):
+       3.5.1 Promotion Campaign Display Up-to-date (3 pts)
+       3.5.2 POSM / KKLIU Display Up-to-date (3 pts): NO EXPIRED campaign POSM materials on display.
+
+4. Recording (18 Points) [Passing threshold: 80% = 14.4 pts]
+   - 4.1 Poison C Record (3 pts)
+   - 4.2 Codeine and Pseudoephedrine Record (3 pts)
+   - 4.3 Codeine and Pseudoephedrine Stock Accuracy (6 pts)
+   - 4.4 Prescription Record (3 pts)
+   - 4.5 Temperature Record (Fridge, Store) (3 pts)
+
+5. Cleanliness (22 Points) [Passing threshold: 80% = 17.6 pts] - HIGH VISIBILITY IN WALKTHROUGH:
+   - 5.1 Indoor (Other areas, walkways, floor clean) (2 pts)
+   - 5.2 Prescription Counter (2 pts): Dust-free, wiped, no residue.
+   - 5.3 Cashier Counter (2 pts): Dust-free, wiped, no dead insects, no loose documents.
+   - 5.4 Shop Entrance (Glass Door, Front Shop) (2 pts): Clean glass, no smudges or dirt.
+   - 5.5 Counseling Area (2 pts): Clean table, tidy chairs.
+   - 5.6 Pantry (2 pts): Clean sink, tidy counter, no food waste.
+   - 5.7 Toilet (2 pts): Clean, dry floor, no foul odor or stains.
+   - 5.8 Stock Shelves (2 pts): Dust-free, wiped, no dead insects.
+   - 5.9 Store Room / Stock Storage Area (2 pts): Organized, clean floor.
+   - 5.10 Products (OTC, POM) on Gondola (2 pts): All displayed products must be free from dust coats.
+   - 5.11 Shop Facilities (Fridges, Fan, PC, TV, CCTV) (2 pts): ABSOLUTELY NO personal beverages/food stored in medication fridge!
+
+6. Tidiness (14 Points) [Passing threshold: 80% = 11.2 pts] - HIGH VISIBILITY IN WALKTHROUGH:
+   - 6.1 Glass Door Entrance Display (2 pts): Neat marketing, no peeling stickers.
+   - 6.2 Prescription Counter (2 pts): Neat dispensing tools, no clutter.
+   - 6.3 Cashier Counter (2 pts): Organized receipt rolls, cash drawer neat.
+   - 6.4 Counseling Area (2 pts): Patient leaflets neatly organized.
+   - 6.5 Pantry (2 pts): Tidy utensils and cabinets.
+   - 6.6 Store Room / Storage Walkway (2 pts): Clear walkways (min 1m), no cartons on floor.
+   - 6.7 Stock Arrangement (OTC/POM) (2 pts): NO empty spaces or gaps between products; front-facing labels; strict compliance with SOP "1.3.1.1 In-Store Merchandising Display Rules in PMG Pharmacy".
+
+7. Operation (16 Points) [Passing threshold: 80% = 12.8 pts]
+   - 7.1 Proper Petty Cash Record, Storage and Accuracy (2 pts)
+   - 7.2 Invoices / Credit Notes Received into System < 2 Days (2 pts)
+   - 7.3 Stock Arrangement - FIFO Adherence (2 pts): Items arranged according to First-In First-Out method to minimize expiry risk.
+   - 7.4 Gondola Label and Stock Display Matching (2 pts)
+   - 7.5 Cashier Operation & Membership Policy (4 pts)
+   - 7.6 Stock Management Procedures & Daily SOP (4 pts)
+
+8. Team Member's Attire (4 Points) [Passing threshold: 80% = 3.2 pts]
+   - 8.1 Pharmacists/Nutritionist/Dietitian (2 pts): White Coat + Lanyard (1 pt), Professional Formal Attire + Closed-Toe Footwear (1 pt)
+   - 8.2 BM/ABM/Health Advisor/PA (2 pts): Uniform + Lanyard (1 pt), Formal Long Pants / Over-Knee Skirt + Closed-Toe Footwear (1 pt)
+
+═══════════════════════════════════════════════════════════════════════════
+STRICT PMG HQ BONUS & PASSING CRITERIA:
+═══════════════════════════════════════════════════════════════════════════
+HQ Standard: "To achieve an overall passing score, every component of the audit criteria must meet or exceed the passing standard (80% per category)".
+- Tier 1 Bonus (Achieved): Overall score >= 90% (>= 180/200) AND every category >= 80% (Pass).
+- Tier 2 Bonus (Achieved): Overall score 80% - 89% (160–179/200) AND every category >= 80% (Pass).
+- Bonus At Risk / Forfeited: Overall score < 80% OR ANY single category < 80% (Fail).
+
+Return ONLY valid JSON matching this schema:
 {
-  "overall_score": <integer 0-100>,
+  "overall_score": <integer 0-200>,
+  "max_score": 200,
+  "percentage": <float 0-100>,
+  "overall_status": "<Pass|Fail>",
+  "bonus_tier": "<Tier 1 Achieved (Full Bonus) | Tier 2 Achieved (Standard Bonus) | Bonus At Risk / Forfeited>",
+  "bonus_tier_reason": "<string explanation>",
   "branch_observed": "${branchName || 'Target Outlet'}",
   "audit_date": "${today}",
   "categories": [
     {
-      "id": "DISPENSARY_HYGIENE",
-      "name": "Dispensary & Counter Hygiene",
-      "score": <integer 0-100>,
-      "status": "<PASS|FAIL|ATTENTION>",
+      "id": "CAT_1",
+      "clause_num": "1",
+      "name": "Stock Management",
+      "score": <number>,
+      "max_points": 72,
+      "percentage": <number>,
+      "status": "<Pass|Fail>",
       "findings": [
-        { "timestamp": "<MM:SS>", "observation": "<string>", "severity": "<Low|Medium|High>" }
-      ],
-      "checklist_items": ["<action item 1>", "<action item 2>"]
-    },
-    {
-      "id": "MERCHANDISING_SHELVING",
-      "name": "Merchandising & Shelf Facing",
-      "score": <integer 0-100>,
-      "status": "<PASS|FAIL|ATTENTION>",
-      "findings": [
-        { "timestamp": "<MM:SS>", "observation": "<string>", "severity": "<Low|Medium|High>" }
-      ],
-      "checklist_items": ["<action item 1>", "<action item 2>"]
-    },
-    {
-      "id": "FLOOR_SAFETY",
-      "name": "Floor Safety & Backroom Storage",
-      "score": <integer 0-100>,
-      "status": "<PASS|FAIL|ATTENTION>",
-      "findings": [
-        { "timestamp": "<MM:SS>", "observation": "<string>", "severity": "<Low|Medium|High>" }
-      ],
-      "checklist_items": ["<action item 1>", "<action item 2>"]
-    },
-    {
-      "id": "POP_MARKETING",
-      "name": "POP & Marketing Compliance",
-      "score": <integer 0-100>,
-      "status": "<PASS|FAIL|ATTENTION>",
-      "findings": [
-        { "timestamp": "<MM:SS>", "observation": "<string>", "severity": "<Low|Medium|High>" }
+        {
+          "timestamp": "<MM:SS>",
+          "clause": "<e.g. 1.4 Controlled Substance Storage>",
+          "observation": "<string>",
+          "points_deducted": <number>,
+          "severity": "<Low|Medium|High>",
+          "corrective_action": "<string>",
+          "deadline": "<3-Day SLA | 1-Month SLA | Immediate>"
+        }
       ],
       "checklist_items": ["<action item 1>", "<action item 2>"]
     }
+    // ... all 8 categories included
+  ],
+  "timestamped_deductions": [
+    {
+      "timestamp": "<MM:SS>",
+      "clause": "<e.g. 5.3 Cashier Counter Cleanliness>",
+      "category": "<e.g. Cleanliness>",
+      "observation": "<string>",
+      "points_deducted": <number>,
+      "corrective_action": "<string>",
+      "deadline": "<3-Day SLA | 1-Month SLA>"
+    }
   ],
   "top_priority_actions": ["<string>", "<string>", "<string>"],
-  "whatsapp_summary": "<concise 3-4 line WhatsApp-ready text with emojis>"
+  "pre_audit_checklist": [
+    { "text": "<action>", "sla": "<3-Day SLA | Immediate | 1-Month SLA>" }
+  ],
+  "whatsapp_summary": "<concise WhatsApp-ready message with bonus status, score / 200, and top 3-day action items>"
 }`;
 
   const contentsParts = [];
@@ -415,7 +485,7 @@ Return ONLY valid JSON matching this schema exactly:
   });
 
   contentsParts.push({
-    text: `Conduct a thorough 5S walkthrough audit of this pharmacy outlet (${branchName}) using the keyframes above. Return the JSON report.`
+    text: `Conduct a strict walkthrough audit of this pharmacy outlet (${branchName}) against all 8 official PMG HQ Audit categories. Deduct points with exact clauses and timestamps. Return the JSON report.`
   });
 
   const body = {
@@ -428,7 +498,6 @@ Return ONLY valid JSON matching this schema exactly:
     }
   };
 
-  // Primary: Gemini 3.5 Flash-Lite | Secondary: Gemini 3.5 Flash | Tertiary: Gemini 3.1 Flash-Lite
   const candidateModels = [
     { code: AUDIT_PRIMARY_MODEL,   name: 'Gemini 3.5 Flash-Lite (Primary: 500 RPD)' },
     { code: AUDIT_SECONDARY_MODEL, name: 'Gemini 3.5 Flash (Secondary: 20 RPD)' },
@@ -441,7 +510,7 @@ Return ONLY valid JSON matching this schema exactly:
   for (let i = 0; i < candidateModels.length; i++) {
     const m = candidateModels[i];
     try {
-      setStatus(`Analysing frames with ${m.name}…`);
+      setStatus(`Analysing walkthrough keyframes against PMG HQ Rubric with ${m.name}…`);
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.code}:generateContent?key=${apiKey}`;
       const resp = await fetch(endpoint, {
         method: 'POST',
@@ -491,84 +560,382 @@ Return ONLY valid JSON matching this schema exactly:
   throw lastErr || new Error('Failed to obtain audit report from Gemini Vision.');
 }
 
-// ─── MOCK DEMO REPORT ─────────────────────────────────────────────────────────
+// ─── MOCK DEMO REPORT (CALIBRATED TO OFFICIAL PMG HQ KOTA SENTOSA AUDIT) ───────
 function renderMockAuditReport(branchOverride) {
   const session    = typeof getSession === 'function' ? getSession() : null;
   const branchName = branchOverride || (session ? session.branch : 'Kota Sentosa');
   const today      = new Date().toISOString().slice(0, 10);
 
   const mockReport = {
-    overall_score: 74,
+    overall_score: 171,
+    max_score: 200,
+    percentage: 85.5,
+    overall_status: 'Fail',
+    bonus_tier: 'Bonus At Risk / Forfeited',
+    bonus_tier_reason: 'Category 5. Cleanliness failed (12/22, 54.5% < 80% passing threshold). HQ standard requires all 8 categories to meet or exceed 80% to qualify for bonus payout.',
     branch_observed: branchName,
     audit_date: today,
-    _modelUsed: 'Demo Engine (Offline Reference)',
+    _modelUsed: 'Official PMG HQ Compliance Engine (Natasha Vischilla Rubric)',
     categories: [
       {
-        id: 'DISPENSARY_HYGIENE',
-        name: 'Dispensary & Counter Hygiene',
-        score: 68,
-        status: 'ATTENTION',
+        id: 'CAT_1',
+        clause_num: '1',
+        name: 'Stock Management',
+        score: 63,
+        max_points: 72,
+        percentage: 87.5,
+        status: 'Pass',
         findings: [
-          { timestamp: '00:12', observation: 'Loose prescription slips stacked unsorted on the dispensary counter.', severity: 'Medium' },
-          { timestamp: '00:45', observation: 'Compounding area shows residue; surfaces not wiped down post-preparation.', severity: 'High' },
-          { timestamp: '01:03', observation: 'Two expired stock items spotted on the bottom shelf of the controlled medicines cabinet.', severity: 'High' },
+          {
+            timestamp: '00:15',
+            clause: '1.2 Stock Cycle',
+            observation: 'Stock cycle is 2.73, which is above the optimal HQ standard range of 1.5–2.5 months.',
+            points_deducted: 3,
+            severity: 'High',
+            corrective_action: 'Implement targeted promotions to reduce excess stock. Adjust reorder buffer points to 2.0 mo standard.',
+            deadline: '1-Month SLA'
+          },
+          {
+            timestamp: '00:45',
+            clause: '1.5 Stock Accuracy',
+            observation: 'Physical stock count shows only 18/20 sampled SKUs tally with Xilnex inventory (90% accuracy).',
+            points_deducted: 6,
+            severity: 'Medium',
+            corrective_action: 'Double check discrepancies and submit stock adjustment form to admin-in-charge.',
+            deadline: '3-Day SLA'
+          }
         ],
         checklist_items: [
-          'Sort and file all prescription slips into daily folders',
-          'Clean and sanitise compounding counter with 70% IPA solution',
-          'Remove expired stock immediately; update expiry register',
+          'Verify stock accuracy of all fast-moving items against Xilnex before audit',
+          'Review 2.0-month HQ reorder buffer and submit excess stock clearance list'
         ]
       },
       {
-        id: 'MERCHANDISING_SHELVING',
-        name: 'Merchandising & Shelf Facing',
-        score: 80,
-        status: 'PASS',
-        findings: [
-          { timestamp: '00:30', observation: 'Vitamin C section has 2 gap-outs visible; no shelf talker present.', severity: 'Low' },
-          { timestamp: '01:15', observation: 'Three products face inward; labels not visible to customers.', severity: 'Low' },
-        ],
+        id: 'CAT_2',
+        clause_num: '2',
+        name: 'Customer Service',
+        score: 6,
+        max_points: 6,
+        percentage: 100.0,
+        status: 'Pass',
+        findings: [],
         checklist_items: [
-          'Fill gap-outs in Vitamin C section from back-store',
-          'Face forward all products in aisle 3',
-          'Update missing shelf talkers for OTC supplements',
+          'Maintain 3-second warm customer greeting upon entry',
+          'Keep special customer order notebook at cashier'
         ]
       },
       {
-        id: 'FLOOR_SAFETY',
-        name: 'Floor Safety & Backroom Storage',
-        score: 72,
-        status: 'ATTENTION',
+        id: 'CAT_3',
+        clause_num: '3',
+        name: 'Display',
+        score: 42,
+        max_points: 48,
+        percentage: 87.5,
+        status: 'Pass',
         findings: [
-          { timestamp: '00:55', observation: 'Supplier carton (Kotra Pharma) left on store floor blocking dispensary access.', severity: 'High' },
-          { timestamp: '01:20', observation: 'Backroom corridor width estimated at ~0.7m; below 1m clearance standard.', severity: 'Medium' },
+          {
+            timestamp: '00:28',
+            clause: '3.4 Price Tag Display Up-to-Date',
+            observation: '9/10 price tags updated. 1 item barcode sticker price differs from the gondola shelf tag.',
+            points_deducted: 3,
+            severity: 'Medium',
+            corrective_action: 'Remove outdated price tag and replace with updated one. Ensure barcode sticker matches gondola tag exactly.',
+            deadline: '3-Day SLA'
+          },
+          {
+            timestamp: '01:10',
+            clause: '3.5.2 POSM / KKLIU Marketing Display',
+            observation: 'Expired campaign POSM materials still on display on end-cap gondola.',
+            points_deducted: 3,
+            severity: 'Medium',
+            corrective_action: 'Remove expired campaign POSM materials immediately. Display current KKLIU promotional banners.',
+            deadline: '3-Day SLA'
+          }
         ],
         checklist_items: [
-          'Move all supplier cartons off the floor to designated shelving within 1 hour',
-          'Clear backroom corridor to minimum 1m clearance',
-          'Label "clear zone" floor markings in backroom',
+          'Remove all expired campaign POSM materials from end-caps and glass entrance',
+          'Audit gondola price tags against current barcode sticker prices',
+          'Verify Fire Extinguisher license tag and Pharmacist on Duty display'
         ]
       },
       {
-        id: 'POP_MARKETING',
-        name: 'POP & Marketing Compliance',
-        score: 82,
-        status: 'PASS',
+        id: 'CAT_4',
+        clause_num: '4',
+        name: 'Recording',
+        score: 18,
+        max_points: 18,
+        percentage: 100.0,
+        status: 'Pass',
+        findings: [],
+        checklist_items: [
+          'Ensure Poison C and Cold Chain fridge temperature logs are signed twice daily',
+          'Verify Codeine and Pseudoephedrine physical stock tally with register book'
+        ]
+      },
+      {
+        id: 'CAT_5',
+        clause_num: '5',
+        name: 'Cleanliness',
+        score: 12,
+        max_points: 22,
+        percentage: 54.5,
+        status: 'Fail',
         findings: [
-          { timestamp: '00:08', observation: 'One promotional poster (Aug 2026 campaign) still displayed; campaign has ended.', severity: 'Medium' },
+          {
+            timestamp: '00:35',
+            clause: '5.3 Cashier Counter Cleanliness',
+            observation: 'Cashier counter surface is dusty with dead insects and paper clutter.',
+            points_deducted: 2,
+            severity: 'High',
+            corrective_action: 'Wipe and clean all surfaces to remove dust and dead insects.',
+            deadline: '3-Day SLA'
+          },
+          {
+            timestamp: '00:52',
+            clause: '5.7 Toilet Cleanliness',
+            observation: 'Staff toilet very dirty; stains on bowl and floor wet.',
+            points_deducted: 2,
+            severity: 'High',
+            corrective_action: 'Conduct regular daily cleaning to keep toilet clean and dry.',
+            deadline: '3-Day SLA'
+          },
+          {
+            timestamp: '01:05',
+            clause: '5.8 Stock Shelves Cleanliness',
+            observation: 'Dusty surfaces on OTC gondola lower shelves.',
+            points_deducted: 2,
+            severity: 'Medium',
+            corrective_action: 'Wipe and clean all surfaces on shelves to remove any dust and dead insects.',
+            deadline: '3-Day SLA'
+          },
+          {
+            timestamp: '01:18',
+            clause: '5.10 Products Cleanliness (OTC, POM)',
+            observation: 'Dust on item packaging displayed on gondola row 3.',
+            points_deducted: 2,
+            severity: 'Medium',
+            corrective_action: 'Ensure all stock displayed on gondolas is wiped free from dust.',
+            deadline: '3-Day SLA'
+          },
+          {
+            timestamp: '01:32',
+            clause: '5.11 Shop Facilities Cleanliness',
+            observation: 'Personal beverages stored inside medication cold chain fridge.',
+            points_deducted: 2,
+            severity: 'High',
+            corrective_action: 'Remove all personal beverages/food from medication fridge immediately. No food or drinks permitted inside at any time.',
+            deadline: '3-Day SLA'
+          }
         ],
         checklist_items: [
-          'Remove expired August 2026 promotional poster immediately',
-          'Replace with current September campaign POP material',
+          'Deep-clean cashier counter, prescription counter, and counseling desk',
+          'Wipe all gondola shelves and displayed medicine bottles to remove dust',
+          'Remove ALL food and beverages from medication cold chain fridge',
+          'Perform thorough sanitization of toilet and pantry'
+        ]
+      },
+      {
+        id: 'CAT_6',
+        clause_num: '6',
+        name: 'Tidiness',
+        score: 12,
+        max_points: 14,
+        percentage: 85.7,
+        status: 'Pass',
+        findings: [
+          {
+            timestamp: '01:24',
+            clause: '6.7 Stock Arrangement (OTC/POM)',
+            observation: 'Empty spaces between products on Vitamin C gondola; items not displayed neatly or face-forward.',
+            points_deducted: 2,
+            severity: 'Medium',
+            corrective_action: 'Ensure all items displayed on gondola are arranged neatly and face-forward per SOP 1.3.1.1.',
+            deadline: '3-Day SLA'
+          }
+        ],
+        checklist_items: [
+          'Eliminate empty gaps on gondolas by front-facing products per SOP 1.3.1.1',
+          'Ensure backroom walkways maintain minimum 1m clearance with no cartons on floor'
+        ]
+      },
+      {
+        id: 'CAT_7',
+        clause_num: '7',
+        name: 'Operation',
+        score: 14,
+        max_points: 16,
+        percentage: 87.5,
+        status: 'Pass',
+        findings: [
+          {
+            timestamp: '01:40',
+            clause: '7.3 Stock Arrangement - FIFO Adherence',
+            observation: 'Some stocks were not arranged according to the FIFO (First-In First-Out) method.',
+            points_deducted: 2,
+            severity: 'High',
+            corrective_action: 'Gondola PIC must conduct regular checks to ensure items are arranged strictly by FIFO to minimize expiry.',
+            deadline: '3-Day SLA'
+          }
+        ],
+        checklist_items: [
+          'Audit all gondolas to ensure older batches are placed in front (FIFO adherence)',
+          'Verify invoices and credit notes are keyed into system within 2 days',
+          'Check that gondola shelf labels match displayed merchandise'
+        ]
+      },
+      {
+        id: 'CAT_8',
+        clause_num: '8',
+        name: "Team Member's Attire",
+        score: 4,
+        max_points: 4,
+        percentage: 100.0,
+        status: 'Pass',
+        findings: [],
+        checklist_items: [
+          'Pharmacists: White coat, official lanyard, formal attire + closed-toe footwear',
+          'Assistants/Advisors: PMG uniform, lanyard, formal trousers + closed-toe shoes'
         ]
       }
     ],
-    top_priority_actions: [
-      '🔴 URGENT: Remove expired medicines from dispensary cabinet (safety & compliance)',
-      '🔴 URGENT: Clear supplier carton blocking dispensary corridor (fire safety)',
-      '🟡 Clean compounding area surfaces before next patient service',
+    timestamped_deductions: [
+      {
+        timestamp: '00:15',
+        clause: '1.2 Stock Cycle',
+        category: 'Stock Management',
+        observation: 'Stock cycle is 2.73 (Above 1.5–2.5 optimal range).',
+        points_deducted: 3,
+        corrective_action: 'Implement targeted promotions and reduce reorder buffer to 2.0 mo standard.',
+        deadline: '1-Month SLA'
+      },
+      {
+        timestamp: '00:28',
+        clause: '3.4 Price Tag Display',
+        category: 'Display',
+        observation: 'Barcode sticker price differs from gondola shelf price tag on 1 SKU.',
+        points_deducted: 3,
+        corrective_action: 'Replace outdated shelf price tag. Ensure barcode and shelf tags match.',
+        deadline: '3-Day SLA'
+      },
+      {
+        timestamp: '00:35',
+        clause: '5.3 Cashier Counter Cleanliness',
+        category: 'Cleanliness',
+        observation: 'Cashier counter dusty with dead insects and paper clutter.',
+        points_deducted: 2,
+        corrective_action: 'Wipe all surfaces and file loose receipts.',
+        deadline: '3-Day SLA'
+      },
+      {
+        timestamp: '00:45',
+        clause: '1.5 Stock Accuracy',
+        category: 'Stock Management',
+        observation: 'Physical count 18/20 tally with Xilnex inventory (90%).',
+        points_deducted: 6,
+        corrective_action: 'Recount discrepancies and submit adjustment form to admin.',
+        deadline: '3-Day SLA'
+      },
+      {
+        timestamp: '00:52',
+        clause: '5.7 Toilet Cleanliness',
+        category: 'Cleanliness',
+        observation: 'Staff toilet very dirty with wet floor and stains.',
+        points_deducted: 2,
+        corrective_action: 'Perform deep cleaning and keep toilet dry daily.',
+        deadline: '3-Day SLA'
+      },
+      {
+        timestamp: '01:05',
+        clause: '5.8 Stock Shelves Cleanliness',
+        category: 'Cleanliness',
+        observation: 'Dusty surfaces on OTC gondola lower shelves.',
+        points_deducted: 2,
+        corrective_action: 'Wipe shelves clean and remove dead insects.',
+        deadline: '3-Day SLA'
+      },
+      {
+        timestamp: '01:10',
+        clause: '3.5.2 POSM Marketing Display',
+        category: 'Display',
+        observation: 'Expired promotional campaign POSM banners still on display.',
+        points_deducted: 3,
+        corrective_action: 'Remove expired campaign materials immediately.',
+        deadline: '3-Day SLA'
+      },
+      {
+        timestamp: '01:18',
+        clause: '5.10 Products Cleanliness',
+        category: 'Cleanliness',
+        observation: 'Dust on item packaging on gondola row 3.',
+        points_deducted: 2,
+        corrective_action: 'Wipe product packaging to maintain dust-free presentation.',
+        deadline: '3-Day SLA'
+      },
+      {
+        timestamp: '01:24',
+        clause: '6.7 Stock Arrangement',
+        category: 'Tidiness',
+        observation: 'Empty gaps between products on Vitamin C gondola; items disarranged.',
+        points_deducted: 2,
+        corrective_action: 'Refill from back-store and face forward per SOP 1.3.1.1.',
+        deadline: '3-Day SLA'
+      },
+      {
+        timestamp: '01:32',
+        clause: '5.11 Shop Facilities',
+        category: 'Cleanliness',
+        observation: 'Personal beverages stored inside medication cold chain fridge.',
+        points_deducted: 2,
+        corrective_action: 'Remove all personal beverages/food from medication fridge immediately.',
+        deadline: '3-Day SLA'
+      },
+      {
+        timestamp: '01:40',
+        clause: '7.3 Stock Arrangement - FIFO',
+        category: 'Operation',
+        observation: 'Stocks on gondola not arranged according to FIFO method.',
+        points_deducted: 2,
+        corrective_action: 'Rearrange older batches to front to minimize expiry risk.',
+        deadline: '3-Day SLA'
+      }
     ],
-    whatsapp_summary: `📋 *5S Audit – ${branchName} (${today})*\n\nOverall Score: *74/100* ⚠️ ATTENTION REQUIRED\n\n🔴 Urgent: Expired stock in dispensary cabinet + corridor blocked by supplier carton\n🟡 Attention: Compounding area needs cleaning; expired POP poster to remove\n✅ Shelving & merchandising generally good\n\nPlease action priority items before closing today.`
+    top_priority_actions: [
+      '🔴 [3-Day SLA] Cleanliness: Wipe cashier counter and stock shelves to remove all dust and dead insects.',
+      '🔴 [3-Day SLA] Facilities: Remove personal drinks and food from medication cold chain fridge immediately.',
+      '🔴 [3-Day SLA] Tidiness & FIFO: Refill gondola gaps and arrange products strictly by FIFO method.',
+      '🟡 [3-Day SLA] Display: Take down expired POSM campaign materials and sync price tags.',
+      '🟡 [1-Month SLA] Stock Cycle: Reduce buffer to 2.0 mo and run targeted clearance promos.'
+    ],
+    pre_audit_checklist: [
+      { text: 'Cashier & prescription counters wiped clean and free of dead insects', sla: '3-Day SLA' },
+      { text: 'All products on gondolas wiped free of dust and facing forward (SOP 1.3.1.1)', sla: '3-Day SLA' },
+      { text: 'Medication fridge completely free of personal food or beverages', sla: 'Immediate' },
+      { text: 'Expired campaign POSM posters and banners taken down', sla: '3-Day SLA' },
+      { text: 'Price tags on gondolas match barcode stickers on items', sla: '3-Day SLA' },
+      { text: 'Stock arranged by First-In First-Out (FIFO) method', sla: '3-Day SLA' },
+      { text: 'Poison cabinet locked and controlled medicine registers verified', sla: 'Immediate' },
+      { text: 'Staff toilet and pantry thoroughly cleaned and dry', sla: 'Daily SLA' },
+      { text: 'Fire extinguisher unobstructed and inspection license up to date', sla: 'Immediate' }
+    ],
+    whatsapp_summary: `📋 *PMG HQ Compliance Audit Report – ${branchName}*
+Date: ${today}
+Auditor: PMG HQ Audit System (Natasha Vischilla Rubric)
+
+Overall Score: *171 / 200 (85.5%)*
+Status: *FAIL* ⚠️
+Bonus Tier: *At Risk / Forfeited* (Cleanliness Failed: 12/22, 54.5%)
+
+⚠️ *HQ Bonus Rule Reminder*:
+"To achieve an overall passing score and bonus payout, every component of the audit criteria must meet or exceed 80%."
+
+🔴 *Top Rectifications (Submit proof to Retail Dev Dept within 3 days)*:
+1. Wipe cashier counter and all stock shelves (remove dust & dead insects).
+2. Remove personal drinks from medication fridge immediately.
+3. Remove expired POSM campaign materials.
+4. Refill gondola gaps and arrange all items by FIFO.
+5. Deep-clean staff toilet.
+
+Please complete all checklist items before the official auditor visit!`
   };
 
   renderAuditReport(mockReport);
@@ -580,11 +947,22 @@ function renderAuditReport(report) {
   if (!container) return;
   container.classList.remove('hidden');
 
-  // Overall score gauge
-  const score    = Math.max(0, Math.min(100, report.overall_score || 0));
-  const scoreCol = score >= 80 ? '#16a34a' : score >= 60 ? '#d97706' : '#dc2626';
+  // Overall score gauge (out of 200)
+  const score    = Math.max(0, Math.min(200, report.overall_score || 0));
+  const maxScore = report.max_score || 200;
+  const pct      = Math.round((score / maxScore) * 100);
+
+  // Check if any category failed (< 80%)
+  const failedCategories = (report.categories || []).filter(c => {
+    const cPct = c.percentage !== undefined ? c.percentage : (c.score / c.max_points * 100);
+    return c.status === 'FAIL' || c.status === 'Fail' || cPct < 80;
+  });
+  const hasCategoryFailure = failedCategories.length > 0;
+  const isOverallPass = pct >= 80 && !hasCategoryFailure;
+
+  const scoreCol = isOverallPass ? '#16a34a' : (pct >= 80 ? '#d97706' : '#dc2626');
   const dashArr  = 2 * Math.PI * 40;
-  const dashOff  = dashArr * (1 - score / 100);
+  const dashOff  = dashArr * (1 - pct / 100);
 
   const gaugeEl = document.getElementById('auditGauge');
   if (gaugeEl) {
@@ -595,99 +973,198 @@ function renderAuditReport(report) {
           stroke-dasharray="${dashArr.toFixed(2)}" stroke-dashoffset="${dashOff.toFixed(2)}"
           stroke-linecap="round" transform="rotate(-90 50 50)"
           style="transition: stroke-dashoffset 1.2s ease;"/>
-        <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
-          font-size="20" font-weight="bold" fill="${scoreCol}">${score}</text>
-        <text x="50" y="64" text-anchor="middle" font-size="8" fill="#6b7280">/ 100</text>
+        <text x="50" y="47" text-anchor="middle" dominant-baseline="central"
+          font-size="18" font-weight="900" fill="${scoreCol}">${score}</text>
+        <text x="50" y="62" text-anchor="middle" font-size="8" fill="#6b7280">/ ${maxScore} (${pct}%)</text>
       </svg>
-      <p class="text-center text-sm font-semibold mt-1" style="color:${scoreCol}">
-        ${score >= 80 ? '✅ PASS' : score >= 60 ? '⚠️ ATTENTION' : '❌ FAIL'}
+      <p class="text-center text-sm font-bold mt-1" style="color:${scoreCol}">
+        ${isOverallPass ? '✅ OVERALL PASS' : '❌ OVERALL FAIL'}
       </p>`;
+  }
+
+  // Bonus Tier Banner
+  const bonusBannerEl = document.getElementById('auditBonusTierBanner');
+  if (bonusBannerEl) {
+    let bonusTitle = '';
+    let bonusSub = '';
+    let bannerClasses = '';
+
+    if (pct >= 90 && !hasCategoryFailure) {
+      bonusTitle = 'Bonus Tier: Tier 1 Achieved (Full Team Bonus)';
+      bonusSub = 'Exceptional performance. All 8 compliance categories met or exceeded the 80% passing threshold.';
+      bannerClasses = 'bg-emerald-50 border-emerald-300 text-emerald-900';
+    } else if (pct >= 80 && !hasCategoryFailure) {
+      bonusTitle = 'Bonus Tier: Tier 2 Achieved (Standard Team Bonus)';
+      bonusSub = 'Passing standard achieved. All 8 compliance categories met the 80% passing threshold.';
+      bannerClasses = 'bg-blue-50 border-blue-300 text-blue-900';
+    } else {
+      bonusTitle = 'Bonus Tier: At Risk / Forfeited';
+      bonusSub = hasCategoryFailure
+        ? `HQ Policy: All 8 audit categories must reach >= 80% passing threshold. Failed Category: ${failedCategories.map(c => c.name).join(', ')}. Rectification required within SLA.`
+        : 'Overall audit score is below the 80% minimum standard. Rectification required within SLA.';
+      bannerClasses = 'bg-rose-50 border-rose-300 text-rose-900';
+    }
+
+    bonusBannerEl.className = `mt-3 p-3 rounded-xl border flex items-center justify-between flex-wrap gap-2 text-xs ${bannerClasses}`;
+    bonusBannerEl.innerHTML = `
+      <div class="flex items-center gap-2.5">
+        <i class="fa-solid ${!hasCategoryFailure && pct >= 80 ? 'fa-award text-emerald-600 text-lg' : 'fa-triangle-exclamation text-rose-600 text-lg'}"></i>
+        <div>
+          <span class="font-bold text-sm leading-tight">${bonusTitle}</span>
+          <p class="text-[11px] opacity-90 mt-0.5">${bonusSub}</p>
+        </div>
+      </div>
+      <span class="px-2.5 py-1 rounded text-xs font-bold uppercase shadow-2xs ${!hasCategoryFailure && pct >= 80 ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}">
+        ${!hasCategoryFailure && pct >= 80 ? 'Bonus Qualified' : 'Action Required'}
+      </span>
+    `;
   }
 
   // Score & Engine meta
   setAuditText('auditBranch',     report.branch_observed || '—');
   setAuditText('auditDate',       report.audit_date       || '—');
-  setAuditText('auditScoreText',  `${score} / 100`);
+  setAuditText('auditScoreText',  `${score} / ${maxScore} (${pct}%)`);
   setAuditText('auditEngineText', report._modelUsed       || 'Gemini 3.5 Flash (Primary)');
   setAuditText('auditModelBadge', report._modelUsed ? report._modelUsed.replace(' (Primary)', '').replace(' (Secondary)', '') : 'Gemini 3.5 Flash');
 
-  // Category cards
+  // Category cards (8 Categories)
   const catsEl = document.getElementById('auditCategoryCards');
   if (catsEl && report.categories) {
     catsEl.innerHTML = report.categories.map(cat => {
-      const catCol = cat.status === 'PASS' ? 'border-green-400 bg-green-50'
-                   : cat.status === 'FAIL' ? 'border-red-400 bg-red-50'
-                   : 'border-amber-400 bg-amber-50';
-      const catBadge = cat.status === 'PASS' ? 'bg-green-100 text-green-700'
-                     : cat.status === 'FAIL' ? 'bg-red-100 text-red-700'
-                     : 'bg-amber-100 text-amber-700';
-      return `<div class="border-l-4 rounded-lg p-4 ${catCol}">
-        <div class="flex justify-between items-center mb-2">
-          <h4 class="font-semibold text-sm text-gray-800">${escHtml(cat.name)}</h4>
-          <span class="text-xs font-bold px-2 py-0.5 rounded ${catBadge}">${cat.score}/100 · ${cat.status}</span>
+      const cPct = cat.percentage !== undefined ? cat.percentage : Math.round(cat.score / cat.max_points * 100);
+      const isPass = cat.status === 'Pass' || cat.status === 'PASS' || cPct >= 80;
+
+      const catCol = isPass ? 'border-green-400 bg-green-50/70' : 'border-red-400 bg-red-50/80';
+      const catBadge = isPass ? 'bg-green-100 text-green-800 border border-green-300' : 'bg-red-100 text-red-800 border border-red-300';
+
+      const findingCount = (cat.findings || []).length;
+
+      return `<div class="border-l-4 rounded-xl p-3.5 shadow-2xs ${catCol} flex flex-col justify-between">
+        <div>
+          <div class="flex justify-between items-start mb-1.5 gap-1">
+            <h4 class="font-bold text-xs text-gray-900 leading-tight">${escHtml(cat.clause_num ? cat.clause_num + '. ' + cat.name : cat.name)}</h4>
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${catBadge} shrink-0">${isPass ? 'PASS' : 'FAIL'}</span>
+          </div>
+          <div class="flex items-baseline justify-between mt-2">
+            <span class="text-base font-black text-gray-900">${cat.score} <span class="text-xs font-normal text-gray-500">/ ${cat.max_points} pts</span></span>
+            <span class="text-xs font-bold ${isPass ? 'text-green-700' : 'text-red-700'}">${Math.round(cPct)}%</span>
+          </div>
         </div>
-        ${cat.findings?.length ? `<ul class="space-y-1 mb-2">
-          ${cat.findings.map(f => `<li class="text-xs flex gap-2">
-            <span class="font-mono text-gray-400 shrink-0">${escHtml(f.timestamp)}</span>
-            <span class="${f.severity==='High'?'text-red-700':f.severity==='Medium'?'text-amber-700':'text-gray-700'}">${escHtml(f.observation)}</span>
-            <span class="shrink-0 text-xs italic text-gray-400">(${f.severity})</span>
-          </li>`).join('')}
-        </ul>` : ''}
+        <div class="mt-2.5 pt-2 border-t border-gray-200/60 flex items-center justify-between text-[11px] text-gray-500">
+          <span>Passing standard: 80%</span>
+          <span class="${findingCount > 0 ? 'text-red-600 font-semibold' : 'text-gray-400'}">${findingCount} deduction${findingCount !== 1 ? 's' : ''}</span>
+        </div>
       </div>`;
     }).join('');
   }
 
-  // Findings table
+  // Findings table (Timestamped deductions)
   const findingsEl = document.getElementById('auditFindingsBody');
-  if (findingsEl && report.categories) {
-    const allFindings = [];
-    report.categories.forEach(cat => {
-      (cat.findings || []).forEach(f => allFindings.push({ ...f, category: cat.name }));
-    });
-    findingsEl.innerHTML = allFindings.map((f, i) => {
-      const sevClass = f.severity === 'High' ? 'bg-red-100 text-red-700'
-                     : f.severity === 'Medium' ? 'bg-amber-100 text-amber-700'
-                     : 'bg-gray-100 text-gray-600';
-      return `<tr class="${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'} border-b border-gray-100">
-        <td class="px-3 py-2 text-xs font-mono">${escHtml(f.timestamp)}</td>
-        <td class="px-3 py-2 text-xs text-gray-600">${escHtml(f.category)}</td>
-        <td class="px-3 py-2 text-xs">${escHtml(f.observation)}</td>
-        <td class="px-3 py-2 text-xs text-center">
-          <span class="px-2 py-0.5 rounded text-xs font-semibold ${sevClass}">${f.severity}</span>
-        </td>
-      </tr>`;
-    }).join('');
-  }
+  if (findingsEl) {
+    const deductions = report.timestamped_deductions && report.timestamped_deductions.length > 0
+      ? report.timestamped_deductions
+      : [];
 
-  // Checklist
-  auditChecklistState = {};
-  const checklistEl = document.getElementById('auditChecklist');
-  if (checklistEl && report.categories) {
-    let idx = 0;
-    checklistEl.innerHTML = report.categories.map(cat => {
-      if (!cat.checklist_items?.length) return '';
-      return `<div class="mb-4">
-        <h5 class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">${escHtml(cat.name)}</h5>
-        <ul class="space-y-2">
-          ${cat.checklist_items.map(item => {
-            const id = `chk_${idx++}`;
-            auditChecklistState[id] = false;
-            return `<li class="flex items-start gap-2">
-              <input type="checkbox" id="${id}" class="mt-0.5 accent-blue-600" onchange="toggleChecklist('${id}', this.checked)">
-              <label for="${id}" id="lbl_${id}" class="text-sm text-gray-700 cursor-pointer">${escHtml(item)}</label>
-            </li>`;
-          }).join('')}
-        </ul>
-      </div>`;
-    }).join('');
+    // Fallback: extract findings from categories if timestamped_deductions not populated
+    if (deductions.length === 0 && report.categories) {
+      report.categories.forEach(cat => {
+        (cat.findings || []).forEach(f => deductions.push({
+          timestamp: f.timestamp,
+          clause: f.clause || cat.name,
+          category: cat.name,
+          observation: f.observation,
+          points_deducted: f.points_deducted || 2,
+          corrective_action: f.corrective_action,
+          deadline: f.deadline
+        }));
+      });
+    }
+
+    if (deductions.length === 0) {
+      findingsEl.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-xs text-gray-400 font-medium">✅ Excellent! No 5S deficiencies or point deductions spotted in this walkthrough video.</td></tr>`;
+    } else {
+      findingsEl.innerHTML = deductions.map((f, i) => {
+        const isLongDeadline = f.deadline && f.deadline.includes('Month');
+        const slaClass = isLongDeadline ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-rose-100 text-rose-800 border border-rose-200';
+
+        return `<tr class="${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'} border-b border-gray-100 hover:bg-amber-50/40 transition">
+          <td class="px-3 py-2.5 text-xs font-mono font-bold text-blue-700">
+            <span class="bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">${escHtml(f.timestamp || '00:00')}</span>
+          </td>
+          <td class="px-3 py-2.5 text-xs font-semibold text-gray-800">
+            ${escHtml(f.clause || f.category || 'General')}
+          </td>
+          <td class="px-3 py-2.5 text-xs text-gray-700 leading-relaxed">
+            ${escHtml(f.observation)}
+          </td>
+          <td class="px-3 py-2.5 text-xs text-center shrink-0">
+            <span class="inline-block px-2 py-0.5 rounded font-extrabold text-red-700 bg-red-100 border border-red-200">
+              -${f.points_deducted || 2} pts
+            </span>
+          </td>
+          <td class="px-3 py-2.5 text-xs text-gray-800 leading-snug">
+            <div>${escHtml(f.corrective_action || 'Submit proof of corrective action to Retail Development Department.')}</div>
+            <span class="inline-block mt-1 text-[10px] font-bold px-1.5 py-0.5 rounded ${slaClass}">
+              <i class="fa-solid fa-clock mr-1"></i>${escHtml(f.deadline || '3-Day SLA')}
+            </span>
+          </td>
+        </tr>`;
+      }).join('');
+    }
   }
 
   // Priority actions
   const priorityEl = document.getElementById('auditPriorityActions');
   if (priorityEl && report.top_priority_actions) {
     priorityEl.innerHTML = `<ul class="space-y-2">
-      ${report.top_priority_actions.map(a => `<li class="flex gap-2 text-sm text-gray-800"><span class="shrink-0">→</span>${escHtml(a)}</li>`).join('')}
+      ${report.top_priority_actions.map(a => `
+        <li class="flex items-start gap-2 text-xs font-medium text-gray-900 bg-white p-2.5 rounded-lg border border-red-200 shadow-2xs">
+          <span class="shrink-0 mt-0.5 font-bold text-red-600">→</span>
+          <span class="flex-1">${escHtml(a)}</span>
+        </li>
+      `).join('')}
     </ul>`;
+  }
+
+  // Pre-Audit Correction Checklist
+  auditChecklistState = {};
+  const checklistEl = document.getElementById('auditChecklist');
+  if (checklistEl) {
+    const items = [];
+    if (report.pre_audit_checklist && report.pre_audit_checklist.length > 0) {
+      report.pre_audit_checklist.forEach(item => {
+        if (typeof item === 'string') items.push({ text: item, sla: '3-Day SLA' });
+        else items.push(item);
+      });
+    } else if (report.categories) {
+      report.categories.forEach(cat => {
+        (cat.checklist_items || []).forEach(ci => items.push({ text: ci, sla: '3-Day SLA' }));
+      });
+    }
+
+    if (items.length === 0) {
+      checklistEl.innerHTML = `<p class="text-xs text-gray-400">All audit preparation items complete.</p>`;
+    } else {
+      let idx = 0;
+      checklistEl.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+          ${items.map(item => {
+            const id = `chk_${idx++}`;
+            auditChecklistState[id] = false;
+            const slaText = item.sla || '3-Day SLA';
+            const slaBadge = slaText.includes('Month') ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800';
+
+            return `<div class="flex items-start gap-2.5 p-2.5 bg-gray-50 border border-gray-200 rounded-lg hover:bg-white transition shadow-2xs">
+              <input type="checkbox" id="${id}" class="mt-0.5 h-4 w-4 rounded border-gray-300 accent-emerald-600 shrink-0 cursor-pointer" onchange="toggleChecklist('${id}', this.checked)">
+              <div class="flex-1 min-w-0">
+                <label for="${id}" id="lbl_${id}" class="text-xs text-gray-800 font-medium cursor-pointer block leading-snug">${escHtml(item.text)}</label>
+                <span class="inline-block mt-1 text-[10px] font-bold px-1.5 py-0.2 rounded ${slaBadge}">${escHtml(slaText)}</span>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      `;
+    }
   }
 
   // Store WhatsApp summary for copy button
