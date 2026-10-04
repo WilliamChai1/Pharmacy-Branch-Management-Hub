@@ -1,6 +1,16 @@
 // js/scheduler.js — Module 3: AM AI Smart Timetable & Roster Generator
 'use strict';
 
+function escHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 // ─── MULTI-TIER GEMINI CONFIGURATION ───────────────────────────────────────────
 // Primary: Gemini 3.5 Flash-Lite (gemini-3.5-flash-lite — 500 RPD)
 // Secondary: Gemini 3.5 Flash (gemini-3.5-flash — 20 RPD)
@@ -944,8 +954,11 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays) {
     d.pmCount = finalPm;
     d.workingTotal = workingTotal;
 
-    if (workingTotal < 6) {
-      const warn = `⚠️ Manpower Alert: Only ${workingTotal} staff on duty on ${dateStr} (${dayOfWeek}${holidayName ? ' - ' + holidayName : ''}). Minimum 6 required to hit 3 AM / 3 PM floor.`;
+    if (workingTotal < 6 || finalAm < 3 || finalPm < 3) {
+      const isAmShort = finalAm < 3;
+      const isPmShort = finalPm < 3;
+      const shortDesc = isAmShort ? `Deficit on Morning (${finalAm}/3 staff)` : (isPmShort ? `Deficit on Night (${finalPm}/3 staff)` : `Total working staff below 6`);
+      const warn = `⚠️ Manpower Alert: Only ${workingTotal} staff on duty on ${dateStr} (${dayOfWeek}${holidayName ? ' - ' + holidayName : ''}). ${shortDesc}. Minimum 6 required to hit 3 AM / 3 PM floor.`;
       d.warning = warn;
       if (!schedule.warnings.includes(warn)) schedule.warnings.push(warn);
     }
@@ -1227,12 +1240,14 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
         }
       });
 
-      // Priority 2: Ensure minimum 3 staff per shift (Hard Floor: Daily Working Staff >= 6)
+      // Flexible Soft-Constraint Relaxation:
+      // When off-day requests cluster, ensure solver never deadlocks.
+      // Only reclaim rested teammates if working staff is critically below 4 (so even 2/2 is impossible).
       let dailyWorkingStaff = availableStaff.length + (isWilliamOffToday ? 0 : 1);
-      if (dailyWorkingStaff < 6) {
+      if (dailyWorkingStaff < 4) {
         const rested = rotatingPool.filter(tm => dayShifts[tm.empNo] === 'RD' && stats[tm.empNo].consecutiveWorkingDays < 6 && !(stats[tm.empNo].consecutiveNights >= 3 && stats[tm.empNo].lastShift === 'PM'));
         rested.sort((a, b) => stats[b.empNo].rd - stats[a.empNo].rd);
-        while (dailyWorkingStaff < 6 && rested.length > 0) {
+        while (dailyWorkingStaff < 4 && rested.length > 0) {
           const reclaimed = rested.shift();
           delete dayShifts[reclaimed.empNo];
           stats[reclaimed.empNo].rd--;
@@ -1241,15 +1256,18 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
         }
       }
 
-      // Dynamic Headcount Allocation:
-      // If Daily_Available_Staff == 6: Strictly 3 Morning (William + 2) and 3 Night (3)
-      // If Daily_Available_Staff == 7: 4 Morning (William + 3) and 3 Night, or 3 Morning and 4 Night
-      // If Daily_Available_Staff == 8 (Full Attendance): 4 Morning (William + 3) and 4 Night
-      // Hard Floor: Enforce minimum 3 staff per shift. Never allow < 3 staff.
+      // Dynamic Headcount Allocation with Soft-Constraint Handling:
+      // If dailyWorkingStaff == 5: Automatically assign 3 to Morning (critical: William + 2, or 3 if William off) and 2 to Night
       let targetTotalAm = 4;
       let targetTotalPm = 4;
 
-      if (dailyWorkingStaff <= 6) {
+      if (dailyWorkingStaff <= 4) {
+        targetTotalAm = Math.ceil(dailyWorkingStaff / 2);
+        targetTotalPm = dailyWorkingStaff - targetTotalAm;
+      } else if (dailyWorkingStaff === 5) {
+        targetTotalAm = 3;
+        targetTotalPm = 2;
+      } else if (dailyWorkingStaff === 6) {
         targetTotalAm = 3;
         targetTotalPm = 3;
       } else if (dailyWorkingStaff === 7) {
@@ -1268,14 +1286,14 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
         targetTotalPm = dailyWorkingStaff - 4;
       }
 
-      const targetRotatingAm = Math.max(isWilliamOffToday ? 3 : 2, targetTotalAm - (isWilliamOffToday ? 0 : 1));
+      const targetRotatingAm = Math.max(0, targetTotalAm - (isWilliamOffToday ? 0 : 1));
 
       // Anti-fatigue: previous shift must not be PM for AM shift (Priority 4)
       let canWorkAm = availableStaff.filter(tm => stats[tm.empNo].lastShift !== 'PM');
       let mustWorkPm = availableStaff.filter(tm => stats[tm.empNo].lastShift === 'PM');
 
-      // Hard floor guard (Priority 2): Never allow < 3 staff on AM
-      while ((canWorkAm.length + (isWilliamOffToday ? 0 : 1)) < 3 && mustWorkPm.length > 0) {
+      // Hard floor guard (Priority 2): Only promote if working staff allows at least 3 on AM without depleting PM below 2
+      while ((canWorkAm.length + (isWilliamOffToday ? 0 : 1)) < targetTotalAm && mustWorkPm.length > targetTotalPm) {
         mustWorkPm.sort((a, b) => stats[a.empNo].consecutiveNights - stats[b.empNo].consecutiveNights);
         const promoted = mustWorkPm.shift();
         canWorkAm.push(promoted);
@@ -1379,8 +1397,11 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
       let workingTotal = amCount + pmCount;
 
       let dayWarning = null;
-      if (workingTotal < 6) {
-        dayWarning = `⚠️ Manpower Alert: Only ${workingTotal} staff on duty on ${dateStr} (${dayOfWeek}${holidayName ? ' - ' + holidayName : ''}). Minimum 6 required to hit 3 AM / 3 PM floor.`;
+      if (workingTotal < 6 || amCount < 3 || pmCount < 3) {
+        const isAmShort = amCount < 3;
+        const isPmShort = pmCount < 3;
+        const shortDesc = isAmShort ? `Deficit on Morning (${amCount}/3 staff)` : (isPmShort ? `Deficit on Night (${pmCount}/3 staff)` : `Total working staff below 6`);
+        dayWarning = `⚠️ Manpower Alert: Only ${workingTotal} staff on duty on ${dateStr} (${dayOfWeek}${holidayName ? ' - ' + holidayName : ''}). ${shortDesc}. Minimum 6 required to hit 3 AM / 3 PM floor.`;
         warnings.push(dayWarning);
       }
 
@@ -1424,7 +1445,7 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
     }
   }
 
-  const hasMinorVariance = bestPass.amSpread > 2 || bestPass.pmSpread > 2;
+  const hasMinorVariance = bestPass.amSpread > 2 || bestPass.pmSpread > 2 || bestPass.warnings.length > 0;
 
   return {
     month: `${year}-${String(month).padStart(2, '0')}`,
@@ -1566,6 +1587,9 @@ function renderScheduleMatrix(schedule) {
     }
   }
 
+  // Render Conflict Inspector Panel
+  renderConflictInspector(schedule);
+
   // Build Table Header
   let headerHtml = `
     <th class="sticky left-0 bg-gray-100 z-20 px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase border-r border-gray-200 min-w-[200px]">
@@ -1576,13 +1600,37 @@ function renderScheduleMatrix(schedule) {
   schedule.days.forEach(d => {
     const isWeekend = d.dayOfWeek === 'Saturday' || d.dayOfWeek === 'Sunday';
     const isHoliday = !!HOLIDAYS_2026_SARAWAK[d.date];
-    const dayBg = isHoliday ? 'bg-rose-50 text-rose-900 border-rose-200' : (isWeekend ? 'bg-amber-50 text-amber-900' : 'bg-gray-50 text-gray-700');
+    const isAmShortage = d.amCount < 3;
+    const isPmShortage = d.pmCount < 3;
+    const isShortage = isAmShortage || isPmShortage;
+
+    // Visual Grid Warning Badges: Amber highlight on column header where a shift has < 3 staff
+    let dayBg = 'bg-gray-50 text-gray-700';
+    if (isShortage) {
+      dayBg = 'bg-amber-100 text-amber-950 border-b-2 border-amber-500 ring-1 ring-amber-400 ring-inset shadow-xs';
+    } else if (isHoliday) {
+      dayBg = 'bg-rose-50 text-rose-900 border-rose-200';
+    } else if (isWeekend) {
+      dayBg = 'bg-amber-50/60 text-amber-900';
+    }
+
+    const shortageTooltip = isAmShortage
+      ? `⚠️ Morning Shift Shortage (${d.amCount}/3 staff) - Click to edit`
+      : `⚠️ Night Shift Shortage (${d.pmCount}/3 staff) - Click to edit`;
 
     headerHtml += `
-      <th class="px-2 py-2 text-center text-xs font-semibold ${dayBg} border-r border-gray-200 min-w-[70px]" title="${isHoliday ? HOLIDAYS_2026_SARAWAK[d.date] : ''}">
-        <div class="text-[10px] uppercase font-bold ${isHoliday ? 'text-rose-600' : 'text-gray-400'}">${d.dayOfWeek.slice(0, 3)}</div>
+      <th class="px-2 py-2 text-center text-xs font-semibold ${dayBg} border-r border-gray-200 min-w-[75px]" title="${isHoliday ? HOLIDAYS_2026_SARAWAK[d.date] : ''}">
+        <div class="text-[10px] uppercase font-bold ${isHoliday ? 'text-rose-600' : (isShortage ? 'text-amber-800' : 'text-gray-400')}">${d.dayOfWeek.slice(0, 3)}</div>
         <div class="text-sm font-extrabold">${d.day}</div>
         ${isHoliday ? '<span class="text-[9px] bg-rose-200 text-rose-800 px-1 rounded font-bold">PH</span>' : ''}
+        ${isShortage ? `
+          <button type="button" onclick="openDayShiftEditorModal(${d.day})"
+            class="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500 hover:bg-amber-600 text-white transition shadow-xs cursor-pointer whitespace-nowrap"
+            title="${shortageTooltip}">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <span>${isAmShortage ? `AM (${d.amCount}/3)` : `PM (${d.pmCount}/3)`}</span>
+          </button>
+        ` : ''}
       </th>
     `;
   });
@@ -1616,10 +1664,12 @@ function renderScheduleMatrix(schedule) {
       const shift = (d.shifts && d.shifts[tm.empNo]) || 'RD';
       const cellStyle = getShiftBadgeStyle(shift);
       const isCleaningDuty = d.cleaningDuty && d.cleaningDuty.empNo === tm.empNo;
+      const isShortage = d.amCount < 3 || d.pmCount < 3;
+      const colBg = isShortage ? 'bg-amber-50/70 hover:bg-amber-100/90' : (isCleaningDuty ? 'bg-teal-50/60' : 'hover:bg-blue-50/40');
 
       bodyHtml += `
-        <td class="px-1 py-1.5 text-center border-r border-gray-200 ${isCleaningDuty ? 'bg-teal-50/60' : ''}">
-          <span class="inline-block px-1.5 py-1 rounded text-[10px] font-mono font-bold leading-tight ${cellStyle.classes}" title="${shift}${isCleaningDuty ? ' | 🧹 14:00-15:30 Cleaning' : ''}">
+        <td onclick="openDayShiftEditorModal(${d.day}, '${tm.empNo}')" class="px-1 py-1.5 text-center border-r border-gray-200 cursor-pointer transition ${colBg}" title="${shift}${isCleaningDuty ? ' | 🧹 14:00-15:30 Cleaning' : ''} (Click to fine-tune Day ${d.day})">
+          <span class="inline-block px-1.5 py-1 rounded text-[10px] font-mono font-bold leading-tight ${cellStyle.classes}">
             ${cellStyle.label}
           </span>
           ${isCleaningDuty ? '<div class="text-[8px] font-bold text-teal-800 leading-none mt-0.5">🧹 Clean</div>' : ''}
@@ -1641,10 +1691,10 @@ function renderScheduleMatrix(schedule) {
   schedule.days.forEach(d => {
     const isTargetMet = d.amCount >= 3 && d.pmCount >= 3;
     densityRow += `
-      <td class="px-1 py-1 text-center border-r border-gray-200">
-        <div class="text-[9px] font-mono font-bold ${isTargetMet ? 'text-emerald-800 bg-emerald-100' : 'text-amber-900 bg-amber-100'} px-1 py-0.5 rounded leading-tight" title="Morning: ${d.amCount}, Night: ${d.pmCount}, Total Working: ${d.workingTotal}">
-          ${d.amCount}M / ${d.pmCount}N
-        </div>
+      <td class="px-1 py-1 text-center border-r border-gray-200 ${isTargetMet ? '' : 'bg-amber-100/90'}">
+        <button type="button" onclick="openDayShiftEditorModal(${d.day})" class="w-full text-[9px] font-mono font-bold ${isTargetMet ? 'text-emerald-800 bg-emerald-100 hover:bg-emerald-200' : 'text-amber-900 bg-amber-200 hover:bg-amber-300 border border-amber-300'} px-1 py-0.5 rounded leading-tight transition cursor-pointer" title="Morning: ${d.amCount}, Night: ${d.pmCount}, Total Working: ${d.workingTotal} (Click to fine-tune)">
+          ${d.amCount}M / ${d.pmCount}N ${isTargetMet ? '' : '⚠️'}
+        </button>
       </td>
     `;
   });
@@ -1746,6 +1796,7 @@ function renderScheduleMatrix(schedule) {
     currentTeammates.forEach(tm => {
       const st = teammateStats[tm.empNo];
       const isFixed = tm.scheduleMode === 'Fixed' || tm.empNo === 'PMG00831' || tm.nickname === 'WILLIAM';
+      const isPharm = tm.isPharmacist || tm.position === 'Pharmacist' || (tm.position && tm.position.includes('Pharmacist'));
 
       let parityBadge = '';
       if (isFixed) {
@@ -1817,6 +1868,407 @@ function getShiftBadgeStyle(code) {
   }
   return { label: code, classes: 'bg-gray-100 text-gray-700 border border-gray-300' };
 }
+
+// ─── STAFFING & REST DAY CONFLICT INSPECTOR ──────────────────────────────────
+function renderConflictInspector(schedule) {
+  const panel = document.getElementById('schedulerConflictInspector');
+  const countBadge = document.getElementById('conflictInspectorCountBadge');
+  const content = document.getElementById('conflictInspectorContent');
+  if (!panel || !content) return;
+
+  if (!schedule || !schedule.days || !schedule.days.length) {
+    panel.classList.add('hidden');
+    return;
+  }
+
+  const monthStr = schedule.month || '2026-10';
+  const [yearStr, mStr] = monthStr.split('-');
+  const year = parseInt(yearStr, 10) || 2026;
+  const month = parseInt(mStr, 10) || 10;
+  const monthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  // Identify all problematic dates (Shift < 3 or Total < 6)
+  const bottlenecks = [];
+
+  schedule.days.forEach(d => {
+    const isAmShortage = d.amCount < 3;
+    const isPmShortage = d.pmCount < 3;
+    const isDensityShortage = d.workingTotal < 6;
+
+    if (isAmShortage || isPmShortage || isDensityShortage) {
+      const shortageShift = isAmShortage && isPmShortage
+        ? 'Both Shifts'
+        : (isAmShortage ? 'Morning Shift' : (isPmShortage ? 'Night Shift' : 'Overall Manpower'));
+
+      let deficit = 0;
+      if (isAmShortage && isPmShortage) deficit = (3 - d.amCount) + (3 - d.pmCount);
+      else if (isAmShortage) deficit = 3 - d.amCount;
+      else if (isPmShortage) deficit = 3 - d.pmCount;
+      else deficit = 6 - d.workingTotal;
+
+      // Teammates on Rest Day
+      const restTeammates = currentTeammates.filter(tm => {
+        const s = (d.shifts && d.shifts[tm.empNo]) || 'RD';
+        return s === 'RD' || s === 'PH' || s === 'OFF';
+      });
+
+      // Find adjacent days with surplus attendance
+      const prevDay = schedule.days.find(x => x.day === d.day - 1);
+      const nextDay = schedule.days.find(x => x.day === d.day + 1);
+      let surplusDayName = 'Friday or Sunday';
+
+      if (prevDay && prevDay.workingTotal >= 7 && (!nextDay || nextDay.workingTotal < 7)) {
+        surplusDayName = `${prevDay.dayOfWeek} (Day ${prevDay.day} has ${prevDay.workingTotal} staff)`;
+      } else if (nextDay && nextDay.workingTotal >= 7 && (!prevDay || prevDay.workingTotal < 7)) {
+        surplusDayName = `${nextDay.dayOfWeek} (Day ${nextDay.day} has ${nextDay.workingTotal} staff)`;
+      } else if (prevDay && nextDay && prevDay.workingTotal >= 7 && nextDay.workingTotal >= 7) {
+        surplusDayName = `${prevDay.dayOfWeek} or ${nextDay.dayOfWeek}`;
+      }
+
+      bottlenecks.push({
+        day: d.day,
+        date: d.date,
+        dayOfWeek: d.dayOfWeek,
+        workingTotal: d.workingTotal,
+        amCount: d.amCount,
+        pmCount: d.pmCount,
+        isAmShortage,
+        isPmShortage,
+        shortageShift,
+        deficit,
+        restTeammates,
+        suggestion: `Recommend moving 1 rest day to ${surplusDayName} to achieve minimum 3-staff ${shortageShift.toLowerCase()} coverage.`
+      });
+    }
+  });
+
+  if (bottlenecks.length === 0) {
+    panel.classList.add('hidden');
+    content.innerHTML = '';
+    return;
+  }
+
+  // Display panel
+  panel.classList.remove('hidden');
+  if (countBadge) {
+    countBadge.textContent = `${bottlenecks.length} Date${bottlenecks.length > 1 ? 's' : ''} with Shortages`;
+  }
+
+  let cardsHtml = '';
+  bottlenecks.forEach(b => {
+    const formattedDate = `${b.dayOfWeek}, ${b.day} ${monthNames[month] || 'Oct'} ${year}`;
+    const restNames = b.restTeammates.map(tm => {
+      const isRx = tm.isPharmacist || tm.position === 'Pharmacist';
+      return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-gray-200/80 text-gray-800 border border-gray-300">
+        ${escHtml(tm.nickname)}${isRx ? ' <span class="text-[9px] text-blue-700 font-bold">(Rx)</span>' : ''}
+      </span>`;
+    }).join(' ');
+
+    cardsHtml += `
+      <div class="bg-white border border-amber-200 rounded-xl p-4 shadow-xs transition hover:border-amber-400">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-gray-100">
+          <div class="flex items-center gap-2.5">
+            <span class="w-8 h-8 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 flex items-center justify-center font-extrabold text-xs shadow-xs">
+              ${b.day}
+            </span>
+            <div>
+              <div class="font-bold text-gray-900 text-sm flex items-center gap-2 flex-wrap">
+                <span>${formattedDate}</span>
+                <span class="text-[10px] px-2 py-0.5 rounded-full font-extrabold bg-red-100 text-red-800 border border-red-200">
+                  <i class="fa-solid fa-circle-exclamation mr-1"></i>Deficit: -${b.deficit} on ${b.shortageShift}
+                </span>
+              </div>
+              <div class="text-[11px] text-gray-500 font-mono mt-0.5">
+                Total working: <strong class="text-gray-800">${b.workingTotal} staff</strong> →
+                <span class="${b.isAmShortage ? 'text-red-600 font-bold' : 'text-blue-700'}">Morning: ${b.amCount}</span>,
+                <span class="${b.isPmShortage ? 'text-red-600 font-bold' : 'text-purple-700'}">Night: ${b.pmCount}</span>
+                <span class="text-gray-400">(Floor Target: ≥3 per shift)</span>
+              </div>
+            </div>
+          </div>
+          <button type="button" onclick="openDayShiftEditorModal(${b.day})" class="self-start sm:self-auto px-3.5 py-1.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 transition shadow-xs cursor-pointer">
+            <i class="fa-solid fa-pen-to-square"></i>
+            <span>Adjust Day ${b.day} Shifts</span>
+          </button>
+        </div>
+
+        <div class="space-y-2 text-xs">
+          <div class="flex items-start gap-2 flex-wrap">
+            <span class="font-bold text-gray-700 text-[11px] min-w-[135px] flex items-center gap-1 pt-0.5">
+              <i class="fa-solid fa-bed text-gray-400"></i> Teammates on Rest Day:
+            </span>
+            <div class="flex items-center gap-1.5 flex-wrap">
+              ${restNames || '<span class="text-gray-400 italic">None</span>'}
+            </div>
+          </div>
+
+          <div class="flex items-start gap-2 bg-amber-50/80 p-2.5 rounded-lg border border-amber-200 text-amber-950">
+            <i class="fa-solid fa-lightbulb text-amber-600 mt-0.5 shrink-0"></i>
+            <div>
+              <span class="font-bold">Actionable Suggestion:</span>
+              <span class="ml-1">${b.suggestion}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+
+  content.innerHTML = cardsHtml;
+}
+
+function toggleConflictInspector() {
+  const content = document.getElementById('conflictInspectorContent');
+  const chevron = document.getElementById('conflictInspectorChevron');
+  const label   = document.getElementById('conflictInspectorToggleLabel');
+  if (!content) return;
+
+  const isHidden = content.classList.contains('hidden');
+  if (isHidden) {
+    content.classList.remove('hidden');
+    if (chevron) chevron.classList.remove('rotate-180');
+    if (label) label.textContent = 'Hide Details';
+  } else {
+    content.classList.add('hidden');
+    if (chevron) chevron.classList.add('rotate-180');
+    if (label) label.textContent = 'Show Details';
+  }
+}
+
+// ─── DAY SHIFT QUICK-EDIT MODAL (MANUAL FINE-TUNING) ─────────────────────────
+let currentlyEditingDay = null;
+
+function openDayShiftEditorModal(dayNumber, highlightEmpNo = null) {
+  if (!generatedScheduleData || !generatedScheduleData.days) {
+    showSchedulerToast('Please generate a schedule first before editing.', 'warn');
+    return;
+  }
+
+  const d = generatedScheduleData.days.find(x => x.day === dayNumber);
+  if (!d) return;
+
+  currentlyEditingDay = dayNumber;
+
+  const modal = document.getElementById('schedulerDayShiftEditorModal');
+  const title = document.getElementById('dayShiftEditorTitle');
+  const subtitle = document.getElementById('dayShiftEditorSubtitle');
+  const form = document.getElementById('dayShiftEditorForm');
+  if (!modal || !form) return;
+
+  const monthStr = generatedScheduleData.month || '2026-10';
+  const [yearStr, mStr] = monthStr.split('-');
+  const year = parseInt(yearStr, 10) || 2026;
+  const month = parseInt(mStr, 10) || 10;
+  const monthNames = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  if (title) {
+    title.innerHTML = `<i class="fa-solid fa-calendar-day mr-1.5"></i> Fine-Tune Shifts — ${d.dayOfWeek}, ${d.day} ${monthNames[month] || 'October'} ${year}`;
+  }
+  if (subtitle) {
+    subtitle.textContent = `Adjust teammate shifts and cleaning duty for Day ${d.day}. Live counters update automatically.`;
+  }
+
+  const rotatingPool = currentTeammates.filter(t => t.empNo !== 'PMG00831' && t.nickname !== 'WILLIAM');
+  const currentCleaner = d.cleaningDuty ? d.cleaningDuty.empNo : '';
+
+  let formHtml = `<div class="space-y-2.5">`;
+
+  currentTeammates.forEach(tm => {
+    const isWilliam = tm.empNo === 'PMG00831' || tm.nickname === 'WILLIAM';
+    const isRx = tm.isPharmacist || tm.position === 'Pharmacist';
+    const currentShift = (d.shifts && d.shifts[tm.empNo]) || 'RD';
+    const isHighlighted = tm.empNo === highlightEmpNo;
+
+    formHtml += `
+      <div class="p-3 rounded-xl border ${isHighlighted ? 'bg-blue-50/90 border-blue-400 ring-2 ring-blue-300' : 'bg-white border-gray-200'} flex items-center justify-between gap-3 flex-wrap transition">
+        <div class="flex items-center gap-2.5 min-w-[180px]">
+          <div class="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-xs text-slate-700">
+            ${tm.nickname.slice(0, 2)}
+          </div>
+          <div>
+            <div class="font-bold text-gray-900 text-xs flex items-center gap-1.5">
+              <span>${escHtml(tm.nickname)}</span>
+              ${isRx ? '<span class="text-[9px] px-1 py-0.2 rounded font-bold bg-blue-100 text-blue-800 border border-blue-200">Rx</span>' : ''}
+              ${isWilliam ? '<span class="text-[9px] px-1 py-0.2 rounded font-bold bg-amber-100 text-amber-800">Fixed Anchor</span>' : ''}
+            </div>
+            <div class="text-[10px] text-gray-400">${escHtml(tm.position || tm.empName)}</div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 ml-auto">
+          <label class="text-[11px] font-semibold text-gray-500">Shift:</label>
+          <select id="editShift_${tm.empNo}" onchange="updateDayShiftEditorMeter()" class="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
+            <option value="8H_0730-1630" ${currentShift === '8H_0730-1630' ? 'selected' : ''}>🌅 Morning (07:30–16:30)</option>
+            <option value="8H_1230-2130" ${currentShift === '8H_1230-2130' ? 'selected' : ''}>🌙 Night (12:30–21:30)</option>
+            <option value="4H_0730-1130" ${currentShift === '4H_0730-1130' ? 'selected' : ''}>⏱️ Morning Half Day (07:30–11:30)</option>
+            <option value="5H_0730-1230" ${currentShift === '5H_0730-1230' ? 'selected' : ''}>⏱️ Morning 5H (07:30–12:30)</option>
+            <option value="5H_1630-2130" ${currentShift === '5H_1630-2130' ? 'selected' : ''}>⏱️ Night 5H (16:30–21:30)</option>
+            <option value="RD" ${currentShift === 'RD' ? 'selected' : ''}>🛌 Rest Day (RD)</option>
+            <option value="PH" ${currentShift === 'PH' ? 'selected' : ''}>🎉 Public Holiday (PH)</option>
+            <option value="OFF" ${currentShift === 'OFF' ? 'selected' : ''}>⚪ OFF</option>
+          </select>
+        </div>
+      </div>
+    `;
+  });
+
+  // Cleaning duty selector
+  formHtml += `
+    </div>
+    <div class="mt-4 p-3 bg-teal-50 border border-teal-200 rounded-xl flex items-center justify-between gap-2 flex-wrap">
+      <div class="flex items-center gap-2">
+        <i class="fa-solid fa-broom text-teal-700"></i>
+        <div>
+          <div class="font-bold text-teal-900 text-xs">6S Gondola Cleaning & Refill Duty (14:00–15:30)</div>
+          <div class="text-[10px] text-teal-700">Select rotating teammate on duty (William Chai is exempt)</div>
+        </div>
+      </div>
+      <select id="editShift_cleaner" class="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-teal-300 bg-white text-teal-950 focus:ring-2 focus:ring-teal-500">
+        <option value="">-- No Duty / Auto --</option>
+        ${rotatingPool.map(t => `<option value="${t.empNo}" ${currentCleaner === t.empNo ? 'selected' : ''}>🧹 ${escHtml(t.nickname)}</option>`).join('')}
+      </select>
+    </div>
+  `;
+
+  form.innerHTML = formHtml;
+  updateDayShiftEditorMeter();
+  modal.classList.remove('hidden');
+}
+
+function updateDayShiftEditorMeter() {
+  const meter = document.getElementById('dayShiftEditorMeter');
+  if (!meter) return;
+
+  let amCount = 0;
+  let pmCount = 0;
+  let rdCount = 0;
+  let totalWorking = 0;
+  let hasMorningRx = false;
+  let hasNightRx = false;
+
+  currentTeammates.forEach(tm => {
+    const el = document.getElementById(`editShift_${tm.empNo}`);
+    const s = el ? el.value : 'RD';
+    const isRx = tm.isPharmacist || tm.position === 'Pharmacist';
+
+    if (s && s !== 'RD' && s !== 'PH' && s !== 'OFF') {
+      totalWorking++;
+      if (s.includes('0730') || s.includes('0800')) {
+        amCount++;
+        if (isRx) hasMorningRx = true;
+      }
+      if (s.includes('1230') || s.includes('1300') || s.includes('1630')) {
+        pmCount++;
+        if (isRx) hasNightRx = true;
+      }
+    } else {
+      rdCount++;
+    }
+  });
+
+  const isShortage = amCount < 3 || pmCount < 3;
+
+  meter.innerHTML = `
+    <div class="flex items-center gap-3 flex-wrap">
+      <div class="font-mono font-bold text-gray-800">
+        Working: <span class="${totalWorking < 6 ? 'text-amber-600' : 'text-emerald-700'}">${totalWorking}</span>
+      </div>
+      <div class="font-mono">
+        Morning: <span class="${amCount < 3 ? 'text-red-600 font-extrabold' : 'text-blue-700 font-bold'}">${amCount}</span>
+        ${hasMorningRx ? '<span class="text-emerald-700 font-bold ml-0.5" title="Morning Pharmacist covered">✓Rx</span>' : '<span class="text-red-600 font-bold ml-0.5" title="Missing Morning Pharmacist">!Rx</span>'}
+      </div>
+      <div class="font-mono">
+        Night: <span class="${pmCount < 3 ? 'text-red-600 font-extrabold' : 'text-purple-700 font-bold'}">${pmCount}</span>
+        ${hasNightRx ? '<span class="text-emerald-700 font-bold ml-0.5" title="Night Pharmacist covered">✓Rx</span>' : '<span class="text-red-600 font-bold ml-0.5" title="Missing Night Pharmacist">!Rx</span>'}
+      </div>
+      <div class="font-mono text-gray-500">
+        Off: <span>${rdCount}</span>
+      </div>
+    </div>
+    <div>
+      ${isShortage
+        ? `<span class="px-2 py-0.5 rounded font-extrabold text-[10px] bg-red-100 text-red-800 border border-red-200"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Shift Shortage (<3 floor)</span>`
+        : `<span class="px-2 py-0.5 rounded font-bold text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-200"><i class="fa-solid fa-circle-check mr-1"></i>Floor Strength OK (≥3)</span>`
+      }
+    </div>
+  `;
+}
+
+function closeDayShiftEditorModal() {
+  const modal = document.getElementById('schedulerDayShiftEditorModal');
+  if (modal) modal.classList.add('hidden');
+  currentlyEditingDay = null;
+}
+
+function saveDayShiftEditorModal() {
+  if (!currentlyEditingDay || !generatedScheduleData || !generatedScheduleData.days) return;
+
+  const d = generatedScheduleData.days.find(x => x.day === currentlyEditingDay);
+  if (!d) return;
+
+  let amCount = 0;
+  let pmCount = 0;
+  let totalWorking = 0;
+
+  currentTeammates.forEach(tm => {
+    const el = document.getElementById(`editShift_${tm.empNo}`);
+    if (el) {
+      const shiftVal = el.value;
+      if (!d.shifts) d.shifts = {};
+      d.shifts[tm.empNo] = shiftVal;
+
+      if (shiftVal && shiftVal !== 'RD' && shiftVal !== 'PH' && shiftVal !== 'OFF') {
+        totalWorking++;
+        if (shiftVal.includes('0730') || shiftVal.includes('0800')) amCount++;
+        if (shiftVal.includes('1230') || shiftVal.includes('1300') || shiftVal.includes('1630')) pmCount++;
+      }
+    }
+  });
+
+  d.amCount = amCount;
+  d.pmCount = pmCount;
+  d.workingTotal = totalWorking;
+
+  // Cleaner duty
+  const cleanerSelect = document.getElementById('editShift_cleaner');
+  if (cleanerSelect && cleanerSelect.value) {
+    const cleanerTm = currentTeammates.find(t => t.empNo === cleanerSelect.value);
+    if (cleanerTm) {
+      d.cleaningDuty = {
+        empNo: cleanerTm.empNo,
+        nickname: cleanerTm.nickname,
+        empName: cleanerTm.empName || cleanerTm.nickname,
+        time: '2:00 PM – 3:30 PM',
+        task: 'Gondola Cleaning & Refilling'
+      };
+    }
+  } else if (cleanerSelect && !cleanerSelect.value) {
+    d.cleaningDuty = null;
+  }
+
+  // Update warnings array
+  if (generatedScheduleData.warnings) {
+    generatedScheduleData.warnings = generatedScheduleData.warnings.filter(w => !w.includes(d.date));
+    if (totalWorking < 6 || amCount < 3 || pmCount < 3) {
+      const isAmShort = amCount < 3;
+      const isPmShort = pmCount < 3;
+      const shortDesc = isAmShort ? `Deficit on Morning (${amCount}/3 staff)` : (isPmShort ? `Deficit on Night (${pmCount}/3 staff)` : `Total working staff below 6`);
+      generatedScheduleData.warnings.push(`⚠️ Manpower Alert: Only ${totalWorking} staff on duty on ${d.date} (${d.dayOfWeek}). ${shortDesc}. Minimum 6 required to hit 3 AM / 3 PM floor.`);
+    }
+  }
+
+  closeDayShiftEditorModal();
+  renderScheduleMatrix(generatedScheduleData);
+  showSchedulerToast(`Day ${d.day} shifts updated successfully!`, 'success');
+}
+
+// Global window bindings
+window.renderConflictInspector = renderConflictInspector;
+window.toggleConflictInspector = toggleConflictInspector;
+window.openDayShiftEditorModal = openDayShiftEditorModal;
+window.updateDayShiftEditorMeter = updateDayShiftEditorMeter;
+window.closeDayShiftEditorModal = closeDayShiftEditorModal;
+window.saveDayShiftEditorModal = saveDayShiftEditorModal;
 
 // ─── EXPORT TO RYMNET MATRIX CSV ──────────────────────────────────────────────
 function exportScheduleToRymnetCSV() {
