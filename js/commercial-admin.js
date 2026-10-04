@@ -583,12 +583,11 @@
     if (companyKey === 'pmg') {
       headerMarkup = `
         <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #b91c1c; padding-bottom:12px; margin-bottom:15px;">
-          <div style="display:flex; align-items:center; gap:12px;">
-            <img src="${assets.pmg_heart_logo || 'icons/icon-192.png'}" style="width:68px; height:68px; object-fit:contain;" alt="PMG Logo">
+          <div style="display:flex; align-items:center; gap:14px;">
+            <img src="${assets.pmg_heart_logo || 'icons/icon-192.png'}" style="width:70px; height:70px; object-fit:contain;" alt="PMG Logo">
             <div>
-              <h2 style="font-size:16px; font-weight:800; color:#b91c1c; margin:0; line-height:1.2;">PMG HEALTHCARE SDN BHD <span style="font-size:12px; font-weight:600; color:#4b5563;">(1424437-X)</span></h2>
-              <div style="font-size:12px; font-weight:700; color:#111827; margin-top:2px;">PMG PHARMACY KOTA SENTOSA</div>
-              <div style="font-size:10px; color:#4b5563; line-height:1.3; max-width:420px; margin-top:3px;">
+              <h2 style="font-size:17px; font-weight:800; color:#b91c1c; margin:0; line-height:1.2; letter-spacing:0.02em;">PMG PHARMACY KOTA SENTOSA</h2>
+              <div style="font-size:10px; color:#4b5563; line-height:1.35; max-width:440px; margin-top:3px;">
                 ${comp.address}<br>
                 TEL: ${comp.tel} | EMAIL: ${comp.email}
               </div>
@@ -606,12 +605,15 @@
     } else if (companyKey === 'ssj') {
       headerMarkup = `
         <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #991b1b; padding-bottom:12px; margin-bottom:15px;">
-          <div>
-            ${assets.ssj_header ? `<img src="${assets.ssj_header}" style="max-height:60px; max-width:320px; object-fit:contain;" alt="SSJ Pharma">` : `
-              <h2 style="font-size:15px; font-weight:800; color:#991b1b; margin:0;">SSJ PHARMA SDN BHD (1070101-K)</h2>
-              <div style="font-size:10px; color:#374151;">${comp.address}</div>
-              <div style="font-size:10px; color:#374151;">TEL: ${comp.tel} | Email: ${comp.email}</div>
-            `}
+          <div style="display:flex; align-items:center; gap:14px;">
+            <img src="${assets.ssj_logo || assets.ssj_header}" style="width:58px; height:68px; object-fit:contain;" alt="SSJ Pharma Logo">
+            <div>
+              <h2 style="font-size:17px; font-weight:800; color:#991b1b; margin:0; line-height:1.2; letter-spacing:0.02em;">SSJ PHARMA SDN BHD <span style="font-size:12px; font-weight:600; color:#4b5563;">(1070101-K)</span></h2>
+              <div style="font-size:10px; color:#4b5563; line-height:1.35; max-width:440px; margin-top:3px;">
+                ${comp.address}<br>
+                TEL: ${comp.tel} | EMAIL: ${comp.email}
+              </div>
+            </div>
           </div>
           <div style="text-align:right;">
             <div style="display:inline-block; background:#1e293b; color:#fff; font-size:11px; font-weight:800; padding:4px 12px; border-radius:4px; letter-spacing:0.05em; text-transform:uppercase;">
@@ -625,12 +627,15 @@
     } else {
       headerMarkup = `
         <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #0369a1; padding-bottom:12px; margin-bottom:15px;">
-          <div>
-            ${assets.ampm_header ? `<img src="${assets.ampm_header}" style="max-height:62px; max-width:340px; object-fit:contain;" alt="AM PM Pharmacy">` : `
-              <h2 style="font-size:15px; font-weight:800; color:#0369a1; margin:0;">AM PM PHARMACY SDN BHD (572945-M)</h2>
-              <div style="font-size:10px; color:#374151;">${comp.address}</div>
-              <div style="font-size:10px; color:#374151;">TEL: ${comp.tel} | FAX: ${comp.fax}</div>
-            `}
+          <div style="display:flex; align-items:center; gap:14px;">
+            <img src="${assets.ampm_logo || assets.ampm_header}" style="width:64px; height:74px; object-fit:contain;" alt="AM PM Pharmacy Logo">
+            <div>
+              <h2 style="font-size:17px; font-weight:800; color:#0369a1; margin:0; line-height:1.2; letter-spacing:0.02em;">AM PM PHARMACY SDN BHD <span style="font-size:12px; font-weight:600; color:#4b5563;">(572945-M)</span></h2>
+              <div style="font-size:10px; color:#4b5563; line-height:1.35; max-width:440px; margin-top:3px;">
+                ${comp.address}<br>
+                TEL: ${comp.tel} | FAX: ${comp.fax} | EMAIL: ${comp.email}
+              </div>
+            </div>
           </div>
           <div style="text-align:right;">
             <div style="display:inline-block; background:#0284c7; color:#fff; font-size:11px; font-weight:800; padding:4px 12px; border-radius:4px; letter-spacing:0.05em; text-transform:uppercase;">
@@ -1194,9 +1199,8 @@
           <div style="display:flex; align-items:center; gap:14px;">
             <img src="${assets.pmg_heart_logo || 'icons/icon-192.png'}" style="width:72px; height:72px; object-fit:contain;" alt="PMG Logo">
             <div>
-              <h2 style="font-size:16px; font-weight:800; color:#b91c1c; margin:0; line-height:1.2;">PMG HEALTHCARE SDN BHD <span style="font-size:12px; font-weight:600; color:#4b5563;">(1424437-X)</span></h2>
-              <div style="font-size:12px; font-weight:700; color:#111827; margin-top:2px;">PMG PHARMACY KOTA SENTOSA</div>
-              <div style="font-size:10px; color:#4b5563; line-height:1.3; max-width:440px; margin-top:3px;">
+              <h2 style="font-size:17px; font-weight:800; color:#b91c1c; margin:0; line-height:1.2; letter-spacing:0.02em;">PMG PHARMACY KOTA SENTOSA</h2>
+              <div style="font-size:10px; color:#4b5563; line-height:1.35; max-width:440px; margin-top:3px;">
                 Ground Floor, Sublot 1, Lot 460, Block 227 KNLD, 7th Mile, Jalan Penrissen, 93250 Kuching, Sarawak.<br>
                 TEL: 082-629 118 / 011-1050 8911 | EMAIL: customercare@pmghealthcare.com
               </div>
