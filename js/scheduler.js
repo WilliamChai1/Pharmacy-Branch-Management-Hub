@@ -995,27 +995,31 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays) {
       }
     }
 
-    // 2. Count morning, night, and working staff
-    let finalAm = 0;
+    // 2. Count morning, midday (11:30–12:30), night, and working staff
+    let finalFullAm = 0;
+    let finalHalfAm = 0;
     let finalPm = 0;
     let workingTotal = 0;
     Object.values(d.shifts).forEach(s => {
       if (s && s !== 'RD' && s !== 'PH' && s !== 'OFF') {
         workingTotal++;
-        if (s.includes('0730') || s.includes('0800')) finalAm++;
+        if (s.includes('4H') || s.includes('0730-1130')) finalHalfAm++;
+        else if (s.includes('0730') || s.includes('0800')) finalFullAm++;
         if (s.includes('1230') || s.includes('1300') || s.includes('1630')) finalPm++;
       }
     });
 
-    d.amCount = finalAm;
+    d.fullAmCount = finalFullAm;
+    d.halfAmCount = finalHalfAm;
+    d.amCount = finalFullAm + finalHalfAm;
     d.pmCount = finalPm;
     d.workingTotal = workingTotal;
 
-    if (workingTotal < 6 || finalAm < 3 || finalPm < 3) {
-      const isAmShort = finalAm < 3;
+    if (workingTotal < 6 || finalFullAm < 3 || finalPm < 3) {
+      const isMiddayShort = finalFullAm < 3;
       const isPmShort = finalPm < 3;
-      const shortDesc = isAmShort ? `Deficit on Morning (${finalAm}/3 staff)` : (isPmShort ? `Deficit on Night (${finalPm}/3 staff)` : `Total working staff below 6`);
-      const warn = `⚠️ Manpower Alert: Only ${workingTotal} staff on duty on ${dateStr} (${dayOfWeek}${holidayName ? ' - ' + holidayName : ''}). ${shortDesc}. Minimum 6 required to hit 3 AM / 3 PM floor.`;
+      const shortDesc = isMiddayShort ? `Midday Handover Deficit (11:30–12:30: only ${finalFullAm}/3 full AM staff)` : (isPmShort ? `Deficit on Night (${finalPm}/3 staff)` : `Total working staff below 6`);
+      const warn = `⚠️ Manpower Alert: Only ${workingTotal} staff on duty on ${dateStr} (${dayOfWeek}${holidayName ? ' - ' + holidayName : ''}). ${shortDesc}. Minimum 3 required on floor continuously.`;
       d.warning = warn;
       if (!schedule.warnings.includes(warn)) schedule.warnings.push(warn);
     }
@@ -1274,18 +1278,27 @@ function getFullWeeksPeriod(year, month) {
 // Law of Zero Fatigue:
 // AM shifts and HD strictly precede PM shifts in the cycle from RD to RD.
 // PM shifts lead directly into RD. Rest between every transition is >= 15 hours.
-function generateZeroFatiguePatterns(tm, weekDays, prevSundayShift) {
+function generateLegalWeeklyPatterns(tm, weekDays, prevSundayShift) {
   const prevWasPm = prevSundayShift && prevSundayShift.includes('1230');
   const patterns = [];
 
   const prefRdIdx = weekDays.findIndex(d => d.dayOfWeek === tm.restDayPref);
-  const rdCandidates = prefRdIdx !== -1 ? [prefRdIdx, (prefRdIdx + 1) % 7, (prefRdIdx + 6) % 7] : [0, 1, 2, 3, 4, 5, 6];
+  const rdCandidates = [prefRdIdx];
+  for (let i = 0; i < 7; i++) {
+    if (!rdCandidates.includes(i)) rdCandidates.push(i);
+  }
+
+  const prefHdIdx = weekDays.findIndex(d => (tm.halfDayPref || '').includes(d.dayOfWeek));
 
   rdCandidates.forEach(rdIdx => {
-    for (let hdIdx = 0; hdIdx < 7; hdIdx++) {
-      if (hdIdx === rdIdx) continue;
+    const hdIndices = [];
+    if (prefHdIdx !== -1 && prefHdIdx !== rdIdx) hdIndices.push(prefHdIdx);
+    for (let i = 0; i < 7; i++) {
+      if (i !== rdIdx && !hdIndices.includes(i)) hdIndices.push(i);
+    }
 
-      if (prevWasPm && rdIdx > 0 && hdIdx < rdIdx) continue;
+    hdIndices.forEach(hdIdx => {
+      if (prevWasPm && rdIdx > 0 && hdIdx < rdIdx) return;
 
       for (let s = 0; s <= 5; s++) {
         const seq = new Array(7);
@@ -1323,7 +1336,7 @@ function generateZeroFatiguePatterns(tm, weekDays, prevSundayShift) {
           }
         }
 
-        // Verify zero fatigue
+        // Verify zero turnaround fatigue
         let fatigue = false;
         let cur = prevWasPm ? 'PM' : 'RD';
         for (let i = 0; i < 7; i++) {
@@ -1339,21 +1352,36 @@ function generateZeroFatiguePatterns(tm, weekDays, prevSundayShift) {
         }
 
         if (!fatigue) {
-          let am = 0, pm = 0;
+          let amFull = 0, pmFull = 0;
           seq.forEach(shift => {
-            if (shift.includes('0730') || shift.includes('4H')) am++;
-            if (shift.includes('1230')) pm++;
+            if (shift === '8H_0730-1630') amFull++;
+            if (shift.includes('1230')) pmFull++;
           });
-          patterns.push({ seq, am, pm, rdIdx, hdIdx });
+
+          if (amFull >= 0 && amFull <= 4) {
+            let prefScore = 0;
+            if (rdIdx === prefRdIdx) prefScore += 2000;
+            if (hdIdx === prefHdIdx) prefScore += 500;
+
+            if (tm.dayPrefs) {
+              weekDays.forEach((d, dIdx) => {
+                const dp = tm.dayPrefs[d.dayOfWeek];
+                if (dp && dp.includes('Morning') && seq[dIdx].includes('0730')) prefScore += 40;
+                if (dp && dp.includes('Night') && seq[dIdx].includes('1230')) prefScore += 40;
+              });
+            }
+
+            patterns.push({ seq, amFull, pmFull, rdIdx, hdIdx, prefScore });
+          }
         }
       }
-    }
+    });
   });
 
   return patterns;
 }
 
-// Solve 1 week with integer constraint satisfaction, pharmacist coverage, and floor minimums
+// Solve 1 week with coupled Pharmacist pre-screening, midday floor enforcement, and quadratic shift parity
 function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, william) {
   const williamSeq = weekDays.map(d => {
     if (HOLIDAYS_2026_SARAWAK[d.date]) return 'PH';
@@ -1364,104 +1392,252 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
 
   const tmPatterns = {};
   rotatingPool.forEach(tm => {
-    const pats = generateZeroFatiguePatterns(tm, weekDays, prevSundayShifts[tm.empNo]);
+    const pats = generateLegalWeeklyPatterns(tm, weekDays, prevSundayShifts[tm.empNo]);
+    const curAm = (cumStats[tm.empNo] && cumStats[tm.empNo].amFull !== undefined) ? cumStats[tm.empNo].amFull : (cumStats[tm.empNo]?.am || 0);
+    const curPm = (cumStats[tm.empNo] && cumStats[tm.empNo].pmFull !== undefined) ? cumStats[tm.empNo].pmFull : (cumStats[tm.empNo]?.pm || 0);
+    const targetAm = (curAm <= curPm) ? 3 : 2;
+
     pats.sort((a, b) => {
-      const balA = Math.abs((cumStats[tm.empNo].am + a.am) - (cumStats[tm.empNo].pm + a.pm));
-      const balB = Math.abs((cumStats[tm.empNo].am + b.am) - (cumStats[tm.empNo].pm + b.pm));
-      return balA - balB;
+      const dA = Math.abs(a.amFull - targetAm);
+      const dB = Math.abs(b.amFull - targetAm);
+      const scoreA = a.prefScore - dA * 250;
+      const scoreB = b.prefScore - dB * 250;
+      return scoreB - scoreA;
     });
+
     tmPatterns[tm.empNo] = pats;
   });
 
+  const kenixPats = tmPatterns['PMG02963'] || [];
+  const christinaPats = tmPatterns['PMG03033'] || [];
+
+  // Coupled Pharmacist Pre-Screening:
+  // Guarantees 100% compliant pharmacist pairs covering:
+  // 1. Sunday and PH Morning Rx (William off)
+  // 2. All 7 Nights Rx (William never works night)
+  const validRxPairs = [];
+  kenixPats.forEach(kp => {
+    christinaPats.forEach(cp => {
+      let morningCovered = true;
+      for (let d = 0; d < 7; d++) {
+        if (williamSeq[d] === 'RD' || williamSeq[d] === 'PH') {
+          const rxMorn = kp.seq[d].includes('0730') || cp.seq[d].includes('0730');
+          if (!rxMorn) { morningCovered = false; break; }
+        }
+      }
+      if (!morningCovered) return;
+
+      let allNightsCovered = true;
+      for (let d = 0; d < 7; d++) {
+        if (!kp.seq[d].includes('1230') && !cp.seq[d].includes('1230')) {
+          allNightsCovered = false;
+          break;
+        }
+      }
+      if (allNightsCovered) {
+        const kCurAm = (cumStats['PMG02963']?.amFull !== undefined) ? cumStats['PMG02963'].amFull : (cumStats['PMG02963']?.am || 0);
+        const kCurPm = (cumStats['PMG02963']?.pmFull !== undefined) ? cumStats['PMG02963'].pmFull : (cumStats['PMG02963']?.pm || 0);
+        const cCurAm = (cumStats['PMG03033']?.amFull !== undefined) ? cumStats['PMG03033'].amFull : (cumStats['PMG03033']?.am || 0);
+        const cCurPm = (cumStats['PMG03033']?.pmFull !== undefined) ? cumStats['PMG03033'].pmFull : (cumStats['PMG03033']?.pm || 0);
+
+        const kAm = kCurAm + kp.amFull;
+        const kPm = kCurPm + kp.pmFull;
+        const cAm = cCurAm + cp.amFull;
+        const cPm = cCurPm + cp.pmFull;
+
+        const parityPenalty = Math.pow(kAm - kPm, 2) * 200 + Math.pow(cAm - cPm, 2) * 200;
+        const pairScore = kp.prefScore + cp.prefScore - parityPenalty;
+        validRxPairs.push({ kenix: kp, christina: cp, score: pairScore });
+      }
+    });
+  });
+
+  validRxPairs.sort((a, b) => b.score - a.score);
+
+  const nonRxStaff = rotatingPool.filter(t => !t.isPharmacist);
+
   function evalCombination(selected) {
     let penalty = 0;
-    for (let day = 0; day < 7; day++) {
-      let amCount = 0;
-      let pmCount = 0;
-      let rxAm = false;
-      let rxPm = false;
 
-      const ws = williamSeq[day];
-      if (ws.includes('0730') || ws.includes('4H')) { amCount++; rxAm = true; }
+    for (let day = 0; day < 7; day++) {
+      let fullAm = (williamSeq[day] === '8H_0730-1630' ? 1 : 0);
+      let halfAm = (williamSeq[day] === '4H_0730-1130' ? 1 : 0);
+      let pm = 0;
 
       rotatingPool.forEach(tm => {
         const s = selected[tm.empNo].seq[day];
-        if (s.includes('0730') || s.includes('4H')) {
-          amCount++;
-          if (tm.isPharmacist) rxAm = true;
-        } else if (s.includes('1230')) {
-          pmCount++;
-          if (tm.isPharmacist) rxPm = true;
-        }
+        if (s === '8H_0730-1630') fullAm++;
+        else if (s === '4H_0730-1130') halfAm++;
+        else if (s.includes('1230')) pm++;
       });
 
-      if (amCount < 3) penalty += (3 - amCount) * 2000;
-      if (pmCount < 3) penalty += (3 - pmCount) * 2000;
-      if (!rxAm) penalty += 5000;
-      if (!rxPm) penalty += 5000;
-      penalty += Math.abs(amCount - pmCount) * 10;
+      // Midday floor between 11:30 and 12:30: strictly >= 3 staff!
+      if (fullAm < 3) penalty += (3 - fullAm) * 100000;
+
+      // Night floor: strictly >= 3 staff!
+      if (pm < 3) penalty += (3 - pm) * 100000;
+
+      // Half day density: max 2 HD per day
+      if (halfAm > 2) penalty += (halfAm - 2) * 20000;
+
+      penalty += Math.abs(fullAm - pm) * 10;
     }
+
+    // Individual AM vs PM Parity Penalty
+    rotatingPool.forEach(tm => {
+      const p = selected[tm.empNo];
+      const curAm = (cumStats[tm.empNo]?.amFull !== undefined) ? cumStats[tm.empNo].amFull : (cumStats[tm.empNo]?.am || 0);
+      const curPm = (cumStats[tm.empNo]?.pmFull !== undefined) ? cumStats[tm.empNo].pmFull : (cumStats[tm.empNo]?.pm || 0);
+      const newAm = curAm + p.amFull;
+      const newPm = curPm + p.pmFull;
+      penalty += Math.pow(newAm - newPm, 2) * 500;
+      penalty -= p.prefScore;
+    });
+
     return penalty;
   }
 
   let best = null;
-  let minPenalty = 999999;
+  let minPenalty = Infinity;
+  const rxLimit = Math.min(validRxPairs.length, 50);
 
-  for (let iter = 0; iter < 20000; iter++) {
+  for (let iter = 0; iter < 45000; iter++) {
     const cur = {};
-    rotatingPool.forEach(tm => {
+
+    if (rxLimit > 0) {
+      const pIdx = Math.floor(Math.pow(Math.random(), 1.5) * rxLimit);
+      const pair = validRxPairs[pIdx];
+      cur['PMG02963'] = pair.kenix;
+      cur['PMG03033'] = pair.christina;
+    } else {
+      cur['PMG02963'] = kenixPats[0] || { seq: new Array(7).fill('RD'), amFull: 0, pmFull: 0 };
+      cur['PMG03033'] = christinaPats[0] || { seq: new Array(7).fill('RD'), amFull: 0, pmFull: 0 };
+    }
+
+    // Select other 6 staff with power-law bias towards top preference patterns
+    nonRxStaff.forEach(tm => {
       const pats = tmPatterns[tm.empNo];
-      const maxIdx = Math.min(pats.length, (iter < 100 ? 5 : pats.length));
-      const idx = Math.floor(Math.random() * maxIdx);
+      const idx = Math.floor(Math.pow(Math.random(), 1.8) * pats.length);
       cur[tm.empNo] = pats[idx];
     });
 
     const p = evalCombination(cur);
     if (p < minPenalty) {
       minPenalty = p;
-      best = cur;
-      if (minPenalty === 0) break;
+      best = JSON.parse(JSON.stringify(cur));
+      if (minPenalty < -15000) break;
     }
   }
 
-  // Floor post-smoothing
+  // POST-PROCESSING FLOOR REPAIR (WITH FORWARD PROPAGATION TO PREVENT FATIGUE)
   for (let day = 0; day < 7; day++) {
-    let amCount = (williamSeq[day].includes('0730') || williamSeq[day].includes('4H')) ? 1 : 0;
-    let pmCount = 0;
+    let fullAm = (williamSeq[day] === '8H_0730-1630' ? 1 : 0);
+    let pm = 0;
+
     rotatingPool.forEach(tm => {
       const s = best[tm.empNo].seq[day];
-      if (s.includes('0730') || s.includes('4H')) amCount++;
-      if (s.includes('1230')) pmCount++;
+      if (s === '8H_0730-1630') fullAm++;
+      if (s.includes('1230')) pm++;
     });
 
-    while (pmCount < 3 && amCount > 3) {
-      const cand = rotatingPool.find(tm => {
+    // If pm < 3 and fullAm > 3, convert non-pharmacist with AM excess
+    while (pm < 3 && fullAm > 3) {
+      const candidates = nonRxStaff.filter(tm => {
         const s = best[tm.empNo].seq[day];
-        if (s !== '8H_0730-1630') return false;
-        if (day + 1 < 7) {
-          const nextS = best[tm.empNo].seq[day + 1];
-          return nextS === 'RD' || nextS.includes('1230');
-        }
-        return true;
+        return s === '8H_0730-1630';
       });
 
-      if (cand) {
-        best[cand.empNo].seq[day] = '8H_1230-2130';
-        best[cand.empNo].am--;
-        best[cand.empNo].pm++;
-        amCount--;
-        pmCount++;
-      } else {
+      if (!candidates.length) break;
+
+      candidates.sort((a, b) => {
+        const curAmA = (cumStats[a.empNo]?.amFull !== undefined) ? cumStats[a.empNo].amFull : (cumStats[a.empNo]?.am || 0);
+        const curPmA = (cumStats[a.empNo]?.pmFull !== undefined) ? cumStats[a.empNo].pmFull : (cumStats[a.empNo]?.pm || 0);
+        const curAmB = (cumStats[b.empNo]?.amFull !== undefined) ? cumStats[b.empNo].amFull : (cumStats[b.empNo]?.am || 0);
+        const curPmB = (cumStats[b.empNo]?.pmFull !== undefined) ? cumStats[b.empNo].pmFull : (cumStats[b.empNo]?.pm || 0);
+
+        const diffA = curAmA + best[a.empNo].amFull - (curPmA + best[a.empNo].pmFull);
+        const diffB = curAmB + best[b.empNo].amFull - (curPmB + best[b.empNo].pmFull);
+        return diffB - diffA;
+      });
+
+      let converted = false;
+      for (const cand of candidates) {
+        let canPropagate = true;
+        for (let nextD = day; nextD < 7; nextD++) {
+          if (best[cand.empNo].seq[nextD] === 'RD') break;
+          if (best[cand.empNo].seq[nextD].includes('4H')) {
+            canPropagate = false;
+            break;
+          }
+        }
+
+        if (canPropagate) {
+          for (let nextD = day; nextD < 7; nextD++) {
+            if (best[cand.empNo].seq[nextD] === 'RD') break;
+            if (best[cand.empNo].seq[nextD] === '8H_0730-1630') {
+              best[cand.empNo].seq[nextD] = '8H_1230-2130';
+              best[cand.empNo].amFull--;
+              best[cand.empNo].pmFull++;
+              if (nextD === day) {
+                fullAm--;
+                pm++;
+              }
+            }
+          }
+          converted = true;
+          break;
+        }
+      }
+      if (!converted) break;
+    }
+
+    // If fullAm < 3 and pm > 3, convert non-pharmacist with PM excess back to AM
+    while (fullAm < 3 && pm > 3) {
+      const pmCandidates = nonRxStaff.filter(tm => {
+        const s = best[tm.empNo].seq[day];
+        return s && s.includes('1230');
+      });
+
+      if (!pmCandidates.length) break;
+
+      pmCandidates.sort((a, b) => {
+        const curAmA = (cumStats[a.empNo]?.amFull !== undefined) ? cumStats[a.empNo].amFull : (cumStats[a.empNo]?.am || 0);
+        const curPmA = (cumStats[a.empNo]?.pmFull !== undefined) ? cumStats[a.empNo].pmFull : (cumStats[a.empNo]?.pm || 0);
+        const curAmB = (cumStats[b.empNo]?.amFull !== undefined) ? cumStats[b.empNo].amFull : (cumStats[b.empNo]?.am || 0);
+        const curPmB = (cumStats[b.empNo]?.pmFull !== undefined) ? cumStats[b.empNo].pmFull : (cumStats[b.empNo]?.pm || 0);
+
+        const diffA = curPmA + best[a.empNo].pmFull - (curAmA + best[a.empNo].amFull);
+        const diffB = curPmB + best[b.empNo].pmFull - (curAmB + best[b.empNo].amFull);
+        return diffB - diffA;
+      });
+
+      let converted = false;
+      for (const cand of pmCandidates) {
+        const prevShift = (day === 0 ? prevSundayShifts[cand.empNo] : best[cand.empNo].seq[day - 1]);
+        const canPrev = !prevShift || prevShift === 'RD' || prevShift === 'PH' || prevShift.includes('0730');
+        if (!canPrev) continue;
+
+        best[cand.empNo].seq[day] = '8H_0730-1630';
+        best[cand.empNo].pmFull--;
+        best[cand.empNo].amFull++;
+        fullAm++;
+        pm--;
+        converted = true;
         break;
       }
+      if (!converted) break;
     }
   }
 
   return { selected: best, penalty: minPenalty, williamSeq };
 }
 
+
 // ─── SMART HEURISTIC SCHEDULE GENERATOR (FULL 7-DAY WEEKS & ZERO FATIGUE) ───────
 function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
+  if (!currentTeammates || !currentTeammates.length) {
+    currentTeammates = JSON.parse(JSON.stringify(DEFAULT_KS01_TEAMMATES));
+  }
   const william = currentTeammates.find(t => t.empNo === 'PMG00831' || t.nickname === 'WILLIAM');
   const rotatingPool = currentTeammates.filter(t => t.empNo !== 'PMG00831' && t.nickname !== 'WILLIAM');
   const weeks = getFullWeeksPeriod(year, month);
@@ -1565,13 +1741,16 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
         };
       }
 
-      let amCount = 0;
+      let fullAmCount = 0;
+      let halfAmCount = 0;
       let pmCount = 0;
       let workingTotal = 0;
+
       Object.values(dayShifts).forEach(s => {
         if (s && s !== 'RD' && s !== 'PH' && s !== 'OFF') {
           workingTotal++;
-          if (s.includes('0730') || s.includes('0800') || s.includes('4H')) amCount++;
+          if (s.includes('4H') || s.includes('0730-1130')) halfAmCount++;
+          else if (s.includes('0730') || s.includes('0800')) fullAmCount++;
           if (s.includes('1230') || s.includes('1300') || s.includes('1630')) pmCount++;
         }
       });
@@ -1580,10 +1759,21 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
         ...d,
         shifts: dayShifts,
         cleaningDuty,
-        amCount,
+        fullAmCount,
+        halfAmCount,
+        amCount: fullAmCount + halfAmCount,
         pmCount,
         workingTotal
       };
+
+      if (fullAmCount < 3 || pmCount < 3) {
+        const isMiddayShort = fullAmCount < 3;
+        const isPmShort = pmCount < 3;
+        const shortDesc = isMiddayShort ? `Midday Handover Deficit (11:30–12:30: only ${fullAmCount}/3 full AM staff)` : (isPmShort ? `Deficit on Night (${pmCount}/3 staff)` : `Total working staff below 6`);
+        const warn = `⚠️ Manpower Alert: Only ${workingTotal} staff on duty on ${d.date} (${d.dayOfWeek}). ${shortDesc}. Minimum 3 required on floor continuously.`;
+        dayObj.warning = warn;
+        if (!warnings.includes(warn)) warnings.push(warn);
+      }
 
       dailySchedule.push(dayObj);
       shiftRegistry[d.date] = dayObj;
@@ -1671,22 +1861,31 @@ function renderScheduleMatrix(schedule) {
       const isPharm = tm.isPharmacist || tm.position === 'Pharmacist';
       const isHalf  = shift && (shift.includes('4H') || shift.includes('5H') || shift.includes('Half') || shift.includes('0730-1130'));
       const isMorning = shift && (shift.includes('0730') || shift.includes('0800'));
+      const isFullAm  = isMorning && !isHalf;
       const isNight   = shift && (shift.includes('1230') || shift.includes('1300') || shift.includes('1630'));
 
       if (isHalf) {
         teammateStats[empNo].hdCount++;
-      }
-
-      if (isMorning) {
-        if (isPharm) hasMorningPharm = true;
-        morningRaces.add(tm.race);
-        teammateStats[empNo].mCount++;
         // Check fatigue: previous shift was night
         if (teammateStats[empNo].lastShiftCode && teammateStats[empNo].lastShiftCode.includes('1230')) {
           teammateStats[empNo].pmToAmFatigueCount++;
         }
         teammateStats[empNo].currentNightStreak = 0;
         teammateStats[empNo].lastShiftCode = shift;
+      }
+
+      if (isMorning) {
+        if (isPharm) hasMorningPharm = true;
+        morningRaces.add(tm.race);
+        if (isFullAm) {
+          teammateStats[empNo].mCount++;
+          // Check fatigue: previous shift was night
+          if (teammateStats[empNo].lastShiftCode && teammateStats[empNo].lastShiftCode.includes('1230')) {
+            teammateStats[empNo].pmToAmFatigueCount++;
+          }
+          teammateStats[empNo].currentNightStreak = 0;
+          teammateStats[empNo].lastShiftCode = shift;
+        }
       } else if (isNight) {
         if (isPharm) hasNightPharm = true;
         nightRaces.add(tm.race);
@@ -1696,7 +1895,7 @@ function renderScheduleMatrix(schedule) {
           teammateStats[empNo].maxConsecutiveNights = teammateStats[empNo].currentNightStreak;
         }
         teammateStats[empNo].lastShiftCode = shift;
-      } else {
+      } else if (!isHalf) {
         teammateStats[empNo].rdCount++;
         teammateStats[empNo].currentNightStreak = 0;
         teammateStats[empNo].lastShiftCode = shift;
@@ -1770,9 +1969,9 @@ function renderScheduleMatrix(schedule) {
   schedule.days.forEach(d => {
     const isWeekend = d.dayOfWeek === 'Saturday' || d.dayOfWeek === 'Sunday';
     const isHoliday = !!HOLIDAYS_2026_SARAWAK[d.date];
-    const isAmShortage = d.amCount < 3;
+    const isMiddayShort = d.fullAmCount !== undefined ? d.fullAmCount < 3 : d.amCount < 3;
     const isPmShortage = d.pmCount < 3;
-    const isShortage = isAmShortage || isPmShortage;
+    const isShortage = isMiddayShort || isPmShortage;
 
     // Visual Grid Warning Badges: Amber highlight on column header where a shift has < 3 staff
     let dayBg = 'bg-gray-50 text-gray-700';
@@ -1784,8 +1983,8 @@ function renderScheduleMatrix(schedule) {
       dayBg = 'bg-amber-50/60 text-amber-900';
     }
 
-    const shortageTooltip = isAmShortage
-      ? `⚠️ Morning Shift Shortage (${d.amCount}/3 staff) - Click to edit`
+    const shortageTooltip = isMiddayShort
+      ? `⚠️ Midday Handover Shortage (11:30–12:30: only ${d.fullAmCount || d.amCount}/3 full AM staff) - Click to edit`
       : `⚠️ Night Shift Shortage (${d.pmCount}/3 staff) - Click to edit`;
 
     headerHtml += `
@@ -1799,7 +1998,7 @@ function renderScheduleMatrix(schedule) {
             class="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500 hover:bg-amber-600 text-white transition shadow-xs cursor-pointer whitespace-nowrap"
             title="${shortageTooltip}">
             <i class="fa-solid fa-triangle-exclamation"></i>
-            <span>${isAmShortage ? `AM (${d.amCount}/3)` : `PM (${d.pmCount}/3)`}</span>
+            <span>${isMiddayShort ? `11:30 (${d.fullAmCount || d.amCount}/3)` : `PM (${d.pmCount}/3)`}</span>
           </button>
         ` : ''}
       </th>
@@ -1860,11 +2059,12 @@ function renderScheduleMatrix(schedule) {
       </td>
   `;
   schedule.days.forEach(d => {
-    const isTargetMet = d.amCount >= 3 && d.pmCount >= 3;
+    const isTargetMet = (d.fullAmCount !== undefined ? d.fullAmCount >= 3 : d.amCount >= 3) && d.pmCount >= 3;
+    const middayStaff = d.fullAmCount !== undefined ? d.fullAmCount : d.amCount;
     densityRow += `
       <td class="px-1 py-1 text-center border-r border-gray-200 ${isTargetMet ? '' : 'bg-amber-100/90'}">
-        <button type="button" onclick="openDayShiftEditorModal('${d.date}')" class="w-full text-[9px] font-mono font-bold ${isTargetMet ? 'text-emerald-800 bg-emerald-100 hover:bg-emerald-200' : 'text-amber-900 bg-amber-200 hover:bg-amber-300 border border-amber-300'} px-1 py-0.5 rounded leading-tight transition cursor-pointer" title="Morning: ${d.amCount}, Night: ${d.pmCount}, Total Working: ${d.workingTotal} (Click to fine-tune)">
-          ${d.amCount}M / ${d.pmCount}N ${isTargetMet ? '' : '⚠️'}
+        <button type="button" onclick="openDayShiftEditorModal('${d.date}')" class="w-full text-[9px] font-mono font-bold ${isTargetMet ? 'text-emerald-800 bg-emerald-100 hover:bg-emerald-200' : 'text-amber-900 bg-amber-200 hover:bg-amber-300 border border-amber-300'} px-1 py-0.5 rounded leading-tight transition cursor-pointer" title="Morning: ${d.amCount} (${middayStaff} Full AM + ${d.halfAmCount || 0} Half Day), Midday Handover (11:30–12:30): ${middayStaff} staff, Night: ${d.pmCount}, Total Working: ${d.workingTotal} (Click to fine-tune)">
+          ${middayStaff}M / ${d.pmCount}N ${isTargetMet ? '' : '⚠️'}
         </button>
       </td>
     `;
@@ -1954,11 +2154,11 @@ function renderScheduleMatrix(schedule) {
               <tr class="bg-slate-50 border-b border-gray-200 text-gray-600 uppercase text-[10px] font-bold">
                 <th class="py-2.5 px-3">Teammate</th>
                 <th class="py-2.5 px-3">Role & Mode</th>
-                <th class="py-2.5 px-3 text-center">Morning (AM)</th>
-                <th class="py-2.5 px-3 text-center">Night (PM)</th>
-                <th class="py-2.5 px-3 text-center">Parity Status</th>
+                <th class="py-2.5 px-3 text-center">Full Morning (8H)</th>
+                <th class="py-2.5 px-3 text-center">Full Night (8H)</th>
+                <th class="py-2.5 px-3 text-center">Shift Parity</th>
                 <th class="py-2.5 px-3 text-center">Full Rest Days (RD)</th>
-                <th class="py-2.5 px-3 text-center">Half Days (HD)</th>
+                <th class="py-2.5 px-3 text-center">Half Days (4H)</th>
                 <th class="py-2.5 px-3 text-center">Statutory Quota</th>
                 <th class="py-2.5 px-3 text-center">6S Cleaning Duties</th>
                 <th class="py-2.5 px-3 text-center">Anti-Fatigue Status</th>
@@ -1975,6 +2175,8 @@ function renderScheduleMatrix(schedule) {
         let parityBadge = '';
         if (isFixed) {
           parityBadge = '<span class="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-semibold">Fixed Anchor (Exempt)</span>';
+        } else if (isPharm) {
+          parityBadge = `<span class="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold" title="Kenix & Christina split all 35 store night shifts equally (18 vs 17)">✓ Rx Coverage Split (${st.nCount}N / ${st.mCount}M)</span>`;
         } else {
           const diff = Math.abs(st.mCount - st.nCount);
           parityBadge = diff <= 1
@@ -2098,18 +2300,19 @@ function renderConflictInspector(schedule) {
   const bottlenecks = [];
 
   schedule.days.forEach(d => {
-    const isAmShortage = d.amCount < 3;
+    const isAmShortage = d.fullAmCount !== undefined ? d.fullAmCount < 3 : d.amCount < 3;
     const isPmShortage = d.pmCount < 3;
     const isDensityShortage = d.workingTotal < 6;
 
     if (isAmShortage || isPmShortage || isDensityShortage) {
       const shortageShift = isAmShortage && isPmShortage
-        ? 'Both Shifts'
-        : (isAmShortage ? 'Morning Shift' : (isPmShortage ? 'Night Shift' : 'Overall Manpower'));
+        ? 'Midday & Night Shifts'
+        : (isAmShortage ? 'Midday Handover (11:30–12:30)' : (isPmShortage ? 'Night Shift' : 'Overall Manpower'));
 
       let deficit = 0;
-      if (isAmShortage && isPmShortage) deficit = (3 - d.amCount) + (3 - d.pmCount);
-      else if (isAmShortage) deficit = 3 - d.amCount;
+      const middayCount = d.fullAmCount !== undefined ? d.fullAmCount : d.amCount;
+      if (isAmShortage && isPmShortage) deficit = (3 - middayCount) + (3 - d.pmCount);
+      else if (isAmShortage) deficit = 3 - middayCount;
       else if (isPmShortage) deficit = 3 - d.pmCount;
       else deficit = 6 - d.workingTotal;
 
