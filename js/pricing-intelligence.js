@@ -2772,10 +2772,10 @@ Our objective as Area Manager:
 
       if (statusPill) statusPill.textContent = 'Analyzing…';
 
-      // Preferred models prioritizing Google Search Grounding capability
+      // Primary: Gemini 3.5 Flash-Lite (15 RPM / 500 RPD) — High speed routine market analysis
+      // Secondary: Gemini 3.5 Flash (5 RPM / 20 RPD) — Deep competitor dynamics reasoning
+      // Tertiary: Gemini 3.1 Flash-Lite (15 RPM / 500 RPD) — High quota fallback
       const modelsToTry = [
-        { code: 'gemini-2.5-flash',      name: 'Gemini 2.5 Flash' },
-        { code: 'gemini-2.0-flash',      name: 'Gemini 2.0 Flash' },
         { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
         { code: 'gemini-3.5-flash',      name: 'Gemini 3.5 Flash' },
         { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' }
@@ -2790,16 +2790,13 @@ Our objective as Area Manager:
       for (const m of modelsToTry) {
         try {
           const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.code}:generateContent?key=${apiKey}`;
-          // First try with Google Search Grounding enabled
           const res = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               contents: [{
-                role: 'user',
                 parts: [{ text: promptText }]
               }],
-              tools: [{ googleSearch: {} }],
               generationConfig: {
                 temperature: 0.2,
                 maxOutputTokens: 2048
@@ -2812,7 +2809,7 @@ Our objective as Area Manager:
             const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
             if (text && text.trim()) {
               responseText = text.trim();
-              usedModel = `${m.name} + Google Search`;
+              usedModel = m.name;
               groundingMetadata = data.candidates?.[0]?.groundingMetadata || null;
               break;
             }
@@ -2820,34 +2817,11 @@ Our objective as Area Manager:
             const errData = await res.json().catch(() => ({}));
             const errMsg = errData.error?.message || `HTTP ${res.status}`;
             lastErrorMsg = errMsg;
-            console.warn(`[PMG Pricing AI] Model ${m.code} with search error (${res.status}):`, errMsg);
+            console.warn(`[PMG Pricing AI] Model ${m.code} error (${res.status}):`, errMsg);
 
-            if (res.status === 403 || errMsg.toLowerCase().includes('leaked') || errMsg.toLowerCase().includes('api key')) {
+            if (errMsg.toLowerCase().includes('leaked')) {
               isKeyBlocked = true;
-              break; // Stop immediately if API key itself is blocked or leaked
-            }
-
-            // If error was 400 or tool-related, retry this model WITHOUT tools as fallback
-            if (res.status === 400 || errMsg.toLowerCase().includes('tool') || errMsg.toLowerCase().includes('search')) {
-              try {
-                const resNoTools = await fetch(endpoint, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    contents: [{ role: 'user', parts: [{ text: promptText }] }],
-                    generationConfig: { temperature: 0.2, maxOutputTokens: 2048 }
-                  })
-                });
-                if (resNoTools.ok) {
-                  const dataNoTools = await resNoTools.json();
-                  const textNoTools = dataNoTools.candidates?.[0]?.content?.parts?.[0]?.text;
-                  if (textNoTools && textNoTools.trim()) {
-                    responseText = textNoTools.trim();
-                    usedModel = m.name;
-                    break;
-                  }
-                }
-              } catch (e2) {}
+              break; // Stop only if key is explicitly flagged as leaked
             }
           }
         } catch (e) {
@@ -3154,10 +3128,10 @@ Our objective as Area Manager:
         chunks.push(targetSkus.slice(i, i + CHUNK_SIZE));
       }
 
-      // Preferred models prioritizing Google Search Grounding capability
+      // Primary: Gemini 3.5 Flash-Lite (15 RPM / 500 RPD)
+      // Secondary: Gemini 3.5 Flash (5 RPM / 20 RPD)
+      // Tertiary: Gemini 3.1 Flash-Lite (High Quota Fallback)
       const modelsToTry = [
-        { code: 'gemini-2.5-flash',      name: 'Gemini 2.5 Flash' },
-        { code: 'gemini-2.0-flash',      name: 'Gemini 2.0 Flash' },
         { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
         { code: 'gemini-3.5-flash',      name: 'Gemini 3.5 Flash' },
         { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' }
@@ -3171,7 +3145,7 @@ Our objective as Area Manager:
         const chunkEnd = Math.min((c + 1) * CHUNK_SIZE, totalItems);
 
         if (progressLabel) {
-          progressLabel.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-indigo-600 mr-1.5"></i> Scanning items ${chunkStart} to ${chunkEnd} of ${totalItems} via Google Search (Farley, Alpro, Caring, BIG, Ting, Watsons)...`;
+          progressLabel.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-indigo-600 mr-1.5"></i> Scanning items ${chunkStart} to ${chunkEnd} of ${totalItems} (Gemini 3.5 Flash-Lite)...`;
         }
 
         // Build chunk prompt (UNANCHORED - NEVER include user selling price)
@@ -3220,8 +3194,7 @@ Respond STRICTLY with a valid JSON array of objects. Use the exact ITEM_ID provi
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                tools: [{ googleSearch: {} }],
+                contents: [{ parts: [{ text: prompt }] }],
                 generationConfig: { temperature: 0.2, maxOutputTokens: 2048 }
               })
             });
@@ -3234,26 +3207,7 @@ Respond STRICTLY with a valid JSON array of objects. Use the exact ITEM_ID provi
               }
             } else {
               const errData = await res.json().catch(() => ({}));
-              const errMsg = errData.error?.message || `HTTP ${res.status}`;
-              if (res.status === 400 || errMsg.toLowerCase().includes('tool') || errMsg.toLowerCase().includes('search')) {
-                // Fallback without tools if endpoint does not support search
-                const resNoTools = await fetch(endpoint, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                    generationConfig: { temperature: 0.2, maxOutputTokens: 2048 }
-                  })
-                });
-                if (resNoTools.ok) {
-                  const dataNoTools = await resNoTools.json();
-                  const textNoTools = dataNoTools.candidates?.[0]?.content?.parts?.[0]?.text;
-                  if (textNoTools && textNoTools.trim()) {
-                    responseText = textNoTools.trim();
-                    break;
-                  }
-                }
-              }
+              console.warn(`[PMG Batch AI] Error on model ${m.code} (${res.status}):`, errData.error?.message || res.status);
             }
           } catch (e) {
             console.warn(`[PMG Batch AI] Error on model ${m.code}:`, e);
