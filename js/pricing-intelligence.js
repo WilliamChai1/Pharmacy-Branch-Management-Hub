@@ -397,6 +397,7 @@
 
     async init() {
       await this.loadSkusFromStorage();
+      this.sanitizeRxPrescriptionSkus();
       this.render();
       // Auto sync from Google Sheets in background
       this.fetchPricingFromSheets(false);
@@ -577,12 +578,17 @@
                   s.costPrice = updated.costPrice;
                   if (updated.nonMemberPrice) s.nonMemberPrice = updated.nonMemberPrice;
                   if (updated.strategyTag) s.strategyTag = updated.strategyTag;
-                  if (updated.supermarketPrice) s.supermarketPrice = updated.supermarketPrice;
+                  if (this.isScheduledPrescriptionDrug(s)) {
+                    s.supermarketPrice = null;
+                  } else if (updated.supermarketPrice) {
+                    s.supermarketPrice = updated.supermarketPrice;
+                  }
                   if (updated.chainPharmacyPrice) s.chainPharmacyPrice = updated.chainPharmacyPrice;
                 }
               });
             } else {
               this.skus = data.skus;
+              this.sanitizeRxPrescriptionSkus();
             }
             await setPricingSkusToIdb(this.skus);
             this.renderSummaryCards();
@@ -969,6 +975,84 @@
       return (s - c).toFixed(2);
     }
 
+    // ─── PHARMACY REGULATORY / PRESCRIPTION DRUG INTELLIGENCE ────────────────────
+    // Under the Malaysian Poisons Act 1952, supermarkets (Farley, Emart, Everwin, CCK)
+    // CANNOT legally stock, sell, or dispense scheduled poison medicines (Group B / Group C).
+    // Supermarkets only sell adult/baby nutrition milk, diapers, personal care, and general GSL OTC.
+    isScheduledPrescriptionDrug(sku) {
+      if (!sku) return false;
+      if (sku.isPrescription === true) return true;
+
+      const cat = (sku.category || '').toUpperCase().trim();
+      const name = (sku.name || '').toUpperCase().trim();
+      const tag = (sku.strategyTag || '').toLowerCase().trim();
+
+      // 1. Explicit Category matching (Poisons Act 1952 scheduled drugs)
+      if (
+        cat === 'CHRONIC / NCD' || 
+        cat === 'PRESCRIPTION (RX)' || 
+        cat === 'CHRONIC DISEASE' ||
+        cat.includes('RX') || 
+        cat.includes('POM') || 
+        cat.includes('POISON') || 
+        cat.includes('CHRONIC') ||
+        cat.includes('DISPENS') ||
+        cat.includes('PRESCRIPTION')
+      ) {
+        return true;
+      }
+
+      // 2. Clinical Moat strategy with dosage form indicators
+      if (tag === 'clinical_bundle' && (name.includes('TAB') || name.includes('CAP') || name.includes('MG'))) {
+        return true;
+      }
+
+      // 3. Known Prescription & Poison Group B/C Active Ingredients and Brand Names in Malaysia
+      const rxKeywords = [
+        'HCT', 'LOSARTAN', 'AMLODIPINE', 'METFORMIN', 'GLICLAZIDE', 'PERINDOPRIL',
+        'TELMISARTAN', 'VALSARTAN', 'CANDESARTAN', 'BISOPROLOL', 'ATENOLOL',
+        'METOPROLOL', 'ATORVASTATIN', 'ROSUVASTATIN', 'SIMVASTATIN',
+        'ACETAN', 'LIPITOR', 'NORVASC', 'CRESTOR', 'COZAAR', 'HYZAAR',
+        'JANUVIA', 'JARDIANCE', 'FORXIGA', 'GALVUS', 'DIAMICRON', 'COVERSYL',
+        'MICARDIS', 'CONCOR', 'GLUCOPHAGE', 'DILATREND', 'CARVEDILOL',
+        'PLAVIX', 'CLOPIDOGREL', 'XARELTO', 'RIVAROXABAN', 'ELIQUIS', 'APIXABAN',
+        'AUGMENTIN', 'AMOXICILLIN', 'AZITHROMYCIN', 'CEFUROXIME', 'CIPROFLOXACIN', 'ZINNAT',
+        'ESOMEPRAZOLE', 'OMEPRAZOLE', 'PANTOPRAZOLE', 'NEXIUM',
+        'VENTOLIN', 'SERETIDE', 'SYMBICORT', 'INSULIN', 'NOVORAPID', 'LANTUS',
+        'HUMALOG', 'VIAGRA', 'CIALIS', 'SILDENAFIL', 'TADALAFIL', 'GABAPENTIN',
+        'PREGABALIN', 'LYRICA', 'ALLOPURINOL', 'COLCHICINE', 'ZYLORIC'
+      ];
+
+      for (const kw of rxKeywords) {
+        const regex = new RegExp(`(^|[^a-zA-Z0-9])${kw}([^a-zA-Z0-9]|$)`, 'i');
+        if (regex.test(name)) {
+          return true;
+        }
+      }
+
+      // 4. Combined strength pattern common in prescription drugs (e.g. 50/12.5, 5/80, 10/160, 5/20)
+      if (/\b\d+(\.\d+)?\s*\/\s*\d+(\.\d+)?\b/.test(name) && (name.includes('TAB') || name.includes('CAP') || name.includes('MG') || name.includes('HCT'))) {
+        return true;
+      }
+
+      return false;
+    }
+
+    sanitizeRxPrescriptionSkus() {
+      if (!Array.isArray(this.skus) || this.skus.length === 0) return;
+      let cleaned = 0;
+      this.skus.forEach(s => {
+        if (this.isScheduledPrescriptionDrug(s) && (s.supermarketPrice !== null && s.supermarketPrice !== undefined)) {
+          s.supermarketPrice = null;
+          cleaned++;
+        }
+      });
+      if (cleaned > 0) {
+        console.log(`[PMG Pricing] Sanitized ${cleaned} prescription drugs (removed invalid supermarket benchmarks per Poisons Act 1952).`);
+        this.saveSkusToStorage(true);
+      }
+    }
+
     // ─── FILTER SKUs ────────────────────────────────────────────────────────────
     getFilteredSkus() {
       let list = this.skus.filter(s => {
@@ -995,15 +1079,18 @@
           const sp = parseFloat(s.standardSp) || 0;
           const sm = parseFloat(s.supermarketPrice) || 0;
           const ch = parseFloat(s.chainPharmacyPrice) || 0;
+          const isRx = this.isScheduledPrescriptionDrug(s);
 
-          if (this.activeCompetitorFilter === 'HAS_SUPER' && sm <= 0) return false;
+          if (this.activeCompetitorFilter === 'HAS_SUPER') {
+            if (isRx || sm <= 0) return false;
+          }
           if (this.activeCompetitorFilter === 'HAS_CHAIN' && ch <= 0) return false;
           if (this.activeCompetitorFilter === 'HAS_PROMO' && (!s.promoNote || !s.promoNote.trim())) return false;
           if (this.activeCompetitorFilter === 'OVER_SUPER') {
-            if (sm <= 0 || sp <= sm) return false;
+            if (isRx || sm <= 0 || sp <= sm) return false;
           }
           if (this.activeCompetitorFilter === 'UNDER_SUPER') {
-            if (sm <= 0 || sp >= sm) return false;
+            if (isRx || sm <= 0 || sp >= sm) return false;
           }
           if (this.activeCompetitorFilter === 'OVER_CHAIN') {
             if (ch <= 0 || sp <= ch) return false;
@@ -1012,24 +1099,32 @@
             if (ch <= 0 || sp >= ch) return false;
           }
           if (this.activeCompetitorFilter === 'HIGH_DEVIATION') {
-            const smDev = (sm > 0 && sp > 0) ? Math.abs((sp - sm) / sp) : 0;
+            const smDev = (!isRx && sm > 0 && sp > 0) ? Math.abs((sp - sm) / sp) : 0;
             const chDev = (ch > 0 && sp > 0) ? Math.abs((sp - ch) / sp) : 0;
             if (smDev < 0.10 && chDev < 0.10) return false;
           }
           if (this.activeCompetitorFilter === 'EXTREME_DEVIATION') {
-            const smDev = (sm > 0 && sp > 0) ? Math.abs((sp - sm) / sp) : 0;
+            const smDev = (!isRx && sm > 0 && sp > 0) ? Math.abs((sp - sm) / sp) : 0;
             const chDev = (ch > 0 && sp > 0) ? Math.abs((sp - ch) / sp) : 0;
             if (smDev < 0.20 && chDev < 0.20) return false;
           }
           if (this.activeCompetitorFilter === 'MATCHED') {
-            const smDev = (sm > 0 && sp > 0) ? Math.abs((sp - sm) / sp) : null;
+            const smDev = (!isRx && sm > 0 && sp > 0) ? Math.abs((sp - sm) / sp) : null;
             const chDev = (ch > 0 && sp > 0) ? Math.abs((sp - ch) / sp) : null;
             const isSmMatch = smDev !== null && smDev <= 0.02;
             const isChMatch = chDev !== null && chDev <= 0.02;
-            if (!isSmMatch && !isChMatch) return false;
+            if (isRx) {
+              if (!isChMatch) return false;
+            } else {
+              if (!isSmMatch && !isChMatch) return false;
+            }
           }
           if (this.activeCompetitorFilter === 'MISSING_ANY') {
-            if (sm > 0 && ch > 0) return false;
+            if (isRx) {
+              if (ch > 0) return false;
+            } else {
+              if (sm > 0 && ch > 0) return false;
+            }
           }
         }
         return true;
@@ -1038,6 +1133,12 @@
       // Sorting
       if (this.sortField === 'supermarket_dev') {
         list.sort((a, b) => {
+          const isRxA = this.isScheduledPrescriptionDrug(a);
+          const isRxB = this.isScheduledPrescriptionDrug(b);
+          if (isRxA && !isRxB) return 1;
+          if (!isRxA && isRxB) return -1;
+          if (isRxA && isRxB) return 0;
+
           const spA = parseFloat(a.standardSp) || 0;
           const smA = parseFloat(a.supermarketPrice) || 0;
           const hasSmA = smA > 0 && spA > 0;
@@ -1176,7 +1277,14 @@
       const parsed = parseFloat(newPrice);
       const sku = this.skus.find(s => s.id === skuId);
       if (sku) {
-        sku.supermarketPrice = (isNaN(parsed) || parsed <= 0) ? null : parsed;
+        if (this.isScheduledPrescriptionDrug(sku)) {
+          sku.supermarketPrice = null;
+          if (typeof showExpiryToast === 'function') {
+            showExpiryToast('Supermarkets cannot sell scheduled prescription drugs under Poisons Act 1952.');
+          }
+        } else {
+          sku.supermarketPrice = (isNaN(parsed) || parsed <= 0) ? null : parsed;
+        }
         sku.customModified = true;
         this.saveSkusToStorage();
         this.renderTableOnly();
@@ -1197,7 +1305,10 @@
     applyAiCompetitorPrices(skuId, superPrice, chainPrice, competitorName, promoNote) {
       const sku = this.skus.find(s => s.id === skuId);
       if (!sku) return;
-      if (superPrice && !isNaN(parseFloat(superPrice)) && parseFloat(superPrice) > 0) {
+      const isRx = this.isScheduledPrescriptionDrug(sku);
+      if (isRx) {
+        sku.supermarketPrice = null;
+      } else if (superPrice && !isNaN(parseFloat(superPrice)) && parseFloat(superPrice) > 0) {
         sku.supermarketPrice = parseFloat(superPrice);
       }
       if (chainPrice && !isNaN(parseFloat(chainPrice)) && parseFloat(chainPrice) > 0) {
@@ -1236,6 +1347,9 @@
         elasticity: 'Moderate',
         notes: skuData.notes || 'Added by Area Manager.'
       };
+      if (this.isScheduledPrescriptionDrug(newSku)) {
+        newSku.supermarketPrice = null;
+      }
       this.skus.unshift(newSku);
       this.saveSkusToStorage();
       this.render();
@@ -1517,7 +1631,7 @@
           ? `${internalNotes}${filename ? ' · Imported from ' + filename : ''}`
           : `Imported from Xilnex${filename ? ' (' + filename + ')' : ''}`;
 
-        parsedSkus.push({
+        const parsedItem = {
           id: 'xilnex-' + (code ? code.replace(/[^a-zA-Z0-9_-]/g, '_') : Date.now() + '-' + r),
           code: code || 'N/A',
           name: name.toUpperCase(),
@@ -1534,7 +1648,11 @@
           strategyTag,
           elasticity: 'Moderate',
           notes: notesStr
-        });
+        };
+        if (this.isScheduledPrescriptionDrug(parsedItem)) {
+          parsedItem.supermarketPrice = null;
+        }
+        parsedSkus.push(parsedItem);
       }
 
       this.pendingXilnexSkus = parsedSkus;
@@ -1604,7 +1722,7 @@
           s.standardSp.toFixed(2),
           s.nonMemberPrice ? s.nonMemberPrice.toFixed(2) : '',
           margin + '%',
-          s.supermarketPrice ? s.supermarketPrice.toFixed(2) : '',
+          this.isScheduledPrescriptionDrug(s) ? 'N/A (Rx)' : (s.supermarketPrice ? s.supermarketPrice.toFixed(2) : ''),
           s.chainPharmacyPrice ? s.chainPharmacyPrice.toFixed(2) : '',
           escapeCsv(s.competitorName || ''),
           escapeCsv(s.promoNote || ''),
@@ -1758,30 +1876,44 @@
         }
 
         // Supermarket price input & comparison pill
-        let superDiffHtml = '';
-        if (s.supermarketPrice && s.supermarketPrice > 0) {
-          const diffNum = s.standardSp - s.supermarketPrice;
-          const diff = Math.abs(diffNum).toFixed(2);
-          const pct = ((diffNum / s.supermarketPrice) * 100).toFixed(1);
-          const isHigher = diffNum > 0.05;
-          const isLower = diffNum < -0.05;
-          const badgeClass = isHigher 
-            ? 'text-rose-700 bg-rose-50 border border-rose-200' 
-            : (isLower ? 'text-emerald-700 bg-emerald-50 border border-emerald-200' : 'text-slate-600 bg-slate-50 border border-slate-200');
-          const diffSign = diffNum > 0.05 ? '+' : (diffNum < -0.05 ? '-' : '');
-          superDiffHtml = `<span class="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded ${badgeClass} mt-1">${diffSign}RM ${diff} (${diffSign}${pct}%) vs Farley</span>`;
-        }
+        const isRx = this.isScheduledPrescriptionDrug(s);
+        let superComp = '';
+        if (isRx) {
+          superComp = `
+            <div class="inline-flex flex-col items-end">
+              <span class="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded cursor-help"
+                    title="Under the Malaysian Poisons Act 1952, supermarkets (Farley, Emart, Everwin) cannot legally stock, sell, or dispense scheduled prescription/poison medications.">
+                <i class="fa-solid fa-ban text-slate-400"></i> N/A (Rx Exclusive)
+              </span>
+              <span class="text-[9px] text-slate-400 font-medium mt-0.5" title="Malaysian Poisons Act 1952 (Group B/C Scheduled Medicine)">Poisons Act 1952</span>
+            </div>
+          `;
+        } else {
+          let superDiffHtml = '';
+          if (s.supermarketPrice && s.supermarketPrice > 0) {
+            const diffNum = s.standardSp - s.supermarketPrice;
+            const diff = Math.abs(diffNum).toFixed(2);
+            const pct = ((diffNum / s.supermarketPrice) * 100).toFixed(1);
+            const isHigher = diffNum > 0.05;
+            const isLower = diffNum < -0.05;
+            const badgeClass = isHigher 
+              ? 'text-rose-700 bg-rose-50 border border-rose-200' 
+              : (isLower ? 'text-emerald-700 bg-emerald-50 border border-emerald-200' : 'text-slate-600 bg-slate-50 border border-slate-200');
+            const diffSign = diffNum > 0.05 ? '+' : (diffNum < -0.05 ? '-' : '');
+            superDiffHtml = `<span class="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded ${badgeClass} mt-1">${diffSign}RM ${diff} (${diffSign}${pct}%) vs Farley</span>`;
+          }
 
-        const superComp = `
-          <div class="inline-flex items-center gap-1 justify-end">
-            <span class="text-gray-400 text-xs font-mono">RM</span>
-            <input type="number" step="0.10" value="${s.supermarketPrice ? s.supermarketPrice.toFixed(2) : ''}" placeholder="Farley..."
-              onchange="window.pmgPricing.updateSkuSupermarketPrice('${s.id}', this.value)"
-              class="w-20 text-right font-mono font-bold text-gray-800 border border-gray-200 rounded px-1.5 py-1 focus:ring-2 focus:ring-blue-400 outline-none bg-slate-50/50 hover:bg-white transition"
-              title="Farley / Emart benchmark price (Click to edit)">
-          </div>
-          ${superDiffHtml}
-        `;
+          superComp = `
+            <div class="inline-flex items-center gap-1 justify-end">
+              <span class="text-gray-400 text-xs font-mono">RM</span>
+              <input type="number" step="0.10" value="${s.supermarketPrice ? s.supermarketPrice.toFixed(2) : ''}" placeholder="Farley..."
+                onchange="window.pmgPricing.updateSkuSupermarketPrice('${s.id}', this.value)"
+                class="w-20 text-right font-mono font-bold text-gray-800 border border-gray-200 rounded px-1.5 py-1 focus:ring-2 focus:ring-blue-400 outline-none bg-slate-50/50 hover:bg-white transition"
+                title="Farley / Emart benchmark price (Click to edit)">
+            </div>
+            ${superDiffHtml}
+          `;
+        }
 
         // Pharmacy competitor input & comparison pill
         let chainDiffHtml = '';
@@ -2125,10 +2257,59 @@
       const modal = document.getElementById('pricingAiModal');
       const title = document.getElementById('pricingAiModalTitle');
       const input = document.getElementById('pricingAiPromptInput');
+      const isRx = this.isScheduledPrescriptionDrug(sku);
 
       if (title) title.textContent = `Competitor Price Benchmark Analysis: ${sku.name}`;
       if (input) {
-        input.value = `Perform a deep competitor price intelligence check for this retail pharmacy SKU in Sarawak, Malaysia:
+        if (isRx) {
+          input.value = `Perform a deep competitor price intelligence check for this prescription / chronic disease medication in Sarawak, Malaysia:
+Product: ${sku.name} (Code: ${sku.code})
+Category: ${sku.category} (Scheduled Poison / Prescription Medicine under Poisons Act 1952)
+Supplier/Distributor: ${sku.supplier || 'Standard Distributor'}
+PMG Custom Cost Price: RM ${sku.costPrice.toFixed(2)}
+Current PMG Standard Selling Price: RM ${sku.standardSp.toFixed(2)}
+Competitor Pharmacy Benchmark (Alpro / Caring / BIG / Ting / Watsons): ${sku.chainPharmacyPrice ? 'RM ' + sku.chainPharmacyPrice.toFixed(2) : 'Not recorded'}
+
+CRITICAL REGULATORY NOTICE (Malaysian Poisons Act 1952):
+This item is a scheduled prescription poison (Group B / Group C). Supermarkets and hypermarkets (Farley Supermarket, Emart Hypermarket, Everwin) CANNOT legally stock, sell, or dispense this medicine.
+Supermarket price MUST be null. Only benchmark against licensed retail community pharmacies and GP clinics.
+
+Target Competitors in Kuching & Padawan, Sarawak:
+1. Licensed Retail Pharmacies:
+   - Alpro Pharmacy (Major community pharmacy chain in Sarawak)
+   - Caring Pharmacy (Vivacity / The Spring / Sarawak)
+   - BIG Pharmacy (Aggressive price-cutting competitor)
+   - Ting Pharmacy (Kuching local community pharmacy benchmark)
+   - Watsons & Guardian (Licensed dispensary branches)
+2. GP Clinics & Polikliniks:
+   - Local private GP clinic dispensing prices and patient compliance packages.
+3. Promotional & Value Factors:
+   - Chronic compliance packages (e.g. 2+1 free, 3-month supply, member repeat refills).
+   - Originator vs Bio-equivalent generic alternatives.
+
+Please provide:
+1. Pharmacy Competitor Price Benchmarking:
+   - Realistic retail price across Alpro, Caring, BIG Pharmacy, and Ting Pharmacy in Kuching.
+   - Any chronic repeat refill or bundle discounts.
+2. Price Differential & Patient Price-Sensitivity:
+   - Is PMG's RM ${sku.standardSp.toFixed(2)} competitive against Alpro and Ting Pharmacy?
+   - How price-sensitive are chronic disease patients in suburban Kuching (Sentosa, Moyan, Matang) on this medication?
+3. Recommended PMG 7-Branch Pricing Strategy:
+   - Suggested standardized member selling price to retain chronic patients while protecting professional gross margin.
+   - Value-added pharmacist counseling (MTAC, blood pressure/glucose screening, drug interaction checks).
+
+IMPORTANT: Return the detected competitor price numbers at the end inside a strict JSON code block:
+\`\`\`json
+{
+  "supermarketPrice": null,
+  "chainPharmacyPrice": 0.00,
+  "competitorName": "Alpro / Ting Pharmacy",
+  "promoNote": "3-Month Compliance Package",
+  "suggestedPmgSp": 0.00
+}
+\`\`\``;
+        } else {
+          input.value = `Perform a deep competitor price intelligence check for this retail pharmacy SKU in Sarawak, Malaysia:
 Product: ${sku.name} (Code: ${sku.code})
 Supplier/Distributor: ${sku.supplier || 'Standard Distributor'}
 PMG Custom Cost Price: RM ${sku.costPrice.toFixed(2)}
@@ -2170,6 +2351,7 @@ IMPORTANT: Return the detected competitor price numbers at the end inside a stri
   "suggestedPmgSp": 0.00
 }
 \`\`\``;
+        }
       }
 
       if (modal) modal.classList.remove('hidden');
@@ -2184,10 +2366,34 @@ IMPORTANT: Return the detected competitor price numbers at the end inside a stri
       const modal = document.getElementById('pricingAiModal');
       const title = document.getElementById('pricingAiModalTitle');
       const input = document.getElementById('pricingAiPromptInput');
+      const isRx = this.isScheduledPrescriptionDrug(sku);
 
       if (title) title.textContent = `Market Strategy & Commercial Dynamics: ${sku.name}`;
       if (input) {
-        input.value = `Perform an in-depth commercial market dynamics, basket building, and counter-strategy analysis for:
+        if (isRx) {
+          input.value = `Perform an in-depth commercial market dynamics, patient retention, and clinical basket-building analysis for this prescription medicine:
+Product: ${sku.name} (Code: ${sku.code})
+Category: ${sku.category} (Scheduled Prescription Drug - Poisons Act 1952)
+Supplier/Distributor: ${sku.supplier || 'Standard Distributor'}
+PMG Custom Cost Price: RM ${sku.costPrice.toFixed(2)}
+Current PMG Standard Selling Price: RM ${sku.standardSp.toFixed(2)}
+Competitor Chain Benchmark: ${sku.chainPharmacyPrice ? 'RM ' + sku.chainPharmacyPrice.toFixed(2) : 'N/A'}
+Target Market: Kuching & Padawan, Sarawak (7 Outlets: Kota Sentosa, Matang Jaya, Sungai Moyan, Malihah, Metrocity, Astana, Samariang).
+
+Please provide an actionable 7-outlet battle plan:
+1. Patient Adherence & Price Elasticity:
+   - How price-sensitive are chronic disease patients in suburban Sarawak (e.g. Moyan, Malihah, Sentosa)?
+   - Balancing affordable long-term refills with professional dispensing margin.
+2. Clinical Basket Building & Companion Recommendation:
+   - What clinical companion products (e.g. CoQ10 for statins, B-complex/Magnesium for antihypertensives, diagnostic monitoring strips, home BP monitors) should pharmacists recommend to enhance therapeutic outcomes and basket margin?
+3. Counter-Script vs Price Cutters (Alpro, BIG, GP Clinics):
+   - Practical scripts for pharmacists and dispensers when patients compare prices with aggressive chain discounters or clinic dispensaries. Emphasize PMG's authentic cold-chain sourcing, Medication Therapy Adherence Clinic (MTAC), free health screenings, and member points.
+4. Outlet-Specific Merchandising & Refill Management:
+   - High-density residential branches (Matang Jaya, Moyan, Samariang) vs Commercial centers (Metrocity, Kota Sentosa).
+5. Wholesaler / Distributor Deal Negotiation:
+   - With PMG purchasing for 7 branches, what bulk or bonus terms (e.g. 10+1, 12+2 bonus, or volume rebates) should Area Manager negotiate with ${sku.supplier || 'the distributor'}?`;
+        } else {
+          input.value = `Perform an in-depth commercial market dynamics, basket building, and counter-strategy analysis for:
 Product: ${sku.name} (Code: ${sku.code})
 Supplier/Distributor: ${sku.supplier || 'Standard Distributor'}
 PMG Custom Cost Price: RM ${sku.costPrice.toFixed(2)}
@@ -2208,6 +2414,7 @@ Please provide an actionable 7-outlet battle plan:
    - High-density residential branches (Matang Jaya, Moyan, Samariang) vs Commercial centers (Metrocity, Kota Sentosa).
 5. Wholesaler / Supplier Deal Negotiation:
    - With PMG purchasing for 7 branches, what bulk deal (e.g. 10+1 free, 12+2 bonus, or quarter-end rebate) should Area Manager negotiate with ${sku.supplier || 'the distributor'}?`;
+        }
       }
 
       if (modal) modal.classList.remove('hidden');
@@ -2438,13 +2645,18 @@ Our objective as Area Manager:
       let applyBannerHtml = '';
       if (parsedJson && this.selectedSkuForAi) {
         const sku = this.selectedSkuForAi;
-        const superP = parseFloat(parsedJson.supermarketPrice) || 0;
+        const isRx = this.isScheduledPrescriptionDrug(sku);
+        const superP = isRx ? 0 : (parseFloat(parsedJson.supermarketPrice) || 0);
         const chainP = parseFloat(parsedJson.chainPharmacyPrice) || 0;
         const compName = (parsedJson.competitorName || 'Alpro / Ting Pharmacy').replace(/"/g, '&quot;');
         const promoNote = (parsedJson.promoNote || '').replace(/"/g, '&quot;');
         const pmgSp = parseFloat(parsedJson.suggestedPmgSp) || 0;
 
-        if (superP > 0 || chainP > 0) {
+        if (superP > 0 || chainP > 0 || isRx) {
+          const superTxt = isRx 
+            ? '<b class="font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">N/A (Rx Exclusive)</b>' 
+            : `<b class="font-mono text-gray-900 bg-white px-1.5 py-0.5 rounded border border-indigo-200">${superP > 0 ? 'RM ' + superP.toFixed(2) : 'N/A'}</b>`;
+
           applyBannerHtml = `
             <div class="mb-4 p-3.5 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border-2 border-indigo-300 rounded-xl flex items-center justify-between gap-3 shadow-xs flex-wrap">
               <div class="space-y-1">
@@ -2452,8 +2664,8 @@ Our objective as Area Manager:
                   <i class="fa-solid fa-tags text-indigo-600"></i> AI Detected Competitor Benchmarks for <span class="text-blue-900 font-extrabold">${sku.name}</span>
                 </div>
                 <div class="text-[11px] text-indigo-900 flex items-center gap-3 flex-wrap">
-                  <span>Farley/Emart: <b class="font-mono text-gray-900 bg-white px-1.5 py-0.5 rounded border border-indigo-200">RM ${superP > 0 ? superP.toFixed(2) : 'N/A'}</b></span>
-                  <span>Competitor Pharmacy (${compName}): <b class="font-mono text-gray-900 bg-white px-1.5 py-0.5 rounded border border-indigo-200">RM ${chainP > 0 ? chainP.toFixed(2) : 'N/A'}</b></span>
+                  <span>Farley/Emart: ${superTxt}</span>
+                  <span>Competitor Pharmacy (${compName}): <b class="font-mono text-gray-900 bg-white px-1.5 py-0.5 rounded border border-indigo-200">${chainP > 0 ? 'RM ' + chainP.toFixed(2) : 'N/A'}</b></span>
                   ${promoNote ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-300"><i class="fa-solid fa-fire text-amber-600"></i> ${promoNote}</span>` : ''}
                   ${pmgSp > 0 ? `<span>Suggested Defensive SP: <b class="font-mono text-emerald-800 bg-white px-1.5 py-0.5 rounded border border-emerald-200">RM ${pmgSp.toFixed(2)}</b></span>` : ''}
                 </div>
@@ -2518,7 +2730,10 @@ Our objective as Area Manager:
     // ─── BATCH COMPETITOR & PROMOTIONS SCANNER ─────────────────────────────────
     openBatchCompetitorScanModal() {
       const pageSkus = this.getFilteredSkus().slice((this.currentPage - 1) * this.pageSize, this.currentPage * this.pageSize);
-      const missingCount = this.skus.filter(s => !s.supermarketPrice || !s.chainPharmacyPrice).length;
+      const missingCount = this.skus.filter(s => {
+        const isRx = this.isScheduledPrescriptionDrug(s);
+        return isRx ? !s.chainPharmacyPrice : (!s.supermarketPrice || !s.chainPharmacyPrice);
+      }).length;
       const filteredCount = this.getFilteredSkus().length;
 
       const elPage = document.getElementById('batchScopePageCount');
@@ -2572,7 +2787,10 @@ Our objective as Area Manager:
         const start = (this.currentPage - 1) * this.pageSize;
         targetSkus = this.getFilteredSkus().slice(start, start + this.pageSize);
       } else if (selectedScope === 'missing') {
-        targetSkus = this.skus.filter(s => !s.supermarketPrice || !s.chainPharmacyPrice);
+        targetSkus = this.skus.filter(s => {
+          const isRx = this.isScheduledPrescriptionDrug(s);
+          return isRx ? !s.chainPharmacyPrice : (!s.supermarketPrice || !s.chainPharmacyPrice);
+        });
       } else {
         targetSkus = this.getFilteredSkus();
       }
@@ -2636,16 +2854,22 @@ Our objective as Area Manager:
         // Build chunk prompt
         let itemListText = '';
         currentChunk.forEach((s, idx) => {
-          itemListText += `${idx + 1}. Code: "${s.code}" | Name: "${s.name}" | Brand: "${s.brand}" | PMG Cost: RM ${s.costPrice.toFixed(2)} | PMG Standard SP: RM ${s.standardSp.toFixed(2)}\n`;
+          const isRx = this.isScheduledPrescriptionDrug(s);
+          const rxLabel = isRx ? ' [PRESCRIPTION / POISONS ACT - SUPERMARKET EXCLUSIVE N/A]' : '';
+          itemListText += `${idx + 1}. Code: "${s.code}" | Name: "${s.name}" | Brand: "${s.brand}" | Category: "${s.category}"${rxLabel} | PMG Cost: RM ${s.costPrice.toFixed(2)} | PMG Standard SP: RM ${s.standardSp.toFixed(2)}\n`;
         });
 
         const prompt = `You are the Senior Commercial Pharmacy Pricing Director for PMG Pharmacy (7 Outlets in Kuching & Padawan, Sarawak, Malaysia).
 Benchmark competitor market prices AND promotional campaign pricing for these ${currentChunk.length} pharmaceutical / healthcare / OTC products in Sarawak:
 
-Competitors to factor:
-1. Supermarket / Hypermarket Benchmark: Farley Supermarket, Emart Hypermarket, Everwin (Sarawak retail market).
-2. Competitor Pharmacies: Alpro Pharmacy, Caring Pharmacy, BIG Pharmacy, Ting Pharmacy (Kuching local pharmacy), Watsons, Guardian.
-${includePromo ? '3. CRITICAL: Include active competitor promotional price factors: PWP (Purchase-With-Purchase), multi-buys ("Buy 2 Save More"), member special pricing, weekend flash discounts, or flyer promos.' : ''}
+CRITICAL REGULATORY RULE (Malaysian Poisons Act 1952):
+- Supermarkets / Hypermarkets (Farley Supermarket, Emart Hypermarket, Everwin) CANNOT legally stock, sell, or dispense scheduled prescription / poison medicines (Poison Group B & Group C / Chronic NCDs, e.g., Acetan, Losartan, Amlodipine, Metformin, Perindopril, Atorvastatin, Antibiotics).
+- For ANY prescription / chronic medicine (items tagged [PRESCRIPTION / POISONS ACT]): You MUST return "supermarketPrice": null (or 0). Do NOT fabricate a supermarket price for prescription drugs.
+- For adult/baby nutrition milk (Ensure, Glucerna, Pediasure), diapers, personal care, and non-scheduled general OTC: Supermarkets DO sell them. Benchmark realistic Farley/Emart retail prices.
+
+Competitor Pharmacies to factor for ALL items:
+- Alpro Pharmacy (Sarawak chain), Caring Pharmacy, BIG Pharmacy, Ting Pharmacy (Kuching local pharmacy), Watsons, Guardian, and private GP clinics.
+${includePromo ? 'CRITICAL: Include active competitor promotional price factors: PWP (Purchase-With-Purchase), multi-buys ("Buy 2 Save More"), member special pricing, weekend flash discounts, or flyer promos.' : ''}
 
 Items to Benchmark:
 ${itemListText}
@@ -2655,7 +2879,7 @@ Respond STRICTLY with a valid JSON array of objects with no extraneous markdown 
 [
   {
     "code": "ITEM_CODE",
-    "supermarketPrice": 14.50,
+    "supermarketPrice": null,
     "chainPharmacyPrice": 15.20,
     "competitorName": "Alpro Pharmacy",
     "promoNote": "Buy 2 @ RM 28 (Promo)",
@@ -2714,7 +2938,10 @@ Respond STRICTLY with a valid JSON array of objects with no extraneous markdown 
           }
 
           if (r) {
-            if (r.supermarketPrice && !isNaN(parseFloat(r.supermarketPrice)) && parseFloat(r.supermarketPrice) > 0) {
+            const isRx = this.isScheduledPrescriptionDrug(sku);
+            if (isRx) {
+              sku.supermarketPrice = null;
+            } else if (r.supermarketPrice && !isNaN(parseFloat(r.supermarketPrice)) && parseFloat(r.supermarketPrice) > 0) {
               sku.supermarketPrice = parseFloat(r.supermarketPrice);
             }
             if (r.chainPharmacyPrice && !isNaN(parseFloat(r.chainPharmacyPrice)) && parseFloat(r.chainPharmacyPrice) > 0) {
@@ -2734,7 +2961,10 @@ Respond STRICTLY with a valid JSON array of objects with no extraneous markdown 
 
           // Append live stream row in modal
           if (tbody) {
-            const superTxt = sku.supermarketPrice ? `RM ${sku.supermarketPrice.toFixed(2)}` : '<span class="text-gray-300">N/A</span>';
+            const isRx = this.isScheduledPrescriptionDrug(sku);
+            const superTxt = isRx 
+              ? '<span class="text-slate-400 font-semibold text-[10px]">N/A (Rx)</span>' 
+              : (sku.supermarketPrice ? `RM ${sku.supermarketPrice.toFixed(2)}` : '<span class="text-gray-300">N/A</span>');
             const chainTxt = sku.chainPharmacyPrice ? `RM ${sku.chainPharmacyPrice.toFixed(2)}` : '<span class="text-gray-300">N/A</span>';
             const compTxt = sku.competitorName || 'Alpro / Ting';
             const promoBadge = sku.promoNote 
@@ -2821,8 +3051,18 @@ Respond STRICTLY with a valid JSON array of objects with no extraneous markdown 
         const margin = this.calculateMargin(s.costPrice, s.standardSp);
         memo += `${idx + 1}. [${s.code}] ${s.name}\n`;
         memo += `   Standard Area SP: RM ${s.standardSp.toFixed(2)} | Cost: RM ${s.costPrice.toFixed(2)} (${s.supplier || 'Distributor'}) | Margin: ${margin}%\n`;
-        if (s.supermarketPrice) {
-          memo += `   Supermarket Benchmark (Farley/Emart): RM ${s.supermarketPrice.toFixed(2)}\n`;
+        if (this.isScheduledPrescriptionDrug(s)) {
+          memo += `   Prescription Drug / Rx Exclusive (Supermarket N/A - Poisons Act 1952)\n`;
+          if (s.chainPharmacyPrice) {
+            memo += `   Pharmacy Benchmark (${s.competitorName || 'Alpro/Ting'}): RM ${s.chainPharmacyPrice.toFixed(2)}\n`;
+          }
+        } else {
+          if (s.supermarketPrice) {
+            memo += `   Supermarket Benchmark (Farley/Emart): RM ${s.supermarketPrice.toFixed(2)}\n`;
+          }
+          if (s.chainPharmacyPrice) {
+            memo += `   Pharmacy Benchmark (${s.competitorName || 'Alpro/Ting'}): RM ${s.chainPharmacyPrice.toFixed(2)}\n`;
+          }
         }
         if (s.notes) {
           memo += `   Directive: ${s.notes}\n`;
