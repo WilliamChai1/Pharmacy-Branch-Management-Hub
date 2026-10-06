@@ -79,6 +79,7 @@
   // ─── STATE OBJECTS ───────────────────────────────────────────────────────────
   let quotationState = {
     clientName: 'Sarawak Energy Berhad (Batu 7 Substation)',
+    patientName: '',
     attn: 'Pn. Dayang Norazimah / Facilities Dept',
     phone: '082-388 388 / 019-823 4410',
     address: 'Menara Sarawak Energy, No. 1, The Isthmus, 93050 Kuching, Sarawak',
@@ -100,6 +101,7 @@
 
   let invoiceState = {
     customerName: 'Tan Kok Wah',
+    patientName: '',
     icReg: '680415-13-5291',
     phone: '016-882 3918',
     address: 'Lorong 4, Taman Sentosa, 93250 Kuching, Sarawak',
@@ -355,10 +357,17 @@
             </div>
 
             <div class="space-y-2.5 text-xs">
-              <div>
-                <label class="block font-bold text-gray-700 mb-0.5">Client / Organization Name</label>
-                <input type="text" id="quoteClientName" value="${escapeHtml(quotationState.clientName)}" onchange="window.pmgAdminUtils.updateQuoteField('clientName', this.value)"
-                  class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-400 outline-none">
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block font-bold text-gray-700 mb-0.5">Client / Organization Name</label>
+                  <input type="text" id="quoteClientName" value="${escapeHtml(quotationState.clientName)}" onchange="window.pmgAdminUtils.updateQuoteField('clientName', this.value)"
+                    placeholder="e.g. Jabatan Perdana Sarawak" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-400 outline-none">
+                </div>
+                <div>
+                  <label class="block font-bold text-gray-700 mb-0.5">Patient Name <span class="text-indigo-600 font-semibold">(If Medical/Welfare)</span></label>
+                  <input type="text" id="quotePatientName" value="${escapeHtml(quotationState.patientName || '')}" onchange="window.pmgAdminUtils.updateQuoteField('patientName', this.value)"
+                    placeholder="e.g. Awang bin Bujang" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-400 outline-none bg-indigo-50/20">
+                </div>
               </div>
               <div class="grid grid-cols-2 gap-2">
                 <div>
@@ -698,6 +707,11 @@
             <div>
               <div style="font-size:11px; font-weight:800; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em;">CUSTOMER / ORGANIZATION</div>
               <div style="font-size:15px; font-weight:800; color:#111827; margin-top:3px;">${escapeHtml(quotationState.clientName)}</div>
+              ${quotationState.patientName ? `
+                <div style="font-size:12px; color:#1e3a8a; margin-top:3px;">
+                  <strong style="color:#4b5563;">Patient Name:</strong> <span style="font-weight:700; text-transform:uppercase; color:#0f172a;">${escapeHtml(quotationState.patientName)}</span>
+                </div>
+              ` : ''}
               <div style="font-size:11.5px; color:#374151; margin-top:3px;"><strong>Attn:</strong> ${escapeHtml(quotationState.attn)}</div>
               <div style="font-size:11.5px; color:#374151;"><strong>Tel:</strong> ${escapeHtml(quotationState.phone)}</div>
               <div style="font-size:11.5px; color:#4b5563; margin-top:3px; line-height:1.4;">${escapeHtml(quotationState.address)}</div>
@@ -805,7 +819,10 @@
           </div>
 
           <div style="display:flex; justify-content:space-between; background:#f8fafc; border:1px solid #cbd5e1; padding:10px 14px; border-radius:6px; margin-bottom:16px; font-size:11px;">
-            <div><strong>Project / Client:</strong> ${escapeHtml(quotationState.clientName)}</div>
+            <div>
+              <strong>Project / Client:</strong> ${escapeHtml(quotationState.clientName)}
+              ${quotationState.patientName ? ` | <strong>Patient:</strong> <span style="font-weight:700;">${escapeHtml(quotationState.patientName)}</span>` : ''}
+            </div>
             <div><strong>Attn:</strong> ${escapeHtml(quotationState.attn)}</div>
             <div><strong>Evaluation Date:</strong> ${quotationState.date}</div>
           </div>
@@ -891,6 +908,7 @@
   pmgAdminUtils.loadQuotePreset = function(presetKey) {
     if (presetKey === 'firstaid') {
       quotationState.clientName = 'Sarawak Energy Berhad (Batu 7 Substation)';
+      quotationState.patientName = '';
       quotationState.items = [
         { sku: 'FAK-CORP-01', name: 'Workplace Comprehensive First Aid Kit (MS 1390:2010 Compliant)', desc: 'Heavy duty wall-mountable ABS casing, 45 essential surgical & first aid components', qty: 5, pmgPrice: 185.00 },
         { sku: 'DIS-ALC-70', name: 'Alcoswab 70% Isopropyl Alcohol Swabs', desc: 'Medical grade sterile disinfectant swabs (Box of 100s)', qty: 20, pmgPrice: 8.50 },
@@ -900,6 +918,7 @@
       ];
     } else if (presetKey === 'clinic') {
       quotationState.clientName = 'Klinik Sentosa Medic & Surgeri';
+      quotationState.patientName = 'Lau Kah Hing (Ref: POL-9921)';
       quotationState.items = [
         { sku: 'DIAG-GLU-50', name: 'Accu-Chek Instant Blood Glucose Test Strips 50s', desc: 'ISO 15197:2013 high precision strips', qty: 25, pmgPrice: 68.00 },
         { sku: 'DIAG-LNC-100', name: 'Softclix Sterile Blood Lancets 100s', desc: 'Ultra-thin siliconized lancets', qty: 20, pmgPrice: 22.00 },
@@ -909,6 +928,7 @@
       ];
     } else if (presetKey === 'senior') {
       quotationState.clientName = 'Pusat Jagaan Warga Emas Kuching Sentosa';
+      quotationState.patientName = 'Pn. Mary Wong Siew Ling';
       quotationState.items = [
         { sku: 'CARE-DIA-L', name: 'Certainty DryPants Adult Diapers Large (Pack of 10s)', desc: 'Anti-bacterial absorbent core, odor control', qty: 40, pmgPrice: 29.50 },
         { sku: 'CARE-PAD-60', name: 'Hospital Underpads Bed Sheet 60cm x 90cm (Pack of 10s)', desc: 'Waterproof diamond embossed sheet', qty: 30, pmgPrice: 15.00 },
@@ -918,6 +938,7 @@
       ];
     } else if (presetKey === 'ppe') {
       quotationState.clientName = 'SJK(C) Sam Hap Hin, Kota Sentosa';
+      quotationState.patientName = '';
       quotationState.items = [
         { sku: 'PPE-MSK-50', name: 'Medicos 4-Ply Surgical Face Mask (Box of 50s)', desc: 'ASTM Level 3, BFE/PFE >= 99%', qty: 50, pmgPrice: 24.00 },
         { sku: 'PPE-SAN-5L', name: 'Antabax 75% Alcohol Hand Sanitizer Liquid 5 Litres', desc: 'Refill jug with moisturizers', qty: 10, pmgPrice: 58.00 },
@@ -1014,10 +1035,17 @@
                 </div>
               </div>
 
-              <div>
-                <label class="block font-bold text-gray-700 mb-0.5">Customer / Patient / Company Name</label>
-                <input type="text" id="invCustomerName" value="${escapeHtml(invoiceState.customerName)}" onchange="window.pmgAdminUtils.updateInvField('customerName', this.value)"
-                  class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-emerald-400 outline-none">
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block font-bold text-gray-700 mb-0.5">Billed Customer / Company</label>
+                  <input type="text" id="invCustomerName" value="${escapeHtml(invoiceState.customerName)}" onchange="window.pmgAdminUtils.updateInvField('customerName', this.value)"
+                    placeholder="e.g. Jabatan Perdana Sarawak" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-emerald-400 outline-none">
+                </div>
+                <div>
+                  <label class="block font-bold text-gray-700 mb-0.5">Patient Name <span class="text-emerald-700 font-semibold">(If Corporate/Welfare)</span></label>
+                  <input type="text" id="invPatientName" value="${escapeHtml(invoiceState.patientName || '')}" onchange="window.pmgAdminUtils.updateInvField('patientName', this.value)"
+                    placeholder="e.g. Awang bin Bujang" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-emerald-400 outline-none bg-emerald-50/20">
+                </div>
               </div>
 
               <div class="grid grid-cols-2 gap-2">
@@ -1260,6 +1288,7 @@
           <div>
             <div style="font-size:9.5px; font-weight:700; color:#6b7280; text-transform:uppercase;">BILLED TO / PATIENT PARTICULARS</div>
             <div style="font-size:12px; font-weight:800; color:#111827; margin-top:2px;">${escapeHtml(invoiceState.customerName)}</div>
+            ${invoiceState.patientName ? `<div style="font-size:11px; color:#065f46; margin-top:2px;"><strong>Patient Name:</strong> <span style="font-weight:700;">${escapeHtml(invoiceState.patientName)}</span></div>` : ''}
             <div><strong>NRIC / SSM No:</strong> ${escapeHtml(invoiceState.icReg || '-')}</div>
             <div><strong>Contact No:</strong> ${escapeHtml(invoiceState.phone || '-')}</div>
             ${invoiceState.doctorClinicRef ? `<div><strong>Clinic / Doctor Ref:</strong> ${escapeHtml(invoiceState.doctorClinicRef)}</div>` : ''}
