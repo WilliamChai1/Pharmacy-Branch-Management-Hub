@@ -550,7 +550,11 @@
     let sum = 0;
     quotationState.items.forEach(it => {
       const price = getAdjustedPrice(it.pmgPrice, companyKey);
-      sum += (price * it.qty);
+      if (companyKey === 'ssj' || companyKey === 'ampm') {
+        sum += Math.round(price * it.qty);
+      } else {
+        sum += (price * it.qty);
+      }
     });
     return sum;
   }
@@ -558,8 +562,25 @@
   function getAdjustedPrice(basePrice, companyKey) {
     if (companyKey === 'pmg') return basePrice;
     const markupPct = companyKey === 'ssj' ? (quotationState.ssjVariancePct || 4.8) : (quotationState.ampmVariancePct || 7.2);
-    // Real-world retail rounding to 2 decimal places
-    return Math.round(basePrice * (1 + (markupPct / 100)) * 100) / 100;
+    
+    // Auto jet-up competitor prices must be whole round numbers without any sen behind
+    let raw = basePrice * (1 + (markupPct / 100));
+    let rounded = Math.round(raw);
+
+    // Guard: Ensure competitor price is strictly higher than PMG base price
+    if (companyKey === 'ssj') {
+      const pmgFloor = Math.floor(basePrice);
+      if (rounded <= pmgFloor) {
+        rounded = pmgFloor + 1;
+      }
+    } else if (companyKey === 'ampm') {
+      // Ensure AMPM is strictly higher than SSJ
+      const ssjPrice = getAdjustedPrice(basePrice, 'ssj');
+      if (rounded <= ssjPrice) {
+        rounded = ssjPrice + 1;
+      }
+    }
+    return rounded;
   }
 
   // ─── ACTIVE QUOTATION HTML RENDERER ──────────────────────────────────────────
@@ -582,165 +603,183 @@
 
     if (companyKey === 'pmg') {
       headerMarkup = `
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #b91c1c; padding-bottom:12px; margin-bottom:15px;">
-          <div style="display:flex; align-items:center; gap:14px;">
-            <img src="${assets.pmg_heart_logo || 'icons/icon-192.png'}" style="width:70px; height:70px; object-fit:contain;" alt="PMG Logo">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #b91c1c; padding-bottom:16px; margin-bottom:20px;">
+          <div style="display:flex; align-items:center; gap:16px;">
+            <img src="${assets.pmg_heart_logo || 'icons/icon-192.png'}" style="width:78px; height:78px; object-fit:contain;" alt="PMG Logo">
             <div>
-              <h2 style="font-size:17px; font-weight:800; color:#b91c1c; margin:0; line-height:1.2; letter-spacing:0.02em;">PMG PHARMACY KOTA SENTOSA</h2>
-              <div style="font-size:10px; color:#4b5563; line-height:1.35; max-width:440px; margin-top:3px;">
+              <h2 style="font-size:20px; font-weight:800; color:#b91c1c; margin:0; line-height:1.2; letter-spacing:0.02em;">PMG PHARMACY KOTA SENTOSA</h2>
+              <div style="font-size:11.5px; color:#4b5563; line-height:1.45; max-width:480px; margin-top:5px;">
                 ${comp.address}<br>
                 TEL: ${comp.tel} | EMAIL: ${comp.email}
               </div>
             </div>
           </div>
           <div style="text-align:right;">
-            <div style="display:inline-block; background:#dc2626; color:#fff; font-size:11px; font-weight:800; padding:4px 12px; border-radius:4px; letter-spacing:0.05em; text-transform:uppercase;">
+            <div style="display:inline-block; background:#dc2626; color:#fff; font-size:12px; font-weight:800; padding:6px 16px; border-radius:4px; letter-spacing:0.06em; text-transform:uppercase;">
               OFFICIAL QUOTATION
             </div>
-            <div style="font-size:11px; font-weight:700; color:#111827; margin-top:6px;">Ref: ${quoteNo}</div>
-            <div style="font-size:10px; color:#4b5563;">Date: ${quotationState.date}</div>
+            <div style="font-size:12.5px; font-weight:700; color:#111827; margin-top:8px;">Ref: ${quoteNo}</div>
+            <div style="font-size:11.5px; color:#4b5563; margin-top:2px;">Date: ${quotationState.date}</div>
           </div>
         </div>
       `;
     } else if (companyKey === 'ssj') {
       headerMarkup = `
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #991b1b; padding-bottom:12px; margin-bottom:15px;">
-          <div style="display:flex; align-items:center; gap:14px;">
-            <img src="${assets.ssj_logo || assets.ssj_header}" style="width:58px; height:68px; object-fit:contain;" alt="SSJ Pharma Logo">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #991b1b; padding-bottom:16px; margin-bottom:20px;">
+          <div style="display:flex; align-items:center; gap:16px;">
+            <img src="${assets.ssj_logo || assets.ssj_header}" style="width:68px; height:78px; object-fit:contain;" alt="SSJ Pharma Logo">
             <div>
-              <h2 style="font-size:17px; font-weight:800; color:#991b1b; margin:0; line-height:1.2; letter-spacing:0.02em;">SSJ PHARMA SDN BHD <span style="font-size:12px; font-weight:600; color:#4b5563;">(1070101-K)</span></h2>
-              <div style="font-size:10px; color:#4b5563; line-height:1.35; max-width:440px; margin-top:3px;">
+              <h2 style="font-size:20px; font-weight:800; color:#991b1b; margin:0; line-height:1.2; letter-spacing:0.02em;">SSJ PHARMA SDN BHD <span style="font-size:13px; font-weight:600; color:#4b5563;">(1070101-K)</span></h2>
+              <div style="font-size:11.5px; color:#4b5563; line-height:1.45; max-width:480px; margin-top:5px;">
                 ${comp.address}<br>
                 TEL: ${comp.tel} | EMAIL: ${comp.email}
               </div>
             </div>
           </div>
           <div style="text-align:right;">
-            <div style="display:inline-block; background:#1e293b; color:#fff; font-size:11px; font-weight:800; padding:4px 12px; border-radius:4px; letter-spacing:0.05em; text-transform:uppercase;">
+            <div style="display:inline-block; background:#1e293b; color:#fff; font-size:12px; font-weight:800; padding:6px 16px; border-radius:4px; letter-spacing:0.06em; text-transform:uppercase;">
               COMMERCIAL QUOTATION
             </div>
-            <div style="font-size:11px; font-weight:700; color:#111827; margin-top:6px;">Ref: ${quoteNo}</div>
-            <div style="font-size:10px; color:#4b5563;">Date: ${quotationState.date}</div>
+            <div style="font-size:12.5px; font-weight:700; color:#111827; margin-top:8px;">Ref: ${quoteNo}</div>
+            <div style="font-size:11.5px; color:#4b5563; margin-top:2px;">Date: ${quotationState.date}</div>
           </div>
         </div>
       `;
     } else {
       headerMarkup = `
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #0369a1; padding-bottom:12px; margin-bottom:15px;">
-          <div style="display:flex; align-items:center; gap:14px;">
-            <img src="${assets.ampm_logo || assets.ampm_header}" style="width:64px; height:74px; object-fit:contain;" alt="AM PM Pharmacy Logo">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #0369a1; padding-bottom:16px; margin-bottom:20px;">
+          <div style="display:flex; align-items:center; gap:16px;">
+            <img src="${assets.ampm_logo || assets.ampm_header}" style="width:76px; height:86px; object-fit:contain;" alt="AM PM Pharmacy Logo">
             <div>
-              <h2 style="font-size:17px; font-weight:800; color:#0369a1; margin:0; line-height:1.2; letter-spacing:0.02em;">AM PM PHARMACY SDN BHD <span style="font-size:12px; font-weight:600; color:#4b5563;">(572945-M)</span></h2>
-              <div style="font-size:10px; color:#4b5563; line-height:1.35; max-width:440px; margin-top:3px;">
+              <h2 style="font-size:20px; font-weight:800; color:#0369a1; margin:0; line-height:1.2; letter-spacing:0.02em;">AM PM PHARMACY SDN BHD <span style="font-size:13px; font-weight:600; color:#4b5563;">(572945-M)</span></h2>
+              <div style="font-size:11.5px; color:#4b5563; line-height:1.45; max-width:480px; margin-top:5px;">
                 ${comp.address}<br>
                 TEL: ${comp.tel} | FAX: ${comp.fax} | EMAIL: ${comp.email}
               </div>
             </div>
           </div>
           <div style="text-align:right;">
-            <div style="display:inline-block; background:#0284c7; color:#fff; font-size:11px; font-weight:800; padding:4px 12px; border-radius:4px; letter-spacing:0.05em; text-transform:uppercase;">
+            <div style="display:inline-block; background:#0284c7; color:#fff; font-size:12px; font-weight:800; padding:6px 16px; border-radius:4px; letter-spacing:0.06em; text-transform:uppercase;">
               SUPPLIER QUOTATION
             </div>
-            <div style="font-size:11px; font-weight:700; color:#111827; margin-top:6px;">Ref: ${quoteNo}</div>
-            <div style="font-size:10px; color:#4b5563;">Date: ${quotationState.date}</div>
+            <div style="font-size:12.5px; font-weight:700; color:#111827; margin-top:8px;">Ref: ${quoteNo}</div>
+            <div style="font-size:11.5px; color:#4b5563; margin-top:2px;">Date: ${quotationState.date}</div>
           </div>
         </div>
       `;
     }
 
+    const isCompetitor = (companyKey === 'ssj' || companyKey === 'ampm');
+    const totalFormatted = isCompetitor ? `RM ${Math.round(total).toLocaleString()}` : `RM ${total.toFixed(2)}`;
+
+    // Clean spacer rows if few items to fill the A4 page proportionately
+    let spacerRows = '';
+    const neededSpacers = Math.max(0, 5 - quotationState.items.length);
+    for (let i = 0; i < neededSpacers; i++) {
+      spacerRows += `
+        <tr style="border-bottom:1px solid #f3f4f6; height:42px;">
+          <td style="padding:10px 10px; text-align:center; color:#e5e7eb;">&bull;</td>
+          <td style="padding:10px 10px;"></td>
+          <td style="padding:10px 12px;"></td>
+          <td style="padding:10px 10px;"></td>
+          <td style="padding:10px 12px;"></td>
+          <td style="padding:10px 12px;"></td>
+        </tr>
+      `;
+    }
+
     return `
-      <div class="a4-document" style="background:#ffffff; color:#111827; padding:24px 28px; border-radius:8px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; box-shadow:0 1px 3px rgba(0,0,0,0.08); font-size:11px; line-height:1.4;">
-        ${headerMarkup}
+      <div class="a4-document a4-quotation-sheet" style="background:#ffffff; color:#111827; padding:28px 32px; border-radius:8px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; box-shadow:0 1px 3px rgba(0,0,0,0.08); font-size:11.5px; line-height:1.45; min-height:960px; display:flex; flex-direction:column; justify-content:space-between; box-sizing:border-box;">
+        <div>
+          ${headerMarkup}
 
-        <!-- Client & Term Details Grid -->
-        <div style="display:grid; grid-template-columns: 1.5fr 1fr; gap:16px; margin-bottom:16px; background:#f9fafb; padding:10px 14px; border-radius:6px; border:1px solid #e5e7eb;">
-          <div>
-            <div style="font-size:10px; font-weight:700; color:#6b7280; text-transform:uppercase;">CUSTOMER / ORGANIZATION</div>
-            <div style="font-size:12px; font-weight:800; color:#111827; margin-top:2px;">${escapeHtml(quotationState.clientName)}</div>
-            <div style="font-size:10px; color:#374151; margin-top:1px;"><strong>Attn:</strong> ${escapeHtml(quotationState.attn)}</div>
-            <div style="font-size:10px; color:#374151;"><strong>Tel:</strong> ${escapeHtml(quotationState.phone)}</div>
-            <div style="font-size:10px; color:#4b5563; margin-top:2px;">${escapeHtml(quotationState.address)}</div>
+          <!-- Client & Term Details Grid -->
+          <div style="display:grid; grid-template-columns: 1.5fr 1fr; gap:18px; margin-bottom:20px; background:#f9fafb; padding:14px 18px; border-radius:8px; border:1px solid #e5e7eb;">
+            <div>
+              <div style="font-size:11px; font-weight:800; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em;">CUSTOMER / ORGANIZATION</div>
+              <div style="font-size:15px; font-weight:800; color:#111827; margin-top:3px;">${escapeHtml(quotationState.clientName)}</div>
+              <div style="font-size:11.5px; color:#374151; margin-top:3px;"><strong>Attn:</strong> ${escapeHtml(quotationState.attn)}</div>
+              <div style="font-size:11.5px; color:#374151;"><strong>Tel:</strong> ${escapeHtml(quotationState.phone)}</div>
+              <div style="font-size:11.5px; color:#4b5563; margin-top:3px; line-height:1.4;">${escapeHtml(quotationState.address)}</div>
+            </div>
+            <div style="font-size:11.5px; line-height:1.6; border-left:1px solid #e5e7eb; padding-left:18px;">
+              <div><strong>Validity:</strong> ${quotationState.validityDays} Days (Until ${validUntil})</div>
+              <div><strong>Delivery:</strong> ${escapeHtml(quotationState.deliveryTerms)}</div>
+              <div><strong>Payment:</strong> ${escapeHtml(quotationState.paymentTerms)}</div>
+              <div style="margin-top:6px; font-size:11px; color:#4b5563;"><strong>Bank:</strong> ${comp.bankInfo}</div>
+            </div>
           </div>
-          <div style="font-size:10px; line-height:1.5;">
-            <div><strong>Validity:</strong> ${quotationState.validityDays} Days (Until ${validUntil})</div>
-            <div><strong>Delivery:</strong> ${escapeHtml(quotationState.deliveryTerms)}</div>
-            <div><strong>Payment:</strong> ${escapeHtml(quotationState.paymentTerms)}</div>
-            <div style="margin-top:4px; font-size:9.5px; color:#6b7280;">Bank: ${comp.bankInfo}</div>
-          </div>
-        </div>
 
-        <!-- Items Table -->
-        <table style="width:100%; border-collapse:collapse; margin-bottom:16px; font-size:10.5px;">
-          <thead>
-            <tr style="background:#f3f4f6; border-top:1px solid #d1d5db; border-bottom:1px solid #d1d5db;">
-              <th style="padding:6px 8px; text-align:center; width:30px;">#</th>
-              <th style="padding:6px 8px; text-align:left; width:90px;">Item Code</th>
-              <th style="padding:6px 8px; text-align:left;">Description & Specification</th>
-              <th style="padding:6px 8px; text-align:center; width:50px;">Qty</th>
-              <th style="padding:6px 8px; text-align:right; width:80px;">Unit Price (RM)</th>
-              <th style="padding:6px 8px; text-align:right; width:85px;">Subtotal (RM)</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${quotationState.items.map((it, idx) => {
-              const uPrice = getAdjustedPrice(it.pmgPrice, companyKey);
-              const sub = uPrice * it.qty;
-              return `
-                <tr style="border-bottom:1px solid #e5e7eb;">
-                  <td style="padding:7px 8px; text-align:center; color:#6b7280;">${idx + 1}</td>
-                  <td style="padding:7px 8px; font-family:monospace; font-weight:600; color:#374151;">${escapeHtml(it.sku || '-')}</td>
-                  <td style="padding:7px 8px;">
-                    <div style="font-weight:700; color:#111827;">${escapeHtml(it.name)}</div>
-                    ${it.desc ? `<div style="font-size:9.5px; color:#6b7280; margin-top:1px;">${escapeHtml(it.desc)}</div>` : ''}
-                  </td>
-                  <td style="padding:7px 8px; text-align:center; font-weight:700;">${it.qty}</td>
-                  <td style="padding:7px 8px; text-align:right; font-family:monospace;">${uPrice.toFixed(2)}</td>
-                  <td style="padding:7px 8px; text-align:right; font-family:monospace; font-weight:700;">${sub.toFixed(2)}</td>
+          <!-- Items Table -->
+          <div style="margin-bottom:18px;">
+            <table style="width:100%; border-collapse:collapse; font-size:12px;">
+              <thead>
+                <tr style="background:#f3f4f6; border-top:2px solid #d1d5db; border-bottom:2px solid #d1d5db;">
+                  <th style="padding:10px 10px; text-align:center; width:35px; font-size:11.5px; font-weight:800; color:#374151; text-transform:uppercase;">#</th>
+                  <th style="padding:10px 10px; text-align:left; width:100px; font-size:11.5px; font-weight:800; color:#374151; text-transform:uppercase;">Item Code</th>
+                  <th style="padding:10px 12px; text-align:left; font-size:11.5px; font-weight:800; color:#374151; text-transform:uppercase;">Description & Specification</th>
+                  <th style="padding:10px 10px; text-align:center; width:55px; font-size:11.5px; font-weight:800; color:#374151; text-transform:uppercase;">Qty</th>
+                  <th style="padding:10px 12px; text-align:right; width:105px; font-size:11.5px; font-weight:800; color:#374151; text-transform:uppercase;">Unit Price (RM)</th>
+                  <th style="padding:10px 12px; text-align:right; width:110px; font-size:11.5px; font-weight:800; color:#374151; text-transform:uppercase;">Subtotal (RM)</th>
                 </tr>
-              `;
-            }).join('')}
-          </tbody>
-        </table>
-
-        <!-- Totals & Commercial Notes -->
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
-          <div style="max-width:55%; font-size:9.5px; color:#4b5563; line-height:1.4;">
-            <p><strong>Terms & Commercial Notes:</strong></p>
-            <p>1. Prices quoted are inclusive of local delivery to specified Kuching destination unless otherwise noted.</p>
-            <p>2. Products are 100% genuine medical/pharmaceutical grade registered under Ministry of Health Malaysia (NPRA / MDA).</p>
-            <p>3. To confirm acceptance of quotation, please sign and chop below and return via email or WhatsApp.</p>
+              </thead>
+              <tbody>
+                ${quotationState.items.map((it, idx) => {
+                  const uPrice = getAdjustedPrice(it.pmgPrice, companyKey);
+                  const sub = isCompetitor ? Math.round(uPrice * it.qty) : (uPrice * it.qty);
+                  const uPriceStr = isCompetitor ? `${Math.round(uPrice)}` : uPrice.toFixed(2);
+                  const subStr = isCompetitor ? `${Math.round(sub).toLocaleString()}` : sub.toFixed(2);
+                  return `
+                    <tr style="border-bottom:1px solid #e5e7eb;">
+                      <td style="padding:13px 10px; text-align:center; color:#6b7280; font-weight:600;">${idx + 1}</td>
+                      <td style="padding:13px 10px; font-family:monospace; font-weight:600; color:#374151; font-size:12px;">${escapeHtml(it.sku || '-')}</td>
+                      <td style="padding:13px 12px;">
+                        <div style="font-weight:700; color:#111827; font-size:13px;">${escapeHtml(it.name)}</div>
+                        ${it.desc ? `<div style="font-size:11px; color:#4b5563; margin-top:2px; line-height:1.35;">${escapeHtml(it.desc)}</div>` : ''}
+                      </td>
+                      <td style="padding:13px 10px; text-align:center; font-weight:700; font-size:13px; color:#111827;">${it.qty}</td>
+                      <td style="padding:13px 12px; text-align:right; font-family:monospace; font-size:13px; color:#111827;">${uPriceStr}</td>
+                      <td style="padding:13px 12px; text-align:right; font-family:monospace; font-weight:700; font-size:13px; color:#111827;">${subStr}</td>
+                    </tr>
+                  `;
+                }).join('')}
+                ${spacerRows}
+              </tbody>
+            </table>
           </div>
-          <div style="width:230px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:10px 14px;">
-            <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:10.5px;">
-              <span style="color:#6b7280;">Subtotal (excl. tax):</span>
-              <span style="font-family:monospace; font-weight:600;">RM ${total.toFixed(2)}</span>
+
+          <!-- Totals & Commercial Notes -->
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-top:10px; margin-bottom:20px;">
+            <div style="max-width:56%; font-size:11px; color:#4b5563; line-height:1.55;">
+              <p style="font-weight:800; color:#1f2937; margin-bottom:4px; font-size:11.5px;">Terms & Commercial Notes:</p>
+              <p style="margin-bottom:2px;">1. Prices quoted are in Ringgit Malaysia (RM) and inclusive of local delivery to specified Kuching destination unless otherwise noted.</p>
+              <p style="margin-bottom:2px;">2. Products are 100% genuine medical/pharmaceutical grade registered under Ministry of Health Malaysia (NPRA / MDA).</p>
+              <p>3. To confirm acceptance of quotation, please issue an official Purchase Order (PO) or confirm via email/WhatsApp.</p>
             </div>
-            <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:10.5px;">
-              <span style="color:#6b7280;">SST (0% Medical / Rx):</span>
-              <span style="font-family:monospace; font-weight:600;">RM 0.00</span>
-            </div>
-            <div style="display:flex; justify-content:space-between; border-top:2px solid #111827; padding-top:6px; font-size:13px; font-weight:800; color:#111827;">
-              <span>GRAND TOTAL:</span>
-              <span style="font-family:monospace; color:${companyKey === 'pmg' ? '#b91c1c' : '#111827'};">RM ${total.toFixed(2)}</span>
+            <div style="width:265px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:12px 16px;">
+              <div style="display:flex; justify-content:space-between; margin-bottom:5px; font-size:11.5px;">
+                <span style="color:#6b7280;">Subtotal (excl. tax):</span>
+                <span style="font-family:monospace; font-weight:600;">${totalFormatted}</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:11.5px;">
+                <span style="color:#6b7280;">SST (0% Medical / Rx):</span>
+                <span style="font-family:monospace; font-weight:600;">${isCompetitor ? 'RM 0' : 'RM 0.00'}</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; border-top:2px solid #111827; padding-top:8px; font-size:14px; font-weight:800; color:#111827;">
+                <span>GRAND TOTAL:</span>
+                <span style="font-family:monospace; color:${companyKey === 'pmg' ? '#b91c1c' : '#111827'};">${totalFormatted}</span>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- Signature Blocks -->
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:40px; margin-top:28px; padding-top:12px;">
-          <div>
-            <div style="font-size:10px; font-weight:700; color:#4b5563; margin-bottom:35px;">Issued By: ${comp.name}</div>
-            <div style="border-top:1px dashed #6b7280; padding-top:4px; font-size:10px; color:#111827;">
-              <strong>Authorized Signatory & Stamp</strong><br>
-              <span style="font-size:9px; color:#6b7280;">Branch In-Charge / Sales Operations</span>
-            </div>
+        <!-- Bottom Electronic Generation Notice (Replacing Signature Blocks) -->
+        <div style="margin-top:auto; padding-top:22px; border-top:1px solid #e2e8f0; text-align:center;">
+          <div style="display:inline-block; border:1px solid #cbd5e1; background:#f8fafc; border-radius:6px; padding:9px 28px; font-size:12px; font-weight:700; color:#334155; letter-spacing:0.03em;">
+            This is generated electronically. No signature is needed.
           </div>
-          <div>
-            <div style="font-size:10px; font-weight:700; color:#4b5563; margin-bottom:35px;">Customer Confirmation & Acceptance:</div>
-            <div style="border-top:1px dashed #6b7280; padding-top:4px; font-size:10px; color:#111827;">
-              <strong>Authorized Signature & Official Chop</strong><br>
-              <span style="font-size:9px; color:#6b7280;">Name, NRIC & Date</span>
-            </div>
+          <div style="font-size:10px; color:#94a3b8; margin-top:6px; letter-spacing:0.02em;">
+            Computer-generated quotation &bull; Kota Sentosa Operations &bull; Valid within stated period
           </div>
         </div>
       </div>
@@ -759,84 +798,86 @@
     const ampmDiffPct = ((ampmDiff / pmgTotal) * 100).toFixed(1);
 
     return `
-      <div class="a4-document" style="background:#ffffff; color:#111827; padding:24px 28px; border-radius:8px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; box-shadow:0 1px 3px rgba(0,0,0,0.08); font-size:11px;">
-        <div style="text-align:center; border-bottom:2px solid #1e3a8a; padding-bottom:10px; margin-bottom:14px;">
-          <h2 style="font-size:16px; font-weight:800; color:#1e3a8a; margin:0;">CORPORATE PROCUREMENT 3-QUOTATION EVALUATION MATRIX</h2>
-          <p style="font-size:10px; color:#4b5563; margin-top:2px;">Competitive Price Benchmark & Winning Bid Justification Document</p>
-        </div>
-
-        <div style="display:flex; justify-content:space-between; background:#f8fafc; border:1px solid #cbd5e1; padding:8px 12px; border-radius:6px; margin-bottom:12px; font-size:10.5px;">
-          <div><strong>Project / Client:</strong> ${escapeHtml(quotationState.clientName)}</div>
-          <div><strong>Attn:</strong> ${escapeHtml(quotationState.attn)}</div>
-          <div><strong>Evaluation Date:</strong> ${quotationState.date}</div>
-        </div>
-
-        <!-- 3-Way Table -->
-        <table style="width:100%; border-collapse:collapse; margin-bottom:14px; font-size:10px;">
-          <thead>
-            <tr style="background:#0f172a; color:#fff;">
-              <th style="padding:6px; text-align:center; width:25px;">#</th>
-              <th style="padding:6px; text-align:left;">Item Name & Specifications</th>
-              <th style="padding:6px; text-align:center; width:35px;">Qty</th>
-              <th style="padding:6px; text-align:right; width:80px; background:#1e3a8a;">PMG Kota Sentosa (RM)</th>
-              <th style="padding:6px; text-align:right; width:80px;">SSJ Pharma (RM)</th>
-              <th style="padding:6px; text-align:right; width:80px;">AM PM Pharmacy (RM)</th>
-              <th style="padding:6px; text-align:center; width:75px;">Variance vs PMG</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${quotationState.items.map((it, idx) => {
-              const pP = it.pmgPrice;
-              const sP = getAdjustedPrice(pP, 'ssj');
-              const aP = getAdjustedPrice(pP, 'ampm');
-              return `
-                <tr style="border-bottom:1px solid #e2e8f0; ${idx % 2 === 1 ? 'background:#f8fafc;' : ''}">
-                  <td style="padding:6px; text-align:center; color:#64748b;">${idx + 1}</td>
-                  <td style="padding:6px;">
-                    <div style="font-weight:700;">${escapeHtml(it.name)}</div>
-                    <div style="font-size:9px; color:#64748b;">${escapeHtml(it.sku || '')}</div>
-                  </td>
-                  <td style="padding:6px; text-align:center; font-weight:700;">${it.qty}</td>
-                  <td style="padding:6px; text-align:right; font-weight:700; color:#1e3a8a; background:#eff6ff;">${(pP * it.qty).toFixed(2)}</td>
-                  <td style="padding:6px; text-align:right; color:#334155;">${(sP * it.qty).toFixed(2)}</td>
-                  <td style="padding:6px; text-align:right; color:#334155;">${(aP * it.qty).toFixed(2)}</td>
-                  <td style="padding:6px; text-align:center; font-weight:700; color:#15803d; font-size:9.5px;">+${quotationState.ssjVariancePct}% to +${quotationState.ampmVariancePct}%</td>
-                </tr>
-              `;
-            }).join('')}
-          </tbody>
-          <tfoot>
-            <tr style="background:#f1f5f9; font-weight:800; font-size:11px; border-top:2px solid #0f172a;">
-              <td colspan="3" style="padding:8px; text-align:right;">TOTAL EVALUATED PRICE (RM):</td>
-              <td style="padding:8px; text-align:right; color:#1e3a8a; background:#dbeafe; font-size:12px;">RM ${pmgTotal.toFixed(2)}</td>
-              <td style="padding:8px; text-align:right;">RM ${ssjTotal.toFixed(2)}</td>
-              <td style="padding:8px; text-align:right;">RM ${ampmTotal.toFixed(2)}</td>
-              <td style="padding:8px; text-align:center; color:#15803d;">BEST OFFER</td>
-            </tr>
-          </tfoot>
-        </table>
-
-        <!-- Recommendation Banner -->
-        <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:6px; padding:10px 14px; margin-bottom:14px;">
-          <div style="font-weight:800; color:#166534; font-size:11.5px; display:flex; align-items:center; gap:6px;">
-            <span>✓</span> RECOMMENDATION & TENDER JUSTIFICATION
+      <div class="a4-document a4-quotation-sheet" style="background:#ffffff; color:#111827; padding:28px 32px; border-radius:8px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; box-shadow:0 1px 3px rgba(0,0,0,0.08); font-size:11.5px; min-height:960px; display:flex; flex-direction:column; justify-content:space-between; box-sizing:border-box;">
+        <div>
+          <div style="text-align:center; border-bottom:2px solid #1e3a8a; padding-bottom:12px; margin-bottom:16px;">
+            <h2 style="font-size:18px; font-weight:800; color:#1e3a8a; margin:0;">CORPORATE PROCUREMENT 3-QUOTATION EVALUATION MATRIX</h2>
+            <p style="font-size:11px; color:#4b5563; margin-top:3px;">Competitive Price Benchmark & Winning Bid Justification Document</p>
           </div>
-          <p style="font-size:10px; color:#14532d; margin-top:3px; line-height:1.4;">
-            Following formal price benchmarking across 3 licensed pharmaceutical suppliers, <strong>PMG PHARMACY (KOTA SENTOSA)</strong> submitted the lowest complying bid of <strong>RM ${pmgTotal.toFixed(2)}</strong>. This generates direct cost savings of <strong>RM ${ssjDiff.toFixed(2)} (${ssjDiffPct}%)</strong> compared to SSJ Pharma and <strong>RM ${ampmDiff.toFixed(2)} (${ampmDiffPct}%)</strong> compared to AM PM Pharmacy. Recommendation is to award procurement to PMG Pharmacy Kota Sentosa.
-          </p>
+
+          <div style="display:flex; justify-content:space-between; background:#f8fafc; border:1px solid #cbd5e1; padding:10px 14px; border-radius:6px; margin-bottom:16px; font-size:11px;">
+            <div><strong>Project / Client:</strong> ${escapeHtml(quotationState.clientName)}</div>
+            <div><strong>Attn:</strong> ${escapeHtml(quotationState.attn)}</div>
+            <div><strong>Evaluation Date:</strong> ${quotationState.date}</div>
+          </div>
+
+          <!-- 3-Way Table -->
+          <table style="width:100%; border-collapse:collapse; margin-bottom:16px; font-size:11px;">
+            <thead>
+              <tr style="background:#0f172a; color:#fff;">
+                <th style="padding:8px 6px; text-align:center; width:25px;">#</th>
+                <th style="padding:8px 8px; text-align:left;">Item Name & Specifications</th>
+                <th style="padding:8px 6px; text-align:center; width:35px;">Qty</th>
+                <th style="padding:8px 8px; text-align:right; width:90px; background:#1e3a8a;">PMG Kota Sentosa (RM)</th>
+                <th style="padding:8px 8px; text-align:right; width:85px;">SSJ Pharma (RM)</th>
+                <th style="padding:8px 8px; text-align:right; width:85px;">AM PM Pharmacy (RM)</th>
+                <th style="padding:8px 6px; text-align:center; width:80px;">Variance vs PMG</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${quotationState.items.map((it, idx) => {
+                const pP = it.pmgPrice;
+                const sP = getAdjustedPrice(pP, 'ssj');
+                const aP = getAdjustedPrice(pP, 'ampm');
+                return `
+                  <tr style="border-bottom:1px solid #e2e8f0; ${idx % 2 === 1 ? 'background:#f8fafc;' : ''}">
+                    <td style="padding:8px 6px; text-align:center; color:#64748b;">${idx + 1}</td>
+                    <td style="padding:8px 8px;">
+                      <div style="font-weight:700;">${escapeHtml(it.name)}</div>
+                      <div style="font-size:10px; color:#64748b;">${escapeHtml(it.sku || '')}</div>
+                    </td>
+                    <td style="padding:8px 6px; text-align:center; font-weight:700;">${it.qty}</td>
+                    <td style="padding:8px 8px; text-align:right; font-weight:700; color:#1e3a8a; background:#eff6ff;">${(pP * it.qty).toFixed(2)}</td>
+                    <td style="padding:8px 8px; text-align:right; color:#334155; font-family:monospace;">${Math.round(sP * it.qty).toLocaleString()}</td>
+                    <td style="padding:8px 8px; text-align:right; color:#334155; font-family:monospace;">${Math.round(aP * it.qty).toLocaleString()}</td>
+                    <td style="padding:8px 6px; text-align:center; font-weight:700; color:#15803d; font-size:10px;">+${quotationState.ssjVariancePct}% to +${quotationState.ampmVariancePct}%</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+            <tfoot>
+              <tr style="background:#f1f5f9; font-weight:800; font-size:11.5px; border-top:2px solid #0f172a;">
+                <td colspan="3" style="padding:10px 8px; text-align:right;">TOTAL EVALUATED PRICE (RM):</td>
+                <td style="padding:10px 8px; text-align:right; color:#1e3a8a; background:#dbeafe; font-size:12.5px;">RM ${pmgTotal.toFixed(2)}</td>
+                <td style="padding:10px 8px; text-align:right; font-family:monospace;">RM ${Math.round(ssjTotal).toLocaleString()}</td>
+                <td style="padding:10px 8px; text-align:right; font-family:monospace;">RM ${Math.round(ampmTotal).toLocaleString()}</td>
+                <td style="padding:10px 6px; text-align:center; color:#15803d;">BEST OFFER</td>
+              </tr>
+            </tfoot>
+          </table>
+
+          <!-- Recommendation Banner -->
+          <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:6px; padding:12px 16px; margin-bottom:16px;">
+            <div style="font-weight:800; color:#166534; font-size:12px; display:flex; align-items:center; gap:6px;">
+              <span>✓</span> RECOMMENDATION & TENDER JUSTIFICATION
+            </div>
+            <p style="font-size:11px; color:#14532d; margin-top:4px; line-height:1.45;">
+              Following formal price benchmarking across 3 licensed pharmaceutical suppliers, <strong>PMG PHARMACY (KOTA SENTOSA)</strong> submitted the lowest complying bid of <strong>RM ${pmgTotal.toFixed(2)}</strong>. This generates direct cost savings of <strong>RM ${ssjDiff.toFixed(2)} (${ssjDiffPct}%)</strong> compared to SSJ Pharma (RM ${Math.round(ssjTotal).toLocaleString()}) and <strong>RM ${ampmDiff.toFixed(2)} (${ampmDiffPct}%)</strong> compared to AM PM Pharmacy (RM ${Math.round(ampmTotal).toLocaleString()}). Recommendation is to award procurement to PMG Pharmacy Kota Sentosa.
+            </p>
+          </div>
         </div>
 
         <!-- Evaluation Sign-Off -->
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:40px; margin-top:20px; font-size:10px;">
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:40px; margin-top:24px; font-size:11px;">
           <div>
-            <div style="font-weight:700; color:#475569; margin-bottom:30px;">Prepared / Verified By:</div>
+            <div style="font-weight:700; color:#475569; margin-bottom:32px;">Prepared / Verified By:</div>
             <div style="border-top:1px solid #94a3b8; padding-top:4px;">
               <strong>William Chai (Pharmacist-in-Charge)</strong><br>
               PMG Pharmacy Kota Sentosa
             </div>
           </div>
           <div>
-            <div style="font-weight:700; color:#475569; margin-bottom:30px;">Procurement Officer Approval:</div>
+            <div style="font-weight:700; color:#475569; margin-bottom:32px;">Procurement Officer Approval:</div>
             <div style="border-top:1px solid #94a3b8; padding-top:4px;">
               <strong>Authorized Signatory / Committee Head</strong><br>
               Signature & Chop
@@ -1820,19 +1861,22 @@
   <style>
     @page {
       size: A4 portrait;
-      margin: 8mm 10mm;
+      margin: 10mm 12mm;
     }
     *, *::before, *::after {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
     }
+    html, body {
+      height: 100%;
+    }
     body {
       font-family: Arial, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       color: #000000;
       background: #ffffff;
-      font-size: 10.5px;
-      line-height: 1.3;
+      font-size: 11px;
+      line-height: 1.4;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
@@ -1843,7 +1887,28 @@
       background: #fff !important;
       box-shadow: none !important;
       border: none !important;
-      padding: 4mm 0 !important;
+      padding: 0 !important;
+    }
+    .a4-quotation-sheet {
+      min-height: 265mm !important;
+      display: flex !important;
+      flex-direction: column !important;
+      justify-content: space-between !important;
+      box-sizing: border-box !important;
+    }
+    @media print {
+      body {
+        width: 100%;
+      }
+      .a4-quotation-sheet {
+        min-height: 265mm !important;
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+      .page-break {
+        page-break-after: always !important;
+        break-after: page !important;
+      }
     }
     .incident-pdf-mirror {
       border: 1px solid #000 !important;
