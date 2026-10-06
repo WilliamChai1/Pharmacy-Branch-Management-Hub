@@ -702,11 +702,10 @@
               <div style="font-size:11.5px; color:#374151;"><strong>Tel:</strong> ${escapeHtml(quotationState.phone)}</div>
               <div style="font-size:11.5px; color:#4b5563; margin-top:3px; line-height:1.4;">${escapeHtml(quotationState.address)}</div>
             </div>
-            <div style="font-size:11.5px; line-height:1.6; border-left:1px solid #e5e7eb; padding-left:18px;">
+            <div style="font-size:11.5px; line-height:1.75; border-left:1px solid #e5e7eb; padding-left:18px;">
               <div><strong>Validity:</strong> ${quotationState.validityDays} Days (Until ${validUntil})</div>
               <div><strong>Delivery:</strong> ${escapeHtml(quotationState.deliveryTerms)}</div>
               <div><strong>Payment:</strong> ${escapeHtml(quotationState.paymentTerms)}</div>
-              <div style="margin-top:6px; font-size:11px; color:#4b5563;"><strong>Bank:</strong> ${comp.bankInfo}</div>
             </div>
           </div>
 
