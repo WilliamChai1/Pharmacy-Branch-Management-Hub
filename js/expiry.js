@@ -155,13 +155,20 @@ function initHqReturnPolicy() {
     console.warn('[PMG Expiry] Error reading stored HQ policy data:', e);
   }
 
-  // If local storage is empty, fallback to pre-seeded rules from hq_return_policy.js
-  if ((!hqReturnPolicyList || hqReturnPolicyList.length === 0) && Array.isArray(window.PMG_HQ_RETURN_POLICY_SEED)) {
+  // If local storage is empty or contains old Poison-only seed (< 2000 items), upgrade to multi-category master seed
+  if ((!hqReturnPolicyList || !Array.isArray(hqReturnPolicyList) || hqReturnPolicyList.length < 2000) && Array.isArray(window.PMG_HQ_RETURN_POLICY_SEED)) {
     hqReturnPolicyList = window.PMG_HQ_RETURN_POLICY_SEED;
     try {
       localStorage.setItem(HQ_RETURN_POLICY_STORAGE_KEY, JSON.stringify(hqReturnPolicyList));
     } catch (e) {}
   }
+
+  try {
+    const rawVendors = localStorage.getItem('pmg_hq_direct_vendors');
+    if (rawVendors) {
+      window.PMG_HQ_DIRECT_VENDORS = JSON.parse(rawVendors);
+    }
+  } catch (e) {}
 
   buildHqReturnPolicyMaps();
   updateHqPolicyHeaderBadge();
@@ -198,7 +205,7 @@ function updateHqPolicyHeaderBadge() {
   const lastSyncEl = document.getElementById('hqReturnLastSyncTime');
 
   const count = Array.isArray(hqReturnPolicyList) ? hqReturnPolicyList.length : 0;
-  if (pill) pill.textContent = `${count} Rules Active`;
+  if (pill) pill.textContent = `${count} Rules Active (All Categories)`;
   if (modalBadge) modalBadge.textContent = `${count} Items`;
 
   const lastSync = localStorage.getItem('pmg_hq_return_last_sync');
@@ -207,7 +214,7 @@ function updateHqPolicyHeaderBadge() {
       const d = new Date(lastSync);
       lastSyncEl.textContent = `Synced: ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     } catch (e) {
-      lastSyncEl.textContent = 'Live Google Sheet';
+      lastSyncEl.textContent = 'Live Google Sheet (Multi-Tab)';
     }
   }
 }
@@ -243,34 +250,45 @@ function renderHqReturnPolicyBadge(it) {
 
   const status = (pol.status || 'NON-RETURNABLE').toUpperCase();
   const brand = escHtml(pol.brand || '');
+  const cat = escHtml(pol.category || '');
   const tooltip = escHtml(pol.policy || pol.summary || 'HQ Policy Rule');
+  const catBadge = cat ? `<span class="text-[8px] font-bold px-1 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 uppercase">${cat}</span>` : '';
 
   if (status === 'NON-RETURNABLE') {
     return `
-      <div class="inline-flex flex-col items-center">
+      <div class="inline-flex flex-col items-center gap-0.5">
         <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200" title="${tooltip}">
           <i class="fa-solid fa-ban text-[9px] text-rose-600"></i> Non-Returnable
         </span>
-        ${brand ? `<span class="text-[9px] font-mono text-gray-400 mt-0.5">${brand}</span>` : ''}
+        <div class="flex items-center gap-1">
+          ${catBadge}
+          ${brand ? `<span class="text-[9px] font-mono text-gray-400">${brand}</span>` : ''}
+        </div>
       </div>`;
   }
 
   if (status === 'RETURNABLE') {
     return `
-      <div class="inline-flex flex-col items-center">
+      <div class="inline-flex flex-col items-center gap-0.5">
         <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200" title="${tooltip}">
           <i class="fa-solid fa-circle-check text-[9px] text-emerald-600"></i> Returnable
         </span>
-        ${brand ? `<span class="text-[9px] font-mono text-emerald-700 mt-0.5">${brand}</span>` : ''}
+        <div class="flex items-center gap-1">
+          ${catBadge}
+          ${brand ? `<span class="text-[9px] font-mono text-emerald-700 font-semibold">${brand}</span>` : ''}
+        </div>
       </div>`;
   }
 
   return `
-    <div class="inline-flex flex-col items-center">
+    <div class="inline-flex flex-col items-center gap-0.5">
       <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200" title="${tooltip}">
         <i class="fa-solid fa-triangle-exclamation text-[9px] text-amber-600"></i> Special
       </span>
-      ${brand ? `<span class="text-[9px] font-mono text-amber-700 mt-0.5">${brand}</span>` : ''}
+      <div class="flex items-center gap-1">
+        ${catBadge}
+        ${brand ? `<span class="text-[9px] font-mono text-amber-700 font-semibold">${brand}</span>` : ''}
+      </div>
     </div>`;
 }
 
@@ -315,6 +333,234 @@ function parseCsvLines(csvText) {
   return lines;
 }
 
+function extractCellString(cell) {
+  if (!cell || cell.value === null || cell.value === undefined) return '';
+  const val = cell.value;
+  if (typeof val === 'object') {
+    if (val.richText) return val.richText.map(t => t.text).join('').trim();
+    if (val.text) return String(val.text).trim();
+    if (val.result !== undefined) return String(val.result).trim();
+  }
+  return String(val).trim();
+}
+
+function classifyHqPolicyText(policyText) {
+  if (!policyText) return { status: 'NON-RETURNABLE', summary: 'Standard HQ policy: non-returnable for expired stock.' };
+  const raw = policyText.trim();
+  const up = raw.toUpperCase();
+
+  if (
+    up.includes('INFORM SALES REP') ||
+    up.includes('REFER TO LOCAL REP') ||
+    up.includes('REFER TO YOUR LOCAL SALES REP') ||
+    up.includes('THOMAS') ||
+    up.includes('UNDER WARRANTY') ||
+    up.includes('CAN ASK PURCHASER') ||
+    up.includes('ASK PURCHASER TO REQUEST') ||
+    up.includes('ASK PURCHASER REQUEST') ||
+    up.includes('PLEASE INFORM THE PURCHASER') ||
+    up.includes('REPORT WFR TEST CARDS') ||
+    up.includes('CONTACT SUPPLIER')
+  ) {
+    return {
+      status: 'SPECIAL',
+      summary: raw.length > 85 ? raw.substring(0, 82) + '...' : raw
+    };
+  }
+
+  const isReturnableTerm = (
+    up.includes('RETURNABLE WITHIN') ||
+    up.includes('RETURN BEFORE EXPIRY') ||
+    up.includes('RECOMMEND TO RETURN BEFORE') ||
+    up.includes('ONLY ACCEPT RETURN BEFORE') ||
+    up.includes('ONLY ACCEPT RETURN WITHIN') ||
+    up.includes('CAN RETURN TO SCD') ||
+    up.includes('PRODUCTS ARE RETURNABLE') ||
+    up.includes('RETURN ARE ACCEPTED') ||
+    up.includes('RETURNABLE, STOCK NO NEED RETURN') ||
+    up.includes('RETURNABLE:') ||
+    (up.includes('RETURNABLE') && !up.includes('NON-RETURNABLE') && !up.includes('NON RETURNABLE') && !up.includes('NOT RETURNABLE'))
+  );
+
+  const isReturnableBeforeExpiryOnly = (
+    (up.includes('NON-RETURNABLE AFTER EXPIR') || up.includes('NON RETURNABLE AFTER EXPIR') || up.includes('NON-RETURABLE AFTER')) &&
+    !up.includes('ALL PRODUCTS ARE NON-RETURNABLE') &&
+    !up.includes('LOOSE ITEMS')
+  );
+
+  if (isReturnableTerm) {
+    let summary = raw;
+    if (up.includes('BEFORE EXPIRY') || up.includes('BEFORE EXPIRED')) {
+      summary = 'Returnable before expiry date';
+    } else if (up.includes('WITHIN 1 MONTH') || up.includes('WITHIN 1 MONTHS')) {
+      summary = 'Returnable within 1 month after expiry';
+    } else if (up.includes('WITHIN 2 MONTH') || up.includes('WITHIN 2 MONTHS')) {
+      summary = 'Returnable within 2 months after expiry';
+    } else if (up.includes('SABAH') || up.includes('SARAWAK')) {
+      summary = raw.length > 85 ? raw.substring(0, 82) + '...' : raw;
+    }
+    return {
+      status: 'RETURNABLE',
+      summary: summary.length > 85 ? summary.substring(0, 82) + '...' : summary
+    };
+  }
+
+  if (isReturnableBeforeExpiryOnly) {
+    return {
+      status: 'RETURNABLE',
+      summary: 'Returnable BEFORE expiry only (strictly non-returnable after expiry)'
+    };
+  }
+
+  let summary = 'Non-returnable for expiry. (Defect/recall only)';
+  if (up.includes('BATCH:')) {
+    summary = raw;
+  } else if (up.includes('END CONSIGMENT') || up.includes('DELISTED')) {
+    summary = 'Delisted / End Consignment - Non-returnable';
+  } else if (raw.length > 0 && raw.length <= 80) {
+    summary = raw;
+  }
+
+  return {
+    status: 'NON-RETURNABLE',
+    summary: summary
+  };
+}
+
+async function parseHqReturnPolicyWorkbook(arrayBuffer) {
+  const ExcelLib = (typeof ExcelJS !== 'undefined') ? ExcelJS : (window.ExcelJS || null);
+  if (!ExcelLib) {
+    throw new Error('ExcelJS library is not available in browser runtime.');
+  }
+
+  const wb = new ExcelLib.Workbook();
+  await wb.xlsx.load(arrayBuffer);
+
+  const categories = ['POISON', 'OTC', 'PC', 'M&B', 'SUP', 'FA', 'EC', 'F&B', 'H&L'];
+  const results = [];
+
+  for (const cat of categories) {
+    const normCat = cat.replace(/[^A-Z0-9]/g, '');
+    let ws = null;
+    for (const sheet of wb.worksheets) {
+      const normSheet = sheet.name.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (normSheet === normCat) {
+        ws = sheet;
+        break;
+      }
+    }
+    if (!ws) continue;
+
+    // Detect PIC text from rows 1-8
+    let picText = '';
+    for (let r = 1; r <= Math.min(10, ws.rowCount); r++) {
+      const row = ws.getRow(r);
+      for (let c = 1; c <= 4; c++) {
+        const txt = extractCellString(row.getCell(c));
+        if (txt.toLowerCase().includes('person in charge') || txt.toLowerCase().includes('pic')) {
+          picText = txt;
+          break;
+        }
+      }
+      if (picText) break;
+    }
+    if (picText && window.PMG_HQ_CATEGORY_METADATA && window.PMG_HQ_CATEGORY_METADATA[cat]) {
+      window.PMG_HQ_CATEGORY_METADATA[cat].pic = picText;
+    }
+
+    // Detect Header Row
+    let headerRow = 8;
+    for (let r = 1; r <= Math.min(20, ws.rowCount); r++) {
+      const c1 = extractCellString(ws.getRow(r).getCell(1)).toUpperCase();
+      const c2 = extractCellString(ws.getRow(r).getCell(2)).toUpperCase();
+      if (c1.includes('ITEM CODE') || c2.includes('DESCRIPTION')) {
+        headerRow = r;
+        break;
+      }
+    }
+
+    let currentBrand = '';
+    let currentBrandPolicy = '';
+
+    for (let r = headerRow + 1; r <= ws.rowCount; r++) {
+      const row = ws.getRow(r);
+      const c1 = extractCellString(row.getCell(1));
+      const c2 = extractCellString(row.getCell(2));
+      const c3 = extractCellString(row.getCell(3));
+      const c4 = extractCellString(row.getCell(4));
+
+      if (!c1 && !c2 && !c3 && !c4) continue;
+      if (c1.toLowerCase().includes('all product') || c1.toLowerCase().includes('loose items')) continue;
+
+      if (c3) {
+        if (c3 !== currentBrand) {
+          currentBrand = c3;
+          currentBrandPolicy = '';
+        }
+      }
+
+      if (c4) {
+        if (
+          c4.toUpperCase().includes('RETURN') ||
+          c4.toUpperCase().includes('DEFECT') ||
+          c4.toUpperCase().includes('INFORM') ||
+          c4.toUpperCase().includes('REP') ||
+          c4.toUpperCase().includes('PURCHASER') ||
+          c4.length > 5
+        ) {
+          currentBrandPolicy = c4;
+        }
+      }
+
+      const digits = c1.replace(/[^0-9]/g, '');
+      const isCode = digits.length >= 4 && digits.length <= 10;
+      const hasDesc = c2.length >= 2 && !c2.toUpperCase().includes('DESCRIPTION');
+
+      if (isCode && hasDesc) {
+        const itemCode = digits;
+        const itemDesc = c2;
+        const brand = c3 || currentBrand || 'Direct';
+        const rawPolicy = c4 || currentBrandPolicy || 'NON-RETURNABLE';
+        const { status, summary } = classifyHqPolicyText(rawPolicy);
+
+        results.push({
+          code: itemCode,
+          desc: itemDesc,
+          brand: brand,
+          category: cat,
+          policy: rawPolicy,
+          status: status,
+          summary: summary
+        });
+      }
+    }
+  }
+
+  // Parse Direct Vendors from SRWK-D
+  const srwkWs = wb.worksheets.find(w => w.name.toUpperCase().includes('SRWK') || w.name.toUpperCase().includes('DIRECT'));
+  if (srwkWs) {
+    const directVendors = [];
+    for (let r = 4; r <= srwkWs.rowCount; r++) {
+      const row = srwkWs.getRow(r);
+      const type = extractCellString(row.getCell(1));
+      const brand = extractCellString(row.getCell(2));
+      const srwk = extractCellString(row.getCell(3));
+      const sbh = extractCellString(row.getCell(4));
+      if (type || brand) {
+        directVendors.push({ type, brand, sarawak: srwk || '-', sabah: sbh || '-' });
+      }
+    }
+    if (directVendors.length > 0) {
+      window.PMG_HQ_DIRECT_VENDORS = directVendors;
+      try {
+        localStorage.setItem('pmg_hq_direct_vendors', JSON.stringify(directVendors));
+      } catch (e) {}
+    }
+  }
+
+  return results;
+}
+
 function parseHqReturnPolicyCsvText(csvText) {
   const rows = parseCsvLines(csvText);
   const results = [];
@@ -349,24 +595,16 @@ function parseHqReturnPolicyCsvText(csvText) {
       const itemCode = isItemCode ? colA : (colA.length <= 10 ? colA : '');
       const itemDesc = colB;
       const policyText = colC || currentPolicy || 'NON-RETURNABLE';
-      const upperPolicy = policyText.toUpperCase();
-
-      let status = 'NON-RETURNABLE';
-      if (upperPolicy.includes('INFORM SALES REP') || upperPolicy.includes('THOMAS')) {
-        status = 'SPECIAL';
-      } else if (upperPolicy.includes('NON-RETURNABLE') || upperPolicy.includes('NON RETURNABLE') || upperPolicy.includes('NO RETURN')) {
-        status = 'NON-RETURNABLE';
-      } else if (upperPolicy.includes('RETURNABLE')) {
-        status = 'RETURNABLE';
-      }
+      const { status, summary } = classifyHqPolicyText(policyText);
 
       results.push({
         code: itemCode,
         desc: itemDesc,
         brand: currentBrand || 'Direct',
+        category: 'POISON',
         policy: policyText,
         status: status,
-        summary: policyText.length > 80 ? policyText.substring(0, 77) + '...' : policyText
+        summary: summary
       });
     }
   }
@@ -376,29 +614,34 @@ function parseHqReturnPolicyCsvText(csvText) {
 
 async function syncHqReturnPolicy(showToast = true) {
   const customUrl = localStorage.getItem(HQ_RETURN_SHEET_URL_STORAGE_KEY);
-  const rawUrl = customUrl || (window.PMG_DEFAULT_HQ_RETURN_SHEET_URL || 'https://docs.google.com/spreadsheets/d/1u2wfNbx77eiah3g3NPofbS391uESt7tA/edit?gid=179261997#gid=179261997');
+  const rawUrl = customUrl || (window.PMG_DEFAULT_HQ_RETURN_SHEET_URL || 'https://docs.google.com/spreadsheets/d/1u2wfNbx77eiah3g3NPofbS391uESt7tA/edit?rtpof=true&gid=179261997#gid=179261997');
   
-  let csvUrl = rawUrl;
-  if (!csvUrl.includes('format=csv')) {
-    const gidMatch = csvUrl.match(/[?&#]gid=([0-9]+)/);
-    const gid = gidMatch ? gidMatch[1] : '179261997';
-    const idMatch = csvUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
-    if (idMatch) {
-      csvUrl = `https://docs.google.com/spreadsheets/d/${idMatch[1]}/export?format=csv&gid=${gid}`;
-    }
-  }
-
   if (showToast) {
-    showExpiryToast('🔄 Fetching live HQ Return Policy sheet...');
+    showExpiryToast('🔄 Fetching live HQ Multi-Category Return Policy sheet (All Tabs)...');
   }
 
   try {
-    const res = await fetch(csvUrl);
-    if (!res.ok) throw new Error(`HTTP status ${res.status}`);
-    const text = await res.text();
+    const idMatch = rawUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    let parsedRules = [];
 
-    const parsedRules = parseHqReturnPolicyCsvText(text);
-    if (parsedRules.length === 0) {
+    if (idMatch && !rawUrl.includes('format=csv')) {
+      const xlsxUrl = `https://docs.google.com/spreadsheets/d/${idMatch[1]}/export?format=xlsx`;
+      const res = await fetch(xlsxUrl);
+      if (!res.ok) throw new Error(`HTTP status ${res.status}`);
+      const arrayBuffer = await res.arrayBuffer();
+      parsedRules = await parseHqReturnPolicyWorkbook(arrayBuffer);
+    } else {
+      let csvUrl = rawUrl;
+      if (!csvUrl.includes('format=csv') && idMatch) {
+        csvUrl = `https://docs.google.com/spreadsheets/d/${idMatch[1]}/export?format=csv`;
+      }
+      const res = await fetch(csvUrl);
+      if (!res.ok) throw new Error(`HTTP status ${res.status}`);
+      const text = await res.text();
+      parsedRules = parseHqReturnPolicyCsvText(text);
+    }
+
+    if (!parsedRules || parsedRules.length === 0) {
       throw new Error('No valid product rules parsed from sheet.');
     }
 
@@ -411,7 +654,7 @@ async function syncHqReturnPolicy(showToast = true) {
     renderExpiryUI();
 
     if (showToast) {
-      showExpiryToast(`✅ HQ Return Policy synced! (${hqReturnPolicyList.length} rules active)`);
+      showExpiryToast(`✅ HQ Return Policy synced! (${hqReturnPolicyList.length} rules active across all categories)`);
     }
   } catch (err) {
     console.warn('[PMG Expiry] Failed to fetch live HQ sheet:', err);
@@ -424,16 +667,19 @@ async function syncHqReturnPolicy(showToast = true) {
       }
     }
     if (showToast) {
-      showExpiryToast(`⚠️ Live sync failed (${err.message}). Using cached policy rules.`);
+      showExpiryToast(`⚠️ Live sync failed (${err.message}). Using cached policy rules (${hqReturnPolicyList ? hqReturnPolicyList.length : 0} rules).`);
     }
   }
 }
+
+let hqReturnPolicyActiveCategory = 'ALL';
+let hqReturnPolicyActiveStatus = 'ALL';
 
 function openHqReturnPolicyModal() {
   const modal = document.getElementById('modalHqReturnPolicy');
   if (!modal) return;
   const input = document.getElementById('hqReturnSheetUrlInput');
-  const storedUrl = localStorage.getItem(HQ_RETURN_SHEET_URL_STORAGE_KEY) || window.PMG_DEFAULT_HQ_RETURN_SHEET_URL || 'https://docs.google.com/spreadsheets/d/1u2wfNbx77eiah3g3NPofbS391uESt7tA/edit?gid=179261997#gid=179261997';
+  const storedUrl = localStorage.getItem(HQ_RETURN_SHEET_URL_STORAGE_KEY) || window.PMG_DEFAULT_HQ_RETURN_SHEET_URL || 'https://docs.google.com/spreadsheets/d/1u2wfNbx77eiah3g3NPofbS391uESt7tA/edit?rtpof=true&gid=179261997#gid=179261997';
   if (input) input.value = storedUrl;
 
   const extLink = document.getElementById('hqReturnSheetExternalLink');
@@ -442,6 +688,11 @@ function openHqReturnPolicyModal() {
   const searchInput = document.getElementById('modalHqPolicySearchInput');
   if (searchInput) searchInput.value = '';
 
+  const statusFilter = document.getElementById('modalHqPolicyStatusFilter');
+  if (statusFilter) statusFilter.value = hqReturnPolicyActiveStatus;
+
+  renderHqPolicyCategoryTabs();
+  updateHqPolicyPicBanner();
   filterHqPolicyModalRows('');
   modal.classList.remove('hidden');
 }
@@ -449,6 +700,88 @@ function openHqReturnPolicyModal() {
 function closeHqReturnPolicyModal() {
   const modal = document.getElementById('modalHqReturnPolicy');
   if (modal) modal.classList.add('hidden');
+}
+
+function renderHqPolicyCategoryTabs() {
+  const container = document.getElementById('modalHqPolicyCategoryTabs');
+  if (!container) return;
+
+  const cats = [
+    { key: 'ALL', label: 'All Categories' },
+    { key: 'POISON', label: 'Poison' },
+    { key: 'OTC', label: 'OTC' },
+    { key: 'PC', label: 'Personal Care' },
+    { key: 'M&B', label: 'Mother & Baby' },
+    { key: 'SUP', label: 'Supplements' },
+    { key: 'FA', label: 'First Aid' },
+    { key: 'EC', label: 'Eye Care' },
+    { key: 'F&B', label: 'Food & Beverage' },
+    { key: 'H&L', label: 'Health & Living' },
+    { key: 'DIRECT_VENDORS', label: 'Direct Reps (SRWK-D)' }
+  ];
+
+  const catCounts = {};
+  if (Array.isArray(hqReturnPolicyList)) {
+    for (const it of hqReturnPolicyList) {
+      const c = (it.category || 'POISON').toUpperCase();
+      catCounts[c] = (catCounts[c] || 0) + 1;
+    }
+  }
+
+  container.innerHTML = cats.map(c => {
+    const isActive = hqReturnPolicyActiveCategory === c.key;
+    const count = c.key === 'ALL'
+      ? (hqReturnPolicyList ? hqReturnPolicyList.length : 0)
+      : c.key === 'DIRECT_VENDORS'
+      ? (window.PMG_HQ_DIRECT_VENDORS ? window.PMG_HQ_DIRECT_VENDORS.length : 18)
+      : (catCounts[c.key] || 0);
+
+    const activeClasses = 'bg-indigo-600 text-white font-bold shadow-xs';
+    const inactiveClasses = 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200 font-medium';
+
+    return `
+      <button type="button" onclick="setHqPolicyCategoryFilter('${c.key}')"
+        class="px-2.5 py-1 rounded-lg text-xs whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${isActive ? activeClasses : inactiveClasses}">
+        <span>${escHtml(c.label)}</span>
+        <span class="text-[10px] px-1.5 py-0.2 rounded-full ${isActive ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600 font-bold'}">${count}</span>
+      </button>`;
+  }).join('');
+}
+
+function updateHqPolicyPicBanner() {
+  const labelEl = document.getElementById('modalHqPicCategoryLabel');
+  const detailEl = document.getElementById('modalHqPicDetail');
+  if (!labelEl || !detailEl) return;
+
+  if (hqReturnPolicyActiveCategory === 'ALL') {
+    labelEl.textContent = 'Multi-Category Master Engine:';
+    detailEl.textContent = '9 Categories Active (Poison, OTC, PC, M&B, SUP, FA, EC, F&B, H&L) · 5,200+ Rules Live';
+    return;
+  }
+
+  if (hqReturnPolicyActiveCategory === 'DIRECT_VENDORS') {
+    labelEl.textContent = 'Direct Vendor Sales Rep Directory (SRWK-D):';
+    detailEl.textContent = 'Contact local vendor area reps for direct-send returns and warranty exchanges';
+    return;
+  }
+
+  const meta = (window.PMG_HQ_CATEGORY_METADATA && window.PMG_HQ_CATEGORY_METADATA[hqReturnPolicyActiveCategory]) || {};
+  labelEl.textContent = `${meta.label || hqReturnPolicyActiveCategory} Person in Charge:`;
+  detailEl.textContent = meta.pic || 'Refer to PMG Merchandising Department';
+}
+
+function setHqPolicyCategoryFilter(category) {
+  hqReturnPolicyActiveCategory = category;
+  renderHqPolicyCategoryTabs();
+  updateHqPolicyPicBanner();
+  const searchInput = document.getElementById('modalHqPolicySearchInput');
+  filterHqPolicyModalRows(searchInput ? searchInput.value : '');
+}
+
+function setHqPolicyStatusFilter(status) {
+  hqReturnPolicyActiveStatus = status;
+  const searchInput = document.getElementById('modalHqPolicySearchInput');
+  filterHqPolicyModalRows(searchInput ? searchInput.value : '');
 }
 
 function saveHqReturnSheetUrlAndSync() {
@@ -465,20 +798,84 @@ function saveHqReturnSheetUrlAndSync() {
 
 function filterHqPolicyModalRows(query) {
   const tbody = document.getElementById('modalHqPolicyTbody');
+  const thead = document.getElementById('modalHqPolicyThead');
   if (!tbody) return;
   const q = (query || '').toLowerCase().trim();
 
+  // If DIRECT_VENDORS tab is selected
+  if (hqReturnPolicyActiveCategory === 'DIRECT_VENDORS') {
+    if (thead) {
+      thead.innerHTML = `
+        <tr>
+          <th class="p-2 w-1/4">Type / Vendor Line</th>
+          <th class="p-2 w-28">Brand Code</th>
+          <th class="p-2">Sarawak Sales Rep Contact</th>
+          <th class="p-2">Sabah Sales Rep Contact</th>
+        </tr>`;
+    }
+    const vendors = window.PMG_HQ_DIRECT_VENDORS || [];
+    const filteredVendors = vendors.filter(v => {
+      if (!q) return true;
+      const t = String(v.type || '').toLowerCase();
+      const b = String(v.brand || '').toLowerCase();
+      const sr = String(v.sarawak || '').toLowerCase();
+      const sb = String(v.sabah || '').toLowerCase();
+      return t.includes(q) || b.includes(q) || sr.includes(q) || sb.includes(q);
+    });
+
+    const countEl = document.getElementById('modalHqPolicyFilteredCount');
+    if (countEl) countEl.textContent = `${filteredVendors.length} direct vendor lines`;
+
+    if (filteredVendors.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="4" class="p-6 text-center text-gray-400">No direct vendor contacts found matching "${escHtml(q)}"</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = filteredVendors.map(v => `
+      <tr class="hover:bg-slate-50 transition border-b border-gray-100">
+        <td class="p-2 font-bold text-gray-900">${escHtml(v.type || '—')}</td>
+        <td class="p-2 font-mono text-indigo-700 font-bold">${escHtml(v.brand || '—')}</td>
+        <td class="p-2 font-medium text-emerald-800"><i class="fa-solid fa-phone text-[10px] text-emerald-600 mr-1"></i>${escHtml(v.sarawak || '—')}</td>
+        <td class="p-2 font-medium text-blue-800"><i class="fa-solid fa-phone text-[10px] text-blue-600 mr-1"></i>${escHtml(v.sabah || '—')}</td>
+      </tr>
+    `).join('');
+    return;
+  }
+
+  // Merchandise rules view
+  if (thead) {
+    thead.innerHTML = `
+      <tr>
+        <th class="p-2 w-16 text-center">Cat</th>
+        <th class="p-2 w-20">Code</th>
+        <th class="p-2">Item Description</th>
+        <th class="p-2 w-24">Brand / Vendor</th>
+        <th class="p-2 text-center w-28">HQ Return Status</th>
+        <th class="p-2">Specific Terms &amp; Conditions</th>
+      </tr>`;
+  }
+
   const filtered = (hqReturnPolicyList || []).filter(item => {
+    if (hqReturnPolicyActiveCategory !== 'ALL' && item.category !== hqReturnPolicyActiveCategory) {
+      return false;
+    }
+    if (hqReturnPolicyActiveStatus !== 'ALL' && item.status !== hqReturnPolicyActiveStatus) {
+      return false;
+    }
     if (!q) return true;
     const c = String(item.code || '').toLowerCase();
     const d = String(item.desc || '').toLowerCase();
     const b = String(item.brand || '').toLowerCase();
     const p = String(item.policy || '').toLowerCase();
-    return c.includes(q) || d.includes(q) || b.includes(q) || p.includes(q);
+    const cat = String(item.category || '').toLowerCase();
+    return c.includes(q) || d.includes(q) || b.includes(q) || p.includes(q) || cat.includes(q);
   });
 
+  const countEl = document.getElementById('modalHqPolicyFilteredCount');
+  if (countEl) countEl.textContent = `${filtered.length} matching rules`;
+
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-gray-400">No policy rules found matching "${escHtml(q)}"</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-gray-400">No policy rules found matching your filter criteria.</td></tr>`;
     return;
   }
 
@@ -487,13 +884,14 @@ function filterHqPolicyModalRows(query) {
     const isNonRet = it.status === 'NON-RETURNABLE';
     const isRet = it.status === 'RETURNABLE';
     const badgeHtml = isNonRet
-      ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">NON-RETURNABLE</span>`
+      ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 whitespace-nowrap"><i class="fa-solid fa-ban text-[9px] mr-1"></i>NON-RETURNABLE</span>`
       : isRet
-      ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">RETURNABLE</span>`
-      : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">${escHtml(it.status)}</span>`;
+      ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 whitespace-nowrap"><i class="fa-solid fa-circle-check text-[9px] mr-1"></i>RETURNABLE</span>`
+      : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 whitespace-nowrap"><i class="fa-solid fa-triangle-exclamation text-[9px] mr-1"></i>${escHtml(it.status)}</span>`;
 
     return `
       <tr class="hover:bg-slate-50 transition border-b border-gray-100">
+        <td class="p-2 text-center whitespace-nowrap"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 uppercase">${escHtml(it.category || '—')}</span></td>
         <td class="p-2 font-mono font-bold text-blue-900">${escHtml(it.code || '—')}</td>
         <td class="p-2 font-medium text-gray-900">${escHtml(it.desc || '—')}</td>
         <td class="p-2 font-mono text-gray-600">${escHtml(it.brand || '—')}</td>
@@ -2386,6 +2784,9 @@ window.openHqReturnPolicyModal = openHqReturnPolicyModal;
 window.closeHqReturnPolicyModal = closeHqReturnPolicyModal;
 window.saveHqReturnSheetUrlAndSync = saveHqReturnSheetUrlAndSync;
 window.filterHqPolicyModalRows = filterHqPolicyModalRows;
+window.setHqPolicyCategoryFilter = setHqPolicyCategoryFilter;
+window.setHqPolicyStatusFilter = setHqPolicyStatusFilter;
+window.parseHqReturnPolicyWorkbook = parseHqReturnPolicyWorkbook;
 window.getHqPolicyForItem = getHqPolicyForItem;
 window.getItemHqReturnStatus = getItemHqReturnStatus;
 window.initHqReturnPolicy = initHqReturnPolicy;
