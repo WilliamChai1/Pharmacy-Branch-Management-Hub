@@ -4581,6 +4581,199 @@ Date visit: 06.01.2026
     </div>
   </div>
 
+  <!-- MODAL 1B: EDIT CONFIRMED RETURN APPLICATION / DO -->
+  <div id="editReturnModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <!-- Modal Header -->
+      <div class="bg-gradient-to-r from-amber-700 via-amber-800 to-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center text-white">
+            <i class="fa-solid fa-pen-to-square"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-base leading-tight">Edit Return Application & Delivery Order</h3>
+            <p class="text-amber-200 text-xs">Update SKUs, PRN slip numbers, quantities, carton assignments, or destination details.</p>
+          </div>
+        </div>
+        <button type="button" onclick="pmgReturns.closeEditReturnModal()" class="text-white/70 hover:text-white text-xl p-1">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-6 overflow-y-auto flex-grow space-y-5 text-xs">
+        <!-- DO Header Details -->
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+          <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2.5">
+            <i class="fa-solid fa-building mr-1"></i> Delivery Order (DO) Official Header Information
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">Branch</label>
+              <select id="erBranchSelect" onchange="pmgReturns.onErBranchChanged()" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white outline-none focus:ring-2 focus:ring-amber-500">
+                <option value="Kota Sentosa">KS01 – Kota Sentosa</option>
+                <option value="Matang Jaya">MATANG JAYA – Matang Jaya</option>
+                <option value="Sungai Moyan">SUNGAI MOYAN – Sungai Moyan</option>
+                <option value="Malihah">MALIHAH – Malihah</option>
+                <option value="Metrocity">METROCITY – Metrocity</option>
+                <option value="Astana">ASTANA – Astana</option>
+                <option value="Samariang">SAMARIANG – Samariang</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">DO Number</label>
+              <input type="text" id="erDoNumber" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-blue-900 bg-white uppercase">
+            </div>
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">DO Date</label>
+              <input type="text" id="erDate" placeholder="DD.MM.YYYY" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white">
+            </div>
+          </div>
+
+          <div class="mt-3">
+            <label class="block font-semibold text-gray-700 mb-1">Registered Company Name</label>
+            <input type="text" id="erCompanyName" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-gray-800 bg-white uppercase">
+          </div>
+
+          <div class="mt-3">
+            <label class="block font-semibold text-gray-700 mb-1">Registered Company Address (Sender)</label>
+            <input type="text" id="erCompanyAddress" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs text-gray-600 bg-white uppercase">
+          </div>
+        </div>
+
+        <!-- Delivery Destination (Ship To) Details -->
+        <div class="bg-amber-50/40 border border-amber-200 rounded-xl p-4">
+          <div class="flex items-center justify-between mb-2.5">
+            <div class="text-[11px] font-bold text-amber-900 uppercase tracking-wider">
+              <i class="fa-solid fa-location-dot text-amber-600 mr-1"></i> Delivery Destination (Ship To / Transporter Drop-Off)
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">Preset Supplier / Destination</label>
+              <select id="erDestPreset" onchange="pmgReturns.onErDestPresetChanged(this.value)" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white outline-none focus:ring-2 focus:ring-amber-500">
+                <option value="">-- Choose Destination Preset or Custom --</option>
+                <optgroup label="🚚 PMG Branches (Stock In-Transit Transfers)">
+                  <option value="PMG PHARMACY (KOTA SENTOSA)">PMG Pharmacy – Kota Sentosa</option>
+                  <option value="PMG PHARMACY (MATANG JAYA)">PMG Pharmacy – Matang Jaya</option>
+                  <option value="PMG PHARMACY (SUNGAI MOYAN)">PMG Pharmacy – Sungai Moyan</option>
+                  <option value="PMG PHARMACY (MALIHAH)">PMG Pharmacy – Malihah</option>
+                  <option value="PMG PHARMACY (METROCITY)">PMG Pharmacy – Metrocity</option>
+                  <option value="PMG PHARMACY (ASTANA)">PMG Pharmacy – Astana</option>
+                  <option value="PMG PHARMACY (SAMARIANG)">PMG Pharmacy – Samariang</option>
+                  <option value="PMG CENTRAL WAREHOUSE / HQ">PMG Central Distribution Warehouse / HQ</option>
+                </optgroup>
+                <optgroup label="🏢 External Suppliers & SSJ Warehouse">
+                  <option value="SSJ PHARMA SDN BHD">SSJ PHARMA SDN BHD</option>
+                  <option value="DKSH MALAYSIA SDN BHD">DKSH MALAYSIA SDN BHD</option>
+                  <option value="ZUELLIG PHARMA SDN BHD">ZUELLIG PHARMA SDN BHD</option>
+                  <option value="APEX PHARMACY MARKETING SDN BHD">APEX PHARMACY MARKETING SDN BHD</option>
+                  <option value="SUNWARD PHARMACEUTICAL (M) SDN BHD">SUNWARD PHARMACEUTICAL (M) SDN BHD</option>
+                  <option value="DUOPHARMA (M) SENDIRIAN BERHAD">DUOPHARMA (M) SENDIRIAN BERHAD</option>
+                  <option value="KOTRA PHARMA (M) SDN BHD">KOTRA PHARMA (M) SDN BHD</option>
+                  <option value="PHARMANIAGA LOGISTICS SDN BHD">PHARMANIAGA LOGISTICS SDN BHD</option>
+                  <option value="CUSTOM">Custom / Other Destination...</option>
+                </optgroup>
+              </select>
+            </div>
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">Destination Company / Supplier *</label>
+              <input type="text" id="erDestCompany" placeholder="e.g. SSJ PHARMA SDN BHD" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-gray-800 bg-white uppercase">
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="block font-semibold text-gray-700 mb-1">Delivery Destination Address <span class="text-gray-400 font-normal">(Optional)</span></label>
+            <input type="text" id="erDestAddress" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs text-gray-700 bg-white uppercase">
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">Attention To (Optional)</label>
+              <input type="text" id="erDestAttn" placeholder="e.g. Returns Dept / Mr. Tan" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white">
+            </div>
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">Destination Phone Number (Optional)</label>
+              <input type="text" id="erDestPhone" placeholder="e.g. 082-432888" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white">
+            </div>
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1">Brand / Supplier Code (Optional)</label>
+              <input type="text" id="erSupplier" placeholder="e.g. Intas / Sandoz" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white">
+            </div>
+          </div>
+        </div>
+
+        <!-- PRN 3-SKU Rule Warning Banner (Dynamically shown) -->
+        <div id="erPrnLimitWarning" class="hidden bg-amber-50 border border-amber-300 rounded-xl p-3.5"></div>
+
+        <!-- Return Items Table Section -->
+        <div class="border border-gray-200 rounded-xl overflow-hidden bg-white">
+          <div class="bg-gray-100/80 px-4 py-2.5 border-b border-gray-200 flex items-center justify-between flex-wrap gap-2">
+            <div class="font-bold text-gray-700 text-xs flex items-center gap-2">
+              <span>Return Items / SKUs Compounding List</span>
+              <span id="erTotalCartonBadge" class="bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded text-[11px] font-black">Total Number of Carton: 1</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="pmgReturns.autoGroupEditPrnByThree()" class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold px-2.5 py-1 rounded-lg transition" title="Auto-assign PRN numbers in batches of 3 SKUs per manual slip">
+                <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Auto-Split by 3 SKUs
+              </button>
+              <button type="button" onclick="pmgReturns.addEditDraftItemRow()" class="text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold px-2.5 py-1 rounded-lg shadow-sm transition">
+                <i class="fa-solid fa-plus mr-1"></i> Add SKU
+              </button>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50 border-b border-gray-200 text-[10px] font-bold text-gray-500 uppercase">
+                  <th class="py-2 px-2 text-center w-14">Ctn #</th>
+                  <th class="py-2 px-2 w-28">Item Code</th>
+                  <th class="py-2 px-2">Item Description</th>
+                  <th class="py-2 px-2 w-32">Qty & UOM</th>
+                  <th class="py-2 px-2 w-28">PRN No.</th>
+                  <th class="py-2 px-2 w-36">Return Reason</th>
+                  <th class="py-2 px-2 text-center w-10"></th>
+                </tr>
+              </thead>
+              <tbody id="erItemsTableBody" class="divide-y divide-gray-100">
+                <!-- Rows populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Additional Handover Details -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">Verified By (Branch Staff Name)</label>
+            <input type="text" id="erVerifiedBy" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white">
+          </div>
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">Remarks / Sales Rep Notes (Optional)</label>
+            <input type="text" id="erRemarks" placeholder="e.g. Sales rep approved return; short expiry" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white">
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="bg-gray-50 px-6 py-3.5 border-t border-gray-200 flex items-center justify-between shrink-0">
+        <span class="text-[11px] text-gray-500">
+          <i class="fa-solid fa-circle-info mr-1 text-amber-600"></i> Saves edits to IndexedDB and synchronizes across all computers via OneDrive.
+        </span>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="pmgReturns.closeEditReturnModal()" class="px-4 py-2 border border-gray-300 text-gray-600 hover:text-gray-800 font-bold rounded-lg text-xs transition">
+            Cancel
+          </button>
+          <button type="button" onclick="pmgReturns.saveEditedReturn()" class="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs shadow-md transition flex items-center gap-1.5">
+            <i class="fa-solid fa-floppy-disk"></i> Save Changes & Update DO
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL 2: OFFICIAL PMG DELIVERY ORDER (DO) PRINT VIEW -->
   <div id="printDoModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 hidden">
     <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[95vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
@@ -4591,6 +4784,9 @@ Date visit: 06.01.2026
           <h3 class="font-bold text-sm">Official PMG Delivery Order (DO)</h3>
         </div>
         <div class="flex items-center gap-2">
+          <button type="button" onclick="pmgReturns.openEditReturnModal(pmgReturns.getActiveReturnId())" class="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow transition" title="Edit SKUs, PRN, Qty, Carton No">
+            <i class="fa-solid fa-pen-to-square"></i> <span>Edit DO / SKUs</span>
+          </button>
           <button type="button" onclick="pmgReturns.downloadHqExcelTemplate()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow transition" title="Download Official HQ Excel (.xlsx) Template with Color Coding">
             <i class="fa-solid fa-file-excel"></i> <span>HQ Excel (.xlsx)</span>
           </button>
@@ -5822,8 +6018,11 @@ function switchTab(tab) {
   if (tab === 'expiry' && typeof renderExpiryUI === 'function') {
     renderExpiryUI();
   }
-  if (tab === 'returns' && window.pmgReturns && typeof window.pmgReturns.render === 'function') {
-    window.pmgReturns.render();
+  if (tab === 'returns' && window.pmgReturns) {
+    if (typeof window.pmgReturns.render === 'function') window.pmgReturns.render();
+    if (typeof window.pmgReturns.syncWithOneDrive === 'function') {
+      window.pmgReturns.syncWithOneDrive().catch(() => {});
+    }
   }
   if (tab === 'admin-utils' && window.pmgAdminUtils && typeof window.pmgAdminUtils.init === 'function') {
     window.pmgAdminUtils.init();

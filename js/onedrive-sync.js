@@ -204,6 +204,7 @@
             this._startBackgroundWatcher();
             await this.syncWithOneDriveFolder(true);
             await this.syncStockExpiryWithOneDrive(true);
+            await this.syncReturnsWithOneDrive(true);
             return;
           } else {
             // Permission in 'prompt' state; wait for user click to request permission
@@ -615,20 +616,11 @@
         // ─── STEP G: UNIVERSAL SYNC — CREDIT NOTES, PRN & DELIVERY ORDERS ──────
         let returnsSyncedCount = 0;
         try {
-          let allReturns = [];
-          if (typeof window.pmgReturns !== 'undefined' && typeof window.pmgReturns.getReturnsData === 'function') {
-            allReturns = window.pmgReturns.getReturnsData() || [];
-          } else {
-            const rawReturns = localStorage.getItem('pmg_returns_records_v1');
-            if (rawReturns) allReturns = JSON.parse(rawReturns);
-          }
-          if (Array.isArray(allReturns) && allReturns.length > 0) {
-            for (const branchName of syncedBranches) {
-              const branchReturns = allReturns.filter(r => (r.branch || '').toUpperCase() === branchName.toUpperCase());
-              await this.saveReturnsDatabaseToOneDrive(branchName, branchReturns);
-            }
-            returnsSyncedCount = allReturns.length;
-          }
+          await this.syncReturnsWithOneDrive(true);
+          const currentReturns = (window.pmgReturns && typeof window.pmgReturns.getReturnsData === 'function')
+            ? window.pmgReturns.getReturnsData()
+            : JSON.parse(localStorage.getItem('pmg_returns_records_v1') || '[]');
+          returnsSyncedCount = Array.isArray(currentReturns) ? currentReturns.length : 0;
         } catch (returnsErr) {
           console.warn('[PMG OneDrive Sync] Universal sync: Returns warning:', returnsErr);
         }
@@ -1064,6 +1056,8 @@
         if (!hasPerm) return false;
 
         const session = typeof getSession === 'function' ? getSession() : null;
+        const deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_returns') || '["ret-ks-2609-002", "ret-lnd-2609-001"]');
+        const deletedSet = new Set(deletedIds);
 
         // Step 1: Read existing cloud returns to ensure conflict-free merge
         let cloudReturns = [];
@@ -1074,19 +1068,32 @@
           if (et && et.trim()) {
             const ep = JSON.parse(et);
             if (Array.isArray(ep.returns)) cloudReturns = ep.returns;
+            else if (Array.isArray(ep)) cloudReturns = ep;
           }
         } catch (_) {}
 
-        // Step 2: Merge returns by ID
+        // Step 2: Merge returns by ID without resurrecting deleted items
         const returnMap = new Map();
-        (cloudReturns || []).forEach(r => { if (r && r.id) returnMap.set(r.id, r); });
-        (returnsData || []).forEach(r => { if (r && r.id) returnMap.set(r.id, r); });
+        (cloudReturns || []).filter(r => r && r.id && !deletedSet.has(r.id)).forEach(r => returnMap.set(r.id, r));
+        (returnsData || []).filter(r => r && r.id && !deletedSet.has(r.id)).forEach(r => {
+          if (returnMap.has(r.id)) {
+            const cld = returnMap.get(r.id);
+            const locTime = r.updatedAt || r.createdAt || '';
+            const cldTime = cld.updatedAt || cld.createdAt || '';
+            if (locTime >= cldTime) {
+              returnMap.set(r.id, { ...cld, ...r });
+            }
+          } else {
+            returnMap.set(r.id, r);
+          }
+        });
         const mergedReturns = Array.from(returnMap.values());
 
         const payload = {
           branch: bFolder,
           lastUpdated: new Date().toISOString(),
           updatedBy: session?.displayName || 'Staff',
+          totalRecords: mergedReturns.length,
           returns: mergedReturns
         };
 
@@ -1094,7 +1101,7 @@
         const writable = await fileHandle.createWritable();
         await writable.write(JSON.stringify(payload, null, 2));
         await writable.close();
-        console.log(`[PMG OneDrive Sync] Saved returns_credit_notes.json to OneDrive for ${bFolder}`);
+        console.log(`[PMG OneDrive Sync] Saved returns_credit_notes.json to OneDrive for ${bFolder} (${mergedReturns.length} records)`);
         return true;
       } catch (err) {
         console.warn(`[PMG OneDrive Sync] Could not save returns DB to OneDrive for ${bFolder}:`, err);
@@ -1105,20 +1112,42 @@
     // ─── LOAD RETURNS / CN DATABASE (JSON) FROM ONEDRIVE ─────────────────────
     async loadReturnsDatabaseFromOneDrive(branchName) {
       if (!this.rootHandle || this.mode === 'DISCONNECTED') return null;
-      const bFolder = BRANCH_FOLDER_MAP[(branchName || '').toUpperCase()] || this._resolveCurrentBranchName() || 'KOTA SENTOSA';
-      const branchDir = await this._getTargetBranchDirectoryHandle(bFolder);
-      if (!branchDir) return null;
 
       try {
         const hasPerm = await this._verifyPermission(this.rootHandle, false, false);
         if (!hasPerm) return null;
 
-        const fileHandle = await branchDir.getFileHandle('returns_credit_notes.json');
+        // In PARENT mode without specific branch, scan all branches
+        if (this.mode === 'PARENT' && (!branchName || branchName === 'ALL')) {
+          let allCloudReturns = [];
+          for (const b of KNOWN_BRANCH_FOLDERS) {
+            try {
+              const bDir = await this._getTargetBranchDirectoryHandle(b);
+              if (!bDir) continue;
+              const fh = await bDir.getFileHandle('returns_credit_notes.json', { create: false });
+              const f = await fh.getFile();
+              const t = await f.text();
+              if (t && t.trim()) {
+                const p = JSON.parse(t);
+                const arr = Array.isArray(p.returns) ? p.returns : (Array.isArray(p) ? p : []);
+                allCloudReturns.push(...arr);
+              }
+            } catch (_) {}
+          }
+          return allCloudReturns;
+        }
+
+        const bFolder = BRANCH_FOLDER_MAP[(branchName || '').toUpperCase()] || this._resolveCurrentBranchName() || 'KOTA SENTOSA';
+        const branchDir = await this._getTargetBranchDirectoryHandle(bFolder);
+        if (!branchDir) return null;
+
+        const fileHandle = await branchDir.getFileHandle('returns_credit_notes.json', { create: false });
         const file = await fileHandle.getFile();
         const text = await file.text();
         const parsed = JSON.parse(text);
-        console.log(`[PMG OneDrive Sync] Loaded returns_credit_notes.json from OneDrive (${parsed.returns?.length || 0} records)`);
-        return parsed.returns || [];
+        const list = Array.isArray(parsed.returns) ? parsed.returns : (Array.isArray(parsed) ? parsed : []);
+        console.log(`[PMG OneDrive Sync] Loaded returns_credit_notes.json from OneDrive (${list.length} records) for ${bFolder}`);
+        return list;
       } catch (err) {
         // File may not exist yet on fresh branch setup
         return null;
@@ -1608,6 +1637,163 @@
       }
     }
 
+    // ─── BIDIRECTIONAL SYNC & MERGE RETURNS & CREDIT NOTES WITH ONEDRIVE ─────
+    async syncReturnsWithOneDrive(silent = false) {
+      if (!this.rootHandle || this.mode === 'DISCONNECTED') return false;
+      if (silent && typeof window.isPmgSyncPaused === 'function' && window.isPmgSyncPaused()) {
+        return false;
+      }
+
+      try {
+        const hasPerm = await this._verifyPermission(this.rootHandle, false, false);
+        if (!hasPerm) return false;
+
+        // 1. Determine target branches to sync
+        let targetBranches = [];
+        if (this.mode === 'PARENT') {
+          const filterEl = document.getElementById('returnsBranchFilter') || document.getElementById('patientBranchFilter');
+          const sel = filterEl ? filterEl.value : '';
+          if (!sel || sel === 'ALL') {
+            targetBranches = [...KNOWN_BRANCH_FOLDERS];
+          } else {
+            targetBranches = [BRANCH_FOLDER_MAP[sel.toUpperCase()] || sel];
+          }
+        } else {
+          targetBranches = [this.activeBranchFolder || this._resolveCurrentBranchName() || 'KOTA SENTOSA'];
+        }
+
+        // Get local returns
+        let localReturns = [];
+        if (window.pmgReturns && typeof window.pmgReturns.getReturnsData === 'function') {
+          localReturns = window.pmgReturns.getReturnsData() || [];
+        }
+        if (!Array.isArray(localReturns) || localReturns.length === 0) {
+          try {
+            const raw = localStorage.getItem('pmg_returns_records_v1');
+            if (raw) localReturns = JSON.parse(raw);
+          } catch (_) {}
+        }
+        if (!Array.isArray(localReturns)) localReturns = [];
+
+        // Deleted IDs list (tombstone)
+        let deletedIds = [];
+        try {
+          deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_returns') || '["ret-ks-2609-002", "ret-lnd-2609-001"]');
+        } catch (_) {}
+        const deletedSet = new Set(deletedIds);
+
+        let overallChanged = false;
+
+        for (const bName of targetBranches) {
+          const bFolder = BRANCH_FOLDER_MAP[bName.toUpperCase()] || bName;
+          const dirHandle = await this._getTargetBranchDirectoryHandle(bFolder);
+          if (!dirHandle) continue;
+
+          let cloudReturns = [];
+          try {
+            const fh = await dirHandle.getFileHandle('returns_credit_notes.json', { create: false });
+            const file = await fh.getFile();
+            const text = await file.text();
+            if (text && text.trim()) {
+              const parsed = JSON.parse(text);
+              if (Array.isArray(parsed.returns)) cloudReturns = parsed.returns;
+              else if (Array.isArray(parsed)) cloudReturns = parsed;
+            }
+          } catch (_) {
+            // File does not exist yet on OneDrive for this branch
+          }
+
+          const cleanCloud = (cloudReturns || []).filter(r => r && r.id && !deletedSet.has(r.id));
+          const localBranchReturns = localReturns.filter(r => {
+            if (!r || !r.id || deletedSet.has(r.id)) return false;
+            const rb = BRANCH_FOLDER_MAP[(r.branch || '').toUpperCase()] || (r.branch || '').toUpperCase();
+            return rb === bFolder.toUpperCase() || rb === bName.toUpperCase();
+          });
+
+          // Bidirectional merge helper
+          const resolveReturnConflict = (loc, cld) => {
+            if (!loc) return cld;
+            if (!cld) return loc;
+            const locTime = loc.updatedAt || loc.createdAt || '';
+            const cldTime = cld.updatedAt || cld.createdAt || '';
+            if (cldTime && locTime) {
+              if (cldTime > locTime) return { ...loc, ...cld };
+              if (locTime > cldTime) return { ...cld, ...loc };
+            }
+            if (cld.signedProof && !loc.signedProof) return { ...loc, ...cld };
+            if (loc.signedProof && !cld.signedProof) return { ...cld, ...loc };
+            if (cld.xilnexKeyed && !loc.xilnexKeyed) return { ...loc, ...cld };
+            if (loc.xilnexKeyed && !cld.xilnexKeyed) return { ...cld, ...loc };
+            if ((cld.items || []).length > (loc.items || []).length) return { ...loc, ...cld };
+            return { ...loc, ...cld };
+          };
+
+          const branchMap = new Map();
+          localBranchReturns.forEach(r => branchMap.set(r.id, r));
+          cleanCloud.forEach(r => {
+            if (branchMap.has(r.id)) {
+              branchMap.set(r.id, resolveReturnConflict(branchMap.get(r.id), r));
+            } else {
+              branchMap.set(r.id, r);
+            }
+          });
+
+          const mergedBranchReturns = Array.from(branchMap.values());
+
+          // Check if cloud file needs updating
+          const cloudNeedsUpdate = !this._areReturnsArraysEqual(mergedBranchReturns, cleanCloud);
+          if (cloudNeedsUpdate) {
+            const writePerm = await this._verifyPermission(this.rootHandle, true, false);
+            if (writePerm) {
+              const session = typeof getSession === 'function' ? getSession() : null;
+              const payload = {
+                branch: bFolder,
+                lastUpdated: new Date().toISOString(),
+                updatedBy: session?.displayName || 'Staff',
+                totalRecords: mergedBranchReturns.length,
+                returns: mergedBranchReturns
+              };
+              const fh = await dirHandle.getFileHandle('returns_credit_notes.json', { create: true });
+              const writable = await fh.createWritable();
+              await writable.write(JSON.stringify(payload, null, 2));
+              await writable.close();
+              console.log(`[PMG OneDrive Sync] Saved merged returns_credit_notes.json to OneDrive for ${bFolder} (${mergedBranchReturns.length} records)`);
+            }
+          }
+
+          // Check if local array needs updating
+          const localNeedsUpdate = !this._areReturnsArraysEqual(mergedBranchReturns, localBranchReturns);
+          if (localNeedsUpdate || cloudNeedsUpdate) {
+            overallChanged = true;
+            const otherBranchReturns = localReturns.filter(r => {
+              if (!r || !r.id || deletedSet.has(r.id)) return false;
+              const rb = BRANCH_FOLDER_MAP[(r.branch || '').toUpperCase()] || (r.branch || '').toUpperCase();
+              return rb !== bFolder.toUpperCase() && rb !== bName.toUpperCase();
+            });
+            localReturns = [...mergedBranchReturns, ...otherBranchReturns];
+          }
+        }
+
+        if (overallChanged) {
+          localStorage.setItem('pmg_returns_records_v1', JSON.stringify(localReturns));
+          if (window.pmgReturns && typeof window.pmgReturns.onCloudSync === 'function') {
+            await window.pmgReturns.onCloudSync(localReturns);
+          } else if (typeof renderReturnsUI === 'function') {
+            renderReturnsUI();
+          }
+          console.log(`[PMG OneDrive Sync] ✅ Synced returns & credit notes from OneDrive (${localReturns.length} records).`);
+          if (!silent && typeof showPmgToast === 'function') {
+            showPmgToast(`🔄 OneDrive Returns Synced (${localReturns.length} records)`, 'success');
+          }
+        }
+
+        return true;
+      } catch (err) {
+        console.warn('[PMG OneDrive Sync] Returns sync error:', err);
+        return false;
+      }
+    }
+
     _formatCurrentMonthString() {
       const d = new Date();
       const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -1728,6 +1914,11 @@
         // Also check and sync stock expiry in background
         try {
           await this.syncStockExpiryWithOneDrive(true);
+        } catch (_) {}
+
+        // Also check and sync returns & credit notes in background
+        try {
+          await this.syncReturnsWithOneDrive(true);
         } catch (_) {}
 
         // If file modified timestamp is not newer and not forced, skip reading
@@ -1944,6 +2135,35 @@
         if (a.actionPlan !== b.actionPlan) return false;
         if (a.clearancePrice !== b.clearancePrice) return false;
         if (a.remarks !== b.remarks) return false;
+      }
+      return true;
+    }
+
+    _areReturnsArraysEqual(arrA, arrB) {
+      if (!Array.isArray(arrA) || !Array.isArray(arrB)) return false;
+      if (arrA.length !== arrB.length) return false;
+      if (arrA.length === 0 && arrB.length === 0) return true;
+
+      const mapB = new Map();
+      for (const b of arrB) {
+        if (b && b.id) mapB.set(b.id, b);
+      }
+      if (mapB.size !== arrA.length) return false;
+
+      for (const a of arrA) {
+        if (!a || !a.id) return false;
+        const b = mapB.get(a.id);
+        if (!b) return false;
+        if (a.status !== b.status) return false;
+        if (a.doNumber !== b.doNumber) return false;
+        if (a.totalCartons !== b.totalCartons) return false;
+        if (a.cnNumber !== b.cnNumber) return false;
+        if (a.cnAmount !== b.cnAmount) return false;
+        if (a.xilnexKeyed !== b.xilnexKeyed) return false;
+        if ((a.items || []).length !== (b.items || []).length) return false;
+        if ((a.updatedAt || a.createdAt) !== (b.updatedAt || b.createdAt)) return false;
+        if (JSON.stringify(a.items) !== JSON.stringify(b.items)) return false;
+        if (JSON.stringify(a.signedProof) !== JSON.stringify(b.signedProof)) return false;
       }
       return true;
     }

@@ -12,6 +12,8 @@
   let activeReturnForDo = null;
   let activeReturnForUpload = null;
   let activeReturnForCn = null;
+  let activeReturnForEdit = null;
+  let editDraftItems = [];
   let dbInstance = null;
 
   // ─── SUPPLIER & WAREHOUSE DESTINATION PRESETS ─────────────────────────────────
@@ -278,12 +280,16 @@
             // Seed initial data once
             localStorage.setItem('pmg_returns_seeded', 'true');
             const cleanSeed = SEED_RETURNS.filter(r => !deletedIds.includes(r.id));
-            saveAllReturnsToDb(cleanSeed).then(() => resolve(cleanSeed));
+            saveAllReturnsToDb(cleanSeed).then(() => {
+              localStorage.setItem('pmg_returns_records_v1', JSON.stringify(cleanSeed));
+              resolve(cleanSeed);
+            });
           } else {
             // Purge deleted records from DB store if any remained
             if (deletedIds.length > 0 && req.result && req.result.length > 0) {
               deletedIds.forEach(did => deleteReturnFromDb(did));
             }
+            localStorage.setItem('pmg_returns_records_v1', JSON.stringify(list));
             resolve(list);
           }
         };
@@ -303,7 +309,10 @@
         const store = tx.objectStore(DB_STORE_NAME);
         store.clear();
         list.forEach(item => store.put(item));
-        tx.oncomplete = () => resolve(true);
+        tx.oncomplete = () => {
+          localStorage.setItem('pmg_returns_records_v1', JSON.stringify(list));
+          resolve(true);
+        };
         tx.onerror = () => reject(tx.error);
       });
     } catch (err) {
@@ -319,7 +328,10 @@
         const tx = db.transaction(DB_STORE_NAME, 'readwrite');
         const store = tx.objectStore(DB_STORE_NAME);
         store.put(retItem);
-        tx.oncomplete = () => resolve(true);
+        tx.oncomplete = () => {
+          localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
+          resolve(true);
+        };
         tx.onerror = () => reject(tx.error);
       });
     } catch (err) {
@@ -346,13 +358,24 @@
 
   // ─── ONEDRIVE SYNC INTEGRATION ───────────────────────────────────────────────
   async function syncReturnsWithOneDrive(targetBranch) {
+    // 1. Delegate to central OneDriveSyncEngine if available for bidirectional sync
+    if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.syncReturnsWithOneDrive === 'function') {
+      try {
+        await window.pmgOneDriveSync.syncReturnsWithOneDrive(true);
+        renderReturnsUI();
+        return;
+      } catch (err) {
+        console.warn('[PMG Returns] Central OneDrive sync delegate note:', err);
+      }
+    }
+
     if (!window.pmgOneDriveSync || typeof window.pmgOneDriveSync.saveReturnsDatabaseToOneDrive !== 'function') {
       return;
     }
 
     try {
       const branch = targetBranch || getActiveBranchName();
-      const deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_returns') || '["ret-ks-2609-002"]');
+      const deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_returns') || '["ret-ks-2609-002", "ret-lnd-2609-001"]');
 
       // 1. Check if OneDrive has cloud data
       const cloudData = await window.pmgOneDriveSync.loadReturnsDatabaseFromOneDrive(branch);
@@ -361,9 +384,22 @@
         const cleanCloud = cloudData.filter(r => !deletedIds.includes(r.id));
         const map = new Map();
         returnsData.filter(r => !deletedIds.includes(r.id)).forEach(r => map.set(r.id, r));
-        cleanCloud.forEach(r => map.set(r.id, r));
+        cleanCloud.forEach(r => {
+          if (map.has(r.id)) {
+            const loc = map.get(r.id);
+            const locT = loc.updatedAt || loc.createdAt || '';
+            const cldT = r.updatedAt || r.createdAt || '';
+            if (cldT > locT) {
+              map.set(r.id, { ...loc, ...r });
+            }
+          } else {
+            map.set(r.id, r);
+          }
+        });
         returnsData = Array.from(map.values());
         await saveAllReturnsToDb(returnsData);
+        localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
+        renderReturnsUI();
       }
 
       // 2. Push current state back to OneDrive
@@ -373,6 +409,28 @@
     } catch (err) {
       console.warn('[PMG Returns] OneDrive sync skipped:', err);
     }
+  }
+
+  async function onCloudSync(incomingData) {
+    if (!Array.isArray(incomingData)) return;
+    const deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_returns') || '["ret-ks-2609-002", "ret-lnd-2609-001"]');
+    const clean = incomingData.filter(r => r && r.id && !deletedIds.includes(r.id));
+    returnsData = clean;
+    await saveAllReturnsToDb(clean);
+    localStorage.setItem('pmg_returns_records_v1', JSON.stringify(clean));
+    renderReturnsUI();
+  }
+
+  function getReturnsData() {
+    return returnsData || [];
+  }
+
+  async function setReturnsData(data) {
+    if (!Array.isArray(data)) return;
+    returnsData = data;
+    await saveAllReturnsToDb(data);
+    localStorage.setItem('pmg_returns_records_v1', JSON.stringify(data));
+    renderReturnsUI();
   }
 
   // ─── BRANCH HELPERS ──────────────────────────────────────────────────────────
@@ -638,6 +696,9 @@
           </td>
           <td class="py-3 px-4 text-right whitespace-nowrap">
             <div class="flex items-center justify-end gap-1.5">
+              <button onclick="pmgReturns.openEditReturnModal('${ret.id}')" class="px-2.5 py-1.5 text-xs bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold rounded-lg border border-amber-300 transition flex items-center gap-1" title="Edit SKUs, PRN, Qty, Carton No">
+                <i class="fa-solid fa-pen-to-square"></i> <span>Edit</span>
+              </button>
               <button onclick="pmgReturns.openPrintDoModal('${ret.id}')" class="px-2.5 py-1.5 text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold rounded-lg border border-blue-200 transition flex items-center gap-1" title="View & Print PMG Delivery Order">
                 <i class="fa-solid fa-print"></i> <span>DO Form</span>
               </button>
@@ -1047,11 +1108,13 @@
       xilnexKeyedBy: '',
       remarks: remarks,
       items: JSON.parse(JSON.stringify(draftItems)),
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
 
     returnsData.unshift(newRecord);
     await saveSingleReturnToDb(newRecord);
+    localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
 
     // Sync to OneDrive
     syncReturnsWithOneDrive(branch);
@@ -1061,6 +1124,387 @@
 
     // Auto-open DO print preview
     openPrintDoModal(newRecord.id);
+  }
+
+  // ─── MODAL 1B: EDIT CONFIRMED RETURN APPLICATION & DO ─────────────────────────
+  function openEditReturnModal(returnId) {
+    const id = returnId || (activeReturnForDo ? activeReturnForDo.id : null);
+    if (!id) return;
+    const ret = returnsData.find(r => r.id === id);
+    if (!ret) {
+      alert('Return record not found.');
+      return;
+    }
+
+    activeReturnForEdit = JSON.parse(JSON.stringify(ret));
+    editDraftItems = JSON.parse(JSON.stringify(ret.items || []));
+    if (editDraftItems.length === 0) {
+      editDraftItems = [
+        { cartonNo: 1, itemCode: '', itemDescription: '', quantity: 1, uom: 'BOX', prnNumber: '', reason: 'Near Expiry', batchNo: '', expiryDate: '' }
+      ];
+    }
+
+    const modal = document.getElementById('editReturnModal');
+    if (!modal) return;
+
+    // Populate Header fields
+    const branchSelect = document.getElementById('erBranchSelect');
+    if (branchSelect) branchSelect.value = ret.branch || 'Kota Sentosa';
+    const doNum = document.getElementById('erDoNumber');
+    if (doNum) doNum.value = ret.doNumber || '';
+    const dateInput = document.getElementById('erDate');
+    if (dateInput) dateInput.value = ret.date || '';
+    const compName = document.getElementById('erCompanyName');
+    if (compName) compName.value = ret.companyName || '';
+    const compAddr = document.getElementById('erCompanyAddress');
+    if (compAddr) compAddr.value = ret.companyAddress || '';
+
+    // Destination fields
+    const destPreset = document.getElementById('erDestPreset');
+    if (destPreset) destPreset.value = '';
+    const destComp = document.getElementById('erDestCompany');
+    if (destComp) destComp.value = ret.destCompany || ret.supplier || '';
+    const destAddr = document.getElementById('erDestAddress');
+    if (destAddr) destAddr.value = ret.destAddress || '';
+    const destAttn = document.getElementById('erDestAttn');
+    if (destAttn) destAttn.value = ret.destAttn || '';
+    const destPhone = document.getElementById('erDestPhone');
+    if (destPhone) destPhone.value = ret.destPhone || '';
+    const supp = document.getElementById('erSupplier');
+    if (supp) supp.value = ret.supplier || '';
+
+    // Staff & Remarks
+    const verBy = document.getElementById('erVerifiedBy');
+    if (verBy) verBy.value = ret.verifiedBy || getCurrentUserDisplayName();
+    const rem = document.getElementById('erRemarks');
+    if (rem) rem.value = ret.remarks || '';
+
+    renderEditDraftItemsTable();
+    checkEditPrnLimitsAndCartons();
+    modal.classList.remove('hidden');
+  }
+
+  function closeEditReturnModal() {
+    document.getElementById('editReturnModal')?.classList.add('hidden');
+    activeReturnForEdit = null;
+    editDraftItems = [];
+  }
+
+  function onErBranchChanged() {
+    const branchName = document.getElementById('erBranchSelect').value;
+    const branchInfo = getBranchDetails(branchName);
+    document.getElementById('erCompanyName').value = branchInfo.companyName;
+    document.getElementById('erCompanyAddress').value = branchInfo.address;
+  }
+
+  function onErDestPresetChanged(presetName) {
+    if (!presetName || presetName === 'CUSTOM') return;
+    const preset = DESTINATION_PRESETS.find(p => p.name === presetName || p.companyName === presetName);
+    if (preset) {
+      document.getElementById('erDestCompany').value = preset.companyName;
+      document.getElementById('erDestAddress').value = preset.address;
+      document.getElementById('erDestAttn').value = preset.attn || '';
+      document.getElementById('erDestPhone').value = preset.phone || '';
+      const supplierInput = document.getElementById('erSupplier');
+      if (supplierInput) {
+        if (preset.name.includes('PMG PHARMACY') || preset.name.includes('CENTRAL WAREHOUSE')) {
+          supplierInput.value = 'INTERBRANCH TRANSFER';
+        } else if (!supplierInput.value.trim() || supplierInput.value === 'INTERBRANCH TRANSFER') {
+          supplierInput.value = preset.name;
+        }
+      }
+      // If destination is a PMG Branch, automatically switch default items to 'In-Transit'
+      if (preset.name.includes('PMG PHARMACY') || preset.name.includes('CENTRAL WAREHOUSE')) {
+        let changed = false;
+        editDraftItems.forEach(it => {
+          if (!it.reason || it.reason === 'Near Expiry') {
+            it.reason = 'In-Transit';
+            changed = true;
+          }
+        });
+        if (changed) {
+          renderEditDraftItemsTable();
+        }
+      }
+    }
+  }
+
+  function syncEditDraftItemsFromDom() {
+    const tbody = document.getElementById('erItemsTableBody');
+    if (!tbody) return;
+    const rows = tbody.querySelectorAll('tr');
+    rows.forEach((row, index) => {
+      if (!editDraftItems[index]) return;
+      row.querySelectorAll('[data-field]').forEach(el => {
+        const field = el.getAttribute('data-field');
+        if (field) {
+          editDraftItems[index][field] = el.value;
+        }
+      });
+    });
+  }
+
+  function addEditDraftItemRow() {
+    syncEditDraftItemsFromDom();
+    const lastCarton = editDraftItems.length > 0 ? (editDraftItems[editDraftItems.length - 1].cartonNo || 1) : 1;
+    const lastPrn = editDraftItems.length > 0 ? (editDraftItems[editDraftItems.length - 1].prnNumber || '') : '';
+
+    editDraftItems.push({
+      cartonNo: lastCarton,
+      itemCode: '',
+      itemDescription: '',
+      quantity: 1,
+      uom: 'BOX',
+      prnNumber: lastPrn,
+      reason: 'Near Expiry',
+      batchNo: '',
+      expiryDate: ''
+    });
+
+    renderEditDraftItemsTable();
+  }
+
+  function removeEditDraftItemRow(index) {
+    syncEditDraftItemsFromDom();
+    if (editDraftItems.length <= 1) {
+      alert('A Delivery Order must have at least one return item.');
+      return;
+    }
+    editDraftItems.splice(index, 1);
+    renderEditDraftItemsTable();
+  }
+
+  function updateEditDraftItem(index, field, value) {
+    if (!editDraftItems[index]) return;
+    editDraftItems[index][field] = value;
+    if (field === 'cartonNo' || field === 'prnNumber') {
+      checkEditPrnLimitsAndCartons();
+    }
+    if (field === 'reason') {
+      const rCfg = getReasonConfig(value);
+      const rows = document.querySelectorAll('#erItemsTableBody tr');
+      if (rows[index]) {
+        const sel = rows[index].querySelector('[data-field="reason"]');
+        if (sel) {
+          sel.style.backgroundColor = rCfg.bgColor;
+          sel.style.color = rCfg.textColor;
+          sel.style.borderColor = rCfg.borderColor;
+        }
+      }
+      if (rCfg.value === 'In-Transit') {
+        const supplierInput = document.getElementById('erSupplier');
+        if (supplierInput && (!supplierInput.value.trim() || supplierInput.value.trim() === 'SSJ PHARMA SDN BHD')) {
+          supplierInput.value = 'INTERBRANCH TRANSFER';
+        }
+      }
+    }
+  }
+
+  function checkEditPrnLimitsAndCartons() {
+    // 1. Calculate Carton count
+    const uniqueCartons = new Set(editDraftItems.map(it => String(it.cartonNo || 1).trim()).filter(Boolean));
+    const totalCartons = Math.max(1, uniqueCartons.size);
+    const cartonIndicator = document.getElementById('erTotalCartonBadge');
+    if (cartonIndicator) {
+      cartonIndicator.textContent = `Total Number of Carton: ${totalCartons}`;
+    }
+
+    // 2. Check PRN 3-SKU Limit Rule
+    const prnCounts = {};
+    editDraftItems.forEach(it => {
+      const prn = (it.prnNumber || '').trim();
+      if (prn) {
+        prnCounts[prn] = (prnCounts[prn] || 0) + 1;
+      }
+    });
+
+    const violations = Object.entries(prnCounts).filter(([prn, count]) => count > 3);
+    const alertBox = document.getElementById('erPrnLimitWarning');
+
+    if (violations.length > 0) {
+      const msg = violations.map(([prn, count]) => `<b>${escapeHtml(prn)}</b> has <b>${count} SKUs</b>`).join(', ');
+      if (alertBox) {
+        alertBox.innerHTML = `
+          <div class="flex items-start gap-2">
+            <i class="fa-solid fa-triangle-exclamation text-amber-600 text-sm mt-0.5"></i>
+            <div>
+              <p class="font-bold text-amber-900 text-xs">⚠️ Manual PRN Slip Limit Exceeded (Max 3 SKUs per slip!):</p>
+              <p class="text-xs text-amber-800 mt-0.5">${msg}. Company SOP allows a maximum of 3 items per physical PRN slip. Please assign another PRN number for excess items or click <b>"Auto-Split by 3 SKUs"</b> above.</p>
+            </div>
+          </div>
+        `;
+        alertBox.classList.remove('hidden');
+      }
+    } else if (alertBox) {
+      alertBox.classList.add('hidden');
+    }
+  }
+
+  function autoGroupEditPrnByThree() {
+    syncEditDraftItemsFromDom();
+    const currentFirst = (editDraftItems[0] && editDraftItems[0].prnNumber) ? editDraftItems[0].prnNumber : 'PRN-001';
+    const basePrn = prompt('Enter starting PRN booklet slip number (e.g. PRN-001 or 12345):', currentFirst);
+    if (!basePrn) return;
+
+    let prnPrefix = basePrn;
+    let prnNum = 1;
+    const match = basePrn.match(/^(.*?)(\d+)$/);
+    if (match) {
+      prnPrefix = match[1];
+      prnNum = parseInt(match[2], 10);
+    }
+
+    editDraftItems.forEach((item, index) => {
+      const slipGroup = Math.floor(index / 3);
+      const currentSlipNum = prnNum + slipGroup;
+      item.prnNumber = `${prnPrefix}${String(currentSlipNum).padStart(3, '0')}`;
+    });
+
+    renderEditDraftItemsTable();
+  }
+
+  function renderEditDraftItemsTable() {
+    const tbody = document.getElementById('erItemsTableBody');
+    if (!tbody) return;
+
+    tbody.innerHTML = editDraftItems.map((item, index) => {
+      const rCfg = getReasonConfig(item.reason);
+      return `
+      <tr class="border-b border-gray-100 text-xs">
+        <td class="py-2 px-2 text-center">
+          <input data-field="cartonNo" type="number" min="1" max="99" value="${item.cartonNo || 1}" oninput="pmgReturns.updateEditDraftItem(${index}, 'cartonNo', this.value)" onchange="pmgReturns.updateEditDraftItem(${index}, 'cartonNo', this.value)" class="w-12 text-center border border-gray-300 rounded px-1 py-1 font-bold text-gray-700">
+        </td>
+        <td class="py-2 px-2">
+          <input data-field="itemCode" type="text" placeholder="e.g. 103366" value="${escapeHtml(item.itemCode || '')}" oninput="pmgReturns.updateEditDraftItem(${index}, 'itemCode', this.value)" onchange="pmgReturns.updateEditDraftItem(${index}, 'itemCode', this.value)" class="w-24 border border-gray-300 rounded px-2 py-1 font-mono uppercase">
+        </td>
+        <td class="py-2 px-2">
+          <input data-field="itemDescription" type="text" placeholder="e.g. FINAINTAS 5MG TAB 10'S" value="${escapeHtml(item.itemDescription || '')}" oninput="pmgReturns.updateEditDraftItem(${index}, 'itemDescription', this.value)" onchange="pmgReturns.updateEditDraftItem(${index}, 'itemDescription', this.value)" class="w-full border border-gray-300 rounded px-2 py-1 font-semibold text-gray-800">
+        </td>
+        <td class="py-2 px-2">
+          <div class="flex items-center gap-1">
+            <input data-field="quantity" type="number" min="1" value="${item.quantity || 1}" oninput="pmgReturns.updateEditDraftItem(${index}, 'quantity', this.value)" onchange="pmgReturns.updateEditDraftItem(${index}, 'quantity', this.value)" class="w-14 border border-gray-300 rounded px-1.5 py-1 text-center font-bold">
+            <select data-field="uom" onchange="pmgReturns.updateEditDraftItem(${index}, 'uom', this.value)" class="border border-gray-300 rounded px-1 py-1 text-xs">
+              <option value="BOX" ${item.uom === 'BOX' ? 'selected' : ''}>BOX</option>
+              <option value="BTL" ${item.uom === 'BTL' ? 'selected' : ''}>BTL</option>
+              <option value="TAB" ${item.uom === 'TAB' ? 'selected' : ''}>TAB</option>
+              <option value="PACK" ${item.uom === 'PACK' ? 'selected' : ''}>PACK</option>
+              <option value="STRIP" ${item.uom === 'STRIP' ? 'selected' : ''}>STRIP</option>
+              <option value="UNIT" ${item.uom === 'UNIT' ? 'selected' : ''}>UNIT</option>
+              <option value="CTN" ${item.uom === 'CTN' ? 'selected' : ''}>CTN</option>
+            </select>
+          </div>
+        </td>
+        <td class="py-2 px-2">
+          <input data-field="prnNumber" type="text" placeholder="e.g. PRN-0412" value="${escapeHtml(item.prnNumber || '')}" oninput="pmgReturns.updateEditDraftItem(${index}, 'prnNumber', this.value)" onchange="pmgReturns.updateEditDraftItem(${index}, 'prnNumber', this.value)" class="w-24 border border-gray-300 rounded px-2 py-1 font-mono font-bold text-amber-800 bg-amber-50/50">
+        </td>
+        <td class="py-2 px-2">
+          <select data-field="reason" onchange="pmgReturns.updateEditDraftItem(${index}, 'reason', this.value)" style="background-color: ${rCfg.bgColor}; color: ${rCfg.textColor}; border-color: ${rCfg.borderColor}; font-weight: 700;" class="w-full border rounded px-1.5 py-1 text-xs shadow-sm transition">
+            ${RETURN_REASONS.map(r => `
+              <option value="${r.value}" style="background-color: ${r.bgColor}; color: ${r.textColor}; font-weight: bold;" ${(r.value === item.reason) || (r.value === 'In-Transit' && (item.reason || '').toLowerCase().includes('transit')) ? 'selected' : ''}>
+                ${r.label}
+              </option>
+            `).join('')}
+          </select>
+        </td>
+        <td class="py-2 px-2 text-center">
+          <button type="button" onclick="pmgReturns.removeEditDraftItemRow(${index})" class="text-rose-500 hover:text-rose-700 text-sm p-1" title="Remove SKU">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </td>
+      </tr>
+      `;
+    }).join('');
+
+    checkEditPrnLimitsAndCartons();
+  }
+
+  async function saveEditedReturn() {
+    if (!activeReturnForEdit) return;
+    syncEditDraftItemsFromDom();
+
+    const branch = document.getElementById('erBranchSelect').value;
+    const companyName = document.getElementById('erCompanyName').value.trim();
+    const companyAddress = document.getElementById('erCompanyAddress').value.trim();
+    const supplier = document.getElementById('erSupplier').value.trim();
+    const doNumber = document.getElementById('erDoNumber').value.trim();
+    const date = document.getElementById('erDate').value.trim();
+    const verifiedBy = document.getElementById('erVerifiedBy').value.trim();
+    const remarks = document.getElementById('erRemarks').value.trim();
+
+    const destCompany = document.getElementById('erDestCompany').value.trim();
+    const destAddress = document.getElementById('erDestAddress').value.trim();
+    const destAttn = document.getElementById('erDestAttn').value.trim();
+    const destPhone = document.getElementById('erDestPhone').value.trim();
+
+    if (!companyName || !doNumber || !date) {
+      alert('Please fill in Company Name, DO Number, and Date.');
+      return;
+    }
+
+    if (!destCompany) {
+      alert('Please fill in Destination Company Name (or select a supplier preset).');
+      return;
+    }
+
+    if (editDraftItems.length === 0) {
+      alert('Please add at least one item to return.');
+      return;
+    }
+
+    for (let i = 0; i < editDraftItems.length; i++) {
+      if (!editDraftItems[i].itemDescription || !editDraftItems[i].itemDescription.trim()) {
+        alert(`Item #${i + 1} is missing an Item Description.`);
+        return;
+      }
+    }
+
+    const uniqueCartons = new Set(editDraftItems.map(it => String(it.cartonNo || 1).trim()).filter(Boolean));
+    const totalCartons = Math.max(1, uniqueCartons.size);
+
+    activeReturnForEdit.branch = branch;
+    activeReturnForEdit.branchCode = getBranchDetails(branch).code;
+    activeReturnForEdit.companyName = companyName;
+    activeReturnForEdit.companyAddress = companyAddress;
+    activeReturnForEdit.doNumber = doNumber;
+    activeReturnForEdit.date = date;
+    activeReturnForEdit.supplier = supplier || destCompany || 'General Supplier';
+    activeReturnForEdit.destCompany = destCompany;
+    activeReturnForEdit.destAddress = destAddress;
+    activeReturnForEdit.destAttn = destAttn;
+    activeReturnForEdit.destPhone = destPhone;
+    activeReturnForEdit.totalCartons = totalCartons;
+    activeReturnForEdit.verifiedBy = verifiedBy || getCurrentUserDisplayName();
+    activeReturnForEdit.remarks = remarks;
+    activeReturnForEdit.items = JSON.parse(JSON.stringify(editDraftItems));
+    activeReturnForEdit.updatedAt = new Date().toISOString();
+
+    const idx = returnsData.findIndex(r => r.id === activeReturnForEdit.id);
+    if (idx !== -1) {
+      returnsData[idx] = activeReturnForEdit;
+    } else {
+      returnsData.unshift(activeReturnForEdit);
+    }
+
+    await saveSingleReturnToDb(activeReturnForEdit);
+    localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
+
+    // Sync to OneDrive
+    syncReturnsWithOneDrive(branch);
+
+    const savedId = activeReturnForEdit.id;
+    closeEditReturnModal();
+    renderReturnsUI();
+
+    // If DO print modal was viewing this return, refresh it
+    if (activeReturnForDo && activeReturnForDo.id === savedId) {
+      openPrintDoModal(savedId);
+    }
+
+    if (typeof showPmgToast === 'function') {
+      showPmgToast(`✅ Return ${doNumber} updated successfully!`, 'success');
+    } else {
+      alert(`✅ Return ${doNumber} updated successfully!`);
+    }
   }
 
   // ─── MODAL 2: OFFICIAL PMG DELIVERY ORDER (DO) PRINT VIEW ────────────────────
@@ -2090,6 +2534,7 @@
       activeReturnForUpload.pickupBy = driverName || 'Transporter Driver';
       activeReturnForUpload.pickupDate = pickupDate || formatTodayDateForDo();
       activeReturnForUpload.status = 'awaiting_cn';
+      activeReturnForUpload.updatedAt = new Date().toISOString();
       activeReturnForUpload.signedProof = {
         fileName: file.name,
         path: savedPath,
@@ -2098,6 +2543,7 @@
       };
 
       await saveSingleReturnToDb(activeReturnForUpload);
+      localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
       syncReturnsWithOneDrive(activeReturnForUpload.branch);
 
       closeUploadSignedDoModal();
@@ -2168,8 +2614,10 @@
     activeReturnForCn.xilnexKeyedDate = formatTodayDateForDo();
     activeReturnForCn.xilnexKeyedBy = staffName || getCurrentUserDisplayName();
     activeReturnForCn.status = 'completed';
+    activeReturnForCn.updatedAt = new Date().toISOString();
 
     await saveSingleReturnToDb(activeReturnForCn);
+    localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
     syncReturnsWithOneDrive(activeReturnForCn.branch);
 
     closeSettleCnModal();
@@ -2185,7 +2633,7 @@
     if (!confirmDel) return;
 
     // 1. Record in tombstone list so cloud sync never resurrects it
-    const deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_returns') || '["ret-ks-2609-002"]');
+    const deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_returns') || '["ret-ks-2609-002", "ret-lnd-2609-001"]');
     if (!deletedIds.includes(returnId)) {
       deletedIds.push(returnId);
       localStorage.setItem('pmg_deleted_returns', JSON.stringify(deletedIds));
@@ -2194,6 +2642,7 @@
     // 2. Remove from local memory and IndexedDB
     returnsData = returnsData.filter(r => r.id !== returnId);
     await deleteReturnFromDb(returnId);
+    localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
 
     // 3. Directly overwrite OneDrive file with clean array (no re-merging old file)
     if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveReturnsDatabaseToOneDrive === 'function') {
@@ -2268,13 +2717,22 @@
     handleSearch: handleReturnsSearch,
     openNewModal: openNewReturnModal,
     closeNewModal: closeNewReturnModal,
+    openEditReturnModal: openEditReturnModal,
+    closeEditReturnModal: closeEditReturnModal,
     onNrBranchChanged: onNrBranchChanged,
+    onErBranchChanged: onErBranchChanged,
     onDestPresetChanged: onDestPresetChanged,
+    onErDestPresetChanged: onErDestPresetChanged,
     addDraftItemRow: addDraftItemRow,
     removeDraftItemRow: removeDraftItemRow,
     updateDraftItem: updateDraftItem,
+    addEditDraftItemRow: addEditDraftItemRow,
+    removeEditDraftItemRow: removeEditDraftItemRow,
+    updateEditDraftItem: updateEditDraftItem,
     autoGroupPrnByThree: autoGroupPrnByThree,
+    autoGroupEditPrnByThree: autoGroupEditPrnByThree,
     saveNewReturn: saveNewReturnApplication,
+    saveEditedReturn: saveEditedReturn,
     openPrintDoModal: openPrintDoModal,
     closePrintDoModal: closePrintDoModal,
     executePrintDo: executePrintDo,
@@ -2283,7 +2741,8 @@
     executePrintCartonLabels: executePrintCartonLabels,
     onCartonTemplateChanged: onCartonTemplateChanged,
     syncDraftItemsFromDom: syncDraftItemsFromDom,
-    getActiveReturnId: () => (activeReturnForDo ? activeReturnForDo.id : null),
+    syncEditDraftItemsFromDom: syncEditDraftItemsFromDom,
+    getActiveReturnId: () => (activeReturnForDo ? activeReturnForDo.id : (activeReturnForEdit ? activeReturnForEdit.id : null)),
     openUploadSignedDoModal: openUploadSignedDoModal,
     closeUploadSignedDoModal: closeUploadSignedDoModal,
     handleUsdFileSelected: handleUsdFileSelected,
@@ -2294,10 +2753,15 @@
     submitSettleCn: submitSettleCn,
     deleteReturn: deleteReturnRecord,
     exportExcel: exportReturnsToExcel,
-    downloadHqExcelTemplate: downloadHqExcelTemplate
+    downloadHqExcelTemplate: downloadHqExcelTemplate,
+    getReturnsData: getReturnsData,
+    setReturnsData: setReturnsData,
+    onCloudSync: onCloudSync,
+    syncWithOneDrive: () => syncReturnsWithOneDrive(getActiveBranchName())
   };
 
   // Global convenience aliases
+  window.openEditReturnModal = openEditReturnModal;
   window.openSettleCnModal = openSettleCnModal;
   window.deleteReturnRecord = deleteReturnRecord;
   window.viewSignedProof = viewSignedProof;
