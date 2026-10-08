@@ -2165,55 +2165,90 @@ async function handleEditExpiryItemSubmit(e) {
 // ─── ATTRACTIVE CLEARANCE PRICE TAG & PROMO LABEL ENGINE ──────────────────────
 let activePriceTagItem = null;
 
-function generateBarcodeSvg(code) {
+function generateBarcodeSvg(code, height = 11) {
   const safeCode = String(code || '100000').replace(/[^a-zA-Z0-9]/g, '') || '100000';
-  let bars = '<rect width="2" height="22" x="0" fill="#000" /><rect width="1" height="22" x="4" fill="#000" />';
+  let bars = `<rect width="2" height="${height}" x="0" fill="#000" /><rect width="1" height="${height}" x="4" fill="#000" />`;
   let x = 7;
   for (let i = 0; i < safeCode.length; i++) {
     const c = safeCode.charCodeAt(i);
     const w1 = (c % 3) + 1;
     const w2 = ((c >> 1) % 2) + 1;
-    bars += `<rect width="${w1}" height="22" x="${x}" fill="#000" />`;
+    bars += `<rect width="${w1}" height="${height}" x="${x}" fill="#000" />`;
     x += w1 + ((c % 2) + 1);
-    bars += `<rect width="${w2}" height="22" x="${x}" fill="#000" />`;
+    bars += `<rect width="${w2}" height="${height}" x="${x}" fill="#000" />`;
     x += w2 + 2;
   }
-  bars += `<rect width="2" height="22" x="${x}" fill="#000" /><rect width="1" height="22" x="${x + 4}" fill="#000" />`;
+  bars += `<rect width="2" height="${height}" x="${x}" fill="#000" /><rect width="1" height="${height}" x="${x + 4}" fill="#000" />`;
   const totalW = x + 6;
-  return `<svg viewBox="0 0 ${totalW} 22" style="width: 100%; height: 18px; display: block;" preserveAspectRatio="none">${bars}</svg>`;
+  return `<svg viewBox="0 0 ${totalW} ${height}" style="width: 100%; height: ${height}px; display: block;" preserveAspectRatio="none">${bars}</svg>`;
 }
 
 function renderSinglePriceTagMarkup(item, opts = {}) {
   const theme = opts.theme || 'flame';
   const banner = opts.banner || '🔥 CLEARANCE SALE';
-  const size = opts.size || 'compact';
+  const size = opts.size || 'compact'; // 'compact', 'medium', 'shelf', 'mini'
   const offeredPrice = parseFloat(opts.offeredPrice !== undefined ? opts.offeredPrice : (item?.offeredPrice || 0));
   const normalPrice = parseFloat(opts.normalPrice !== undefined ? opts.normalPrice : (item?.normalPrice || 0));
-  const footerNote = opts.footerNote || '* While Stocks Last · Short Expiry Deal';
+  const footerNote = opts.footerNote !== undefined ? opts.footerNote : '* While Stocks Last · Short Expiry Deal';
+  const showBarcode = opts.showBarcode !== undefined ? Boolean(opts.showBarcode) : true;
   const forPrint = Boolean(opts.forPrint);
 
   const branch = (item?.branch || 'Kota Sentosa').toUpperCase();
   const sku = item?.itemCode || 'N/A';
   const batch = item?.batchNumber || 'N/A';
   const expiry = formatExpiryDateDisplay(item?.expiryDate || 'N/A');
-  const desc = item?.itemDescription || 'PRODUCT NAME';
+  const desc = (item?.itemDescription || `ITEM CODE: ${sku}`).trim();
 
-  // Format Price
+  // Price formatting
   const priceFormatted = offeredPrice > 0 ? offeredPrice.toFixed(2) : '0.00';
   const priceParts = priceFormatted.split('.');
   const wholePart = priceParts[0];
   const decimalPart = priceParts[1] || '00';
 
   // Discount calculation
-  let discountHtml = '';
-  if (normalPrice > offeredPrice && offeredPrice > 0) {
-    const pct = Math.round(((normalPrice - offeredPrice) / normalPrice) * 100);
-    discountHtml = `
-      <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 1px;">
-        <span style="font-size: 8px; font-weight: 700; color: #6b7280; text-decoration: line-through;">WAS RM ${normalPrice.toFixed(2)}</span>
-        <span style="background: #dc2626; color: #ffffff; font-weight: 900; font-size: 8px; padding: 1px 4px; border-radius: 3px; letter-spacing: 0.3px;">SAVE ${pct}%</span>
-      </div>
-    `;
+  let hasDiscount = (normalPrice > offeredPrice && offeredPrice > 0);
+  let discountPct = hasDiscount ? Math.round(((normalPrice - offeredPrice) / normalPrice) * 100) : 0;
+
+  // Sizing definitions in exact mm for print, px for screen
+  let widthCss = '240px';
+  let heightCss = '168px';
+  let bannerFontSize = '10.5px';
+  let titleFontSize = '9px';
+  let priceMainFontSize = '24px';
+  let barcodeHeight = 10;
+
+  if (size === 'medium') {
+    // 70mm x 45mm (Shelf Tag)
+    widthCss = forPrint ? '70mm' : '290px';
+    heightCss = forPrint ? '45mm' : '190px';
+    bannerFontSize = forPrint ? '9.5pt' : '12px';
+    titleFontSize = forPrint ? '8pt' : '10.5px';
+    priceMainFontSize = forPrint ? '25pt' : '30px';
+    barcodeHeight = 12;
+  } else if (size === 'shelf') {
+    // 90mm x 55mm (Large Display / Gondola Talker)
+    widthCss = forPrint ? '90mm' : '350px';
+    heightCss = forPrint ? '55mm' : '215px';
+    bannerFontSize = forPrint ? '11.5pt' : '14px';
+    titleFontSize = forPrint ? '9.5pt' : '12px';
+    priceMainFontSize = forPrint ? '30pt' : '36px';
+    barcodeHeight = 14;
+  } else if (size === 'mini') {
+    // 40mm x 25mm (Mini Box / Tube)
+    widthCss = forPrint ? '40mm' : '190px';
+    heightCss = forPrint ? '25mm' : '125px';
+    bannerFontSize = forPrint ? '6.5pt' : '8.5px';
+    titleFontSize = forPrint ? '6pt' : '8px';
+    priceMainFontSize = forPrint ? '16pt' : '19px';
+    barcodeHeight = 8;
+  } else {
+    // compact: 50mm x 35mm (Standard Box Sticker)
+    widthCss = forPrint ? '50mm' : '240px';
+    heightCss = forPrint ? '35mm' : '168px';
+    bannerFontSize = forPrint ? '7.5pt' : '10.5px';
+    titleFontSize = forPrint ? '6.8pt' : '9px';
+    priceMainFontSize = forPrint ? '19pt' : '24px';
+    barcodeHeight = 10;
   }
 
   // Theme palettes
@@ -2221,30 +2256,27 @@ function renderSinglePriceTagMarkup(item, opts = {}) {
   let bannerBg = 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)';
   let bannerColor = '#ffffff';
   let bannerBorder = '#f59e0b';
-  let storeBg = '#fef2f2';
-  let storeColor = '#991b1b';
-  let storeBorder = '#fee2e2';
+  let metaBg = '#fef2f2';
+  let metaColor = '#991b1b';
   let cardBg = '#ffffff';
   let titleColor = '#111827';
-  let metaColor = '#4b5563';
   let expiryBg = '#fee2e2';
   let expiryColor = '#b91c1c';
   let expiryBorder = '#fca5a5';
   let priceBoxBg = '#fef3c7';
   let priceBoxBorder = '#f59e0b';
   let priceColor = '#b91c1c';
+  let tagShadow = forPrint ? 'none' : '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)';
 
   if (theme === 'pmg') {
     borderColor = '#047857';
     bannerBg = 'linear-gradient(135deg, #059669 0%, #065f46 100%)';
     bannerColor = '#ffffff';
     bannerBorder = '#10b981';
-    storeBg = '#ecfdf5';
-    storeColor = '#065f46';
-    storeBorder = '#d1fae5';
+    metaBg = '#ecfdf5';
+    metaColor = '#065f46';
     cardBg = '#ffffff';
     titleColor = '#0f172a';
-    metaColor = '#334155';
     expiryBg = '#ecfdf5';
     expiryColor = '#047857';
     expiryBorder = '#a7f3d0';
@@ -2256,80 +2288,109 @@ function renderSinglePriceTagMarkup(item, opts = {}) {
     bannerBg = '#000000';
     bannerColor = '#fef08a';
     bannerBorder = '#dc2626';
-    storeBg = '#dc2626';
-    storeColor = '#ffffff';
-    storeBorder = '#b91c1c';
+    metaBg = '#dc2626';
+    metaColor = '#ffffff';
     cardBg = '#fef08a';
     titleColor = '#000000';
-    metaColor = '#18181b';
     expiryBg = '#000000';
     expiryColor = '#ffffff';
     expiryBorder = '#000000';
     priceBoxBg = '#ffffff';
     priceBoxBorder = '#000000';
     priceColor = '#dc2626';
+  } else if (theme === 'mono') {
+    borderColor = '#111827';
+    bannerBg = '#111827';
+    bannerColor = '#ffffff';
+    bannerBorder = '#374151';
+    metaBg = '#f3f4f6';
+    metaColor = '#111827';
+    cardBg = '#ffffff';
+    titleColor = '#000000';
+    expiryBg = '#111827';
+    expiryColor = '#ffffff';
+    expiryBorder = '#111827';
+    priceBoxBg = '#f9fafb';
+    priceBoxBorder = '#111827';
+    priceColor = '#000000';
   }
 
-  // Dimensions
-  let widthCss = '240px';
-  let heightCss = '170px';
-  if (forPrint) {
-    if (size === 'medium') { widthCss = '70mm'; heightCss = '45mm'; }
-    else if (size === 'mini') { widthCss = '40mm'; heightCss = '25mm'; }
-    else { widthCss = '50mm'; heightCss = '35mm'; }
+  // Discount badge markup
+  let discountMarkup = '';
+  if (hasDiscount) {
+    discountMarkup = `
+      <div style="display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 0.5px;">
+        <span style="font-size: ${size === 'mini' ? '5.5pt' : '7pt'}; font-weight: 700; color: #6b7280; text-decoration: line-through; line-height: 1;">WAS RM ${normalPrice.toFixed(2)}</span>
+        <span style="background: ${theme === 'neon' ? '#000000' : '#dc2626'}; color: #ffffff; font-weight: 900; font-size: ${size === 'mini' ? '5.5pt' : '7pt'}; padding: 0.5px 3.5px; border-radius: 2px; letter-spacing: 0.2px; line-height: 1.1;">SAVE ${discountPct}%</span>
+      </div>
+    `;
   } else {
-    if (size === 'medium') { widthCss = '280px'; heightCss = '195px'; }
-    else if (size === 'mini') { widthCss = '200px'; heightCss = '145px'; }
-    else { widthCss = '240px'; heightCss = '170px'; }
+    discountMarkup = `
+      <span style="font-size: ${size === 'mini' ? '6pt' : '7.5pt'}; font-weight: 900; color: ${priceColor}; text-transform: uppercase; letter-spacing: 0.3px; line-height: 1.1;">
+        ★ SPECIAL OFFER
+      </span>
+    `;
+  }
+
+  // Barcode / Footer row
+  let bottomMarkup = '';
+  if (showBarcode && size !== 'mini') {
+    bottomMarkup = `
+      <div style="margin-top: 1px; display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0;">
+        ${generateBarcodeSvg(sku, barcodeHeight)}
+        <div style="font-size: 5.5pt; font-family: monospace; font-weight: 700; color: #4b5563; line-height: 1; letter-spacing: 0.5px; margin-top: 0.5px;">* ${escHtml(sku)} *</div>
+      </div>
+    `;
+  } else if (footerNote && size !== 'mini') {
+    bottomMarkup = `
+      <div style="font-size: 6pt; color: #6b7280; text-align: center; font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.1; margin-top: 1px; flex-shrink: 0;">
+        ${escHtml(footerNote)}
+      </div>
+    `;
   }
 
   return `
-    <div style="width: ${widthCss}; height: ${heightCss}; box-sizing: border-box; background: ${cardBg}; border: 2px solid ${borderColor}; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; box-shadow: ${forPrint ? 'none' : '0 4px 6px -1px rgba(0,0,0,0.1)'}; user-select: none;">
-      <!-- Top Banner -->
-      <div style="background: ${bannerBg}; color: ${bannerColor}; padding: 3px 5px; text-align: center; font-weight: 900; font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; border-bottom: 2px solid ${bannerBorder}; line-height: 1.2;">
+    <div class="pmg-price-tag-card" style="width: ${widthCss}; height: ${heightCss}; box-sizing: border-box; background: ${cardBg}; border: 1.5px solid ${borderColor}; border-radius: 5px; overflow: hidden; display: flex; flex-direction: column; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; box-shadow: ${tagShadow}; position: relative; justify-content: space-between;">
+      
+      <!-- Top Banner Header -->
+      <div style="background: ${bannerBg}; color: ${bannerColor}; padding: ${size === 'mini' ? '1.5px 3px' : '2px 4px'}; text-align: center; font-weight: 900; font-size: ${bannerFontSize}; letter-spacing: 0.5px; text-transform: uppercase; border-bottom: 1.5px solid ${bannerBorder}; line-height: 1.1; flex-shrink: 0;">
         ${escHtml(banner)}
       </div>
 
-      <!-- Store Subheader -->
-      <div style="background: ${storeBg}; color: ${storeColor}; font-size: 7.5px; font-weight: 800; text-align: center; padding: 1.5px 4px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid ${storeBorder};">
-        PMG PHARMACY · ${escHtml(branch)}
-      </div>
-
-      <!-- Sticker Body -->
-      <div style="padding: 4px 6px; flex: 1; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden;">
-        <!-- Product Title -->
-        <div style="font-size: 9.5px; font-weight: 800; color: ${titleColor}; line-height: 1.2; text-transform: uppercase; max-height: 23px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;" title="${escHtml(desc)}">
-          ${escHtml(desc)}
+      <!-- Main Sticker Core -->
+      <div style="padding: ${size === 'mini' ? '1.5px 3px' : '2px 4px'}; flex: 1; display: flex; flex-direction: column; justify-content: space-between; min-height: 0; box-sizing: border-box;">
+        
+        <!-- Store & Expiry Compact Strip -->
+        <div style="display: flex; align-items: center; justify-content: space-between; font-size: ${size === 'mini' ? '5.5pt' : '6.5pt'}; font-weight: 700; background: ${metaBg}; color: ${metaColor}; padding: 1px 3px; border-radius: 3px; margin-bottom: 1px; flex-shrink: 0; line-height: 1.1;">
+          <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%;">PMG · ${escHtml(branch)}</span>
+          <span style="background: ${expiryBg}; color: ${expiryColor}; border: 0.5px solid ${expiryBorder}; padding: 0.5px 2.5px; border-radius: 2px; font-weight: 900; white-space: nowrap;">EXP: ${escHtml(expiry)}</span>
         </div>
 
-        <!-- SKU & Expiry Strip -->
-        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 7.5px; font-weight: 700; margin-top: 2px;">
-          <span style="color: ${metaColor}; font-family: monospace;">SKU: ${escHtml(sku)} · B: ${escHtml(batch)}</span>
-          <span style="background: ${expiryBg}; color: ${expiryColor}; border: 1px solid ${expiryBorder}; padding: 0.5px 3px; border-radius: 3px; font-weight: 800;">EXP: ${escHtml(expiry)}</span>
+        <!-- Product Name & SKU -->
+        <div style="flex-shrink: 0; margin-bottom: 1px;">
+          <div style="font-size: ${titleFontSize}; font-weight: 800; color: ${titleColor}; line-height: 1.15; text-transform: uppercase; max-height: ${size === 'mini' ? '11px' : '21px'}; overflow: hidden; display: -webkit-box; -webkit-line-clamp: ${size === 'mini' ? '1' : '2'}; -webkit-box-orient: vertical;" title="${escHtml(desc)}">
+            ${escHtml(desc)}
+          </div>
+          <div style="font-size: ${size === 'mini' ? '5pt' : '6pt'}; font-family: monospace; font-weight: 700; color: #6b7280; line-height: 1; margin-top: 0.5px;">
+            SKU: ${escHtml(sku)} ${batch && batch !== 'N/A' ? `· B: ${escHtml(batch)}` : ''}
+          </div>
         </div>
 
-        <!-- Eye-Catching Promotional Price Box -->
-        <div style="background: ${priceBoxBg}; border: 1.5px solid ${priceBoxBorder}; border-radius: 6px; padding: 2.5px 6px; margin: 3px 0; display: flex; align-items: center; justify-content: space-between;">
-          <div style="display: flex; align-items: center; gap: 3px;">
-            ${discountHtml || `<span style="font-size: 8px; font-weight: 900; color: ${priceColor}; text-transform: uppercase; letter-spacing: 0.3px;">PROMO NOW</span>`}
+        <!-- Eye-Catching HERO Promotional Price Box -->
+        <div style="background: ${priceBoxBg}; border: 1.5px solid ${priceBoxBorder}; border-radius: 4px; padding: ${size === 'mini' ? '1px 3px' : '2px 5px'}; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; margin: 1px 0;">
+          <div style="display: flex; align-items: center; gap: 2px;">
+            ${discountMarkup}
           </div>
           <div style="display: flex; align-items: baseline; justify-content: flex-end; color: ${priceColor};">
-            <span style="font-size: 11px; font-weight: 900; margin-right: 1.5px;">RM</span>
-            <span style="font-size: 23px; font-weight: 950; line-height: 1; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">${wholePart}</span>
-            <span style="font-size: 13px; font-weight: 900;">.${decimalPart}</span>
+            <span style="font-size: ${size === 'mini' ? '8pt' : '10pt'}; font-weight: 900; margin-right: 1px; line-height: 1;">RM</span>
+            <span style="font-size: ${priceMainFontSize}; font-weight: 950; line-height: 0.95; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">${wholePart}</span>
+            <span style="font-size: ${size === 'mini' ? '8pt' : '11pt'}; font-weight: 900; line-height: 1;">.${decimalPart}</span>
           </div>
         </div>
 
-        <!-- Vector Barcode -->
-        <div style="margin-top: 1px;">
-          ${generateBarcodeSvg(sku)}
-          <div style="text-align: center; font-size: 6.5px; font-family: monospace; font-weight: 700; color: ${metaColor}; line-height: 1;">* ${escHtml(sku)} *</div>
-        </div>
+        <!-- Vector Barcode or Footer -->
+        ${bottomMarkup}
 
-        <!-- Footer Remark -->
-        <div style="font-size: 6.5px; color: #6b7280; text-align: center; font-style: italic; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-          ${escHtml(footerNote)}
-        </div>
       </div>
     </div>
   `;
@@ -2363,17 +2424,21 @@ function openClearancePriceTagModal(rowId) {
   const normInput = document.getElementById('tagNormalPrice');
   const themeSel = document.getElementById('tagThemeSelect');
   const sizeSel = document.getElementById('tagSizeSelect');
+  const printTargetSel = document.getElementById('tagPrintTargetSelect');
   const copiesInput = document.getElementById('tagCopiesInput');
   const noteInput = document.getElementById('tagFooterNoteInput');
   const bannerSel = document.getElementById('tagBannerSelect');
+  const barcodeCheckbox = document.getElementById('tagShowBarcodeCheckbox');
 
   if (offInput) offInput.value = item.offeredPrice !== undefined ? item.offeredPrice : '';
   if (normInput) normInput.value = item.normalPrice !== undefined ? item.normalPrice : '';
   if (themeSel) themeSel.value = item.tagTheme || 'flame';
   if (sizeSel) sizeSel.value = item.tagSize || 'compact';
+  if (printTargetSel) printTargetSel.value = item.tagPrintTarget || 'a4';
   if (copiesInput) copiesInput.value = item.quantity && item.quantity > 0 ? item.quantity : 1;
   if (noteInput) noteInput.value = item.promoRemark || '* While Stocks Last · Short Expiry Deal';
   if (bannerSel && item.promoBanner) bannerSel.value = item.promoBanner;
+  if (barcodeCheckbox) barcodeCheckbox.checked = item.showBarcode !== undefined ? Boolean(item.showBarcode) : true;
 
   updatePriceTagLivePreview();
   modal.classList.remove('hidden');
@@ -2401,8 +2466,10 @@ function updatePriceTagLivePreview() {
   const normPriceVal = parseFloat(document.getElementById('tagNormalPrice')?.value) || 0;
   const theme = document.getElementById('tagThemeSelect')?.value || 'flame';
   const size = document.getElementById('tagSizeSelect')?.value || 'compact';
+  const printTarget = document.getElementById('tagPrintTargetSelect')?.value || 'a4';
   const banner = document.getElementById('tagBannerSelect')?.value || '🔥 CLEARANCE SALE';
   const footerNote = document.getElementById('tagFooterNoteInput')?.value || '* While Stocks Last · Short Expiry Deal';
+  const showBarcode = document.getElementById('tagShowBarcodeCheckbox') ? document.getElementById('tagShowBarcodeCheckbox').checked : true;
 
   // Discount preview badge on left panel
   const discPill = document.getElementById('tagDiscountPillPreview');
@@ -2421,9 +2488,13 @@ function updatePriceTagLivePreview() {
   // Size indicator badge
   const sizeBadge = document.getElementById('tagSizeBadge');
   if (sizeBadge) {
-    if (size === 'medium') sizeBadge.textContent = '70mm × 45mm';
-    else if (size === 'mini') sizeBadge.textContent = '40mm × 25mm';
-    else sizeBadge.textContent = '50mm × 35mm';
+    let dimStr = '50mm × 35mm';
+    if (size === 'medium') dimStr = '70mm × 45mm';
+    else if (size === 'shelf') dimStr = '90mm × 55mm';
+    else if (size === 'mini') dimStr = '40mm × 25mm';
+
+    const targetStr = printTarget === 'thermal' ? '🏷️ Thermal Roll' : '📄 A4 Sheet Grid (✂ Cut Guides)';
+    sizeBadge.textContent = `${dimStr} · ${targetStr}`;
   }
 
   // Render sticker preview
@@ -2434,7 +2505,9 @@ function updatePriceTagLivePreview() {
     offeredPrice: offPriceVal,
     normalPrice: normPriceVal,
     footerNote,
-    forPrint: false
+    showBarcode,
+    forPrint: false,
+    printTarget
   });
 }
 
@@ -2459,7 +2532,21 @@ function setTagCopiesToStock() {
   const copiesInput = document.getElementById('tagCopiesInput');
   if (copiesInput && activePriceTagItem) {
     copiesInput.value = activePriceTagItem.quantity && activePriceTagItem.quantity > 0 ? activePriceTagItem.quantity : 1;
+    showExpiryToast(`📦 Print copies set to match stock: ${copiesInput.value} unit(s)`);
   }
+}
+
+function fillA4SheetCopies() {
+  const copiesInput = document.getElementById('tagCopiesInput');
+  if (!copiesInput) return;
+  const size = document.getElementById('tagSizeSelect')?.value || 'compact';
+  let sheetCount = 18;
+  if (size === 'medium') sheetCount = 10;
+  else if (size === 'shelf') sheetCount = 8;
+  else if (size === 'mini') sheetCount = 24;
+
+  copiesInput.value = sheetCount;
+  showExpiryToast(`📄 Set to ${sheetCount} copies to fill a complete A4 sheet!`);
 }
 
 function saveClearancePriceTag(silent = false) {
@@ -2476,8 +2563,10 @@ function saveClearancePriceTag(silent = false) {
   const normalPrice = parseFloat(document.getElementById('tagNormalPrice')?.value) || null;
   const theme = document.getElementById('tagThemeSelect')?.value || 'flame';
   const size = document.getElementById('tagSizeSelect')?.value || 'compact';
+  const printTarget = document.getElementById('tagPrintTargetSelect')?.value || 'a4';
   const banner = document.getElementById('tagBannerSelect')?.value || '🔥 CLEARANCE SALE';
   const footerNote = document.getElementById('tagFooterNoteInput')?.value || '';
+  const showBarcode = document.getElementById('tagShowBarcodeCheckbox') ? document.getElementById('tagShowBarcodeCheckbox').checked : true;
 
   // Update item properties
   activePriceTagItem.offeredPrice = offeredPrice;
@@ -2485,8 +2574,10 @@ function saveClearancePriceTag(silent = false) {
   activePriceTagItem.actionPlan = 'Clearance Promo / PWP';
   activePriceTagItem.tagTheme = theme;
   activePriceTagItem.tagSize = size;
+  activePriceTagItem.tagPrintTarget = printTarget;
   activePriceTagItem.promoBanner = banner;
   activePriceTagItem.promoRemark = footerNote;
+  activePriceTagItem.showBarcode = showBarcode;
   activePriceTagItem.lastUpdated = new Date().toISOString();
 
   saveLocalExpiryData();
@@ -2518,8 +2609,16 @@ function printClearancePriceTags() {
   const theme = document.getElementById('tagThemeSelect')?.value || 'flame';
   const banner = document.getElementById('tagBannerSelect')?.value || '🔥 CLEARANCE SALE';
   const footerNote = document.getElementById('tagFooterNoteInput')?.value || '* While Stocks Last · Short Expiry Deal';
+  const showBarcode = document.getElementById('tagShowBarcodeCheckbox') ? document.getElementById('tagShowBarcodeCheckbox').checked : true;
+  const printTarget = document.getElementById('tagPrintTargetSelect')?.value || 'a4';
   const offeredPrice = parseFloat(document.getElementById('tagOfferedPrice')?.value) || 0;
   const normalPrice = parseFloat(document.getElementById('tagNormalPrice')?.value) || 0;
+
+  let widthMm = '50mm';
+  let heightMm = '35mm';
+  if (size === 'medium') { widthMm = '70mm'; heightMm = '45mm'; }
+  else if (size === 'shelf') { widthMm = '90mm'; heightMm = '55mm'; }
+  else if (size === 'mini') { widthMm = '40mm'; heightMm = '25mm'; }
 
   const singleStickerHtml = renderSinglePriceTagMarkup(activePriceTagItem, {
     theme,
@@ -2528,21 +2627,37 @@ function printClearancePriceTags() {
     offeredPrice,
     normalPrice,
     footerNote,
-    forPrint: true
+    showBarcode,
+    forPrint: true,
+    printTarget
   });
-
-  let widthMm = '50mm';
-  let heightMm = '35mm';
-  if (size === 'medium') { widthMm = '70mm'; heightMm = '45mm'; }
-  else if (size === 'mini') { widthMm = '40mm'; heightMm = '25mm'; }
 
   let stickersHtml = '';
   for (let i = 0; i < copies; i++) {
-    stickersHtml += `<div class="tag-print-item">${singleStickerHtml}</div>`;
+    if (printTarget === 'a4') {
+      stickersHtml += `
+        <div class="tag-cut-cell">
+          <div class="tag-cut-guide">
+            <span class="cut-icon">✂</span>
+            ${singleStickerHtml}
+          </div>
+        </div>
+      `;
+    } else {
+      stickersHtml += `
+        <div class="tag-thermal-item">
+          ${singleStickerHtml}
+        </div>
+      `;
+    }
   }
 
-  // Create clean hidden printing iframe
+  // Remove any previous printing iframe
+  const oldIframe = document.getElementById('pmgPriceTagPrintIframe');
+  if (oldIframe) oldIframe.remove();
+
   const iframe = document.createElement('iframe');
+  iframe.id = 'pmgPriceTagPrintIframe';
   iframe.style.position = 'fixed';
   iframe.style.right = '0';
   iframe.style.bottom = '0';
@@ -2553,6 +2668,76 @@ function printClearancePriceTags() {
 
   const doc = iframe.contentWindow.document;
   doc.open();
+
+  let pageCss = '';
+  if (printTarget === 'thermal') {
+    pageCss = `
+      @page {
+        size: ${widthMm} ${heightMm};
+        margin: 0;
+      }
+      body {
+        margin: 0;
+        padding: 0;
+        background: #ffffff;
+      }
+      .tag-thermal-item {
+        width: ${widthMm};
+        height: ${heightMm};
+        page-break-after: always;
+        break-after: page;
+        box-sizing: border-box;
+        overflow: hidden;
+      }
+    `;
+  } else {
+    // A4 sheet mode
+    pageCss = `
+      @page {
+        size: A4 portrait;
+        margin: 8mm 6mm;
+      }
+      body {
+        margin: 0;
+        padding: 0;
+        background: #ffffff;
+      }
+      .tag-a4-sheet-container {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        align-content: flex-start;
+        gap: 3mm;
+        margin: 0 auto;
+        box-sizing: border-box;
+      }
+      .tag-cut-cell {
+        box-sizing: border-box;
+        page-break-inside: avoid;
+        break-inside: avoid;
+        margin-bottom: 2mm;
+      }
+      .tag-cut-guide {
+        position: relative;
+        border: 1px dashed #94a3b8;
+        border-radius: 4px;
+        padding: 0.5mm;
+        background: #ffffff;
+        box-sizing: border-box;
+      }
+      .cut-icon {
+        position: absolute;
+        top: -7px;
+        left: -3px;
+        font-size: 8px;
+        color: #94a3b8;
+        line-height: 1;
+        background: #ffffff;
+        padding: 0 1px;
+      }
+    `;
+  }
+
   doc.write(`
     <!DOCTYPE html>
     <html>
@@ -2560,41 +2745,16 @@ function printClearancePriceTags() {
       <meta charset="utf-8">
       <title>Clearance Price Tags - ${escHtml(activePriceTagItem.itemCode || 'SKU')}</title>
       <style>
-        @page {
-          size: auto;
-          margin: 4mm;
-        }
         * {
           box-sizing: border-box;
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
-        body {
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-          margin: 0;
-          padding: 0;
-          background: #ffffff;
-        }
-        .tag-print-grid {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 3mm;
-          align-items: flex-start;
-        }
-        .tag-print-item {
-          width: ${widthMm};
-          height: ${heightMm};
-          page-break-inside: avoid;
-          break-inside: avoid;
-          overflow: hidden;
-          margin-bottom: 2mm;
-        }
+        ${pageCss}
       </style>
     </head>
     <body>
-      <div class="tag-print-grid">
-        ${stickersHtml}
-      </div>
+      ${printTarget === 'thermal' ? stickersHtml : `<div class="tag-a4-sheet-container">${stickersHtml}</div>`}
       <script>
         window.onload = function() {
           setTimeout(function() {
@@ -2611,7 +2771,7 @@ function printClearancePriceTags() {
   `);
   doc.close();
 
-  showExpiryToast(`🖨️ Printing ${copies} clearance price tag sticker(s)...`);
+  showExpiryToast(`🖨️ Printing ${copies} clearance price tag(s) [${printTarget === 'thermal' ? 'Thermal Roll' : 'A4 Grid with Cut Guides'}]...`);
 }
 
 function updateExpiryOfferedPrice(rowId, val) {
@@ -3377,6 +3537,7 @@ window.closeClearancePriceTagModal = closeClearancePriceTagModal;
 window.updatePriceTagLivePreview = updatePriceTagLivePreview;
 window.quickRoundOfferPrice = quickRoundOfferPrice;
 window.setTagCopiesToStock = setTagCopiesToStock;
+window.fillA4SheetCopies = fillA4SheetCopies;
 window.saveClearancePriceTag = saveClearancePriceTag;
 window.printClearancePriceTags = printClearancePriceTags;
 window.updateExpiryOfferedPrice = updateExpiryOfferedPrice;

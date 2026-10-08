@@ -4386,6 +4386,7 @@ Date visit: 06.01.2026
                   <option value="flame">🔥 Flame Red & Gold (High Impact)</option>
                   <option value="pmg">🌿 PMG Emerald & Navy (Pharmacy Clean)</option>
                   <option value="neon">⚡ Flash Neon Yellow (Supermarket Flash)</option>
+                  <option value="mono">🖤 Minimalist Mono Black (Thermal Friendly)</option>
                 </select>
               </div>
 
@@ -4393,33 +4394,55 @@ Date visit: 06.01.2026
               <div>
                 <label class="block font-bold text-gray-700 mb-1">Sticker Size / Format</label>
                 <select id="tagSizeSelect" onchange="updatePriceTagLivePreview()" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-bold text-gray-800 outline-none">
-                  <option value="compact">Compact Label (50mm × 35mm · Box/Tube)</option>
-                  <option value="medium">Medium Shelf Tag (70mm × 45mm · Gondola/Shelf)</option>
-                  <option value="mini">Mini Dot Badge (40mm × 25mm · Small Pack)</option>
+                  <option value="compact">Compact Box Sticker (50mm × 35mm · Box/Tube)</option>
+                  <option value="medium">Medium Shelf Tag (70mm × 45mm · Gondola/Shelf Rail)</option>
+                  <option value="shelf">Large Display Card (90mm × 55mm · Basket/Talker)</option>
+                  <option value="mini">Mini Dot Badge (40mm × 25mm · Small Pack/Tube)</option>
                 </select>
               </div>
 
-              <!-- Number of Copies -->
+              <!-- Print Destination / Paper Type -->
               <div>
+                <label class="block font-bold text-gray-700 mb-1">Print Paper / Target</label>
+                <select id="tagPrintTargetSelect" onchange="updatePriceTagLivePreview()" class="w-full border border-blue-300 rounded-lg px-2.5 py-1.5 bg-blue-50/50 font-bold text-blue-900 outline-none">
+                  <option value="a4">📄 Standard A4 Paper (with ✂ Scissors Cut Guides)</option>
+                  <option value="thermal">🏷️ Thermal Sticker Roll (Single Label per Page)</option>
+                </select>
+              </div>
+
+              <!-- Number of Copies & Quick Fill -->
+              <div class="sm:col-span-2">
                 <label class="block font-bold text-gray-700 mb-1 flex items-center justify-between">
                   <span>Print Copies</span>
-                  <span id="tagCopiesStockHint" class="text-[10px] text-blue-600 font-normal">Match stock</span>
+                  <span id="tagCopiesStockHint" class="text-[10px] text-blue-600 font-normal">Choose sheet or stock count</span>
                 </label>
-                <div class="flex items-center gap-1.5">
+                <div class="flex items-center gap-1.5 flex-wrap">
                   <input id="tagCopiesInput" type="number" min="1" max="100" value="1"
                     class="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-center font-black text-sm">
-                  <button type="button" onclick="setTagCopiesToStock()" class="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg font-bold text-[11px] text-slate-700 transition cursor-pointer">All Stock</button>
+                  <button type="button" onclick="setTagCopiesToStock()" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg font-bold text-[11px] text-slate-700 transition cursor-pointer">📦 Match Stock</button>
+                  <button type="button" onclick="fillA4SheetCopies()" class="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg font-bold text-[11px] text-blue-700 transition cursor-pointer">📄 Fill A4 Sheet</button>
                   <button type="button" onclick="document.getElementById('tagCopiesInput').value=1" class="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg font-bold text-[11px] text-slate-700 transition cursor-pointer">1 Pc</button>
                 </div>
               </div>
             </div>
 
-            <!-- Custom Remark / Subtitle -->
-            <div>
-              <label class="block font-bold text-gray-700 text-xs mb-1">Remark / Tag Footer Note</label>
-              <input id="tagFooterNoteInput" type="text" value="* While Stocks Last · Short Expiry Deal"
-                oninput="updatePriceTagLivePreview()"
-                class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs text-gray-700 outline-none">
+            <!-- Additional Options & Remark -->
+            <div class="space-y-2 pt-1 border-t border-slate-100">
+              <div class="flex items-center justify-between">
+                <label class="flex items-center gap-2 cursor-pointer font-bold text-gray-700 text-xs select-none">
+                  <input id="tagShowBarcodeCheckbox" type="checkbox" checked onchange="updatePriceTagLivePreview()"
+                    class="w-4 h-4 text-rose-600 rounded border-gray-300 focus:ring-rose-500">
+                  <span>Include Scannable POS Barcode</span>
+                </label>
+                <span class="text-[10px] text-gray-400">Uncheck to give more space for text</span>
+              </div>
+
+              <div>
+                <label class="block font-bold text-gray-700 text-xs mb-1">Remark / Tag Footer Note</label>
+                <input id="tagFooterNoteInput" type="text" value="* While Stocks Last · Short Expiry Deal"
+                  oninput="updatePriceTagLivePreview()"
+                  class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs text-gray-700 outline-none">
+              </div>
             </div>
           </div>
         </div>
