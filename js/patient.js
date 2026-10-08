@@ -59,210 +59,6 @@ const DEFAULT_PATIENTS_DATA = [
     appointments: []
   },
   {
-    id: 'PT-1001',
-    name: 'Tan Ah Kow',
-    ic: '640512-13-5431',
-    phone: '+60168889922',
-    gender: 'Male',
-    age: 62,
-    race: 'Chinese',
-    language: 'Chinese',
-    branch: 'Kota Sentosa',
-    conditions: ['Hypertension', 'Type 2 Diabetes', 'Dyslipidemia'],
-    allergies: 'Penicillin',
-    notes: 'Prefers morning appointments before 11:00 AM.',
-    createdAt: getTodayDateString(-60),
-    encounters: [
-      {
-        id: 'ENC-101',
-        date: getTodayDateString(-30),
-        recordedBy: 'William Chai (Pharmacist)',
-        chiefComplaint: 'Routine Chronic Refill & BP Review',
-        hpi: 'Patient reports occasional morning dizziness. Compliant with Amlodipine and Metformin. No chest pain or shortness of breath.',
-        vitals: {
-          bpSys: 136,
-          bpDia: 86,
-          pulse: 74,
-          spo2: 98,
-          weight: 72,
-          height: 168,
-          bmi: 25.5
-        },
-        lipidPanel: {
-          tc: 5.4,
-          tg: 1.8,
-          hdl: 1.1,
-          ldl: 3.5,
-          ai: 3.91,
-          rChd: 4.91
-        },
-        liverPanel: {
-          ast: 28,
-          alt: 32,
-          alb: 42
-        },
-        kidneyPanel: {
-          ua: 380,
-          creatinine: 88,
-          urea: 5.4,
-          egfr: 78
-        },
-        glycemicHeme: {
-          glucose: 6.8,
-          glucoseType: 'Fasting',
-          hba1c: 6.9,
-          hb: 14.2,
-          hct: 42.5
-        },
-        specialtyScans: {
-          vitD: 24,
-          ferritin: 110,
-          teda: 'Mild metabolic stress',
-          airdoc: 'Grade 1 Hypertensive Retinopathy signs',
-          rossmaxAct: 'Vascular Age: 65 yrs (ACT 4)'
-        },
-        customTests: [
-          { name: 'Urine Microalbumin', result: 'Negative', unit: 'dipstick', notes: 'Routine check' }
-        ],
-        preDiagnostic: 'Suboptimally controlled Stage 1 Hypertension with pre-diabetic glycemic profile and borderline dyslipidemia.',
-        planMedications: 'Continue Amlodipine 10mg OD (morning), Metformin 500mg BD (with food).',
-        planSupplements: 'Recommended CoQ10 100mg OD (cardiovascular support) and B-Complex (for long-term Metformin user).',
-        planCounselling: 'Advised DASH diet (low sodium), brisk walking 30 mins 4x/week, home BP log.',
-        referral: 'Review in 1 month. Refer GP if BP persistently > 140/90 mmHg.',
-        attachedDocs: []
-      }
-    ],
-    medications: [
-      {
-        id: 'MED-101',
-        name: 'Amlodipine 10mg',
-        dosage: '1 tab OD (Morning)',
-        lastDispensed: getTodayDateString(-28),
-        supplyDays: 30,
-        nextRefillDate: getTodayDateString(2)
-      },
-      {
-        id: 'MED-102',
-        name: 'Metformin 500mg',
-        dosage: '1 tab BD (With meals)',
-        lastDispensed: getTodayDateString(-28),
-        supplyDays: 30,
-        nextRefillDate: getTodayDateString(2)
-      }
-    ],
-    appointments: [
-      {
-        id: 'APT-101',
-        date: getTodayDateString(1),
-        time: '10:30',
-        purpose: 'Chronic Refill & BP Review',
-        status: 'Scheduled',
-        notes: 'Prepare Amlodipine 10mg & Metformin 500mg 1 month pack.'
-      }
-    ]
-  },
-  {
-    id: 'PT-1002',
-    name: 'Hajah Fatimah Binti Osman',
-    ic: '680824-13-5890',
-    phone: '+60138012345',
-    gender: 'Female',
-    age: 58,
-    race: 'Malay',
-    language: 'Malay',
-    branch: 'Kota Sentosa',
-    conditions: ['Dyslipidemia', 'Hypertension'],
-    allergies: 'None',
-    notes: 'Monitored for lipid profile and liver enzymes.',
-    createdAt: getTodayDateString(-90),
-    encounters: [
-      {
-        id: 'ENC-102',
-        date: getTodayDateString(-35),
-        recordedBy: 'William Chai (Pharmacist)',
-        chiefComplaint: 'Lipid & Liver Enzymes Review',
-        hpi: 'Patient taking Atorvastatin 20mg daily. Complains of mild bilateral calf tiredness after evening prayers.',
-        vitals: {
-          bpSys: 142,
-          bpDia: 90,
-          pulse: 70,
-          spo2: 99,
-          weight: 65,
-          height: 155,
-          bmi: 27.1
-        },
-        lipidPanel: {
-          tc: 6.2,
-          tg: 2.1,
-          hdl: 1.2,
-          ldl: 4.1,
-          ai: 4.17,
-          rChd: 5.17
-        },
-        liverPanel: {
-          ast: 34,
-          alt: 38,
-          alb: 40
-        },
-        kidneyPanel: {
-          ua: 310,
-          creatinine: 74,
-          urea: 4.8,
-          egfr: 84
-        },
-        glycemicHeme: {
-          glucose: 5.9,
-          glucoseType: 'Random',
-          hba1c: null,
-          hb: 13.0,
-          hct: 39.0
-        },
-        specialtyScans: {
-          vitD: null,
-          ferritin: null,
-          teda: null,
-          airdoc: null,
-          rossmaxAct: 'ACT 3 (Normal vascular compliance)'
-        },
-        customTests: [],
-        preDiagnostic: 'Hypercholesterolemia with Stage 2 Hypertension. Mild statin-associated muscle symptoms suspected.',
-        planMedications: 'Atorvastatin 20mg ON, Perindopril 4mg OD.',
-        planSupplements: 'High-potency CoQ10 150mg OD for statin-induced myalgia + Omega-3 Fish Oil 1200mg BD.',
-        planCounselling: 'Advised strict reduction of saturated fats, santan, and fried food. Hydration > 2L daily.',
-        referral: 'Follow up lipid profile in 1 month.',
-        attachedDocs: []
-      }
-    ],
-    medications: [
-      {
-        id: 'MED-103',
-        name: 'Atorvastatin 20mg',
-        dosage: '1 tab ON (Night)',
-        lastDispensed: getTodayDateString(-35),
-        supplyDays: 30,
-        nextRefillDate: getTodayDateString(-5) // Overdue!
-      },
-      {
-        id: 'MED-104',
-        name: 'Perindopril 4mg',
-        dosage: '1 tab OD (Morning)',
-        lastDispensed: getTodayDateString(-35),
-        supplyDays: 30,
-        nextRefillDate: getTodayDateString(-5) // Overdue!
-      }
-    ],
-    appointments: [
-      {
-        id: 'APT-102',
-        date: getTodayDateString(-5),
-        time: '14:30',
-        purpose: 'Lipid Review & Refill',
-        status: 'Missed',
-        notes: 'Missed appointment on Friday. Requires WhatsApp recall.'
-      }
-    ]
-  },
-  {
     id: 'PT-1003',
     name: 'Alexander Anak Stephen',
     ic: '811105-13-6113',
@@ -985,7 +781,7 @@ function getDeletedPatientIds() {
   }
 }
 
-function addDeletedPatientRecord(patientId, ic, phone) {
+function addDeletedPatientRecord(patientId, ic = null, phone = null, name = null) {
   try {
     const list = getDeletedPatientIds();
     const set = new Set(list.map(x => String(x).toLowerCase().trim()));
@@ -994,13 +790,14 @@ function addDeletedPatientRecord(patientId, ic, phone) {
     if (cleanIc) set.add(cleanIc);
     const cleanPhone = String(phone || '').replace(/\D/g, '');
     if (cleanPhone) set.add(cleanPhone);
+    if (name) set.add(String(name).toLowerCase().trim());
     localStorage.setItem(DELETED_PATIENTS_STORAGE_KEY, JSON.stringify(Array.from(set)));
   } catch (e) {
     console.warn('[PMG Patient] Error saving deleted patient tombstone:', e);
   }
 }
 
-function removeDeletedPatientRecord(patientId, ic, phone) {
+function removeDeletedPatientRecord(patientId, ic = null, phone = null, name = null) {
   try {
     const list = getDeletedPatientIds();
     const set = new Set(list.map(x => String(x).toLowerCase().trim()));
@@ -1009,13 +806,14 @@ function removeDeletedPatientRecord(patientId, ic, phone) {
     if (cleanIc) set.delete(cleanIc);
     const cleanPhone = String(phone || '').replace(/\D/g, '');
     if (cleanPhone) set.delete(cleanPhone);
+    if (name) set.delete(String(name).toLowerCase().trim());
     localStorage.setItem(DELETED_PATIENTS_STORAGE_KEY, JSON.stringify(Array.from(set)));
   } catch (e) {
     console.warn('[PMG Patient] Error removing deleted patient tombstone:', e);
   }
 }
 
-function isPatientDeleted(patientId, ic = null, phone = null) {
+function isPatientDeleted(patientId, ic = null, phone = null, name = null) {
   const list = getDeletedPatientIds();
   if (!list.length) return false;
   const set = new Set(list.map(x => String(x).toLowerCase().trim()));
@@ -1024,10 +822,17 @@ function isPatientDeleted(patientId, ic = null, phone = null) {
   if (cleanIc && set.has(cleanIc)) return true;
   const cleanPhone = String(phone || '').replace(/\D/g, '');
   if (cleanPhone && set.has(cleanPhone)) return true;
+  if (name && set.has(String(name).toLowerCase().trim())) return true;
   return false;
 }
 
 function loadPatientsData() {
+  // Permanently tombstone test patients Tan Ah Kow and Hajah Fatimah Binti Osman
+  addDeletedPatientRecord('PT-1001', '640512-13-5431', '+60168889922', 'Tan Ah Kow');
+  addDeletedPatientRecord('PT-1002', '680824-13-5890', '+60138012345', 'Hajah Fatimah Binti Osman');
+  addDeletedPatientRecord('tan ah kow');
+  addDeletedPatientRecord('hajah fatimah binti osman');
+
   const saved = localStorage.getItem(PATIENTS_STORAGE_KEY);
   if (saved) {
     try {
@@ -1049,8 +854,24 @@ function loadPatientsData() {
       }
     });
 
-    // Respect permanently deleted profiles
-    patientsData = patientsData.filter(p => !isPatientDeleted(p.id, p.ic, p.phone));
+    // Strictly purge test patients and respect permanently deleted profiles
+    const prevLen = patientsData.length;
+    patientsData = patientsData.filter(p => {
+      if (!p) return false;
+      const id = String(p.id || '').toLowerCase().trim();
+      const name = String(p.name || '').toLowerCase().trim();
+      if (id === 'pt-1001' || id === 'pt-1002') return false;
+      if (name === 'tan ah kow' || name === 'hajah fatimah binti osman') return false;
+      if (isPatientDeleted(p.id, p.ic, p.phone, p.name)) return false;
+      return true;
+    });
+
+    if (patientsData.length !== prevLen) {
+      savePatientsData();
+      if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveToOneDrive === 'function') {
+        window.pmgOneDriveSync.saveToOneDrive(patientsData).catch(() => {});
+      }
+    }
 
     // Auto-merge any default patient profiles (e.g. Liew Pay Sze, Jackson Ling) if not yet in user localStorage
     DEFAULT_PATIENTS_DATA.forEach(defPt => {
@@ -1789,9 +1610,14 @@ function renderPatientDirectory(patients) {
             <i class="fa-solid fa-notes-medical"></i> Consult & POCT
           </button>
           <button onclick="sendPatientBookingWhatsApp('${p.id}')"
-            class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 transition"
+            class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 transition mr-1"
             title="Send WhatsApp Customer Self-Booking Link (Auto Language by Race & Supply Countdown)">
             <i class="fa-brands fa-whatsapp text-emerald-600 text-sm"></i> Appt
+          </button>
+          <button onclick="deletePatientDirect('${p.id}')"
+            class="bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold px-2 py-1.5 rounded-lg inline-flex items-center gap-1 transition"
+            title="Delete Patient Profile">
+            <i class="fa-solid fa-trash-can text-rose-600 text-xs"></i>
           </button>
         </td>
       </tr>
@@ -5214,7 +5040,7 @@ async function deleteCurrentPatientProfile() {
   }
 
   // Record persistent tombstone immediately so it can never be resurrected
-  addDeletedPatientRecord(p.id, p.ic, p.phone);
+  addDeletedPatientRecord(p.id, p.ic, p.phone, p.name);
 
   // Permanently remove from local state and update UI
   patientsData = patientsData.filter(pt => pt.id !== pid);
@@ -5289,6 +5115,14 @@ async function deleteCurrentPatientProfile() {
   }
 }
 window.deleteCurrentPatientProfile = deleteCurrentPatientProfile;
+
+async function deletePatientDirect(patientId) {
+  const p = patientsData.find(pt => pt.id === patientId);
+  if (!p) return;
+  viewingPatientId = patientId;
+  await deleteCurrentPatientProfile();
+}
+window.deletePatientDirect = deletePatientDirect;
 
 function clearOverdueRecord(patientId, recordId, type) {
   if (type === 'Missed Appointment') {
@@ -9735,7 +9569,7 @@ async function syncOnlineBookingsFromCloud(showPrompt = false) {
             // Strictly exclude records with null IDs, Status: DELETED, or matching deleted patients
             if (!a.id || String(a.id).trim() === '') return;
             if (a.status === 'DELETED' || String(a.status).toUpperCase() === 'DELETED') return;
-            if (isPatientDeleted(a.patientId, a.patientIc, a.patientPhone)) return;
+            if (isPatientDeleted(a.patientId, a.patientIc, a.patientPhone, a.patientName || a.name)) return;
             allBookingsMap.set(a.id, a);
           });
         }
@@ -9754,7 +9588,7 @@ async function syncOnlineBookingsFromCloud(showPrompt = false) {
             const key = b.id || b.ref;
             if (!key || String(key).trim() === '') return;
             if (b.status === 'DELETED' || String(b.status).toUpperCase() === 'DELETED') return;
-            if (isPatientDeleted(b.patientId || b.id || b.ref, b.patientIc, b.patientPhone)) return;
+            if (isPatientDeleted(b.patientId || b.id || b.ref, b.patientIc, b.patientPhone, b.patientName || b.name || b.customerName)) return;
 
             if (!allBookingsMap.has(key)) {
               allBookingsMap.set(key, b);
@@ -9774,7 +9608,7 @@ async function syncOnlineBookingsFromCloud(showPrompt = false) {
     let newImportCount = 0;
     allBookingsMap.forEach(b => {
       if (b.status === 'DELETED' || String(b.status).toUpperCase() === 'DELETED') return;
-      if (isPatientDeleted(b.patientId || b.id || b.ref, b.patientIc, b.patientPhone)) return;
+      if (isPatientDeleted(b.patientId || b.id || b.ref, b.patientIc, b.patientPhone, b.patientName || b.name || b.customerName)) return;
       const imported = importSingleBooking(b, false);
       if (imported) newImportCount++;
     });
