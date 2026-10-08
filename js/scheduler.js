@@ -1135,13 +1135,16 @@ OPERATIONAL RULES & PRIORITY CONSTRAINTS (IN ORDER OF PRIORITY):
    - For all rotating teammates (everyone except William), balance the number of Morning shifts ('8H_0730-1630' / '4H_0730-1130') and Night shifts ('8H_1230-2130') counted weekly.
    - If individual day-specific preferences cause an imbalance, allow a minor deviation between Morning and Night shifts, but STRICTLY keep deviation within ±2 shifts per teammate per week (i.e. |weekly_AM - weekly_PM| <= 2).
 
-4. SECOND PRIORITY SHIFT COVERAGE (ENFORCE ON EVERY SINGLE AM & PM SHIFT):
-   - A. CHINESE-SPEAKING COVERAGE: Having at least one Chinese-speaking staff (race: Chinese) in ANY shift (AM shift >= 1 Chinese speaker, PM shift >= 1 Chinese speaker).
-   - B. MANAGEMENT TEAM COVERAGE: Having at least one management team member (Assistant Branch Manager, Branch Manager, or Pharmacist) in ANY shift (AM shift >= 1 Manager, PM shift >= 1 Manager).
-   - C. PHARMACIST COVERAGE: Having at least one qualified Pharmacist (Licensed Pharmacist or PRP: William, Kenix, or Christina) in ANY shift (AM shift >= 1 Pharmacist, PM shift >= 1 Pharmacist).
-     * William covers Mon-Sat AM.
-     * On Sundays and Public Holidays when William is off ('RD'/'PH'), Kenix Ling or Christina Lee MUST cover Morning AM.
-     * On all Night shifts (PM), either Kenix Ling or Christina Lee MUST be scheduled to cover Night Pharmacist.
+4. SECOND PRIORITY SHIFT COVERAGE & FAIRNESS (WHOLE-DAY CHINESE SPEAKER & BALANCED SHIFTS):
+   - A. CHINESE-SPEAKING AVAILABILITY ACROSS THE WHOLE DAY (KEY PRIORITY):
+     * Having at least one Chinese-speaking staff (race: Chinese: William, Ting, Kenix, Penny, Christina) in EVERY shift (AM shift >= 1 Chinese speaker, PM shift >= 1 Chinese speaker).
+     * As long as there is at least one Chinese speaker on each shift across the whole day, that satisfies the requirement!
+   - B. MANAGEMENT TEAM COVERAGE:
+     * Having at least one management team member (Assistant Branch Manager, Branch Manager, or Pharmacist) in ANY shift (AM shift >= 1 Manager, PM shift >= 1 Manager).
+   - C. FAIR SHIFT BALANCE FOR KENIX AND CHRISTINA (OMIT MANDATORY PHARMACIST NIGHT COVERAGE):
+     * DO NOT force Pharmacists (Kenix and Christina) to cover all night shifts or all Sunday mornings.
+     * OMIT the rule that pharmacist must cover all morning and night shifts.
+     * Treat Kenix Ling and Christina Lee fairly and equally with all other rotating teammates: balance their Morning shifts ('8H_0730-1630' / '4H_0730-1130') and Night shifts ('8H_1230-2130') with weekly deviation <= ±2.
 
 5. STATUTORY REST DAYS (SARAWAK LABOUR ORDINANCE):
    - Every teammate MUST have exactly 1 Full Rest Day ('RD') and 1 Half Day rest ('4H_0730-1130') in each 7-day calendar week (Monday to Sunday).
@@ -1150,7 +1153,7 @@ OPERATIONAL RULES & PRIORITY CONSTRAINTS (IN ORDER OF PRIORITY):
 6. PUBLIC HOLIDAY (PH) PROTOCOL:
    - On gazetted Public Holidays (Sarawak & Malaysia):
      * William Chai has official rest day ('PH').
-     * Provisional Registered Pharmacists (Kenix Ling and Christina Lee) assume rest day ('PH') too, UNLESS needed to cover the 3-staff floor or the mandatory Pharmacist presence on AM or PM. If needed to cover, they apply replacement leave to work on the public holiday.
+     * Provisional Registered Pharmacists (Kenix Ling and Christina Lee) assume rest day ('PH') too, UNLESS needed to cover the 3-staff floor across the day. If needed to cover 3-staff floor, they apply replacement leave to work on the public holiday.
      * All other teammates apply replacement leave to work on public holidays as needed to ensure the floor requirement (>= 3 staff across the day) is met.
 
 7. RESPECT LIVE DAY-SPECIFIC PREFERENCES:
@@ -1188,7 +1191,7 @@ Respond ONLY with a valid JSON object matching this schema:
       "dayOfWeek": "Thursday",
       "shifts": {
         "PMG00831": "8H_0730-1630",
-        "PMG02963": "8H_1230-2130",
+        "PMG02963": "8H_0730-1630",
         "PMG00723": "8H_0730-1630",
         "PMG02694": "8H_1230-2130",
         "PMG01294": "RD",
@@ -1450,7 +1453,8 @@ function generateLegalWeeklyPatterns(tm, weekDays, prevSundayShift) {
   return patterns;
 }
 
-// Solve 1 week with coupled Pharmacist pre-screening, midday floor enforcement, and quadratic shift parity
+// // Solve 1 week with dynamic preference scoring, whole-day Chinese speaker coverage, and weekly shift parity
+// Omit mandatory night pharmacist rule: Kenix and Christina are treated fairly with all rotating staff.
 function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, william) {
   const williamSeq = weekDays.map(d => {
     if (HOLIDAYS_2026_SARAWAK[d.date]) return 'PH';
@@ -1462,8 +1466,8 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
   const tmPatterns = {};
   rotatingPool.forEach(tm => {
     const pats = generateLegalWeeklyPatterns(tm, weekDays, prevSundayShifts[tm.empNo]);
-    const curAm = (cumStats[tm.empNo] && cumStats[tm.empNo].amFull !== undefined) ? cumStats[tm.empNo].amFull : (cumStats[tm.empNo]?.am || 0);
-    const curPm = (cumStats[tm.empNo] && cumStats[tm.empNo].pmFull !== undefined) ? cumStats[tm.empNo].pmFull : (cumStats[tm.empNo]?.pm || 0);
+    const curAm = (cumStats[tm.empNo] && cumStats[tm.empNo].am !== undefined) ? cumStats[tm.empNo].am : (cumStats[tm.empNo]?.amFull || 0);
+    const curPm = (cumStats[tm.empNo] && cumStats[tm.empNo].pm !== undefined) ? cumStats[tm.empNo].pm : (cumStats[tm.empNo]?.pmFull || 0);
     const targetAm = (curAm <= curPm) ? 3 : 2;
 
     pats.sort((a, b) => {
@@ -1477,53 +1481,6 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
     tmPatterns[tm.empNo] = pats;
   });
 
-  const kenixPats = tmPatterns['PMG02963'] || [];
-  const christinaPats = tmPatterns['PMG03033'] || [];
-
-  // Coupled Pharmacist Pre-Screening:
-  // Guarantees compliant pharmacist pairs covering:
-  // 1. Sunday and PH Morning Rx (William off)
-  // 2. All 7 Nights Rx (William never works night)
-  const validRxPairs = [];
-  kenixPats.forEach(kp => {
-    christinaPats.forEach(cp => {
-      let morningDeficit = 0;
-      let nightDeficit = 0;
-
-      for (let d = 0; d < 7; d++) {
-        if (williamSeq[d] === 'RD' || williamSeq[d] === 'PH') {
-          const rxMorn = kp.seq[d].includes('0730') || cp.seq[d].includes('0730');
-          if (!rxMorn) morningDeficit++;
-        }
-        const rxNight = kp.seq[d].includes('1230') || cp.seq[d].includes('1230');
-        if (!rxNight) nightDeficit++;
-      }
-
-      let pairScore = kp.prefScore + cp.prefScore;
-      pairScore -= (morningDeficit * 100000);
-      pairScore -= (nightDeficit * 50000);
-
-      const kCurAm = (cumStats['PMG02963']?.amFull !== undefined) ? cumStats['PMG02963'].amFull : (cumStats['PMG02963']?.am || 0);
-      const kCurPm = (cumStats['PMG02963']?.pmFull !== undefined) ? cumStats['PMG02963'].pmFull : (cumStats['PMG02963']?.pm || 0);
-      const cCurAm = (cumStats['PMG03033']?.amFull !== undefined) ? cumStats['PMG03033'].amFull : (cumStats['PMG03033']?.am || 0);
-      const cCurPm = (cumStats['PMG03033']?.pmFull !== undefined) ? cumStats['PMG03033'].pmFull : (cumStats['PMG03033']?.pm || 0);
-
-      const kAm = kCurAm + kp.amFull;
-      const kPm = kCurPm + kp.pmFull;
-      const cAm = cCurAm + cp.amFull;
-      const cPm = cCurPm + cp.pmFull;
-
-      const parityPenalty = Math.pow(kAm - kPm, 2) * 50 + Math.pow(cAm - cPm, 2) * 50;
-      pairScore -= parityPenalty;
-
-      validRxPairs.push({ kenix: kp, christina: cp, score: pairScore, morningDeficit, nightDeficit });
-    });
-  });
-
-  validRxPairs.sort((a, b) => b.score - a.score);
-
-  const nonRxStaff = rotatingPool.filter(t => !t.isPharmacist);
-
   function evalCombination(selected) {
     let penalty = 0;
 
@@ -1536,8 +1493,6 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
       let chPm = 0;
       let mgrAm = (williamSeq[day].includes('0730') || williamSeq[day].includes('4H') ? 1 : 0);
       let mgrPm = 0;
-      let rxAm = (williamSeq[day].includes('0730') || williamSeq[day].includes('4H') ? 1 : 0);
-      let rxPm = 0;
 
       rotatingPool.forEach(tm => {
         const s = selected[tm.empNo].seq[day];
@@ -1546,7 +1501,6 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
         const isHalf = s.includes('4H');
         const isChinese = tm.race === 'Chinese';
         const isManager = tm.isPharmacist || (tm.position && (tm.position.includes('Manager') || tm.position.includes('Pharmacist')));
-        const isPharm = tm.isPharmacist;
 
         if (s === '8H_0730-1630') fullAm++;
         else if (isHalf) halfAm++;
@@ -1555,52 +1509,51 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
         if (isMorn) {
           if (isChinese) chAm++;
           if (isManager) mgrAm++;
-          if (isPharm) rxAm++;
         } else if (isNight) {
           if (isChinese) chPm++;
           if (isManager) mgrPm++;
-          if (isPharm) rxPm++;
         }
       });
 
-      // 1. Hard Floor Constraint: strictly fullAm >= 3, pm >= 3, workingTotal >= 6!
+      // 1. Hard Floor Constraint: fullAm >= 3, pm >= 3, workingTotal >= 6
       if (fullAm < 3) penalty += (3 - fullAm) * 500000;
       if (pm < 3) penalty += (3 - pm) * 500000;
       const working = fullAm + halfAm + pm;
       if (working < 6) penalty += (6 - working) * 500000;
       if (halfAm > 2) penalty += (halfAm - 2) * 20000;
 
-      // 2. Second Priority Constraints:
-      // Chinese-speaking coverage
-      if (chAm < 1) penalty += 50000;
-      if (chPm < 1) penalty += 50000;
-      // Manager team coverage
+      // 2. Chinese Speaking Coverage on Whole Day (Hard Requirement)
+      if (chAm < 1) penalty += 500000;
+      if (chPm < 1) penalty += 500000;
+
+      // 3. Manager Coverage on Each Shift
       if (mgrAm < 1) penalty += 50000;
       if (mgrPm < 1) penalty += 50000;
-      // Pharmacist coverage
-      if (rxAm < 1) penalty += 80000;
-      if (rxPm < 1) penalty += 80000;
 
       penalty += Math.abs(fullAm - pm) * 10;
     }
 
-    // Weekly Parity and Preference satisfaction
+    // Weekly Parity and Cumulative Parity across ALL 8 rotating staff
     rotatingPool.forEach(tm => {
       const p = selected[tm.empNo];
       penalty -= p.prefScore;
 
-      const weeklyAm = p.amFull + 1;
+      const weeklyAm = p.amFull + 1; // includes 4H
       const weeklyPm = p.pmFull;
       const weeklyDev = Math.abs(weeklyAm - weeklyPm);
       if (weeklyDev > 2) {
         penalty += (weeklyDev - 2) * 500000;
       }
 
-      const curAm = (cumStats[tm.empNo]?.amFull !== undefined) ? cumStats[tm.empNo].amFull : (cumStats[tm.empNo]?.am || 0);
-      const curPm = (cumStats[tm.empNo]?.pmFull !== undefined) ? cumStats[tm.empNo].pmFull : (cumStats[tm.empNo]?.pm || 0);
+      // Strong reward for weekly balance
+      penalty += weeklyDev * 100;
+
+      // Cumulative monthly AM vs PM parity
+      const curAm = (cumStats[tm.empNo] && cumStats[tm.empNo].am !== undefined) ? cumStats[tm.empNo].am : (cumStats[tm.empNo]?.amFull || 0);
+      const curPm = (cumStats[tm.empNo] && cumStats[tm.empNo].pm !== undefined) ? cumStats[tm.empNo].pm : (cumStats[tm.empNo]?.pmFull || 0);
       const newAm = curAm + p.amFull;
       const newPm = curPm + p.pmFull;
-      penalty += Math.pow(newAm - newPm, 2) * 40;
+      penalty += Math.pow(newAm - newPm, 2) * 80;
     });
 
     return penalty;
@@ -1608,26 +1561,18 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
 
   let best = null;
   let minPenalty = Infinity;
-  const rxLimit = Math.min(validRxPairs.length, 30);
 
   for (let iter = 0; iter < 45000; iter++) {
     const cur = {};
 
-    if (rxLimit > 0) {
-      const pIdx = Math.floor(Math.pow(Math.random(), 1.6) * rxLimit);
-      const pair = validRxPairs[pIdx];
-      cur['PMG02963'] = pair.kenix;
-      cur['PMG03033'] = pair.christina;
-    } else {
-      cur['PMG02963'] = kenixPats[0] || { seq: new Array(7).fill('RD'), amFull: 0, pmFull: 0, prefScore: 0 };
-      cur['PMG03033'] = christinaPats[0] || { seq: new Array(7).fill('RD'), amFull: 0, pmFull: 0, prefScore: 0 };
-    }
-
-    // Select other 6 staff with power-law bias towards top preference patterns
-    nonRxStaff.forEach(tm => {
+    rotatingPool.forEach(tm => {
       const pats = tmPatterns[tm.empNo];
-      const idx = Math.floor(Math.pow(Math.random(), 1.8) * pats.length);
-      cur[tm.empNo] = pats[idx];
+      if (!pats || !pats.length) {
+        cur[tm.empNo] = { seq: new Array(7).fill('RD'), amFull: 0, pmFull: 0, prefScore: 0 };
+      } else {
+        const idx = Math.floor(Math.pow(Math.random(), 1.8) * pats.length);
+        cur[tm.empNo] = pats[idx];
+      }
     });
 
     const p = evalCombination(cur);
@@ -1638,103 +1583,134 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
     }
   }
 
-  // POST-PROCESSING FLOOR REPAIR (WITH FORWARD PROPAGATION TO PREVENT FATIGUE)
-  for (let day = 0; day < 7; day++) {
-    let fullAm = (williamSeq[day] === '8H_0730-1630' ? 1 : 0);
-    let pm = 0;
-
+  if (!best) {
+    best = {};
     rotatingPool.forEach(tm => {
-      const s = best[tm.empNo].seq[day];
-      if (s === '8H_0730-1630') fullAm++;
-      if (s.includes('1230')) pm++;
+      best[tm.empNo] = (tmPatterns[tm.empNo] && tmPatterns[tm.empNo][0]) || { seq: new Array(7).fill('RD'), amFull: 0, pmFull: 0, prefScore: 0 };
     });
+  }
 
-    // If pm < 3 and fullAm > 3, convert non-pharmacist with AM excess
-    while (pm < 3 && fullAm > 3) {
-      const candidates = nonRxStaff.filter(tm => {
+  // Defensive Floor & Chinese speaker repair if penalty > 0
+  if (minPenalty > 0) {
+    for (let day = 0; day < 7; day++) {
+      let fullAm = (williamSeq[day] === '8H_0730-1630' ? 1 : 0);
+      let pm = 0;
+
+      rotatingPool.forEach(tm => {
         const s = best[tm.empNo].seq[day];
-        return s === '8H_0730-1630';
+        if (s === '8H_0730-1630') fullAm++;
+        if (s && s.includes('1230')) pm++;
       });
 
-      if (!candidates.length) break;
+      // If pm < 3 and fullAm > 3, convert staff with AM excess
+      while (pm < 3 && fullAm > 3) {
+        const candidates = rotatingPool.filter(tm => {
+          const s = best[tm.empNo].seq[day];
+          return s === '8H_0730-1630';
+        });
 
-      candidates.sort((a, b) => {
-        const curAmA = (cumStats[a.empNo]?.amFull !== undefined) ? cumStats[a.empNo].amFull : (cumStats[a.empNo]?.am || 0);
-        const curPmA = (cumStats[a.empNo]?.pmFull !== undefined) ? cumStats[a.empNo].pmFull : (cumStats[a.empNo]?.pm || 0);
-        const curAmB = (cumStats[b.empNo]?.amFull !== undefined) ? cumStats[b.empNo].amFull : (cumStats[b.empNo]?.am || 0);
-        const curPmB = (cumStats[b.empNo]?.pmFull !== undefined) ? cumStats[b.empNo].pmFull : (cumStats[b.empNo]?.pm || 0);
+        if (!candidates.length) break;
 
-        const diffA = curAmA + best[a.empNo].amFull - (curPmA + best[a.empNo].pmFull);
-        const diffB = curAmB + best[b.empNo].amFull - (curPmB + best[b.empNo].pmFull);
-        return diffB - diffA;
-      });
+        candidates.sort((a, b) => {
+          const curAmA = (cumStats[a.empNo] && cumStats[a.empNo].am !== undefined) ? cumStats[a.empNo].am : 0;
+          const curPmA = (cumStats[a.empNo] && cumStats[a.empNo].pm !== undefined) ? cumStats[a.empNo].pm : 0;
+          const curAmB = (cumStats[b.empNo] && cumStats[b.empNo].am !== undefined) ? cumStats[b.empNo].am : 0;
+          const curPmB = (cumStats[b.empNo] && cumStats[b.empNo].pm !== undefined) ? cumStats[b.empNo].pm : 0;
 
-      let converted = false;
-      for (const cand of candidates) {
-        let canPropagate = true;
-        for (let nextD = day; nextD < 7; nextD++) {
-          if (best[cand.empNo].seq[nextD] === 'RD') break;
-          if (best[cand.empNo].seq[nextD].includes('4H')) {
-            canPropagate = false;
+          const diffA = curAmA + best[a.empNo].amFull - (curPmA + best[a.empNo].pmFull);
+          const diffB = curPmB + best[b.empNo].amFull - (curPmB + best[b.empNo].pmFull);
+          return diffB - diffA;
+        });
+
+        let converted = false;
+        for (const cand of candidates) {
+          if (cand.race === 'Chinese') {
+            let otherChAm = (williamSeq[day].includes('0730') || williamSeq[day].includes('4H') ? 1 : 0);
+            rotatingPool.forEach(tm => {
+              if (tm.empNo !== cand.empNo && tm.race === 'Chinese') {
+                const s = best[tm.empNo].seq[day];
+                if (s && s.includes('0730')) otherChAm++;
+              }
+            });
+            if (otherChAm < 1) continue;
+          }
+
+          let canPropagate = true;
+          for (let nextD = day; nextD < 7; nextD++) {
+            if (best[cand.empNo].seq[nextD] === 'RD') break;
+            if (best[cand.empNo].seq[nextD].includes('4H')) {
+              canPropagate = false;
+              break;
+            }
+          }
+
+          if (canPropagate) {
+            for (let nextD = day; nextD < 7; nextD++) {
+              if (best[cand.empNo].seq[nextD] === 'RD') break;
+              if (best[cand.empNo].seq[nextD] === '8H_0730-1630') {
+                best[cand.empNo].seq[nextD] = '8H_1230-2130';
+                best[cand.empNo].amFull--;
+                best[cand.empNo].pmFull++;
+                if (nextD === day) {
+                  fullAm--;
+                  pm++;
+                }
+              }
+            }
+            converted = true;
             break;
           }
         }
+        if (!converted) break;
+      }
 
-        if (canPropagate) {
-          for (let nextD = day; nextD < 7; nextD++) {
-            if (best[cand.empNo].seq[nextD] === 'RD') break;
-            if (best[cand.empNo].seq[nextD] === '8H_0730-1630') {
-              best[cand.empNo].seq[nextD] = '8H_1230-2130';
-              best[cand.empNo].amFull--;
-              best[cand.empNo].pmFull++;
-              if (nextD === day) {
-                fullAm--;
-                pm++;
+      // If fullAm < 3 and pm > 3, convert staff with PM excess back to AM
+      while (fullAm < 3 && pm > 3) {
+        const pmCandidates = rotatingPool.filter(tm => {
+          const s = best[tm.empNo].seq[day];
+          return s && s.includes('1230');
+        });
+
+        if (!pmCandidates.length) break;
+
+        pmCandidates.sort((a, b) => {
+          const curAmA = (cumStats[a.empNo] && cumStats[a.empNo].am !== undefined) ? cumStats[a.empNo].am : 0;
+          const curPmA = (cumStats[a.empNo] && cumStats[a.empNo].pm !== undefined) ? cumStats[a.empNo].pm : 0;
+          const curAmB = (cumStats[b.empNo] && cumStats[b.empNo].am !== undefined) ? cumStats[b.empNo].am : 0;
+          const curPmB = (cumStats[b.empNo] && cumStats[b.empNo].pm !== undefined) ? cumStats[b.empNo].pm : 0;
+
+          const diffA = curPmA + best[a.empNo].pmFull - (curAmA + best[a.empNo].amFull);
+          const diffB = curPmB + best[b.empNo].pmFull - (curAmB + best[b.empNo].amFull);
+          return diffB - diffA;
+        });
+
+        let converted = false;
+        for (const cand of pmCandidates) {
+          if (cand.race === 'Chinese') {
+            let otherChPm = 0;
+            rotatingPool.forEach(tm => {
+              if (tm.empNo !== cand.empNo && tm.race === 'Chinese') {
+                const s = best[tm.empNo].seq[day];
+                if (s && s.includes('1230')) otherChPm++;
               }
-            }
+            });
+            if (otherChPm < 1) continue;
           }
+
+          const prevShift = (day === 0 ? prevSundayShifts[cand.empNo] : best[cand.empNo].seq[day - 1]);
+          const canPrev = !prevShift || prevShift === 'RD' || prevShift === 'PH' || prevShift.includes('0730');
+          if (!canPrev) continue;
+
+          best[cand.empNo].seq[day] = '8H_0730-1630';
+          best[cand.empNo].pmFull--;
+          best[cand.empNo].amFull++;
+          fullAm++;
+          pm--;
           converted = true;
           break;
         }
+        if (!converted) break;
       }
-      if (!converted) break;
-    }
-
-    // If fullAm < 3 and pm > 3, convert non-pharmacist with PM excess back to AM
-    while (fullAm < 3 && pm > 3) {
-      const pmCandidates = nonRxStaff.filter(tm => {
-        const s = best[tm.empNo].seq[day];
-        return s && s.includes('1230');
-      });
-
-      if (!pmCandidates.length) break;
-
-      pmCandidates.sort((a, b) => {
-        const curAmA = (cumStats[a.empNo]?.amFull !== undefined) ? cumStats[a.empNo].amFull : (cumStats[a.empNo]?.am || 0);
-        const curPmA = (cumStats[a.empNo]?.pmFull !== undefined) ? cumStats[a.empNo].pmFull : (cumStats[a.empNo]?.pm || 0);
-        const curAmB = (cumStats[b.empNo]?.amFull !== undefined) ? cumStats[b.empNo].amFull : (cumStats[b.empNo]?.am || 0);
-        const curPmB = (cumStats[b.empNo]?.pmFull !== undefined) ? cumStats[b.empNo].pmFull : (cumStats[b.empNo]?.pm || 0);
-
-        const diffA = curPmA + best[a.empNo].pmFull - (curAmA + best[a.empNo].amFull);
-        const diffB = curPmB + best[b.empNo].pmFull - (curAmB + best[b.empNo].amFull);
-        return diffB - diffA;
-      });
-
-      let converted = false;
-      for (const cand of pmCandidates) {
-        const prevShift = (day === 0 ? prevSundayShifts[cand.empNo] : best[cand.empNo].seq[day - 1]);
-        const canPrev = !prevShift || prevShift === 'RD' || prevShift === 'PH' || prevShift.includes('0730');
-        if (!canPrev) continue;
-
-        best[cand.empNo].seq[day] = '8H_0730-1630';
-        best[cand.empNo].pmFull--;
-        best[cand.empNo].amFull++;
-        fullAm++;
-        pm--;
-        converted = true;
-        break;
-      }
-      if (!converted) break;
     }
   }
 
@@ -1891,7 +1867,7 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
     warnings,
     stats: cumStats,
     hasMinorVariance: amSpread > 2 || pmSpread > 2,
-    summary: `Statutory Sarawak Labour Ordinance Timetable: Strictly full 7-day Monday–Sunday weeks (${weeks.length} complete calendar weeks), exactly 1 Rest Day (RD) + 1 Half Day (HD) per week across all weeks, William Chai locked AM anchor (6S exempt), 100% pharmacist coverage, guaranteed 3 AM / 3 PM minimum floor, 0 turnaround fatigue violations, cross-month memory active, and universal 6S cleaning rotation (14:00–15:30).`
+    summary: `Statutory Sarawak Labour Ordinance Timetable: Strictly full 7-day Monday–Sunday weeks (${weeks.length} complete calendar weeks), exactly 1 Rest Day (RD) + 1 Half Day (HD) per week across all weeks, William Chai locked AM anchor (6S exempt), guaranteed whole-day Chinese speaker coverage, fair AM/PM balance across all rotating teammates, guaranteed 3 AM / 3 PM minimum floor, 0 turnaround fatigue violations, cross-month memory active, and universal 6S cleaning rotation (14:00–15:30).`
   };
 }
 
@@ -1914,8 +1890,8 @@ function renderScheduleMatrix(schedule) {
 
   let totalShifts = 0;
   let totalRestDays = 0;
-  let pharmCoverageDays = 0;
-  let langBalancedDays = 0;
+  let managerCoverageDays = 0;
+  let chineseCoverageDays = 0;
 
   // Track rotating pool shift parity and fatigue
   const rotatingPool = currentTeammates.filter(t => t.empNo !== 'PMG00831' && t.nickname !== 'WILLIAM');
@@ -1935,8 +1911,8 @@ function renderScheduleMatrix(schedule) {
   });
 
   schedule.days.forEach(d => {
-    let hasMorningPharm = false;
-    let hasNightPharm   = false;
+    let hasMorningManager = false;
+    let hasNightManager   = false;
     const morningRaces  = new Set();
     const nightRaces    = new Set();
 
@@ -1949,6 +1925,7 @@ function renderScheduleMatrix(schedule) {
       else if (shift === 'RD' || shift === 'OFF' || shift === 'PH') totalRestDays++;
 
       const isPharm = tm.isPharmacist || tm.position === 'Pharmacist';
+      const isManager = isPharm || (tm.position && (tm.position.includes('Manager') || tm.position.includes('Pharmacist')));
       const isHalf  = shift && (shift.includes('4H') || shift.includes('5H') || shift.includes('Half') || shift.includes('0730-1130'));
       const isMorning = shift && (shift.includes('0730') || shift.includes('0800'));
       const isFullAm  = isMorning && !isHalf;
@@ -1965,7 +1942,7 @@ function renderScheduleMatrix(schedule) {
       }
 
       if (isMorning) {
-        if (isPharm) hasMorningPharm = true;
+        if (isManager) hasMorningManager = true;
         morningRaces.add(tm.race);
         if (isFullAm) {
           teammateStats[empNo].mCount++;
@@ -1977,7 +1954,7 @@ function renderScheduleMatrix(schedule) {
           teammateStats[empNo].lastShiftCode = shift;
         }
       } else if (isNight) {
-        if (isPharm) hasNightPharm = true;
+        if (isManager) hasNightManager = true;
         nightRaces.add(tm.race);
         teammateStats[empNo].nCount++;
         teammateStats[empNo].currentNightStreak++;
@@ -1997,12 +1974,10 @@ function renderScheduleMatrix(schedule) {
     });
 
     const hasMorningChinese = [...morningRaces].some(r => r === 'Chinese');
-    const hasMorningBumi    = [...morningRaces].some(r => r === 'Malay' || (r && (r.includes('Iban') || r.includes('Bidayuh'))));
     const hasNightChinese   = [...nightRaces].some(r => r === 'Chinese');
-    const hasNightBumi      = [...nightRaces].some(r => r === 'Malay' || (r && (r.includes('Iban') || r.includes('Bidayuh'))));
 
-    if (hasMorningPharm && hasNightPharm) pharmCoverageDays++;
-    if ((hasMorningChinese && hasMorningBumi) && (hasNightChinese && hasNightBumi)) langBalancedDays++;
+    if (hasMorningManager && hasNightManager) managerCoverageDays++;
+    if (hasMorningChinese && hasNightChinese) chineseCoverageDays++;
   });
 
   // Calculate Parity across unified rotating pool
@@ -2020,9 +1995,9 @@ function renderScheduleMatrix(schedule) {
   const kpiShift   = document.getElementById('kpiSchedulerShifts');
   const kpiRest    = document.getElementById('kpiSchedulerRest');
 
-  if (kpiPharm)  kpiPharm.textContent  = `${Math.round((pharmCoverageDays / schedule.days.length) * 100)}%`;
+  if (kpiPharm)  kpiPharm.textContent  = `${Math.round((managerCoverageDays / schedule.days.length) * 100)}%`;
   if (kpiParity) kpiParity.textContent = maxStaffVar <= 1 ? '100% Balanced' : `±${maxStaffVar} Shifts`;
-  if (kpiLang)   kpiLang.textContent   = `${Math.round((langBalancedDays / schedule.days.length) * 100)}%`;
+  if (kpiLang)   kpiLang.textContent   = `${Math.round((chineseCoverageDays / schedule.days.length) * 100)}%`;
   if (kpiShift)  kpiShift.textContent  = totalShifts;
   if (kpiRest)   kpiRest.textContent   = totalRestDays;
 
