@@ -11,13 +11,12 @@ function escHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-// ─── MULTI-TIER GEMINI CONFIGURATION ───────────────────────────────────────────
-// Primary: Gemini 2.5 Flash (gemini-2.5-flash)
-// Secondary: Gemini 2.5 Flash-Lite (gemini-2.5-flash-lite)
-// Tertiary: Gemini 1.5 Flash (gemini-1.5-flash)
-const SCHEDULER_PRIMARY_MODEL   = 'gemini-2.5-flash';
-const SCHEDULER_SECONDARY_MODEL = 'gemini-2.5-flash-lite';
-const SCHEDULER_TERTIARY_MODEL  = 'gemini-1.5-flash';
+// Primary: Gemini 3.5 Flash-Lite (gemini-3.5-flash-lite)
+// Secondary: Gemini 3.5 Flash (gemini-3.5-flash)
+// Backup: Gemini 2.5 Flash-Lite (gemini-2.5-flash-lite)
+const SCHEDULER_PRIMARY_MODEL   = 'gemini-3.5-flash-lite';
+const SCHEDULER_SECONDARY_MODEL = 'gemini-3.5-flash';
+const SCHEDULER_TERTIARY_MODEL  = 'gemini-2.5-flash-lite';
 
 // ─── CROSS-MONTH SHIFT REGISTRY (MEMORY RETENTION) ───────────────────────────
 function getShiftRegistryKey(branchCode) {
@@ -877,9 +876,10 @@ async function generateTimetable() {
       let aiResult = null;
       let winningModelName = '';
       const schedulerCandidateModels = [
-        { code: SCHEDULER_PRIMARY_MODEL,   name: 'Gemini 2.5 Flash (Primary)' },
-        { code: SCHEDULER_SECONDARY_MODEL, name: 'Gemini 2.5 Flash-Lite (High Speed)' },
-        { code: SCHEDULER_TERTIARY_MODEL,  name: 'Gemini 1.5 Flash (Backup)' }
+        { code: SCHEDULER_PRIMARY_MODEL,   name: 'Gemini 3.5 Flash-Lite (Primary)' },
+        { code: SCHEDULER_SECONDARY_MODEL, name: 'Gemini 3.5 Flash (Secondary)' },
+        { code: SCHEDULER_TERTIARY_MODEL,  name: 'Gemini 2.5 Flash-Lite (Backup)' },
+        { code: 'gemini-2.5-flash',        name: 'Gemini 2.5 Flash (Fallback)' }
       ];
 
       const aiAttempt = async () => {
