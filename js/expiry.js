@@ -33,6 +33,16 @@ let activeExpiryFilter = {
 let expiryCurrentPage = 1;
 const EXPIRY_PAGE_SIZE = 100;
 
+function escHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ─── PERSISTENT CLEARED / DONE EXPIRY TOMBSTONES ─────────────────────────────
 const EXPIRY_CLEARED_KEYS_KEY = 'pmg_cleared_expiry_keys';
 
@@ -1927,13 +1937,21 @@ function getItemActionPlan(it) {
 function updateExpiryActionPlan(rowId, val) {
   const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
   if (!item) return;
-  item.actionPlan = (val || '').trim();
+  const cleanVal = (val || '').trim();
+  item.actionPlan = cleanVal;
   item.lastUpdated = new Date().toISOString();
   saveLocalExpiryData();
   if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
     window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
   }
   pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate, { actionPlan: item.actionPlan });
+
+  // If user selected Clearance Promo and offeredPrice is not set, open the attractive price tag modal!
+  if ((cleanVal.toLowerCase().includes('clearance') || cleanVal.toLowerCase().includes('promo')) && !item.offeredPrice) {
+    openClearancePriceTagModal(item.rowId);
+  } else {
+    renderExpiryUI();
+  }
 }
 
 async function markExpiryItemCleared(rowId) {
@@ -2060,6 +2078,11 @@ function openEditExpiryItemModal(rowId) {
   if (editQty) editQty.value = item.quantity;
   if (editExpiry) editExpiry.value = formatExpiryDateDisplay(item.expiryDate);
 
+  const editActionPlan = document.getElementById('editActionPlan');
+  const editOfferedPrice = document.getElementById('editOfferedPrice');
+  if (editActionPlan) editActionPlan.value = item.actionPlan || '';
+  if (editOfferedPrice) editOfferedPrice.value = item.offeredPrice !== undefined ? item.offeredPrice : '';
+
   modal.classList.remove('hidden');
 }
 
@@ -2081,6 +2104,10 @@ async function handleEditExpiryItemSubmit(e) {
   const qtyVal = parseFloat(document.getElementById('editQty')?.value);
   const expiryRaw = document.getElementById('editExpiry')?.value.trim();
 
+  const actionPlanVal = document.getElementById('editActionPlan')?.value.trim();
+  const offeredPriceRaw = document.getElementById('editOfferedPrice')?.value.trim();
+  const offeredPriceVal = parseFloat(offeredPriceRaw);
+
   const parsed = parseExpiryDate(expiryRaw);
   if (!parsed) {
     alert(`⚠️ Invalid expiry date "${expiryRaw}". Please enter a valid date (e.g. DD/MM/YYYY, MM/YYYY, or MM/YY).`);
@@ -2097,6 +2124,15 @@ async function handleEditExpiryItemSubmit(e) {
   item.batchNumber = batchNumber;
   item.quantity = isNaN(qtyVal) ? item.quantity : qtyVal;
   item.expiryDate = formattedDate;
+
+  if (actionPlanVal !== undefined) item.actionPlan = actionPlanVal;
+  if (!isNaN(offeredPriceVal) && offeredPriceVal >= 0) {
+    item.offeredPrice = offeredPriceVal;
+    if (!item.actionPlan) item.actionPlan = 'Clearance Promo / PWP';
+  } else if (offeredPriceRaw === '') {
+    delete item.offeredPrice;
+  }
+
   if (item.quantity === 0) {
     item.status = 'Cleared';
     item.clearedAt = nowIso;
@@ -2119,10 +2155,492 @@ async function handleEditExpiryItemSubmit(e) {
     branch: item.branch,
     itemCode: item.itemCode,
     itemDescription: item.itemDescription,
-    batchNumber: item.batchNumber
+    batchNumber: item.batchNumber,
+    actionPlan: item.offeredPrice ? `Clearance Promo (Offer: RM ${item.offeredPrice.toFixed(2)})` : item.actionPlan
   });
 
   showExpiryToast(`✅ Saved changes for ${item.itemDescription || item.itemCode}`);
+}
+
+// ─── ATTRACTIVE CLEARANCE PRICE TAG & PROMO LABEL ENGINE ──────────────────────
+let activePriceTagItem = null;
+
+function generateBarcodeSvg(code) {
+  const safeCode = String(code || '100000').replace(/[^a-zA-Z0-9]/g, '') || '100000';
+  let bars = '<rect width="2" height="22" x="0" fill="#000" /><rect width="1" height="22" x="4" fill="#000" />';
+  let x = 7;
+  for (let i = 0; i < safeCode.length; i++) {
+    const c = safeCode.charCodeAt(i);
+    const w1 = (c % 3) + 1;
+    const w2 = ((c >> 1) % 2) + 1;
+    bars += `<rect width="${w1}" height="22" x="${x}" fill="#000" />`;
+    x += w1 + ((c % 2) + 1);
+    bars += `<rect width="${w2}" height="22" x="${x}" fill="#000" />`;
+    x += w2 + 2;
+  }
+  bars += `<rect width="2" height="22" x="${x}" fill="#000" /><rect width="1" height="22" x="${x + 4}" fill="#000" />`;
+  const totalW = x + 6;
+  return `<svg viewBox="0 0 ${totalW} 22" style="width: 100%; height: 18px; display: block;" preserveAspectRatio="none">${bars}</svg>`;
+}
+
+function renderSinglePriceTagMarkup(item, opts = {}) {
+  const theme = opts.theme || 'flame';
+  const banner = opts.banner || '🔥 CLEARANCE SALE';
+  const size = opts.size || 'compact';
+  const offeredPrice = parseFloat(opts.offeredPrice !== undefined ? opts.offeredPrice : (item?.offeredPrice || 0));
+  const normalPrice = parseFloat(opts.normalPrice !== undefined ? opts.normalPrice : (item?.normalPrice || 0));
+  const footerNote = opts.footerNote || '* While Stocks Last · Short Expiry Deal';
+  const forPrint = Boolean(opts.forPrint);
+
+  const branch = (item?.branch || 'Kota Sentosa').toUpperCase();
+  const sku = item?.itemCode || 'N/A';
+  const batch = item?.batchNumber || 'N/A';
+  const expiry = formatExpiryDateDisplay(item?.expiryDate || 'N/A');
+  const desc = item?.itemDescription || 'PRODUCT NAME';
+
+  // Format Price
+  const priceFormatted = offeredPrice > 0 ? offeredPrice.toFixed(2) : '0.00';
+  const priceParts = priceFormatted.split('.');
+  const wholePart = priceParts[0];
+  const decimalPart = priceParts[1] || '00';
+
+  // Discount calculation
+  let discountHtml = '';
+  if (normalPrice > offeredPrice && offeredPrice > 0) {
+    const pct = Math.round(((normalPrice - offeredPrice) / normalPrice) * 100);
+    discountHtml = `
+      <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 1px;">
+        <span style="font-size: 8px; font-weight: 700; color: #6b7280; text-decoration: line-through;">WAS RM ${normalPrice.toFixed(2)}</span>
+        <span style="background: #dc2626; color: #ffffff; font-weight: 900; font-size: 8px; padding: 1px 4px; border-radius: 3px; letter-spacing: 0.3px;">SAVE ${pct}%</span>
+      </div>
+    `;
+  }
+
+  // Theme palettes
+  let borderColor = '#b91c1c';
+  let bannerBg = 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)';
+  let bannerColor = '#ffffff';
+  let bannerBorder = '#f59e0b';
+  let storeBg = '#fef2f2';
+  let storeColor = '#991b1b';
+  let storeBorder = '#fee2e2';
+  let cardBg = '#ffffff';
+  let titleColor = '#111827';
+  let metaColor = '#4b5563';
+  let expiryBg = '#fee2e2';
+  let expiryColor = '#b91c1c';
+  let expiryBorder = '#fca5a5';
+  let priceBoxBg = '#fef3c7';
+  let priceBoxBorder = '#f59e0b';
+  let priceColor = '#b91c1c';
+
+  if (theme === 'pmg') {
+    borderColor = '#047857';
+    bannerBg = 'linear-gradient(135deg, #059669 0%, #065f46 100%)';
+    bannerColor = '#ffffff';
+    bannerBorder = '#10b981';
+    storeBg = '#ecfdf5';
+    storeColor = '#065f46';
+    storeBorder = '#d1fae5';
+    cardBg = '#ffffff';
+    titleColor = '#0f172a';
+    metaColor = '#334155';
+    expiryBg = '#ecfdf5';
+    expiryColor = '#047857';
+    expiryBorder = '#a7f3d0';
+    priceBoxBg = '#f0fdf4';
+    priceBoxBorder = '#10b981';
+    priceColor = '#047857';
+  } else if (theme === 'neon') {
+    borderColor = '#000000';
+    bannerBg = '#000000';
+    bannerColor = '#fef08a';
+    bannerBorder = '#dc2626';
+    storeBg = '#dc2626';
+    storeColor = '#ffffff';
+    storeBorder = '#b91c1c';
+    cardBg = '#fef08a';
+    titleColor = '#000000';
+    metaColor = '#18181b';
+    expiryBg = '#000000';
+    expiryColor = '#ffffff';
+    expiryBorder = '#000000';
+    priceBoxBg = '#ffffff';
+    priceBoxBorder = '#000000';
+    priceColor = '#dc2626';
+  }
+
+  // Dimensions
+  let widthCss = '240px';
+  let heightCss = '170px';
+  if (forPrint) {
+    if (size === 'medium') { widthCss = '70mm'; heightCss = '45mm'; }
+    else if (size === 'mini') { widthCss = '40mm'; heightCss = '25mm'; }
+    else { widthCss = '50mm'; heightCss = '35mm'; }
+  } else {
+    if (size === 'medium') { widthCss = '280px'; heightCss = '195px'; }
+    else if (size === 'mini') { widthCss = '200px'; heightCss = '145px'; }
+    else { widthCss = '240px'; heightCss = '170px'; }
+  }
+
+  return `
+    <div style="width: ${widthCss}; height: ${heightCss}; box-sizing: border-box; background: ${cardBg}; border: 2px solid ${borderColor}; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; box-shadow: ${forPrint ? 'none' : '0 4px 6px -1px rgba(0,0,0,0.1)'}; user-select: none;">
+      <!-- Top Banner -->
+      <div style="background: ${bannerBg}; color: ${bannerColor}; padding: 3px 5px; text-align: center; font-weight: 900; font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; border-bottom: 2px solid ${bannerBorder}; line-height: 1.2;">
+        ${escHtml(banner)}
+      </div>
+
+      <!-- Store Subheader -->
+      <div style="background: ${storeBg}; color: ${storeColor}; font-size: 7.5px; font-weight: 800; text-align: center; padding: 1.5px 4px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid ${storeBorder};">
+        PMG PHARMACY · ${escHtml(branch)}
+      </div>
+
+      <!-- Sticker Body -->
+      <div style="padding: 4px 6px; flex: 1; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden;">
+        <!-- Product Title -->
+        <div style="font-size: 9.5px; font-weight: 800; color: ${titleColor}; line-height: 1.2; text-transform: uppercase; max-height: 23px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;" title="${escHtml(desc)}">
+          ${escHtml(desc)}
+        </div>
+
+        <!-- SKU & Expiry Strip -->
+        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 7.5px; font-weight: 700; margin-top: 2px;">
+          <span style="color: ${metaColor}; font-family: monospace;">SKU: ${escHtml(sku)} · B: ${escHtml(batch)}</span>
+          <span style="background: ${expiryBg}; color: ${expiryColor}; border: 1px solid ${expiryBorder}; padding: 0.5px 3px; border-radius: 3px; font-weight: 800;">EXP: ${escHtml(expiry)}</span>
+        </div>
+
+        <!-- Eye-Catching Promotional Price Box -->
+        <div style="background: ${priceBoxBg}; border: 1.5px solid ${priceBoxBorder}; border-radius: 6px; padding: 2.5px 6px; margin: 3px 0; display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 3px;">
+            ${discountHtml || `<span style="font-size: 8px; font-weight: 900; color: ${priceColor}; text-transform: uppercase; letter-spacing: 0.3px;">PROMO NOW</span>`}
+          </div>
+          <div style="display: flex; align-items: baseline; justify-content: flex-end; color: ${priceColor};">
+            <span style="font-size: 11px; font-weight: 900; margin-right: 1.5px;">RM</span>
+            <span style="font-size: 23px; font-weight: 950; line-height: 1; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">${wholePart}</span>
+            <span style="font-size: 13px; font-weight: 900;">.${decimalPart}</span>
+          </div>
+        </div>
+
+        <!-- Vector Barcode -->
+        <div style="margin-top: 1px;">
+          ${generateBarcodeSvg(sku)}
+          <div style="text-align: center; font-size: 6.5px; font-family: monospace; font-weight: 700; color: ${metaColor}; line-height: 1;">* ${escHtml(sku)} *</div>
+        </div>
+
+        <!-- Footer Remark -->
+        <div style="font-size: 6.5px; color: #6b7280; text-align: center; font-style: italic; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+          ${escHtml(footerNote)}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function openClearancePriceTagModal(rowId) {
+  const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
+  if (!item) return;
+  activePriceTagItem = item;
+
+  const modal = document.getElementById('clearancePriceTagModal');
+  if (!modal) return;
+
+  // Populate item details
+  const bBadge = document.getElementById('tagModalBranchBadge');
+  const iDesc = document.getElementById('tagModalItemDesc');
+  const iCode = document.getElementById('tagModalItemCode');
+  const iBatch = document.getElementById('tagModalBatch');
+  const iExp = document.getElementById('tagModalExpiryPill');
+  const iQty = document.getElementById('tagModalStockQty');
+
+  if (bBadge) bBadge.textContent = item.branch || 'Kota Sentosa';
+  if (iDesc) iDesc.textContent = item.itemDescription || item.itemCode || 'Product';
+  if (iCode) iCode.textContent = item.itemCode || 'N/A';
+  if (iBatch) iBatch.textContent = item.batchNumber || 'N/A';
+  if (iExp) iExp.textContent = 'EXP: ' + formatExpiryDateDisplay(item.expiryDate);
+  if (iQty) iQty.textContent = item.quantity || '0';
+
+  // Populate inputs
+  const offInput = document.getElementById('tagOfferedPrice');
+  const normInput = document.getElementById('tagNormalPrice');
+  const themeSel = document.getElementById('tagThemeSelect');
+  const sizeSel = document.getElementById('tagSizeSelect');
+  const copiesInput = document.getElementById('tagCopiesInput');
+  const noteInput = document.getElementById('tagFooterNoteInput');
+  const bannerSel = document.getElementById('tagBannerSelect');
+
+  if (offInput) offInput.value = item.offeredPrice !== undefined ? item.offeredPrice : '';
+  if (normInput) normInput.value = item.normalPrice !== undefined ? item.normalPrice : '';
+  if (themeSel) themeSel.value = item.tagTheme || 'flame';
+  if (sizeSel) sizeSel.value = item.tagSize || 'compact';
+  if (copiesInput) copiesInput.value = item.quantity && item.quantity > 0 ? item.quantity : 1;
+  if (noteInput) noteInput.value = item.promoRemark || '* While Stocks Last · Short Expiry Deal';
+  if (bannerSel && item.promoBanner) bannerSel.value = item.promoBanner;
+
+  updatePriceTagLivePreview();
+  modal.classList.remove('hidden');
+
+  setTimeout(() => {
+    if (offInput) {
+      offInput.focus();
+      if (!offInput.value) offInput.select?.();
+    }
+  }, 100);
+}
+
+function closeClearancePriceTagModal() {
+  const modal = document.getElementById('clearancePriceTagModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function updatePriceTagLivePreview() {
+  if (!activePriceTagItem) return;
+
+  const container = document.getElementById('priceTagLiveContainer');
+  if (!container) return;
+
+  const offPriceVal = parseFloat(document.getElementById('tagOfferedPrice')?.value) || 0;
+  const normPriceVal = parseFloat(document.getElementById('tagNormalPrice')?.value) || 0;
+  const theme = document.getElementById('tagThemeSelect')?.value || 'flame';
+  const size = document.getElementById('tagSizeSelect')?.value || 'compact';
+  const banner = document.getElementById('tagBannerSelect')?.value || '🔥 CLEARANCE SALE';
+  const footerNote = document.getElementById('tagFooterNoteInput')?.value || '* While Stocks Last · Short Expiry Deal';
+
+  // Discount preview badge on left panel
+  const discPill = document.getElementById('tagDiscountPillPreview');
+  const discText = document.getElementById('tagDiscountText');
+  if (discPill && discText) {
+    if (normPriceVal > offPriceVal && offPriceVal > 0) {
+      const pct = Math.round(((normPriceVal - offPriceVal) / normPriceVal) * 100);
+      const saveAmt = (normPriceVal - offPriceVal).toFixed(2);
+      discText.textContent = `Save ${pct}% (RM ${saveAmt})`;
+      discPill.classList.remove('hidden');
+    } else {
+      discPill.classList.add('hidden');
+    }
+  }
+
+  // Size indicator badge
+  const sizeBadge = document.getElementById('tagSizeBadge');
+  if (sizeBadge) {
+    if (size === 'medium') sizeBadge.textContent = '70mm × 45mm';
+    else if (size === 'mini') sizeBadge.textContent = '40mm × 25mm';
+    else sizeBadge.textContent = '50mm × 35mm';
+  }
+
+  // Render sticker preview
+  container.innerHTML = renderSinglePriceTagMarkup(activePriceTagItem, {
+    theme,
+    banner,
+    size,
+    offeredPrice: offPriceVal,
+    normalPrice: normPriceVal,
+    footerNote,
+    forPrint: false
+  });
+}
+
+function quickRoundOfferPrice(mode) {
+  const offInput = document.getElementById('tagOfferedPrice');
+  if (!offInput) return;
+  let val = parseFloat(offInput.value);
+  if (isNaN(val) || val <= 0) val = 10;
+
+  if (mode === 'round') {
+    val = Math.round(val);
+  } else if (mode === '90') {
+    val = Math.floor(val) + 0.90;
+  } else if (mode === '50') {
+    val = Math.floor(val) + 0.50;
+  }
+  offInput.value = val.toFixed(2);
+  updatePriceTagLivePreview();
+}
+
+function setTagCopiesToStock() {
+  const copiesInput = document.getElementById('tagCopiesInput');
+  if (copiesInput && activePriceTagItem) {
+    copiesInput.value = activePriceTagItem.quantity && activePriceTagItem.quantity > 0 ? activePriceTagItem.quantity : 1;
+  }
+}
+
+function saveClearancePriceTag(silent = false) {
+  if (!activePriceTagItem) return false;
+
+  const offInput = document.getElementById('tagOfferedPrice');
+  const offeredPrice = parseFloat(offInput?.value);
+
+  if (isNaN(offeredPrice) || offeredPrice <= 0) {
+    if (!silent) alert('Please enter a valid offered clearance price (RM).');
+    return false;
+  }
+
+  const normalPrice = parseFloat(document.getElementById('tagNormalPrice')?.value) || null;
+  const theme = document.getElementById('tagThemeSelect')?.value || 'flame';
+  const size = document.getElementById('tagSizeSelect')?.value || 'compact';
+  const banner = document.getElementById('tagBannerSelect')?.value || '🔥 CLEARANCE SALE';
+  const footerNote = document.getElementById('tagFooterNoteInput')?.value || '';
+
+  // Update item properties
+  activePriceTagItem.offeredPrice = offeredPrice;
+  if (normalPrice) activePriceTagItem.normalPrice = normalPrice;
+  activePriceTagItem.actionPlan = 'Clearance Promo / PWP';
+  activePriceTagItem.tagTheme = theme;
+  activePriceTagItem.tagSize = size;
+  activePriceTagItem.promoBanner = banner;
+  activePriceTagItem.promoRemark = footerNote;
+  activePriceTagItem.lastUpdated = new Date().toISOString();
+
+  saveLocalExpiryData();
+  renderExpiryUI();
+
+  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
+    window.pmgOneDriveSync.saveStockExpiryToOneDrive(activePriceTagItem.branch).catch(console.warn);
+  }
+
+  pushExpiryUpdateToSheets(activePriceTagItem.rowId, activePriceTagItem.quantity, activePriceTagItem.status, activePriceTagItem.expiryDate, {
+    actionPlan: `Clearance Promo (Offer: RM ${offeredPrice.toFixed(2)})`
+  });
+
+  if (!silent) {
+    showExpiryToast(`✅ Saved offered price RM ${offeredPrice.toFixed(2)} for ${activePriceTagItem.itemDescription || activePriceTagItem.itemCode}`);
+    closeClearancePriceTagModal();
+  }
+  return true;
+}
+
+function printClearancePriceTags() {
+  if (!activePriceTagItem) return;
+
+  // Auto-save offered price first
+  saveClearancePriceTag(true);
+
+  const copies = parseInt(document.getElementById('tagCopiesInput')?.value, 10) || 1;
+  const size = document.getElementById('tagSizeSelect')?.value || 'compact';
+  const theme = document.getElementById('tagThemeSelect')?.value || 'flame';
+  const banner = document.getElementById('tagBannerSelect')?.value || '🔥 CLEARANCE SALE';
+  const footerNote = document.getElementById('tagFooterNoteInput')?.value || '* While Stocks Last · Short Expiry Deal';
+  const offeredPrice = parseFloat(document.getElementById('tagOfferedPrice')?.value) || 0;
+  const normalPrice = parseFloat(document.getElementById('tagNormalPrice')?.value) || 0;
+
+  const singleStickerHtml = renderSinglePriceTagMarkup(activePriceTagItem, {
+    theme,
+    banner,
+    size,
+    offeredPrice,
+    normalPrice,
+    footerNote,
+    forPrint: true
+  });
+
+  let widthMm = '50mm';
+  let heightMm = '35mm';
+  if (size === 'medium') { widthMm = '70mm'; heightMm = '45mm'; }
+  else if (size === 'mini') { widthMm = '40mm'; heightMm = '25mm'; }
+
+  let stickersHtml = '';
+  for (let i = 0; i < copies; i++) {
+    stickersHtml += `<div class="tag-print-item">${singleStickerHtml}</div>`;
+  }
+
+  // Create clean hidden printing iframe
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow.document;
+  doc.open();
+  doc.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>Clearance Price Tags - ${escHtml(activePriceTagItem.itemCode || 'SKU')}</title>
+      <style>
+        @page {
+          size: auto;
+          margin: 4mm;
+        }
+        * {
+          box-sizing: border-box;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+          margin: 0;
+          padding: 0;
+          background: #ffffff;
+        }
+        .tag-print-grid {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 3mm;
+          align-items: flex-start;
+        }
+        .tag-print-item {
+          width: ${widthMm};
+          height: ${heightMm};
+          page-break-inside: avoid;
+          break-inside: avoid;
+          overflow: hidden;
+          margin-bottom: 2mm;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="tag-print-grid">
+        ${stickersHtml}
+      </div>
+      <script>
+        window.onload = function() {
+          setTimeout(function() {
+            window.focus();
+            window.print();
+            setTimeout(function() {
+              if (window.frameElement) window.frameElement.remove();
+            }, 3000);
+          }, 350);
+        };
+      <\/script>
+    </body>
+    </html>
+  `);
+  doc.close();
+
+  showExpiryToast(`🖨️ Printing ${copies} clearance price tag sticker(s)...`);
+}
+
+function updateExpiryOfferedPrice(rowId, val) {
+  const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
+  if (!item) return;
+
+  const num = parseFloat(val);
+  if (isNaN(num) || num <= 0) {
+    delete item.offeredPrice;
+  } else {
+    item.offeredPrice = num;
+    item.actionPlan = 'Clearance Promo / PWP';
+  }
+
+  item.lastUpdated = new Date().toISOString();
+  saveLocalExpiryData();
+  renderExpiryUI();
+
+  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
+    window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
+  }
+
+  pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate, {
+    actionPlan: item.offeredPrice ? `Clearance Promo (Offer: RM ${item.offeredPrice.toFixed(2)})` : item.actionPlan
+  });
+
+  if (item.offeredPrice) {
+    showExpiryToast(`✅ Offered price RM ${item.offeredPrice.toFixed(2)} set for ${item.itemDescription || item.itemCode}`);
+  }
 }
 
 // ─── FILTERING & UI RENDERING ────────────────────────────────────────────────
@@ -2140,6 +2658,10 @@ function filterExpiryItems() {
 
     if (activeExpiryFilter.horizon === 'cleared') {
       if (!isCleared) return false;
+    } else if (activeExpiryFilter.horizon === 'promo') {
+      if (isCleared) return false;
+      const isPromo = Boolean(it.offeredPrice) || String(it.actionPlan || '').toLowerCase().includes('promo') || String(it.actionPlan || '').toLowerCase().includes('clearance');
+      if (!isPromo) return false;
     } else {
       // Non-cleared views
       if (isCleared) return false;
@@ -2163,7 +2685,9 @@ function filterExpiryItems() {
       const code = String(it.itemCode || '').toLowerCase();
       const desc = String(it.itemDescription || '').toLowerCase();
       const batch = String(it.batchNumber || '').toLowerCase();
-      if (!code.includes(q) && !desc.includes(q) && !batch.includes(q)) return false;
+      const plan = String(it.actionPlan || '').toLowerCase();
+      const promoRem = String(it.promoRemark || '').toLowerCase();
+      if (!code.includes(q) && !desc.includes(q) && !batch.includes(q) && !plan.includes(q) && !promoRem.includes(q)) return false;
     }
 
     return true;
@@ -2280,13 +2804,33 @@ function renderExpiryTable() {
           ${isCleared ? `
             <span class="text-gray-400 text-xs italic">${escHtml(getItemActionPlan(it) || '—')}</span>
           ` : `
-            <input type="text"
-              list="actionPlanOptions"
-              value="${escHtml(getItemActionPlan(it))}"
-              placeholder="Action plan remark…"
-              onchange="updateExpiryActionPlan('${it.rowId}', this.value)"
-              class="w-36 text-xs border border-gray-300 rounded px-2 py-1 focus:ring-1 focus:ring-blue-400 focus:border-blue-400 bg-white font-medium text-gray-800"
-              title="Action Plan Remark (e.g. Returnable with Condition, Vendor Return Pending, Clearance Promo / PWP)">
+            <div class="flex flex-col items-center gap-1">
+              <input type="text"
+                list="actionPlanOptions"
+                value="${escHtml(getItemActionPlan(it))}"
+                placeholder="Action plan remark…"
+                onchange="updateExpiryActionPlan('${it.rowId}', this.value)"
+                class="w-36 text-xs border border-gray-300 rounded px-2 py-1 focus:ring-1 focus:ring-blue-400 focus:border-blue-400 bg-white font-medium text-gray-800"
+                title="Action Plan Remark (e.g. Returnable with Condition, Vendor Return Pending, Clearance Promo / PWP)">
+              ${it.offeredPrice ? `
+                <div class="flex items-center justify-center gap-1">
+                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-2xs cursor-pointer hover:opacity-90 transition"
+                    onclick="openClearancePriceTagModal('${it.rowId}')" title="Clearance Offer: RM ${parseFloat(it.offeredPrice).toFixed(2)} (Click to Edit / Print Tag)">
+                    <i class="fa-solid fa-tag text-[8px] text-amber-200"></i> RM ${parseFloat(it.offeredPrice).toFixed(2)}
+                  </span>
+                  <button type="button" onclick="openClearancePriceTagModal('${it.rowId}')"
+                    class="p-0.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded transition text-[11px] cursor-pointer" title="Print Price Tag Sticker">
+                    <i class="fa-solid fa-print"></i>
+                  </button>
+                </div>
+              ` : (String(it.actionPlan || '').toLowerCase().includes('clearance') || String(it.actionPlan || '').toLowerCase().includes('promo')) ? `
+                <button type="button" onclick="openClearancePriceTagModal('${it.rowId}')"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 transition animate-pulse cursor-pointer"
+                  title="Click to input offered price and print price tag">
+                  <i class="fa-solid fa-tag text-amber-600 text-[9px]"></i> + Set Offer Price
+                </button>
+              ` : ''}
+            </div>
           `}
         </td>
         <td class="p-3 text-xs font-bold text-center whitespace-nowrap">
@@ -2331,18 +2875,23 @@ function renderExpiryTable() {
         </td>
         <td class="p-3 text-center whitespace-nowrap text-xs">
           ${isCleared ? `
-            <button onclick="reactivateExpiryItem('${it.rowId}')" class="text-blue-600 hover:underline font-semibold text-xs">
+            <button onclick="reactivateExpiryItem('${it.rowId}')" class="text-blue-600 hover:underline font-semibold text-xs cursor-pointer">
               <i class="fa-solid fa-rotate-left mr-1"></i>Restore
             </button>
           ` : `
             <div class="inline-flex items-center gap-1.5">
               <button onclick="markExpiryItemCleared('${it.rowId}')"
-                class="px-2.5 py-1 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg transition"
+                class="px-2.5 py-1 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg transition cursor-pointer"
                 title="Click when stock is fully sold or cleared">
                 <i class="fa-solid fa-check mr-1 text-emerald-600"></i>Done Clear
               </button>
+              <button onclick="openClearancePriceTagModal('${it.rowId}')"
+                class="p-1.5 ${it.offeredPrice ? 'text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-300' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'} rounded-lg transition cursor-pointer"
+                title="${it.offeredPrice ? 'Clearance Promo: RM ' + parseFloat(it.offeredPrice).toFixed(2) + ' (Print/Edit Price Tag)' : 'Generate Clearance Price Tag Sticker'}">
+                <i class="fa-solid fa-tag text-xs"></i>
+              </button>
               <button onclick="openEditExpiryItemModal('${it.rowId}')"
-                class="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                class="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
                 title="Edit item details (Description, Batch, Expiry, Qty)">
                 <i class="fa-solid fa-pen-to-square text-xs"></i>
               </button>
@@ -2822,6 +3371,16 @@ window.getHqPolicyForItem = getHqPolicyForItem;
 window.getItemHqReturnStatus = getItemHqReturnStatus;
 window.initHqReturnPolicy = initHqReturnPolicy;
 
+// Clearance Promo Price Tag Engine exports
+window.openClearancePriceTagModal = openClearancePriceTagModal;
+window.closeClearancePriceTagModal = closeClearancePriceTagModal;
+window.updatePriceTagLivePreview = updatePriceTagLivePreview;
+window.quickRoundOfferPrice = quickRoundOfferPrice;
+window.setTagCopiesToStock = setTagCopiesToStock;
+window.saveClearancePriceTag = saveClearancePriceTag;
+window.printClearancePriceTags = printClearancePriceTags;
+window.updateExpiryOfferedPrice = updateExpiryOfferedPrice;
+
 window.pmgExpiry = {
   getItems: () => expiryItems,
   setItems: (items) => { expiryItems = items; saveLocalExpiryData(); renderExpiryUI(); },
@@ -2834,7 +3393,10 @@ window.pmgExpiry = {
   getShortDatedStock: getShortDatedStockForReplenishment,
   syncHqReturnPolicy: syncHqReturnPolicy,
   getHqPolicyForItem: getHqPolicyForItem,
-  getItemHqReturnStatus: getItemHqReturnStatus
+  getItemHqReturnStatus: getItemHqReturnStatus,
+  openPriceTag: openClearancePriceTagModal,
+  printPriceTag: printClearancePriceTags,
+  setOfferedPrice: updateExpiryOfferedPrice
 };
 
 

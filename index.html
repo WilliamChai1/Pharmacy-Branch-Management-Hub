@@ -3986,6 +3986,7 @@ Date visit: 06.01.2026
             <option value="9months">Within 9 Months (HQ KPI Target)</option>
             <option value="12months">Within 12 Months (All Clearance)</option>
             <option value="critical">Critical Only (&lt; 6 Months)</option>
+            <option value="promo">🏷️ Clearance Promo Only (Offered Price Set)</option>
             <option value="all">All Monitored Stock (Any Expiry)</option>
             <option value="cleared">Cleared Stock Archive</option>
           </select>
@@ -4241,6 +4242,19 @@ Date visit: 06.01.2026
           <p class="text-[10px] text-gray-400 mt-1">Accepts DD/MM/YYYY, MM/YYYY (e.g. 10/2026), or month names.</p>
         </div>
 
+        <div class="grid grid-cols-2 gap-3 pt-1">
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">Action Plan Remark</label>
+            <input id="editActionPlan" list="actionPlanOptions" type="text" placeholder="e.g. Clearance Promo / PWP"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs">
+          </div>
+          <div>
+            <label class="block font-bold text-rose-700 mb-1">🏷️ Offered Promo Price (RM)</label>
+            <input id="editOfferedPrice" type="number" step="0.10" min="0" placeholder="e.g. 15.00"
+              class="w-full border border-rose-300 rounded-lg px-3 py-2 text-xs font-bold text-rose-700 bg-rose-50/40">
+          </div>
+        </div>
+
         <div class="flex justify-end gap-2 pt-3 border-t">
           <button type="button" onclick="closeEditExpiryItemModal()" class="px-4 py-2 font-bold text-gray-600 hover:text-gray-800">
             Cancel
@@ -4250,6 +4264,202 @@ Date visit: 06.01.2026
           </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- ─── ATTRACTIVE CLEARANCE PRICE TAG & PROMO STICKER MODAL ─────────────────── -->
+  <div id="clearancePriceTagModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs hidden p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in duration-150 border border-gray-100">
+      <!-- Modal Header -->
+      <div class="bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 text-white px-6 py-4 flex items-center justify-between shadow-xs">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-xl shadow-inner">
+            <i class="fa-solid fa-tag text-amber-200"></i>
+          </div>
+          <div>
+            <h3 class="font-extrabold text-base flex items-center gap-2">
+              Clearance Promo Price Tag & Stick Label
+              <span class="text-[10px] bg-white/20 text-white font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Retail Ready</span>
+            </h3>
+            <p class="text-xs text-white/90">Design attractive sticky shelf labels & promotional tags for short-expiry products</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeClearancePriceTagModal()" class="text-white/80 hover:text-white p-2 rounded-lg hover:bg-white/10 transition cursor-pointer">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body (Two-Column Layout) -->
+      <div class="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 bg-slate-50/50">
+        <!-- Left: Form Controls (7 cols) -->
+        <div class="lg:col-span-7 space-y-4">
+          <!-- Selected Product Summary Card -->
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex-1 min-w-0">
+                <span id="tagModalBranchBadge" class="inline-block text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full mb-1">Kota Sentosa</span>
+                <h4 id="tagModalItemDesc" class="font-bold text-gray-900 text-sm leading-snug line-clamp-2">Product Description</h4>
+                <div class="flex items-center gap-3 text-xs text-gray-500 font-mono mt-1 flex-wrap">
+                  <span>SKU: <b id="tagModalItemCode" class="text-blue-900 font-bold">100000</b></span>
+                  <span>Batch: <b id="tagModalBatch" class="text-gray-700 font-bold">N/A</b></span>
+                  <span id="tagModalExpiryPill" class="text-rose-700 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">EXP: 01/01/2027</span>
+                </div>
+              </div>
+              <div class="text-right shrink-0">
+                <span class="text-[10px] text-gray-400 block font-semibold uppercase">Current Stock</span>
+                <span id="tagModalStockQty" class="text-base font-black text-gray-800 font-mono">0</span>
+                <span class="text-[10px] text-gray-500 block">units</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pricing Inputs -->
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-3.5">
+            <h5 class="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+              <i class="fa-solid fa-calculator text-rose-500"></i> Promotional Pricing
+            </h5>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <!-- Offered Price (Required) -->
+              <div>
+                <label class="block font-black text-rose-700 text-xs mb-1 flex items-center justify-between">
+                  <span>★ Clearance Offered Price (RM)</span>
+                  <span class="text-[10px] text-rose-500 font-normal">Required</span>
+                </label>
+                <div class="relative rounded-xl">
+                  <span class="absolute inset-y-0 left-0 pl-3 flex items-center font-black text-rose-600 text-sm">RM</span>
+                  <input id="tagOfferedPrice" type="number" step="0.10" min="0" placeholder="0.00"
+                    oninput="updatePriceTagLivePreview()"
+                    class="w-full pl-11 pr-3 py-2 text-base font-black text-rose-600 border-2 border-rose-300 rounded-xl focus:ring-2 focus:ring-rose-500 focus:border-rose-500 outline-none bg-rose-50/30">
+                </div>
+                <!-- Quick rounding chips -->
+                <div class="flex items-center gap-1 mt-1.5 flex-wrap">
+                  <span class="text-[9px] text-gray-400 font-medium">Quick round:</span>
+                  <button type="button" onclick="quickRoundOfferPrice('round')" class="px-1.5 py-0.5 text-[9px] font-bold bg-gray-100 hover:bg-gray-200 rounded text-gray-700 transition cursor-pointer">Round .00</button>
+                  <button type="button" onclick="quickRoundOfferPrice('90')" class="px-1.5 py-0.5 text-[9px] font-bold bg-gray-100 hover:bg-gray-200 rounded text-gray-700 transition cursor-pointer">.90</button>
+                  <button type="button" onclick="quickRoundOfferPrice('50')" class="px-1.5 py-0.5 text-[9px] font-bold bg-gray-100 hover:bg-gray-200 rounded text-gray-700 transition cursor-pointer">.50</button>
+                </div>
+              </div>
+
+              <!-- Normal Retail Price (Optional) -->
+              <div>
+                <label class="block font-bold text-gray-700 text-xs mb-1">
+                  Original / Retail Price (RM) <span class="text-[10px] text-gray-400 font-normal">(Optional)</span>
+                </label>
+                <div class="relative rounded-xl">
+                  <span class="absolute inset-y-0 left-0 pl-3 flex items-center font-bold text-gray-500 text-xs">RM</span>
+                  <input id="tagNormalPrice" type="number" step="0.10" min="0" placeholder="e.g. 28.00"
+                    oninput="updatePriceTagLivePreview()"
+                    class="w-full pl-10 pr-3 py-2 text-sm font-bold text-gray-700 border border-gray-300 rounded-xl focus:ring-1 focus:ring-blue-500 outline-none">
+                </div>
+                <div id="tagDiscountPillPreview" class="text-[10px] text-emerald-700 font-bold mt-1.5 hidden flex items-center gap-1">
+                  <i class="fa-solid fa-arrow-down"></i> <span id="tagDiscountText">Save 0%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tag Design & Style Customization -->
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-3.5">
+            <h5 class="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+              <i class="fa-solid fa-palette text-amber-500"></i> Sticker Design & Options
+            </h5>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <!-- Banner Header Title -->
+              <div>
+                <label class="block font-bold text-gray-700 mb-1">Banner Heading</label>
+                <select id="tagBannerSelect" onchange="updatePriceTagLivePreview()" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-bold text-gray-800 outline-none">
+                  <option value="🔥 CLEARANCE SALE">🔥 CLEARANCE SALE</option>
+                  <option value="⚡ SPECIAL OFFER">⚡ SPECIAL OFFER</option>
+                  <option value="💥 CLEARANCE PROMO">💥 CLEARANCE PROMO</option>
+                  <option value="🏷️ SHORT EXPIRY DEAL">🏷️ SHORT EXPIRY DEAL</option>
+                  <option value="🎁 PWP SPECIAL">🎁 PWP SPECIAL</option>
+                  <option value="✨ LIMITED PROMO">✨ LIMITED PROMO</option>
+                </select>
+              </div>
+
+              <!-- Visual Theme -->
+              <div>
+                <label class="block font-bold text-gray-700 mb-1">Visual Theme</label>
+                <select id="tagThemeSelect" onchange="updatePriceTagLivePreview()" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-bold text-gray-800 outline-none">
+                  <option value="flame">🔥 Flame Red & Gold (High Impact)</option>
+                  <option value="pmg">🌿 PMG Emerald & Navy (Pharmacy Clean)</option>
+                  <option value="neon">⚡ Flash Neon Yellow (Supermarket Flash)</option>
+                </select>
+              </div>
+
+              <!-- Tag Size / Dimensions -->
+              <div>
+                <label class="block font-bold text-gray-700 mb-1">Sticker Size / Format</label>
+                <select id="tagSizeSelect" onchange="updatePriceTagLivePreview()" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-bold text-gray-800 outline-none">
+                  <option value="compact">Compact Label (50mm × 35mm · Box/Tube)</option>
+                  <option value="medium">Medium Shelf Tag (70mm × 45mm · Gondola/Shelf)</option>
+                  <option value="mini">Mini Dot Badge (40mm × 25mm · Small Pack)</option>
+                </select>
+              </div>
+
+              <!-- Number of Copies -->
+              <div>
+                <label class="block font-bold text-gray-700 mb-1 flex items-center justify-between">
+                  <span>Print Copies</span>
+                  <span id="tagCopiesStockHint" class="text-[10px] text-blue-600 font-normal">Match stock</span>
+                </label>
+                <div class="flex items-center gap-1.5">
+                  <input id="tagCopiesInput" type="number" min="1" max="100" value="1"
+                    class="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-center font-black text-sm">
+                  <button type="button" onclick="setTagCopiesToStock()" class="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg font-bold text-[11px] text-slate-700 transition cursor-pointer">All Stock</button>
+                  <button type="button" onclick="document.getElementById('tagCopiesInput').value=1" class="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg font-bold text-[11px] text-slate-700 transition cursor-pointer">1 Pc</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Custom Remark / Subtitle -->
+            <div>
+              <label class="block font-bold text-gray-700 text-xs mb-1">Remark / Tag Footer Note</label>
+              <input id="tagFooterNoteInput" type="text" value="* While Stocks Last · Short Expiry Deal"
+                oninput="updatePriceTagLivePreview()"
+                class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs text-gray-700 outline-none">
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Real-time Live Interactive Tag Preview (5 cols) -->
+        <div class="lg:col-span-5 flex flex-col items-center">
+          <div class="w-full bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center sticky top-2">
+            <div class="w-full flex items-center justify-between mb-3 text-xs">
+              <span class="font-extrabold text-gray-700 flex items-center gap-1.5">
+                <i class="fa-solid fa-eye text-blue-600"></i> Sticker Live Preview
+              </span>
+              <span id="tagSizeBadge" class="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">50mm × 35mm</span>
+            </div>
+
+            <!-- The Rendered Tag Preview Container -->
+            <div class="w-full flex justify-center py-4 bg-slate-100/70 rounded-xl border border-dashed border-slate-300 overflow-hidden">
+              <div id="priceTagLiveContainer" class="transition-all duration-200 shadow-md hover:shadow-lg">
+                <!-- Rendered dynamically via renderClearancePriceTagHtml -->
+              </div>
+            </div>
+
+            <div class="mt-4 w-full space-y-2">
+              <button type="button" onclick="printClearancePriceTags()"
+                class="w-full py-3 px-4 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white font-extrabold text-sm rounded-xl shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer">
+                <i class="fa-solid fa-print text-base"></i> 🖨️ Print Price Tag(s)
+              </button>
+
+              <button type="button" onclick="saveClearancePriceTag()"
+                class="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-2 cursor-pointer">
+                <i class="fa-solid fa-floppy-disk"></i> 💾 Save Offered Price to Product
+              </button>
+
+              <div class="pt-2 flex items-center justify-between text-[11px] text-gray-500 px-1">
+                <span><i class="fa-solid fa-check text-emerald-600 mr-1"></i>Saves remark in table</span>
+                <span><i class="fa-solid fa-check text-blue-600 mr-1"></i>Syncs across computers</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
