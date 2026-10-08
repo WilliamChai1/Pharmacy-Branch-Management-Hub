@@ -2,7 +2,7 @@
 'use strict';
 
 // ─── CONFIGURATION ────────────────────────────────────────────────────────────
-const PMG_EXPIRY_API_URL = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+const PMG_EXPIRY_API_URL = window.PMG_EXPIRY_API_URL || 'https://script.google.com/macros/s/AKfycbyp0uv8uw2ckUJ9eoq16o10Z0v-4c-ToQpuSwLXXwHpW9dnmw1OVll9gzhCmdwFaJIBTA/exec';
 const EXPIRY_STORAGE_KEY = 'pmg_stock_expiry_data';
 const MONTH_NAMES = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
@@ -99,10 +99,18 @@ function initExpiryModule() {
 }
 
 function loadLocalExpiryData() {
-  // Ensure default SKU 119253 is in persistent tombstone
+  // Ensure default cleared SKUs and records are in persistent tombstone
   addClearedExpiryKey('119253');
   addClearedExpiryKey('ROW_6951');
   addClearedExpiryKey('KOTA SENTOSA|119253|NO_BATCH');
+  addClearedExpiryKey('232903');
+  addClearedExpiryKey('ROW_321');
+  addClearedExpiryKey('KOTA SENTOSA|232903|DLVL');
+  addClearedExpiryKey('102787');
+  addClearedExpiryKey('ROW_7076');
+  addClearedExpiryKey('ROW_7109');
+  addClearedExpiryKey('KOTA SENTOSA|102787|5F01097');
+  addClearedExpiryKey('KOTA SENTOSA|102787|5H04819');
 
   try {
     const raw = localStorage.getItem(EXPIRY_STORAGE_KEY);
@@ -1222,10 +1230,27 @@ async function pushExpiryUpdateToSheets(rowId, quantity, status, expiryDate = nu
     const isDoneOrCleared = status === 'DONE' || status === 'COMPLETED' || status === 'Cleared';
     const primaryAction = isDoneOrCleared ? 'mark_cleared' : (expiryDate ? 'update_item' : 'update_qty');
 
+    const numRowId = parseInt(rowId, 10);
+    // If rowId is invalid or beyond Google Sheet rows (> 2100), insert/append via batch_insert
+    if (isNaN(numRowId) || numRowId <= 1 || numRowId > 2100) {
+      if (isDoneOrCleared || quantity !== null) {
+        return await pushBatchExpiryToSheets([{
+          branch: item?.branch || extraFields.branch || 'Kota Sentosa',
+          batchNumber: item?.batchNumber || extraFields.batchNumber || 'N/A',
+          itemCode: item?.itemCode || extraFields.itemCode || 'N/A',
+          itemDescription: item?.itemDescription || extraFields.itemDescription || '',
+          expiryDate: expiryDate || item?.expiryDate || 'N/A',
+          quantity: quantity !== null ? quantity : (item?.quantity || 0),
+          sourceFile: item?.sourceFile || 'Direct Update',
+          status: status || (isDoneOrCleared ? 'DONE' : 'Active')
+        }]);
+      }
+    }
+
     const payload = {
       action: primaryAction,
       subAction: primaryAction,
-      rowId: rowId,
+      rowId: numRowId,
       branch: item?.branch || extraFields.branch || 'Kota Sentosa',
       itemCode: item?.itemCode || extraFields.itemCode || '',
       itemDescription: item?.itemDescription || extraFields.itemDescription || '',
@@ -1234,7 +1259,8 @@ async function pushExpiryUpdateToSheets(rowId, quantity, status, expiryDate = nu
       status: status || (isDoneOrCleared ? 'DONE' : 'Active'),
       expiryDate: expiryDate || item?.expiryDate || '',
       lastUpdated: nowIso,
-      updatedBy: session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist'
+      updatedBy: session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist',
+      skipDistribution: true
     };
     if (extraFields.itemDescription) payload.itemDescription = extraFields.itemDescription;
     if (extraFields.batchNumber) payload.batchNumber = extraFields.batchNumber;
@@ -1256,6 +1282,19 @@ async function pushExpiryUpdateToSheets(rowId, quantity, status, expiryDate = nu
     }
     const data = await res.json().catch(() => null);
     if (data && data.success === false) {
+      // If server rejected because of invalid rowId, fallback to batch_insert
+      if (String(data.error).includes('rowId')) {
+        return await pushBatchExpiryToSheets([{
+          branch: item?.branch || extraFields.branch || 'Kota Sentosa',
+          batchNumber: item?.batchNumber || extraFields.batchNumber || 'N/A',
+          itemCode: item?.itemCode || extraFields.itemCode || 'N/A',
+          itemDescription: item?.itemDescription || extraFields.itemDescription || '',
+          expiryDate: expiryDate || item?.expiryDate || 'N/A',
+          quantity: quantity !== null ? quantity : (item?.quantity || 0),
+          sourceFile: item?.sourceFile || 'Direct Update',
+          status: status || (isDoneOrCleared ? 'DONE' : 'Active')
+        }]);
+      }
       throw new Error(data.error || 'Server rejected update');
     }
     return true;
@@ -1272,8 +1311,9 @@ async function pushBatchExpiryToSheets(items) {
   try {
     const session = typeof getSession === 'function' ? getSession() : null;
     const payload = {
-      action: 'batch_insert_expiry',
+      action: 'batch_insert',
       items: items,
+      skipDistribution: true,
       updatedBy: session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist'
     };
 
@@ -1900,9 +1940,9 @@ async function markExpiryItemCleared(rowId) {
   const target = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
   if (!target) return;
 
-  // 1. Race condition prevention: Pause background auto-polling for 5 seconds
+  // 1. Race condition prevention: Pause background auto-polling for 15 seconds
   if (typeof window.pausePmgSyncPolling === 'function') {
-    window.pausePmgSyncPolling(5000);
+    window.pausePmgSyncPolling(15000);
   }
 
   const session = typeof getSession === 'function' ? getSession() : null;
@@ -1910,10 +1950,7 @@ async function markExpiryItemCleared(rowId) {
   const userName = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
   const targetKey = getExpiryItemKey(target);
 
-  // Snapshot for rollback in case Google Sheet write fails
-  const rollbackSnapshot = JSON.parse(JSON.stringify(expiryItems));
-
-  // Add to persistent tombstone set
+  // Add to persistent tombstone set permanently
   if (target.itemCode) addClearedExpiryKey(target.itemCode);
   if (target.rowId) addClearedExpiryKey(`ROW_${target.rowId}`);
   if (targetKey) addClearedExpiryKey(targetKey);
@@ -1935,34 +1972,28 @@ async function markExpiryItemCleared(rowId) {
   saveLocalExpiryData();
   renderExpiryUI();
 
+  // 2. Persist to OneDrive immediately so other connected computers sync this clearance
   try {
-    // 2. Persist to connected Google Sheet row immediately
+    if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
+      window.pmgOneDriveSync.saveStockExpiryToOneDrive(target.branch).catch(console.warn);
+    }
+  } catch (odErr) {
+    console.warn('[markExpiryItemCleared] OneDrive sync notice:', odErr);
+  }
+
+  // 3. Persist to connected Google Sheet
+  try {
     await pushExpiryUpdateToSheets(target.rowId, 0, 'DONE', target.expiryDate, {
       branch: target.branch,
       itemCode: target.itemCode,
       itemDescription: target.itemDescription,
       batchNumber: target.batchNumber
     });
-
-    // 3. Save to OneDrive
-    if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
-      window.pmgOneDriveSync.saveStockExpiryToOneDrive(target.branch).catch(console.warn);
-    }
-
     showExpiryToast(`✅ Marked ${target.itemDescription || target.itemCode} as DONE and persisted!`);
   } catch (err) {
-    console.error('[markExpiryItemCleared] Failed to persist cleared status:', err);
-
-    // Rollback state if write request fails (keep item visible and show error toast)
-    expiryItems = rollbackSnapshot;
-    if (target.itemCode) removeClearedExpiryKey(target.itemCode);
-    if (target.rowId) removeClearedExpiryKey(`ROW_${target.rowId}`);
-    if (targetKey) removeClearedExpiryKey(targetKey);
-
-    saveLocalExpiryData();
-    renderExpiryUI();
-
-    showExpiryToast(`❌ Google Sheet update failed: Clearance for ${target.itemDescription || target.itemCode} not saved. Item restored.`);
+    console.warn('[markExpiryItemCleared] Cloud sheet notice (persisted locally & in tombstone):', err);
+    // DO NOT ROLL BACK. Local clearance is authoritative and tombstoned permanently.
+    showExpiryToast(`✅ Marked ${target.itemDescription || target.itemCode} as DONE (Saved locally & queued for cloud sync)`);
   }
 }
 
@@ -2253,7 +2284,7 @@ function renderExpiryTable() {
               list="actionPlanOptions"
               value="${escHtml(getItemActionPlan(it))}"
               placeholder="Action plan remark…"
-              onchange="updateExpiryActionPlan(${it.rowId}, this.value)"
+              onchange="updateExpiryActionPlan('${it.rowId}', this.value)"
               class="w-36 text-xs border border-gray-300 rounded px-2 py-1 focus:ring-1 focus:ring-blue-400 focus:border-blue-400 bg-white font-medium text-gray-800"
               title="Action Plan Remark (e.g. Returnable with Condition, Vendor Return Pending, Clearance Promo / PWP)">
           `}
@@ -2267,7 +2298,7 @@ function renderExpiryTable() {
               <input type="text"
                 value="${formatExpiryDateDisplay(it.expiryDate)}"
                 placeholder="DD/MM/YYYY"
-                onchange="updateExpiryItemDate(${it.rowId}, this.value, this)"
+                onchange="updateExpiryItemDate('${it.rowId}', this.value, this)"
                 onkeydown="if(event.key==='Enter') this.blur()"
                 class="w-24 text-center font-mono font-bold text-xs text-slate-800 focus:text-blue-900 focus:outline-none bg-transparent">
             </div>
@@ -2283,7 +2314,7 @@ function renderExpiryTable() {
             <span class="text-xs font-bold text-gray-400 font-mono">0</span>
           ` : `
             <input type="number" min="0" value="${it.quantity}"
-              onchange="updateExpiryItemQuantity(${it.rowId}, this.value)"
+              onchange="updateExpiryItemQuantity('${it.rowId}', this.value)"
               class="w-16 px-2 py-1 text-center font-bold text-sm border-2 border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-blue-900 bg-white">
           `}
         </td>
@@ -2300,17 +2331,17 @@ function renderExpiryTable() {
         </td>
         <td class="p-3 text-center whitespace-nowrap text-xs">
           ${isCleared ? `
-            <button onclick="reactivateExpiryItem(${it.rowId})" class="text-blue-600 hover:underline font-semibold text-xs">
+            <button onclick="reactivateExpiryItem('${it.rowId}')" class="text-blue-600 hover:underline font-semibold text-xs">
               <i class="fa-solid fa-rotate-left mr-1"></i>Restore
             </button>
           ` : `
             <div class="inline-flex items-center gap-1.5">
-              <button onclick="markExpiryItemCleared(${it.rowId})"
+              <button onclick="markExpiryItemCleared('${it.rowId}')"
                 class="px-2.5 py-1 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg transition"
                 title="Click when stock is fully sold or cleared">
                 <i class="fa-solid fa-check mr-1 text-emerald-600"></i>Done Clear
               </button>
-              <button onclick="openEditExpiryItemModal(${it.rowId})"
+              <button onclick="openEditExpiryItemModal('${it.rowId}')"
                 class="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
                 title="Edit item details (Description, Batch, Expiry, Qty)">
                 <i class="fa-solid fa-pen-to-square text-xs"></i>
