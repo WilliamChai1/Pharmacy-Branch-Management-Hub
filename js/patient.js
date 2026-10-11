@@ -10620,7 +10620,8 @@ CRITICAL CLINICAL INSTRUCTIONS:
      * Other PMG brands: Biowell, Lucentia, Dermisk, Axon
 
 7. CHRONOTHERAPY (BEST TIMING OF INTAKE):
-   - Categorize all medications and recommended supplements into: Morning, Afternoon, Evening, Bedtime with precise scientific rationale.
+   - Categorize all medications and recommended supplements into: Morning, Afternoon, Evening, Bedtime.
+   - For every item, provide complete, unabbreviated dosage instructions (e.g. "taking 1 capsule once a day after breakfast", "take 1 tablet once daily after food") along with practical timing rationale. Do NOT truncate or omit dosage frequency and instructions.
 
 8. CLINICAL ASSESSMENT & PRE-DIAGNOSTIC:
    - Concise pharmacist impression of current disease control and risk stratification. Avoid words like "AI", formulate as professional clinical impression.
@@ -10654,10 +10655,10 @@ RESPONSE MUST BE STRICTLY VALID JSON matching this structure:
     }
   ],
   "chronotherapy": {
-    "morning": [ { "item": "Medication/Supplement", "note": "Reason" } ],
-    "afternoon": [ { "item": "Medication/Supplement", "note": "Reason" } ],
-    "evening": [ { "item": "Medication/Supplement", "note": "Reason" } ],
-    "bedtime": [ { "item": "Medication/Supplement", "note": "Reason" } ]
+    "morning": [ { "item": "Medication/Supplement", "note": "Full dosage instruction & timing (e.g. taking 1 capsule once a day after breakfast)" } ],
+    "afternoon": [ { "item": "Medication/Supplement", "note": "Full dosage instruction & timing" } ],
+    "evening": [ { "item": "Medication/Supplement", "note": "Full dosage instruction & timing" } ],
+    "bedtime": [ { "item": "Medication/Supplement", "note": "Full dosage instruction & timing" } ]
   },
   "assessmentSummary": "Concise summary",
   "counsellingPoints": ["Point 1", "Point 2", "Point 3"]
@@ -11073,7 +11074,38 @@ function getActiveChronotherapy() {
 
   const filterSlot = (items) => {
     if (!items || !Array.isArray(items)) return [];
-    return items.filter(it => isItemPermitted(it.item));
+    return items.filter(it => isItemPermitted(it.item)).map(it => {
+      let itemObj = { ...it };
+      let note = (itemObj.note || '').trim();
+      const lowerItem = (itemObj.item || '').toLowerCase().trim();
+
+      // Check if matching house brand provides specific dosage instructions
+      const matchedHb = houseBrands.find(h => {
+        const prod = (h.product || '').toLowerCase().trim();
+        return prod && (lowerItem.includes(prod) || prod.includes(lowerItem));
+      });
+
+      if (matchedHb && matchedHb.dosage) {
+        const hbDosage = matchedHb.dosage.trim();
+        if (!note) {
+          note = hbDosage;
+        } else {
+          const lowerNote = note.toLowerCase();
+          const hasDosageKeywords = lowerNote.includes('capsule') || lowerNote.includes('tablet') ||
+                                    lowerNote.includes('cap') || lowerNote.includes('tab') ||
+                                    lowerNote.includes('daily') || lowerNote.includes('once') ||
+                                    lowerNote.includes('twice') || lowerNote.includes('take') ||
+                                    lowerNote.includes('taking') || lowerNote.includes('od') ||
+                                    lowerNote.includes('bd') || lowerNote.includes('tds') ||
+                                    lowerNote.includes('om') || lowerNote.includes('on') ||
+                                    lowerNote.includes('粒') || lowerNote.includes('片') || lowerNote.includes('包');
+          if (!hasDosageKeywords) {
+            note = `${hbDosage} · ${note}`;
+          }
+        }
+      }
+      return { ...itemObj, note };
+    });
   };
 
   return {
@@ -11099,15 +11131,15 @@ function updateChronotherapyView() {
   timingGridEl.innerHTML = slots.map(s => {
     const items = chrono[s.key] || [];
     return `
-      <div class="border border-gray-200 rounded-lg p-2.5 ${s.bg}">
+      <div class="border border-gray-200 rounded-lg p-2.5 ${s.bg} flex flex-col justify-start">
         <div class="font-bold text-[11px] text-gray-800 flex items-center gap-1.5 mb-1.5 pb-1 border-b border-gray-200">
           <i class="fa-solid ${s.icon}"></i>
           <span>${s.label}</span>
         </div>
         ${items.length ? items.map(it => `
-          <div class="mb-1.5 last:mb-0">
-            <span class="font-bold text-[11px] text-gray-900 block">${escHtml(it.item)}</span>
-            <span class="text-[10px] text-gray-500 block leading-tight">${escHtml(it.note || '')}</span>
+          <div class="mb-2 last:mb-0">
+            <span class="font-bold text-[11px] text-gray-900 block leading-tight break-words">${escHtml(it.item)}</span>
+            ${it.note ? `<span class="text-[10px] text-gray-600 block leading-snug break-words mt-0.5"><i class="fa-solid fa-clock text-[9px] text-indigo-500 mr-1"></i>${escHtml(it.note)}</span>` : ''}
           </div>
         `).join('') : '<span class="text-[10px] text-gray-400 italic">None scheduled</span>'}
       </div>
@@ -11251,14 +11283,14 @@ function downloadChronotherapyImage() {
   const encDate = document.getElementById('encDate')?.value || getTodayDateString(0);
   const branchName = (patient.branch === 'KS01' || patient.branch === 'KOTA SENTOSA') ? 'PMG Pharmacy Kota Sentosa' : `PMG Pharmacy ${patient.branch}`;
 
-  const slots = [
+  const rawSlots = [
     { title: 'Morning (早晨 / Breakfast)', icon: '☀️', color: '#b45309', bg: '#fffbeb', border: '#fde68a', items: chrono.morning || [] },
     { title: 'Afternoon (中午 / Lunch)', icon: '🌤️', color: '#c2410c', bg: '#fff7ed', border: '#fed7aa', items: chrono.afternoon || [] },
     { title: 'Evening (傍晚 / Dinner)', icon: '🌇', color: '#4338ca', bg: '#eef2ff', border: '#c7d2fe', items: chrono.evening || [] },
     { title: 'Bedtime (睡前 / Night)', icon: '🌙', color: '#1e40af', bg: '#eff6ff', border: '#bfdbfe', items: chrono.bedtime || [] }
   ];
 
-  const totalItems = slots.reduce((acc, s) => acc + s.items.length, 0);
+  const totalItems = rawSlots.reduce((acc, s) => acc + s.items.length, 0);
   if (totalItems === 0) {
     alert('No scheduled medications or supplements in the chronotherapy plan to export.');
     return;
@@ -11266,8 +11298,86 @@ function downloadChronotherapyImage() {
 
   const canvas = document.getElementById('chronoCanvas') || document.createElement('canvas');
   const width = 1200;
-  const maxItemsPerSlot = Math.max(...slots.map(s => s.items.length), 2);
-  const cardHeight = Math.max(340, 110 + maxItemsPerSlot * 65);
+  const startX = 50;
+  const cardWidth = 260;
+  const gap = 20; // 4 * 260 + 3 * 20 = 1100px. Perfectly matches metadata card width (50px to 1150px)
+  const textMaxW = cardWidth - 44; // 216px printable width inside card
+
+  const measureCtx = canvas.getContext('2d');
+
+  // Text wrapping helper supporting English words, spaces, punctuation, and CJK characters
+  const wrapTextLines = (ctx, text, maxW, font) => {
+    if (!text) return [];
+    ctx.font = font;
+    const str = String(text).trim();
+    if (!str) return [];
+
+    const tokens = str.match(/[\u4e00-\u9fa5]|\S+/g) || [str];
+    const lines = [];
+    let curLine = '';
+
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i];
+      const isCJK = /[\u4e00-\u9fa5]/.test(token);
+      const test = curLine ? (isCJK || /[\u4e00-\u9fa5]/.test(curLine.slice(-1)) ? curLine + token : curLine + ' ' + token) : token;
+      if (ctx.measureText(test).width <= maxW) {
+        curLine = test;
+      } else {
+        if (curLine) {
+          lines.push(curLine);
+          curLine = token;
+        } else {
+          // Extremely long unbroken token: slice char-by-char
+          let partial = '';
+          for (const ch of token) {
+            if (ctx.measureText(partial + ch).width <= maxW) {
+              partial += ch;
+            } else {
+              lines.push(partial);
+              partial = ch;
+            }
+          }
+          curLine = partial;
+        }
+      }
+    }
+    if (curLine) lines.push(curLine);
+    return lines;
+  };
+
+  const itemFont = 'bold 14px "Segoe UI", system-ui, sans-serif';
+  const noteFont = '12px "Segoe UI", system-ui, sans-serif';
+  const itemNameLineHeight = 19;
+  const noteLineHeight = 17;
+  const itemSpacing = 14;
+
+  // Pre-calculate wrapped lines and heights for each item in each slot
+  const processedSlots = rawSlots.map(s => {
+    let contentH = 0;
+    const items = s.items.map(it => {
+      const nameLines = wrapTextLines(measureCtx, it.item, textMaxW, itemFont);
+      const noteLines = it.note ? wrapTextLines(measureCtx, it.note, textMaxW, noteFont) : [];
+      const itemHeight = (nameLines.length * itemNameLineHeight) + 
+                         (noteLines.length ? (noteLines.length * noteLineHeight + 4) : 0) + 
+                         itemSpacing;
+      contentH += itemHeight;
+      return {
+        ...it,
+        nameLines,
+        noteLines,
+        itemHeight
+      };
+    });
+    // Header is ~54px, bottom padding ~20px
+    const totalSlotHeight = 54 + (items.length ? contentH : 40) + 20;
+    return {
+      ...s,
+      items,
+      totalSlotHeight
+    };
+  });
+
+  const cardHeight = Math.max(340, ...processedSlots.map(s => s.totalSlotHeight));
   const startY = 300;
   const height = startY + cardHeight + 85;
 
@@ -11389,24 +11499,13 @@ function downloadChronotherapyImage() {
   const col2X = midX + 24;
   const maxColW = (infoCardW / 2) - 48; // 502px
 
-  // Top-Left: Patient Name
   drawInfoCell('Patient Name / 顾客姓名', patient.name, '👤', col1X, infoCardY + 14, infoCardY + 31, maxColW, '#0f172a');
-
-  // Bottom-Left: Attending Pharmacist
   drawInfoCell('Attending Clinician / 药剂师', pharmacist, '💊', col1X, infoCardY + 69, infoCardY + 86, maxColW, '#0369a1');
-
-  // Top-Right: Dispensing Outlet
   drawInfoCell('Dispensing Branch / 调剂分行', branchName, '🏥', col2X, infoCardY + 14, infoCardY + 31, maxColW, '#0f172a');
-
-  // Bottom-Right: Consultation Date
   drawInfoCell('Consultation Date / 咨询日期', encDate, '📅', col2X, infoCardY + 69, infoCardY + 86, maxColW, '#0f172a');
 
   // 4. 4 Slot Cards
-  const cardWidth = 260;
-  const gap = 16;
-  const startX = 50;
-
-  slots.forEach((s, idx) => {
+  processedSlots.forEach((s, idx) => {
     const x = startX + idx * (cardWidth + gap);
     const y = startY;
 
@@ -11425,7 +11524,7 @@ function downloadChronotherapyImage() {
 
     // Card Header Bar
     ctx.fillStyle = s.color;
-    ctx.font = 'bold 17px "Segoe UI", system-ui, sans-serif';
+    ctx.font = 'bold 16px "Segoe UI", system-ui, sans-serif';
     ctx.textBaseline = 'top';
     ctx.fillText(`${s.icon} ${s.title}`, x + 14, y + 16);
 
@@ -11433,40 +11532,46 @@ function downloadChronotherapyImage() {
     ctx.strokeStyle = s.border;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(x + 14, y + 46);
-    ctx.lineTo(x + cardWidth - 14, y + 46);
+    ctx.moveTo(x + 14, y + 44);
+    ctx.lineTo(x + cardWidth - 14, y + 44);
     ctx.stroke();
 
     // Items
-    let itemY = y + 62;
+    let itemY = y + 58;
     if (s.items.length === 0) {
       ctx.fillStyle = '#94a3b8';
-      ctx.font = 'italic 15px "Segoe UI", system-ui, sans-serif';
+      ctx.font = 'italic 14px "Segoe UI", system-ui, sans-serif';
       ctx.fillText('None scheduled', x + 20, itemY);
     } else {
       s.items.forEach(it => {
-        // Bullet dot
+        // Bullet dot (aligned with first line of item name)
         ctx.fillStyle = s.color;
         ctx.beginPath();
-        ctx.arc(x + 20, itemY + 8, 4, 0, Math.PI * 2);
+        ctx.arc(x + 18, itemY + 8, 4, 0, Math.PI * 2);
         ctx.fill();
 
-        // Item name
+        // Item name (full name, multiline support)
         ctx.fillStyle = '#0f172a';
-        ctx.font = 'bold 15px "Segoe UI", system-ui, sans-serif';
-        const itemName = it.item.length > 23 ? it.item.substring(0, 21) + '...' : it.item;
-        ctx.fillText(itemName, x + 30, itemY);
+        ctx.font = itemFont;
+        ctx.textBaseline = 'top';
+        it.nameLines.forEach((line, lineIdx) => {
+          ctx.fillText(line, x + 28, itemY + lineIdx * itemNameLineHeight);
+        });
 
-        // Note / Dosage
-        if (it.note) {
-          ctx.fillStyle = '#64748b';
-          ctx.font = '13px "Segoe UI", system-ui, sans-serif';
-          const itemNote = it.note.length > 27 ? it.note.substring(0, 25) + '...' : it.note;
-          ctx.fillText(itemNote, x + 30, itemY + 22);
-          itemY += 54;
-        } else {
-          itemY += 40;
+        let curY = itemY + it.nameLines.length * itemNameLineHeight;
+
+        // Note / Dosage instruction (full instruction without truncation)
+        if (it.noteLines && it.noteLines.length > 0) {
+          curY += 2;
+          ctx.fillStyle = '#475569';
+          ctx.font = noteFont;
+          it.noteLines.forEach((nLine, nIdx) => {
+            ctx.fillText(nLine, x + 28, curY + nIdx * noteLineHeight);
+          });
         }
+
+        // Advance to next item
+        itemY += it.itemHeight;
       });
     }
   });
