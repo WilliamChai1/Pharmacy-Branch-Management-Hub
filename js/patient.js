@@ -1777,20 +1777,13 @@ function getPatientSupplySummary(patient, lang) {
  */
 function getPatientSelfBookingUrl(patient) {
   const baseUrl = window.location.origin + window.location.pathname;
-  let rawBranch = patient?.branch;
-  if (!rawBranch || rawBranch === 'ALL' || rawBranch === 'ALLBRANCHES') {
-    rawBranch = (typeof getSession === 'function' && getSession()?.branch) || 'Kota Sentosa';
-  }
-  const branch = typeof normalizeBranchCode === 'function' ? normalizeBranchCode(rawBranch) : 'Kota Sentosa';
   const name = patient?.name || '';
   const phone = patient?.phone || '';
-  const ic = patient?.ic || '';
 
   const params = new URLSearchParams();
   params.set('book', '1');
-  params.set('branch', branch);
 
-  // Match language with patient's profile preference
+  // Match language with patient's profile preference (only attach if non-English)
   const rawLang = typeof getPatientLanguageByRace === 'function' ? getPatientLanguageByRace(patient) : (patient?.language || 'English');
   const normalizedLang = String(rawLang).toLowerCase();
   let langCode = 'en';
@@ -1798,22 +1791,13 @@ function getPatientSelfBookingUrl(patient) {
     langCode = 'zh';
   } else if (normalizedLang.includes('malay') || normalizedLang.includes('melayu') || normalizedLang.includes('ms') || normalizedLang.includes('my') || normalizedLang.includes('bm')) {
     langCode = 'ms';
-  } else {
-    langCode = 'en';
   }
-  params.set('lang', langCode);
-
-  if (typeof getPharmacistSchedule === 'function' && typeof packScheduleForUrl === 'function') {
-    const sched = getPharmacistSchedule(branch);
-    const packedSched = packScheduleForUrl(sched);
-    if (packedSched) {
-      params.set('sch', packedSched);
-    }
+  if (langCode !== 'en') {
+    params.set('lang', langCode);
   }
 
   if (name) params.set('name', name);
   if (phone) params.set('phone', phone);
-  if (ic) params.set('ic', ic);
 
   return `${baseUrl}?${params.toString()}`;
 }
@@ -7961,11 +7945,15 @@ function openShareBookingModal() {
 
   const branchSelect = document.getElementById('shareBookingBranchSelect');
   if (branchSelect) {
-    for (let opt of branchSelect.options) {
-      if (normalizeBranchCode(opt.value) === userBranch || opt.text.includes(userBranch)) {
-        branchSelect.value = opt.value;
-        break;
+    if (branchSelect.options) {
+      for (let opt of branchSelect.options) {
+        if (normalizeBranchCode(opt.value) === userBranch || opt.text.includes(userBranch)) {
+          branchSelect.value = opt.value;
+          break;
+        }
       }
+    } else {
+      branchSelect.value = 'Kota Sentosa';
     }
   }
 
@@ -8035,13 +8023,7 @@ function updateShareBookingUrl() {
   }
 
   const baseUrl = window.location.origin + window.location.pathname;
-  const params = new URLSearchParams();
-  params.set('book', '1');
-  params.set('branch', code);
-  const packed = packScheduleForUrl(sched);
-  if (packed) params.set('sch', packed);
-
-  const bookingUrl = `${baseUrl}?${params.toString()}`;
+  const bookingUrl = `${baseUrl}?book=1`;
 
   const inputEl = document.getElementById('shareBookingUrlInput');
   if (inputEl) inputEl.value = bookingUrl;
@@ -8118,11 +8100,9 @@ const BOOKING_I18N = {
     headerTitle: 'PMG Pharmacy · Appointment & Refill Portal',
     headerSubtitle: 'Patient Care, Clinical Consultation & Medication Refill',
     cardTitle: '<i class="fa-regular fa-calendar-check text-emerald-400 text-xl"></i> Schedule Appointment or Request Refill',
-    cardSubtitle: 'Please select your service, branch, and preferred time below.',
+    cardSubtitle: 'Please select your service and preferred time below.',
     openDaily: 'Pharmacist On Duty',
-    step1Title: 'Select PMG Pharmacy Branch',
-    branchLockText: 'Branch locked to your registered profile',
-    step2Title: 'Select Your Service',
+    step1Title: 'Select Your Service',
     opt1Title: '🩺 In-Person Consultation & Health Screening',
     opt1Badge: 'In-Person Visit',
     opt1Desc: 'Meet our pharmacist in-person for blood pressure & glucose checks, comprehensive chronic health reviews, and clinical consultation.',
@@ -8130,16 +8110,16 @@ const BOOKING_I18N = {
     opt2Badge: 'Refill & +1 Month Extension',
     opt2Desc: 'If your blood pressure, blood glucose, and health metrics are stable, request medication refills in advance and extend your next follow-up by 1 month.',
     opt2Notice: 'Subject to pharmacist review and approval. Your next reminder date will be updated automatically.',
-    step3Title: 'Preferred Pharmacist',
+    step2Title: 'Preferred Pharmacist',
     pharmOptional: 'Optional',
     pharmAnyOption: 'Any Available Pharmacist on Duty',
-    consultHoursTitle: (branch) => `${branch} Pharmacist Consultation Hours`,
+    consultHoursTitle: (branch) => `Kota Sentosa Pharmacist Consultation Hours`,
     consultHoursDesc: (open, close, breakInfo, pharm) => `Consultation Hours: <b>${open} – ${close}</b>${breakInfo ? ` &bull; Break: <b>${breakInfo}</b>` : ''}${pharm ? `<br>Attending Pharmacist: <b>${pharm}</b>` : ''}`,
     dateLabelInPerson: 'Select Date',
     dateLabelRefill: 'Select Expected Refill Date',
     timeLabel: 'Select Time Slot',
     refillNoticeText: 'Refill Notice: Our pharmacist will review your medication history, prepare your medications in advance, and extend your next follow-up reminder by 1 month.',
-    step6Title: 'Your Particulars',
+    step5Title: 'Your Particulars',
     nameLabel: 'Full Name',
     namePlaceholder: 'e.g. Tan Ah Kow / Siti Ahmad',
     phoneLabel: 'WhatsApp / Mobile Number',
@@ -8193,11 +8173,9 @@ const BOOKING_I18N = {
     headerTitle: 'Farmasi PMG · Portal Temujanji & Ulangan Ubat',
     headerSubtitle: 'Penjagaan Pesakit, Rundingan Klinikal & Ulangan Ubat',
     cardTitle: '<i class="fa-regular fa-calendar-check text-emerald-400 text-xl"></i> Tempah Temujanji atau Permohonan Ulangan',
-    cardSubtitle: 'Sila pilih jenis perkhidmatan, cawangan, dan waktu pilihan anda di bawah.',
+    cardSubtitle: 'Sila pilih jenis perkhidmatan dan waktu pilihan anda di bawah.',
     openDaily: 'Ahli Farmasi Bertugas',
-    step1Title: 'Pilih Cawangan Farmasi PMG',
-    branchLockText: 'Cawangan dikunci mengikut profil berdaftar anda',
-    step2Title: 'Pilih Jenis Perkhidmatan',
+    step1Title: 'Pilih Jenis Perkhidmatan',
     opt1Title: '🩺 Rundingan Bersemuka & Pemeriksaan Kesihatan',
     opt1Badge: 'Lawatan Bersemuka',
     opt1Desc: 'Berjumpa ahli farmasi kami secara bersemuka untuk pemeriksaan tekanan darah, glukosa, semakan ubat kronik dan nasihat klinikal.',
@@ -8205,16 +8183,16 @@ const BOOKING_I18N = {
     opt2Badge: 'Ulangan & +1 Bulan Lanjutan',
     opt2Desc: 'Jika tekanan darah, gula darah, dan metrik kesihatan anda stabil, mohon bekalan ubat lebih awal dan lanjutkan temujanji seterusnya sebanyak 1 bulan.',
     opt2Notice: 'Tertakluk kepada semakan dan kelulusan ahli farmasi. Tarikh peringatan seterusnya akan dikemas kini secara automatik.',
-    step3Title: 'Pilihan Ahli Farmasi',
+    step2Title: 'Pilihan Ahli Farmasi',
     pharmOptional: 'Pilihan',
     pharmAnyOption: 'Mana-mana Ahli Farmasi Bertugas',
-    consultHoursTitle: (branch) => `Waktu Rundingan Ahli Farmasi ${branch}`,
+    consultHoursTitle: (branch) => `Waktu Rundingan Ahli Farmasi Kota Sentosa`,
     consultHoursDesc: (open, close, breakInfo, pharm) => `Waktu Rundingan: <b>${open} – ${close}</b>${breakInfo ? ` &bull; Waktu Rehat: <b>${breakInfo}</b>` : ''}${pharm ? `<br>Ahli Farmasi Bertugas: <b>${pharm}</b>` : ''}`,
     dateLabelInPerson: 'Pilih Tarikh Temujanji',
     dateLabelRefill: 'Pilih Tarikh Pengambilan Ubat',
     timeLabel: 'Pilih Slot Masa',
     refillNoticeText: 'Notis Ulangan Ubat: Ahli farmasi kami akan menyemak rekod ubat anda, menyediakan bekalan ubat lebih awal, dan melanjutkan peringatan temujanji anda sebanyak 1 bulan.',
-    step6Title: 'Maklumat Anda',
+    step5Title: 'Maklumat Anda',
     nameLabel: 'Nama Penuh',
     namePlaceholder: 'cth. Siti binti Ahmad / Tan Ah Kow',
     phoneLabel: 'Nombor WhatsApp / Telefon Bimbit',
@@ -8268,11 +8246,9 @@ const BOOKING_I18N = {
     headerTitle: 'PMG 药剂行 · 预约面诊与慢病续药平台',
     headerSubtitle: '慢病照护 · 临床健康咨询 · 药物续订与顺延',
     cardTitle: '<i class="fa-regular fa-calendar-check text-emerald-400 text-xl"></i> 预约到店面诊或慢病用药续订',
-    cardSubtitle: '请在下方选择您的服务项目、分店与合适的时间。',
+    cardSubtitle: '请在下方选择您的服务项目与合适的时间。',
     openDaily: '执业药剂师在岗',
-    step1Title: '选择 PMG 药剂行分店',
-    branchLockText: '已锁定为您注册档案所在的分店',
-    step2Title: '选择服务项目',
+    step1Title: '选择服务项目',
     opt1Title: '🩺 到店面诊与全面健康筛查',
     opt1Badge: '到店面诊',
     opt1Desc: '与我们的执业药剂师面对面交流，进行血压与血糖检查、长期慢病用药评估及专业健康咨询。',
@@ -8280,16 +8256,16 @@ const BOOKING_I18N = {
     opt2Badge: '续药与顺延 1 个月',
     opt2Desc: '如果您的血压、血糖及健康指标平稳，可提前申请常备药物续订，并将下一次复查提醒自动顺延 1 个月。',
     opt2Notice: '需经执业药剂师审核用药档案后批准生效。系统将自动更新您的下一次复查提醒。',
-    step3Title: '指定主理药剂师',
+    step2Title: '指定主理药剂师',
     pharmOptional: '可自选',
     pharmAnyOption: '任意当值执业药剂师',
-    consultHoursTitle: (branch) => `${branch} 药剂师面诊当值时间`,
+    consultHoursTitle: (branch) => `Kota Sentosa 药剂师面诊当值时间`,
     consultHoursDesc: (open, close, breakInfo, pharm) => `面诊当值时间：<b>${open} – ${close}</b>${breakInfo ? ` &bull; 休息时段：<b>${breakInfo}</b>` : ''}${pharm ? `<br>主理执业药剂师：<b>${pharm}</b>` : ''}`,
     dateLabelInPerson: '选择面诊日期',
     dateLabelRefill: '选择预计取药日期',
     timeLabel: '选择预约时间段',
     refillNoticeText: '续药须知：执业药剂师将审核您的用药记录，提前为您备妥药物，并将下一次复查提醒自动顺延 1 个月。',
-    step6Title: '您的个人资料',
+    step5Title: '您的个人资料',
     nameLabel: '姓名',
     namePlaceholder: '例：陈阿九 / Tan Ah Kow',
     phoneLabel: 'WhatsApp / 手机号码',
@@ -8384,15 +8360,9 @@ function setBookingLanguage(lang) {
   const openDaily = document.getElementById('custOpenDailyText');
   if (openDaily) openDaily.textContent = i18n.openDaily;
 
-  // Step 1
+  // Step 1: Service
   const s1Title = document.getElementById('custStep1Title');
   if (s1Title) s1Title.textContent = i18n.step1Title;
-  const bLock = document.getElementById('custBranchLockText');
-  if (bLock) bLock.textContent = i18n.branchLockText;
-
-  // Step 2
-  const s2Title = document.getElementById('custStep2Title');
-  if (s2Title) s2Title.textContent = i18n.step2Title;
   const opt1Title = document.getElementById('custOpt1Title');
   if (opt1Title) opt1Title.textContent = i18n.opt1Title;
   const opt1Badge = document.getElementById('custOpt1Badge');
@@ -8409,23 +8379,23 @@ function setBookingLanguage(lang) {
   const opt2Notice = document.getElementById('custOpt2Notice');
   if (opt2Notice) opt2Notice.textContent = i18n.opt2Notice;
 
-  // Step 3
-  const s3Title = document.getElementById('custStep3Title');
-  if (s3Title) s3Title.textContent = i18n.step3Title;
+  // Step 2: Pharmacist
+  const s2Title = document.getElementById('custStep2Title');
+  if (s2Title) s2Title.textContent = i18n.step2Title;
   const pOpt = document.getElementById('custPharmOptional');
   if (pOpt) pOpt.textContent = i18n.pharmOptional;
   const pAny = document.getElementById('custPharmAnyOption');
   if (pAny) pAny.textContent = i18n.pharmAnyOption;
 
-  // Step 4 & 5
+  // Step 3 & 4 (Date & Time)
   const timeLabel = document.getElementById('custTimeLabel');
   if (timeLabel) timeLabel.textContent = i18n.timeLabel;
   const refillNotice = document.getElementById('custRefillNoticeText');
   if (refillNotice) refillNotice.textContent = i18n.refillNoticeText;
 
-  // Step 6
-  const s6Title = document.getElementById('custStep6Title');
-  if (s6Title) s6Title.textContent = i18n.step6Title;
+  // Step 5: Particulars
+  const s5Title = document.getElementById('custStep5Title');
+  if (s5Title) s5Title.textContent = i18n.step5Title;
   const nLabel = document.getElementById('custNameLabel');
   if (nLabel) nLabel.textContent = i18n.nameLabel;
   const nInput = document.getElementById('custBookName');
@@ -8545,20 +8515,22 @@ async function initCustomerBooking(defaultBranchCode = 'Kota Sentosa') {
   // ── Step 4: Set up branch selector ────────────────────────────────────────
   const select = document.getElementById('custBranchSelect');
   if (select) {
-    select.value = branchParam;
-    if (!select.value) {
-      for (let opt of select.options) {
-        if (normalizeBranchCode(opt.value) === branchParam) {
-          select.value = opt.value;
-          break;
+    select.value = branchParam || 'Kota Sentosa';
+    if (select.tagName === 'SELECT' && select.options) {
+      if (!select.value) {
+        for (let opt of select.options) {
+          if (normalizeBranchCode(opt.value) === branchParam) {
+            select.value = opt.value;
+            break;
+          }
         }
       }
+      // Lock branch selector so customer cannot switch to another unconnected branch
+      select.disabled = true;
+      select.classList.add('bg-gray-100', 'cursor-not-allowed', 'opacity-90');
     }
-    // Lock branch selector so customer cannot switch to another unconnected branch
-    select.disabled = true;
-    select.classList.add('bg-gray-100', 'cursor-not-allowed', 'opacity-90');
     const lockNotice = document.getElementById('custBranchLockNotice');
-    if (lockNotice) lockNotice.classList.remove('hidden');
+    if (lockNotice) lockNotice.classList.add('hidden');
   }
 
   // ── Step 4b: Populate Pharmacists list for this branch ───────────────────

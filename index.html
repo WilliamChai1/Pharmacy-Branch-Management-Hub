@@ -3084,18 +3084,13 @@ Date visit: 06.01.2026
       </div>
 
       <div class="p-6 space-y-4">
-        <!-- Branch Selector -->
+        <!-- Branch (Fixed to Kota Sentosa) -->
+        <input type="hidden" id="shareBookingBranchSelect" value="Kota Sentosa">
         <div>
-          <label class="block text-xs font-bold text-gray-700 mb-1">Select Outlet / Branch:</label>
-          <select id="shareBookingBranchSelect" onchange="updateShareBookingUrl()" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-semibold focus:ring-2 focus:ring-purple-500 outline-none">
-            <option value="Kota Sentosa">Kota Sentosa</option>
-            <option value="Matang Jaya">Matang Jaya</option>
-            <option value="Sungai Moyan">Sungai Moyan</option>
-            <option value="MALIHAH">Malihah</option>
-            <option value="METROCITY">Metrocity</option>
-            <option value="ASTANA">Astana</option>
-            <option value="SAMARIANG">Samariang</option>
-          </select>
+          <label class="block text-xs font-bold text-gray-700 mb-1">Branch:</label>
+          <div class="text-xs font-bold text-purple-900 bg-purple-50 border border-purple-200 rounded-xl px-3 py-2 flex items-center gap-2">
+            <i class="fa-solid fa-location-dot text-purple-600"></i> PMG Pharmacy Kota Sentosa
+          </div>
         </div>
 
         <!-- Branch Consultation Hours Banner -->
@@ -5440,37 +5435,18 @@ Date visit: 06.01.2026
             <span class="w-2 h-2 rounded-full bg-emerald-400 mr-1.5 animate-pulse"></span><span id="custOpenDailyText">Pharmacist On Duty</span>
           </span>
         </div>
-        <p id="custCardSubtitle" class="text-sm text-blue-100 mt-1">Please select your service, branch, and preferred time below.</p>
+        <p id="custCardSubtitle" class="text-sm text-blue-100 mt-1">Please select your service and preferred time below.</p>
       </div>
 
       <form id="customerBookingForm" onsubmit="handleCustomerBookingSubmit(event)" class="p-6 sm:p-8 space-y-7">
-        <!-- Step 1: Branch Selection -->
-        <div class="space-y-2.5">
-          <label class="block text-base sm:text-lg font-extrabold text-gray-900 flex items-center gap-2">
-            <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-black">1</span>
-            <span id="custStep1Title">Select PMG Pharmacy Branch</span>
-          </label>
-          <select id="custBranchSelect" onchange="onCustBranchChange()" required
-            class="w-full border-2 border-gray-300 rounded-2xl px-4 py-3.5 text-base sm:text-lg font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-            <option value="Kota Sentosa">Kota Sentosa</option>
-            <option value="Matang Jaya">Matang Jaya</option>
-            <option value="Sungai Moyan">Sungai Moyan</option>
-            <option value="MALIHAH">Malihah</option>
-            <option value="METROCITY">Metrocity</option>
-            <option value="ASTANA">Astana</option>
-            <option value="SAMARIANG">Samariang</option>
-          </select>
-          <div id="custBranchLockNotice" class="hidden text-xs sm:text-sm text-blue-800 font-bold flex items-center gap-2 mt-2 bg-blue-50/90 px-3.5 py-2.5 rounded-xl border border-blue-200">
-            <i class="fa-solid fa-lock text-blue-600 text-sm"></i>
-            <span id="custBranchLockText">Branch locked to your registered profile</span>
-          </div>
-        </div>
+        <!-- Branch (Fixed to Kota Sentosa) -->
+        <input type="hidden" id="custBranchSelect" value="Kota Sentosa">
 
-        <!-- Step 2: Request Type (In-Person vs 1-Month Extension) -->
+        <!-- Step 1: Request Type (In-Person vs 1-Month Extension) -->
         <div class="space-y-3">
           <label class="block text-base sm:text-lg font-extrabold text-gray-900 flex items-center gap-2">
-            <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-black">2</span>
-            <span id="custStep2Title">Select Your Service</span>
+            <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-black">1</span>
+            <span id="custStep1Title">Select Your Service</span>
           </label>
           <div class="grid grid-cols-1 gap-3.5" id="custBookingTypeOptions">
             <!-- Option 1: In-Person Consultation -->
@@ -5507,12 +5483,12 @@ Date visit: 06.01.2026
           </div>
         </div>
 
-        <!-- Step 3: Preferred Pharmacist / Consultant -->
+        <!-- Step 2: Preferred Pharmacist / Consultant -->
         <div class="space-y-2" id="custPharmacistSection">
           <label class="block text-base sm:text-lg font-extrabold text-gray-900 flex items-center justify-between">
             <span class="flex items-center gap-2">
-              <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-black">3</span>
-              <span id="custStep3Title">Preferred Pharmacist</span>
+              <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-black">2</span>
+              <span id="custStep2Title">Preferred Pharmacist</span>
             </span>
             <span id="custPharmOptional" class="text-xs sm:text-sm text-gray-400 font-normal">Optional</span>
           </label>
@@ -5522,12 +5498,12 @@ Date visit: 06.01.2026
           </select>
         </div>
 
-        <!-- Step 4 & 5: Date & Time Picker Container -->
+        <!-- Step 3 & 4: Date & Time Picker Container -->
         <div class="space-y-4" id="custDateTimeSection">
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div class="space-y-2">
               <label class="block text-base sm:text-lg font-extrabold text-gray-900 flex items-center gap-2">
-                <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-black">4</span>
+                <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-black">3</span>
                 <span id="custDateLabel">Select Date</span>
               </label>
               <input type="date" id="custBookDate" required onchange="updateCustBookHours()"
@@ -5535,7 +5511,7 @@ Date visit: 06.01.2026
             </div>
             <div class="space-y-2" id="custTimeSlotContainer">
               <label class="block text-base sm:text-lg font-extrabold text-gray-900 flex items-center gap-2">
-                <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-black">5</span>
+                <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-black">4</span>
                 <span id="custTimeLabel">Select Time Slot</span>
               </label>
               <select id="custBookTime" required
@@ -5568,11 +5544,11 @@ Date visit: 06.01.2026
         <!-- Date Override / Closed Alert Banner -->
         <div id="custDateStatusBanner" class="hidden rounded-2xl p-4 text-sm sm:text-base font-bold flex items-center gap-2.5"></div>
 
-        <!-- Step 6: Customer Details -->
+        <!-- Step 5: Customer Details -->
         <div class="space-y-4 pt-4 border-t border-gray-100">
           <label class="block text-base sm:text-lg font-extrabold text-gray-900 flex items-center gap-2">
-            <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-black">6</span>
-            <span id="custStep6Title">Your Particulars</span>
+            <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-black">5</span>
+            <span id="custStep5Title">Your Particulars</span>
           </label>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
