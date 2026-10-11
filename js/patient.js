@@ -1911,13 +1911,14 @@ function buildWhatsAppMessage(patient, appointment) {
   const date = appointment.date;
   const time = appointment.time || '10:00';
   const purpose = appointment.purpose || 'Follow-up Consultation';
+  const bookingUrl = typeof getPatientSelfBookingUrl === 'function' ? getPatientSelfBookingUrl(patient) : window.location.href;
 
   if (lang === 'Chinese') {
-    return `您好 ${name}，这里是 ${branchName}。\n\n温馨提醒您，您预约的【${purpose}】时间为：\n📅 日期：${date}\n⏰ 时间：${time}\n\n请问需要我们提前为您准备好药物吗？如需调整时间，请随时回复我们。祝您身体健康！`;
+    return `您好 ${name}，这里是 ${branchName}。\n\n温馨提醒您，您预约的【${purpose}】时间为：\n📅 日期：${date}\n⏰ 时间：${time}\n\n如需调整时间或随时重新选择预约时段，可点击您的专属预约链接：\n👉 ${bookingUrl}\n\n请问需要我们提前为您准备好药物吗？祝您身体健康！`;
   } else if (lang === 'Malay') {
-    return `Salam ${name}, ini peringatan mesra dari ${branchName}.\n\nTemujanji anda untuk [${purpose}] dijadualkan pada:\n📅 Tarikh: ${date}\n⏰ Masa: ${time}\n\nSila maklumkan sekiranya anda ingin kami sediakan ubat lebih awal, atau jika ingin menjadualkan semula. Terima kasih & semoga sihat selalu!`;
+    return `Salam ${name}, ini peringatan mesra dari ${branchName}.\n\nTemujanji anda untuk [${purpose}] dijadualkan pada:\n📅 Tarikh: ${date}\n⏰ Masa: ${time}\n\nSekiranya anda perlu menukar masa atau memilih waktu temujanji lain pada bila-bila masa, sila klik pautan ini:\n👉 ${bookingUrl}\n\nSila maklumkan sekiranya anda ingin kami sediakan ubat lebih awal. Terima kasih & semoga sihat selalu!`;
   } else {
-    return `Hello ${name}, this is a friendly reminder from ${branchName}.\n\nYour appointment for [${purpose}] is scheduled for:\n📅 Date: ${date}\n⏰ Time: ${time}\n\nWould you like us to prepare your medications in advance? Please let us know if you need to reschedule. Thank you and stay healthy!`;
+    return `Hello ${name}, this is a friendly reminder from ${branchName}.\n\nYour appointment for [${purpose}] is scheduled for:\n📅 Date: ${date}\n⏰ Time: ${time}\n\nIf you need to change your time or book another slot at any time, feel free to use your personal booking link:\n👉 ${bookingUrl}\n\nWould you like us to prepare your medications in advance? Thank you and stay healthy!`;
   }
 }
 
@@ -4918,7 +4919,7 @@ async function saveNewEncounter() {
   // Prompt pharmacist to send WhatsApp Consultation Summary with Google Review & Community links
   setTimeout(() => {
     if (p.phone) {
-      const sendWa = confirm(`✅ Consultation & POCT recorded successfully for ${p.name}!\n\nWould you like to send the Consultation Summary & Google 5-Star Review link to ${p.name} via WhatsApp now?`);
+      const sendWa = confirm(`✅ Consultation & POCT recorded successfully for ${p.name}!\n\nWould you like to send the Consultation Summary, Self-Booking Appointment Link & Google Review to ${p.name} via WhatsApp now?`);
       if (sendWa) {
         const waSummary = buildConsultationWaSummary(p, newEnc, p.language);
         const waUrl = `https://wa.me/${formatPhoneForWa(p.phone)}?text=${encodeURIComponent(waSummary)}`;
@@ -6048,6 +6049,10 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
   const personalFbLink = 'https://www.facebook.com/profile.php?id=61563952747645';
   const outletFbLink = 'https://www.facebook.com/profile.php?id=61589640333203';
 
+  const bookingUrl = typeof getPatientSelfBookingUrl === 'function' ? getPatientSelfBookingUrl(patient) : window.location.href;
+  const nextTca = enc.nextTcaDate || patient.nextTcaDate || '';
+  const nextPurpose = enc.nextTcaPurpose || patient.nextTcaPurpose || '';
+
   if (lang === 'Chinese') {
     let msg = `尊敬的 ${name}，这是您于 ${date} 在【${branchName}】的健康咨询与检查报告小结：\n\n`;
     msg += `*测量与化验数据 (Vitals & POCT)：*\n`;
@@ -6092,7 +6097,14 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
 
     if (enc.planCounselling) msg += `\n*饮食与生活注意：*\n${enc.planCounselling}\n`;
 
-    msg += `\n*如果您对我们今天的健康咨询与检测服务满意，诚挚邀请您为我们留下 5 星好评支持：*\n- 谷歌5星好评：${googleReviewLink}\n\n`;
+    // Customer Self-Booking Link
+    msg += `\n*📅 预约下一次健康咨询 / 检查（随时自助预约）：*\n`;
+    if (nextTca) {
+      msg += `- 建议随访/复查日期：${nextTca}${nextPurpose ? ` (${nextPurpose})` : ''}\n`;
+    }
+    msg += `- 自助预约专属链接（随时在线选时段）：\n👉 ${bookingUrl}\n\n`;
+
+    msg += `*如果您对我们今天的健康咨询与检测服务满意，诚挚邀请您为我们留下 5 星好评支持：*\n- 谷歌5星好评：${googleReviewLink}\n\n`;
     msg += `*欢迎加入我们的健康关怀 WhatsApp 社区（获取最新健康资讯与用药指导）：*\n- 社区链接：${waCommunityLink}\n\n`;
     msg += `*关注我们获取更多保健知识：*\n- 药剂师主页：${personalFbLink}\n- PMG Kota Sentosa 专页：${outletFbLink}\n\n`;
     msg += `祝您身体健康！如有任何用药疑问，欢迎随时联系我们。`;
@@ -6141,7 +6153,14 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
 
     if (enc.planCounselling) msg += `\n*Nasihat Gaya Hidup:*\n${enc.planCounselling}\n`;
 
-    msg += `\n*Jika anda berpuas hati dengan perkhidmatan dan ujian kesihatan kami, sudilah berikan kami penilaian 5 bintang di Google:*\n- Ulasan Google 5 Bintang: ${googleReviewLink}\n\n`;
+    // Customer Self-Booking Link
+    msg += `\n*📅 Tempah Temujanji Konsultasi / Pemeriksaan Seterusnya (Bila-bila masa):*\n`;
+    if (nextTca) {
+      msg += `- Cadangan Tarikh Temujanji Susulan: ${nextTca}${nextPurpose ? ` (${nextPurpose})` : ''}\n`;
+    }
+    msg += `- Pautan Tempahan Temujanji (Pilih Masa Dalam Talian): \n👉 ${bookingUrl}\n\n`;
+
+    msg += `*Jika anda berpuas hati dengan perkhidmatan dan ujian kesihatan kami, sudilah berikan kami penilaian 5 bintang di Google:*\n- Ulasan Google 5 Bintang: ${googleReviewLink}\n\n`;
     msg += `*Sertai Komuniti WhatsApp Kesihatan Kami (dapatkan tips kesihatan & nasihat ubatan terkini):*\n- Pautan Komuniti: ${waCommunityLink}\n\n`;
     msg += `*Ikuti kami di Facebook untuk info kesihatan harian:*\n- Profil Ahli Farmasi: ${personalFbLink}\n- Halaman PMG Kota Sentosa: ${outletFbLink}\n\n`;
     msg += `Semoga sihat selalu! Hubungi kami jika ada sebarang pertanyaan.`;
@@ -6189,6 +6208,13 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
     }
 
     if (enc.planCounselling) msg += `\n*Lifestyle & Dietary Advice:*\n${enc.planCounselling}\n`;
+
+    // Customer Self-Booking Link
+    msg += `\n*📅 Book Your Next Health Consultation / Checkup (Anytime self-booking):*\n`;
+    if (nextTca) {
+      msg += `- Recommended Follow-up Date: ${nextTca}${nextPurpose ? ` (${nextPurpose})` : ''}\n`;
+    }
+    msg += `- Self-Booking Appointment Link (Select Slot Online): \n👉 ${bookingUrl}\n\n`;
 
     msg += `\n*If you are satisfied with our health consultation and testing service today, we would greatly appreciate your 5-star Google review:*\n- Rate 5 Stars on Google: ${googleReviewLink}\n\n`;
     msg += `*Join our WhatsApp Health Community (for the latest health tips & updates):*\n- Community Link: ${waCommunityLink}\n\n`;
@@ -11217,6 +11243,7 @@ function shareChronotherapyWa() {
   const lang = patient.language || 'Chinese';
   const name = patient.name;
   const branchName = (patient.branch === 'KS01' || patient.branch === 'KOTA SENTOSA') ? 'PMG Pharmacy Kota Sentosa' : `PMG Pharmacy ${patient.branch}`;
+  const bookingUrl = typeof getPatientSelfBookingUrl === 'function' ? getPatientSelfBookingUrl(patient) : window.location.href;
 
   let msg = '';
   if (lang === 'Chinese') {
@@ -11233,6 +11260,7 @@ function shareChronotherapyWa() {
     if (chrono.bedtime?.length) {
       msg += `🌙 *睡前：*\n${chrono.bedtime.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
+    msg += `📅 *预约药剂师复诊与健康咨询（随时在线选时段）：*\n👉 ${bookingUrl}\n\n`;
     msg += `💡 *温馨提示：* 按时规律服用可达最佳吸收效果并减少肠胃不适。如有任何用药疑问，欢迎随时联系 PMG 药剂师！`;
   } else if (lang === 'Malay') {
     msg += `Salam ${name}, ini adalah jadual masa pengambilan ubat & suplemen harian anda dari 【${branchName}】 (Kronoterapi):\n\n`;
@@ -11248,6 +11276,7 @@ function shareChronotherapyWa() {
     if (chrono.bedtime?.length) {
       msg += `🌙 *Sebelum Tidur:*\n${chrono.bedtime.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
+    msg += `📅 *Tempah Temujanji Konsultasi & Semakan Ubat (Bila-bila masa):*\n👉 ${bookingUrl}\n\n`;
     msg += `💡 *Peringatan Mesra:* Ambil mengikut jadual untuk penyerapan optimum dan mengurangkan kesan sampingan. Hubungi ahli farmasi PMG jika ada soalan!`;
   } else {
     msg += `Dear ${name}, here is your personalized daily medication and supplement timing schedule from ${branchName} (Chronotherapy):\n\n`;
@@ -11263,6 +11292,7 @@ function shareChronotherapyWa() {
     if (chrono.bedtime?.length) {
       msg += `🌙 *Bedtime:*\n${chrono.bedtime.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
+    msg += `📅 *Book a Follow-up Consultation or Medication Review (Anytime):*\n👉 ${bookingUrl}\n\n`;
     msg += `💡 *Pharmacist Tip:* Taking items at recommended optimal times maximizes clinical absorption and minimizes gastrointestinal upset. Feel free to reach out with any questions!`;
   }
 
