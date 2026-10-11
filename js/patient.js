@@ -9928,10 +9928,17 @@ async function openManageHoursModal() {
     }
   }
 
-  // Pre-fill override date input with today
+  // Pre-fill override date inputs with today
   const overrideDateInput = document.getElementById('overrideDateInput');
+  const overrideEndDateInput = document.getElementById('overrideEndDateInput');
   if (overrideDateInput && !overrideDateInput.value) {
     overrideDateInput.value = getTodayDateString(0);
+  }
+  if (overrideEndDateInput && !overrideEndDateInput.value) {
+    overrideEndDateInput.value = getTodayDateString(0);
+  }
+  if (typeof onOverrideDateChange === 'function') {
+    onOverrideDateChange();
   }
 
   switchHoursSubTab('weekly');
@@ -10166,6 +10173,91 @@ function toggleOverrideTimeInputs() {
   }
 }
 
+function onOverrideDateChange() {
+  const startInput = document.getElementById('overrideDateInput');
+  const endInput = document.getElementById('overrideEndDateInput');
+  const notice = document.getElementById('overrideRangeNotice');
+  const noticeText = document.getElementById('overrideRangeNoticeText');
+  const btnText = document.getElementById('overrideSubmitBtnText');
+
+  if (!startInput) return;
+  const s = startInput.value;
+  if (!s) {
+    if (notice) notice.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Set Date Override';
+    return;
+  }
+
+  if (endInput) {
+    if (!endInput.value) {
+      endInput.value = s;
+    }
+    endInput.min = s;
+  }
+
+  const e = (endInput && endInput.value) ? endInput.value : s;
+  if (e > s) {
+    const dates = getDateRangeArray(s, e);
+    const count = dates.length;
+    if (notice && noticeText) {
+      noticeText.textContent = `Date Range: ${count} days selected (${s} → ${e})`;
+      notice.classList.remove('hidden');
+    }
+    if (btnText) {
+      btnText.textContent = `Set Date Override (${count} Days)`;
+    }
+  } else {
+    if (notice) notice.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Set Date Override';
+  }
+}
+
+function resetOverrideEndDate() {
+  const startInput = document.getElementById('overrideDateInput');
+  const endInput = document.getElementById('overrideEndDateInput');
+  if (startInput && endInput) {
+    endInput.value = startInput.value;
+    onOverrideDateChange();
+  }
+}
+
+function getDateRangeArray(startStr, endStr) {
+  if (!startStr) return [];
+  const sStr = startStr;
+  const eStr = endStr || startStr;
+  let [sY, sM, sD] = sStr.split('-').map(Number);
+  let [eY, eM, eD] = eStr.split('-').map(Number);
+  let cur = new Date(sY, sM - 1, sD);
+  let end = new Date(eY, eM - 1, eD);
+
+  if (end < cur) {
+    const tmp = cur;
+    cur = end;
+    end = tmp;
+  }
+
+  const result = [];
+  let safety = 0;
+  while (cur <= end && safety < 120) {
+    const y = cur.getFullYear();
+    const m = String(cur.getMonth() + 1).padStart(2, '0');
+    const d = String(cur.getDate()).padStart(2, '0');
+    result.push(`${y}-${m}-${d}`);
+    cur.setDate(cur.getDate() + 1);
+    safety++;
+  }
+  return result;
+}
+
+function getDayOfWeekShort(dateStr) {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-').map(Number);
+  if (parts.length !== 3) return '';
+  const d = new Date(parts[0], parts[1] - 1, parts[2]);
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  return days[d.getDay()] || '';
+}
+
 async function saveDateOverride(e) {
   if (e) e.preventDefault();
   const branchSelect = document.getElementById('hoursBranchSelect');
@@ -10181,13 +10273,34 @@ async function saveDateOverride(e) {
   const dateInput = document.getElementById('overrideDateInput');
   const dateStr = dateInput ? dateInput.value : '';
   if (!dateStr) {
-    alert('Please choose a date.');
+    alert('Please choose a start date.');
     return;
   }
 
+  const endDateInput = document.getElementById('overrideEndDateInput');
+  const endDateStr = (endDateInput && endDateInput.value) ? endDateInput.value : dateStr;
+
+  let start = dateStr;
+  let end = endDateStr;
+  if (end < start) {
+    const tmp = start;
+    start = end;
+    end = tmp;
+  }
+
   const todayStr = getTodayDateString(0);
-  if (dateStr < todayStr) {
-    alert(`Cannot set an override for a past date (${dateStr}).`);
+  if (end < todayStr) {
+    alert(`Cannot set an override for past dates (selected up to ${end}).`);
+    return;
+  }
+
+  const datesInRange = getDateRangeArray(start, end);
+  if (datesInRange.length === 0) {
+    alert('Invalid date range.');
+    return;
+  }
+  if (datesInRange.length > 90) {
+    alert('Date range cannot exceed 90 days.');
     return;
   }
 
@@ -10196,40 +10309,121 @@ async function saveDateOverride(e) {
 
   if (!sched.dateOverrides) sched.dateOverrides = {};
 
-  if (statusSel === 'closed') {
-    sched.dateOverrides[dateStr] = {
-      isClosed: true,
-      open: '',
-      close: '',
-      pharmacist: '',
-      reason: reason || 'Rest Day / Public Holiday'
-    };
-  } else {
-    const openVal = document.getElementById('overrideOpenInput')?.value || '08:00';
-    const closeVal = document.getElementById('overrideCloseInput')?.value || '17:00';
-    const pharmVal = normalizePharmacistName(document.getElementById('overridePharmacistInput')?.value?.trim() || sched.defaultPharmacist || 'William Chai Yee Sian (Pharmacist)');
+  const openVal = document.getElementById('overrideOpenInput')?.value || '08:00';
+  const closeVal = document.getElementById('overrideCloseInput')?.value || '17:00';
+  const pharmVal = normalizePharmacistName(document.getElementById('overridePharmacistInput')?.value?.trim() || sched.defaultPharmacist || 'William Chai Yee Sian (Pharmacist)');
 
-    sched.dateOverrides[dateStr] = {
-      isClosed: false,
-      open: openVal,
-      close: closeVal,
-      pharmacist: pharmVal,
-      reason: reason || 'Custom Working Hours'
-    };
-  }
+  datesInRange.forEach(d => {
+    if (statusSel === 'closed') {
+      sched.dateOverrides[d] = {
+        isClosed: true,
+        open: '',
+        close: '',
+        pharmacist: '',
+        reason: reason || 'Rest Day / Public Holiday'
+      };
+    } else {
+      sched.dateOverrides[d] = {
+        isClosed: false,
+        open: openVal,
+        close: closeVal,
+        pharmacist: pharmVal,
+        reason: reason || 'Custom Working Hours'
+      };
+    }
+  });
 
   if (baseSched && Array.isArray(baseSched.onlineBookings) && (!Array.isArray(sched.onlineBookings) || sched.onlineBookings.length === 0)) {
     sched.onlineBookings = baseSched.onlineBookings;
   }
 
-  savePharmacistSchedule(code, sched);
-  await pushScheduleToSheets(code, sched);
-  renderDateOverridesTbody(sched);
+  const submitBtn = document.getElementById('overrideSubmitBtn');
+  const originalBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Saving...';
+  }
+
+  try {
+    savePharmacistSchedule(code, sched);
+    await pushScheduleToSheets(code, sched);
+    renderDateOverridesTbody(sched);
+    updateShareBookingUrl();
+    updateCustBookHours();
+    const form = document.getElementById('dateOverrideForm');
+    if (form) form.reset();
+    toggleOverrideTimeInputs();
+    onOverrideDateChange();
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalBtnHtml || '<i class="fa-solid fa-check"></i> <span id="overrideSubmitBtnText">Set Date Override</span>';
+    }
+  }
+}
+
+function editDateOverride(dateStr) {
+  const branchSelect = document.getElementById('hoursBranchSelect');
+  const rawCode = branchSelect ? branchSelect.value : 'Kota Sentosa';
+  const code = normalizeBranchCode(rawCode);
+  const sched = getPharmacistSchedule(code);
+  const ov = sched.dateOverrides ? sched.dateOverrides[dateStr] : null;
+  if (!ov) return;
+
+  const startInput = document.getElementById('overrideDateInput');
+  const endInput = document.getElementById('overrideEndDateInput');
+  const statusSel = document.getElementById('overrideStatusSelect');
+  const reasonInput = document.getElementById('overrideReasonInput');
+  const openInput = document.getElementById('overrideOpenInput');
+  const closeInput = document.getElementById('overrideCloseInput');
+  const pharmInput = document.getElementById('overridePharmacistInput');
+
+  if (startInput) startInput.value = dateStr;
+  if (endInput) endInput.value = dateStr;
+  if (statusSel) statusSel.value = ov.isClosed ? 'closed' : 'custom';
+  if (reasonInput) reasonInput.value = ov.reason || '';
+
+  if (!ov.isClosed) {
+    if (openInput && ov.open) openInput.value = ov.open;
+    if (closeInput && ov.close) closeInput.value = ov.close;
+    if (pharmInput && ov.pharmacist) pharmInput.value = ov.pharmacist;
+  }
+
+  toggleOverrideTimeInputs();
+  onOverrideDateChange();
+
+  const form = document.getElementById('dateOverrideForm');
+  if (form) form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function clearAllDateOverrides() {
+  const branchSelect = document.getElementById('hoursBranchSelect');
+  const rawCode = branchSelect ? branchSelect.value : 'Kota Sentosa';
+  const code = normalizeBranchCode(rawCode);
+
+  const sched = getPharmacistSchedule(code);
+  const count = sched.dateOverrides ? Object.keys(sched.dateOverrides).length : 0;
+  if (count === 0) {
+    alert('No date overrides currently set.');
+    return;
+  }
+
+  if (!confirm(`Are you sure you want to remove all ${count} date override(s) for ${code}? All dates will return to the fixed weekly template.`)) {
+    return;
+  }
+
+  let baseSched = null;
+  try {
+    baseSched = await fetchScheduleFromSheets(code);
+  } catch (_) {}
+  const targetSched = baseSched || sched;
+
+  targetSched.dateOverrides = {};
+  savePharmacistSchedule(code, targetSched);
+  await pushScheduleToSheets(code, targetSched);
+  renderDateOverridesTbody(targetSched);
   updateShareBookingUrl();
   updateCustBookHours();
-  const form = document.getElementById('dateOverrideForm');
-  if (form) form.reset();
-  toggleOverrideTimeInputs();
 }
 
 async function deleteDateOverride(dateStr) {
@@ -10280,20 +10474,26 @@ function renderDateOverridesTbody(sched) {
   dates.forEach(d => {
     const item = overrides[d];
     const isClosed = item.isClosed;
+    const dayName = getDayOfWeekShort(d);
     const statusPill = isClosed
       ? `<span class="bg-rose-100 text-rose-700 text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1"><i class="fa-solid fa-ban"></i> Closed / Rest Day</span>`
       : `<span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1"><i class="fa-regular fa-clock"></i> ${item.open} – ${item.close}</span>`;
 
     html += `
       <tr class="hover:bg-gray-50/80 transition text-xs">
-        <td class="p-2.5 font-bold font-mono text-gray-900">${d}</td>
+        <td class="p-2.5 font-bold font-mono text-gray-900">${d} ${dayName ? `<span class="text-[10px] text-gray-500 font-sans font-normal">(${dayName})</span>` : ''}</td>
         <td class="p-2.5">${statusPill}</td>
         <td class="p-2.5 text-gray-700">${escHtml(item.pharmacist || '—')}</td>
         <td class="p-2.5 text-gray-600">${escHtml(item.reason || '—')}</td>
         <td class="p-2.5 text-center">
-          <button type="button" onclick="deleteDateOverride('${d}')" class="text-rose-500 hover:text-rose-700 p-1 rounded hover:bg-rose-50 transition" title="Delete this override">
-            <i class="fa-solid fa-trash-can"></i>
-          </button>
+          <div class="flex items-center justify-center gap-1.5">
+            <button type="button" onclick="editDateOverride('${d}')" class="text-indigo-600 hover:text-indigo-800 p-1 rounded hover:bg-indigo-50 transition" title="Edit this date override">
+              <i class="fa-solid fa-pen-to-square"></i>
+            </button>
+            <button type="button" onclick="deleteDateOverride('${d}')" class="text-rose-500 hover:text-rose-700 p-1 rounded hover:bg-rose-50 transition" title="Delete this override">
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+          </div>
         </td>
       </tr>
     `;

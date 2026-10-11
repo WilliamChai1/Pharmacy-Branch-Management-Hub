@@ -3336,21 +3336,44 @@ Date visit: 06.01.2026
               <i class="fa-solid fa-calendar-plus text-indigo-600"></i> Add or Edit Date Override (Rest Day, Public Holiday or Custom Shift)
             </h4>
             <form id="dateOverrideForm" onsubmit="saveDateOverride(event)" class="space-y-3">
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <!-- Date Range Selection: Start Date & End Date -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-[11px] font-bold text-gray-700 mb-1">Target Date:</label>
-                  <input type="date" id="overrideDateInput" required class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none">
+                  <label class="block text-[11px] font-bold text-gray-700 mb-1 flex items-center gap-1.5">
+                    <i class="fa-regular fa-calendar text-indigo-600"></i> Start Date:
+                  </label>
+                  <input type="date" id="overrideDateInput" required onchange="onOverrideDateChange()" class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
                 </div>
                 <div>
+                  <label class="block text-[11px] font-bold text-gray-700 mb-1 flex items-center justify-between">
+                    <span class="flex items-center gap-1.5"><i class="fa-regular fa-calendar-check text-indigo-600"></i> End Date:</span>
+                    <span class="text-[10px] text-gray-400 font-normal">Optional (for date range)</span>
+                  </label>
+                  <input type="date" id="overrideEndDateInput" onchange="onOverrideDateChange()" class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+                </div>
+              </div>
+
+              <!-- Date Range Feedback Banner -->
+              <div id="overrideRangeNotice" class="hidden text-[11px] font-bold text-indigo-800 bg-indigo-100/70 border border-indigo-200 rounded-lg px-3 py-1.5 flex items-center justify-between">
+                <span class="flex items-center gap-1.5">
+                  <i class="fa-solid fa-calendar-days text-indigo-600"></i>
+                  <span id="overrideRangeNoticeText">Range: 3 days selected</span>
+                </span>
+                <button type="button" onclick="resetOverrideEndDate()" class="text-[10px] text-indigo-600 hover:text-indigo-900 underline font-semibold">Single Day</button>
+              </div>
+
+              <!-- Day Status & Reason Row -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
                   <label class="block text-[11px] font-bold text-gray-700 mb-1">Day Status:</label>
-                  <select id="overrideStatusSelect" onchange="toggleOverrideTimeInputs()" class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none">
+                  <select id="overrideStatusSelect" onchange="toggleOverrideTimeInputs()" class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
                     <option value="closed">🔴 Closed / Rest Day / Public Holiday</option>
                     <option value="custom">🟢 Custom Working Hours</option>
                   </select>
                 </div>
                 <div>
                   <label class="block text-[11px] font-bold text-gray-700 mb-1">Reason / Note:</label>
-                  <input type="text" id="overrideReasonInput" placeholder="e.g. Malaysia Day, Annual Leave, Half-Day" class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
+                  <input type="text" id="overrideReasonInput" placeholder="e.g. Malaysia Day, Annual Leave, Deepavali" class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
                 </div>
               </div>
 
@@ -3366,13 +3389,13 @@ Date visit: 06.01.2026
                 </div>
                 <div>
                   <label class="block text-[11px] font-bold text-gray-700 mb-1">Duty Pharmacist:</label>
-                  <input type="text" id="overridePharmacistInput" placeholder="e.g. Pharmacist William" class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
+                  <input type="text" id="overridePharmacistInput" placeholder="e.g. William Chai Yee Sian (Pharmacist)" class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
                 </div>
               </div>
 
               <div class="flex justify-end pt-1">
-                <button type="submit" class="bg-indigo-700 hover:bg-indigo-800 text-white font-bold text-xs px-4 py-2 rounded-xl transition flex items-center gap-1.5 shadow-sm">
-                  <i class="fa-solid fa-check"></i> Set Date Override
+                <button type="submit" id="overrideSubmitBtn" class="bg-indigo-700 hover:bg-indigo-800 text-white font-bold text-xs px-4 py-2 rounded-xl transition flex items-center gap-1.5 shadow-sm">
+                  <i class="fa-solid fa-check"></i> <span id="overrideSubmitBtnText">Set Date Override</span>
                 </button>
               </div>
             </form>
@@ -3384,6 +3407,9 @@ Date visit: 06.01.2026
               <h5 class="text-xs font-bold text-gray-700 flex items-center gap-1.5">
                 <i class="fa-solid fa-list-check text-indigo-600"></i> Active Date Overrides (<span id="overrideCountBadge">0</span>)
               </h5>
+              <button type="button" onclick="clearAllDateOverrides()" class="text-[11px] text-rose-600 hover:text-rose-800 font-bold hover:underline flex items-center gap-1" title="Remove all active overrides">
+                <i class="fa-solid fa-trash-can"></i> Clear All Overrides
+              </button>
             </div>
             <div class="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
               <table class="w-full text-xs text-left">
