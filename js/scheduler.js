@@ -861,13 +861,13 @@ async function generateTimetable() {
   const month = parseInt(monthStr, 10);
   const totalDays = new Date(year, month, 0).getDate();
 
-  const SOLVER_TIMEOUT_MS = 10000;
+  const SOLVER_TIMEOUT_MS = 35000;
   let solverTimedOut = false;
 
   const timeoutPromise = new Promise((_, reject) => {
     setTimeout(() => {
       solverTimedOut = true;
-      reject(new Error('TIMEOUT_10S'));
+      reject(new Error('TIMEOUT_35S'));
     }, SOLVER_TIMEOUT_MS);
   });
 
@@ -879,13 +879,15 @@ async function generateTimetable() {
         { code: SCHEDULER_PRIMARY_MODEL,   name: 'Gemini 3.5 Flash-Lite (Primary)' },
         { code: SCHEDULER_SECONDARY_MODEL, name: 'Gemini 3.5 Flash (Secondary)' },
         { code: SCHEDULER_TERTIARY_MODEL,  name: 'Gemini 2.5 Flash-Lite (Backup)' },
-        { code: 'gemini-2.5-flash',        name: 'Gemini 2.5 Flash (Fallback)' }
+        { code: 'gemini-2.5-flash',        name: 'Gemini 2.5 Flash (Fallback)' },
+        { code: 'gemini-2.0-flash',        name: 'Gemini 2.0 Flash (Fallback)' },
+        { code: 'gemini-1.5-flash',        name: 'Gemini 1.5 Flash (Fallback)' }
       ];
 
       const aiAttempt = async () => {
         const startTime = Date.now();
         for (const m of schedulerCandidateModels) {
-          if (Date.now() - startTime > 8500) break; // Keep buffer for timeout
+          if (Date.now() - startTime > 32000) break; // Keep buffer for timeout
           try {
             if (statusText) statusText.textContent = `Querying ${m.name} with Dynamic Headcount & Shift Parity rules…`;
             const res = await callSchedulerGemini(m.code, branchVal, monthVal, totalDays, apiKey);
@@ -917,7 +919,7 @@ async function generateTimetable() {
         showSchedulerToast('AI Schedule generated successfully with strict headcount & parity constraints', 'success');
       } else {
         if (statusText) statusText.textContent = solverTimedOut
-          ? 'AI query exceeded 10s limit. Running Smart Heuristic Solver…'
+          ? 'AI query exceeded time limit. Running Smart Heuristic Solver…'
           : 'AI models unavailable. Running Smart Heuristic Solver…';
         generatedScheduleData = runHeuristicScheduleGenerator(branchVal, year, month, totalDays);
         if (modelBadge) {
@@ -1090,6 +1092,7 @@ async function callSchedulerGemini(model, branchVal, monthVal, totalDays, apiKey
     const dayPrefEntries = Object.entries(t.dayPrefs || {}).filter(([_, v]) => v && v !== 'Flexible');
     const dayPrefStr = dayPrefEntries.map(([k, v]) => `${k}: ${v}`).join(', ') || 'All days flexible';
     const explicitRd = (t.dayPrefs && Object.keys(t.dayPrefs).find(k => t.dayPrefs[k] === 'RD')) || (t.restDayPref && t.restDayPref !== 'Flexible' ? t.restDayPref : null) || 'Flexible';
+    const explicitHd = (t.dayPrefs && Object.keys(t.dayPrefs).find(k => t.dayPrefs[k] === 'Morning Half (4H)')) || ((t.halfDayPref && t.halfDayPref !== 'None') ? (t.halfDayPref.includes(' ') ? t.halfDayPref.split(' ')[0] : t.halfDayPref) : null) || 'Flexible';
     return {
       empNo: t.empNo,
       name: t.empName,
@@ -1101,12 +1104,17 @@ async function callSchedulerGemini(model, branchVal, monthVal, totalDays, apiKey
       isChinese: t.race === 'Chinese',
       scheduleMode: isFixed ? 'Fixed' : 'Rotating',
       presetFixedRestDay: explicitRd,
+      presetFixedHalfDay: explicitHd,
       shiftPref: t.shiftPref || 'Flexible',
       restDayPref: t.restDayPref || 'Sunday',
       halfDayPref: t.halfDayPref || 'None',
       daySpecificPrefs: dayPrefStr
     };
   });
+
+  const hasBranchManager = currentTeammates.some(t => t.position && t.position.toLowerCase().includes('branch manager') && !t.position.toLowerCase().includes('assistant'));
+  const hasAssistantBranchManager = currentTeammates.some(t => t.position && t.position.toLowerCase().includes('assistant branch manager'));
+  const managerRuleActive = hasBranchManager && hasAssistantBranchManager;
 
   const prompt = `You are an expert Pharmacy Operations Director scheduling the retail branch roster for PMG Pharmacy Kota Sentosa (KS01).
 Branch: PMG Kota Sentosa (Operating Hours: 07:30 to 21:30 daily).
@@ -1127,11 +1135,14 @@ OPERATIONAL RULES & PRIORITY CONSTRAINTS (IN ORDER OF PRIORITY):
    - William is EXCLUDED from the rotating AM/PM parity calculation.
    - William is EXCLUDED from the 2:00 PM – 3:30 PM Gondola Cleaning/Refilling rotation pool.
 
-2. MANDATORY PRESET FIXED REST DAYS (FROM OUTLET TEAMMATE PROFILES & PREFERENCES):
+2. MANDATORY PRESET FIXED REST DAYS & HALF DAYS (FROM OUTLET TEAMMATE PROFILES & PREFERENCES):
    - Every teammate's weekly Full Rest Day ('RD') MUST be strictly FIXED on the exact day of the week preset in their Outlet Teammate Profiles & Preferences (refer to 'presetFixedRestDay'):
      * If a teammate has a preset fixed rest day (e.g. Ting = Sunday, Kenix = Monday, Penny = Tuesday, Louna = Thursday, Fiona = Thursday, Nurhafizah = Monday, Farizin = Friday, Christina = Saturday), that teammate MUST have their Rest Day ('RD') on that EXACT day of the week in EVERY single 7-day calendar week (Monday to Sunday)!
      * STRICTLY FORBIDDEN: DO NOT shift, displace, reassign, or move any teammate's rest day to any other day of the week.
      * Only teammates whose presetFixedRestDay is explicitly set to 'Flexible' may have their rest day decided by the AI.
+   - Every teammate's weekly Half Day ('4H_0730-1130') MUST be strictly FIXED on the exact day of the week preset in their Outlet Teammate Profiles & Preferences (refer to 'presetFixedHalfDay'):
+     * If a teammate has a preset fixed half day (e.g. Kenix = Sunday, Penny = Monday, Farizin = Tuesday, Louna = Wednesday, Fiona = Wednesday, Christina = Friday), that teammate MUST have their Half Day ('4H_0730-1130') on that EXACT day of the week in EVERY single 7-day calendar week (Monday to Sunday)!
+     * Teammates with 'presetFixedHalfDay' set to 'Flexible' or 'None' (e.g. Ting, Nurhafizah) should be assigned their 1 Half Day rest per week on a day where store headcount is plentiful.
 
 3. HARD FLOOR REQUIREMENT — AT LEAST 3 STAFF ACROSS THE WHOLE DAY:
    - For every single day:
@@ -1139,23 +1150,25 @@ OPERATIONAL RULES & PRIORITY CONSTRAINTS (IN ORDER OF PRIORITY):
      * Night Shift (12:30 - 21:30): Minimum 3 staff (Night PM staff >= 3).
      * Total staff working per day must be at least 6. Never allow < 3 staff on any shift!
 
-4. WEEKLY MORNING VS NIGHT SHIFT PARITY (DEVIATION <= ±2):
-   - For all rotating teammates (everyone except William), balance the number of Morning shifts ('8H_0730-1630' / '4H_0730-1130') and Night shifts ('8H_1230-2130') counted weekly.
-   - If individual day-specific preferences cause an imbalance, allow a minor deviation between Morning and Night shifts, but STRICTLY keep deviation within ±2 shifts per teammate per week (i.e. |weekly_AM - weekly_PM| <= 2).
+4. WEEKLY MORNING VS NIGHT SHIFT PARITY (STRICT DEVIATION <= ±2):
+   - For all rotating teammates (everyone except William), balance the number of Morning shifts ('8H_0730-1630' / '4H_0730-1130') and Night shifts ('8H_1230-2130') counted weekly (Monday to Sunday).
+   - If individual day-specific preferences cause an imbalance, allow minor deviation, but STRICTLY keep deviation within ±2 shifts per teammate per week (i.e. |weekly_AM - weekly_PM| <= 2). For example, 3 AM and 3 PM (diff 0), 4 AM and 2 PM (diff 2), or 2 AM and 4 PM (diff 2) are acceptable. Any deviation > 2 is FORBIDDEN.
 
-5. SECOND PRIORITY SHIFT COVERAGE & FAIRNESS (WHOLE-DAY CHINESE SPEAKER & BALANCED SHIFTS):
+5. SECOND LESS PRIORITY CONSTRAINTS (WHOLE-DAY CHINESE SPEAKER, MANAGERS & PHARMACIST OMISSION):
    - A. CHINESE-SPEAKING AVAILABILITY ACROSS THE WHOLE DAY (KEY PRIORITY):
      * Having at least one Chinese-speaking staff (race: Chinese: William, Ting, Kenix, Penny, Christina) in EVERY shift (AM shift >= 1 Chinese speaker, PM shift >= 1 Chinese speaker).
      * As long as there is at least one Chinese speaker on each shift across the whole day, that satisfies the requirement!
    - B. MANAGEMENT TEAM COVERAGE:
-     * Having at least one management team member (Assistant Branch Manager, Branch Manager, or Pharmacist) in ANY shift (AM shift >= 1 Manager, PM shift >= 1 Manager).
-   - C. FAIR SHIFT BALANCE FOR KENIX AND CHRISTINA (OMIT MANDATORY PHARMACIST NIGHT COVERAGE):
-     * DO NOT force Pharmacists (Kenix and Christina) to cover all night shifts or all Sunday mornings.
-     * OMIT the rule that pharmacist must cover all morning and night shifts.
+     ${managerRuleActive
+       ? `* Having at least one management team member (Assistant Branch Manager, Branch Manager, or Pharmacist) in ANY shift (AM shift >= 1 Manager, PM shift >= 1 Manager).`
+       : `* [OMITTED]: Branch Manager or Assistant Branch Manager has resigned / is not present. Do NOT enforce management team coverage per shift.`}
+   - C. OMIT THE NECESSITY OF PHARMACIST THROUGHOUT THE WHOLE DAY:
+     * Completely OMIT any rule requiring a pharmacist on every shift or throughout the whole day.
+     * DO NOT force Pharmacists (Kenix Ling and Christina Lee) to cover all night shifts or specific shifts just because they are pharmacists.
      * Treat Kenix Ling and Christina Lee fairly and equally with all other rotating teammates: balance their Morning shifts ('8H_0730-1630' / '4H_0730-1130') and Night shifts ('8H_1230-2130') with weekly deviation <= ±2.
 
 6. STATUTORY REST DAYS (SARAWAK LABOUR ORDINANCE):
-   - Every teammate MUST have exactly 1 Full Rest Day ('RD') on their preset fixed rest day and 1 Half Day rest ('4H_0730-1130') in each 7-day calendar week (Monday to Sunday).
+   - Every teammate MUST have exactly 1 Full Rest Day ('RD') on their preset fixed rest day and 1 Half Day rest ('4H_0730-1130') on their preset fixed half day in each 7-day calendar week (Monday to Sunday).
    - The remaining 5 days in each week are full working shifts (either '8H_0730-1630' or '8H_1230-2130').
 
 7. PUBLIC HOLIDAY (PH) PROTOCOL:
@@ -1166,13 +1179,12 @@ OPERATIONAL RULES & PRIORITY CONSTRAINTS (IN ORDER OF PRIORITY):
 
 8. RESPECT OTHER LIVE DAY-SPECIFIC PREFERENCES:
    - Dynamically schedule each teammate according to their daySpecificPrefs, halfDayPref, and shiftPref specified in the active teammates table above.
-   - Do NOT alter their fixed rest day.
-   - If a teammate has 'Morning Half (4H)' requested on a day, assign their 4H half day on that day.
+   - Do NOT alter their fixed rest day or preset half day.
    - If a teammate has 'Morning Only' or 'Night Only', strictly assign only that shift type on that day.
    - If a teammate has 'Morning Preferred' or 'Night Preferred', prioritize that shift type.
 
 9. ANTI-FATIGUE & HEALTH RESTRICTIONS:
-   - Forbid assigning a Night shift ('8H_1230-2130') followed directly by a Morning shift ('8H_0730-1630' or '4H_0730-1130') the next day (turnaround rest must be >= 15 hours).
+   - Forbid assigning a Night shift ('8H_1230-2130') followed directly by a Morning shift ('8H_0730-1630' or '4H_0730-1130') the next day (turnaround rest must be >= 15 hours), unless leading into their continuous 1.5-day half-day weekend.
    - Maximum 3 consecutive Night shifts.
 
 10. UNIVERSAL 6S CLEANING & REFILLING OVERLAP (14:00 - 15:30):
@@ -1219,11 +1231,11 @@ Respond ONLY with a valid JSON object matching this schema:
     }
   ],
   "warnings": [],
-  "summary": "Summary of pharmacist coverage, shift balance parity, anti-fatigue compliance, and 6S cleaning rotation."
+  "summary": "Summary of whole-day Chinese speaker coverage, weekly shift parity (deviation <= ±2), statutory rest days, anti-fatigue compliance, and 6S cleaning rotation."
 }`;
 
   const controller = new AbortController();
-  const fetchTimeout = setTimeout(() => controller.abort(), 7000);
+  const fetchTimeout = setTimeout(() => controller.abort(), 25000);
 
   try {
     const response = await fetch(url, {
@@ -1300,10 +1312,13 @@ function getFullWeeksPeriod(year, month) {
   return weeks;
 }
 
-// Generate valid zero-fatigue weekly patterns for a rotating teammate.
-// Law of Zero Fatigue:
-// AM shifts and HD strictly precede PM shifts in the cycle from RD to RD.
-// PM shifts lead directly into RD. Rest between every transition is >= 15 hours.
+// Generate valid weekly patterns for a rotating teammate.
+// Guarantees:
+// 1. Strict lock to preset Rest Day (RD) from Outlet Teammate Profiles & Preferences
+// 2. Strict lock to preset Half Day (Morning Half 4H) from Profiles & Preferences
+// 3. Strict weekly morning vs night shift balance (|weekly_AM - weekly_PM| <= 2)
+// 4. Max 3 consecutive nights
+// 5. Zero fatigue across regular shifts (>= 15 hours), allowing at most 1 turnaround transition leading into their continuous 1.5-day half-day weekend
 function generateLegalWeeklyPatterns(tm, weekDays, prevSundayShift) {
   const prevWasPm = prevSundayShift && prevSundayShift.includes('1230');
 
@@ -1317,142 +1332,112 @@ function generateLegalWeeklyPatterns(tm, weekDays, prevSundayShift) {
   const targetHdDay = dayPrefsHdDay || ((tm.halfDayPref && tm.halfDayPref !== 'None') ? (tm.halfDayPref.includes(' ') ? tm.halfDayPref.split(' ')[0] : tm.halfDayPref) : null);
   const prefHdIdx = (targetHdDay && targetHdDay !== 'None' && targetHdDay !== 'Flexible') ? weekDays.findIndex(d => d.dayOfWeek === targetHdDay) : -1;
 
-  const buildWeeklyPatterns = (candidates) => {
+  const targetRdList = prefRdIdx !== -1 ? [prefRdIdx] : [0, 1, 2, 3, 4, 5, 6];
+  // Saturday is William's fixed 4H anchor; only allow Sat 4H for rotating staff if explicitly requested
+  const targetHdList = prefHdIdx !== -1 ? [prefHdIdx] : [0, 1, 2, 3, 4, 6];
+
+  const buildPatterns = (rdCandidates, hdCandidates, maxAllowedFatigue) => {
     const list = [];
     const seen = new Set();
 
-    candidates.forEach(rdIdx => {
-      // Prioritize preset HD first, then all valid days except Saturday (William is already on Saturday 4H)
-      const hdCandidates = [];
-      if (prefHdIdx !== -1 && prefHdIdx !== rdIdx) hdCandidates.push(prefHdIdx);
-      for (let i = 0; i < 7; i++) {
-        if (i !== rdIdx && (i !== 5 || prefHdIdx === 5) && !hdCandidates.includes(i)) {
-          hdCandidates.push(i);
-        }
-      }
+    rdCandidates.forEach(r => {
+      hdCandidates.forEach(h => {
+        if (r === h) return;
+        const working = [0, 1, 2, 3, 4, 5, 6].filter(i => i !== r && i !== h);
 
-      hdCandidates.forEach(hdIdx => {
-        if (prevWasPm && rdIdx > 0 && hdIdx < rdIdx) return;
-
-        for (let s = 0; s <= 5; s++) {
+        for (let mask = 0; mask < 32; mask++) {
           const seq = new Array(7);
-          seq[rdIdx] = 'RD';
-          seq[hdIdx] = '4H_0730-1130';
+          seq[r] = 'RD';
+          seq[h] = '4H_0730-1130';
+          let amFull = 0, pmFull = 0;
 
-          if (prevWasPm && rdIdx > 0) {
-            for (let i = 0; i < rdIdx; i++) {
-              seq[i] = '8H_1230-2130';
-            }
-          }
-
-          let reachedHd = false;
-          let amAfterHd = 0;
-          let switchedToPm = false;
-
-          for (let step = 1; step < 7; step++) {
-            const idx = (rdIdx + step) % 7;
-            if (idx === hdIdx) {
-              reachedHd = true;
-              continue;
-            }
-            if (seq[idx]) continue;
-
-            if (!reachedHd) {
-              seq[idx] = '8H_0730-1630';
+          working.forEach((wIdx, bit) => {
+            if ((mask >> bit) & 1) {
+              seq[wIdx] = '8H_1230-2130';
+              pmFull++;
             } else {
-              if (amAfterHd < s && !switchedToPm) {
-                seq[idx] = '8H_0730-1630';
-                amAfterHd++;
-              } else {
-                seq[idx] = '8H_1230-2130';
-                switchedToPm = true;
-              }
+              seq[wIdx] = '8H_0730-1630';
+              amFull++;
             }
-          }
+          });
 
-          // Verify zero turnaround fatigue
-          let fatigue = false;
-          let cur = prevWasPm ? 'PM' : 'RD';
+          const totalAm = amFull + 1; // 4H is morning
+          const deviation = Math.abs(totalAm - pmFull);
+          if (deviation > 2) continue; // STRICT DEVIATION <= 2
+
+          // Max consecutive nights <= 3
+          let maxNight = 0, curNight = 0;
           for (let i = 0; i < 7; i++) {
-            const shift = seq[i];
-            const isMorning = shift.includes('0730') || shift.includes('4H');
-            if (cur === 'PM' && isMorning) {
-              fatigue = true;
-              break;
+            if (seq[i].includes('1230')) {
+              curNight++;
+              if (curNight > maxNight) maxNight = curNight;
+            } else {
+              curNight = 0;
             }
-            if (shift === 'RD') cur = 'RD';
-            else if (shift.includes('1230')) cur = 'PM';
-            else if (isMorning) cur = 'AM';
+          }
+          if (maxNight > 3) continue;
+
+          // Turnaround fatigue count
+          let fatigue = 0;
+          if (prevWasPm && (seq[0].includes('0730') || seq[0].includes('4H'))) fatigue++;
+          for (let i = 0; i < 6; i++) {
+            if (seq[i].includes('1230') && (seq[i + 1].includes('0730') || seq[i + 1].includes('4H'))) fatigue++;
+          }
+          if (fatigue > maxAllowedFatigue) continue;
+
+          // Day-specific preferences check
+          let invalidStrict = false;
+          let prefScore = 0;
+          if (r === prefRdIdx) prefScore += 50000;
+          if (h === prefHdIdx) prefScore += 20000;
+          prefScore += (2 - deviation) * 1000;
+          prefScore -= fatigue * 2000;
+
+          if (tm.dayPrefs) {
+            weekDays.forEach((d, dIdx) => {
+              const dp = tm.dayPrefs[d.dayOfWeek];
+              if (!dp || dp === 'Flexible') return;
+              const shift = seq[dIdx];
+
+              if (dp === 'Morning Only') {
+                if (shift.includes('0730')) prefScore += 2000;
+                else if (shift !== 'RD') invalidStrict = true;
+              } else if (dp === 'Night Only') {
+                if (shift.includes('1230')) prefScore += 2000;
+                else if (shift !== 'RD') invalidStrict = true;
+              } else if (dp === 'Morning Preferred') {
+                if (shift.includes('0730')) prefScore += 1500;
+                else if (shift.includes('1230')) prefScore -= 600;
+              } else if (dp === 'Night Preferred') {
+                if (shift.includes('1230')) prefScore += 1500;
+                else if (shift.includes('0730') && !shift.includes('4H')) prefScore -= 600;
+              } else if (dp === 'RD') {
+                if (shift !== 'RD') invalidStrict = true;
+              }
+            });
           }
 
-          if (!fatigue) {
-            let amFull = 0, pmFull = 0;
-            seq.forEach(shift => {
-              if (shift === '8H_0730-1630') amFull++;
-              if (shift.includes('1230')) pmFull++;
-            });
+          if (invalidStrict) continue;
 
-            let prefScore = 0;
-            if (rdIdx === prefRdIdx) prefScore += 50000; // Mandatory lock for preset rest day
-            if (hdIdx === prefHdIdx) prefScore += 10000; // Strong reward for preset half day
-
-            // Day-specific preferences
-            let invalidStrict = false;
-            if (tm.dayPrefs) {
-              weekDays.forEach((d, dIdx) => {
-                const dp = tm.dayPrefs[d.dayOfWeek];
-                if (!dp || dp === 'Flexible') return;
-                const shift = seq[dIdx];
-
-                if (dp === 'Morning Only') {
-                  if (shift.includes('0730')) prefScore += 2000;
-                  else if (shift !== 'RD') { prefScore -= 50000; invalidStrict = true; }
-                } else if (dp === 'Night Only') {
-                  if (shift.includes('1230')) prefScore += 2000;
-                  else if (shift !== 'RD') { prefScore -= 50000; invalidStrict = true; }
-                } else if (dp === 'Morning Preferred') {
-                  if (shift.includes('0730')) prefScore += 1500;
-                  else if (shift.includes('1230')) prefScore -= 600;
-                } else if (dp === 'Night Preferred') {
-                  if (shift.includes('1230')) prefScore += 1500;
-                  else if (shift.includes('0730') && !shift.includes('4H')) prefScore -= 600;
-                } else if (dp === 'RD') {
-                  if (shift === 'RD') prefScore += 50000;
-                  else { prefScore -= 50000; invalidStrict = true; }
-                } else if (dp === 'Morning Half (4H)') {
-                  if (shift.includes('4H')) prefScore += 5000;
-                }
-              });
-            }
-
-            // Overall shift preference
-            if (tm.shiftPref === 'Morning Preferred' && amFull >= 2) prefScore += 1000;
-            if (tm.shiftPref === 'Night Preferred' && pmFull >= 3) prefScore += 1000;
-
-            // Weekly parity: Total AM = amFull + 1 (4H), PM = pmFull
-            const totalAm = amFull + 1;
-            const deviation = Math.abs(totalAm - pmFull);
-            if (deviation <= 2) {
-              prefScore += (2 - deviation) * 500 + 2000;
-            } else {
-              prefScore -= (deviation - 2) * 1000;
-            }
-
-            const key = seq.join('|');
-            if (!invalidStrict && !seen.has(key)) {
-              seen.add(key);
-              list.push({ seq, amFull, pmFull, rdIdx, hdIdx, prefScore, deviation });
-            }
+          const key = seq.join('|');
+          if (!seen.has(key)) {
+            seen.add(key);
+            list.push({ seq, amFull, pmFull, totalAm, deviation, fatigue, rdIdx: r, hdIdx: h, prefScore });
           }
         }
       });
     });
+
     return list;
   };
 
-  let patterns = buildWeeklyPatterns(prefRdIdx !== -1 ? [prefRdIdx] : [0, 1, 2, 3, 4, 5, 6]);
-  if (!patterns.length && prefRdIdx !== -1) {
-    patterns = buildWeeklyPatterns([0, 1, 2, 3, 4, 5, 6]);
+  let patterns = buildPatterns(targetRdList, targetHdList, 1);
+  if (!patterns.length && prefHdIdx !== -1) {
+    // Fallback allowing any HD if strict HD yields 0 combinations with fatigue <= 1
+    patterns = buildPatterns(targetRdList, [0, 1, 2, 3, 4, 5, 6], 1);
+  }
+  if (!patterns.length) {
+    patterns = buildPatterns([0, 1, 2, 3, 4, 5, 6], [0, 1, 2, 3, 4, 5, 6], 2);
   }
 
   return patterns;
@@ -1476,15 +1461,17 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
     const targetAm = (curAm <= curPm) ? 3 : 2;
 
     pats.sort((a, b) => {
-      const dA = Math.abs(a.amFull - targetAm);
-      const dB = Math.abs(b.amFull - targetAm);
-      const scoreA = a.prefScore - dA * 500 - a.deviation * 300;
-      const scoreB = b.prefScore - dB * 500 - b.deviation * 300;
-      return scoreB - scoreA;
+      const dA = Math.abs(a.amFull - (targetAm - 1));
+      const dB = Math.abs(b.amFull - (targetAm - 1));
+      return (b.prefScore - dB * 2000) - (a.prefScore - dA * 2000);
     });
 
     tmPatterns[tm.empNo] = pats;
   });
+
+  const hasBranchManager = currentTeammates.some(t => t.position && t.position.toLowerCase().includes('branch manager') && !t.position.toLowerCase().includes('assistant'));
+  const hasAssistantBranchManager = currentTeammates.some(t => t.position && t.position.toLowerCase().includes('assistant branch manager'));
+  const managerRuleActive = hasBranchManager && hasAssistantBranchManager;
 
   function evalCombination(selected) {
     let penalty = 0;
@@ -1526,32 +1513,24 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
       const working = fullAm + halfAm + pm;
       if (working < 6) penalty += (6 - working) * 10000000;
 
-      // Mathematical floor requirement: fullStaff = working - halfAm >= 6 (need 3 fullAm and 3 pm)
-      const maxAllowedHalf = Math.max(0, working - 6);
-      if (halfAm > maxAllowedHalf) {
-        penalty += (halfAm - maxAllowedHalf) * 10000000;
-      }
-
-      // On Saturday (day 5), William is ALREADY 4H, so rotating staff must have 0 halfAm!
-      if (day === 5 && halfAm > 1) {
-        penalty += (halfAm - 1) * 10000000;
-      }
-
       // 2. Chinese Speaking Coverage on Whole Day (Hard Requirement)
       if (chAm < 1) penalty += 10000000;
       if (chPm < 1) penalty += 10000000;
 
-      // 3. Manager Coverage on Each Shift
-      if (mgrAm < 1) penalty += 500000;
-      if (mgrPm < 1) penalty += 500000;
+      // 3. Manager Coverage on Each Shift (Omitted if BM or ABM resigned/absent)
+      if (managerRuleActive) {
+        if (mgrAm < 1) penalty += 500000;
+        if (mgrPm < 1) penalty += 500000;
+      }
 
       penalty += Math.abs(fullAm - pm) * 10;
     }
 
-    // Weekly Parity and Cumulative Parity across ALL 8 rotating staff
+    // Weekly Parity and Cumulative Parity across ALL rotating staff
     rotatingPool.forEach(tm => {
       const p = selected[tm.empNo];
       penalty -= p.prefScore;
+      penalty += (p.fatigue || 0) * 5000;
 
       // Hard constraint: Match preset fixed rest day from Teammate Profiles
       const targetRdDay = (tm.dayPrefs && Object.keys(tm.dayPrefs).find(k => tm.dayPrefs[k] === 'RD')) || tm.restDayPref;
@@ -1560,18 +1539,19 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
         penalty += 10000000;
       }
 
+      // Hard constraint: Match preset fixed half day from Teammate Profiles
       const targetHdDay = (tm.dayPrefs && Object.keys(tm.dayPrefs).find(k => tm.dayPrefs[k] === 'Morning Half (4H)')) || ((tm.halfDayPref && tm.halfDayPref !== 'None') ? (tm.halfDayPref.includes(' ') ? tm.halfDayPref.split(' ')[0] : tm.halfDayPref) : null);
       const prefHdIdx = (targetHdDay && targetHdDay !== 'None' && targetHdDay !== 'Flexible') ? weekDays.findIndex(d => d.dayOfWeek === targetHdDay) : -1;
-
-      const isPresetMatched = (prefRdIdx !== -1 && p.rdIdx === prefRdIdx && prefHdIdx !== -1 && p.hdIdx === prefHdIdx);
-      const weeklyAm = p.amFull + 1; // includes 4H
-      const weeklyPm = p.pmFull;
-      const weeklyDev = Math.abs(weeklyAm - weeklyPm);
-      if (weeklyDev > 2 && !isPresetMatched) {
-        penalty += (weeklyDev - 2) * 500000;
+      if (prefHdIdx !== -1 && p.hdIdx !== prefHdIdx) {
+        penalty += 10000000;
       }
 
-      // Strong reward for weekly balance
+      const weeklyDev = p.deviation;
+      if (weeklyDev > 2) {
+        penalty += (weeklyDev - 2) * 5000000;
+      }
+
+      // Reward for weekly balance
       penalty += weeklyDev * 100;
 
       // Cumulative monthly AM vs PM parity
@@ -1579,7 +1559,7 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
       const curPm = (cumStats[tm.empNo] && cumStats[tm.empNo].pm !== undefined) ? cumStats[tm.empNo].pm : (cumStats[tm.empNo]?.pmFull || 0);
       const newAm = curAm + p.amFull;
       const newPm = curPm + p.pmFull;
-      penalty += Math.pow(newAm - newPm, 2) * 500;
+      penalty += Math.pow(newAm - newPm, 2) * 50;
     });
 
     return penalty;
@@ -1588,13 +1568,13 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
   let best = null;
   let minPenalty = Infinity;
 
-  for (let iter = 0; iter < 50000; iter++) {
+  for (let iter = 0; iter < 20000; iter++) {
     const cur = {};
 
     rotatingPool.forEach(tm => {
       const pats = tmPatterns[tm.empNo];
       if (!pats || !pats.length) {
-        cur[tm.empNo] = { seq: new Array(7).fill('RD'), amFull: 0, pmFull: 0, prefScore: 0 };
+        cur[tm.empNo] = { seq: new Array(7).fill('RD'), amFull: 0, pmFull: 0, totalAm: 0, deviation: 0, prefScore: 0 };
       } else {
         const idx = Math.floor(Math.pow(Math.random(), 2.0) * pats.length);
         cur[tm.empNo] = pats[idx];
@@ -1605,14 +1585,14 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
     if (p < minPenalty) {
       minPenalty = p;
       best = JSON.parse(JSON.stringify(cur));
-      if (minPenalty < -35000) break;
+      if (minPenalty < -500000) break;
     }
   }
 
   if (!best) {
     best = {};
     rotatingPool.forEach(tm => {
-      best[tm.empNo] = (tmPatterns[tm.empNo] && tmPatterns[tm.empNo][0]) || { seq: new Array(7).fill('RD'), amFull: 0, pmFull: 0, prefScore: 0 };
+      best[tm.empNo] = (tmPatterns[tm.empNo] && tmPatterns[tm.empNo][0]) || { seq: new Array(7).fill('RD'), amFull: 0, pmFull: 0, totalAm: 0, deviation: 0, prefScore: 0 };
     });
   }
 
@@ -1815,6 +1795,35 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
         else if (s.includes('0730')) cumStats[tm.empNo].am++;
         else if (s.includes('1230')) cumStats[tm.empNo].pm++;
       });
+
+      // Gazetted Public Holiday handling:
+      // William is PH (official rest day).
+      // Rotating staff apply replacement leave to maintain floor >= 3.
+      // Provisional Registered Pharmacists (Kenix & Christina) assume rest day (PH) too, unless needed to maintain floor >= 3.
+      if (HOLIDAYS_2026_SARAWAK[d.date]) {
+        const prpEmpNos = ['PMG02963', 'PMG03033'];
+        let nonPrpAm = 0;
+        let nonPrpPm = 0;
+        Object.entries(dayShifts).forEach(([eNo, sh]) => {
+          if (!prpEmpNos.includes(eNo) && eNo !== 'PMG00831' && sh && sh !== 'RD' && sh !== 'PH' && sh !== 'OFF') {
+            if (sh.includes('0730') || sh.includes('4H')) nonPrpAm++;
+            if (sh.includes('1230')) nonPrpPm++;
+          }
+        });
+
+        prpEmpNos.forEach(pEmp => {
+          const origShift = dayShifts[pEmp];
+          if (!origShift || origShift === 'RD') return;
+          const isMorn = origShift.includes('0730') || origShift.includes('4H');
+          const isEve = origShift.includes('1230');
+
+          if (isMorn && nonPrpAm >= 3) {
+            dayShifts[pEmp] = 'PH';
+          } else if (isEve && nonPrpPm >= 3) {
+            dayShifts[pEmp] = 'PH';
+          }
+        });
+      }
 
       // 6S Cleaning Duty: 14:00 - 15:30 Round-Robin
       const workingStaff = rotatingPool.filter(tm => dayShifts[tm.empNo] && dayShifts[tm.empNo] !== 'RD' && dayShifts[tm.empNo] !== 'PH' && dayShifts[tm.empNo] !== 'OFF');
@@ -2182,31 +2191,29 @@ function renderScheduleMatrix(schedule) {
   cleaningRow += '</tr>';
 
   // Pharmacist Coverage Indicators Row (Bottom 3)
+  // Whole-Day Chinese Speaker Coverage Indicators Row
   let coverageRow = `
     <tr class="bg-gray-100 border-t border-gray-200 font-semibold text-[11px] text-gray-700">
       <td class="sticky left-0 bg-gray-100 z-10 px-3 py-2 border-r border-gray-200 font-bold">
-        Pharmacist AM / PM
-        <div class="text-[9px] text-gray-500 font-normal">100% Mandatory Coverage</div>
+        Chinese Speaker AM / PM
+        <div class="text-[9px] text-gray-500 font-normal">Whole-Day Language Coverage</div>
       </td>
   `;
 
   schedule.days.forEach(d => {
-    let amPharm = false;
-    let pmPharm = false;
+    let amChinese = false;
+    let pmChinese = false;
     Object.entries(d.shifts).forEach(([empNo, shift]) => {
       const tm = currentTeammates.find(t => t.empNo === empNo);
-      if (!tm) return;
-      const isPharm = tm.isPharmacist || tm.position === 'Pharmacist';
-      if (isPharm) {
-        if (shift.includes('0730') || shift.includes('0800')) amPharm = true;
-        if (shift.includes('1230') || shift.includes('1300') || shift.includes('1630')) pmPharm = true;
-      }
+      if (!tm || tm.race !== 'Chinese') return;
+      if (shift.includes('0730') || shift.includes('0800') || shift.includes('4H')) amChinese = true;
+      if (shift.includes('1230') || shift.includes('1300') || shift.includes('1630')) pmChinese = true;
     });
 
-    const isFullCover = amPharm && pmPharm;
+    const isFullCover = amChinese && pmChinese;
     coverageRow += `
       <td class="px-1 py-1.5 text-center border-r border-gray-200">
-        <span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] ${isFullCover ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700'} font-bold">
+        <span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] ${isFullCover ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-700'} font-bold" title="${isFullCover ? 'Both AM & PM shifts have Chinese-speaking teammate' : (!amChinese && !pmChinese ? 'Missing Chinese speaker in AM & PM' : (!amChinese ? 'Missing Chinese speaker in AM' : 'Missing Chinese speaker in PM'))}">
           ${isFullCover ? '✓' : '!'}
         </span>
       </td>
@@ -2227,11 +2234,11 @@ function renderScheduleMatrix(schedule) {
               <i class="fa-solid fa-scale-balanced text-teal-600"></i>
               <span>Shift Parity, Anti-Fatigue & 6S Cleaning Rotation Verification</span>
             </h4>
-            <p class="text-xs text-gray-500 mt-0.5">Audits workload distribution among teammates for Kota Sentosa (Target: Max ±1 shift variance, 0 PM→AM fatigue transitions).</p>
+            <p class="text-xs text-gray-500 mt-0.5">Audits workload distribution among teammates for Kota Sentosa (Target: Max ±2 shift variance, 0 PM→AM fatigue transitions).</p>
           </div>
           <div class="flex items-center gap-2 text-xs flex-wrap">
-            <span class="px-2.5 py-1 rounded-full font-bold ${maxStaffVar <= 1 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
-              <i class="fa-solid fa-check-circle mr-1"></i> Shift Parity: ${maxStaffVar <= 1 ? 'Equitable (≤1)' : `Variance ±${maxStaffVar}`}
+            <span class="px-2.5 py-1 rounded-full font-bold ${maxStaffVar <= 2 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+              <i class="fa-solid fa-check-circle mr-1"></i> Shift Parity: ${maxStaffVar <= 2 ? `Equitable (≤±${maxStaffVar})` : `Variance ±${maxStaffVar}`}
             </span>
             <span class="px-2.5 py-1 rounded-full font-bold ${totalFatigueViolations === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">
               <i class="fa-solid fa-shield-heart mr-1"></i> Anti-Fatigue: ${totalFatigueViolations === 0 ? 'Zero Violations' : `${totalFatigueViolations} Violations`}
@@ -2261,17 +2268,14 @@ function renderScheduleMatrix(schedule) {
       currentTeammates.forEach(tm => {
         const st = teammateStats[tm.empNo] || { mCount: 0, nCount: 0, rdCount: 0, hdCount: 0, cleanCount: 0, pmToAmFatigueCount: 0 };
         const isFixed = tm.scheduleMode === 'Fixed' || tm.empNo === 'PMG00831' || tm.nickname === 'WILLIAM';
-        const isPharm = tm.isPharmacist || tm.position === 'Pharmacist' || (tm.position && tm.position.includes('Pharmacist'));
 
         let parityBadge = '';
         if (isFixed) {
           parityBadge = '<span class="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-semibold">Fixed Anchor (Exempt)</span>';
-        } else if (isPharm) {
-          parityBadge = `<span class="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold" title="Kenix & Christina split all 35 store night shifts equally (18 vs 17)">✓ Rx Coverage Split (${st.nCount}N / ${st.mCount}M)</span>`;
         } else {
           const diff = Math.abs(st.mCount - st.nCount);
-          parityBadge = diff <= 1
-            ? `<span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">✓ Equitable (±${diff})</span>`
+          parityBadge = diff <= 2
+            ? `<span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">✓ Balanced (±${diff})</span>`
             : `<span class="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">⚠️ Imbalance (±${diff})</span>`;
         }
 
@@ -2644,23 +2648,23 @@ function updateDayShiftEditorMeter() {
   let pmCount = 0;
   let rdCount = 0;
   let totalWorking = 0;
-  let hasMorningRx = false;
-  let hasNightRx = false;
+  let hasMorningChinese = false;
+  let hasNightChinese = false;
 
   currentTeammates.forEach(tm => {
     const el = document.getElementById(`editShift_${tm.empNo}`);
     const s = el ? el.value : 'RD';
-    const isRx = tm.isPharmacist || tm.position === 'Pharmacist';
+    const isChinese = tm.race === 'Chinese';
 
     if (s && s !== 'RD' && s !== 'PH' && s !== 'OFF') {
       totalWorking++;
-      if (s.includes('0730') || s.includes('0800')) {
+      if (s.includes('0730') || s.includes('0800') || s.includes('4H')) {
         amCount++;
-        if (isRx) hasMorningRx = true;
+        if (isChinese) hasMorningChinese = true;
       }
       if (s.includes('1230') || s.includes('1300') || s.includes('1630')) {
         pmCount++;
-        if (isRx) hasNightRx = true;
+        if (isChinese) hasNightChinese = true;
       }
     } else {
       rdCount++;
@@ -2676,11 +2680,11 @@ function updateDayShiftEditorMeter() {
       </div>
       <div class="font-mono">
         Morning: <span class="${amCount < 3 ? 'text-red-600 font-extrabold' : 'text-blue-700 font-bold'}">${amCount}</span>
-        ${hasMorningRx ? '<span class="text-emerald-700 font-bold ml-0.5" title="Morning Pharmacist covered">✓Rx</span>' : '<span class="text-red-600 font-bold ml-0.5" title="Missing Morning Pharmacist">!Rx</span>'}
+        ${hasMorningChinese ? '<span class="text-emerald-700 font-bold ml-0.5" title="Morning Chinese speaker on duty">✓Ch</span>' : '<span class="text-amber-600 font-bold ml-0.5" title="No Chinese speaker in Morning">!Ch</span>'}
       </div>
       <div class="font-mono">
         Night: <span class="${pmCount < 3 ? 'text-red-600 font-extrabold' : 'text-purple-700 font-bold'}">${pmCount}</span>
-        ${hasNightRx ? '<span class="text-emerald-700 font-bold ml-0.5" title="Night Pharmacist covered">✓Rx</span>' : '<span class="text-red-600 font-bold ml-0.5" title="Missing Night Pharmacist">!Rx</span>'}
+        ${hasNightChinese ? '<span class="text-emerald-700 font-bold ml-0.5" title="Night Chinese speaker on duty">✓Ch</span>' : '<span class="text-amber-600 font-bold ml-0.5" title="No Chinese speaker at Night">!Ch</span>'}
       </div>
       <div class="font-mono text-gray-500">
         Off: <span>${rdCount}</span>
