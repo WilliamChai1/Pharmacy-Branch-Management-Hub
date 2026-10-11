@@ -2024,7 +2024,6 @@ function renderPharmacistScheduleTab(patientsList) {
   const allBookings = [];
   const pharmacistNames = new Set([
     'William Chai (Pharmacist)',
-    'Kenix Ling (Pharmacist)',
     'Ting Kwang Yu (BM)',
     'Duty Pharmacist'
   ]);
@@ -7429,6 +7428,16 @@ function escHtml(str) {
 }
 
 /**
+ * Checks if a pharmacist name is currently excluded from customer appointments.
+ * Kenix Ling and Christina Lee Ying Ying are temporarily excluded per user request.
+ */
+function isExcludedPharmacist(rawName) {
+  if (!rawName) return false;
+  const str = String(rawName).toLowerCase();
+  return str.includes('kenix') || str.includes('christina');
+}
+
+/**
  * Normalizes pharmacist names so William Chai and Chai Yee Sian are always unified
  * as "William Chai Yee Sian (Pharmacist)" across customer booking, roster, and patient care.
  */
@@ -7848,6 +7857,9 @@ function getPharmacistScheduleForDate(branchCode, dateStr) {
         isOverride: true
       };
     } else {
+      const rawOvPharm = ov.pharmacist && !isExcludedPharmacist(ov.pharmacist)
+        ? ov.pharmacist
+        : (sched.defaultPharmacist && !isExcludedPharmacist(sched.defaultPharmacist) ? sched.defaultPharmacist : defInfo.pharmacist);
       return {
         branchCode: code,
         branchName: sched.branchName || defInfo.name,
@@ -7856,7 +7868,7 @@ function getPharmacistScheduleForDate(branchCode, dateStr) {
         isClosed: false,
         open: ov.open || defInfo.open,
         close: ov.close || defInfo.close,
-        pharmacist: normalizePharmacistName(ov.pharmacist || sched.defaultPharmacist || defInfo.pharmacist),
+        pharmacist: normalizePharmacistName(rawOvPharm),
         hasBreak: typeof ov.hasBreak !== 'undefined' ? ov.hasBreak : effHasBreak,
         breakStart: ov.breakStart || effBreakStart,
         breakEnd: ov.breakEnd || effBreakEnd,
@@ -7893,6 +7905,9 @@ function getPharmacistScheduleForDate(branchCode, dateStr) {
           isOverride: false
         };
       } else {
+        const rawTmplPharm = tmpl.pharmacist && !isExcludedPharmacist(tmpl.pharmacist)
+          ? tmpl.pharmacist
+          : (sched.defaultPharmacist && !isExcludedPharmacist(sched.defaultPharmacist) ? sched.defaultPharmacist : defInfo.pharmacist);
         return {
           branchCode: code,
           branchName: sched.branchName || defInfo.name,
@@ -7901,7 +7916,7 @@ function getPharmacistScheduleForDate(branchCode, dateStr) {
           isClosed: false,
           open: tmpl.open || defInfo.open,
           close: tmpl.close || defInfo.close,
-          pharmacist: normalizePharmacistName(tmpl.pharmacist || sched.defaultPharmacist || defInfo.pharmacist),
+          pharmacist: normalizePharmacistName(rawTmplPharm),
           hasBreak: typeof tmpl.hasBreak !== 'undefined' ? tmpl.hasBreak : effHasBreak,
           breakStart: tmpl.breakStart || effBreakStart,
           breakEnd: tmpl.breakEnd || effBreakEnd,
@@ -7914,6 +7929,9 @@ function getPharmacistScheduleForDate(branchCode, dateStr) {
   }
 
   // 3. Fall back to static branch schedule (Priority 3)
+  const fallbackPharm = sched.defaultPharmacist && !isExcludedPharmacist(sched.defaultPharmacist)
+    ? sched.defaultPharmacist
+    : defInfo.pharmacist;
   return {
     branchCode: code,
     branchName: sched.branchName || defInfo.name,
@@ -7922,7 +7940,7 @@ function getPharmacistScheduleForDate(branchCode, dateStr) {
     isClosed: false,
     open: defInfo.open,
     close: defInfo.close,
-    pharmacist: normalizePharmacistName(sched.defaultPharmacist || defInfo.pharmacist),
+    pharmacist: normalizePharmacistName(fallbackPharm),
     hasBreak: effHasBreak,
     breakStart: effBreakStart,
     breakEnd: effBreakEnd,
@@ -8018,8 +8036,12 @@ function updateShareBookingUrl() {
     ? `<br><span class="text-amber-800 font-semibold text-[11px]">☕ Rest / Lunch Break: ${sched.breakStart} – ${sched.breakEnd}</span>`
     : '';
 
+  const dutyPharmName = (sched.defaultPharmacist && !isExcludedPharmacist(sched.defaultPharmacist))
+    ? sched.defaultPharmacist
+    : (info.pharmacist && !isExcludedPharmacist(info.pharmacist) ? info.pharmacist : 'William Chai Yee Sian (Pharmacist)');
+
   if (descEl) {
-    descEl.innerHTML = `Consultation Schedule:<br>${scheduleSummary}<br>Duty Pharmacist: <b>${escHtml(normalizePharmacistName(sched.defaultPharmacist || info.pharmacist))}</b>${breakNote}${overrideNote}`;
+    descEl.innerHTML = `Consultation Schedule:<br>${scheduleSummary}<br>Duty Pharmacist: <b>${escHtml(normalizePharmacistName(dutyPharmName))}</b>${breakNote}${overrideNote}`;
   }
 
   const baseUrl = window.location.origin + window.location.pathname;
@@ -8053,7 +8075,10 @@ function shareBookingViaWhatsApp() {
   const info = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || BRANCH_SCHEDULES['KS01'];
   const bookingUrl = inputEl ? inputEl.value : '';
 
-  const dutyPharm = normalizePharmacistName(sched.defaultPharmacist || info.pharmacist);
+  const dutyPharmName = (sched.defaultPharmacist && !isExcludedPharmacist(sched.defaultPharmacist))
+    ? sched.defaultPharmacist
+    : (info.pharmacist && !isExcludedPharmacist(info.pharmacist) ? info.pharmacist : 'William Chai Yee Sian (Pharmacist)');
+  const dutyPharm = normalizePharmacistName(dutyPharmName);
   let scheduleText = '';
   if (sched && sched.weeklyTemplate) {
     const lines = [];
@@ -8112,6 +8137,7 @@ const BOOKING_I18N = {
     opt2Notice: 'Subject to pharmacist review and approval. Your next reminder date will be updated automatically.',
     step2Title: 'Preferred Pharmacist',
     pharmOptional: 'Optional',
+    pharmOnDuty: 'Duty Pharmacist',
     pharmAnyOption: 'Any Available Pharmacist on Duty',
     consultHoursTitle: (branch) => `Kota Sentosa Pharmacist Consultation Hours`,
     consultHoursDesc: (open, close, breakInfo, pharm) => `Consultation Hours: <b>${open} – ${close}</b>${breakInfo ? ` &bull; Break: <b>${breakInfo}</b>` : ''}${pharm ? `<br>Attending Pharmacist: <b>${pharm}</b>` : ''}`,
@@ -8185,6 +8211,7 @@ const BOOKING_I18N = {
     opt2Notice: 'Tertakluk kepada semakan dan kelulusan ahli farmasi. Tarikh peringatan seterusnya akan dikemas kini secara automatik.',
     step2Title: 'Pilihan Ahli Farmasi',
     pharmOptional: 'Pilihan',
+    pharmOnDuty: 'Ahli Farmasi Bertugas',
     pharmAnyOption: 'Mana-mana Ahli Farmasi Bertugas',
     consultHoursTitle: (branch) => `Waktu Rundingan Ahli Farmasi Kota Sentosa`,
     consultHoursDesc: (open, close, breakInfo, pharm) => `Waktu Rundingan: <b>${open} – ${close}</b>${breakInfo ? ` &bull; Waktu Rehat: <b>${breakInfo}</b>` : ''}${pharm ? `<br>Ahli Farmasi Bertugas: <b>${pharm}</b>` : ''}`,
@@ -8258,6 +8285,7 @@ const BOOKING_I18N = {
     opt2Notice: '需经执业药剂师审核用药档案后批准生效。系统将自动更新您的下一次复查提醒。',
     step2Title: '指定主理药剂师',
     pharmOptional: '可自选',
+    pharmOnDuty: '当值执业药剂师',
     pharmAnyOption: '任意当值执业药剂师',
     consultHoursTitle: (branch) => `Kota Sentosa 药剂师面诊当值时间`,
     consultHoursDesc: (open, close, breakInfo, pharm) => `面诊当值时间：<b>${open} – ${close}</b>${breakInfo ? ` &bull; 休息时段：<b>${breakInfo}</b>` : ''}${pharm ? `<br>主理执业药剂师：<b>${pharm}</b>` : ''}`,
@@ -8536,7 +8564,7 @@ async function initCustomerBooking(defaultBranchCode = 'Kota Sentosa') {
   // ── Step 4b: Populate Pharmacists list for this branch ───────────────────
   populateCustPharmacistSelect(branchParam);
   const pharmParam = urlParams.get('pharm') || urlParams.get('pharmacist');
-  if (pharmParam) {
+  if (pharmParam && !isExcludedPharmacist(pharmParam)) {
     const pharmSelect = document.getElementById('custPharmacistSelect');
     if (pharmSelect) {
       for (let opt of pharmSelect.options) {
@@ -8656,25 +8684,25 @@ function populateCustPharmacistSelect(branchCode) {
 
   const code = normalizeBranchCode(branchCode);
   const sched = getPharmacistSchedule(code);
-  const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || { name: code, pharmacist: 'Duty Pharmacist' };
+  const defInfo = BRANCH_SCHEDULES[code] || BRANCH_SCHEDULES['Kota Sentosa'] || { name: code, pharmacist: 'William Chai Yee Sian (Pharmacist)' };
 
   const pharmSet = new Set();
 
   // 1. From Schedule Object (Weekly template + Default + Overrides)
   if (sched) {
-    if (sched.defaultPharmacist && sched.defaultPharmacist.trim()) {
+    if (sched.defaultPharmacist && sched.defaultPharmacist.trim() && !isExcludedPharmacist(sched.defaultPharmacist)) {
       pharmSet.add(normalizePharmacistName(sched.defaultPharmacist));
     }
     if (sched.weeklyTemplate) {
       Object.values(sched.weeklyTemplate).forEach(tmpl => {
-        if (tmpl && tmpl.pharmacist && tmpl.pharmacist.trim()) {
+        if (tmpl && tmpl.pharmacist && tmpl.pharmacist.trim() && !isExcludedPharmacist(tmpl.pharmacist)) {
           pharmSet.add(normalizePharmacistName(tmpl.pharmacist));
         }
       });
     }
     if (sched.dateOverrides) {
       Object.values(sched.dateOverrides).forEach(ov => {
-        if (ov && ov.pharmacist && ov.pharmacist.trim()) {
+        if (ov && ov.pharmacist && ov.pharmacist.trim() && !isExcludedPharmacist(ov.pharmacist)) {
           pharmSet.add(normalizePharmacistName(ov.pharmacist));
         }
       });
@@ -8682,7 +8710,7 @@ function populateCustPharmacistSelect(branchCode) {
   }
 
   // 2. From static BRANCH_SCHEDULES
-  if (defInfo && defInfo.pharmacist && defInfo.pharmacist.trim()) {
+  if (defInfo && defInfo.pharmacist && defInfo.pharmacist.trim() && !isExcludedPharmacist(defInfo.pharmacist)) {
     pharmSet.add(normalizePharmacistName(defInfo.pharmacist));
   }
 
@@ -8692,7 +8720,7 @@ function populateCustPharmacistSelect(branchCode) {
       const uBranch = normalizeBranchCode(u.branch);
       if (uBranch === code || u.branch === 'ALL') {
         if (u.role === 'Pharmacist' || (u.displayName && u.displayName.toLowerCase().includes('pharmacist'))) {
-          if (u.displayName && u.displayName.trim()) {
+          if (u.displayName && u.displayName.trim() && !isExcludedPharmacist(u.displayName)) {
             pharmSet.add(normalizePharmacistName(u.displayName));
           }
         }
@@ -8700,19 +8728,40 @@ function populateCustPharmacistSelect(branchCode) {
     });
   }
 
-  // Filter out pure placeholders
-  const validPharms = Array.from(pharmSet).filter(p => p && p !== 'Duty Pharmacist' && p !== 'Pharmacist');
+  // Filter out pure placeholders and any excluded pharmacists (Kenix, Christina)
+  const validPharms = Array.from(pharmSet).filter(p => {
+    if (!p || p === 'Duty Pharmacist' || p === 'Pharmacist') return false;
+    return !isExcludedPharmacist(p);
+  });
 
-  let html = `<option id="custPharmAnyOption" value="">${escHtml(i18n.pharmAnyOption || 'Any Available Pharmacist on Duty')}</option>`;
-  if (validPharms.length === 0) {
-    html += `<option value="Duty Pharmacist">Duty Pharmacist</option>`;
+  // Always ensure William Chai Yee Sian is available as primary pharmacist
+  const defaultWilliam = 'William Chai Yee Sian (Pharmacist)';
+  if (!validPharms.some(p => p.toLowerCase().includes('william'))) {
+    validPharms.unshift(defaultWilliam);
+  }
+
+  const optBadge = document.getElementById('custPharmOptional');
+
+  // If only William Chai Yee Sian is available (customer can only book with William Chai)
+  if (validPharms.length === 1) {
+    const onlyPharm = validPharms[0];
+    select.innerHTML = `<option value="${escHtml(onlyPharm)}" selected>${escHtml(onlyPharm)}</option>`;
+    if (optBadge) {
+      optBadge.textContent = i18n.pharmOnDuty || 'Duty Pharmacist';
+      optBadge.className = 'text-xs sm:text-sm text-blue-700 font-bold bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200';
+    }
   } else {
+    let html = `<option id="custPharmAnyOption" value="">${escHtml(i18n.pharmAnyOption || 'Any Available Pharmacist on Duty')}</option>`;
     validPharms.forEach(p => {
       const isSelected = (normalizePharmacistName(p) === normalizePharmacistName(currentVal));
       html += `<option value="${escHtml(p)}" ${isSelected ? 'selected' : ''}>${escHtml(p)}</option>`;
     });
+    select.innerHTML = html;
+    if (optBadge) {
+      optBadge.textContent = i18n.pharmOptional || 'Optional';
+      optBadge.className = 'text-xs sm:text-sm text-gray-400 font-normal';
+    }
   }
-  select.innerHTML = html;
 }
 
 function onCustBranchChange() {
@@ -9125,7 +9174,11 @@ async function handleCustomerBookingSubmit(e) {
   }
 
   const preferredPharmEl = document.getElementById('custPharmacistSelect');
-  const preferredPharm = normalizePharmacistName(preferredPharmEl && preferredPharmEl.value ? preferredPharmEl.value : (schedForDate.pharmacist || schedForDate.branchName));
+  let chosenPharm = preferredPharmEl && preferredPharmEl.value ? preferredPharmEl.value : (schedForDate.pharmacist || schedForDate.branchName);
+  if (isExcludedPharmacist(chosenPharm) || !chosenPharm || chosenPharm === 'Duty Pharmacist') {
+    chosenPharm = 'William Chai Yee Sian (Pharmacist)';
+  }
+  const preferredPharm = normalizePharmacistName(chosenPharm);
 
   const branchInfo = {
     name: schedForDate.branchName,
