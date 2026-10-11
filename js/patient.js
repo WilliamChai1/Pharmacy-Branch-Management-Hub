@@ -11244,7 +11244,10 @@ function downloadChronotherapyImage() {
   const patientId = patientSelect ? patientSelect.value : null;
   const patient = patientsData.find(p => p.id === patientId) || { name: 'Customer', branch: 'Kota Sentosa' };
   const session = typeof getSession === 'function' ? getSession() : null;
-  const pharmacist = session ? session.displayName : 'PMG Pharmacist';
+  let pharmacist = session ? session.displayName : 'PMG Pharmacist';
+  if (pharmacist && pharmacist.includes('Area Manager')) {
+    pharmacist = pharmacist.replace('Area Manager', 'Pharmacist');
+  }
   const encDate = document.getElementById('encDate')?.value || getTodayDateString(0);
   const branchName = (patient.branch === 'KS01' || patient.branch === 'KOTA SENTOSA') ? 'PMG Pharmacy Kota Sentosa' : `PMG Pharmacy ${patient.branch}`;
 
@@ -11265,58 +11268,143 @@ function downloadChronotherapyImage() {
   const width = 1200;
   const maxItemsPerSlot = Math.max(...slots.map(s => s.items.length), 2);
   const cardHeight = Math.max(340, 110 + maxItemsPerSlot * 65);
-  const height = 240 + cardHeight + 110;
+  const startY = 300;
+  const height = startY + cardHeight + 85;
 
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
 
-  // Background
+  // 1. Background
   ctx.fillStyle = '#f8fafc';
   ctx.fillRect(0, 0, width, height);
 
-  // Top Banner
+  // 2. Top Banner
   const gradient = ctx.createLinearGradient(0, 0, width, 0);
   gradient.addColorStop(0, '#1e3a8a');
   gradient.addColorStop(1, '#0284c7');
   ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, width, 140);
+  ctx.fillRect(0, 0, width, 145);
+
+  // Top Accent Stripe
+  ctx.fillStyle = '#38bdf8';
+  ctx.fillRect(0, 142, width, 3);
 
   // Top Title
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 34px "Segoe UI", system-ui, sans-serif';
-  ctx.fillText('PMG PHARMACY · CHRONOTHERAPY SCHEDULE', 50, 60);
+  ctx.font = 'bold 32px "Segoe UI", system-ui, sans-serif';
+  ctx.textBaseline = 'top';
+  ctx.fillText('PMG PHARMACY · CHRONOTHERAPY SCHEDULE', 50, 40);
 
+  // Top Subtitle
   ctx.fillStyle = '#bae6fd';
-  ctx.font = '600 19px "Segoe UI", system-ui, sans-serif';
-  ctx.fillText('Personalized Medication & Supplement Timing (时间治疗学服药指南)', 50, 98);
+  ctx.font = '600 17px "Segoe UI", system-ui, sans-serif';
+  ctx.fillText('Personalized Medication & Supplement Timing (时间治疗学服药指南)', 50, 84);
 
-  // Patient Info Bar
-  ctx.fillStyle = '#ffffff';
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.06)';
-  ctx.shadowBlur = 10;
-  ctx.shadowOffsetY = 4;
+  // Top Right Tag Pill
+  const tagText = 'CLINICAL CARE PLAN · 临床照护指南';
+  ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
+  const tagW = ctx.measureText(tagText).width + 24;
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
   ctx.beginPath();
   if (typeof ctx.roundRect === 'function') {
-    ctx.roundRect(50, 160, width - 100, 56, 12);
+    ctx.roundRect(width - 50 - tagW, 46, tagW, 30, 15);
   } else {
-    ctx.rect(50, 160, width - 100, 56);
+    ctx.rect(width - 50 - tagW, 46, tagW, 30);
   }
   ctx.fill();
-  ctx.shadowColor = 'transparent';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(tagText, width - 50 - tagW + 12, 54);
 
-  ctx.fillStyle = '#334155';
-  ctx.font = 'bold 16px "Segoe UI", system-ui, sans-serif';
-  ctx.fillText(`Patient: ${patient.name}`, 75, 195);
-  ctx.fillText(`Date: ${encDate}`, 430, 195);
-  ctx.fillText(`Pharmacist: ${pharmacist}`, 680, 195);
-  ctx.fillText(`Branch: ${branchName}`, 940, 195);
+  // 3. Patient & Clinician Metadata Card (Spacious 2x2 Compartments)
+  const infoCardX = 50;
+  const infoCardY = 160;
+  const infoCardW = width - 100; // 1100px
+  const infoCardH = 118;
 
-  // 4 Slot Cards
+  // Card Background with Drop Shadow
+  ctx.save();
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.06)';
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetY = 4;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(infoCardX, infoCardY, infoCardW, infoCardH, 16);
+  } else {
+    ctx.rect(infoCardX, infoCardY, infoCardW, infoCardH);
+  }
+  ctx.fill();
+  ctx.restore();
+
+  // Card Subtle Border
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(infoCardX, infoCardY, infoCardW, infoCardH, 16);
+  } else {
+    ctx.rect(infoCardX, infoCardY, infoCardW, infoCardH);
+  }
+  ctx.stroke();
+
+  // Vertical Divider between Columns
+  const midX = infoCardX + infoCardW / 2; // 600
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(midX, infoCardY + 14);
+  ctx.lineTo(midX, infoCardY + infoCardH - 14);
+  ctx.stroke();
+
+  // Horizontal Dividers within columns
+  ctx.strokeStyle = '#f1f5f9';
+  ctx.beginPath();
+  ctx.moveTo(infoCardX + 24, infoCardY + infoCardH / 2);
+  ctx.lineTo(midX - 24, infoCardY + infoCardH / 2);
+  ctx.moveTo(midX + 24, infoCardY + infoCardH / 2);
+  ctx.lineTo(infoCardX + infoCardW - 24, infoCardY + infoCardH / 2);
+  ctx.stroke();
+
+  // Compartment Text Helper
+  const drawInfoCell = (label, value, icon, x, labelY, valueY, maxValW, valColor = '#0f172a') => {
+    ctx.fillStyle = '#64748b';
+    ctx.font = 'bold 11px "Segoe UI", system-ui, sans-serif';
+    ctx.textBaseline = 'top';
+    ctx.fillText(label.toUpperCase(), x, labelY);
+
+    ctx.fillStyle = valColor;
+    ctx.font = 'bold 16px "Segoe UI", system-ui, sans-serif';
+    let displayVal = `${icon} ${value}`;
+    if (ctx.measureText(displayVal).width > maxValW) {
+      while (ctx.measureText(displayVal + '...').width > maxValW && displayVal.length > 5) {
+        displayVal = displayVal.slice(0, -1);
+      }
+      displayVal += '...';
+    }
+    ctx.fillText(displayVal, x, valueY);
+  };
+
+  const col1X = infoCardX + 24;
+  const col2X = midX + 24;
+  const maxColW = (infoCardW / 2) - 48; // 502px
+
+  // Top-Left: Patient Name
+  drawInfoCell('Patient Name / 顾客姓名', patient.name, '👤', col1X, infoCardY + 14, infoCardY + 31, maxColW, '#0f172a');
+
+  // Bottom-Left: Attending Pharmacist
+  drawInfoCell('Attending Clinician / 药剂师', pharmacist, '💊', col1X, infoCardY + 69, infoCardY + 86, maxColW, '#0369a1');
+
+  // Top-Right: Dispensing Outlet
+  drawInfoCell('Dispensing Branch / 调剂分行', branchName, '🏥', col2X, infoCardY + 14, infoCardY + 31, maxColW, '#0f172a');
+
+  // Bottom-Right: Consultation Date
+  drawInfoCell('Consultation Date / 咨询日期', encDate, '📅', col2X, infoCardY + 69, infoCardY + 86, maxColW, '#0f172a');
+
+  // 4. 4 Slot Cards
   const cardWidth = 260;
   const gap = 16;
   const startX = 50;
-  const startY = 240;
 
   slots.forEach((s, idx) => {
     const x = startX + idx * (cardWidth + gap);
@@ -11338,18 +11426,19 @@ function downloadChronotherapyImage() {
     // Card Header Bar
     ctx.fillStyle = s.color;
     ctx.font = 'bold 17px "Segoe UI", system-ui, sans-serif';
-    ctx.fillText(`${s.icon} ${s.title}`, x + 14, y + 36);
+    ctx.textBaseline = 'top';
+    ctx.fillText(`${s.icon} ${s.title}`, x + 14, y + 16);
 
     // Divider line
     ctx.strokeStyle = s.border;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(x + 14, y + 48);
-    ctx.lineTo(x + cardWidth - 14, y + 48);
+    ctx.moveTo(x + 14, y + 46);
+    ctx.lineTo(x + cardWidth - 14, y + 46);
     ctx.stroke();
 
     // Items
-    let itemY = y + 78;
+    let itemY = y + 62;
     if (s.items.length === 0) {
       ctx.fillStyle = '#94a3b8';
       ctx.font = 'italic 15px "Segoe UI", system-ui, sans-serif';
@@ -11359,7 +11448,7 @@ function downloadChronotherapyImage() {
         // Bullet dot
         ctx.fillStyle = s.color;
         ctx.beginPath();
-        ctx.arc(x + 20, itemY - 5, 4, 0, Math.PI * 2);
+        ctx.arc(x + 20, itemY + 8, 4, 0, Math.PI * 2);
         ctx.fill();
 
         // Item name
@@ -11373,8 +11462,8 @@ function downloadChronotherapyImage() {
           ctx.fillStyle = '#64748b';
           ctx.font = '13px "Segoe UI", system-ui, sans-serif';
           const itemNote = it.note.length > 27 ? it.note.substring(0, 25) + '...' : it.note;
-          ctx.fillText(itemNote, x + 30, itemY + 20);
-          itemY += 52;
+          ctx.fillText(itemNote, x + 30, itemY + 22);
+          itemY += 54;
         } else {
           itemY += 40;
         }
@@ -11382,11 +11471,12 @@ function downloadChronotherapyImage() {
     }
   });
 
-  // Footer Bar
-  const footerY = height - 45;
+  // 5. Footer Bar
+  const footerY = height - 42;
   ctx.fillStyle = '#64748b';
-  ctx.font = '500 15px "Segoe UI", system-ui, sans-serif';
+  ctx.font = '500 14px "Segoe UI", system-ui, sans-serif';
   ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
   ctx.fillText('PMG Pharmacy Healthcare Group · Caring for your health every moment · PMG 关爱您的健康每一刻', width / 2, footerY);
   ctx.textAlign = 'left';
 
