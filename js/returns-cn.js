@@ -1900,76 +1900,76 @@
       if (tpl === 'VENDOR_STANDARD') {
         // Standard Non-SSJ / Generic Vendor Shipping Label
         labelsHtml += `
-          <div class="carton-shipping-box" style="page-break-after: always; width: 100%; max-width: 665px; margin: 0 auto 24px auto; border: 3.5px solid #000; padding: 18px; font-family: Arial, sans-serif; background: #fff; box-sizing: border-box; box-shadow: 0 4px 10px rgba(0,0,0,0.08); zoom: 0.85;">
+          <div class="carton-shipping-box" style="page-break-inside: avoid !important; break-inside: avoid !important; page-break-after: always; break-after: page; width: 100%; max-width: 610px; margin: 0 auto 16px auto; border: 3px solid #000; padding: 12px 14px; font-family: Arial, sans-serif; background: #fff; box-sizing: border-box; box-shadow: 0 3px 8px rgba(0,0,0,0.06);">
             <!-- Top Header -->
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3.5px solid #000; padding-bottom: 12px; margin-bottom: 16px;">
-              <div style="font-size: 20px; font-weight: 900; letter-spacing: 1px;">🚚 CARTON SHIPPING / DELIVERY LABEL</div>
-              <div style="font-size: 15px; font-weight: 900; background: #000; color: #fff; padding: 5px 12px; border-radius: 4px;">PMG PHARMACY</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2.5px solid #000; padding-bottom: 8px; margin-bottom: 10px;">
+              <div style="font-size: 16px; font-weight: 900; letter-spacing: 0.5px;">🚚 CARTON SHIPPING / DELIVERY LABEL</div>
+              <div style="font-size: 12px; font-weight: 900; background: #000; color: #fff; padding: 4px 10px; border-radius: 4px;">PMG PHARMACY</div>
             </div>
 
             <!-- DESTINATION (SHIP TO) -->
-            <div style="border: 3.5px solid #000; padding: 18px; background: #fafafa; margin-bottom: 18px;">
-              <div style="font-size: 13px; font-weight: 900; text-transform: uppercase; color: #444; letter-spacing: 1.5px; border-bottom: 2px dashed #999; padding-bottom: 5px; margin-bottom: 10px;">
+            <div style="border: 2.5px solid #000; padding: 10px 12px; background: #fafafa; margin-bottom: 10px;">
+              <div style="font-size: 11px; font-weight: 900; text-transform: uppercase; color: #444; letter-spacing: 1px; border-bottom: 1.5px dashed #999; padding-bottom: 4px; margin-bottom: 6px;">
                 SHIP TO / DELIVER TO (DESTINATION):
               </div>
-              <div style="font-size: 26px; font-weight: 900; color: #000; line-height: 1.2; text-transform: uppercase; margin-bottom: 8px;">
+              <div style="font-size: 20px; font-weight: 900; color: #000; line-height: 1.2; text-transform: uppercase; margin-bottom: 4px;">
                 ${escapeHtml(ret.destCompany || ret.supplier || 'N/A')}
               </div>
-              <div style="font-size: 15px; font-weight: 700; color: #111; line-height: 1.35; text-transform: uppercase;">
-                ${ret.destAddress ? escapeHtml(ret.destAddress) : '<span style="color: #666; font-style: italic; font-size: 14px;">(DESTINATION WAREHOUSE TO BE CONFIRMED BY VENDOR / TRANSPORTER)</span>'}
+              <div style="font-size: 12.5px; font-weight: 700; color: #111; line-height: 1.3; text-transform: uppercase;">
+                ${ret.destAddress ? escapeHtml(ret.destAddress) : '<span style="color: #666; font-style: italic; font-size: 12px;">(DESTINATION WAREHOUSE TO BE CONFIRMED BY VENDOR / TRANSPORTER)</span>'}
               </div>
               ${(ret.destAttn || ret.destPhone) ? `
-                <div style="margin-top: 12px; padding-top: 10px; border-top: 2px dashed #999; font-size: 15px; font-weight: 900; display: flex; gap: 25px; flex-wrap: wrap;">
-                  ${ret.destAttn ? `<div>ATTN: <span style="font-size: 17px; text-decoration: underline;">${escapeHtml(ret.destAttn)}</span></div>` : ''}
-                  ${ret.destPhone ? `<div>TEL: <span style="font-size: 17px; font-family: monospace;">${escapeHtml(ret.destPhone)}</span></div>` : ''}
+                <div style="margin-top: 8px; padding-top: 6px; border-top: 1.5px dashed #999; font-size: 12.5px; font-weight: 900; display: flex; gap: 20px; flex-wrap: wrap;">
+                  ${ret.destAttn ? `<div>ATTN: <span style="font-size: 14px; text-decoration: underline;">${escapeHtml(ret.destAttn)}</span></div>` : ''}
+                  ${ret.destPhone ? `<div>TEL: <span style="font-size: 14px; font-family: monospace;">${escapeHtml(ret.destPhone)}</span></div>` : ''}
                 </div>
               ` : ''}
             </div>
 
             <!-- SENDER & CARTON BADGE ROW -->
-            <div style="display: flex; gap: 16px; margin-bottom: 16px;">
-              <div style="flex: 1.2; border: 2.5px solid #000; padding: 14px; background: #fff;">
-                <div style="font-size: 11px; font-weight: 900; text-transform: uppercase; color: #444; border-bottom: 1.5px solid #bbb; padding-bottom: 4px; margin-bottom: 6px;">
+            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+              <div style="flex: 1.2; border: 2px solid #000; padding: 8px 10px; background: #fff;">
+                <div style="font-size: 10px; font-weight: 900; text-transform: uppercase; color: #444; border-bottom: 1px solid #bbb; padding-bottom: 3px; margin-bottom: 4px;">
                   SENDER (FROM):
                 </div>
-                <div style="font-size: 15px; font-weight: 900; text-transform: uppercase;">${escapeHtml(ret.companyName || ('PMG PHARMACY (' + (ret.branch || 'BRANCH') + ')'))}</div>
-                <div style="font-size: 12px; font-weight: 600; text-transform: uppercase; margin-top: 4px; color: #222;">${escapeHtml(ret.companyAddress || 'Sarawak, Malaysia')}</div>
-                <div style="font-size: 12px; font-weight: bold; margin-top: 6px; color: #000;">BRANCH PIC: ${escapeHtml(ret.verifiedBy || 'Branch Pharmacist')}</div>
+                <div style="font-size: 13px; font-weight: 900; text-transform: uppercase;">${escapeHtml(ret.companyName || ('PMG PHARMACY (' + (ret.branch || 'BRANCH') + ')'))}</div>
+                <div style="font-size: 10.5px; font-weight: 600; text-transform: uppercase; margin-top: 2px; color: #222;">${escapeHtml(ret.companyAddress || 'Sarawak, Malaysia')}</div>
+                <div style="font-size: 10.5px; font-weight: bold; margin-top: 4px; color: #000;">BRANCH PIC: ${escapeHtml(ret.verifiedBy || 'Branch Pharmacist')}</div>
               </div>
 
-              <div style="flex: 1; border: 4px solid #000; background: #f4f4f4; padding: 12px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
-                <div style="font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 1.5px; color: #333;">CARTON IDENTIFIER</div>
-                <div style="font-size: 38px; font-weight: 900; color: #000; line-height: 1.05; margin: 6px 0;">
+              <div style="flex: 1; border: 2.5px solid #000; background: #f4f4f4; padding: 8px 10px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+                <div style="font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; color: #333;">CARTON IDENTIFIER</div>
+                <div style="font-size: 26px; font-weight: 900; color: #000; line-height: 1.1; margin: 3px 0;">
                   CARTON ${c} OF ${totalCartons}
                 </div>
-                <div style="font-size: 12px; font-weight: 900; background: #000; color: #fff; padding: 3px 10px; border-radius: 4px;">
+                <div style="font-size: 10px; font-weight: 900; background: #000; color: #fff; padding: 2px 8px; border-radius: 3px;">
                   TOTAL ${totalCartons} CARTON(S)
                 </div>
               </div>
             </div>
 
             <!-- SHIPMENT METADATA BAR -->
-            <div style="display: flex; justify-content: space-between; align-items: center; border: 2.5px solid #000; padding: 10px 16px; font-size: 14px; font-weight: 900; margin-bottom: 14px; background: #fff;">
-              <div>DO NO: <span style="font-family: monospace; font-size: 16px; color: #0d47a1;">${escapeHtml(ret.doNumber)}</span></div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border: 2px solid #000; padding: 6px 12px; font-size: 12px; font-weight: 900; margin-bottom: 10px; background: #fff;">
+              <div>DO NO: <span style="font-family: monospace; font-size: 13.5px; color: #0d47a1;">${escapeHtml(ret.doNumber)}</span></div>
               <div>DATE: <span>${escapeHtml(ret.date)}</span></div>
-              <div>PRN REF: <span style="font-family: monospace;">${prnList || 'N/A'}</span></div>
+              <div>PRN REF: <span style="font-family: monospace; color: #92400e;">${prnList || 'N/A'}</span></div>
             </div>
 
             <!-- PACKED ITEMS IN CARTON -->
             ${itemsInThisCarton.length > 0 ? `
-              <div style="border: 2px solid #000; margin-bottom: 14px; background: #fff; font-size: 12px;">
-                <div style="background: #e2e8f0; padding: 5px 10px; font-weight: 900; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; color: #1e293b; border-bottom: 1.5px solid #000; display: flex; justify-content: space-between;">
+              <div style="border: 1.5px solid #000; margin-bottom: 10px; background: #fff; font-size: 11px;">
+                <div style="background: #e2e8f0; padding: 4px 8px; font-weight: 900; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; color: #1e293b; border-bottom: 1px solid #000; display: flex; justify-content: space-between;">
                   <span>📦 PACKED ITEMS IN CARTON ${c}:</span>
                   <span>${itemsInThisCarton.length} SKU(S)</span>
                 </div>
-                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
                   <thead>
                     <tr style="background: #f8fafc; border-bottom: 1px solid #000;">
-                      <th style="padding: 4px 8px; text-align: left; width: 100px; border-right: 1px solid #ddd;">ITEM CODE</th>
-                      <th style="padding: 4px 8px; text-align: left; border-right: 1px solid #ddd;">ITEM DESCRIPTION</th>
-                      <th style="padding: 4px 8px; text-align: center; width: 85px; border-right: 1px solid #ddd;">PRN NO</th>
-                      <th style="padding: 4px 8px; text-align: right; width: 65px; border-right: 1px solid #ddd;">QTY</th>
-                      <th style="padding: 4px 8px; text-align: center; width: 95px;">REASON</th>
+                      <th style="padding: 3px 6px; text-align: left; width: 90px; border-right: 1px solid #ddd; font-size: 9.5px;">ITEM CODE</th>
+                      <th style="padding: 3px 6px; text-align: left; border-right: 1px solid #ddd; font-size: 9.5px;">ITEM DESCRIPTION</th>
+                      <th style="padding: 3px 6px; text-align: center; width: 75px; border-right: 1px solid #ddd; font-size: 9.5px;">PRN NO</th>
+                      <th style="padding: 3px 6px; text-align: right; width: 60px; border-right: 1px solid #ddd; font-size: 9.5px;">QTY</th>
+                      <th style="padding: 3px 6px; text-align: center; width: 85px; font-size: 9.5px;">REASON</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1977,12 +1977,12 @@
                       const rCfg = getReasonConfig(it.reason);
                       return `
                       <tr style="border-bottom: 1px solid #eee;">
-                        <td style="padding: 4px 8px; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${escapeHtml(it.itemCode || '-')}</td>
-                        <td style="padding: 4px 8px; font-weight: 600; border-right: 1px solid #ddd;">${escapeHtml(it.itemDescription || '')}</td>
-                        <td style="padding: 4px 8px; text-align: center; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${escapeHtml(it.prnNumber || '-')}</td>
-                        <td style="padding: 4px 8px; text-align: right; font-weight: bold; border-right: 1px solid #ddd;">${it.quantity || 1} ${escapeHtml(it.uom || 'BOX')}</td>
-                        <td style="padding: 4px 8px; text-align: center;">
-                          <span style="background: ${rCfg.bgColor}; color: ${rCfg.textColor}; font-weight: 800; padding: 2px 6px; border-radius: 3px; font-size: 10px; display: inline-block; border: 1px solid ${rCfg.borderColor};">
+                        <td style="padding: 3px 6px; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${escapeHtml(it.itemCode || '-')}</td>
+                        <td style="padding: 3px 6px; font-weight: 600; border-right: 1px solid #ddd;">${escapeHtml(it.itemDescription || '')}</td>
+                        <td style="padding: 3px 6px; text-align: center; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${escapeHtml(it.prnNumber || '-')}</td>
+                        <td style="padding: 3px 6px; text-align: right; font-weight: bold; border-right: 1px solid #ddd;">${it.quantity || 1} ${escapeHtml(it.uom || 'BOX')}</td>
+                        <td style="padding: 3px 6px; text-align: center;">
+                          <span style="background: ${rCfg.bgColor}; color: ${rCfg.textColor}; font-weight: 800; padding: 1.5px 5px; border-radius: 2px; font-size: 9.5px; display: inline-block; border: 1px solid ${rCfg.borderColor};">
                             ${escapeHtml(rCfg.shortLabel)}
                           </span>
                         </td>
@@ -1995,7 +1995,7 @@
             ` : ''}
 
             <!-- SPECIAL HANDLING WARNING -->
-            <div style="border: 2.5px dashed #d32f2f; background: #fff5f5; color: #b71c1c; padding: 10px; text-align: center; font-weight: 900; font-size: 14px; letter-spacing: 0.5px;">
+            <div style="border: 2px dashed #d32f2f; background: #fff5f5; color: #b71c1c; padding: 6px 8px; text-align: center; font-weight: 900; font-size: 11px; letter-spacing: 0.5px; line-height: 1.25;">
               ⚠️ PHARMACEUTICAL RETURN GOODS · HANDLE WITH CARE · KEEP DRY · DO NOT DROP ⚠️
             </div>
           </div>
@@ -2007,76 +2007,76 @@
         const targetAttn = cfg.attn || ret.destAttn || (tpl === 'INTERBRANCH' ? 'BRANCH PHARMACIST / PIC' : 'MR DOUGLAS');
 
         labelsHtml += `
-          <div class="carton-shipping-box" style="page-break-after: always; width: 100%; max-width: 665px; margin: 0 auto 24px auto; border: 3.5px solid #000; padding: 18px; font-family: Arial, sans-serif; background: #fff; box-sizing: border-box; box-shadow: 0 4px 10px rgba(0,0,0,0.08); zoom: 0.85;">
+          <div class="carton-shipping-box" style="page-break-inside: avoid !important; break-inside: avoid !important; page-break-after: always; break-after: page; width: 100%; max-width: 610px; margin: 0 auto 16px auto; border: 3px solid #000; padding: 12px 14px; font-family: Arial, sans-serif; background: #fff; box-sizing: border-box; box-shadow: 0 3px 8px rgba(0,0,0,0.06);">
             
             <!-- Red Italic Header Banner (Exact wording from HQ Excel Template) -->
-            <div style="color: #c00000; font-size: 14px; font-weight: 900; font-style: italic; text-align: center; margin-bottom: 12px; letter-spacing: 0.5px; text-transform: uppercase;">
+            <div style="color: #c00000; font-size: 12px; font-weight: 900; font-style: italic; text-align: center; margin-bottom: 8px; letter-spacing: 0.5px; text-transform: uppercase;">
               ${cfg.title}
             </div>
 
             <!-- Official HQ Specification Table with Exact Color Coding -->
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; border: 2.5px solid #000;">
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; border: 2px solid #000;">
               <tbody>
                 <tr>
-                  <td style="width: 220px; padding: 10px 14px; font-size: 13px; font-weight: 900; background: ${cfg.categoryBg}; border: 1.5px solid #000; text-transform: uppercase; color: ${cfg.categoryColor};">
+                  <td style="width: 175px; padding: 5px 8px; font-size: 11px; font-weight: 900; background: ${cfg.categoryBg}; border: 1px solid #000; text-transform: uppercase; color: ${cfg.categoryColor};">
                     CATEGORY RETURN
                   </td>
-                  <td style="padding: 10px 14px; font-size: 17px; font-weight: 900; border: 1.5px solid #000; color: ${cfg.categoryColor}; background: ${cfg.categoryBg}; text-transform: uppercase; letter-spacing: 0.5px;">
+                  <td style="padding: 5px 8px; font-size: 14px; font-weight: 900; border: 1px solid #000; color: ${cfg.categoryColor}; background: ${cfg.categoryBg}; text-transform: uppercase; letter-spacing: 0.5px;">
                     ${cfg.category}
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: ${cfg.fromBg}; border: 1.5px solid #000; text-transform: uppercase; color: ${cfg.fromColor};">
+                  <td style="padding: 5px 8px; font-size: 11px; font-weight: 900; background: ${cfg.fromBg}; border: 1px solid #000; text-transform: uppercase; color: ${cfg.fromColor};">
                     FROM
                   </td>
-                  <td style="padding: 10px 14px; font-size: 16px; font-weight: 900; border: 1.5px solid #000; color: ${cfg.fromColor}; background: ${cfg.fromBg}; text-transform: uppercase;">
+                  <td style="padding: 5px 8px; font-size: 13.5px; font-weight: 900; border: 1px solid #000; color: ${cfg.fromColor}; background: ${cfg.fromBg}; text-transform: uppercase;">
                     <div>${escapeHtml(ret.companyName || ('PMG PHARMACY (' + (ret.branch || 'BRANCH') + ')'))}</div>
-                    <div style="font-size: 11px; font-weight: 600; opacity: 0.85; margin-top: 2px;">${escapeHtml(ret.companyAddress || 'Sarawak, Malaysia')}</div>
+                    <div style="font-size: 10px; font-weight: 600; opacity: 0.85; margin-top: 1px;">${escapeHtml(ret.companyAddress || 'Sarawak, Malaysia')}</div>
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: ${cfg.toBg}; border: 1.5px solid #000; text-transform: uppercase; color: ${cfg.toColor};">
+                  <td style="padding: 5px 8px; font-size: 11px; font-weight: 900; background: ${cfg.toBg}; border: 1px solid #000; text-transform: uppercase; color: ${cfg.toColor};">
                     TO
                   </td>
-                  <td style="padding: 10px 14px; font-size: 17px; font-weight: 900; border: 1.5px solid #000; color: ${cfg.toColor}; background: ${cfg.toBg}; text-transform: uppercase;">
+                  <td style="padding: 5px 8px; font-size: 14px; font-weight: 900; border: 1px solid #000; color: ${cfg.toColor}; background: ${cfg.toBg}; text-transform: uppercase;">
                     ${escapeHtml(targetTo)}
-                    ${ret.destAddress && targetTo !== 'SSJ PHARMA SDN BHD (SCD)' ? `<div style="font-size: 11px; font-weight: 600; opacity: 0.85; margin-top: 2px;">${escapeHtml(ret.destAddress)}</div>` : ''}
+                    ${ret.destAddress && targetTo !== 'SSJ PHARMA SDN BHD (SCD)' ? `<div style="font-size: 10px; font-weight: 600; opacity: 0.85; margin-top: 1px;">${escapeHtml(ret.destAddress)}</div>` : ''}
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: ${cfg.attnBg}; border: 1.5px solid #000; text-transform: uppercase; color: ${cfg.attnColor};">
+                  <td style="padding: 5px 8px; font-size: 11px; font-weight: 900; background: ${cfg.attnBg}; border: 1px solid #000; text-transform: uppercase; color: ${cfg.attnColor};">
                     ATTENTION
                   </td>
-                  <td style="padding: 10px 14px; font-size: 16px; font-weight: 900; border: 1.5px solid #000; color: ${cfg.attnColor}; background: ${cfg.attnBg}; text-transform: uppercase;">
+                  <td style="padding: 5px 8px; font-size: 13.5px; font-weight: 900; border: 1px solid #000; color: ${cfg.attnColor}; background: ${cfg.attnBg}; text-transform: uppercase;">
                     ${escapeHtml(targetAttn)}
-                    ${ret.destPhone ? `<span style="font-size: 13px; font-weight: bold; margin-left: 12px; font-family: monospace;">(TEL: ${escapeHtml(ret.destPhone)})</span>` : ''}
+                    ${ret.destPhone ? `<span style="font-size: 11px; font-weight: bold; margin-left: 8px; font-family: monospace;">(TEL: ${escapeHtml(ret.destPhone)})</span>` : ''}
                   </td>
                 </tr>
                 ${cfg.showRemarks ? `
                   <tr>
-                    <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: ${cfg.remarksBg || '#FFFFFF'}; border: 1.5px solid #000; text-transform: uppercase; color: ${cfg.remarksColor || '#000'};">
+                    <td style="padding: 5px 8px; font-size: 11px; font-weight: 900; background: ${cfg.remarksBg || '#FFFFFF'}; border: 1px solid #000; text-transform: uppercase; color: ${cfg.remarksColor || '#000'};">
                       REMARKS
                     </td>
-                    <td style="padding: 10px 14px; font-size: 14px; font-weight: 900; border: 1.5px solid #000; color: ${cfg.remarksColor || '#000'}; background: ${cfg.remarksBg || '#FFFFFF'}; text-transform: uppercase;">
+                    <td style="padding: 5px 8px; font-size: 12px; font-weight: 900; border: 1px solid #000; color: ${cfg.remarksColor || '#000'}; background: ${cfg.remarksBg || '#FFFFFF'}; text-transform: uppercase;">
                       ${cfg.remarks || 'HANDLE WITH CARE-FRAGILE ITEM'}${ret.remarks ? ' · ' + escapeHtml(ret.remarks) : ''}
                     </td>
                   </tr>
                 ` : ''}
                 ${cfg.showDeadline ? `
                   <tr>
-                    <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: ${cfg.deadlineBg}; border: 1.5px solid #000; text-transform: uppercase; color: ${cfg.deadlineColor};">
+                    <td style="padding: 5px 8px; font-size: 11px; font-weight: 900; background: ${cfg.deadlineBg}; border: 1px solid #000; text-transform: uppercase; color: ${cfg.deadlineColor};">
                       ${cfg.deadlineLabel || 'DEADLINE RETURN'}
                     </td>
-                    <td style="padding: 10px 14px; font-size: 15px; font-weight: 900; border: 1.5px solid #000; color: ${cfg.deadlineColor}; background: ${cfg.deadlineBg}; text-transform: uppercase;">
+                    <td style="padding: 5px 8px; font-size: 13px; font-weight: 900; border: 1px solid #000; color: ${cfg.deadlineColor}; background: ${cfg.deadlineBg}; text-transform: uppercase;">
                       ${escapeHtml(ret.deadlineReturn || ret.pickupDate || 'URGENT / WITHIN 24-48 HOURS')}
                     </td>
                   </tr>
                 ` : ''}
                 <tr>
-                  <td style="padding: 10px 14px; font-size: 13px; font-weight: 900; background: ${cfg.dateBg}; border: 1.5px solid #000; text-transform: uppercase; color: ${cfg.dateColor};">
+                  <td style="padding: 5px 8px; font-size: 11px; font-weight: 900; background: ${cfg.dateBg}; border: 1px solid #000; text-transform: uppercase; color: ${cfg.dateColor};">
                     ${cfg.dateLabel}
                   </td>
-                  <td style="padding: 10px 14px; font-size: 15px; font-weight: 900; border: 1.5px solid #000; color: ${cfg.dateColor}; background: ${cfg.dateBg}; text-transform: uppercase;">
+                  <td style="padding: 5px 8px; font-size: 13px; font-weight: 900; border: 1px solid #000; color: ${cfg.dateColor}; background: ${cfg.dateBg}; text-transform: uppercase;">
                     ${escapeHtml(ret.date)}
                   </td>
                 </tr>
@@ -2084,34 +2084,34 @@
             </table>
 
             <!-- Carton Identifier & DO Summary Row -->
-            <div style="display: flex; gap: 14px; margin-bottom: 14px;">
-              <div style="flex: 1; border: 3px solid #000; background: #f8fafc; padding: 12px 14px; text-align: center;">
-                <div style="font-size: 11px; font-weight: 900; text-transform: uppercase; color: #475569; letter-spacing: 1px;">CARTON IDENTIFIER</div>
-                <div style="font-size: 34px; font-weight: 900; color: #000; line-height: 1.1; margin: 4px 0;">CARTON ${c} OF ${totalCartons}</div>
-                <div style="font-size: 11px; font-weight: 900; background: #000; color: #fff; display: inline-block; padding: 2px 10px; border-radius: 3px;">TOTAL ${totalCartons} CARTON(S)</div>
+            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+              <div style="flex: 1; border: 2.5px solid #000; background: #f8fafc; padding: 8px 10px; text-align: center;">
+                <div style="font-size: 10px; font-weight: 900; text-transform: uppercase; color: #475569; letter-spacing: 0.8px;">CARTON IDENTIFIER</div>
+                <div style="font-size: 26px; font-weight: 900; color: #000; line-height: 1.1; margin: 3px 0;">CARTON ${c} OF ${totalCartons}</div>
+                <div style="font-size: 10px; font-weight: 900; background: #000; color: #fff; display: inline-block; padding: 2px 8px; border-radius: 3px;">TOTAL ${totalCartons} CARTON(S)</div>
               </div>
-              <div style="flex: 1.2; border: 3px solid #000; background: #fff; padding: 12px 14px; display: flex; flex-direction: column; justify-content: center;">
-                <div style="font-size: 13px; font-weight: 900; margin-bottom: 4px;">DO NUMBER: <span style="font-family: monospace; font-size: 15px; color: #0d47a1;">${escapeHtml(ret.doNumber)}</span></div>
-                <div style="font-size: 13px; font-weight: 900; margin-bottom: 4px;">PRN REF: <span style="font-family: monospace; font-size: 13px; color: #92400e;">${prnList || 'N/A'}</span></div>
-                <div style="font-size: 12px; font-weight: bold; color: #475569;">BRANCH PIC: ${escapeHtml(ret.verifiedBy || 'Branch Pharmacist')}</div>
+              <div style="flex: 1.2; border: 2.5px solid #000; background: #fff; padding: 8px 10px; display: flex; flex-direction: column; justify-content: center;">
+                <div style="font-size: 12px; font-weight: 900; margin-bottom: 3px;">DO NUMBER: <span style="font-family: monospace; font-size: 13.5px; color: #0d47a1;">${escapeHtml(ret.doNumber)}</span></div>
+                <div style="font-size: 12px; font-weight: 900; margin-bottom: 3px;">PRN REF: <span style="font-family: monospace; font-size: 12px; color: #92400e;">${prnList || 'N/A'}</span></div>
+                <div style="font-size: 11px; font-weight: bold; color: #475569;">BRANCH PIC: ${escapeHtml(ret.verifiedBy || 'Branch Pharmacist')}</div>
               </div>
             </div>
 
             <!-- PACKED ITEMS IN CARTON (RECEIVING WAREHOUSE CHECKLIST) -->
             ${itemsInThisCarton.length > 0 ? `
-              <div style="border: 2px solid #000; margin-bottom: 14px; background: #fff; font-size: 12px;">
-                <div style="background: #e2e8f0; padding: 6px 10px; font-weight: 900; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; color: #1e293b; border-bottom: 1.5px solid #000; display: flex; justify-content: space-between;">
+              <div style="border: 1.5px solid #000; margin-bottom: 10px; background: #fff; font-size: 11px;">
+                <div style="background: #e2e8f0; padding: 4px 8px; font-weight: 900; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; color: #1e293b; border-bottom: 1px solid #000; display: flex; justify-content: space-between;">
                   <span>📦 PACKED ITEMS IN CARTON ${c}:</span>
                   <span>${itemsInThisCarton.length} SKU(S)</span>
                 </div>
-                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
                   <thead>
                     <tr style="background: #f8fafc; border-bottom: 1px solid #000;">
-                      <th style="padding: 5px 8px; text-align: left; width: 100px; border-right: 1px solid #ddd;">ITEM CODE</th>
-                      <th style="padding: 5px 8px; text-align: left; border-right: 1px solid #ddd;">ITEM DESCRIPTION</th>
-                      <th style="padding: 5px 8px; text-align: center; width: 85px; border-right: 1px solid #ddd;">PRN NO</th>
-                      <th style="padding: 5px 8px; text-align: right; width: 65px; border-right: 1px solid #ddd;">QTY</th>
-                      <th style="padding: 5px 8px; text-align: center; width: 95px;">REASON</th>
+                      <th style="padding: 3px 6px; text-align: left; width: 90px; border-right: 1px solid #ddd; font-size: 9.5px;">ITEM CODE</th>
+                      <th style="padding: 3px 6px; text-align: left; border-right: 1px solid #ddd; font-size: 9.5px;">ITEM DESCRIPTION</th>
+                      <th style="padding: 3px 6px; text-align: center; width: 75px; border-right: 1px solid #ddd; font-size: 9.5px;">PRN NO</th>
+                      <th style="padding: 3px 6px; text-align: right; width: 60px; border-right: 1px solid #ddd; font-size: 9.5px;">QTY</th>
+                      <th style="padding: 3px 6px; text-align: center; width: 85px; font-size: 9.5px;">REASON</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2119,12 +2119,12 @@
                       const rCfg = getReasonConfig(it.reason);
                       return `
                       <tr style="border-bottom: 1px solid #eee;">
-                        <td style="padding: 5px 8px; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${escapeHtml(it.itemCode || '-')}</td>
-                        <td style="padding: 5px 8px; font-weight: 600; border-right: 1px solid #ddd;">${escapeHtml(it.itemDescription || '')}</td>
-                        <td style="padding: 5px 8px; text-align: center; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${escapeHtml(it.prnNumber || '-')}</td>
-                        <td style="padding: 5px 8px; text-align: right; font-weight: bold; border-right: 1px solid #ddd;">${it.quantity || 1} ${escapeHtml(it.uom || 'BOX')}</td>
-                        <td style="padding: 5px 8px; text-align: center;">
-                          <span style="background: ${rCfg.bgColor}; color: ${rCfg.textColor}; font-weight: 800; padding: 2px 6px; border-radius: 3px; font-size: 10px; display: inline-block; border: 1px solid ${rCfg.borderColor};">
+                        <td style="padding: 3px 6px; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${escapeHtml(it.itemCode || '-')}</td>
+                        <td style="padding: 3px 6px; font-weight: 600; border-right: 1px solid #ddd;">${escapeHtml(it.itemDescription || '')}</td>
+                        <td style="padding: 3px 6px; text-align: center; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${escapeHtml(it.prnNumber || '-')}</td>
+                        <td style="padding: 3px 6px; text-align: right; font-weight: bold; border-right: 1px solid #ddd;">${it.quantity || 1} ${escapeHtml(it.uom || 'BOX')}</td>
+                        <td style="padding: 3px 6px; text-align: center;">
+                          <span style="background: ${rCfg.bgColor}; color: ${rCfg.textColor}; font-weight: 800; padding: 1.5px 5px; border-radius: 2px; font-size: 9.5px; display: inline-block; border: 1px solid ${rCfg.borderColor};">
                             ${escapeHtml(rCfg.shortLabel)}
                           </span>
                         </td>
@@ -2137,7 +2137,7 @@
             ` : ''}
 
             <!-- SPECIAL HANDLING WARNING -->
-            <div style="border: 2.5px dashed #000; background: #fffbeb; color: #000; padding: 10px; text-align: center; font-weight: 900; font-size: 13px; letter-spacing: 0.5px;">
+            <div style="border: 2px dashed #000; background: #fffbeb; color: #000; padding: 6px 8px; text-align: center; font-weight: 900; font-size: 11px; letter-spacing: 0.5px; line-height: 1.25;">
               ${cfg.caution}
             </div>
           </div>
@@ -2204,7 +2204,38 @@
 
   function executePrintCartonLabels() {
     const container = document.getElementById('printCartonLabelsContainer');
-    if (!container) return;
+    if (!container || !container.innerHTML.trim()) return;
+
+    const printStyles = `
+      @page {
+        size: A4 portrait;
+        margin: 6mm;
+      }
+      * {
+        box-sizing: border-box !important;
+      }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #fff;
+        font-family: Arial, sans-serif;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      .carton-shipping-box {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        break-inside: avoid-page !important;
+        page-break-after: always !important;
+        break-after: page !important;
+        margin: 0 auto !important;
+        box-sizing: border-box !important;
+      }
+      .carton-shipping-box:last-child {
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+      }
+    `;
 
     try {
       const printFrame = document.createElement('iframe');
@@ -2223,12 +2254,7 @@
         <html>
         <head>
           <title>PMG_Carton_Labels_${activeReturnForLabels ? activeReturnForLabels.doNumber : 'Cartons'}</title>
-          <style>
-            @page { size: A4 landscape; margin: 8mm; }
-            body { margin: 0; padding: 0; font-family: Arial, sans-serif; background: #fff; }
-            .carton-shipping-box { page-break-after: always; zoom: 0.85; margin: 0 auto !important; }
-            .carton-shipping-box:last-child { page-break-after: avoid; }
-          </style>
+          <style>${printStyles}</style>
         </head>
         <body>
           ${container.innerHTML}
@@ -2256,12 +2282,7 @@
           <html>
           <head>
             <title>PMG_Carton_Labels_${activeReturnForLabels ? activeReturnForLabels.doNumber : 'Cartons'}</title>
-            <style>
-              @page { size: A4 landscape; margin: 8mm; }
-              body { margin: 10px; font-family: Arial, sans-serif; background: #fff; }
-              .carton-shipping-box { page-break-after: always; zoom: 0.85; margin: 0 auto !important; }
-              .carton-shipping-box:last-child { page-break-after: avoid; }
-            </style>
+            <style>${printStyles}</style>
           </head>
           <body>
             ${container.innerHTML}
