@@ -990,11 +990,18 @@ function mergeExpiryDatasets(localList, remoteList) {
           rowId: loc.rowId || rem.rowId
         });
       } else if (remTs > locTs) {
-        // Remote is strictly newer: adopt remote fields
+        // Remote is strictly newer: adopt remote fields, preserving local pricing if remote omitted them
         map.set(key, {
           ...loc,
           ...rem,
-          rowId: loc.rowId || rem.rowId
+          rowId: loc.rowId || rem.rowId,
+          offeredPrice: rem.offeredPrice !== undefined ? rem.offeredPrice : (loc.offeredPrice !== undefined ? loc.offeredPrice : loc.clearancePrice),
+          clearancePrice: rem.clearancePrice !== undefined ? rem.clearancePrice : (loc.clearancePrice !== undefined ? loc.clearancePrice : loc.offeredPrice),
+          normalPrice: rem.normalPrice !== undefined ? rem.normalPrice : loc.normalPrice,
+          tagTheme: rem.tagTheme || loc.tagTheme,
+          tagSize: rem.tagSize || loc.tagSize,
+          promoBanner: rem.promoBanner || loc.promoBanner,
+          promoRemark: rem.promoRemark || loc.promoRemark
         });
       } else if (locTs > remTs) {
         // Local is strictly newer: retain local
@@ -1003,6 +1010,11 @@ function mergeExpiryDatasets(localList, remoteList) {
         if (rem.quantity !== undefined && loc.quantity === undefined) loc.quantity = rem.quantity;
         if (rem.expiryDate && !loc.expiryDate) loc.expiryDate = rem.expiryDate;
         if (rem.batchNumber && (!loc.batchNumber || loc.batchNumber === 'N/A')) loc.batchNumber = rem.batchNumber;
+        if (rem.offeredPrice !== undefined && loc.offeredPrice === undefined) loc.offeredPrice = rem.offeredPrice;
+        if (rem.clearancePrice !== undefined && loc.clearancePrice === undefined) loc.clearancePrice = rem.clearancePrice;
+        if (loc.offeredPrice !== undefined && loc.clearancePrice === undefined) loc.clearancePrice = loc.offeredPrice;
+        if (loc.clearancePrice !== undefined && loc.offeredPrice === undefined) loc.offeredPrice = loc.clearancePrice;
+        if (rem.normalPrice !== undefined && loc.normalPrice === undefined) loc.normalPrice = rem.normalPrice;
       }
     }
   });
@@ -2428,7 +2440,6 @@ function openClearancePriceTagModal(rowId) {
   const copiesInput = document.getElementById('tagCopiesInput');
   const noteInput = document.getElementById('tagFooterNoteInput');
   const bannerSel = document.getElementById('tagBannerSelect');
-  const barcodeCheckbox = document.getElementById('tagShowBarcodeCheckbox');
 
   if (offInput) offInput.value = item.offeredPrice !== undefined ? item.offeredPrice : '';
   if (normInput) normInput.value = item.normalPrice !== undefined ? item.normalPrice : '';
@@ -2438,7 +2449,6 @@ function openClearancePriceTagModal(rowId) {
   if (copiesInput) copiesInput.value = item.quantity && item.quantity > 0 ? item.quantity : 1;
   if (noteInput) noteInput.value = item.promoRemark || '* While Stocks Last · Short Expiry Deal';
   if (bannerSel && item.promoBanner) bannerSel.value = item.promoBanner;
-  if (barcodeCheckbox) barcodeCheckbox.checked = item.showBarcode !== undefined ? Boolean(item.showBarcode) : true;
 
   updatePriceTagLivePreview();
   modal.classList.remove('hidden');
@@ -2469,7 +2479,7 @@ function updatePriceTagLivePreview() {
   const printTarget = document.getElementById('tagPrintTargetSelect')?.value || 'a4';
   const banner = document.getElementById('tagBannerSelect')?.value || '🔥 CLEARANCE SALE';
   const footerNote = document.getElementById('tagFooterNoteInput')?.value || '* While Stocks Last · Short Expiry Deal';
-  const showBarcode = document.getElementById('tagShowBarcodeCheckbox') ? document.getElementById('tagShowBarcodeCheckbox').checked : true;
+  const showBarcode = false;
 
   // Discount preview badge on left panel
   const discPill = document.getElementById('tagDiscountPillPreview');
@@ -2566,10 +2576,11 @@ function saveClearancePriceTag(silent = false) {
   const printTarget = document.getElementById('tagPrintTargetSelect')?.value || 'a4';
   const banner = document.getElementById('tagBannerSelect')?.value || '🔥 CLEARANCE SALE';
   const footerNote = document.getElementById('tagFooterNoteInput')?.value || '';
-  const showBarcode = document.getElementById('tagShowBarcodeCheckbox') ? document.getElementById('tagShowBarcodeCheckbox').checked : true;
+  const showBarcode = false;
 
   // Update item properties
   activePriceTagItem.offeredPrice = offeredPrice;
+  activePriceTagItem.clearancePrice = offeredPrice;
   if (normalPrice) activePriceTagItem.normalPrice = normalPrice;
   activePriceTagItem.actionPlan = 'Clearance Promo / PWP';
   activePriceTagItem.tagTheme = theme;
@@ -2577,7 +2588,7 @@ function saveClearancePriceTag(silent = false) {
   activePriceTagItem.tagPrintTarget = printTarget;
   activePriceTagItem.promoBanner = banner;
   activePriceTagItem.promoRemark = footerNote;
-  activePriceTagItem.showBarcode = showBarcode;
+  activePriceTagItem.showBarcode = false;
   activePriceTagItem.lastUpdated = new Date().toISOString();
 
   saveLocalExpiryData();
@@ -2601,17 +2612,26 @@ function saveClearancePriceTag(silent = false) {
 function printClearancePriceTags() {
   if (!activePriceTagItem) return;
 
-  // Auto-save offered price first
+  const offInput = document.getElementById('tagOfferedPrice');
+  const offeredPrice = parseFloat(offInput?.value);
+  if (isNaN(offeredPrice) || offeredPrice <= 0) {
+    alert('Please enter a valid clearance price (RM) before printing.');
+    if (offInput) offInput.focus();
+    return;
+  }
+
+  // Auto-save offered price to product and close the modal directly
   saveClearancePriceTag(true);
+  closeClearancePriceTagModal();
+  showExpiryToast(`✅ Saved clearance price RM ${offeredPrice.toFixed(2)}! Preparing print...`);
 
   const copies = parseInt(document.getElementById('tagCopiesInput')?.value, 10) || 1;
   const size = document.getElementById('tagSizeSelect')?.value || 'compact';
   const theme = document.getElementById('tagThemeSelect')?.value || 'flame';
   const banner = document.getElementById('tagBannerSelect')?.value || '🔥 CLEARANCE SALE';
   const footerNote = document.getElementById('tagFooterNoteInput')?.value || '* While Stocks Last · Short Expiry Deal';
-  const showBarcode = document.getElementById('tagShowBarcodeCheckbox') ? document.getElementById('tagShowBarcodeCheckbox').checked : true;
+  const showBarcode = false;
   const printTarget = document.getElementById('tagPrintTargetSelect')?.value || 'a4';
-  const offeredPrice = parseFloat(document.getElementById('tagOfferedPrice')?.value) || 0;
   const normalPrice = parseFloat(document.getElementById('tagNormalPrice')?.value) || 0;
 
   let widthMm = '50mm';

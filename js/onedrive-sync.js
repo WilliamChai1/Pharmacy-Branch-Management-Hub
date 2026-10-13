@@ -2044,15 +2044,45 @@
           });
           localP.appointments = Array.from(aptMap.values()).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
-          // Overwrite scalar profile fields if cloud has updated values
-          localP.name = cloudP.name || localP.name;
-          localP.phone = cloudP.phone || localP.phone;
-          localP.ic = cloudP.ic || localP.ic;
-          localP.conditions = Array.from(new Set([...(localP.conditions || []), ...(cloudP.conditions || [])]));
-          localP.allergies = cloudP.allergies || localP.allergies;
-          localP.notes = cloudP.notes || localP.notes;
-          localP.nextTcaDate = cloudP.nextTcaDate || localP.nextTcaDate;
-          localP.nextTcaPurpose = cloudP.nextTcaPurpose || localP.nextTcaPurpose;
+          // Overwrite scalar profile fields based on updatedAt timestamps
+          const lTime = new Date(localP.updatedAt || localP.lastUpdated || localP.createdAt || 0).getTime();
+          const cTime = new Date(cloudP.updatedAt || cloudP.lastUpdated || cloudP.createdAt || 0).getTime();
+
+          if (cTime > lTime) {
+            // Cloud is strictly newer: adopt cloud values
+            localP.name = cloudP.name || localP.name;
+            localP.phone = cloudP.phone || localP.phone;
+            localP.ic = cloudP.ic || localP.ic;
+            localP.gender = cloudP.gender || localP.gender;
+            if (cloudP.age !== undefined && cloudP.age !== null) localP.age = cloudP.age;
+            localP.race = cloudP.race || localP.race;
+            localP.language = cloudP.language || localP.language;
+            localP.branch = cloudP.branch || localP.branch;
+            if (Array.isArray(cloudP.conditions) && cloudP.conditions.length) localP.conditions = cloudP.conditions;
+            if (Array.isArray(cloudP.chronicConditions) && cloudP.chronicConditions.length) localP.chronicConditions = cloudP.chronicConditions;
+            localP.allergies = cloudP.allergies || localP.allergies;
+            localP.notes = cloudP.notes || localP.notes;
+            localP.nextTcaDate = cloudP.nextTcaDate || localP.nextTcaDate;
+            localP.nextTcaPurpose = cloudP.nextTcaPurpose || localP.nextTcaPurpose;
+            localP.updatedAt = cloudP.updatedAt || localP.updatedAt;
+          } else {
+            // Local is newer or equal: preserve local edits! Only fill fields that are empty locally
+            localP.name = localP.name || cloudP.name;
+            localP.phone = localP.phone || cloudP.phone;
+            localP.ic = localP.ic || cloudP.ic;
+            localP.gender = localP.gender || cloudP.gender;
+            if (localP.age === undefined || localP.age === null) localP.age = cloudP.age;
+            localP.race = localP.race || cloudP.race;
+            localP.language = localP.language || cloudP.language;
+            localP.branch = localP.branch || cloudP.branch;
+            if (!Array.isArray(localP.conditions) || !localP.conditions.length) localP.conditions = cloudP.conditions || [];
+            if (!Array.isArray(localP.chronicConditions) || !localP.chronicConditions.length) localP.chronicConditions = cloudP.chronicConditions || [];
+            localP.allergies = localP.allergies || cloudP.allergies;
+            localP.notes = localP.notes || cloudP.notes;
+            localP.nextTcaDate = localP.nextTcaDate || cloudP.nextTcaDate;
+            localP.nextTcaPurpose = localP.nextTcaPurpose || cloudP.nextTcaPurpose;
+            if (!localP.updatedAt && cloudP.updatedAt) localP.updatedAt = cloudP.updatedAt;
+          }
 
           map.set(cloudP.id, localP);
         }
@@ -2134,6 +2164,8 @@
         if (a.batchNumber !== b.batchNumber) return false;
         if (a.actionPlan !== b.actionPlan) return false;
         if (a.clearancePrice !== b.clearancePrice) return false;
+        if (a.offeredPrice !== b.offeredPrice) return false;
+        if (a.normalPrice !== b.normalPrice) return false;
         if (a.remarks !== b.remarks) return false;
       }
       return true;

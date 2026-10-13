@@ -2979,6 +2979,7 @@ function saveNewPatient() {
     allergies,
     notes,
     createdAt: getTodayDateString(0),
+    updatedAt: new Date().toISOString(),
     encounters: [],
     medications: [],
     appointments: []
@@ -11558,7 +11559,10 @@ function downloadChronotherapyImage() {
   const gap = 20; // 4 * 260 + 3 * 20 = 1100px. Perfectly matches metadata card width (50px to 1150px)
   const textMaxW = cardWidth - 44; // 216px printable width inside card
 
-  const measureCtx = canvas.getContext('2d');
+  const measureCanvas = document.createElement('canvas');
+  measureCanvas.width = width;
+  measureCanvas.height = 1000;
+  const measureCtx = measureCanvas.getContext('2d');
 
   // Text wrapping helper supporting English words, spaces, punctuation, and CJK characters
   const wrapTextLines = (ctx, text, maxW, font) => {
@@ -11571,6 +11575,10 @@ function downloadChronotherapyImage() {
     const lines = [];
     let curLine = '';
 
+    const pushLine = (line) => {
+      if (line) lines.push(line);
+    };
+
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i];
       const isCJK = /[\u4e00-\u9fa5]/.test(token);
@@ -11579,7 +11587,10 @@ function downloadChronotherapyImage() {
         curLine = test;
       } else {
         if (curLine) {
-          lines.push(curLine);
+          pushLine(curLine);
+          curLine = '';
+        }
+        if (ctx.measureText(token).width <= maxW) {
           curLine = token;
         } else {
           // Extremely long unbroken token: slice char-by-char
@@ -11588,7 +11599,7 @@ function downloadChronotherapyImage() {
             if (ctx.measureText(partial + ch).width <= maxW) {
               partial += ch;
             } else {
-              lines.push(partial);
+              pushLine(partial);
               partial = ch;
             }
           }
@@ -11596,7 +11607,7 @@ function downloadChronotherapyImage() {
         }
       }
     }
-    if (curLine) lines.push(curLine);
+    if (curLine) pushLine(curLine);
     return lines;
   };
 

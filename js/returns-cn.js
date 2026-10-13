@@ -1900,7 +1900,7 @@
       if (tpl === 'VENDOR_STANDARD') {
         // Standard Non-SSJ / Generic Vendor Shipping Label
         labelsHtml += `
-          <div class="carton-shipping-box" style="page-break-after: always; width: 100%; max-width: 780px; margin: 0 auto 30px auto; border: 4px solid #000; padding: 22px; font-family: Arial, sans-serif; background: #fff; box-sizing: border-box; box-shadow: 0 4px 10px rgba(0,0,0,0.08);">
+          <div class="carton-shipping-box" style="page-break-after: always; width: 100%; max-width: 665px; margin: 0 auto 24px auto; border: 3.5px solid #000; padding: 18px; font-family: Arial, sans-serif; background: #fff; box-sizing: border-box; box-shadow: 0 4px 10px rgba(0,0,0,0.08); zoom: 0.85;">
             <!-- Top Header -->
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3.5px solid #000; padding-bottom: 12px; margin-bottom: 16px;">
               <div style="font-size: 20px; font-weight: 900; letter-spacing: 1px;">🚚 CARTON SHIPPING / DELIVERY LABEL</div>
@@ -2007,7 +2007,7 @@
         const targetAttn = cfg.attn || ret.destAttn || (tpl === 'INTERBRANCH' ? 'BRANCH PHARMACIST / PIC' : 'MR DOUGLAS');
 
         labelsHtml += `
-          <div class="carton-shipping-box" style="page-break-after: always; width: 100%; max-width: 780px; margin: 0 auto 30px auto; border: 4px solid #000; padding: 22px; font-family: Arial, sans-serif; background: #fff; box-sizing: border-box; box-shadow: 0 4px 10px rgba(0,0,0,0.08);">
+          <div class="carton-shipping-box" style="page-break-after: always; width: 100%; max-width: 665px; margin: 0 auto 24px auto; border: 3.5px solid #000; padding: 18px; font-family: Arial, sans-serif; background: #fff; box-sizing: border-box; box-shadow: 0 4px 10px rgba(0,0,0,0.08); zoom: 0.85;">
             
             <!-- Red Italic Header Banner (Exact wording from HQ Excel Template) -->
             <div style="color: #c00000; font-size: 14px; font-weight: 900; font-style: italic; text-align: center; margin-bottom: 12px; letter-spacing: 0.5px; text-transform: uppercase;">
@@ -2226,7 +2226,7 @@
           <style>
             @page { size: A4 landscape; margin: 8mm; }
             body { margin: 0; padding: 0; font-family: Arial, sans-serif; background: #fff; }
-            .carton-shipping-box { page-break-after: always; }
+            .carton-shipping-box { page-break-after: always; zoom: 0.85; margin: 0 auto !important; }
             .carton-shipping-box:last-child { page-break-after: avoid; }
           </style>
         </head>
@@ -2259,7 +2259,7 @@
             <style>
               @page { size: A4 landscape; margin: 8mm; }
               body { margin: 10px; font-family: Arial, sans-serif; background: #fff; }
-              .carton-shipping-box { page-break-after: always; }
+              .carton-shipping-box { page-break-after: always; zoom: 0.85; margin: 0 auto !important; }
               .carton-shipping-box:last-child { page-break-after: avoid; }
             </style>
           </head>
