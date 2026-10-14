@@ -10873,7 +10873,17 @@ CRITICAL CLINICAL INSTRUCTIONS:
 
 7. CHRONOTHERAPY (BEST TIMING OF INTAKE):
    - Categorize all medications and recommended supplements into: Morning, Afternoon, Evening, Bedtime.
-   - For every item, provide complete, unabbreviated dosage instructions (e.g. "taking 1 capsule once a day after breakfast", "take 1 tablet once daily after food") along with practical timing rationale. Do NOT truncate or omit dosage frequency and instructions.
+   - For every item, provide complete, unabbreviated dosage instructions along with practical timing rationale. Do NOT truncate or omit dosage frequency and instructions.
+   - MANDATORY CLINICAL TIMING & DRUG/SUPPLEMENT RULES:
+     * "Lipofit": MUST be scheduled BEFORE EACH MEAL, TWICE DAILY (BD). Schedule under Morning (15–30 mins before breakfast) and Evening (15–30 mins before dinner). NEVER schedule Lipofit at Bedtime / Night! The instruction note MUST state: "take 1 tablet/capsule twice daily, 15–30 mins before meal (Before Breakfast / Before Dinner)".
+     * "Fibolac": Schedule at Bedtime / Night with a full glass of water.
+     * "Livason" (Liver tonic): Schedule twice daily after meals (Morning & Evening).
+     * "Glycoway" (Glucose metabolism): Schedule twice daily, 15–30 mins before or with meals (Morning & Evening).
+     * "Systoright" (Vascular & insulin support): Schedule twice daily after meals (Morning & Evening).
+     * "Livemore Co-Q10 Plus / CoQ10": Schedule Morning or Afternoon after meals (avoid bedtime due to energizing cellular ATP).
+     * "Statins" (Atorvastatin, Simvastatin): Schedule at Bedtime / Evening.
+     * "PPIs" (Omeprazole, Pantoprazole, Esomeprazole): Schedule Morning 30-60 mins before breakfast.
+     * "Metformin": Schedule with or immediately after meals (Morning & Evening).
 
 8. CLINICAL ASSESSMENT & PRE-DIAGNOSTIC:
    - Concise pharmacist impression of current disease control and risk stratification. Avoid words like "AI", formulate as professional clinical impression.
@@ -10997,6 +11007,12 @@ RESPONSE MUST BE STRICTLY VALID JSON matching this structure:
   if (!parsed) {
     alert('Could not auto generate clinical recommendations. Please verify your API key and network connection.');
     return;
+  }
+
+  const planMedsVal = document.getElementById('encPlanMeds')?.value || '';
+  const planSuppsVal = document.getElementById('encPlanSupps')?.value || '';
+  if (parsed.chronotherapy) {
+    parsed.chronotherapy = normalizeChronotherapy(parsed.chronotherapy, planMedsVal, planSuppsVal);
   }
 
   currentAiReviewResult = parsed;
@@ -11270,10 +11286,172 @@ function applyAiSupplements() {
   }
 }
 
-// ─── DYNAMIC CHRONOTHERAPY HELPERS ──────────────────────────────────────────
+// ─── DYNAMIC CHRONOTHERAPY HELPERS & CLINICAL TIMING NORMALIZER ──────────────
+function normalizeChronotherapy(rawChrono, planMedsText = '', planSuppsText = '') {
+  if (!rawChrono || typeof rawChrono !== 'object') return { morning: [], afternoon: [], evening: [], bedtime: [] };
+
+  const chrono = {
+    morning: Array.isArray(rawChrono.morning) ? [...rawChrono.morning] : [],
+    afternoon: Array.isArray(rawChrono.afternoon) ? [...rawChrono.afternoon] : [],
+    evening: Array.isArray(rawChrono.evening) ? [...rawChrono.evening] : [],
+    bedtime: Array.isArray(rawChrono.bedtime) ? [...rawChrono.bedtime] : []
+  };
+
+  const combinedPlan = `${planMedsText || ''}\n${planSuppsText || ''}`.toLowerCase();
+
+  // Helper to check if an item is Lipofit
+  const isLipofit = (it) => {
+    if (!it) return false;
+    const name = String(it.item || '').toLowerCase();
+    const note = String(it.note || '').toLowerCase();
+    return name.includes('lipofit') || note.includes('lipofit');
+  };
+
+  const hasLipoInMorning = chrono.morning.some(isLipofit);
+  const hasLipoInAfternoon = chrono.afternoon.some(isLipofit);
+  const hasLipoInEvening = chrono.evening.some(isLipofit);
+  const hasLipoInBedtime = chrono.bedtime.some(isLipofit);
+  const hasLipoInPlan = combinedPlan.includes('lipofit');
+
+  if (hasLipoInMorning || hasLipoInAfternoon || hasLipoInEvening || hasLipoInBedtime || hasLipoInPlan) {
+    // 1. STRICT CLINICAL RULE: Remove Lipofit from Bedtime / Night completely!
+    chrono.bedtime = chrono.bedtime.filter(it => !isLipofit(it));
+
+    // Determine dosage and dosage form
+    let doseUnit = 'tablet';
+    let qty = '1';
+    if (combinedPlan.includes('cap')) {
+      doseUnit = 'capsule';
+    }
+    if (combinedPlan.includes('2 tab') || combinedPlan.includes('2 cap') || combinedPlan.includes('2/2')) {
+      qty = '2';
+    }
+
+    const morningNote = `take ${qty} ${doseUnit} twice daily, 15–30 mins before breakfast (Before Meal)`;
+    const eveningNote = `take ${qty} ${doseUnit} twice daily, 15–30 mins before dinner (Before Meal)`;
+
+    // Check existing Lipofit item to preserve original item name
+    const existingLipo = chrono.morning.find(isLipofit) || 
+                         chrono.evening.find(isLipofit) || 
+                         chrono.afternoon.find(isLipofit) ||
+                         rawChrono.bedtime?.find(isLipofit);
+    let itemLabel = existingLipo ? existingLipo.item.replace(/\s*\((night|bedtime|before sleep)\)/gi, '').trim() : 'Lipofit';
+    if (!itemLabel) itemLabel = 'Lipofit';
+
+    // Ensure Lipofit is scheduled under Morning (Before Breakfast)
+    if (!hasLipoInMorning) {
+      chrono.morning.unshift({ item: itemLabel, note: morningNote });
+    } else {
+      const it = chrono.morning.find(isLipofit);
+      it.note = morningNote;
+    }
+
+    // Ensure Lipofit is scheduled under Evening (Before Dinner)
+    if (hasLipoInEvening) {
+      const it = chrono.evening.find(isLipofit);
+      it.note = eveningNote;
+    } else if (hasLipoInAfternoon) {
+      const it = chrono.afternoon.find(isLipofit);
+      it.note = `take ${qty} ${doseUnit} twice daily, 15–30 mins before lunch (Before Meal)`;
+    } else {
+      chrono.evening.unshift({ item: itemLabel, note: eveningNote });
+    }
+  }
+
+  // Helper for Fibolac: Taken at Bedtime / Night with water
+  const isFibolac = (it) => {
+    if (!it) return false;
+    const name = String(it.item || '').toLowerCase();
+    const note = String(it.note || '').toLowerCase();
+    return name.includes('fibolac') || note.includes('fibolac');
+  };
+  const hasFiboInPlan = combinedPlan.includes('fibolac');
+  const hasFiboInAnySlot = chrono.morning.some(isFibolac) || chrono.afternoon.some(isFibolac) || chrono.evening.some(isFibolac) || chrono.bedtime.some(isFibolac);
+
+  if (hasFiboInPlan || hasFiboInAnySlot) {
+    chrono.morning = chrono.morning.filter(it => !isFibolac(it));
+    chrono.afternoon = chrono.afternoon.filter(it => !isFibolac(it));
+    if (!chrono.bedtime.some(isFibolac)) {
+      chrono.bedtime.push({
+        item: 'Fibolac',
+        note: '1 sachet at bedtime, dissolve in 200ml water and drink immediately followed by 1 glass of water'
+      });
+    } else {
+      const it = chrono.bedtime.find(isFibolac);
+      it.note = '1 sachet at bedtime, dissolve in 200ml water and drink immediately followed by 1 glass of water';
+    }
+  }
+
+  return chrono;
+}
+
+function generateFallbackChronotherapy(planMedsText = '', planSuppsText = '') {
+  const chrono = { morning: [], afternoon: [], evening: [], bedtime: [] };
+  const rawLines = `${planMedsText || ''}\n${planSuppsText || ''}`.split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !l.startsWith('//') && !l.startsWith('#') && !l.toLowerCase().includes('review on') && !l.toLowerCase().includes('cgm') && !l.toLowerCase().includes('continuous glucose'));
+
+  rawLines.forEach(line => {
+    let clean = line.replace(/^[\d\.\-\*\•\)\s]+/, '').replace(/^T\.\s*/i, '').trim();
+    if (!clean) return;
+    const lower = clean.toLowerCase();
+
+    // 1. Lipofit: twice daily before meals
+    if (lower.includes('lipofit')) {
+      chrono.morning.push({ item: 'Lipofit', note: 'take 1 tablet twice daily, 15–30 mins before breakfast (Before Meal)' });
+      chrono.evening.push({ item: 'Lipofit', note: 'take 1 tablet twice daily, 15–30 mins before dinner (Before Meal)' });
+      return;
+    }
+
+    // 2. Fibolac: bedtime
+    if (lower.includes('fibolac')) {
+      chrono.bedtime.push({ item: 'Fibolac', note: '1 sachet at bedtime with a full glass of water' });
+      return;
+    }
+
+    // 3. Statin: bedtime / night
+    if (lower.includes('statin') || lower.includes('atorva') || lower.includes('simva') || lower.includes('rosuva')) {
+      chrono.bedtime.push({ item: clean, note: 'take 1 tablet once daily at night / bedtime' });
+      return;
+    }
+
+    // 4. PPI: morning before breakfast
+    if (lower.includes('prazole') || lower.includes('pantoprazole') || lower.includes('omeprazole') || lower.includes('esomeprazole')) {
+      chrono.morning.push({ item: clean, note: 'take 1 capsule/tablet 30–60 mins before breakfast' });
+      return;
+    }
+
+    // Frequency parsing
+    if (lower.includes('bd') || lower.includes('twice')) {
+      chrono.morning.push({ item: clean, note: 'take twice daily after food (Morning)' });
+      chrono.evening.push({ item: clean, note: 'take twice daily after food (Evening)' });
+    } else if (lower.includes('tds') || lower.includes('three times') || lower.includes('tid')) {
+      chrono.morning.push({ item: clean, note: 'take 3 times daily after food' });
+      chrono.afternoon.push({ item: clean, note: 'take 3 times daily after food' });
+      chrono.evening.push({ item: clean, note: 'take 3 times daily after food' });
+    } else if (lower.includes('on') || lower.includes('night') || lower.includes('bedtime') || lower.includes('nocte')) {
+      chrono.bedtime.push({ item: clean, note: 'take once daily at bedtime / night' });
+    } else {
+      // Default once daily (OD) in morning
+      chrono.morning.push({ item: clean, note: 'take once daily after breakfast' });
+    }
+  });
+
+  return normalizeChronotherapy(chrono, planMedsText, planSuppsText);
+}
+
 function getActiveChronotherapy() {
-  if (!currentAiReviewResult || !currentAiReviewResult.chronotherapy) return {};
-  const c = currentAiReviewResult.chronotherapy;
+  const planMeds = document.getElementById('encPlanMeds')?.value || '';
+  const planSupps = document.getElementById('encPlanSupps')?.value || '';
+
+  if (!currentAiReviewResult || !currentAiReviewResult.chronotherapy) {
+    if (planMeds.trim() || planSupps.trim()) {
+      return generateFallbackChronotherapy(planMeds, planSupps);
+    }
+    return {};
+  }
+
+  const rawC = currentAiReviewResult.chronotherapy;
   const houseBrands = currentAiReviewResult.houseBrands || [];
 
   const uncheckedProductNames = new Set();
@@ -11292,9 +11470,8 @@ function getActiveChronotherapy() {
     }
   });
 
-  // Active inputs in the consultation form
-  const planMeds = (document.getElementById('encPlanMeds')?.value || '').toLowerCase();
-  const planSupps = (document.getElementById('encPlanSupps')?.value || '').toLowerCase();
+  const planMedsLower = planMeds.toLowerCase();
+  const planSuppsLower = planSupps.toLowerCase();
 
   // Known PMG supplements / house brands catalog
   const KNOWN_SUPPLEMENTS = [
@@ -11316,7 +11493,7 @@ function getActiveChronotherapy() {
     const isSupp = KNOWN_SUPPLEMENTS.some(s => lower.includes(s)) || houseBrands.some(h => lower.includes(h.product.toLowerCase()));
     if (isSupp) {
       const isChecked = Array.from(checkedProductNames).some(ch => lower.includes(ch) || ch.includes(lower));
-      const inPlan = planSupps.includes(lower) || planMeds.includes(lower);
+      const inPlan = planSuppsLower.includes(lower) || planMedsLower.includes(lower);
       return isChecked || inPlan;
     }
 
@@ -11360,12 +11537,14 @@ function getActiveChronotherapy() {
     });
   };
 
-  return {
-    morning: filterSlot(c.morning),
-    afternoon: filterSlot(c.afternoon),
-    evening: filterSlot(c.evening),
-    bedtime: filterSlot(c.bedtime)
+  const filteredChrono = {
+    morning: filterSlot(rawC.morning),
+    afternoon: filterSlot(rawC.afternoon),
+    evening: filterSlot(rawC.evening),
+    bedtime: filterSlot(rawC.bedtime)
   };
+
+  return normalizeChronotherapy(filteredChrono, planMeds, planSupps);
 }
 
 function updateChronotherapyView() {
@@ -11475,48 +11654,48 @@ function shareChronotherapyWa() {
   if (lang === 'Chinese') {
     msg += `尊敬的 ${name}，这是【${branchName}】药剂师为您定制的每日最佳服药与保健品时间表（时间治疗学 Chronotherapy）：\n\n`;
     if (chrono.morning?.length) {
-      msg += `🌅 *早晨（早餐后 / 晨起）：*\n${chrono.morning.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `🌅 *早晨（早餐 / 晨起）：*\n${chrono.morning.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.afternoon?.length) {
-      msg += `☀️ *中午（午餐后）：*\n${chrono.afternoon.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `☀️ *中午（午餐）：*\n${chrono.afternoon.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.evening?.length) {
-      msg += `🌇 *傍晚（晚餐后）：*\n${chrono.evening.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `🌇 *傍晚（晚餐）：*\n${chrono.evening.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.bedtime?.length) {
-      msg += `🌙 *睡前：*\n${chrono.bedtime.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `🌙 *睡前（夜间）：*\n${chrono.bedtime.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     msg += `📅 *预约药剂师复诊与健康咨询（随时在线选时段）：*\n👉 ${bookingUrl}\n\n`;
     msg += `💡 *温馨提示：* 按时规律服用可达最佳吸收效果并减少肠胃不适。如有任何用药疑问，欢迎随时联系 PMG 药剂师！`;
   } else if (lang === 'Malay') {
     msg += `Salam ${name}, ini adalah jadual masa pengambilan ubat & suplemen harian anda dari 【${branchName}】 (Kronoterapi):\n\n`;
     if (chrono.morning?.length) {
-      msg += `🌅 *Pagi (Selepas Sarapan):*\n${chrono.morning.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `🌅 *Pagi (Sarapan / Pagi):*\n${chrono.morning.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.afternoon?.length) {
-      msg += `☀️ *Tengah Hari (Selepas Makan Tengah Hari):*\n${chrono.afternoon.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `☀️ *Tengah Hari (Makan Tengah Hari):*\n${chrono.afternoon.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.evening?.length) {
-      msg += `🌇 *Petang / Malam (Selepas Makan Malam):*\n${chrono.evening.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `🌇 *Petang (Makan Malam):*\n${chrono.evening.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.bedtime?.length) {
-      msg += `🌙 *Sebelum Tidur:*\n${chrono.bedtime.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `🌙 *Sebelum Tidur (Malam):*\n${chrono.bedtime.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     msg += `📅 *Tempah Temujanji Konsultasi & Semakan Ubat (Bila-bila masa):*\n👉 ${bookingUrl}\n\n`;
     msg += `💡 *Peringatan Mesra:* Ambil mengikut jadual untuk penyerapan optimum dan mengurangkan kesan sampingan. Hubungi ahli farmasi PMG jika ada soalan!`;
   } else {
     msg += `Dear ${name}, here is your personalized daily medication and supplement timing schedule from ${branchName} (Chronotherapy):\n\n`;
     if (chrono.morning?.length) {
-      msg += `🌅 *Morning (After Breakfast):*\n${chrono.morning.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `🌅 *Morning (Breakfast / Morning):*\n${chrono.morning.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.afternoon?.length) {
-      msg += `☀️ *Afternoon (After Lunch):*\n${chrono.afternoon.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `☀️ *Afternoon (Lunch / Afternoon):*\n${chrono.afternoon.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.evening?.length) {
-      msg += `🌇 *Evening (After Dinner):*\n${chrono.evening.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `🌇 *Evening (Dinner / Evening):*\n${chrono.evening.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.bedtime?.length) {
-      msg += `🌙 *Bedtime:*\n${chrono.bedtime.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `🌙 *Bedtime (Night):*\n${chrono.bedtime.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     msg += `📅 *Book a Follow-up Consultation or Medication Review (Anytime):*\n👉 ${bookingUrl}\n\n`;
     msg += `💡 *Pharmacist Tip:* Taking items at recommended optimal times maximizes clinical absorption and minimizes gastrointestinal upset. Feel free to reach out with any questions!`;
