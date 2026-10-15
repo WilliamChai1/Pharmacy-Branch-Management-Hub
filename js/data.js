@@ -76,6 +76,8 @@ let USERS = [
 // When Google Sheets is reachable, this is overridden by live sheet data.
 // Roselin (PMG03631) and Jamie (PMG03532) have left PMG — removed 19 Sep 2026.
 // Daniela Janet (PMG03062) has resigned — removed 04 Oct 2026.
+// Ting Kwang Yu (PMG00723) and Kenix Ling (PMG02963) left PMG Kota Sentosa effective Nov 2026.
+// Vanessa Anak Blaise (PMG03801) joined PMG Kota Sentosa on 1 Nov 2026.
 let STAFF_MAP = [
   // ── Kota Sentosa (KS01) — active staff only ──
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'TING',       empNo: 'PMG00723', empName: 'TING KWANG YU'                   },
@@ -87,6 +89,7 @@ let STAFF_MAP = [
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'KENIX',      empNo: 'PMG02963', empName: 'KENIX LING WANG YIING'            },
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'FARIZIN',    empNo: 'PMG03375', empName: 'MUHAMMAD NUR FARIZIN BIN ABDULLAH'},
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'CHRISTINA',  empNo: 'PMG03033', empName: 'CHRISTINA LEE YING YING'          },
+  { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'VANESSA',    empNo: 'PMG03801', empName: 'VANESSA ANAK BLAISE'              },
   // ── BR02–BR06: add rows here OR just update the Google Sheet ──
 ];
 

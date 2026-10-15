@@ -62,14 +62,13 @@ const HOLIDAYS_2026_SARAWAK = {
 };
 
 // ─── DEFAULT TEAMMATES DATA FOR KOTA SENTOSA (KS01) ──────────────────────────
-// Notes:
-// 1. Ting Kwang Yu is NOT a pharmacist (Position: Staff).
-// 2. Chai Yee Sian (William) is a licensed Pharmacist with a FIXED schedule:
-//    - Mon–Fri: 07:30 - 16:30 (8H_0730-1630)
-//    - Sat: 07:30 - 11:30 (4H_0730-1130)
-//    - Sun: Rest Day (RD)
-//    - All Malaysia & Sarawak Public Holidays: PH
-// 3. Kenix Ling is a licensed Pharmacist.
+// Staffing configuration:
+// 1. Effective 1/11/2026: Ting Kwang Yu (BM) & Kenix Ling (Pharmacist) have left PMG Kota Sentosa.
+// 2. Effective 1/11/2026: Vanessa Anak Blaise (Staff, Iban, non-Chinese speaker) joins PMG Kota Sentosa.
+//    (Prior experience at Peace Pharmacy & Joy Pharmacy Kuching; culture adaptation phase).
+// 3. Chai Yee Sian (William) is licensed Pharmacist with FIXED schedule anchor.
+// 4. Christina Lee (PRP) is licensed Provisional Registered Pharmacist in rotating pool.
+// 5. Haniesha Louna is Assistant Branch Manager (ABM) in rotating pool.
 const DEFAULT_KS01_TEAMMATES = [
   {
     empNo: 'PMG00831',
@@ -96,48 +95,6 @@ const DEFAULT_KS01_TEAMMATES = [
       saturday: '4H_0730-1130',
       sunday: 'RD',
       holidays: 'PH'
-    }
-  },
-  {
-    empNo: 'PMG00723',
-    nickname: 'TING',
-    empName: 'TING KWANG YU',
-    position: 'Branch Manager',
-    isPharmacist: false,
-    scheduleMode: 'Rotating',
-    race: 'Chinese',
-    shiftPref: 'Flexible',
-    restDayPref: 'Sunday',
-    halfDayPref: 'None',
-    dayPrefs: {
-      Monday: 'Flexible',
-      Tuesday: 'Flexible',
-      Wednesday: 'Flexible',
-      Thursday: 'Flexible',
-      Friday: 'Flexible',
-      Saturday: 'Flexible',
-      Sunday: 'RD'
-    }
-  },
-  {
-    empNo: 'PMG02963',
-    nickname: 'KENIX',
-    empName: 'KENIX LING WANG YIING',
-    position: 'Pharmacist',
-    isPharmacist: true,
-    scheduleMode: 'Rotating',
-    race: 'Chinese',
-    shiftPref: 'Flexible',
-    restDayPref: 'Monday',
-    halfDayPref: 'Sunday Morning (4H)',
-    dayPrefs: {
-      Monday: 'RD',
-      Tuesday: 'Flexible',
-      Wednesday: 'Flexible',
-      Thursday: 'Flexible',
-      Friday: 'Flexible',
-      Saturday: 'Flexible',
-      Sunday: 'Morning Half (4H)'
     }
   },
   {
@@ -265,6 +222,65 @@ const DEFAULT_KS01_TEAMMATES = [
       Saturday: 'RD',
       Sunday: 'Flexible'
     }
+  },
+  {
+    empNo: 'PMG03801',
+    nickname: 'VANESSA',
+    empName: 'VANESSA ANAK BLAISE',
+    position: 'Staff',
+    isPharmacist: false,
+    scheduleMode: 'Rotating',
+    race: 'Iban / Bidayuh',
+    shiftPref: 'Flexible',
+    restDayPref: 'Wednesday',
+    halfDayPref: 'Sunday Morning (4H)',
+    notes: 'Joined PMG Kota Sentosa 1/11/2026. Experienced at Peace & Joy Pharmacy Kuching. Culture adaptation phase.',
+    adaptationPhase: true,
+    dayPrefs: {
+      Monday: 'Flexible',
+      Tuesday: 'Flexible',
+      Wednesday: 'RD',
+      Thursday: 'Flexible',
+      Friday: 'Flexible',
+      Saturday: 'Flexible',
+      Sunday: 'Morning Half (4H)'
+    }
+  }
+];
+
+// ─── HISTORICAL TEAMMATES PRIOR TO NOVEMBER 2026 (FOR PRE-NOV26 SCHEDULES) ─────
+const HISTORICAL_KS01_PRE_NOV26 = [
+  {
+    empNo: 'PMG00723',
+    nickname: 'TING',
+    empName: 'TING KWANG YU',
+    position: 'Branch Manager',
+    isPharmacist: false,
+    scheduleMode: 'Rotating',
+    race: 'Chinese',
+    shiftPref: 'Flexible',
+    restDayPref: 'Sunday',
+    halfDayPref: 'None',
+    dayPrefs: {
+      Monday: 'Flexible', Tuesday: 'Flexible', Wednesday: 'Flexible',
+      Thursday: 'Flexible', Friday: 'Flexible', Saturday: 'Flexible', Sunday: 'RD'
+    }
+  },
+  {
+    empNo: 'PMG02963',
+    nickname: 'KENIX',
+    empName: 'KENIX LING WANG YIING',
+    position: 'Pharmacist',
+    isPharmacist: true,
+    scheduleMode: 'Rotating',
+    race: 'Chinese',
+    shiftPref: 'Flexible',
+    restDayPref: 'Monday',
+    halfDayPref: 'Sunday Morning (4H)',
+    dayPrefs: {
+      Monday: 'RD', Tuesday: 'Flexible', Wednesday: 'Flexible',
+      Thursday: 'Flexible', Friday: 'Flexible', Saturday: 'Flexible', Sunday: 'Morning Half (4H)'
+    }
   }
 ];
 
@@ -290,13 +306,19 @@ function initScheduler() {
     monthInput.value = `${y}-${m}`;
   }
 
-  // Load teammates for selected branch
+  // Load teammates for selected branch and target month
   const activeBranch = branchSelect ? branchSelect.value : 'KS01';
-  loadTeammates(activeBranch);
+  loadTeammates(activeBranch, monthInput ? monthInput.value : null);
 
   if (branchSelect) {
     branchSelect.addEventListener('change', (e) => {
-      loadTeammates(e.target.value);
+      loadTeammates(e.target.value, monthInput ? monthInput.value : null);
+    });
+  }
+
+  if (monthInput) {
+    monthInput.addEventListener('change', (e) => {
+      loadTeammates(branchSelect ? branchSelect.value : 'KS01', e.target.value);
     });
   }
 
@@ -324,7 +346,11 @@ function getStorageKey(branchCode) {
   return `pmg_staff_preferences_v2_${branchCode || 'KS01'}`;
 }
 
-function loadTeammates(branchCode) {
+function loadTeammates(branchCode, targetMonth = null) {
+  const mInput = document.getElementById('schedulerMonth');
+  const activeMonth = targetMonth || (mInput && mInput.value ? mInput.value.trim() : '');
+  const isNov2026OrLater = !activeMonth || activeMonth >= '2026-11';
+
   const key = getStorageKey(branchCode);
   const saved = localStorage.getItem(key);
 
@@ -364,16 +390,6 @@ function loadTeammates(branchCode) {
     }
   }
 
-  // Ensure Ting Kwang Yu is not marked as pharmacist from legacy data, while respecting saved position
-  const ting = currentTeammates.find(t => t.empNo === 'PMG00723' || t.nickname === 'TING');
-  if (ting) {
-    if (ting.position === 'Pharmacist') {
-      ting.position = 'Branch Manager';
-    }
-    ting.isPharmacist = false;
-    ting.scheduleMode = 'Rotating';
-  }
-
   // Ensure William Chai has his fixed schedule attributes (ONLY fixed shift anchor)
   const william = currentTeammates.find(t => t.empNo === 'PMG00831' || t.nickname === 'WILLIAM');
   if (william) {
@@ -388,7 +404,34 @@ function loadTeammates(branchCode) {
     // 1. Purge Daniela Janet (Resigned)
     currentTeammates = currentTeammates.filter(t => t.empNo !== 'PMG03062' && t.nickname !== 'JANET');
 
-    // 2. Realignment: Louna is Assistant Branch Manager (ABM) and participates in 6S cleaning
+    // 2. November 2026 Staff Realignment: Ting & Kenix departure; Vanessa arrival
+    if (isNov2026OrLater) {
+      currentTeammates = currentTeammates.filter(t => t.empNo !== 'PMG00723' && t.nickname !== 'TING' && t.empNo !== 'PMG02963' && t.nickname !== 'KENIX');
+      const vanessa = currentTeammates.find(t => t.empNo === 'PMG03801' || t.nickname === 'VANESSA');
+      if (!vanessa) {
+        const defVanessa = DEFAULT_KS01_TEAMMATES.find(t => t.nickname === 'VANESSA');
+        if (defVanessa) {
+          currentTeammates.push(JSON.parse(JSON.stringify(defVanessa)));
+        }
+      }
+    } else {
+      // Historical schedule prior to Nov 2026: restore Ting and Kenix, omit Vanessa
+      currentTeammates = currentTeammates.filter(t => t.empNo !== 'PMG03801' && t.nickname !== 'VANESSA');
+      HISTORICAL_KS01_PRE_NOV26.forEach(histTm => {
+        if (!currentTeammates.some(t => t.empNo === histTm.empNo || t.nickname === histTm.nickname)) {
+          currentTeammates.push(JSON.parse(JSON.stringify(histTm)));
+        }
+      });
+      // Ensure Ting Kwang Yu is not marked as pharmacist from legacy data
+      const ting = currentTeammates.find(t => t.empNo === 'PMG00723' || t.nickname === 'TING');
+      if (ting) {
+        if (ting.position === 'Pharmacist') ting.position = 'Branch Manager';
+        ting.isPharmacist = false;
+        ting.scheduleMode = 'Rotating';
+      }
+    }
+
+    // 3. Realignment: Louna is Assistant Branch Manager (ABM) and participates in 6S cleaning
     const louna = currentTeammates.find(t => t.empNo === 'PMG01294' || t.nickname === 'LOUNA');
     if (louna) {
       louna.position = 'Assistant Branch Manager';
@@ -403,7 +446,7 @@ function loadTeammates(branchCode) {
       }
     }
 
-    // 3. Realignment: Penny is Staff (remove ABM designation, standard rotating pool)
+    // 4. Realignment: Penny is Staff (remove ABM designation, standard rotating pool)
     const penny = currentTeammates.find(t => t.empNo === 'PMG02694' || t.nickname === 'PENNY');
     if (penny) {
       penny.position = 'Staff';
@@ -419,25 +462,13 @@ function loadTeammates(branchCode) {
       }
     }
 
-    // 4. Ensure Christina Lee Ying Ying (PRP) is in active teammates list
+    // 5. Ensure Christina Lee Ying Ying (PRP) is in active teammates list
     const christina = currentTeammates.find(t => t.empNo === 'PMG03033' || t.nickname === 'CHRISTINA');
     if (!christina) {
-      currentTeammates.push({
-        empNo: 'PMG03033',
-        nickname: 'CHRISTINA',
-        empName: 'CHRISTINA LEE YING YING',
-        position: 'Provisional Registered Pharmacist',
-        isPharmacist: true,
-        scheduleMode: 'Rotating',
-        race: 'Chinese',
-        shiftPref: 'Flexible',
-        restDayPref: 'Saturday',
-        halfDayPref: 'Friday Morning (4H)',
-        dayPrefs: {
-          Monday: 'Flexible', Tuesday: 'Flexible', Wednesday: 'Flexible',
-          Thursday: 'Flexible', Friday: 'Morning Half (4H)', Saturday: 'RD', Sunday: 'Flexible'
-        }
-      });
+      const defChristina = DEFAULT_KS01_TEAMMATES.find(t => t.nickname === 'CHRISTINA');
+      if (defChristina) {
+        currentTeammates.push(JSON.parse(JSON.stringify(defChristina)));
+      }
     }
   }
 
@@ -820,9 +851,7 @@ async function generateTimetable() {
     if (monthInput) monthInput.value = monthVal;
   }
 
-  if (!currentTeammates || !currentTeammates.length) {
-    loadTeammates(branchVal || 'KS01');
-  }
+  loadTeammates(branchVal || 'KS01', monthVal);
   if (document.querySelectorAll('#schedulerTeammatesBody tr[data-emp-no]').length > 0) {
     saveTeammatePreferences();
   }
@@ -988,9 +1017,8 @@ async function generateTimetable() {
 // ─── POST-PROCESS SCHEDULE CONSTRAINTS ────────────────────────────────────────
 function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks) {
   if (!schedule) return;
-  if (!currentTeammates || !currentTeammates.length) {
-    loadTeammates(branchVal);
-  }
+  const isNov2026OrLater = (year > 2026) || (year === 2026 && month >= 11);
+  loadTeammates(branchVal, `${year}-${String(month).padStart(2, '0')}`);
   if (!weeks) weeks = getFullWeeksPeriod(year, month);
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const rotatingPool = currentTeammates.filter(t => t.empNo !== 'PMG00831' && t.nickname !== 'WILLIAM');
@@ -1152,7 +1180,7 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
                     if (sh && sh.includes('1230')) pmCh++;
                   }
                 });
-                if (amCh >= 1 && pmCh >= 1) {
+                if (isNov2026OrLater || (amCh >= 1 && pmCh >= 1)) {
                   d.shifts[tm.empNo] = '8H_1230-2130';
                   anySwapped = true;
                   break;
@@ -1178,7 +1206,7 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
                     if (sh && sh.includes('1230')) pmCh++;
                   }
                 });
-                if (amCh >= 1 && pmCh >= 1) {
+                if (isNov2026OrLater || (amCh >= 1 && pmCh >= 1)) {
                   d.shifts[tm.empNo] = '8H_0730-1630';
                   anySwapped = true;
                   break;
@@ -1217,7 +1245,7 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
                   if (sh && sh.includes('1230')) pmCh++;
                 }
               });
-              if (amCh < 1 || pmCh < 1) continue;
+              if (!isNov2026OrLater && (amCh < 1 || pmCh < 1)) continue;
 
               d.shifts[tAm.empNo] = '8H_1230-2130';
               d.shifts[tPm.empNo] = '8H_0730-1630';
@@ -1442,7 +1470,7 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
                   if (sh && sh.includes('1230')) pmCh++;
                 }
               });
-              if (amCh < 1 || pmCh < 1) continue;
+              if (!isNov2026OrLater && (amCh < 1 || pmCh < 1)) continue;
 
               d.shifts[tPm.empNo] = '8H_0730-1630';
               d.shifts[tAm.empNo] = '8H_1230-2130';
@@ -1528,59 +1556,61 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
       }
     });
 
-    if (pmCh < 1 && amCh > 1) {
-      const chAmCands = rotatingPool.filter(t => t.race === 'Chinese' && d.shifts[t.empNo] === '8H_0730-1630');
-      const nonChPmCands = rotatingPool.filter(t => t.race !== 'Chinese' && d.shifts[t.empNo] === '8H_1230-2130');
+    if (!isNov2026OrLater) {
+      if (pmCh < 1 && amCh > 1) {
+        const chAmCands = rotatingPool.filter(t => t.race === 'Chinese' && d.shifts[t.empNo] === '8H_0730-1630');
+        const nonChPmCands = rotatingPool.filter(t => t.race !== 'Chinese' && d.shifts[t.empNo] === '8H_1230-2130');
 
-      let bestPair = null;
-      let bestScore = Infinity;
+        let bestPair = null;
+        let bestScore = Infinity;
 
-      for (const ch of chAmCands) {
-        for (const nonCh of nonChPmCands) {
-          const sCh = getWeekStat(ch.empNo);
-          const sNonCh = getWeekStat(nonCh.empNo);
-          const newChDev = Math.abs((sCh.m - 1) - (sCh.n + 1));
-          const newNonChDev = Math.abs((sNonCh.m + 1) - (sNonCh.n - 1));
-          if (newChDev <= 2 && newNonChDev <= 2) {
-            const score = newChDev + newNonChDev;
-            if (score < bestScore) {
-              bestScore = score;
-              bestPair = { ch, nonCh };
+        for (const ch of chAmCands) {
+          for (const nonCh of nonChPmCands) {
+            const sCh = getWeekStat(ch.empNo);
+            const sNonCh = getWeekStat(nonCh.empNo);
+            const newChDev = Math.abs((sCh.m - 1) - (sCh.n + 1));
+            const newNonChDev = Math.abs((sNonCh.m + 1) - (sNonCh.n - 1));
+            if (newChDev <= 2 && newNonChDev <= 2) {
+              const score = newChDev + newNonChDev;
+              if (score < bestScore) {
+                bestScore = score;
+                bestPair = { ch, nonCh };
+              }
             }
           }
         }
-      }
 
-      if (bestPair) {
-        d.shifts[bestPair.ch.empNo] = '8H_1230-2130';
-        d.shifts[bestPair.nonCh.empNo] = '8H_0730-1630';
-      }
-    } else if (amCh < 1 && pmCh > 1) {
-      const chPmCands = rotatingPool.filter(t => t.race === 'Chinese' && d.shifts[t.empNo] === '8H_1230-2130');
-      const nonChAmCands = rotatingPool.filter(t => t.race !== 'Chinese' && d.shifts[t.empNo] === '8H_0730-1630');
+        if (bestPair) {
+          d.shifts[bestPair.ch.empNo] = '8H_1230-2130';
+          d.shifts[bestPair.nonCh.empNo] = '8H_0730-1630';
+        }
+      } else if (amCh < 1 && pmCh > 1) {
+        const chPmCands = rotatingPool.filter(t => t.race === 'Chinese' && d.shifts[t.empNo] === '8H_1230-2130');
+        const nonChAmCands = rotatingPool.filter(t => t.race !== 'Chinese' && d.shifts[t.empNo] === '8H_0730-1630');
 
-      let bestPair = null;
-      let bestScore = Infinity;
+        let bestPair = null;
+        let bestScore = Infinity;
 
-      for (const ch of chPmCands) {
-        for (const nonCh of nonChAmCands) {
-          const sCh = getWeekStat(ch.empNo);
-          const sNonCh = getWeekStat(nonCh.empNo);
-          const newChDev = Math.abs((sCh.m + 1) - (sCh.n - 1));
-          const newNonChDev = Math.abs((sNonCh.m - 1) - (sNonCh.n + 1));
-          if (newChDev <= 2 && newNonChDev <= 2) {
-            const score = newChDev + newNonChDev;
-            if (score < bestScore) {
-              bestScore = score;
-              bestPair = { ch, nonCh };
+        for (const ch of chPmCands) {
+          for (const nonCh of nonChAmCands) {
+            const sCh = getWeekStat(ch.empNo);
+            const sNonCh = getWeekStat(nonCh.empNo);
+            const newChDev = Math.abs((sCh.m + 1) - (sCh.n - 1));
+            const newNonChDev = Math.abs((sNonCh.m - 1) - (sNonCh.n + 1));
+            if (newChDev <= 2 && newNonChDev <= 2) {
+              const score = newChDev + newNonChDev;
+              if (score < bestScore) {
+                bestScore = score;
+                bestPair = { ch, nonCh };
+              }
             }
           }
         }
-      }
 
-      if (bestPair) {
-        d.shifts[bestPair.ch.empNo] = '8H_0730-1630';
-        d.shifts[bestPair.nonCh.empNo] = '8H_1230-2130';
+        if (bestPair) {
+          d.shifts[bestPair.ch.empNo] = '8H_0730-1630';
+          d.shifts[bestPair.nonCh.empNo] = '8H_1230-2130';
+        }
       }
     }
   });
@@ -1588,7 +1618,10 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
   // 7. Public Holiday Protocol for PRP
   schedule.days.forEach(d => {
     if (HOLIDAYS_2026_SARAWAK[d.date]) {
-      const prpEmpNos = ['PMG02963', 'PMG03033'];
+      const prpEmpNos = currentTeammates
+        .filter(t => t.position && t.position.toLowerCase().includes('provisional'))
+        .map(t => t.empNo);
+      if (!prpEmpNos.length) prpEmpNos.push('PMG03033');
       let nonPrpAm = 0, nonPrpPm = 0;
       Object.entries(d.shifts).forEach(([eNo, sh]) => {
         if (!prpEmpNos.includes(eNo) && eNo !== 'PMG00831' && sh && sh !== 'RD' && sh !== 'PH' && sh !== 'OFF') {
@@ -1644,7 +1677,7 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
         workingTotal++;
         if (s.includes('4H') || s.includes('0730-1130')) finalHalfAm++;
         else if (s.includes('0730') || s.includes('0800')) finalFullAm++;
-        if (s.includes('1230') || s.includes('1300') || s.includes('1630')) finalPm++;
+        if (s.includes('1230') || s.includes('1300') || s.includes('1630-2130') || s.startsWith('5H_1630')) finalPm++;
       }
     });
 
@@ -1726,9 +1759,19 @@ async function callSchedulerGemini(model, branchVal, monthVal, totalDays, apiKey
     return `   * Week ${idx + 1} (${startD} to ${endD}): [${dayList}]`;
   }).join('\n');
 
+  const isNov2026OrLater = !monthVal || monthVal >= '2026-11';
   const hasBranchManager = currentTeammates.some(t => t.position && t.position.toLowerCase().includes('branch manager') && !t.position.toLowerCase().includes('assistant'));
   const hasAssistantBranchManager = currentTeammates.some(t => t.position && t.position.toLowerCase().includes('assistant branch manager'));
   const managerRuleActive = hasBranchManager && hasAssistantBranchManager;
+
+  const sampleShifts = {};
+  currentTeammates.forEach((t, idx) => {
+    if (t.empNo === 'PMG00831') sampleShifts[t.empNo] = '8H_0730-1630';
+    else if (idx % 3 === 0) sampleShifts[t.empNo] = '8H_0730-1630';
+    else if (idx % 3 === 1) sampleShifts[t.empNo] = '8H_1230-2130';
+    else sampleShifts[t.empNo] = 'RD';
+  });
+  const firstRotating = currentTeammates.find(t => t.empNo !== 'PMG00831') || currentTeammates[0] || { empNo: 'PMG01294', nickname: 'LOUNA' };
 
   const prompt = `You are an expert Pharmacy Operations Director scheduling the retail branch roster for PMG Pharmacy Kota Sentosa (KS01).
 Branch: PMG Kota Sentosa (Operating Hours: 07:30 to 21:30 daily).
@@ -1776,23 +1819,32 @@ OPERATIONAL RULES & PRIORITY CONSTRAINTS (IN ORDER OF PRIORITY):
      * Night Shift (12:30 - 21:30): Minimum 3 staff (Night PM staff >= 3).
      * Total staff working per day must be at least 6. Never allow < 3 staff on any shift!
 
-4. SECOND LESS PRIORITY CONSTRAINTS (WHOLE-DAY CHINESE SPEAKER, MANAGERS & PHARMACIST OMISSION):
-   - A. CHINESE-SPEAKING AVAILABILITY ACROSS THE WHOLE DAY (KEY PRIORITY):
-     * Having at least one Chinese-speaking staff (race: Chinese: William, Ting, Kenix, Penny, Christina) in EVERY shift (AM shift >= 1 Chinese speaker, PM shift >= 1 Chinese speaker).
-     * As long as there is at least one Chinese speaker on each shift across the whole day, that satisfies the requirement!
-   - B. MANAGEMENT TEAM COVERAGE:
+4. SECOND LESS PRIORITY CONSTRAINTS (CHINESE SPEAKER, VANESSA CULTURE ADAPTATION, MANAGERS & PHARMACISTS):
+   - A. CHINESE-SPEAKING AVAILABILITY:
+     ${isNov2026OrLater
+       ? `* NOTE FOR ${monthVal} ONWARDS: Ting Kwang Yu and Kenix Ling have departed PMG Kota Sentosa as of November 2026. The active Chinese speakers are William Chai (fixed Morning anchor only), Penny, and Christina Lee.
+     * Because of the strict minimum 3 staff per shift floor and 7-day weekly shift parity (max 2-3 night shifts per rotating teammate), it is mathematically impossible to have a Chinese speaker on every night shift.
+     * THEREFORE: Having a Chinese speaker on every shift is NOT A HARD PRIORITY. Do NOT violate weekly shift parity (|AM - PM| <= 2) or the minimum 3 staff floor to force Chinese coverage. Naturally distribute Penny and Christina across shifts as a soft, best-effort preference where possible, but allow shifts without Chinese speakers.`
+       : `* Having at least one Chinese-speaking staff (race: Chinese: William, Ting, Kenix, Penny, Christina) in EVERY shift (AM shift >= 1 Chinese speaker, PM shift >= 1 Chinese speaker).
+     * As long as there is at least one Chinese speaker on each shift across the whole day, that satisfies the requirement!`}
+   - B. NEW TEAMMATE CULTURE ADAPTATION & MENTORING (VANESSA ANAK BLAISE):
+     ${isNov2026OrLater
+       ? `* Vanessa Anak Blaise joined PMG Kota Sentosa on 1/11/2026. She has prior pharmacy retail experience (Peace Pharmacy & Joy Pharmacy Kuching) but is in her culture adaptation phase at PMG.
+     * Ensure Vanessa is always scheduled alongside experienced PMG Kota Sentosa senior teammates (William, Louna, Penny, Fiona, Nurhafizah, Farizin, Christina) on every working shift for operational guidance and team support.`
+       : `* [Pre-Nov 2026]: Standard staffing team composition.`}
+   - C. MANAGEMENT TEAM COVERAGE:
      ${managerRuleActive
        ? `* Having at least one management team member (Assistant Branch Manager, Branch Manager, or Pharmacist) in ANY shift (AM shift >= 1 Manager, PM shift >= 1 Manager).`
        : `* [OMITTED]: Branch Manager or Assistant Branch Manager has resigned / is not present. Do NOT enforce management team coverage per shift.`}
-   - C. OMIT THE NECESSITY OF PHARMACIST THROUGHOUT THE WHOLE DAY:
+   - D. OMIT THE NECESSITY OF PHARMACIST THROUGHOUT THE WHOLE DAY:
      * Completely OMIT any rule requiring a pharmacist on every shift or throughout the whole day.
-     * DO NOT force Pharmacists (Kenix Ling and Christina Lee) to cover all night shifts or specific shifts just because they are pharmacists.
-     * Treat Kenix Ling and Christina Lee fairly and equally with all other rotating teammates: balance their Morning shifts ('8H_0730-1630' / '4H_0730-1130') and Night shifts ('8H_1230-2130') with weekly deviation <= ±2.
+     * DO NOT force Pharmacists (${isNov2026OrLater ? 'Christina Lee' : 'Kenix Ling and Christina Lee'}) to cover all night shifts or specific shifts just because they are pharmacists.
+     * Treat ${isNov2026OrLater ? 'Christina Lee' : 'Kenix Ling and Christina Lee'} fairly and equally with all other rotating teammates: balance their Morning shifts ('8H_0730-1630' / '4H_0730-1130') and Night shifts ('8H_1230-2130') with weekly deviation <= ±2.
 
 5. PUBLIC HOLIDAY (PH) PROTOCOL:
    - On gazetted Public Holidays (Sarawak & Malaysia):
      * William Chai has official rest day ('PH').
-     * Provisional Registered Pharmacists (Kenix Ling and Christina Lee) assume rest day ('PH') too, UNLESS needed to cover the 3-staff floor across the day. If needed to cover 3-staff floor, they apply replacement leave to work on the public holiday.
+     * Provisional Registered Pharmacists (${isNov2026OrLater ? 'Christina Lee' : 'Kenix Ling and Christina Lee'}) assume rest day ('PH') too, UNLESS needed to cover the 3-staff floor across the day. If needed to cover 3-staff floor, they apply replacement leave to work on the public holiday.
      * All other teammates apply replacement leave to work on public holidays as needed to ensure the floor requirement (>= 3 staff across the day) is met.
 
 6. RESPECT OTHER LIVE DAY-SPECIFIC PREFERENCES:
@@ -1829,20 +1881,10 @@ Respond ONLY with a valid JSON object containing the complete 7-day Monday–Sun
       "year": ${weeks[0][0].year},
       "dayOfWeek": "${weeks[0][0].dayOfWeek}",
       "isTargetMonth": ${weeks[0][0].isTargetMonth},
-      "shifts": {
-        "PMG00831": "8H_0730-1630",
-        "PMG02963": "RD",
-        "PMG00723": "8H_0730-1630",
-        "PMG02694": "4H_0730-1130",
-        "PMG01294": "8H_1230-2130",
-        "PMG01780": "8H_1230-2130",
-        "PMG02070": "RD",
-        "PMG03375": "8H_0730-1630",
-        "PMG03033": "8H_1230-2130"
-      },
+      "shifts": ${JSON.stringify(sampleShifts, null, 8).trim()},
       "cleaningDuty": {
-        "empNo": "PMG00723",
-        "nickname": "TING",
+        "empNo": "${firstRotating.empNo}",
+        "nickname": "${firstRotating.nickname}",
         "time": "2:00 PM – 3:30 PM",
         "task": "Gondola Cleaning & Refilling"
       },
@@ -1852,7 +1894,7 @@ Respond ONLY with a valid JSON object containing the complete 7-day Monday–Sun
     }
   ],
   "warnings": [],
-  "summary": "Summary of whole-day Chinese speaker coverage, Monday-start weekly shift parity (deviation <= ±2), statutory rest days, anti-fatigue compliance, and 6S cleaning rotation."
+  "summary": "Summary of ${isNov2026OrLater ? 'adaptive Chinese speaker distribution' : 'whole-day Chinese speaker coverage'}, Monday-start weekly shift parity (deviation <= ±2), statutory rest days, anti-fatigue compliance, and 6S cleaning rotation."
 }`;
 
   const controller = new AbortController();
@@ -2019,6 +2061,9 @@ function generateLegalWeeklyPatterns(tm, weekDays, prevSundayShift) {
           for (let i = 0; i < 6; i++) {
             if (seq[i].includes('1230') && (seq[i + 1].includes('0730') || seq[i + 1].includes('4H'))) fatigue++;
           }
+          // Also protect Sunday night -> Monday turnaround if Monday is fixed Morning/HD
+          const monIsMorn = (tm.dayPrefs && tm.dayPrefs.Monday && (tm.dayPrefs.Monday.includes('0730') || tm.dayPrefs.Monday.includes('4H'))) || (tm.halfDayPref && tm.halfDayPref.startsWith('Monday'));
+          if (monIsMorn && seq[6].includes('1230')) fatigue++;
           if (fatigue > maxAllowedFatigue) continue;
 
           // Day-specific preferences check
@@ -2027,7 +2072,7 @@ function generateLegalWeeklyPatterns(tm, weekDays, prevSundayShift) {
           if (r === prefRdIdx) prefScore += 50000;
           if (h === prefHdIdx) prefScore += 20000;
           prefScore += (2 - deviation) * 1000;
-          prefScore -= fatigue * 2000;
+          prefScore -= fatigue * 5000;
 
           if (tm.dayPrefs) {
             weekDays.forEach((d, dIdx) => {
@@ -2067,9 +2112,11 @@ function generateLegalWeeklyPatterns(tm, weekDays, prevSundayShift) {
     return list;
   };
 
-  let patterns = buildPatterns(targetRdList, targetHdList, 1);
+  let patterns = buildPatterns(targetRdList, targetHdList, 0);
+  if (!patterns.length) {
+    patterns = buildPatterns(targetRdList, targetHdList, 1);
+  }
   if (!patterns.length && prefHdIdx !== -1) {
-    // Fallback allowing any HD if strict HD yields 0 combinations with fatigue <= 1
     patterns = buildPatterns(targetRdList, [0, 1, 2, 3, 4, 5, 6], 1);
   }
   if (!patterns.length) {
@@ -2082,6 +2129,7 @@ function generateLegalWeeklyPatterns(tm, weekDays, prevSundayShift) {
 // Solve 1 week with dynamic preference scoring, whole-day Chinese speaker coverage, and weekly shift parity
 // Omit mandatory night pharmacist rule: Kenix and Christina are treated fairly with all rotating staff.
 function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, william) {
+  const isNov2026OrLater = weekDays && weekDays.length > 0 && weekDays.some(d => d.date >= '2026-11');
   const williamSeq = weekDays.map(d => {
     if (HOLIDAYS_2026_SARAWAK[d.date]) return 'PH';
     if (d.dayOfWeek === 'Sunday') return 'RD';
@@ -2149,9 +2197,38 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
       const working = fullAm + halfAm + pm;
       if (working < 6) penalty += (6 - working) * 10000000;
 
-      // 2. Chinese Speaking Coverage on Whole Day (Hard Requirement)
-      if (chAm < 1) penalty += 10000000;
-      if (chPm < 1) penalty += 10000000;
+      // 2. Chinese Speaking Coverage
+      if (!isNov2026OrLater) {
+        if (chAm < 1) penalty += 10000000;
+        if (chPm < 1) penalty += 10000000;
+      } else {
+        // Soft best-effort preference post-Nov 2026 (user instructed not to make it a priority)
+        if (chAm < 1) penalty += 2000;
+        if (chPm < 1) penalty += 2000;
+      }
+
+      // 2b. Vanessa Anak Blaise - Culture Adaptation Senior Pairing
+      const vanessa = rotatingPool.find(t => t.empNo === 'PMG03801' || t.nickname === 'VANESSA');
+      if (vanessa) {
+        const vShift = selected[vanessa.empNo].seq[day];
+        if (vShift && vShift !== 'RD' && vShift !== 'PH' && vShift !== 'OFF') {
+          const isVAm = vShift.includes('0730') || vShift.includes('4H');
+          let seniorOnDuty = false;
+          rotatingPool.forEach(tm => {
+            if (tm.empNo !== vanessa.empNo) {
+              const ts = selected[tm.empNo].seq[day];
+              if (ts && ts !== 'RD' && ts !== 'PH' && ts !== 'OFF') {
+                const isTAm = ts.includes('0730') || ts.includes('4H');
+                if (isVAm === isTAm) seniorOnDuty = true;
+              }
+            }
+          });
+          if (isVAm && (williamSeq[day].includes('0730') || williamSeq[day].includes('4H'))) {
+            seniorOnDuty = true;
+          }
+          if (!seniorOnDuty) penalty += 500000;
+        }
+      }
 
       // 3. Manager Coverage on Each Shift (Omitted if BM or ABM resigned/absent)
       if (managerRuleActive) {
@@ -2166,7 +2243,7 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
     rotatingPool.forEach(tm => {
       const p = selected[tm.empNo];
       penalty -= p.prefScore;
-      penalty += (p.fatigue || 0) * 5000;
+      penalty += (p.fatigue || 0) * 5000000;
 
       // Hard constraint: Match preset fixed rest day from Teammate Profiles
       const targetRdDay = (tm.dayPrefs && Object.keys(tm.dayPrefs).find(k => tm.dayPrefs[k] === 'RD')) || tm.restDayPref;
@@ -2266,7 +2343,7 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
 
         let converted = false;
         for (const cand of candidates) {
-          if (cand.race === 'Chinese') {
+          if (!isNov2026OrLater && cand.race === 'Chinese') {
             let otherChAm = (williamSeq[day].includes('0730') || williamSeq[day].includes('4H') ? 1 : 0);
             rotatingPool.forEach(tm => {
               if (tm.empNo !== cand.empNo && tm.race === 'Chinese') {
@@ -2281,6 +2358,11 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
           for (let nextD = day; nextD < 7; nextD++) {
             if (best[cand.empNo].seq[nextD] === 'RD') break;
             if (best[cand.empNo].seq[nextD].includes('4H')) {
+              canPropagate = false;
+              break;
+            }
+            const followShift = nextD < 6 ? best[cand.empNo].seq[nextD + 1] : null;
+            if (followShift && (followShift.includes('0730') || followShift.includes('4H'))) {
               canPropagate = false;
               break;
             }
@@ -2328,7 +2410,7 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
 
         let converted = false;
         for (const cand of pmCandidates) {
-          if (cand.race === 'Chinese') {
+          if (!isNov2026OrLater && cand.race === 'Chinese') {
             let otherChPm = 0;
             rotatingPool.forEach(tm => {
               if (tm.empNo !== cand.empNo && tm.race === 'Chinese') {
@@ -2362,9 +2444,9 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
 
 // ─── SMART HEURISTIC SCHEDULE GENERATOR (FULL 7-DAY WEEKS & ZERO FATIGUE) ───────
 function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
-  if (!currentTeammates || !currentTeammates.length) {
-    currentTeammates = JSON.parse(JSON.stringify(DEFAULT_KS01_TEAMMATES));
-  }
+  const targetMonthStr = `${year}-${String(month).padStart(2, '0')}`;
+  loadTeammates(branchVal || 'KS01', targetMonthStr);
+  const isNov2026OrLater = (year > 2026) || (year === 2026 && month >= 11);
   const william = currentTeammates.find(t => t.empNo === 'PMG00831' || t.nickname === 'WILLIAM');
   const rotatingPool = currentTeammates.filter(t => t.empNo !== 'PMG00831' && t.nickname !== 'WILLIAM');
   const weeks = getFullWeeksPeriod(year, month);
@@ -2437,7 +2519,10 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
       // Rotating staff apply replacement leave to maintain floor >= 3.
       // Provisional Registered Pharmacists (Kenix & Christina) assume rest day (PH) too, unless needed to maintain floor >= 3.
       if (HOLIDAYS_2026_SARAWAK[d.date]) {
-        const prpEmpNos = ['PMG02963', 'PMG03033'];
+        const prpEmpNos = currentTeammates
+          .filter(t => t.position && t.position.toLowerCase().includes('provisional'))
+          .map(t => t.empNo);
+        if (!prpEmpNos.length) prpEmpNos.push('PMG03033');
         let nonPrpAm = 0;
         let nonPrpPm = 0;
         Object.entries(dayShifts).forEach(([eNo, sh]) => {
@@ -2488,7 +2573,7 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
           workingTotal++;
           if (s.includes('4H') || s.includes('0730-1130')) halfAmCount++;
           else if (s.includes('0730') || s.includes('0800')) fullAmCount++;
-          if (s.includes('1230') || s.includes('1300') || s.includes('1630')) pmCount++;
+          if (s.includes('1230') || s.includes('1300') || s.includes('1630-2130') || s.startsWith('5H_1630')) pmCount++;
         }
       });
 
@@ -2538,7 +2623,7 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
     warnings,
     stats: cumStats,
     hasMinorVariance: amSpread > 2 || pmSpread > 2,
-    summary: `Statutory Sarawak Labour Ordinance Timetable: Strictly full 7-day Monday–Sunday weeks (${weeks.length} complete calendar weeks), exactly 1 Rest Day (RD) + 1 Half Day (HD) per week across all weeks, William Chai locked AM anchor (6S exempt), guaranteed whole-day Chinese speaker coverage, fair AM/PM balance across all rotating teammates, guaranteed 3 AM / 3 PM minimum floor, 0 turnaround fatigue violations, cross-month memory active, and universal 6S cleaning rotation (14:00–15:30).`
+    summary: `Statutory Sarawak Labour Ordinance Timetable: Strictly full 7-day Monday–Sunday weeks (${weeks.length} complete calendar weeks), exactly 1 Rest Day (RD) + 1 Half Day (HD) per week across all weeks, William Chai locked AM anchor (6S exempt), ${isNov2026OrLater ? 'adaptive Chinese speaker distribution (soft preference with senior pairing for Vanessa Anak Blaise)' : 'guaranteed whole-day Chinese speaker coverage'}, fair AM/PM balance across all rotating teammates, guaranteed 3 AM / 3 PM minimum floor, 0 turnaround fatigue violations, cross-month memory active, and universal 6S cleaning rotation (14:00–15:30).`
   };
 }
 
@@ -2600,7 +2685,7 @@ function renderScheduleMatrix(schedule) {
       const isHalf  = shift && (shift.includes('4H') || shift.includes('5H') || shift.includes('Half') || shift.includes('0730-1130'));
       const isMorning = shift && (shift.includes('0730') || shift.includes('0800'));
       const isFullAm  = isMorning && !isHalf;
-      const isNight   = shift && (shift.includes('1230') || shift.includes('1300') || shift.includes('1630'));
+      const isNight   = shift && (shift.includes('1230') || shift.includes('1300') || shift.includes('1630-2130') || shift.startsWith('5H_1630'));
 
       if (isHalf) {
         teammateStats[empNo].hdCount++;
@@ -2679,7 +2764,11 @@ function renderScheduleMatrix(schedule) {
       kpiParity.textContent = `±${maxStaffVar} Shifts`;
     }
   }
-  if (kpiLang)   kpiLang.textContent   = `${Math.round((chineseCoverageDays / schedule.days.length) * 100)}%`;
+  const isNov2026OrLater = (schedYear > 2026) || (schedYear === 2026 && schedMonth >= 11);
+  if (kpiLang) {
+    const pct = Math.round((chineseCoverageDays / schedule.days.length) * 100);
+    kpiLang.textContent = isNov2026OrLater ? `${pct}% (Adaptive)` : `${pct}%`;
+  }
   if (kpiShift)  kpiShift.textContent  = totalShifts;
   if (kpiRest)   kpiRest.textContent   = totalRestDays;
 
@@ -2881,7 +2970,7 @@ function renderScheduleMatrix(schedule) {
     <tr class="bg-gray-100 border-t border-gray-200 font-semibold text-[11px] text-gray-700">
       <td class="sticky left-0 bg-gray-100 z-10 px-3 py-2 border-r border-gray-200 font-bold">
         Chinese Speaker AM / PM
-        <div class="text-[9px] text-gray-500 font-normal">Whole-Day Language Coverage</div>
+        <div class="text-[9px] text-gray-500 font-normal">${isNov2026OrLater ? 'Adaptive Language Coverage' : 'Whole-Day Language Coverage'}</div>
       </td>
   `;
 
@@ -2893,16 +2982,29 @@ function renderScheduleMatrix(schedule) {
     Object.entries(d.shifts).forEach(([empNo, shift]) => {
       const tm = currentTeammates.find(t => t.empNo === empNo);
       if (!tm || tm.race !== 'Chinese') return;
-      if (shift.includes('0730') || shift.includes('0800') || shift.includes('4H')) amChinese = true;
-      if (shift.includes('1230') || shift.includes('1300') || shift.includes('1630')) pmChinese = true;
+      if (shift && (shift.includes('0730') || shift.includes('0800') || shift.includes('4H'))) amChinese = true;
+      if (shift && (shift.includes('1230') || shift.includes('1300') || shift.includes('1630-2130') || shift.startsWith('5H_1630'))) pmChinese = true;
     });
 
     const isFullCover = amChinese && pmChinese;
+    let badgeHtml = '';
+    if (isFullCover) {
+      badgeHtml = `<span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-bold" title="Both AM & PM shifts have Chinese-speaking teammate">✓</span>`;
+    } else if (isNov2026OrLater) {
+      if (amChinese) {
+        badgeHtml = `<span class="inline-flex items-center justify-center px-1 h-5 rounded text-[9px] bg-blue-100 text-blue-800 font-bold" title="AM Chinese speaker on duty (William/Christina/Penny). PM covered by senior experienced team (Adaptive mode)">AM</span>`;
+      } else if (pmChinese) {
+        badgeHtml = `<span class="inline-flex items-center justify-center px-1 h-5 rounded text-[9px] bg-purple-100 text-purple-800 font-bold" title="PM Chinese speaker on duty. AM covered by senior experienced team (Adaptive mode)">PM</span>`;
+      } else {
+        badgeHtml = `<span class="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] bg-slate-100 text-slate-500 font-mono" title="Adaptive mode: Experienced senior teammates on duty">-</span>`;
+      }
+    } else {
+      badgeHtml = `<span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] bg-red-100 text-red-700 font-bold" title="${!amChinese && !pmChinese ? 'Missing Chinese speaker in AM & PM' : (!amChinese ? 'Missing Chinese speaker in AM' : 'Missing Chinese speaker in PM')}">!</span>`;
+    }
+
     coverageRow += `
       <td class="px-1 py-1.5 text-center ${weekBorder}">
-        <span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] ${isFullCover ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-700'} font-bold" title="${isFullCover ? 'Both AM & PM shifts have Chinese-speaking teammate' : (!amChinese && !pmChinese ? 'Missing Chinese speaker in AM & PM' : (!amChinese ? 'Missing Chinese speaker in AM' : 'Missing Chinese speaker in PM'))}">
-          ${isFullCover ? '✓' : '!'}
-        </span>
+        ${badgeHtml}
       </td>
     `;
   });
@@ -3352,7 +3454,7 @@ function updateDayShiftEditorMeter() {
         amCount++;
         if (isChinese) hasMorningChinese = true;
       }
-      if (s.includes('1230') || s.includes('1300') || s.includes('1630')) {
+      if (s.includes('1230') || s.includes('1300') || s.includes('1630-2130') || s.startsWith('5H_1630')) {
         pmCount++;
         if (isChinese) hasNightChinese = true;
       }
@@ -3362,6 +3464,16 @@ function updateDayShiftEditorMeter() {
   });
 
   const isShortage = amCount < 3 || pmCount < 3;
+  const curMonthVal = generatedScheduleData ? generatedScheduleData.month : '';
+  const isNov2026OrLater = !curMonthVal || curMonthVal >= '2026-11';
+
+  const amChBadge = hasMorningChinese
+    ? '<span class="text-emerald-700 font-bold ml-0.5" title="Morning Chinese speaker on duty">✓Ch</span>'
+    : (isNov2026OrLater ? '<span class="text-slate-400 font-semibold ml-0.5" title="Adaptive mode: No Chinese speaker in Morning">-Ch</span>' : '<span class="text-amber-600 font-bold ml-0.5" title="No Chinese speaker in Morning">!Ch</span>');
+
+  const pmChBadge = hasNightChinese
+    ? '<span class="text-emerald-700 font-bold ml-0.5" title="Night Chinese speaker on duty">✓Ch</span>'
+    : (isNov2026OrLater ? '<span class="text-slate-400 font-semibold ml-0.5" title="Adaptive mode: No Chinese speaker at Night">-Ch</span>' : '<span class="text-amber-600 font-bold ml-0.5" title="No Chinese speaker at Night">!Ch</span>');
 
   meter.innerHTML = `
     <div class="flex items-center gap-3 flex-wrap">
@@ -3370,11 +3482,11 @@ function updateDayShiftEditorMeter() {
       </div>
       <div class="font-mono">
         Morning: <span class="${amCount < 3 ? 'text-red-600 font-extrabold' : 'text-blue-700 font-bold'}">${amCount}</span>
-        ${hasMorningChinese ? '<span class="text-emerald-700 font-bold ml-0.5" title="Morning Chinese speaker on duty">✓Ch</span>' : '<span class="text-amber-600 font-bold ml-0.5" title="No Chinese speaker in Morning">!Ch</span>'}
+        ${amChBadge}
       </div>
       <div class="font-mono">
         Night: <span class="${pmCount < 3 ? 'text-red-600 font-extrabold' : 'text-purple-700 font-bold'}">${pmCount}</span>
-        ${hasNightChinese ? '<span class="text-emerald-700 font-bold ml-0.5" title="Night Chinese speaker on duty">✓Ch</span>' : '<span class="text-amber-600 font-bold ml-0.5" title="No Chinese speaker at Night">!Ch</span>'}
+        ${pmChBadge}
       </div>
       <div class="font-mono text-gray-500">
         Off: <span>${rdCount}</span>
@@ -3415,7 +3527,7 @@ function saveDayShiftEditorModal() {
       if (shiftVal && shiftVal !== 'RD' && shiftVal !== 'PH' && shiftVal !== 'OFF') {
         totalWorking++;
         if (shiftVal.includes('0730') || shiftVal.includes('0800')) amCount++;
-        if (shiftVal.includes('1230') || shiftVal.includes('1300') || shiftVal.includes('1630')) pmCount++;
+        if (shiftVal.includes('1230') || shiftVal.includes('1300') || shiftVal.includes('1630-2130') || shiftVal.startsWith('5H_1630')) pmCount++;
       }
     }
   });
@@ -4020,7 +4132,7 @@ function exportScheduleToExcel() {
     days.forEach(d => {
       const s = d.shifts[tm.empNo] || '';
       if (s.includes('0730') || s.includes('0800')) mCount++;
-      if (s.includes('1230') || s.includes('1300') || s.includes('1630')) nCount++;
+      if (s.includes('1230') || s.includes('1300') || s.includes('1630-2130') || s.startsWith('5H_1630')) nCount++;
     });
 
     const row = [tm.empNo, tm.nickname, tm.empName, tm.position, tm.race, mCount, nCount];
@@ -4061,7 +4173,7 @@ function copyScheduleWhatsAppSummary() {
       const tm = currentTeammates.find(t => t.empNo === empNo);
       if (!tm) return;
       if (shift.includes('0730') || shift.includes('0800')) morning.push(tm.nickname);
-      else if (shift.includes('1230') || shift.includes('1300') || shift.includes('1630')) night.push(tm.nickname);
+      else if (shift.includes('1230') || shift.includes('1300') || shift.includes('1630-2130') || shift.startsWith('5H_1630')) night.push(tm.nickname);
       else off.push(tm.nickname);
     });
 
