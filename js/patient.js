@@ -1146,6 +1146,11 @@ function switchPatientSubTab(tab) {
       else view.classList.add('hidden');
     }
   });
+  if (tab === 'schedule') {
+    if (typeof switchSchedViewMode === 'function') {
+      switchSchedViewMode(currentSchedViewMode || 'booked');
+    }
+  }
   renderPatientModule();
 }
 
@@ -1293,34 +1298,23 @@ function renderPatientModule() {
   const searchInput = document.getElementById('patientSearchInput');
   const query = (searchInput ? searchInput.value : '').trim().toLowerCase();
 
-  if (branchFilterEl && branchFilterEl.options.length <= 1) {
-    branchFilterEl.innerHTML = '<option value="">All Branches</option>';
-    if (typeof BRANCHES !== 'undefined') {
-      BRANCHES.forEach(b => {
-        const opt = document.createElement('option');
-        opt.value = b.code;
-        opt.textContent = b.code === 'KS01' ? 'Kota Sentosa' : `${b.code} – ${b.name}`;
-        branchFilterEl.appendChild(opt);
-      });
-    }
-    if (!isAM && session && session.branch && session.branch !== 'ALL') {
-      branchFilterEl.value = session.branch;
-      branchFilterEl.disabled = true;
-    }
+  // Single outlet mode: Kota Sentosa (KS01). William Chai is the sole permanent pharmacist
+  let selectedBranch = 'KS01';
+  if (branchFilterEl && branchFilterEl.value) {
+    selectedBranch = branchFilterEl.value;
   }
 
-  const selectedBranch = branchFilterEl ? branchFilterEl.value : '';
-
   const filteredPatients = patientsData.filter(p => {
-    if (selectedBranch) {
+    if (selectedBranch && selectedBranch !== 'ALL') {
       const pBranchUpper = (p.branch || '').toUpperCase();
       const selBranchUpper = selectedBranch.toUpperCase();
-      const match = (pBranchUpper === selBranchUpper) ||
+      const match = !p.branch ||
+                    (pBranchUpper === selBranchUpper) ||
                     ((pBranchUpper === 'KS01' || pBranchUpper === 'KOTA SENTOSA') && (selBranchUpper === 'KS01' || selBranchUpper === 'KOTA SENTOSA'));
       if (!match) return false;
     }
     if (query) {
-      const matchName = p.name.toLowerCase().includes(query);
+      const matchName = (p.name || '').toLowerCase().includes(query);
       const matchIc = (p.ic || '').toLowerCase().includes(query);
       const matchPhone = (p.phone || '').includes(query);
       const matchCond = (p.conditions || []).some(c => c.toLowerCase().includes(query));
@@ -1338,7 +1332,8 @@ function renderPatientModule() {
   const totalPatientsCount = filteredPatients.length;
 
   const pharmFilterEl = document.getElementById('patientPharmacistFilter');
-  const selectedPharm = pharmFilterEl ? pharmFilterEl.value.trim().toLowerCase() : '';
+  // Sole permanent pharmacist: do not filter out records when dropdown is hidden
+  const selectedPharm = (pharmFilterEl && !pharmFilterEl.classList.contains('hidden') && pharmFilterEl.value) ? pharmFilterEl.value.trim().toLowerCase() : '';
 
   const todayList = [];
   const upcomingList = [];
@@ -1392,7 +1387,8 @@ function renderPatientModule() {
   renderUpcomingQueue(upcomingList);
   renderOverdueQueue(overdueList);
   renderPatientDirectory(filteredPatients);
-  renderPharmacistScheduleTab(filteredPatients);
+  const schedPatients = (filteredPatients && filteredPatients.length > 0) ? filteredPatients : (typeof patientsData !== 'undefined' ? patientsData : []);
+  renderPharmacistScheduleTab(schedPatients);
   updateBackupStatusBadge();
   updateDailyBackupBanner();
 }
@@ -2014,6 +2010,10 @@ function sendPatientBookingWhatsApp(patientId) {
     return;
   }
 
+  p.bookingLinkSent = true;
+  p.bookingLinkSentAt = new Date().toISOString();
+  savePatientsData();
+
   const msg = buildPatientSupplyBookingMessage(p);
   const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
   window.open(waUrl, '_blank');
@@ -2145,7 +2145,25 @@ function renderPharmacistScheduleTab(patientsList) {
   const tbodyRemind = document.getElementById('schedRemindersBody');
   if (!tbodyBooked && !tbodyRemind) return;
 
-  const pts = patientsList || (typeof patientsData !== 'undefined' ? patientsData : []);
+  // Keep active view mode synchronized so background updates don't hide or collapse active sections
+  const secBooked = document.getElementById('schedSection_booked');
+  const secRemind = document.getElementById('schedSection_reminders');
+  const btnBooked = document.getElementById('schedTabBtn_booked');
+  const btnRemind = document.getElementById('schedTabBtn_reminders');
+
+  if (currentSchedViewMode === 'reminders') {
+    if (secBooked) secBooked.classList.add('hidden');
+    if (secRemind) secRemind.classList.remove('hidden');
+    if (btnBooked) btnBooked.className = 'px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 hover:text-gray-900 transition flex items-center gap-2';
+    if (btnRemind) btnRemind.className = 'px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs bg-white text-amber-900 flex items-center gap-2';
+  } else {
+    if (secBooked) secBooked.classList.remove('hidden');
+    if (secRemind) secRemind.classList.add('hidden');
+    if (btnBooked) btnBooked.className = 'px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs bg-white text-indigo-900 flex items-center gap-2';
+    if (btnRemind) btnRemind.className = 'px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 hover:text-gray-900 transition flex items-center gap-2';
+  }
+
+  const pts = (patientsList && patientsList.length > 0) ? patientsList : (typeof patientsData !== 'undefined' ? patientsData : []);
   const todayStr = getTodayDateString(0);
   const tomorrowStr = getTodayDateString(1);
   const next7DaysStr = getTodayDateString(7);
@@ -2221,7 +2239,8 @@ function renderPharmacistScheduleTab(patientsList) {
 
   // Filter Booked Appointments
   if (tbodyBooked) {
-    const selPharm = pharmFilterEl ? pharmFilterEl.value.trim().toLowerCase() : '';
+    const isPharmFilterVisible = pharmFilterEl && !pharmFilterEl.parentElement?.classList.contains('hidden') && !pharmFilterEl.classList.contains('hidden');
+    const selPharm = (isPharmFilterVisible && pharmFilterEl.value) ? pharmFilterEl.value.trim().toLowerCase() : '';
     const selTimeframe = document.getElementById('schedFilterTimeframe')?.value || 'upcoming';
     const selStatus = document.getElementById('schedFilterStatus')?.value || 'active';
     const query = (document.getElementById('schedSearchInput')?.value || '').toLowerCase().trim();
@@ -2408,6 +2427,9 @@ function renderPharmacistScheduleTab(patientsList) {
       if (isSoon) remindNext7++;
       if (isPast) remindOverdue++;
 
+      const isLinkSent = !!(p.tcaBookingLinkSent || p.bookingLinkSent);
+      const linkSentAt = p.tcaBookingLinkSentAt || p.bookingLinkSentAt || null;
+
       reminderItems.push({
         patient: p,
         date: p.nextTcaDate,
@@ -2415,7 +2437,9 @@ function renderPharmacistScheduleTab(patientsList) {
         source: p.nextTcaRecordedBy ? `Consultation SOAP (by ${p.nextTcaRecordedBy})` : 'Consultation SOAP Assessment',
         type: 'tca',
         isBooked,
-        bookedSlot: bookedApt ? `${bookedApt.date} (${bookedApt.time || '10:00'})` : null
+        bookedSlot: bookedApt ? `${bookedApt.date} (${bookedApt.time || '10:00'})` : null,
+        linkSent: isLinkSent,
+        linkSentAt: linkSentAt
       });
     }
 
@@ -2433,14 +2457,20 @@ function renderPharmacistScheduleTab(patientsList) {
           if (isSoon) remindNext7++;
           if (isPast) remindOverdue++;
 
+          const isMedLinkSent = !!(med.bookingLinkSent || p.bookingLinkSent);
+          const medLinkSentAt = med.bookingLinkSentAt || p.bookingLinkSentAt || null;
+
           reminderItems.push({
             patient: p,
             date: med.nextRefillDate,
             purpose: `Refill Due: ${med.name} (${med.dosage || ''})`,
             source: 'Chronic Medication Supply Tracking',
             type: 'med_refill',
+            medId: med.id,
             isBooked,
-            bookedSlot: bookedApt ? `${bookedApt.date} (${bookedApt.time || '10:00'})` : null
+            bookedSlot: bookedApt ? `${bookedApt.date} (${bookedApt.time || '10:00'})` : null,
+            linkSent: isMedLinkSent,
+            linkSentAt: medLinkSentAt
           });
         }
       }
@@ -2522,9 +2552,21 @@ function renderPharmacistScheduleTab(patientsList) {
         let cleanPhone = (p.phone || '').replace(/\D/g, '');
         if (cleanPhone.startsWith('0')) cleanPhone = '60' + cleanPhone.slice(1);
 
-        let bookingStatusHtml = item.isBooked
-          ? `<span class="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold px-2.5 py-1 rounded-xl"><i class="fa-solid fa-circle-check text-emerald-600"></i> Slot Booked: ${escHtml(item.bookedSlot || '')}</span>`
-          : `<span class="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-300 text-amber-900 text-[11px] font-bold px-2.5 py-1 rounded-xl"><i class="fa-regular fa-clock text-amber-600"></i> No Slot Booked Yet</span>`;
+        let bookingStatusHtml = '';
+        if (item.isBooked) {
+          bookingStatusHtml = `<span class="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold px-2.5 py-1 rounded-xl"><i class="fa-solid fa-circle-check text-emerald-600"></i> Slot Booked: ${escHtml(item.bookedSlot || '')}</span>`;
+        } else if (item.linkSent) {
+          bookingStatusHtml = `
+            <div class="flex flex-col gap-0.5">
+              <span class="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-300 text-emerald-800 text-[11px] font-bold px-2.5 py-1 rounded-xl">
+                <i class="fa-solid fa-circle-check text-emerald-600"></i> Link Sent (Awaiting Slot)
+              </span>
+              ${item.linkSentAt ? `<span class="text-[10px] text-emerald-700 font-mono ml-1">Sent: ${getFormattedDateWithDay(item.linkSentAt.slice(0, 10))}</span>` : ''}
+            </div>
+          `;
+        } else {
+          bookingStatusHtml = `<span class="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-300 text-amber-900 text-[11px] font-bold px-2.5 py-1 rounded-xl"><i class="fa-regular fa-clock text-amber-600"></i> No Slot Booked Yet</span>`;
+        }
 
         return `
           <tr class="hover:bg-amber-50/40 transition text-xs">
@@ -2568,13 +2610,26 @@ function renderPharmacistScheduleTab(patientsList) {
             <!-- Actions -->
             <td class="px-4 py-3.5 text-right whitespace-nowrap">
               <div class="inline-flex items-center gap-2">
-                <!-- Send WhatsApp Booking Link -->
-                <button type="button" onclick="sendReminderBookingLinkWa('${p.id}')"
-                  class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs transition shadow-2xs flex items-center gap-1.5"
-                  title="Send WhatsApp invitation with customer self-booking link">
-                  <i class="fa-brands fa-whatsapp text-sm"></i>
-                  <span>Send Booking Link</span>
-                </button>
+                ${item.linkSent ? `
+                  <!-- Done: Booking Link Already Sent -->
+                  <span class="inline-flex items-center gap-1.5 bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-1.5 rounded-lg font-bold text-xs shadow-2xs">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>Done (Link Sent)</span>
+                  </span>
+                  <button type="button" onclick="sendReminderBookingLinkWa('${p.id}', '${item.type}', '${item.medId || ''}')"
+                    class="text-xs text-gray-500 hover:text-emerald-700 hover:underline px-1 py-1 font-semibold transition"
+                    title="Send WhatsApp booking link again">
+                    Re-send
+                  </button>
+                ` : `
+                  <!-- Send WhatsApp Booking Link -->
+                  <button type="button" onclick="sendReminderBookingLinkWa('${p.id}', '${item.type}', '${item.medId || ''}')"
+                    class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs transition shadow-2xs flex items-center gap-1.5"
+                    title="Send WhatsApp invitation with customer self-booking link">
+                    <i class="fa-brands fa-whatsapp text-sm"></i>
+                    <span>Send Booking Link</span>
+                  </button>
+                `}
 
                 <!-- Book Confirmed Slot Directly -->
                 <button type="button" onclick="showNewAppointmentModalWithDate('${p.id}', '${item.date}')"
@@ -2630,7 +2685,7 @@ function sendDirectAppointmentReminderWa(patientId, appointmentId) {
   window.open(waUrl, '_blank');
 }
 
-function sendReminderBookingLinkWa(patientId) {
+function sendReminderBookingLinkWa(patientId, reminderType, medId) {
   const p = patientsData.find(pt => pt.id === patientId);
   if (!p) return;
 
@@ -2639,6 +2694,46 @@ function sendReminderBookingLinkWa(patientId) {
   if (!cleanPhone) {
     alert('This patient does not have a recorded phone number for WhatsApp.');
     return;
+  }
+
+  // Mark reminder as done/sent immediately
+  const nowIso = new Date().toISOString();
+  p.bookingLinkSent = true;
+  p.bookingLinkSentAt = nowIso;
+
+  if (reminderType === 'tca') {
+    p.tcaBookingLinkSent = true;
+    p.tcaBookingLinkSentAt = nowIso;
+    p.tcaBookingLinkSentDate = p.nextTcaDate;
+  } else if (reminderType === 'med_refill') {
+    if (medId && Array.isArray(p.medications)) {
+      const m = p.medications.find(med => med.id === medId);
+      if (m) {
+        m.bookingLinkSent = true;
+        m.bookingLinkSentAt = nowIso;
+        m.bookingLinkSentDate = m.nextRefillDate;
+      }
+    } else if (Array.isArray(p.medications)) {
+      p.medications.forEach(m => {
+        if (m.nextRefillDate) {
+          m.bookingLinkSent = true;
+          m.bookingLinkSentAt = nowIso;
+          m.bookingLinkSentDate = m.nextRefillDate;
+        }
+      });
+    }
+  }
+
+  // Persist locally & push to OneDrive
+  if (typeof savePatientsData === 'function') {
+    savePatientsData();
+  } else if (typeof PATIENTS_STORAGE_KEY !== 'undefined') {
+    localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
+  }
+
+  // Immediately refresh schedule view so "Done (Link Sent)" badge appears
+  if (typeof renderPharmacistScheduleTab === 'function') {
+    renderPharmacistScheduleTab();
   }
 
   const msg = typeof buildPatientSupplyBookingMessage === 'function'
