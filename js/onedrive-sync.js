@@ -1972,14 +1972,26 @@
       try {
         deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_patient_ids') || '[]');
       } catch (_) {}
+      // Explicitly un-tombstone recovered patient Lai Ling Fah so sync never purges her
+      deletedIds = (deletedIds || []).filter(x => {
+        const s = String(x).toLowerCase().replace(/\D/g, '');
+        const sRaw = String(x).toLowerCase().trim();
+        return !sRaw.includes('135720') && !sRaw.includes('lai ling fah') && s !== '701206135720' && s !== '60198472986' && s !== '0198472986';
+      });
+      try {
+        localStorage.setItem('pmg_deleted_patient_ids', JSON.stringify(deletedIds));
+      } catch (_) {}
       const deletedSet = new Set(deletedIds.map(x => String(x).toLowerCase().trim()));
 
       const isRecordDeleted = (p) => {
         if (!p) return true;
         if (!p.id || String(p.id).trim() === '') return true; // Null/empty ID
+        const pIdUpper = String(p.id).toUpperCase().trim();
+        const cleanIc = String(p.ic || '').replace(/\D/g, '');
+        if (pIdUpper === 'PT-135720' || cleanIc === '701206135720') return false;
+
         if (p.status === 'DELETED' || String(p.status).toUpperCase() === 'DELETED') return true;
         if (deletedSet.has(String(p.id).toLowerCase().trim())) return true;
-        const cleanIc = String(p.ic || '').replace(/\D/g, '');
         if (cleanIc && deletedSet.has(cleanIc)) return true;
         const cleanPhone = String(p.phone || '').replace(/\D/g, '');
         if (cleanPhone && deletedSet.has(cleanPhone)) return true;
