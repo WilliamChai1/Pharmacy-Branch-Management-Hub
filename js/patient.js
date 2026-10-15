@@ -59,6 +59,114 @@ const DEFAULT_PATIENTS_DATA = [
     appointments: []
   },
   {
+    id: 'PT-135720',
+    name: 'LAI LING FAH',
+    ic: '701206-13-5720',
+    phone: '+60198472986',
+    gender: 'Female',
+    dob: '1970-12-06',
+    age: 55,
+    race: 'Chinese',
+    language: 'Chinese',
+    branch: 'Kota Sentosa',
+    allergies: 'None recorded',
+    conditions: ['Hypertension'],
+    chronicConditions: ['Hypertension'],
+    medications: [],
+    encounters: [
+      {
+        id: 'ENC-LLF-01',
+        date: '2026-09-24',
+        recordedBy: 'William Chai (Pharmacist)',
+        chiefComplaint: 'Blood Glucose & Hypertension Review; Nutrition & Lifestyle Assessment',
+        hpi: 'Baseline consultation and Zentalog clinical monitoring setup. Patient monitored for blood pressure control and dietary sodium/calorie targets.',
+        vitals: {
+          bpSys: 145,
+          bpDia: 92,
+          pulse: 78,
+          spo2: 98,
+          weight: 74.1,
+          height: 158,
+          bmi: 29.7
+        },
+        lipidPanel: { tc: null, tg: null, hdl: null, ldl: null, ai: null, rChd: null },
+        liverPanel: { ast: null, alt: null, alb: null },
+        kidneyPanel: { ua: null, creatinine: null, urea: null, egfr: null },
+        glycemicHeme: { glucose: 6.8, glucoseType: 'Random', hba1c: null, hb: null, hct: null },
+        specialtyScans: { zentalog: 'Zentalog Diet & Home Report (2026-09-16 to 2026-10-15)' },
+        customTests: [],
+        preDiagnostic: 'Essential Hypertension under active lifestyle & dietary modification',
+        planMedications: 'Lifestyle modification; 1600 kcal/day dietary target; blood glucose & BP monitoring',
+        planSupplements: 'Omega-3 Fish Oil 1000mg daily',
+        planCounselling: 'Target 1600 kcal/day; reduce dietary sodium; regular BP home monitoring',
+        referral: 'TCA scheduled on 2026-10-16 for health screening follow-up.',
+        attachedDocs: ['DOC-1792021815013-gn2xa']
+      }
+    ],
+    documents: [
+      {
+        id: 'DOC-1792021815013-gn2xa',
+        patientId: 'PT-135720',
+        name: 'Zentalog_Clinical_Report_LAI_LING_FAH_2026-09-16_to_2026-10-15.pdf',
+        type: 'application/pdf',
+        size: 3836192,
+        date: '2026-10-14',
+        notes: 'Zentalog Diet & Home Report (2026-10-15)'
+      }
+    ],
+    appointments: [
+      {
+        id: 'APT-mv8qusyn-1',
+        date: '2026-10-01',
+        time: '10:00',
+        service: 'blood glucose test',
+        purpose: 'blood glucose test',
+        pharmacist: 'William Chai Yee Sian (Area Manager)',
+        status: 'Completed',
+        type: 'in_person',
+        notes: 'Follow-up appointment imported from Lark consultation record.'
+      },
+      {
+        id: 'PMG-BK-209014',
+        date: '2026-10-16',
+        time: '08:00',
+        service: 'In-Person Consultation & Health Screening',
+        purpose: 'In-Person Consultation & Health Screening',
+        pharmacist: 'William Chai Yee Sian (Pharmacist)',
+        status: 'Scheduled',
+        type: 'in_person',
+        notes: 'Booked via Online Customer Portal'
+      },
+      {
+        id: 'PMG-BK-643671',
+        date: '2026-10-16',
+        time: '08:00',
+        service: 'In-Person Consultation & Health Screening',
+        purpose: 'In-Person Consultation & Health Screening',
+        pharmacist: 'William Chai Yee Sian (Pharmacist)',
+        status: 'Scheduled',
+        type: 'in_person',
+        notes: 'Booked via Online Customer Portal'
+      },
+      {
+        id: 'PMG-BK-236496',
+        date: '2026-10-16',
+        time: '08:30',
+        service: 'In-Person Consultation & Health Screening',
+        purpose: 'In-Person Consultation & Health Screening',
+        pharmacist: 'William Chai Yee Sian (Pharmacist)',
+        status: 'Scheduled',
+        type: 'in_person',
+        notes: 'Booked via Online Customer Portal'
+      }
+    ],
+    notes: 'Monitored for Hypertension, glycemic control, and nutrition tracking via Zentalog. Calorie target: 1600 kcal/day.',
+    createdAt: '2026-09-24',
+    nextTcaDate: '2026-10-16',
+    nextTcaPurpose: 'In-Person Consultation & Health Screening',
+    nextTcaRecordedBy: 'William Chai Yee Sian (Pharmacist)'
+  },
+  {
     id: 'PT-1003',
     name: 'Alexander Anak Stephen',
     ic: '811105-13-6113',
@@ -833,6 +941,24 @@ function loadPatientsData() {
   addDeletedPatientRecord('tan ah kow');
   addDeletedPatientRecord('hajah fatimah binti osman');
 
+  // Explicitly un-tombstone recovered patient Lai Ling Fah so she is never filtered out or blocked by sync
+  removeDeletedPatientRecord('PT-135720', '701206-13-5720', '+60198472986', 'LAI LING FAH');
+  removeDeletedPatientRecord('pt-135720', '701206135720', '60198472986', 'lai ling fah');
+  try {
+    const rawDel = localStorage.getItem(DELETED_PATIENTS_STORAGE_KEY);
+    if (rawDel) {
+      let delArr = JSON.parse(rawDel);
+      if (Array.isArray(delArr)) {
+        delArr = delArr.filter(x => {
+          const s = String(x).toLowerCase().replace(/\D/g, '');
+          const sRaw = String(x).toLowerCase().trim();
+          return !sRaw.includes('135720') && !sRaw.includes('lai ling fah') && s !== '701206135720' && s !== '60198472986' && s !== '0198472986';
+        });
+        localStorage.setItem(DELETED_PATIENTS_STORAGE_KEY, JSON.stringify(delArr));
+      }
+    }
+  } catch (_) {}
+
   const saved = localStorage.getItem(PATIENTS_STORAGE_KEY);
   if (saved) {
     try {
@@ -909,6 +1035,12 @@ function loadPatientsData() {
         }
         if (defPt.notes && (!patientsData[idx].notes || patientsData[idx].notes.length < defPt.notes.length)) {
           patientsData[idx].notes = defPt.notes;
+        }
+        if (defPt.documents && (!patientsData[idx].documents || !patientsData[idx].documents.length)) {
+          patientsData[idx].documents = JSON.parse(JSON.stringify(defPt.documents));
+        }
+        if (defPt.appointments && (!patientsData[idx].appointments || !patientsData[idx].appointments.length)) {
+          patientsData[idx].appointments = JSON.parse(JSON.stringify(defPt.appointments));
         }
       }
     });
