@@ -1478,24 +1478,65 @@ async function extractInvoiceItemsFromPdf(file, branch, onStatus) {
 
   const prompt = `
 You are an expert pharmaceutical invoice parser for Malaysian pharmacy chains (e.g. PMG Pharmacy).
-Analyze this invoice document carefully.
-Identify:
-1. Supplier Name (e.g. DKSH, Zuellig Pharma, Sung Hoe, SSJ, Pahang Pharmacy, Apex, TLS, etc.)
-2. Document Date (e.g. 2026)
-3. Table of Line Items (products, medicines, OTC items)
+Analyze this Malaysian pharmaceutical invoice document carefully.
 
-Extract all inventory line items into a JSON array of objects.
-CRITICAL EXTRACTION RULES:
-- "batchNumber": Look for Batch / Lot / Lot No. (e.g. "2605447", "SE07", "BT-8890"). If printed alongside expiry date (e.g. "SE07 23/05/26"), correctly isolate the batch number. If none, output "N/A".
-- "itemCode": Internal product code or SKU (typically 4-8 digits like "119356", "105675" or alphanumeric). If not found, output "N/A".
-- "itemDescription": Full product or medicine name with strength/form if shown (e.g., "VASELINE BABY PROTECTING JELLY 50ML", "MAGNOMINT TAB 10'S").
-- "expiryDate": The product's shelf-life expiration date, strictly formatted as "DD/MM/YYYY":
-    * IMPORTANT: Expiration dates are ALWAYS in the future relative to the invoice date (typically 2026 to 2035). They are NEVER in the past or year 2000.
-    * Malaysian pharmaceutical invoices write dates in DD-MM-YY (Day-Month-Year) or DD/MM/YYYY.
-    * If 2-digit year (e.g., "04-02-28"), "28" is the YEAR 2028, "02" is February, "04" is the day -> output "04/02/2028".
-    * If Month/Year format (e.g., "10/28" or "OCT-28"), output the last day of the month -> "31/10/2028".
-    * Do NOT confuse Invoice Date, Order Date, or Manufacturing Date (MFG/DOM) with Expiry Date (EXP/LUAR TARIKH).
-- "quantity": Billed or delivered quantity as a positive number.
+CRITICAL INVOICE LAYOUT & LINE ASSOCIATION RULES:
+Malaysian pharmaceutical invoices (e.g. Apex Pharmacy, DKSH, Zuellig Pharma, Hovid, Xepa, Novugen, CCM, Inova, Sung Hoe, etc.) format line items across TWO (or more) horizontal lines:
+- LINE 1 (Product Line): [Line #]  [Item Code]  [Product Description / Medicine Name]  ...  [Billed / Delivered Quantity]
+- LINE 2 (Sub-Line):     Lot No. : [Batch Number]   Expiration Date :[DD-MM-YY]
+
+1. THE LOT NUMBER AND EXPIRATION DATE ARE ALWAYS PRINTED ON THE LINE IMMEDIATELY *BELOW* (UNDERNEATH) THE PRODUCT DESCRIPTION:
+   - They belong strictly to the product printed DIRECTLY ABOVE them.
+   - **NEVER** pair a product with the Lot No. / Expiration Date printed above it!
+   - Example 1 (DO NOT SHIFT ROWS):
+     113229  VICIDE 5% CREAM 10GM
+     Lot No. : 2510018 Expiration Date :31-10-28
+     131741  VOZAN 20MG TAB 10'S - NOVUGEN
+     Lot No. : 26126A1 Expiration Date :29-02-28
+     -> Correct pairing for VICIDE (113229): Batch "2510018", Expiry "31/10/2028".
+     -> Correct pairing for VOZAN (131741): Batch "26126A1", Expiry "29/02/2028".
+     (DO NOT assign the 31-10-28 from the line above Vozan to Vozan! Vozan's expiry is 29-02-28 printed on the line BELOW it).
+
+   - Example 2 (ROSUVID & QUANTITY MATCHING):
+     77  101426  HOVID HOVASC 5MG TAB 10'SX10                                  17
+         Lot No. : CF12600 Expiration Date :30-11-28
+     78  143036  HOVID ROSUVID 20MG TAB 10'SX3                                  4
+         Lot No. : CG03515 Expiration Date :28-02-29
+     79  103310  HYDRINATE 50MG TAB 10'S                                       15
+         Lot No. : 2510353 Expiration Date :30-09-28
+     -> Correct pairing for HOVID ROSUVID (Item Code 143036):
+        * Description: "HOVID ROSUVID 20MG TAB 10'SX3"
+        * Quantity: 4 (from the same horizontal line on the right column).
+        * Batch / Lot: "CG03515" (from the line directly BELOW it).
+        * Expiry Date: "28/02/2029" (from "28-02-29" printed directly BELOW it. "28" is Day 28, "02" is Feb, "29" is Year 2029).
+     (DO NOT assign the batch/expiry or quantity from line 77 or line 76 to Rosuvid!).
+
+2. QUANTITY ASSOCIATION:
+   - The billed/delivered quantity is printed on the SAME HORIZONTAL LINE as the Item Code and Product Description, usually in the rightmost column (e.g. Qty, Billed Qty, Invoice Qty).
+   - In Example 2 above, HOVID ROSUVID on Line 78 has Quantity 4. Do NOT take quantity from another row (like 11, 13, 17, or 15).
+
+3. EXPIRATION DATE CONVERSION (DD-MM-YY to DD/MM/YYYY):
+   - Malaysian invoices write dates as DD-MM-YY (Day-Month-Year):
+     * "28-02-29" -> Day 28, Month 02 (February), Year 2029 -> "28/02/2029".
+     * "30-11-28" -> Day 30, Month 11 (November), Year 2028 -> "30/11/2028".
+     * "29-02-28" -> Day 29, Month 02 (February), Year 2028 -> "29/02/2028".
+     * "30-07-27" -> Day 30, Month 07 (July), Year 2027 -> "30/07/2027".
+     * "31-01-28" -> Day 31, Month 01 (January), Year 2028 -> "31/01/2028".
+     * "31-12-28" -> Day 31, Month 12 (December), Year 2028 -> "31/12/2028".
+     * "09-05-27" -> Day 09, Month 05 (May), Year 2027 -> "09/05/2027".
+   - If Month/Year format (e.g. "10/28" or "OCT-28"), output last day of month -> "31/10/2028".
+   - Always output 4-digit year (YYYY) between 2026 and 2035.
+
+4. MULTI-LINE DESCRIPTIONS:
+   - If a product description wraps across 2 lines before the Lot No. line (e.g. "VENTOLIN EVOHALER 100 MG 200" on line 1, "DOSES BOT" on line 2, followed by "Lot No. : J42R Expiration Date :09-05-27"), concatenate the description lines into "VENTOLIN EVOHALER 100 MG 200 DOSES BOT". The Lot No. directly below it belongs to that item.
+
+FIELDS TO OUTPUT FOR EACH ITEM:
+- "itemCode": Internal product code or SKU (typically 4-8 digits like "143036", "131741" or alphanumeric). If not found, output "N/A".
+- "itemDescription": Full product or medicine name with strength/form if shown (e.g., "HOVID ROSUVID 20MG TAB 10'SX3", "VOZAN 20MG TAB 10'S - NOVUGEN").
+- "batchNumber": Look for Batch / Lot / Lot No. printed on the sub-line BELOW the product name. If none, output "N/A".
+- "expiryDate": The product's shelf-life expiration date, strictly formatted as "DD/MM/YYYY" (e.g., "28/02/2029").
+- "quantity": Billed or delivered quantity as a positive number (e.g., 4).
+
 Return ONLY a valid JSON array of objects. No markdown formatting, no explanations.
 `;
 
