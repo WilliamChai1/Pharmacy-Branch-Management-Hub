@@ -2143,8 +2143,18 @@
       if (arrA.length === 0 && arrB.length === 0) return true;
 
       const getKey = (it) => {
-        return it.rowId || `${it.itemCode || ''}|${it.batchNumber || ''}|${it.expiryDate || ''}|${it.branch || ''}`;
+        if (!it) return '';
+        const b = (it.branch || 'Kota Sentosa').trim().toUpperCase();
+        const c = (it.itemCode || '').trim().toUpperCase();
+        const bt = (it.batchNumber || '').trim().toUpperCase();
+        if (c && c !== 'N/A') {
+          return `${b}|${c}|${bt || 'NO_BATCH'}`;
+        }
+        if (it.rowId) return `${b}|ID_${it.rowId}`;
+        return `${b}|${(it.itemDescription || '').trim().toUpperCase()}|${bt || 'NO_BATCH'}`;
       };
+
+      const numOrNull = (v) => (v !== undefined && v !== null && v !== '' && !isNaN(v)) ? Number(v) : null;
 
       const mapB = new Map();
       for (const b of arrB) {
@@ -2163,9 +2173,9 @@
         if (a.expiryDate !== b.expiryDate) return false;
         if (a.batchNumber !== b.batchNumber) return false;
         if (a.actionPlan !== b.actionPlan) return false;
-        if (a.clearancePrice !== b.clearancePrice) return false;
-        if (a.offeredPrice !== b.offeredPrice) return false;
-        if (a.normalPrice !== b.normalPrice) return false;
+        if (numOrNull(a.clearancePrice) !== numOrNull(b.clearancePrice)) return false;
+        if (numOrNull(a.offeredPrice) !== numOrNull(b.offeredPrice)) return false;
+        if (numOrNull(a.normalPrice) !== numOrNull(b.normalPrice)) return false;
         if (a.remarks !== b.remarks) return false;
       }
       return true;

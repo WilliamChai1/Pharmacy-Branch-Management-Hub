@@ -943,6 +943,25 @@ function mergeExpiryDatasets(localList, remoteList) {
   const clearedSet = getClearedExpiryKeys();
   const map = new Map();
 
+  // Helper to extract offeredPrice from item or actionPlan if not directly present
+  const resolveOfferedPrice = (item) => {
+    if (!item) return undefined;
+    if (item.offeredPrice !== undefined && item.offeredPrice !== null && !isNaN(item.offeredPrice) && Number(item.offeredPrice) > 0) {
+      return Number(item.offeredPrice);
+    }
+    if (item.clearancePrice !== undefined && item.clearancePrice !== null && !isNaN(item.clearancePrice) && Number(item.clearancePrice) > 0) {
+      return Number(item.clearancePrice);
+    }
+    if (item.actionPlan) {
+      const m = String(item.actionPlan).match(/offer:\s*rm\s*([\d.]+)/i) || String(item.actionPlan).match(/rm\s*([\d.]+)/i);
+      if (m && m[1]) {
+        const p = parseFloat(m[1]);
+        if (!isNaN(p) && p > 0) return p;
+      }
+    }
+    return undefined;
+  };
+
   // Index local items first
   localList.forEach((it, idx) => {
     const key = getExpiryItemKey(it) || `ROW_${it.rowId || idx}`;
@@ -951,6 +970,11 @@ function mergeExpiryDatasets(localList, remoteList) {
       clone.status = 'DONE';
       clone.quantity = 0;
     }
+    const resolvedOff = resolveOfferedPrice(clone);
+    if (resolvedOff !== undefined) {
+      clone.offeredPrice = resolvedOff;
+      if (clone.clearancePrice === undefined) clone.clearancePrice = resolvedOff;
+    }
     map.set(key, clone);
   });
 
@@ -958,6 +982,11 @@ function mergeExpiryDatasets(localList, remoteList) {
   remoteList.forEach((rem, idx) => {
     const key = getExpiryItemKey(rem) || `ROW_${rem.rowId || idx}`;
     const remIsCleared = isItemMarkedDoneOrCleared(rem, clearedSet);
+    const remResolvedOff = resolveOfferedPrice(rem);
+    if (remResolvedOff !== undefined) {
+      rem.offeredPrice = remResolvedOff;
+      if (rem.clearancePrice === undefined) rem.clearancePrice = remResolvedOff;
+    }
 
     if (!map.has(key)) {
       const clone = { ...rem };
@@ -972,14 +1001,12 @@ function mergeExpiryDatasets(localList, remoteList) {
       const locTs = loc.lastUpdated ? new Date(loc.lastUpdated).getTime() : 0;
       const remTs = rem.lastUpdated ? new Date(rem.lastUpdated).getTime() : 0;
 
-      // CRITICAL: If local is Cleared / DONE, ALWAYS preserve it — even if remote is newer.
-      // This prevents background polling / Sheets sync from reverting a just-cleared item.
+      // 1. Cleared / DONE state priority:
       if (locIsCleared) {
         loc.status = 'DONE';
         loc.quantity = 0;
-        // Local cleared state wins. Keep local as-is.
+        // Local cleared state wins permanently.
       } else if (remIsCleared) {
-        // Remote cleared takes priority over local Active
         map.set(key, {
           ...loc,
           status: 'DONE',
@@ -989,32 +1016,90 @@ function mergeExpiryDatasets(localList, remoteList) {
           updatedBy: rem.updatedBy || loc.updatedBy,
           rowId: loc.rowId || rem.rowId
         });
-      } else if (remTs > locTs) {
-        // Remote is strictly newer: adopt remote fields, preserving local pricing if remote omitted them
-        map.set(key, {
-          ...loc,
-          ...rem,
-          rowId: loc.rowId || rem.rowId,
-          offeredPrice: rem.offeredPrice !== undefined ? rem.offeredPrice : (loc.offeredPrice !== undefined ? loc.offeredPrice : loc.clearancePrice),
-          clearancePrice: rem.clearancePrice !== undefined ? rem.clearancePrice : (loc.clearancePrice !== undefined ? loc.clearancePrice : loc.offeredPrice),
-          normalPrice: rem.normalPrice !== undefined ? rem.normalPrice : loc.normalPrice,
-          tagTheme: rem.tagTheme || loc.tagTheme,
-          tagSize: rem.tagSize || loc.tagSize,
-          promoBanner: rem.promoBanner || loc.promoBanner,
-          promoRemark: rem.promoRemark || loc.promoRemark
-        });
-      } else if (locTs > remTs) {
-        // Local is strictly newer: retain local
       } else {
-        // Timestamps are equal or absent — merge non-empty values
-        if (rem.quantity !== undefined && loc.quantity === undefined) loc.quantity = rem.quantity;
-        if (rem.expiryDate && !loc.expiryDate) loc.expiryDate = rem.expiryDate;
-        if (rem.batchNumber && (!loc.batchNumber || loc.batchNumber === 'N/A')) loc.batchNumber = rem.batchNumber;
-        if (rem.offeredPrice !== undefined && loc.offeredPrice === undefined) loc.offeredPrice = rem.offeredPrice;
-        if (rem.clearancePrice !== undefined && loc.clearancePrice === undefined) loc.clearancePrice = rem.clearancePrice;
-        if (loc.offeredPrice !== undefined && loc.clearancePrice === undefined) loc.clearancePrice = loc.offeredPrice;
-        if (loc.clearancePrice !== undefined && loc.offeredPrice === undefined) loc.offeredPrice = loc.clearancePrice;
-        if (rem.normalPrice !== undefined && loc.normalPrice === undefined) loc.normalPrice = rem.normalPrice;
+        // Compare pricing update timestamps
+        const locPricingTs = loc.pricingUpdatedAt ? new Date(loc.pricingUpdatedAt).getTime() : locTs;
+        const remPricingTs = rem.pricingUpdatedAt ? new Date(rem.pricingUpdatedAt).getTime() : remTs;
+
+        let winOfferedPrice = loc.offeredPrice;
+        let winClearancePrice = loc.clearancePrice;
+        let winNormalPrice = loc.normalPrice;
+        let winActionPlan = loc.actionPlan;
+        let winTheme = loc.tagTheme;
+        let winSize = loc.tagSize;
+        let winBanner = loc.promoBanner;
+        let winRemark = loc.promoRemark;
+        let winPricingUpdatedAt = loc.pricingUpdatedAt;
+
+        if (remPricingTs > locPricingTs && (rem.offeredPrice !== undefined || rem.clearancePrice !== undefined)) {
+          // Remote pricing was updated strictly more recently
+          winOfferedPrice = rem.offeredPrice !== undefined ? rem.offeredPrice : rem.clearancePrice;
+          winClearancePrice = rem.clearancePrice !== undefined ? rem.clearancePrice : rem.offeredPrice;
+          winNormalPrice = rem.normalPrice !== undefined ? rem.normalPrice : loc.normalPrice;
+          winActionPlan = rem.actionPlan || loc.actionPlan;
+          winTheme = rem.tagTheme || loc.tagTheme;
+          winSize = rem.tagSize || loc.tagSize;
+          winBanner = rem.promoBanner || loc.promoBanner;
+          winRemark = rem.promoRemark || loc.promoRemark;
+          winPricingUpdatedAt = rem.pricingUpdatedAt;
+        } else {
+          // Local pricing is equal, newer, or remote had no pricing: LOCAL PRICING WINS!
+          if (winOfferedPrice === undefined && rem.offeredPrice !== undefined) winOfferedPrice = rem.offeredPrice;
+          if (winClearancePrice === undefined && rem.clearancePrice !== undefined) winClearancePrice = rem.clearancePrice;
+          if (winNormalPrice === undefined && rem.normalPrice !== undefined) winNormalPrice = rem.normalPrice;
+          if (!winActionPlan && rem.actionPlan) winActionPlan = rem.actionPlan;
+          if (!winTheme && rem.tagTheme) winTheme = rem.tagTheme;
+          if (!winSize && rem.tagSize) winSize = rem.tagSize;
+          if (!winBanner && rem.promoBanner) winBanner = rem.promoBanner;
+          if (!winRemark && rem.promoRemark) winRemark = rem.promoRemark;
+        }
+
+        if (remTs > locTs) {
+          // Remote is strictly newer for other inventory attributes (qty, expiry, batch, etc.)
+          map.set(key, {
+            ...loc,
+            ...rem,
+            rowId: loc.rowId || rem.rowId,
+            offeredPrice: winOfferedPrice,
+            clearancePrice: winClearancePrice,
+            normalPrice: winNormalPrice,
+            actionPlan: winActionPlan,
+            tagTheme: winTheme,
+            tagSize: winSize,
+            promoBanner: winBanner,
+            promoRemark: winRemark,
+            pricingUpdatedAt: winPricingUpdatedAt
+          });
+        } else if (locTs > remTs) {
+          // Local is strictly newer for everything
+          map.set(key, {
+            ...rem,
+            ...loc,
+            offeredPrice: winOfferedPrice,
+            clearancePrice: winClearancePrice,
+            normalPrice: winNormalPrice,
+            actionPlan: winActionPlan,
+            tagTheme: winTheme,
+            tagSize: winSize,
+            promoBanner: winBanner,
+            promoRemark: winRemark,
+            pricingUpdatedAt: winPricingUpdatedAt
+          });
+        } else {
+          // Timestamps equal or absent: merge non-empty values
+          if (rem.quantity !== undefined && loc.quantity === undefined) loc.quantity = rem.quantity;
+          if (rem.expiryDate && !loc.expiryDate) loc.expiryDate = rem.expiryDate;
+          if (rem.batchNumber && (!loc.batchNumber || loc.batchNumber === 'N/A')) loc.batchNumber = rem.batchNumber;
+          loc.offeredPrice = winOfferedPrice;
+          loc.clearancePrice = winClearancePrice;
+          loc.normalPrice = winNormalPrice;
+          loc.actionPlan = winActionPlan;
+          loc.tagTheme = winTheme;
+          loc.tagSize = winSize;
+          loc.promoBanner = winBanner;
+          loc.promoRemark = winRemark;
+          if (winPricingUpdatedAt) loc.pricingUpdatedAt = winPricingUpdatedAt;
+        }
       }
     }
   });
@@ -1287,6 +1372,21 @@ async function pushExpiryUpdateToSheets(rowId, quantity, status, expiryDate = nu
     if (extraFields.itemDescription) payload.itemDescription = extraFields.itemDescription;
     if (extraFields.batchNumber) payload.batchNumber = extraFields.batchNumber;
     if (extraFields.itemCode) payload.itemCode = extraFields.itemCode;
+    if (extraFields.actionPlan !== undefined) {
+      payload.actionPlan = extraFields.actionPlan;
+    } else if (item?.actionPlan) {
+      payload.actionPlan = item.actionPlan;
+    }
+    if (extraFields.offeredPrice !== undefined) {
+      payload.offeredPrice = extraFields.offeredPrice;
+    } else if (item?.offeredPrice !== undefined) {
+      payload.offeredPrice = item.offeredPrice;
+    }
+    if (extraFields.clearancePrice !== undefined) {
+      payload.clearancePrice = extraFields.clearancePrice;
+    } else if (item?.clearancePrice !== undefined) {
+      payload.clearancePrice = item.clearancePrice;
+    }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
@@ -1990,14 +2090,40 @@ function getItemActionPlan(it) {
 function updateExpiryActionPlan(rowId, val) {
   const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
   if (!item) return;
+
+  if (typeof window.pausePmgSyncPolling === 'function') {
+    window.pausePmgSyncPolling(25000);
+  }
+
   const cleanVal = (val || '').trim();
+  const nowIso = new Date().toISOString();
   item.actionPlan = cleanVal;
-  item.lastUpdated = new Date().toISOString();
+  item.lastUpdated = nowIso;
+
+  // Extract offeredPrice if present in the plan text (e.g. "Clearance Promo (Offer: RM 8.00)")
+  const m = cleanVal.match(/offer:\s*rm\s*([\d.]+)/i) || cleanVal.match(/rm\s*([\d.]+)/i);
+  if (m && m[1]) {
+    const parsedPrice = parseFloat(m[1]);
+    if (!isNaN(parsedPrice) && parsedPrice > 0) {
+      item.offeredPrice = parsedPrice;
+      item.clearancePrice = parsedPrice;
+      item.pricingUpdatedAt = nowIso;
+    }
+  } else if (!cleanVal.toLowerCase().includes('clearance') && !cleanVal.toLowerCase().includes('promo') && item.offeredPrice) {
+    delete item.offeredPrice;
+    delete item.clearancePrice;
+    item.pricingUpdatedAt = nowIso;
+  }
+
   saveLocalExpiryData();
   if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
     window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
   }
-  pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate, { actionPlan: item.actionPlan });
+  pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate, {
+    actionPlan: item.actionPlan,
+    offeredPrice: item.offeredPrice,
+    clearancePrice: item.clearancePrice
+  });
 
   // If user selected Clearance Promo and offeredPrice is not set, open the attractive price tag modal!
   if ((cleanVal.toLowerCase().includes('clearance') || cleanVal.toLowerCase().includes('promo')) && !item.offeredPrice) {
@@ -2170,6 +2296,10 @@ async function handleEditExpiryItemSubmit(e) {
   const session = typeof getSession === 'function' ? getSession() : null;
   const nowIso = new Date().toISOString();
 
+  if (typeof window.pausePmgSyncPolling === 'function') {
+    window.pausePmgSyncPolling(25000);
+  }
+
   const formattedDate = formatExpiryDateDisplay(parsed);
   item.branch = branch;
   item.itemCode = itemCode;
@@ -2181,9 +2311,13 @@ async function handleEditExpiryItemSubmit(e) {
   if (actionPlanVal !== undefined) item.actionPlan = actionPlanVal;
   if (!isNaN(offeredPriceVal) && offeredPriceVal >= 0) {
     item.offeredPrice = offeredPriceVal;
+    item.clearancePrice = offeredPriceVal;
+    item.pricingUpdatedAt = nowIso;
     if (!item.actionPlan) item.actionPlan = 'Clearance Promo / PWP';
   } else if (offeredPriceRaw === '') {
     delete item.offeredPrice;
+    delete item.clearancePrice;
+    item.pricingUpdatedAt = nowIso;
   }
 
   if (item.quantity === 0) {
@@ -2209,7 +2343,9 @@ async function handleEditExpiryItemSubmit(e) {
     itemCode: item.itemCode,
     itemDescription: item.itemDescription,
     batchNumber: item.batchNumber,
-    actionPlan: item.offeredPrice ? `Clearance Promo (Offer: RM ${item.offeredPrice.toFixed(2)})` : item.actionPlan
+    actionPlan: item.offeredPrice ? `Clearance Promo (Offer: RM ${item.offeredPrice.toFixed(2)})` : item.actionPlan,
+    offeredPrice: item.offeredPrice,
+    clearancePrice: item.clearancePrice
   });
 
   showExpiryToast(`✅ Saved changes for ${item.itemDescription || item.itemCode}`);
@@ -2482,7 +2618,12 @@ function openClearancePriceTagModal(rowId) {
   const noteInput = document.getElementById('tagFooterNoteInput');
   const bannerSel = document.getElementById('tagBannerSelect');
 
-  if (offInput) offInput.value = item.offeredPrice !== undefined ? item.offeredPrice : '';
+  let initialOffered = item.offeredPrice !== undefined ? item.offeredPrice : (item.clearancePrice !== undefined ? item.clearancePrice : '');
+  if (initialOffered === '' && item.actionPlan) {
+    const m = String(item.actionPlan).match(/offer:\s*rm\s*([\d.]+)/i) || String(item.actionPlan).match(/rm\s*([\d.]+)/i);
+    if (m && m[1]) initialOffered = m[1];
+  }
+  if (offInput) offInput.value = initialOffered;
   if (normInput) normInput.value = item.normalPrice !== undefined ? item.normalPrice : '';
   if (themeSel) themeSel.value = item.tagTheme || 'flame';
   if (sizeSel) sizeSel.value = item.tagSize || 'compact';
@@ -2611,6 +2752,11 @@ function saveClearancePriceTag(silent = false) {
     return false;
   }
 
+  // 1. Race condition prevention: Pause background auto-polling for 25 seconds
+  if (typeof window.pausePmgSyncPolling === 'function') {
+    window.pausePmgSyncPolling(25000);
+  }
+
   const normalPrice = parseFloat(document.getElementById('tagNormalPrice')?.value) || null;
   const theme = document.getElementById('tagThemeSelect')?.value || 'flame';
   const size = document.getElementById('tagSizeSelect')?.value || 'compact';
@@ -2618,30 +2764,71 @@ function saveClearancePriceTag(silent = false) {
   const banner = document.getElementById('tagBannerSelect')?.value || '🔥 CLEARANCE SALE';
   const footerNote = document.getElementById('tagFooterNoteInput')?.value || '';
   const showBarcode = false;
+  const nowIso = new Date().toISOString();
+  const session = typeof getSession === 'function' ? getSession() : null;
+  const updatedBy = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
+  const formattedPlan = `Clearance Promo (Offer: RM ${offeredPrice.toFixed(2)})`;
 
-  // Update item properties
+  const targetId = activePriceTagItem.rowId;
+  const targetCode = String(activePriceTagItem.itemCode || '').trim().toUpperCase();
+  const targetBranch = String(activePriceTagItem.branch || '').trim().toLowerCase();
+  const targetBatch = String(activePriceTagItem.batchNumber || '').trim();
+
+  // Update active item reference
   activePriceTagItem.offeredPrice = offeredPrice;
   activePriceTagItem.clearancePrice = offeredPrice;
   if (normalPrice) activePriceTagItem.normalPrice = normalPrice;
-  activePriceTagItem.actionPlan = 'Clearance Promo / PWP';
+  activePriceTagItem.actionPlan = formattedPlan;
   activePriceTagItem.tagTheme = theme;
   activePriceTagItem.tagSize = size;
   activePriceTagItem.tagPrintTarget = printTarget;
   activePriceTagItem.promoBanner = banner;
   activePriceTagItem.promoRemark = footerNote;
   activePriceTagItem.showBarcode = false;
-  activePriceTagItem.lastUpdated = new Date().toISOString();
+  activePriceTagItem.pricingUpdatedAt = nowIso;
+  activePriceTagItem.lastUpdated = nowIso;
+  activePriceTagItem.updatedBy = updatedBy;
 
+  // Also update every duplicate / matching row in expiryItems array
+  if (Array.isArray(expiryItems)) {
+    expiryItems.forEach(it => {
+      const isSameId = targetId && (it.rowId === targetId || String(it.rowId) === String(targetId));
+      const isSameItem = targetCode && String(it.itemCode || '').trim().toUpperCase() === targetCode &&
+                         (!targetBatch || targetBatch === 'N/A' || String(it.batchNumber || '').trim() === targetBatch) &&
+                         (!targetBranch || String(it.branch || '').trim().toLowerCase() === targetBranch);
+      if (isSameId || isSameItem) {
+        it.offeredPrice = offeredPrice;
+        it.clearancePrice = offeredPrice;
+        if (normalPrice) it.normalPrice = normalPrice;
+        it.actionPlan = formattedPlan;
+        it.tagTheme = theme;
+        it.tagSize = size;
+        it.tagPrintTarget = printTarget;
+        it.promoBanner = banner;
+        it.promoRemark = footerNote;
+        it.showBarcode = false;
+        it.pricingUpdatedAt = nowIso;
+        it.lastUpdated = nowIso;
+        it.updatedBy = updatedBy;
+      }
+    });
+  }
+
+  // Immediately save locally and refresh UI
   saveLocalExpiryData();
   renderExpiryUI();
 
+  // Save to OneDrive immediately
   if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
     window.pmgOneDriveSync.saveStockExpiryToOneDrive(activePriceTagItem.branch).catch(console.warn);
   }
 
+  // Push to Google Sheets in background
   pushExpiryUpdateToSheets(activePriceTagItem.rowId, activePriceTagItem.quantity, activePriceTagItem.status, activePriceTagItem.expiryDate, {
-    actionPlan: `Clearance Promo (Offer: RM ${offeredPrice.toFixed(2)})`
-  });
+    actionPlan: formattedPlan,
+    offeredPrice: offeredPrice,
+    clearancePrice: offeredPrice
+  }).catch(console.warn);
 
   if (!silent) {
     showExpiryToast(`✅ Saved offered price RM ${offeredPrice.toFixed(2)} for ${activePriceTagItem.itemDescription || activePriceTagItem.itemCode}`);
@@ -2839,15 +3026,50 @@ function updateExpiryOfferedPrice(rowId, val) {
   const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
   if (!item) return;
 
-  const num = parseFloat(val);
-  if (isNaN(num) || num <= 0) {
-    delete item.offeredPrice;
-  } else {
-    item.offeredPrice = num;
-    item.actionPlan = 'Clearance Promo / PWP';
+  if (typeof window.pausePmgSyncPolling === 'function') {
+    window.pausePmgSyncPolling(25000);
   }
 
-  item.lastUpdated = new Date().toISOString();
+  const num = parseFloat(val);
+  const nowIso = new Date().toISOString();
+  const session = typeof getSession === 'function' ? getSession() : null;
+  const updatedBy = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
+
+  const targetId = item.rowId;
+  const targetCode = String(item.itemCode || '').trim().toUpperCase();
+  const targetBranch = String(item.branch || '').trim().toLowerCase();
+  const targetBatch = String(item.batchNumber || '').trim();
+
+  let formattedPlan = item.actionPlan;
+  if (isNaN(num) || num <= 0) {
+    formattedPlan = (item.actionPlan || '').toLowerCase().includes('promo') ? '' : item.actionPlan;
+  } else {
+    formattedPlan = `Clearance Promo (Offer: RM ${num.toFixed(2)})`;
+  }
+
+  if (Array.isArray(expiryItems)) {
+    expiryItems.forEach(it => {
+      const isSameId = targetId && (it.rowId === targetId || String(it.rowId) === String(targetId));
+      const isSameItem = targetCode && String(it.itemCode || '').trim().toUpperCase() === targetCode &&
+                         (!targetBatch || targetBatch === 'N/A' || String(it.batchNumber || '').trim() === targetBatch) &&
+                         (!targetBranch || String(it.branch || '').trim().toLowerCase() === targetBranch);
+      if (isSameId || isSameItem) {
+        if (isNaN(num) || num <= 0) {
+          delete it.offeredPrice;
+          delete it.clearancePrice;
+          it.actionPlan = formattedPlan;
+        } else {
+          it.offeredPrice = num;
+          it.clearancePrice = num;
+          it.actionPlan = formattedPlan;
+        }
+        it.pricingUpdatedAt = nowIso;
+        it.lastUpdated = nowIso;
+        it.updatedBy = updatedBy;
+      }
+    });
+  }
+
   saveLocalExpiryData();
   renderExpiryUI();
 
@@ -2856,11 +3078,13 @@ function updateExpiryOfferedPrice(rowId, val) {
   }
 
   pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate, {
-    actionPlan: item.offeredPrice ? `Clearance Promo (Offer: RM ${item.offeredPrice.toFixed(2)})` : item.actionPlan
-  });
+    actionPlan: formattedPlan,
+    offeredPrice: !isNaN(num) && num > 0 ? num : undefined,
+    clearancePrice: !isNaN(num) && num > 0 ? num : undefined
+  }).catch(console.warn);
 
-  if (item.offeredPrice) {
-    showExpiryToast(`✅ Offered price RM ${item.offeredPrice.toFixed(2)} set for ${item.itemDescription || item.itemCode}`);
+  if (!isNaN(num) && num > 0) {
+    showExpiryToast(`✅ Offered price RM ${num.toFixed(2)} set for ${item.itemDescription || item.itemCode}`);
   }
 }
 
