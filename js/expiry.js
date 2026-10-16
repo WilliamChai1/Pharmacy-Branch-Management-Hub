@@ -84,12 +84,142 @@ function isItemMarkedDoneOrCleared(item, clearedKeysSet = null) {
     return true;
   }
   const set = clearedKeysSet || getClearedExpiryKeys();
-  if (item.itemCode && set.has(String(item.itemCode).trim().toUpperCase())) return true;
-  if (item.rowId && set.has(`ROW_${item.rowId}`)) return true;
+  const codeUpper = String(item.itemCode || '').trim().toUpperCase();
+  if (codeUpper && codeUpper !== 'N/A' && set.has(codeUpper)) return true;
+  const rId = item.rowId !== undefined && item.rowId !== null ? String(item.rowId).trim() : '';
+  if (rId && rId !== 'undefined' && rId !== 'null' && set.has(`ROW_${rId}`.toUpperCase())) return true;
   const itemKey = typeof getExpiryItemKey === 'function' ? getExpiryItemKey(item) : '';
   if (itemKey && set.has(itemKey.toUpperCase())) return true;
+  // Also check legacy 3-part key (BRANCH|CODE|BATCH)
+  if (codeUpper && codeUpper !== 'N/A') {
+    const b = (item.branch || 'Kota Sentosa').trim().toUpperCase();
+    const bt = (item.batchNumber || '').trim().toUpperCase();
+    const legacyBatchKey = (bt && bt !== 'N/A') ? bt : 'NO_BATCH';
+    if (set.has(`${b}|${codeUpper}|${legacyBatchKey}`)) return true;
+  }
   return false;
 }
+
+// ─── UNIQUE ROW IDENTITY & DATA HEALING ENGINE ──────────────────────────────
+function getExpiryRowUid(it, fallbackIdx = '') {
+  if (!it) return '';
+  if (it.rowId !== undefined && it.rowId !== null) {
+    const s = String(it.rowId).trim();
+    if (s !== '' && s !== 'undefined' && s !== 'null' && s !== 'NaN') return s;
+  }
+  if (it.tempId !== undefined && it.tempId !== null) {
+    const t = String(it.tempId).trim();
+    if (t !== '' && t !== 'undefined' && t !== 'null') return t;
+  }
+  const b = String(it.branch || 'KS').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const c = String(it.itemCode || 'NA').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const bt = String(it.batchNumber || 'NB').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const exp = String(it.expiryDate || 'NE').replace(/[^a-zA-Z0-9]/g, '');
+  const desc = String(it.itemDescription || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 12);
+  return `EXP_${b}_${c}_${bt}_${exp}_${desc}${fallbackIdx !== '' ? '_' + fallbackIdx : ''}`;
+}
+
+function findExpiryItemById(rowId) {
+  if (rowId === undefined || rowId === null) return null;
+  if (typeof rowId === 'object') return rowId;
+  const target = String(rowId).trim();
+  if (!target || target === 'undefined' || target === 'null' || target === 'NaN') return null;
+  return expiryItems.find(it => {
+    if (!it) return false;
+    if (it.rowId !== undefined && it.rowId !== null && String(it.rowId).trim() === target) return true;
+    if (it.tempId !== undefined && it.tempId !== null && String(it.tempId).trim() === target) return true;
+    return getExpiryRowUid(it) === target;
+  }) || null;
+}
+
+function ensureUniqueExpiryRowIds(itemsArray) {
+  if (!Array.isArray(itemsArray)) return [];
+
+  // 1. Filter out synthetic test items (TEST-0..TEST-999 / Test Product 0..999)
+  const cleaned = itemsArray.filter(it => {
+    if (!it) return false;
+    const code = String(it.itemCode || '').trim();
+    const desc = String(it.itemDescription || '').trim();
+    if (/^TEST-\d+$/i.test(code) && /^Test Product \d+$/i.test(desc)) return false;
+    return true;
+  });
+
+  // 2. Auto-heal misplaced Galvus Met 50/500 (expiry 03/2027) clearance promo that landed on 195 ENO BOTTLE (expiry 10/2028)
+  const enoMisplaced = cleaned.find(it =>
+    String(it.itemCode || '').trim() === '21022327' &&
+    String(it.itemDescription || '').toUpperCase().includes('ENO BOTTLE') &&
+    (Number(it.offeredPrice) === 115.5 || Number(it.normalPrice) === 128 || (String(it.expiryDate || '').includes('2028') && String(it.actionPlan || '').toLowerCase().includes('clearance')))
+  );
+  const galvus0327 = cleaned.find(it => {
+    const codeNorm = String(it.itemCode || '').trim().replace(/^0+/, '');
+    const descUp = String(it.itemDescription || '').toUpperCase();
+    const expStr = String(it.expiryDate || '').trim();
+    return (codeNorm === '11090' || (descUp.includes('GALVUS') && descUp.includes('50/500'))) &&
+           (expStr.includes('03/2027') || expStr.includes('3/2027') || expStr.includes('2027-03'));
+  });
+
+  if (galvus0327 && enoMisplaced) {
+    if (!galvus0327.offeredPrice) {
+      const offPrice = Number(enoMisplaced.offeredPrice) || 115.5;
+      galvus0327.offeredPrice = offPrice;
+      galvus0327.clearancePrice = offPrice;
+      galvus0327.normalPrice = Number(enoMisplaced.normalPrice) || 128;
+      galvus0327.actionPlan = `Clearance Promo (Offer: RM ${offPrice.toFixed(2)})`;
+      galvus0327.tagTheme = enoMisplaced.tagTheme || 'neon';
+      galvus0327.tagSize = enoMisplaced.tagSize || 'compact';
+      galvus0327.tagPrintTarget = enoMisplaced.tagPrintTarget || 'a4';
+      galvus0327.promoBanner = enoMisplaced.promoBanner || '🔥 CLEARANCE SALE';
+      galvus0327.promoRemark = enoMisplaced.promoRemark || '* While Stocks Last · Short Expiry Deal';
+      galvus0327.showBarcode = false;
+      galvus0327.pricingUpdatedAt = enoMisplaced.pricingUpdatedAt || new Date().toISOString();
+      galvus0327.lastUpdated = new Date().toISOString();
+    }
+    delete enoMisplaced.offeredPrice;
+    delete enoMisplaced.clearancePrice;
+    delete enoMisplaced.normalPrice;
+    delete enoMisplaced.actionPlan;
+    delete enoMisplaced.tagTheme;
+    delete enoMisplaced.tagSize;
+    delete enoMisplaced.tagPrintTarget;
+    delete enoMisplaced.promoBanner;
+    delete enoMisplaced.promoRemark;
+    delete enoMisplaced.pricingUpdatedAt;
+  }
+
+  // 3. Assign guaranteed-unique deterministic rowId to every item
+  const usedIds = new Set();
+  cleaned.forEach((it, idx) => {
+    const rawId = it.rowId !== undefined && it.rowId !== null ? String(it.rowId).trim() : '';
+    const isValidRaw = rawId !== '' && rawId !== 'undefined' && rawId !== 'null' && rawId !== 'NaN';
+    if (isValidRaw && !usedIds.has(rawId)) {
+      usedIds.add(rawId);
+      return;
+    }
+
+    let candidate = '';
+    const rawTemp = it.tempId !== undefined && it.tempId !== null ? String(it.tempId).trim() : '';
+    if (rawTemp && rawTemp !== 'undefined' && rawTemp !== 'null' && !usedIds.has(rawTemp)) {
+      candidate = rawTemp;
+    } else {
+      const b = String(it.branch || 'KS').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      const c = String(it.itemCode || 'NA').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      const bt = String(it.batchNumber || 'NB').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      const exp = String(it.expiryDate || 'NE').replace(/[^a-zA-Z0-9]/g, '');
+      const desc = String(it.itemDescription || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 12);
+      const base = `EXP_${isValidRaw ? rawId + '_' : ''}${b}_${c}_${bt}_${exp}_${desc}`;
+      candidate = base;
+      let suffix = 1;
+      while (usedIds.has(candidate)) {
+        candidate = `${base}_${idx}_${suffix++}`;
+      }
+    }
+    it.rowId = candidate;
+    usedIds.add(String(candidate));
+  });
+
+  return cleaned;
+}
+window.ensureUniqueExpiryRowIds = ensureUniqueExpiryRowIds;
 
 // ─── INITIALIZATION ───────────────────────────────────────────────────────────
 function initExpiryModule() {
@@ -122,6 +252,11 @@ function loadLocalExpiryData() {
   addClearedExpiryKey('KOTA SENTOSA|102787|5F01097');
   addClearedExpiryKey('KOTA SENTOSA|102787|5H04819');
 
+  // Remove accidental 'N/A' or 'ROW_UNDEFINED' tombstones if any were ever stored
+  removeClearedExpiryKey('N/A');
+  removeClearedExpiryKey('ROW_UNDEFINED');
+  removeClearedExpiryKey('ROW_NULL');
+
   try {
     const raw = localStorage.getItem(EXPIRY_STORAGE_KEY);
     if (raw) {
@@ -131,8 +266,9 @@ function loadLocalExpiryData() {
     if ((!expiryItems || expiryItems.length < 500) && Array.isArray(window.PMG_SEED_EXPIRY_DATA) && window.PMG_SEED_EXPIRY_DATA.length > 0) {
       console.log(`[PMG Expiry] Preloading ${window.PMG_SEED_EXPIRY_DATA.length} master seed records for Kota Sentosa...`);
       expiryItems = window.PMG_SEED_EXPIRY_DATA;
-      saveLocalExpiryData();
     }
+
+    expiryItems = ensureUniqueExpiryRowIds(expiryItems);
 
     // Strictly enforce DONE / Cleared status on any items in tombstone set
     const clearedSet = getClearedExpiryKeys();
@@ -144,10 +280,11 @@ function loadLocalExpiryData() {
         }
       });
     }
+    saveLocalExpiryData();
   } catch (e) {
     console.warn('[PMG Expiry] Error reading local expiry data:', e);
     if (Array.isArray(window.PMG_SEED_EXPIRY_DATA)) {
-      expiryItems = window.PMG_SEED_EXPIRY_DATA;
+      expiryItems = ensureUniqueExpiryRowIds(window.PMG_SEED_EXPIRY_DATA);
     } else {
       expiryItems = [];
     }
@@ -156,6 +293,7 @@ function loadLocalExpiryData() {
 
 function saveLocalExpiryData() {
   try {
+    expiryItems = ensureUniqueExpiryRowIds(expiryItems);
     localStorage.setItem(EXPIRY_STORAGE_KEY, JSON.stringify(expiryItems));
   } catch (e) {
     console.warn('[PMG Expiry] Error saving local expiry data:', e);
@@ -925,20 +1063,30 @@ function getExpiryItemKey(item) {
   const b = (item.branch || 'Kota Sentosa').trim().toUpperCase();
   const c = (item.itemCode || '').trim().toUpperCase();
   const bt = (item.batchNumber || '').trim().toUpperCase();
+  const exp = (typeof formatExpiryDateDisplay === 'function' ? formatExpiryDateDisplay(item.expiryDate || '') : String(item.expiryDate || '')).trim().toUpperCase();
+  const d = (item.itemDescription || '').trim().toUpperCase().slice(0, 40);
   if (c && c !== 'N/A') {
-    const batchKey = (bt && bt !== 'N/A') ? bt : 'NO_BATCH';
-    return `${b}|${c}|${batchKey}`;
+    const normCode = c.replace(/^0+(?=\d)/, '');
+    const batchKey = (bt && bt !== 'N/A') ? bt : `NO_BATCH_${exp}_${d.slice(0, 20)}`;
+    return `${b}|${normCode}|${batchKey}|${exp}`;
   }
-  if (item.rowId) {
+  if (d && d !== 'N/A') {
+    return `${b}|DESC_${d}|${bt || 'NO_BATCH'}|${exp}`;
+  }
+  if (item.tempId) {
+    return `${b}|TEMP_${item.tempId}`;
+  }
+  if (item.rowId !== undefined && item.rowId !== null && String(item.rowId) !== 'undefined') {
     return `${b}|ID_${item.rowId}`;
   }
-  const d = (item.itemDescription || '').trim().toUpperCase().slice(0, 40);
-  return `${b}|${d}|${bt || 'NO_BATCH'}`;
+  return '';
 }
 
 function mergeExpiryDatasets(localList, remoteList) {
-  if (!Array.isArray(remoteList) || remoteList.length === 0) return localList || [];
-  if (!Array.isArray(localList) || localList.length === 0) return remoteList;
+  const cleanLocal = ensureUniqueExpiryRowIds(Array.isArray(localList) ? localList : []);
+  const cleanRemote = ensureUniqueExpiryRowIds(Array.isArray(remoteList) ? remoteList : []);
+  if (cleanRemote.length === 0) return cleanLocal;
+  if (cleanLocal.length === 0) return cleanRemote;
 
   const clearedSet = getClearedExpiryKeys();
   const map = new Map();
@@ -963,7 +1111,7 @@ function mergeExpiryDatasets(localList, remoteList) {
   };
 
   // Index local items first
-  localList.forEach((it, idx) => {
+  cleanLocal.forEach((it, idx) => {
     const key = getExpiryItemKey(it) || `ROW_${it.rowId || idx}`;
     const clone = { ...it };
     if (isItemMarkedDoneOrCleared(clone, clearedSet)) {
@@ -979,7 +1127,7 @@ function mergeExpiryDatasets(localList, remoteList) {
   });
 
   // Merge remote items
-  remoteList.forEach((rem, idx) => {
+  cleanRemote.forEach((rem, idx) => {
     const key = getExpiryItemKey(rem) || `ROW_${rem.rowId || idx}`;
     const remIsCleared = isItemMarkedDoneOrCleared(rem, clearedSet);
     const remResolvedOff = resolveOfferedPrice(rem);
@@ -1104,7 +1252,7 @@ function mergeExpiryDatasets(localList, remoteList) {
     }
   });
 
-  return Array.from(map.values());
+  return ensureUniqueExpiryRowIds(Array.from(map.values()));
 }
 window.mergeExpiryDatasets = mergeExpiryDatasets;
 
@@ -1331,17 +1479,19 @@ async function syncExpiryFromSheets(showPrompt = true) {
 async function pushExpiryUpdateToSheets(rowId, quantity, status, expiryDate = null, extraFields = {}) {
   try {
     const session = typeof getSession === 'function' ? getSession() : null;
-    const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
+    const item = findExpiryItemById(rowId);
     const nowIso = new Date().toISOString();
 
     const isDoneOrCleared = status === 'DONE' || status === 'COMPLETED' || status === 'Cleared';
     const primaryAction = isDoneOrCleared ? 'mark_cleared' : (expiryDate ? 'update_item' : 'update_qty');
 
-    const numRowId = parseInt(rowId, 10);
-    // If rowId is invalid or beyond Google Sheet rows (> 2100), insert/append via batch_insert
+    const rawIdStr = String(rowId || '').trim();
+    const numRowId = /^\d+$/.test(rawIdStr) ? parseInt(rawIdStr, 10) : NaN;
+    // If rowId is non-numeric, invalid, or beyond Google Sheet rows (> 2100), insert/append via batch_insert
     if (isNaN(numRowId) || numRowId <= 1 || numRowId > 2100) {
       if (isDoneOrCleared || quantity !== null) {
         return await pushBatchExpiryToSheets([{
+          rowId: item?.rowId || rowId,
           branch: item?.branch || extraFields.branch || 'Kota Sentosa',
           batchNumber: item?.batchNumber || extraFields.batchNumber || 'N/A',
           itemCode: item?.itemCode || extraFields.itemCode || 'N/A',
@@ -1349,7 +1499,12 @@ async function pushExpiryUpdateToSheets(rowId, quantity, status, expiryDate = nu
           expiryDate: expiryDate || item?.expiryDate || 'N/A',
           quantity: quantity !== null ? quantity : (item?.quantity || 0),
           sourceFile: item?.sourceFile || 'Direct Update',
-          status: status || (isDoneOrCleared ? 'DONE' : 'Active')
+          status: status || (isDoneOrCleared ? 'DONE' : 'Active'),
+          actionPlan: extraFields.actionPlan !== undefined ? extraFields.actionPlan : item?.actionPlan,
+          offeredPrice: extraFields.offeredPrice !== undefined ? extraFields.offeredPrice : item?.offeredPrice,
+          clearancePrice: extraFields.clearancePrice !== undefined ? extraFields.clearancePrice : item?.clearancePrice,
+          normalPrice: item?.normalPrice,
+          pricingUpdatedAt: item?.pricingUpdatedAt
         }]);
       }
     }
@@ -1407,6 +1562,7 @@ async function pushExpiryUpdateToSheets(rowId, quantity, status, expiryDate = nu
       // If server rejected because of invalid rowId, fallback to batch_insert
       if (String(data.error).includes('rowId')) {
         return await pushBatchExpiryToSheets([{
+          rowId: item?.rowId || rowId,
           branch: item?.branch || extraFields.branch || 'Kota Sentosa',
           batchNumber: item?.batchNumber || extraFields.batchNumber || 'N/A',
           itemCode: item?.itemCode || extraFields.itemCode || 'N/A',
@@ -1414,7 +1570,12 @@ async function pushExpiryUpdateToSheets(rowId, quantity, status, expiryDate = nu
           expiryDate: expiryDate || item?.expiryDate || 'N/A',
           quantity: quantity !== null ? quantity : (item?.quantity || 0),
           sourceFile: item?.sourceFile || 'Direct Update',
-          status: status || (isDoneOrCleared ? 'DONE' : 'Active')
+          status: status || (isDoneOrCleared ? 'DONE' : 'Active'),
+          actionPlan: extraFields.actionPlan !== undefined ? extraFields.actionPlan : item?.actionPlan,
+          offeredPrice: extraFields.offeredPrice !== undefined ? extraFields.offeredPrice : item?.offeredPrice,
+          clearancePrice: extraFields.clearancePrice !== undefined ? extraFields.clearancePrice : item?.clearancePrice,
+          normalPrice: item?.normalPrice,
+          pricingUpdatedAt: item?.pricingUpdatedAt
         }]);
       }
       throw new Error(data.error || 'Server rejected update');
@@ -1722,8 +1883,10 @@ Return ONLY a valid JSON array of objects. No markdown formatting, no explanatio
       isAmbiguous = true;
     }
 
+    const generatedId = `pending_${Date.now()}_${Math.random().toString(36).substr(2, 5)}_${idx}`;
     return {
-      tempId: `pending_${Date.now()}_${Math.random().toString(36).substr(2, 5)}_${idx}`,
+      rowId: generatedId,
+      tempId: generatedId,
       branch: branch || 'Kota Sentosa',
       batchNumber: cleanNumericFloatString(it.batchNumber),
       itemCode: cleanNumericFloatString(it.itemCode),
@@ -1971,10 +2134,13 @@ async function confirmOcrBatchInsert() {
   const nowIso = new Date().toISOString();
   const userName = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
 
-  selectedItems.forEach(it => {
+  selectedItems.forEach((it, idx) => {
     it.branch = targetBranch;
     it.lastUpdated = nowIso;
     it.updatedBy = userName;
+    if (!it.rowId || String(it.rowId) === 'undefined') {
+      it.rowId = it.tempId || `ocr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}_${idx}`;
+    }
   });
 
   const commitBtn = document.getElementById('expiryOcrCommitBtn');
@@ -1983,8 +2149,9 @@ async function confirmOcrBatchInsert() {
     commitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>Saving to Google Sheet...`;
   }
 
-  // 1. Append locally
+  // 1. Append locally and guarantee unique rowIds
   expiryItems.unshift(...selectedItems);
+  expiryItems = ensureUniqueExpiryRowIds(expiryItems);
   saveLocalExpiryData();
   renderExpiryUI();
 
@@ -2011,7 +2178,7 @@ async function confirmOcrBatchInsert() {
  * Validates with parseExpiryDate, re-calculates horizons, updates KPIs, and syncs to Sheets.
  */
 function updateExpiryItemDate(rowId, newDateStr, inputEl) {
-  const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
+  const item = findExpiryItemById(rowId);
   if (!item) return;
 
   const parsed = parseExpiryDate(newDateStr);
@@ -2046,7 +2213,7 @@ function updateExpiryItemDate(rowId, newDateStr, inputEl) {
 }
 
 function updateExpiryItemQuantity(rowId, newQty) {
-  const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
+  const item = findExpiryItemById(rowId);
   if (!item) return;
 
   const val = parseFloat(newQty);
@@ -2077,8 +2244,17 @@ function updateExpiryItemQuantity(rowId, newQty) {
 
 function getItemActionPlan(it) {
   if (!it) return '';
+  const offNum = parseFloat(it.offeredPrice !== undefined ? it.offeredPrice : it.clearancePrice);
+  const hasOffer = !isNaN(offNum) && offNum > 0;
   if (it.actionPlan && String(it.actionPlan).trim() !== '') {
-    return it.actionPlan;
+    const planStr = String(it.actionPlan).trim();
+    if (hasOffer && (planStr.toLowerCase().includes('clearance') || planStr.toLowerCase().includes('promo')) && !/rm\s*[\d.]+/i.test(planStr)) {
+      return `Clearance Promo (Offer: RM ${offNum.toFixed(2)})`;
+    }
+    return planStr;
+  }
+  if (hasOffer) {
+    return `Clearance Promo (Offer: RM ${offNum.toFixed(2)})`;
   }
   const retStatus = getItemHqReturnStatus(it);
   if (retStatus === 'RETURNABLE' || retStatus === 'SPECIAL') {
@@ -2088,7 +2264,7 @@ function getItemActionPlan(it) {
 }
 
 function updateExpiryActionPlan(rowId, val) {
-  const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
+  const item = findExpiryItemById(rowId);
   if (!item) return;
 
   if (typeof window.pausePmgSyncPolling === 'function') {
@@ -2116,6 +2292,8 @@ function updateExpiryActionPlan(rowId, val) {
   }
 
   saveLocalExpiryData();
+  renderExpiryUI();
+
   if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
     window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
   }
@@ -2125,16 +2303,14 @@ function updateExpiryActionPlan(rowId, val) {
     clearancePrice: item.clearancePrice
   });
 
-  // If user selected Clearance Promo and offeredPrice is not set, open the attractive price tag modal!
-  if ((cleanVal.toLowerCase().includes('clearance') || cleanVal.toLowerCase().includes('promo')) && !item.offeredPrice) {
-    openClearancePriceTagModal(item.rowId);
-  } else {
-    renderExpiryUI();
+  // If user selected Clearance Promo (and didn't manually type a price inside the text), open the price tag modal for THIS exact item!
+  if ((cleanVal.toLowerCase().includes('clearance') || cleanVal.toLowerCase().includes('promo')) && (!item.offeredPrice || !(m && m[1]))) {
+    openClearancePriceTagModal(item);
   }
 }
 
 async function markExpiryItemCleared(rowId) {
-  const target = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
+  const target = findExpiryItemById(rowId);
   if (!target) return;
 
   // 1. Race condition prevention: Pause background auto-polling for 15 seconds
@@ -2146,18 +2322,21 @@ async function markExpiryItemCleared(rowId) {
   const nowIso = new Date().toISOString();
   const userName = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
   const targetKey = getExpiryItemKey(target);
+  const targetIdStr = target.rowId !== undefined && target.rowId !== null ? String(target.rowId).trim() : '';
 
-  // Add to persistent tombstone set permanently
-  if (target.itemCode) addClearedExpiryKey(target.itemCode);
-  if (target.rowId) addClearedExpiryKey(`ROW_${target.rowId}`);
+  // Add specific row & batch/expiry key to persistent tombstone set permanently (never bare itemCode, which would clear future batches!)
+  if (targetIdStr && targetIdStr !== 'undefined' && targetIdStr !== 'null') {
+    addClearedExpiryKey(`ROW_${targetIdStr}`);
+  }
   if (targetKey) addClearedExpiryKey(targetKey);
 
-  // Mark all matching rows with same rowId OR same itemCode & branch as cleared to eliminate duplicate ghosts
+  // Mark matching rows with same rowId OR same exact (branch, itemCode, batch, expiryDate) as cleared
   expiryItems.forEach(it => {
-    const isSameId = it.rowId === target.rowId || String(it.rowId) === String(target.rowId);
+    if (!it) return;
+    const itIdStr = it.rowId !== undefined && it.rowId !== null ? String(it.rowId).trim() : '';
+    const isSameId = targetIdStr && targetIdStr !== 'undefined' && itIdStr === targetIdStr;
     const isSameKey = targetKey && (getExpiryItemKey(it) === targetKey);
-    const isSameCode = it.itemCode && target.itemCode && (String(it.itemCode).trim().toUpperCase() === String(target.itemCode).trim().toUpperCase()) && (String(it.branch).trim().toLowerCase() === String(target.branch).trim().toLowerCase());
-    if (isSameId || isSameKey || isSameCode) {
+    if (isSameId || isSameKey) {
       it.status = 'DONE';
       it.quantity = 0;
       it.clearedAt = nowIso;
@@ -2195,7 +2374,7 @@ async function markExpiryItemCleared(rowId) {
 }
 
 async function reactivateExpiryItem(rowId) {
-  const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
+  const item = findExpiryItemById(rowId);
   if (!item) return;
 
   const qtyStr = prompt(`Enter restored quantity for ${item.itemDescription || item.itemCode}:`, '1');
@@ -2235,7 +2414,7 @@ async function reactivateExpiryItem(rowId) {
 }
 
 function openEditExpiryItemModal(rowId) {
-  const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
+  const item = findExpiryItemById(rowId);
   if (!item) return;
 
   const modal = document.getElementById('expiryEditModal');
@@ -2273,7 +2452,7 @@ function closeEditExpiryItemModal() {
 async function handleEditExpiryItemSubmit(e) {
   e.preventDefault();
   const rowId = document.getElementById('editRowId')?.value;
-  const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
+  const item = findExpiryItemById(rowId);
   if (!item) return;
 
   const branch = document.getElementById('editBranch')?.value;
@@ -2313,7 +2492,9 @@ async function handleEditExpiryItemSubmit(e) {
     item.offeredPrice = offeredPriceVal;
     item.clearancePrice = offeredPriceVal;
     item.pricingUpdatedAt = nowIso;
-    if (!item.actionPlan) item.actionPlan = 'Clearance Promo / PWP';
+    if (!item.actionPlan || item.actionPlan.toLowerCase().includes('clearance') || item.actionPlan.toLowerCase().includes('promo')) {
+      item.actionPlan = `Clearance Promo (Offer: RM ${offeredPriceVal.toFixed(2)})`;
+    }
   } else if (offeredPriceRaw === '') {
     delete item.offeredPrice;
     delete item.clearancePrice;
@@ -2586,7 +2767,7 @@ function renderSinglePriceTagMarkup(item, opts = {}) {
 }
 
 function openClearancePriceTagModal(rowId) {
-  const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
+  const item = (rowId && typeof rowId === 'object') ? rowId : findExpiryItemById(rowId);
   if (!item) return;
   activePriceTagItem = item;
 
@@ -2763,21 +2944,23 @@ function saveClearancePriceTag(silent = false) {
   const printTarget = document.getElementById('tagPrintTargetSelect')?.value || 'a4';
   const banner = document.getElementById('tagBannerSelect')?.value || '🔥 CLEARANCE SALE';
   const footerNote = document.getElementById('tagFooterNoteInput')?.value || '';
-  const showBarcode = false;
   const nowIso = new Date().toISOString();
   const session = typeof getSession === 'function' ? getSession() : null;
   const updatedBy = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
   const formattedPlan = `Clearance Promo (Offer: RM ${offeredPrice.toFixed(2)})`;
 
-  const targetId = activePriceTagItem.rowId;
-  const targetCode = String(activePriceTagItem.itemCode || '').trim().toUpperCase();
-  const targetBranch = String(activePriceTagItem.branch || '').trim().toLowerCase();
-  const targetBatch = String(activePriceTagItem.batchNumber || '').trim();
+  // Ensure activePriceTagItem has a valid unique rowId
+  if (!activePriceTagItem.rowId || String(activePriceTagItem.rowId).trim() === '' || String(activePriceTagItem.rowId).trim() === 'undefined') {
+    activePriceTagItem.rowId = getExpiryRowUid(activePriceTagItem, Date.now());
+  }
+  const targetId = String(activePriceTagItem.rowId).trim();
+  const targetKey = getExpiryItemKey(activePriceTagItem);
 
   // Update active item reference
   activePriceTagItem.offeredPrice = offeredPrice;
   activePriceTagItem.clearancePrice = offeredPrice;
   if (normalPrice) activePriceTagItem.normalPrice = normalPrice;
+  else delete activePriceTagItem.normalPrice;
   activePriceTagItem.actionPlan = formattedPlan;
   activePriceTagItem.tagTheme = theme;
   activePriceTagItem.tagSize = size;
@@ -2789,17 +2972,18 @@ function saveClearancePriceTag(silent = false) {
   activePriceTagItem.lastUpdated = nowIso;
   activePriceTagItem.updatedBy = updatedBy;
 
-  // Also update every duplicate / matching row in expiryItems array
+  // Also update any exact matching row (same unique rowId OR same exact branch + itemCode + batch + expiryDate)
   if (Array.isArray(expiryItems)) {
     expiryItems.forEach(it => {
-      const isSameId = targetId && (it.rowId === targetId || String(it.rowId) === String(targetId));
-      const isSameItem = targetCode && String(it.itemCode || '').trim().toUpperCase() === targetCode &&
-                         (!targetBatch || targetBatch === 'N/A' || String(it.batchNumber || '').trim() === targetBatch) &&
-                         (!targetBranch || String(it.branch || '').trim().toLowerCase() === targetBranch);
-      if (isSameId || isSameItem) {
+      if (!it) return;
+      const itId = (it.rowId !== undefined && it.rowId !== null) ? String(it.rowId).trim() : '';
+      const isSameId = Boolean(targetId && targetId !== 'undefined' && itId === targetId);
+      const isSameItem = Boolean(targetKey && getExpiryItemKey(it) === targetKey);
+      if (it === activePriceTagItem || isSameId || isSameItem) {
         it.offeredPrice = offeredPrice;
         it.clearancePrice = offeredPrice;
         if (normalPrice) it.normalPrice = normalPrice;
+        else delete it.normalPrice;
         it.actionPlan = formattedPlan;
         it.tagTheme = theme;
         it.tagSize = size;
@@ -3023,7 +3207,7 @@ function printClearancePriceTags() {
 }
 
 function updateExpiryOfferedPrice(rowId, val) {
-  const item = expiryItems.find(it => it.rowId === rowId || String(it.rowId) === String(rowId));
+  const item = findExpiryItemById(rowId);
   if (!item) return;
 
   if (typeof window.pausePmgSyncPolling === 'function') {
@@ -3035,10 +3219,11 @@ function updateExpiryOfferedPrice(rowId, val) {
   const session = typeof getSession === 'function' ? getSession() : null;
   const updatedBy = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
 
-  const targetId = item.rowId;
-  const targetCode = String(item.itemCode || '').trim().toUpperCase();
-  const targetBranch = String(item.branch || '').trim().toLowerCase();
-  const targetBatch = String(item.batchNumber || '').trim();
+  if (!item.rowId || String(item.rowId).trim() === '' || String(item.rowId).trim() === 'undefined') {
+    item.rowId = getExpiryRowUid(item, Date.now());
+  }
+  const targetId = String(item.rowId).trim();
+  const targetKey = getExpiryItemKey(item);
 
   let formattedPlan = item.actionPlan;
   if (isNaN(num) || num <= 0) {
@@ -3049,11 +3234,11 @@ function updateExpiryOfferedPrice(rowId, val) {
 
   if (Array.isArray(expiryItems)) {
     expiryItems.forEach(it => {
-      const isSameId = targetId && (it.rowId === targetId || String(it.rowId) === String(targetId));
-      const isSameItem = targetCode && String(it.itemCode || '').trim().toUpperCase() === targetCode &&
-                         (!targetBatch || targetBatch === 'N/A' || String(it.batchNumber || '').trim() === targetBatch) &&
-                         (!targetBranch || String(it.branch || '').trim().toLowerCase() === targetBranch);
-      if (isSameId || isSameItem) {
+      if (!it) return;
+      const itId = (it.rowId !== undefined && it.rowId !== null) ? String(it.rowId).trim() : '';
+      const isSameId = Boolean(targetId && targetId !== 'undefined' && itId === targetId);
+      const isSameItem = Boolean(targetKey && getExpiryItemKey(it) === targetKey);
+      if (it === item || isSameId || isSameItem) {
         if (isNaN(num) || num <= 0) {
           delete it.offeredPrice;
           delete it.clearancePrice;
@@ -3105,7 +3290,7 @@ function filterExpiryItems() {
       if (!isCleared) return false;
     } else if (activeExpiryFilter.horizon === 'promo') {
       if (isCleared) return false;
-      const isPromo = Boolean(it.offeredPrice) || String(it.actionPlan || '').toLowerCase().includes('promo') || String(it.actionPlan || '').toLowerCase().includes('clearance');
+      const isPromo = Boolean(it.offeredPrice) || Boolean(it.clearancePrice) || String(it.actionPlan || '').toLowerCase().includes('promo') || String(it.actionPlan || '').toLowerCase().includes('clearance');
       if (!isPromo) return false;
     } else {
       // Non-cleared views
@@ -3140,6 +3325,7 @@ function filterExpiryItems() {
 }
 
 function renderExpiryUI() {
+  expiryItems = ensureUniqueExpiryRowIds(expiryItems);
   renderExpiryKpis();
   renderExpiryTable();
 }
@@ -3220,6 +3406,12 @@ function renderExpiryTable() {
   tbody.innerHTML = displayedItems.map((it, idx) => {
     const h = calculateExpiryHorizon(it.expiryDate);
     const isCleared = isItemMarkedDoneOrCleared(it);
+    if (!it.rowId || String(it.rowId).trim() === '' || String(it.rowId).trim() === 'undefined') {
+      it.rowId = getExpiryRowUid(it, idx);
+    }
+    const safeRowId = escHtml(String(it.rowId).replace(/'/g, "\\'"));
+    const offeredNum = parseFloat(it.offeredPrice !== undefined ? it.offeredPrice : it.clearancePrice);
+    const hasValidOffer = !isNaN(offeredNum) && offeredNum > 0;
 
     let badgeClass = 'bg-gray-100 text-gray-600';
     if (h.level === 'expired' || h.level === 'critical') badgeClass = 'bg-rose-100 text-rose-700 font-bold border border-rose-200 animate-pulse';
@@ -3254,22 +3446,22 @@ function renderExpiryTable() {
                 list="actionPlanOptions"
                 value="${escHtml(getItemActionPlan(it))}"
                 placeholder="Action plan remark…"
-                onchange="updateExpiryActionPlan('${it.rowId}', this.value)"
+                onchange="updateExpiryActionPlan('${safeRowId}', this.value)"
                 class="w-36 text-xs border border-gray-300 rounded px-2 py-1 focus:ring-1 focus:ring-blue-400 focus:border-blue-400 bg-white font-medium text-gray-800"
                 title="Action Plan Remark (e.g. Returnable with Condition, Vendor Return Pending, Clearance Promo / PWP)">
-              ${it.offeredPrice ? `
+              ${hasValidOffer ? `
                 <div class="flex items-center justify-center gap-1">
                   <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-2xs cursor-pointer hover:opacity-90 transition"
-                    onclick="openClearancePriceTagModal('${it.rowId}')" title="Clearance Offer: RM ${parseFloat(it.offeredPrice).toFixed(2)} (Click to Edit / Print Tag)">
-                    <i class="fa-solid fa-tag text-[8px] text-amber-200"></i> RM ${parseFloat(it.offeredPrice).toFixed(2)}
+                    onclick="openClearancePriceTagModal('${safeRowId}')" title="Clearance Offer: RM ${offeredNum.toFixed(2)} (Click to Edit / Print Tag)">
+                    <i class="fa-solid fa-tag text-[8px] text-amber-200"></i> RM ${offeredNum.toFixed(2)}
                   </span>
-                  <button type="button" onclick="openClearancePriceTagModal('${it.rowId}')"
+                  <button type="button" onclick="openClearancePriceTagModal('${safeRowId}')"
                     class="p-0.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded transition text-[11px] cursor-pointer" title="Print Price Tag Sticker">
                     <i class="fa-solid fa-print"></i>
                   </button>
                 </div>
               ` : (String(it.actionPlan || '').toLowerCase().includes('clearance') || String(it.actionPlan || '').toLowerCase().includes('promo')) ? `
-                <button type="button" onclick="openClearancePriceTagModal('${it.rowId}')"
+                <button type="button" onclick="openClearancePriceTagModal('${safeRowId}')"
                   class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 transition animate-pulse cursor-pointer"
                   title="Click to input offered price and print price tag">
                   <i class="fa-solid fa-tag text-amber-600 text-[9px]"></i> + Set Offer Price
@@ -3287,7 +3479,7 @@ function renderExpiryTable() {
               <input type="text"
                 value="${formatExpiryDateDisplay(it.expiryDate)}"
                 placeholder="DD/MM/YYYY"
-                onchange="updateExpiryItemDate('${it.rowId}', this.value, this)"
+                onchange="updateExpiryItemDate('${safeRowId}', this.value, this)"
                 onkeydown="if(event.key==='Enter') this.blur()"
                 class="w-24 text-center font-mono font-bold text-xs text-slate-800 focus:text-blue-900 focus:outline-none bg-transparent">
             </div>
@@ -3303,7 +3495,7 @@ function renderExpiryTable() {
             <span class="text-xs font-bold text-gray-400 font-mono">0</span>
           ` : `
             <input type="number" min="0" value="${it.quantity}"
-              onchange="updateExpiryItemQuantity('${it.rowId}', this.value)"
+              onchange="updateExpiryItemQuantity('${safeRowId}', this.value)"
               class="w-16 px-2 py-1 text-center font-bold text-sm border-2 border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-blue-900 bg-white">
           `}
         </td>
@@ -3320,22 +3512,22 @@ function renderExpiryTable() {
         </td>
         <td class="p-3 text-center whitespace-nowrap text-xs">
           ${isCleared ? `
-            <button onclick="reactivateExpiryItem('${it.rowId}')" class="text-blue-600 hover:underline font-semibold text-xs cursor-pointer">
+            <button onclick="reactivateExpiryItem('${safeRowId}')" class="text-blue-600 hover:underline font-semibold text-xs cursor-pointer">
               <i class="fa-solid fa-rotate-left mr-1"></i>Restore
             </button>
           ` : `
             <div class="inline-flex items-center gap-1.5">
-              <button onclick="markExpiryItemCleared('${it.rowId}')"
+              <button onclick="markExpiryItemCleared('${safeRowId}')"
                 class="px-2.5 py-1 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg transition cursor-pointer"
                 title="Click when stock is fully sold or cleared">
                 <i class="fa-solid fa-check mr-1 text-emerald-600"></i>Done Clear
               </button>
-              <button onclick="openClearancePriceTagModal('${it.rowId}')"
-                class="p-1.5 ${it.offeredPrice ? 'text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-300' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'} rounded-lg transition cursor-pointer"
-                title="${it.offeredPrice ? 'Clearance Promo: RM ' + parseFloat(it.offeredPrice).toFixed(2) + ' (Print/Edit Price Tag)' : 'Generate Clearance Price Tag Sticker'}">
+              <button onclick="openClearancePriceTagModal('${safeRowId}')"
+                class="p-1.5 ${hasValidOffer ? 'text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-300' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'} rounded-lg transition cursor-pointer"
+                title="${hasValidOffer ? 'Clearance Promo: RM ' + offeredNum.toFixed(2) + ' (Print/Edit Price Tag)' : 'Generate Clearance Price Tag Sticker'}">
                 <i class="fa-solid fa-tag text-xs"></i>
               </button>
-              <button onclick="openEditExpiryItemModal('${it.rowId}')"
+              <button onclick="openEditExpiryItemModal('${safeRowId}')"
                 class="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
                 title="Edit item details (Description, Batch, Expiry, Qty)">
                 <i class="fa-solid fa-pen-to-square text-xs"></i>
@@ -3641,7 +3833,7 @@ async function handleQuickAddSubmit(e) {
   const userName = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
 
   const newItem = {
-    rowId: expiryItems.length + 2,
+    rowId: 'qa_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
     branch: branch,
     batchNumber: batchNumber,
     itemCode: itemCode,
@@ -3802,6 +3994,8 @@ window.updateAccountsShareUi = updateAccountsShareUi;
 window.copyAccountsWhatsAppSummary = copyAccountsWhatsAppSummary;
 window.promptSetOneDriveShareLink = promptSetOneDriveShareLink;
 window.handleBatchInvoiceAndCnUpload = handleBatchInvoiceAndCnUpload;
+window.ensureUniqueExpiryRowIds = ensureUniqueExpiryRowIds;
+window.getExpiryItemKey = getExpiryItemKey;
 
 // HQ Return Policy Engine exports
 window.syncHqReturnPolicy = syncHqReturnPolicy;
@@ -3829,8 +4023,10 @@ window.updateExpiryOfferedPrice = updateExpiryOfferedPrice;
 
 window.pmgExpiry = {
   getItems: () => expiryItems,
-  setItems: (items) => { expiryItems = items; saveLocalExpiryData(); renderExpiryUI(); },
+  setItems: (items) => { expiryItems = ensureUniqueExpiryRowIds(items); saveLocalExpiryData(); renderExpiryUI(); },
   mergeDatasets: mergeExpiryDatasets,
+  ensureUniqueRowIds: ensureUniqueExpiryRowIds,
+  getItemKey: getExpiryItemKey,
   saveLocal: saveLocalExpiryData,
   renderUI: renderExpiryUI,
   syncFromOneDrive: () => window.pmgOneDriveSync?.syncStockExpiryWithOneDrive(false),

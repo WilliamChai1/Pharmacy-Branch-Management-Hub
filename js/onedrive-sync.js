@@ -1264,6 +1264,9 @@
           }
         }
         if (!localItems || localItems.length === 0) return false;
+        if (typeof window.ensureUniqueExpiryRowIds === 'function') {
+          localItems = window.ensureUniqueExpiryRowIds(localItems);
+        }
 
         const session = typeof getSession === 'function' ? getSession() : null;
         const nowIso = new Date().toISOString();
@@ -1603,6 +1606,10 @@
             }
           });
           merged = Array.from(map.values());
+        }
+
+        if (typeof window.ensureUniqueExpiryRowIds === 'function') {
+          merged = window.ensureUniqueExpiryRowIds(merged);
         }
 
         // Update local memory and localStorage
@@ -2156,14 +2163,19 @@
 
       const getKey = (it) => {
         if (!it) return '';
+        if (typeof window.getExpiryItemKey === 'function') {
+          return window.getExpiryItemKey(it);
+        }
         const b = (it.branch || 'Kota Sentosa').trim().toUpperCase();
         const c = (it.itemCode || '').trim().toUpperCase();
         const bt = (it.batchNumber || '').trim().toUpperCase();
+        const exp = String(it.expiryDate || '').trim().toUpperCase();
         if (c && c !== 'N/A') {
-          return `${b}|${c}|${bt || 'NO_BATCH'}`;
+          const normCode = c.replace(/^0+(?=\d)/, '');
+          return `${b}|${normCode}|${bt || 'NO_BATCH'}|${exp}`;
         }
-        if (it.rowId) return `${b}|ID_${it.rowId}`;
-        return `${b}|${(it.itemDescription || '').trim().toUpperCase()}|${bt || 'NO_BATCH'}`;
+        if (it.rowId && String(it.rowId) !== 'undefined') return `${b}|ID_${it.rowId}`;
+        return `${b}|${(it.itemDescription || '').trim().toUpperCase()}|${bt || 'NO_BATCH'}|${exp}`;
       };
 
       const numOrNull = (v) => (v !== undefined && v !== null && v !== '' && !isNaN(v)) ? Number(v) : null;
@@ -2179,6 +2191,7 @@
         const b = mapB.get(String(getKey(a)));
         if (!b) return false;
 
+        if (String(a.rowId || '') !== String(b.rowId || '')) return false;
         if (a.status !== b.status) return false;
         if (!!a.cleared !== !!b.cleared) return false;
         if (a.quantity !== b.quantity) return false;
