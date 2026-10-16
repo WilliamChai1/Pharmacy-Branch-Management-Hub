@@ -38,6 +38,245 @@ function saveShiftRegistry(branchCode, registry) {
   } catch (_) {}
 }
 
+// ─── SAVED TIMETABLE & CROSS-COMPUTER CLOUD PERSISTENCE ──────────────────────
+function getSavedTimetableKey(branchCode, monthStr) {
+  return `pmg_saved_timetable_${branchCode || 'KS01'}_${monthStr}`;
+}
+
+async function saveGeneratedTimetable(showToast = true) {
+  if (!generatedScheduleData || !generatedScheduleData.days || !generatedScheduleData.days.length) {
+    if (showToast) showSchedulerToast('No timetable to save. Please generate or import a timetable first.', 'warn');
+    return false;
+  }
+
+  const branchVal = generatedScheduleData.branch || document.getElementById('schedulerBranchSelect')?.value || 'KS01';
+  const monthVal = generatedScheduleData.month || document.getElementById('schedulerMonth')?.value || '2026-11';
+  const nowIso = new Date().toISOString();
+
+  generatedScheduleData.lastSaved = nowIso;
+  const session = typeof getSession === 'function' ? getSession() : null;
+  generatedScheduleData.savedBy = session?.displayName || 'Pharmacist';
+
+  // 1. Save to localStorage
+  try {
+    localStorage.setItem(getSavedTimetableKey(branchVal, monthVal), JSON.stringify(generatedScheduleData));
+  } catch (e) {
+    console.warn('[PMG Scheduler] Could not save timetable to localStorage:', e);
+  }
+
+  // 2. Also ensure cross-month shift registry contains all days from this timetable
+  try {
+    const reg = loadShiftRegistry(branchVal);
+    generatedScheduleData.days.forEach(d => {
+      reg[d.date] = d;
+    });
+    saveShiftRegistry(branchVal, reg);
+  } catch (_) {}
+
+  // 3. Save to OneDrive if connected
+  let onedriveSaved = false;
+  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveMonthlyTimetableToOneDrive === 'function') {
+    try {
+      onedriveSaved = await window.pmgOneDriveSync.saveMonthlyTimetableToOneDrive(branchVal, monthVal, generatedScheduleData);
+    } catch (err) {
+      console.warn('[PMG Scheduler] OneDrive save error:', err);
+    }
+  }
+
+  updateSavedTimetableBadge({
+    branch: branchVal,
+    month: monthVal,
+    lastSaved: nowIso,
+    onedriveSynced: onedriveSaved
+  });
+
+  if (showToast) {
+    const cloudMsg = onedriveSaved ? ' (OneDrive Cloud & Local)' : ' (Saved Locally & Ready to Export)';
+    showSchedulerToast(`Timetable saved for ${branchVal} (${monthVal})${cloudMsg}!`, 'success');
+  }
+
+  return true;
+}
+
+function updateSavedTimetableBadge(info) {
+  const badge = document.getElementById('schedulerSavedStatusBadge');
+  const text = document.getElementById('schedulerSavedStatusText');
+  const topSaveBtn = document.getElementById('schedulerSaveTimetableTopBtn');
+
+  if (topSaveBtn) {
+    if (generatedScheduleData && generatedScheduleData.days && generatedScheduleData.days.length) {
+      topSaveBtn.classList.remove('hidden');
+    } else {
+      topSaveBtn.classList.add('hidden');
+    }
+  }
+
+  if (!badge || !text) return;
+
+  if (!info || !info.lastSaved) {
+    badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-600 border border-gray-200';
+    text.innerHTML = '<i class="fa-solid fa-clock-rotate-left text-gray-400"></i> No saved timetable loaded for this month yet.';
+    return;
+  }
+
+  const d = new Date(info.lastSaved);
+  const timeFormatted = d.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + d.toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit' });
+
+  if (info.onedriveSynced) {
+    badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-2xs';
+    text.innerHTML = `<i class="fa-solid fa-cloud-arrow-up text-emerald-600"></i> Saved to OneDrive (${info.month}): ${timeFormatted}`;
+  } else {
+    badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200 shadow-2xs';
+    text.innerHTML = `<i class="fa-solid fa-hard-drive text-blue-600"></i> Saved Locally (${info.month}): ${timeFormatted}`;
+  }
+}
+
+async function checkAndLoadSavedTimetable(branchCode, monthStr) {
+  if (!branchCode || !monthStr) return false;
+
+  // 1. Try local storage first
+  let savedData = null;
+  try {
+    const raw = localStorage.getItem(getSavedTimetableKey(branchCode, monthStr));
+    if (raw) savedData = JSON.parse(raw);
+  } catch (_) {}
+
+  // 2. If not in localStorage, try OneDrive
+  let onedriveLoaded = false;
+  if (!savedData && window.pmgOneDriveSync && typeof window.pmgOneDriveSync.loadMonthlyTimetableFromOneDrive === 'function') {
+    try {
+      savedData = await window.pmgOneDriveSync.loadMonthlyTimetableFromOneDrive(branchCode, monthStr);
+      if (savedData) onedriveLoaded = true;
+    } catch (_) {}
+  }
+
+  if (savedData && savedData.days && savedData.days.length) {
+    generatedScheduleData = savedData;
+    renderScheduleMatrix(generatedScheduleData);
+
+    const resultsPanel = document.getElementById('schedulerResultsPanel');
+    if (resultsPanel) resultsPanel.classList.remove('hidden');
+
+    const modelBadge = document.getElementById('schedulerModelBadge');
+    if (modelBadge) {
+      modelBadge.textContent = onedriveLoaded ? '☁️ Loaded from OneDrive' : '💾 Loaded Saved Timetable';
+      modelBadge.className = 'text-xs font-semibold px-2.5 py-1 rounded bg-indigo-100 text-indigo-800 border border-indigo-200';
+    }
+
+    updateSavedTimetableBadge({
+      branch: branchCode,
+      month: monthStr,
+      lastSaved: savedData.lastSaved,
+      onedriveSynced: onedriveLoaded || !!(window.pmgOneDriveSync && window.pmgOneDriveSync.rootHandle)
+    });
+
+    return true;
+  } else {
+    updateSavedTimetableBadge(null);
+    return false;
+  }
+}
+
+function exportTimetableBackupJson() {
+  if (!generatedScheduleData || !generatedScheduleData.days || !generatedScheduleData.days.length) {
+    showSchedulerToast('Please generate or load a timetable first before exporting backup.', 'warn');
+    return;
+  }
+
+  const branch = generatedScheduleData.branch || document.getElementById('schedulerBranchSelect')?.value || 'KS01';
+  const month = generatedScheduleData.month || document.getElementById('schedulerMonth')?.value || '2026-11';
+  const nowIso = new Date().toISOString();
+
+  const backupPayload = {
+    app: 'PMG MANAGEMENT HUB',
+    module: 'AI Smart Timetable Generator',
+    version: '2026.10',
+    exportedAt: nowIso,
+    branch,
+    month,
+    teammates: currentTeammates,
+    timetable: generatedScheduleData
+  };
+
+  const jsonStr = JSON.stringify(backupPayload, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `PMG_Timetable_${branch}_${month}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  showSchedulerToast(`Backup saved! File: PMG_Timetable_${branch}_${month}.json`, 'success');
+}
+
+function importTimetableBackupJson(event) {
+  const file = event?.target?.files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      const ttData = parsed.timetable || parsed;
+
+      if (!ttData || !ttData.days || !Array.isArray(ttData.days) || !ttData.month) {
+        showSchedulerToast('Invalid timetable backup file format.', 'error');
+        return;
+      }
+
+      generatedScheduleData = ttData;
+
+      // Update UI month and branch if present
+      const monthInput = document.getElementById('schedulerMonth');
+      if (monthInput && ttData.month) {
+        monthInput.value = ttData.month;
+      }
+      const branchSelect = document.getElementById('schedulerBranchSelect');
+      if (branchSelect && ttData.branch) {
+        branchSelect.value = ttData.branch;
+      }
+
+      // If teammate config was in the backup, restore it too
+      if (parsed.teammates && Array.isArray(parsed.teammates) && parsed.teammates.length) {
+        currentTeammates = parsed.teammates;
+        try {
+          localStorage.setItem(getStorageKey(ttData.branch || 'KS01'), JSON.stringify(currentTeammates));
+        } catch (_) {}
+        renderTeammatesTable();
+      }
+
+      // Save to localStorage and OneDrive
+      await saveGeneratedTimetable(false);
+
+      // Render matrix
+      renderScheduleMatrix(generatedScheduleData);
+      const resultsPanel = document.getElementById('schedulerResultsPanel');
+      if (resultsPanel) {
+        resultsPanel.classList.remove('hidden');
+        resultsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+
+      const modelBadge = document.getElementById('schedulerModelBadge');
+      if (modelBadge) {
+        modelBadge.textContent = '📂 Imported from File';
+        modelBadge.className = 'text-xs font-semibold px-2.5 py-1 rounded bg-purple-100 text-purple-800 border border-purple-200';
+      }
+
+      showSchedulerToast(`Timetable for ${ttData.branch || 'KS01'} (${ttData.month}) imported successfully! Ready to edit.`, 'success');
+
+      if (event.target) event.target.value = '';
+
+    } catch (err) {
+      console.error('[PMG Scheduler Import Error]', err);
+      showSchedulerToast('Failed to parse timetable backup file: ' + err.message, 'error');
+    }
+  };
+  reader.readAsText(file);
+}
+
 // ─── 2026 GAZETTED PUBLIC HOLIDAYS (SARAWAK & MALAYSIA NATIONAL) ──────────────
 // Chai Yee Sian (William) follows all National & Sarawak Gazetted Public Holidays.
 const HOLIDAYS_2026_SARAWAK = {
@@ -306,19 +545,27 @@ function initScheduler() {
     monthInput.value = `${y}-${m}`;
   }
 
-  // Load teammates for selected branch and target month
+  // Load teammates and check for saved timetable for selected branch and target month
   const activeBranch = branchSelect ? branchSelect.value : 'KS01';
-  loadTeammates(activeBranch, monthInput ? monthInput.value : null);
+  const targetMonthStr = monthInput ? monthInput.value : null;
+  loadTeammates(activeBranch, targetMonthStr);
+  checkAndLoadSavedTimetable(activeBranch, targetMonthStr);
 
   if (branchSelect) {
     branchSelect.addEventListener('change', (e) => {
-      loadTeammates(e.target.value, monthInput ? monthInput.value : null);
+      const b = e.target.value;
+      const m = monthInput ? monthInput.value : null;
+      loadTeammates(b, m);
+      checkAndLoadSavedTimetable(b, m);
     });
   }
 
   if (monthInput) {
     monthInput.addEventListener('change', (e) => {
-      loadTeammates(branchSelect ? branchSelect.value : 'KS01', e.target.value);
+      const b = branchSelect ? branchSelect.value : 'KS01';
+      const m = e.target.value;
+      loadTeammates(b, m);
+      checkAndLoadSavedTimetable(b, m);
     });
   }
 
@@ -326,6 +573,16 @@ function initScheduler() {
   if (savePrefBtn) savePrefBtn.addEventListener('click', saveTeammatePreferences);
   if (resetPrefBtn) resetPrefBtn.addEventListener('click', resetTeammatePreferences);
   if (addStaffBtn) addStaffBtn.addEventListener('click', showAddTeammateModal);
+
+  // Timetable Save and Backup buttons
+  const saveBtn = document.getElementById('schedulerSaveTimetableBtn');
+  if (saveBtn) saveBtn.addEventListener('click', () => saveGeneratedTimetable(true));
+
+  const topSaveBtn = document.getElementById('schedulerSaveTimetableTopBtn');
+  if (topSaveBtn) topSaveBtn.addEventListener('click', () => saveGeneratedTimetable(true));
+
+  const backupJsonBtn = document.getElementById('schedulerBackupJsonBtn');
+  if (backupJsonBtn) backupJsonBtn.addEventListener('click', exportTimetableBackupJson);
 
   // Export buttons
   const dlVisualXlsxBtn = document.getElementById('schedulerDownloadVisualXlsxBtn');
@@ -1073,6 +1330,7 @@ async function generateTimetable() {
     }
 
     renderScheduleMatrix(generatedScheduleData);
+    saveGeneratedTimetable(false);
     if (resultsPanel) {
       resultsPanel.classList.remove('hidden');
       setTimeout(() => {
@@ -1091,6 +1349,7 @@ async function generateTimetable() {
       }
       showSchedulerToast('Schedule generated with minor variance due to off-day density', 'warn');
       renderScheduleMatrix(generatedScheduleData);
+      saveGeneratedTimetable(false);
       if (resultsPanel) {
         resultsPanel.classList.remove('hidden');
         setTimeout(() => {
@@ -3794,6 +4053,7 @@ function saveDayShiftEditorModal() {
 
   closeDayShiftEditorModal();
   renderScheduleMatrix(generatedScheduleData);
+  saveGeneratedTimetable(false);
   showSchedulerToast(`Day ${d.day} shifts updated successfully!`, 'success');
 }
 
@@ -4440,4 +4700,9 @@ window.saveDayPrefsModal = saveDayPrefsModal;
 window.showAddTeammateModal = showAddTeammateModal;
 window.copyScheduleWhatsAppSummary = copyScheduleWhatsAppSummary;
 window.copyScheduleToWhatsApp = copyScheduleWhatsAppSummary;
+window.saveGeneratedTimetable = saveGeneratedTimetable;
+window.exportTimetableBackupJson = exportTimetableBackupJson;
+window.importTimetableBackupJson = importTimetableBackupJson;
+window.checkAndLoadSavedTimetable = checkAndLoadSavedTimetable;
+window.updateSavedTimetableBadge = updateSavedTimetableBadge;
 

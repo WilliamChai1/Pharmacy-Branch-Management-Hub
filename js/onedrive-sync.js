@@ -532,6 +532,82 @@
             console.warn(`[PMG OneDrive Sync] Schedule sync warning for ${branchName}:`, schedSyncErr);
           }
 
+          // Step F2: Bidirectional sync of monthly AI timetables (monthly_timetable_*.json)
+          try {
+            const bCode = FOLDER_BRANCH_CODE_MAP[branchName] || branchName;
+            if (typeof dirHandle.values === 'function') {
+              for await (const entry of dirHandle.values()) {
+                if (entry.kind === 'file' && /^monthly_timetable_\d{4}-\d{2}\.json$/i.test(entry.name)) {
+                  try {
+                    const match = entry.name.match(/monthly_timetable_(\d{4}-\d{2})\.json/i);
+                    const mKey = match ? match[1] : null;
+                    if (!mKey) continue;
+                    const f = await entry.getFile();
+                    const text = await f.text();
+                    if (text && text.trim()) {
+                      const parsed = JSON.parse(text);
+                      const cloudTt = parsed.timetable || parsed;
+                      const cloudTime = parsed.lastSaved || cloudTt.lastSaved || '';
+                      const localKey = `pmg_saved_timetable_${bCode}_${mKey}`;
+                      const localRaw = localStorage.getItem(localKey);
+                      const localTt = localRaw ? JSON.parse(localRaw) : null;
+                      const localTime = localTt?.lastSaved || '';
+
+                      if (!localTt || (cloudTime && cloudTime > localTime)) {
+                        localStorage.setItem(localKey, JSON.stringify(cloudTt));
+                        console.log(`[PMG OneDrive Sync] Pulled newer timetable from OneDrive for ${bCode} (${mKey})`);
+                      }
+                    }
+                  } catch (_) {}
+                }
+              }
+            }
+
+            // Push any newer local timetables to OneDrive
+            for (let i = 0; i < localStorage.length; i++) {
+              const k = localStorage.key(i);
+              if (k && k.startsWith(`pmg_saved_timetable_${bCode}_`)) {
+                const mKey = k.replace(`pmg_saved_timetable_${bCode}_`, '');
+                if (/^\d{4}-\d{2}$/.test(mKey)) {
+                  try {
+                    const localRaw = localStorage.getItem(k);
+                    if (localRaw) {
+                      const localTt = JSON.parse(localRaw);
+                      const fileName = `monthly_timetable_${mKey}.json`;
+                      let cloudTt = null;
+                      try {
+                        const h = await dirHandle.getFileHandle(fileName, { create: false });
+                        const f = await h.getFile();
+                        const t = await f.text();
+                        if (t) cloudTt = JSON.parse(t);
+                      } catch (_) {}
+
+                      const localTime = localTt.lastSaved || '';
+                      const cloudTime = cloudTt?.lastSaved || cloudTt?.timetable?.lastSaved || '';
+                      if (!cloudTt || (localTime && localTime > cloudTime)) {
+                        const payload = {
+                          branch: branchName,
+                          branchCode: bCode,
+                          month: mKey,
+                          lastSaved: localTime || nowIso,
+                          savedBy: localTt.savedBy || session?.displayName || 'Pharmacist',
+                          timetable: localTt
+                        };
+                        const h = await dirHandle.getFileHandle(fileName, { create: true });
+                        const w = await h.createWritable();
+                        await w.write(JSON.stringify(payload, null, 2));
+                        await w.close();
+                        console.log(`[PMG OneDrive Sync] Uploaded local timetable to OneDrive for ${bCode} (${mKey})`);
+                      }
+                    }
+                  } catch (_) {}
+                }
+              }
+            }
+          } catch (ttSyncErr) {
+            console.warn(`[PMG OneDrive Sync] Timetable sync warning for ${branchName}:`, ttSyncErr);
+          }
+
           // Step G: Bidirectional sync of patient documents & clinical reports (Airdoc, Blood tests, Lab PDFs)
           try {
             const branchPatientIds = new Set(mergedBranchPatients.map(p => p.id));
@@ -889,6 +965,63 @@
       } catch (err) {
         console.warn(`[PMG OneDrive Sync] Could not save schedule to OneDrive for ${bFolder}:`, err);
         return false;
+      }
+    }
+
+    // ─── SAVE MONTHLY GENERATED TIMETABLE TO ONEDRIVE ────────────────────────
+    async saveMonthlyTimetableToOneDrive(branchCode, monthStr, timetableObj) {
+      if (!this.rootHandle || this.mode === 'DISCONNECTED') return false;
+      const bFolder = BRANCH_FOLDER_MAP[(branchCode || '').toUpperCase()] || this.activeBranchFolder || 'KOTA SENTOSA';
+      const bCode = FOLDER_BRANCH_CODE_MAP[bFolder] || branchCode || 'KS01';
+      const dirHandle = await this._getTargetBranchDirectoryHandle(bFolder);
+      if (!dirHandle) return false;
+
+      try {
+        const hasPerm = await this._verifyPermission(this.rootHandle, true, false);
+        if (!hasPerm) return false;
+
+        const session = typeof getSession === 'function' ? getSession() : null;
+        const nowIso = new Date().toISOString();
+
+        const payload = {
+          branch: bFolder,
+          branchCode: bCode,
+          month: monthStr,
+          lastSaved: timetableObj.lastSaved || nowIso,
+          savedBy: timetableObj.savedBy || session?.displayName || 'Pharmacist',
+          timetable: timetableObj
+        };
+
+        const fileName = `monthly_timetable_${monthStr}.json`;
+        const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(JSON.stringify(payload, null, 2));
+        await writable.close();
+        console.log(`[PMG OneDrive Sync] Saved ${fileName} to OneDrive for ${bFolder}`);
+        return true;
+      } catch (err) {
+        console.warn(`[PMG OneDrive Sync] Could not save ${monthStr} timetable to OneDrive for ${bFolder}:`, err);
+        return false;
+      }
+    }
+
+    // ─── LOAD MONTHLY GENERATED TIMETABLE FROM ONEDRIVE ──────────────────────
+    async loadMonthlyTimetableFromOneDrive(branchCode, monthStr) {
+      if (!this.rootHandle || this.mode === 'DISCONNECTED') return null;
+      const bFolder = BRANCH_FOLDER_MAP[(branchCode || '').toUpperCase()] || this.activeBranchFolder || 'KOTA SENTOSA';
+      const dirHandle = await this._getTargetBranchDirectoryHandle(bFolder);
+      if (!dirHandle) return null;
+
+      try {
+        const fileName = `monthly_timetable_${monthStr}.json`;
+        const fileHandle = await dirHandle.getFileHandle(fileName, { create: false });
+        const file = await fileHandle.getFile();
+        const text = await file.text();
+        if (!text || !text.trim()) return null;
+        const parsed = JSON.parse(text);
+        return parsed.timetable || parsed;
+      } catch (_) {
+        return null;
       }
     }
 
