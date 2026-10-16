@@ -608,6 +608,48 @@
             console.warn(`[PMG OneDrive Sync] Timetable sync warning for ${branchName}:`, ttSyncErr);
           }
 
+          // Step F3: Bidirectional sync of teammate preferences (schedule_preferences_*.json)
+          try {
+            const bCode = FOLDER_BRANCH_CODE_MAP[branchName] || branchName;
+            const prefFileName = `schedule_preferences_${bCode}.json`;
+            let cloudPrefs = null;
+            let cloudPrefTime = '';
+            try {
+              const pfHandle = await dirHandle.getFileHandle(prefFileName, { create: false });
+              const pfFile = await pfHandle.getFile();
+              const pfText = await pfFile.text();
+              if (pfText && pfText.trim()) {
+                const parsed = JSON.parse(pfText);
+                cloudPrefs = parsed.preferences || (Array.isArray(parsed) ? parsed : null);
+                cloudPrefTime = parsed.lastUpdated || '';
+              }
+            } catch (_) {}
+
+            const localPrefKey = `pmg_staff_preferences_v2_${bCode}`;
+            const localPrefRaw = localStorage.getItem(localPrefKey);
+            const localPrefs = localPrefRaw ? JSON.parse(localPrefRaw) : null;
+
+            if (cloudPrefs && (!localPrefs || (cloudPrefTime && cloudPrefTime > (localPrefs._lastUpdated || '')))) {
+              localStorage.setItem(localPrefKey, JSON.stringify(cloudPrefs));
+              console.log(`[PMG OneDrive Sync] Pulled newer staff preferences from OneDrive for ${bCode}`);
+            } else if (localPrefs && !cloudPrefs) {
+              const prefPayload = {
+                branch: branchName,
+                branchCode: bCode,
+                lastUpdated: nowIso,
+                updatedBy: session?.displayName || 'Pharmacist',
+                preferences: localPrefs
+              };
+              const pfHandle = await dirHandle.getFileHandle(prefFileName, { create: true });
+              const pw = await pfHandle.createWritable();
+              await pw.write(JSON.stringify(prefPayload, null, 2));
+              await pw.close();
+              console.log(`[PMG OneDrive Sync] Uploaded local staff preferences to OneDrive for ${bCode}`);
+            }
+          } catch (prefSyncErr) {
+            console.warn(`[PMG OneDrive Sync] Preferences sync warning for ${branchName}:`, prefSyncErr);
+          }
+
           // Step G: Bidirectional sync of patient documents & clinical reports (Airdoc, Blood tests, Lab PDFs)
           try {
             const branchPatientIds = new Set(mergedBranchPatients.map(p => p.id));
@@ -1022,6 +1064,89 @@
         return parsed.timetable || parsed;
       } catch (_) {
         return null;
+      }
+    }
+
+    // ─── SAVE TEAMMATE PREFERENCES TO ONEDRIVE ──────────────────────────────
+    async saveTeammatePreferencesToOneDrive(branchCode, teammatesList) {
+      if (!this.rootHandle || this.mode === 'DISCONNECTED') return false;
+      const bFolder = BRANCH_FOLDER_MAP[(branchCode || '').toUpperCase()] || this.activeBranchFolder || 'KOTA SENTOSA';
+      const bCode = FOLDER_BRANCH_CODE_MAP[bFolder] || branchCode || 'KS01';
+      const dirHandle = await this._getTargetBranchDirectoryHandle(bFolder);
+      if (!dirHandle) return false;
+
+      try {
+        const hasPerm = await this._verifyPermission(this.rootHandle, true, false);
+        if (!hasPerm) return false;
+
+        const session = typeof getSession === 'function' ? getSession() : null;
+        const nowIso = new Date().toISOString();
+
+        const payload = {
+          branch: bFolder,
+          branchCode: bCode,
+          lastUpdated: nowIso,
+          updatedBy: session?.displayName || 'Pharmacist',
+          preferences: teammatesList
+        };
+
+        const fileName = `schedule_preferences_${bCode}.json`;
+        const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(JSON.stringify(payload, null, 2));
+        await writable.close();
+        console.log(`[PMG OneDrive Sync] Saved ${fileName} to OneDrive for ${bFolder}`);
+        return true;
+      } catch (err) {
+        console.warn(`[PMG OneDrive Sync] Could not save preferences to OneDrive for ${bFolder}:`, err);
+        return false;
+      }
+    }
+
+    // ─── LOAD TEAMMATE PREFERENCES FROM ONEDRIVE ────────────────────────────
+    async loadTeammatePreferencesFromOneDrive(branchCode) {
+      if (!this.rootHandle || this.mode === 'DISCONNECTED') return null;
+      const bFolder = BRANCH_FOLDER_MAP[(branchCode || '').toUpperCase()] || this.activeBranchFolder || 'KOTA SENTOSA';
+      const bCode = FOLDER_BRANCH_CODE_MAP[bFolder] || branchCode || 'KS01';
+      const dirHandle = await this._getTargetBranchDirectoryHandle(bFolder);
+      if (!dirHandle) return null;
+
+      try {
+        const fileName = `schedule_preferences_${bCode}.json`;
+        let fileHandle = null;
+        try {
+          fileHandle = await dirHandle.getFileHandle(fileName, { create: false });
+        } catch (_) {
+          try {
+            fileHandle = await dirHandle.getFileHandle('schedule_preferences.json', { create: false });
+          } catch (_) {}
+        }
+        if (!fileHandle) return null;
+
+        const file = await fileHandle.getFile();
+        const text = await file.text();
+        if (!text || !text.trim()) return null;
+        const parsed = JSON.parse(text);
+        return parsed.preferences || (Array.isArray(parsed) ? parsed : null);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    // ─── GENERIC SAVE TO ACTIVE BRANCH FOLDER ──────────────────────────────
+    async saveFileToActiveFolder(fileName, content) {
+      if (!this.rootHandle || this.mode === 'DISCONNECTED') return false;
+      const bFolder = this.activeBranchFolder || 'KOTA SENTOSA';
+      const dirHandle = await this._getTargetBranchDirectoryHandle(bFolder);
+      if (!dirHandle) return false;
+      try {
+        const fh = await dirHandle.getFileHandle(fileName, { create: true });
+        const w = await fh.createWritable();
+        await w.write(content);
+        await w.close();
+        return true;
+      } catch (_) {
+        return false;
       }
     }
 
