@@ -8,11 +8,11 @@ const MONTH_NAMES = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SE
 
 // ─── MULTI-TIER GEMINI AI CONFIGURATION ───────────────────────────────────────
 // Primary: gemini-3.5-flash-lite (15 RPM / 500 RPD — fast invoice OCR)
-// Secondary: gemini-3.5-flash (5 RPM / 20 RPD — complex multi-column invoice reasoning)
-// Tertiary: gemini-3.1-flash-lite (15 RPM / 500 RPD — high quota fallback)
+// Secondary: gemini-3.1-flash-lite (15 RPM / 500 RPD — high quota fallback)
+// Tertiary: gemini-3.5-flash (5 RPM / 20 RPD — complex multi-column invoice reasoning)
 const EXPIRY_OCR_PRIMARY_MODEL   = 'gemini-3.5-flash-lite';
-const EXPIRY_OCR_SECONDARY_MODEL = 'gemini-3.5-flash';
-const EXPIRY_OCR_TERTIARY_MODEL  = 'gemini-3.1-flash-lite';
+const EXPIRY_OCR_SECONDARY_MODEL = 'gemini-3.1-flash-lite';
+const EXPIRY_OCR_TERTIARY_MODEL  = 'gemini-3.5-flash';
 const PMG_GLOBAL_FALLBACK_KEY    = ''; // Revoked/leaked fallback key neutralized
 
 // ─── STATE ────────────────────────────────────────────────────────────────────

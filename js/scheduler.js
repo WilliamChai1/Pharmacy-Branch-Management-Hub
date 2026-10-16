@@ -11,12 +11,14 @@ function escHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-// Primary: Gemini 3.5 Flash-Lite (gemini-3.5-flash-lite)
+// Primary: Gemini 3.8 Flash (gemini-3.8-flash) — Dynamic reasoning & optimal parity roster solver
 // Secondary: Gemini 3.5 Flash (gemini-3.5-flash)
-// Backup: Gemini 2.5 Flash-Lite (gemini-2.5-flash-lite)
-const SCHEDULER_PRIMARY_MODEL   = 'gemini-3.5-flash-lite';
+// Backup: Gemini 3.5 Flash-Lite (gemini-3.5-flash-lite)
+// Fallback: Gemini 3.1 Flash-Lite (gemini-3.1-flash-lite)
+const SCHEDULER_PRIMARY_MODEL   = 'gemini-3.8-flash';
 const SCHEDULER_SECONDARY_MODEL = 'gemini-3.5-flash';
-const SCHEDULER_TERTIARY_MODEL  = 'gemini-2.5-flash-lite';
+const SCHEDULER_TERTIARY_MODEL  = 'gemini-3.5-flash-lite';
+const SCHEDULER_FALLBACK_MODEL  = 'gemini-3.1-flash-lite';
 
 // ─── SHIFT TYPE CLASSIFIER HELPERS ───────────────────────────────────────────
 function isNightShift(shift) {
@@ -825,41 +827,58 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
 
   renderTeammatesTable();
 
-  // Cross-PC OneDrive Cloud Synchronization for Teammate Preferences
-  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.loadTeammatePreferencesFromOneDrive === 'function') {
-    window.pmgOneDriveSync.loadTeammatePreferencesFromOneDrive(branchCode).then(cloudPrefs => {
-      if (cloudPrefs && Array.isArray(cloudPrefs) && cloudPrefs.length > 0) {
-        const localKey = getStorageKey(branchCode);
-        const hasLocal = !!localStorage.getItem(localKey);
-        if (!hasLocal) {
-          currentTeammates = cloudPrefs;
-          localStorage.setItem(localKey, JSON.stringify(cloudPrefs));
-          renderTeammatesTable();
-          console.log(`[PMG Scheduler] Loaded preferences from OneDrive for ${branchCode}`);
-        }
-      }
-    }).catch(e => console.warn('[PMG Scheduler] OneDrive pref load:', e));
-  }
+  // Cross-PC Cloud Synchronization for Teammate Preferences (OneDrive & Google Apps Script)
+  const syncTeammatesFromCloud = async () => {
+    const localKey = getStorageKey(branchCode);
+    const localUpdated = localStorage.getItem(`${localKey}_updatedAt`) || '';
+    let appliedCloud = false;
 
-  // Fallback cloud fetch if localStorage is empty
-  if (!saved && !skipCloudSync) {
-    setTimeout(async () => {
+    // 1. Check OneDrive first
+    if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.loadTeammatePreferencesFromOneDrive === 'function') {
       try {
-        if (localStorage.getItem(getStorageKey(branchCode))) return;
+        const cloudPrefs = await window.pmgOneDriveSync.loadTeammatePreferencesFromOneDrive(branchCode);
+        if (cloudPrefs && Array.isArray(cloudPrefs) && cloudPrefs.length > 0) {
+          const cloudUpdated = cloudPrefs.lastUpdated || '';
+          // Adopt cloud if: no local timestamp recorded, or cloud is newer/equal, or local was pure initial defaults
+          if (!localUpdated || !cloudUpdated || cloudUpdated >= localUpdated) {
+            currentTeammates = cloudPrefs;
+            localStorage.setItem(localKey, JSON.stringify(cloudPrefs));
+            if (cloudUpdated) localStorage.setItem(`${localKey}_updatedAt`, cloudUpdated);
+            renderTeammatesTable();
+            appliedCloud = true;
+            console.log(`[PMG Scheduler] Loaded preferences from OneDrive for ${branchCode}`);
+          }
+        }
+      } catch (e) {
+        console.warn('[PMG Scheduler] OneDrive pref load:', e);
+      }
+    }
+
+    // 2. Fallback to Google Apps Script cloud sync if OneDrive did not load
+    if (!appliedCloud && !skipCloudSync) {
+      try {
         const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
         const resp = await fetch(`${apiUrl}?action=getStaffPreferences&branch=${encodeURIComponent(branchCode || 'KS01')}`);
         if (resp.ok) {
           const json = await resp.json();
           if (json && json.success && Array.isArray(json.preferences) && json.preferences.length > 0) {
             const cloudPrefs = json.preferences;
-            currentTeammates = cloudPrefs;
-            localStorage.setItem(getStorageKey(branchCode), JSON.stringify(cloudPrefs));
-            renderTeammatesTable();
+            const cloudUpdated = json.lastUpdated || '';
+            if (!localUpdated || !cloudUpdated || cloudUpdated >= localUpdated) {
+              currentTeammates = cloudPrefs;
+              localStorage.setItem(localKey, JSON.stringify(cloudPrefs));
+              if (cloudUpdated) localStorage.setItem(`${localKey}_updatedAt`, cloudUpdated);
+              renderTeammatesTable();
+              console.log(`[PMG Scheduler] Loaded preferences from Google Apps Script for ${branchCode}`);
+            }
           }
         }
       } catch (_) {}
-    }, 500);
-  }
+    }
+  };
+
+  syncTeammatesFromCloud();
+  window.syncTeammatePreferencesWithCloud = syncTeammatesFromCloud;
 }
 
 function saveTeammatePreferences(silent = false) {
@@ -933,9 +952,11 @@ function saveTeammatePreferences(silent = false) {
     });
   });
 
+  const nowIso = new Date().toISOString();
   if (updated.length > 0) {
     currentTeammates = updated;
     localStorage.setItem(getStorageKey(branchCode), JSON.stringify(currentTeammates));
+    localStorage.setItem(`${getStorageKey(branchCode)}_updatedAt`, nowIso);
   }
 
   if (silent) return;
@@ -948,7 +969,11 @@ function saveTeammatePreferences(silent = false) {
         console.warn('[PMG Scheduler] Could not save preferences to OneDrive:', err);
       });
     } else if (od && typeof od.saveFileToActiveFolder === 'function') {
-      od.saveFileToActiveFolder(`schedule_preferences_${branchCode}.json`, JSON.stringify(currentTeammates, null, 2)).catch(() => {});
+      od.saveFileToActiveFolder(`schedule_preferences_${branchCode}.json`, JSON.stringify({
+        branchCode,
+        lastUpdated: nowIso,
+        preferences: currentTeammates
+      }, null, 2)).catch(() => {});
     }
   } catch (_) {}
 
@@ -960,6 +985,7 @@ function saveTeammatePreferences(silent = false) {
         action: 'saveStaffPreferences',
         branch: branchCode,
         preferences: currentTeammates,
+        lastUpdated: nowIso,
         updatedBy: (typeof getSession === 'function' && getSession()?.displayName) || 'William Chai'
       })
     }).catch(err => console.warn('[Scheduler Cloud Sync] Cloud push error:', err));
@@ -1334,15 +1360,16 @@ async function generateTimetable() {
   });
 
   try {
+    generatedScheduleData = null; // Clear prior timetable cache so generation is 100% fresh
     if (apiKey) {
       let aiResult = null;
       let winningModelName = '';
       const schedulerCandidateModels = [
-        { code: SCHEDULER_PRIMARY_MODEL,   name: 'Gemini 3.5 Flash-Lite (Primary)' },
+        { code: SCHEDULER_PRIMARY_MODEL,   name: 'Gemini 3.8 Flash (Primary)' },
         { code: SCHEDULER_SECONDARY_MODEL, name: 'Gemini 3.5 Flash (Secondary)' },
-        { code: SCHEDULER_TERTIARY_MODEL,  name: 'Gemini 2.5 Flash-Lite (Backup)' },
+        { code: SCHEDULER_TERTIARY_MODEL,  name: 'Gemini 3.5 Flash-Lite (Backup)' },
+        { code: SCHEDULER_FALLBACK_MODEL,  name: 'Gemini 3.1 Flash-Lite (Fallback)' },
         { code: 'gemini-2.5-flash',        name: 'Gemini 2.5 Flash (Fallback)' },
-        { code: 'gemini-2.0-flash',        name: 'Gemini 2.0 Flash (Fallback)' },
         { code: 'gemini-1.5-flash',        name: 'Gemini 1.5 Flash (Fallback)' }
       ];
 
@@ -1522,7 +1549,12 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
           if (d.dayOfWeek === explicitRd) {
             d.shifts[tm.empNo] = 'RD';
           } else if (d.shifts[tm.empNo] === 'RD') {
-            d.shifts[tm.empNo] = '8H_0730-1630';
+            let curM = 0, curN = 0;
+            wDays.forEach(x => {
+              if (isAnyMorningShift(x.shifts[tm.empNo])) curM++;
+              if (isNightShift(x.shifts[tm.empNo])) curN++;
+            });
+            d.shifts[tm.empNo] = (curM > curN) ? '8H_1230-2130' : '8H_0730-1630';
           }
         });
       }
@@ -1532,7 +1564,12 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
           if (d.dayOfWeek === explicitHd && d.shifts[tm.empNo] !== 'RD') {
             d.shifts[tm.empNo] = halfShiftCode;
           } else if (isHalfDayMorningShift(d.shifts[tm.empNo]) && d.dayOfWeek !== explicitHd) {
-            d.shifts[tm.empNo] = '8H_0730-1630';
+            let curM = 0, curN = 0;
+            wDays.forEach(x => {
+              if (isAnyMorningShift(x.shifts[tm.empNo])) curM++;
+              if (isNightShift(x.shifts[tm.empNo])) curN++;
+            });
+            d.shifts[tm.empNo] = (curM > curN) ? '8H_1230-2130' : '8H_0730-1630';
           }
         });
       } else {
@@ -1597,7 +1634,7 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
       // 5a. Direct flip if a day has surplus headcount and maintains floor >= 3
       for (const tm of rotatingPool) {
         const stat = wStats[tm.empNo];
-        if (stat.m - stat.n > 2) {
+        if (stat.m - stat.n >= 2) {
           for (const d of wDays) {
             if (d.shifts[tm.empNo] === '8H_0730-1630') {
               let curFullAm = 0, curHalfAm = 0, curPm = 0;
@@ -1624,7 +1661,7 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
               }
             }
           }
-        } else if (stat.n - stat.m > 2) {
+        } else if (stat.n - stat.m >= 2) {
           for (const d of wDays) {
             if (d.shifts[tm.empNo] === '8H_1230-2130') {
               let curFullAm = 0, curHalfAm = 0, curPm = 0;
@@ -1658,7 +1695,7 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
       if (anySwapped) continue;
 
       // 5b. Pairwise swaps in this week
-      const surplusAm = rotatingPool.filter(t => (wStats[t.empNo].m - wStats[t.empNo].n) > 2)
+      const surplusAm = rotatingPool.filter(t => (wStats[t.empNo].m - wStats[t.empNo].n) >= 2)
         .sort((a, b) => (wStats[b.empNo].m - wStats[b.empNo].n) - (wStats[a.empNo].m - wStats[a.empNo].n));
       const eligiblePm = rotatingPool.filter(t => (wStats[t.empNo].n >= wStats[t.empNo].m))
         .sort((a, b) => (wStats[b.empNo].n - wStats[b.empNo].m) - (wStats[a.empNo].n - wStats[a.empNo].m));
@@ -1697,10 +1734,10 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
 
       if (anySwapped) continue;
 
-      const surplusPm = rotatingPool.filter(t => (wStats[t.empNo].n - wStats[t.empNo].m) > 2)
+      const surplusPm = rotatingPool.filter(t => (wStats[t.empNo].n - wStats[t.empNo].m) >= 2)
         .sort((a, b) => (wStats[b.empNo].n - wStats[b.empNo].m) - (wStats[a.empNo].n - wStats[a.empNo].m));
       const eligibleAm = rotatingPool.filter(t => (wStats[t.empNo].m >= wStats[t.empNo].n))
-        .sort((a, b) => (wStats[b.empNo].m - wStats[b.empNo].n) - (wStats[a.empNo].m - wStats[a.empNo].n));
+        .sort((a, b) => (wStats[b.empNo].m - wStats[b.empNo].n) - (wStats[a.empNo].n - wStats[a.empNo].m));
 
       for (const tPm of surplusPm) {
         for (const tAm of eligibleAm) {
@@ -2382,7 +2419,7 @@ Respond ONLY with a valid JSON object containing the complete 7-day Monday–Sun
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
-          temperature: 0.1,
+          temperature: 0.7,
           responseMimeType: 'application/json'
         }
       })
@@ -2689,7 +2726,8 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
       const projDiffB = Math.abs((curAm + b.totalAm) - (curPm + b.pmFull));
       if (a.fullTurnarounds !== b.fullTurnarounds) return a.fullTurnarounds - b.fullTurnarounds;
       if (projDiffA !== projDiffB) return projDiffA - projDiffB;
-      return b.prefScore - a.prefScore;
+      if (b.prefScore !== a.prefScore) return b.prefScore - a.prefScore;
+      return Math.random() - 0.5;
     });
 
     tmPatterns[tm.empNo] = pats;
@@ -2840,7 +2878,10 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
     if (!pats.length) return [{ seq: new Array(7).fill('RD'), amFull: 0, pmFull: 0, totalAm: 0, deviation: 0, fullTurnarounds: 0, hdTurnarounds: 0, excessFatigue: 0, endNightStreak: 0, prefScore: 0 }];
     const balanced = pats.filter(p => p.amFull === 2 && p.pmFull === 3 && p.fullTurnarounds === 0);
     const alt = pats.filter(p => !(p.amFull === 2 && p.pmFull === 3 && p.fullTurnarounds === 0));
-    return [...balanced.slice(0, 4), ...alt.slice(0, 2)].slice(0, 4);
+    // Dynamically shuffle top balanced candidates so repeated generations explore diverse valid solutions
+    const shuffledBalanced = [...balanced].sort(() => Math.random() - 0.5);
+    const shuffledAlt = [...alt].sort(() => Math.random() - 0.5);
+    return [...shuffledBalanced.slice(0, 4), ...shuffledAlt.slice(0, 2)].slice(0, 4);
   });
 
   let dfsCount = 0;
@@ -2853,6 +2894,9 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
       const pen = evalCombination(curDfs);
       if (pen < minPenalty) {
         minPenalty = pen;
+        best = JSON.parse(JSON.stringify(curDfs));
+      } else if (pen === minPenalty && Math.random() < 0.35) {
+        // Stochastic replacement among equal optimal solutions
         best = JSON.parse(JSON.stringify(curDfs));
       }
       return;
@@ -3073,7 +3117,7 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
         const s = selected[tm.empNo].seq[day];
         dayShifts[tm.empNo] = s;
         if (s === 'RD') cumStats[tm.empNo].rd++;
-        else if (s.includes('4H')) { cumStats[tm.empNo].am++; cumStats[tm.empNo].hd++; }
+        else if (isHalfDayMorningShift(s)) { cumStats[tm.empNo].am++; cumStats[tm.empNo].hd++; }
         else if (s.includes('0730')) cumStats[tm.empNo].am++;
         else if (s.includes('1230')) cumStats[tm.empNo].pm++;
       });
@@ -3461,7 +3505,7 @@ function renderScheduleMatrix(schedule) {
           </div>
           <div class="text-[10px] text-gray-400 truncate max-w-[170px]">${escHtml(tm.empName)}</div>
           <div class="text-[10px] text-gray-500 font-mono mt-0.5">
-            <span class="text-blue-600 font-bold">M: ${st.mCount + st.hdCount}</span> (${st.mCount} 8H + ${st.hdCount} 4H) · <span class="text-purple-600 font-bold">N: ${st.nCount}</span>${st.cleanCount > 0 ? ` · <span class="text-teal-700 font-bold">🧹: ${st.cleanCount}</span>` : ''}
+            <span class="text-blue-600 font-bold">M: ${st.mCount + st.hdCount}</span> (${st.mCount} 8H + ${st.hdCount} ${isFixed ? '4H' : '5H'}) · <span class="text-purple-600 font-bold">N: ${st.nCount}</span>${st.cleanCount > 0 ? ` · <span class="text-teal-700 font-bold">🧹: ${st.cleanCount}</span>` : ''}
           </div>
         </td>
     `;
@@ -3607,11 +3651,11 @@ function renderScheduleMatrix(schedule) {
               <tr class="bg-slate-50 border-b border-gray-200 text-gray-600 uppercase text-[10px] font-bold">
                 <th class="py-2.5 px-3">Teammate</th>
                 <th class="py-2.5 px-3">Role & Mode</th>
-                <th class="py-2.5 px-3 text-center">Total Morning (8H+4H)</th>
+                <th class="py-2.5 px-3 text-center">Total Morning (8H+Half)</th>
                 <th class="py-2.5 px-3 text-center">Full Night (8H)</th>
                 <th class="py-2.5 px-3 text-center">Shift Parity</th>
                 <th class="py-2.5 px-3 text-center">Full Rest Days (RD)</th>
-                <th class="py-2.5 px-3 text-center">Half Days (4H)</th>
+                <th class="py-2.5 px-3 text-center">Half Days (4H/5H)</th>
                 <th class="py-2.5 px-3 text-center">Statutory Quota</th>
                 <th class="py-2.5 px-3 text-center">6S Cleaning Duties</th>
                 <th class="py-2.5 px-3 text-center">Anti-Fatigue Status</th>
@@ -4793,4 +4837,6 @@ window.exportTimetableBackupJson = exportTimetableBackupJson;
 window.importTimetableBackupJson = importTimetableBackupJson;
 window.checkAndLoadSavedTimetable = checkAndLoadSavedTimetable;
 window.updateSavedTimetableBadge = updateSavedTimetableBadge;
+window.runHeuristicScheduleGenerator = runHeuristicScheduleGenerator;
+window.solveFullWeek = solveFullWeek;
 

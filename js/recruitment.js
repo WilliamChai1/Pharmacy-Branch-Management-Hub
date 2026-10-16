@@ -346,10 +346,12 @@ function patchOneDriveWithRecruitment() {
 // AI EVALUATION via Gemini
 // ─────────────────────────────────────────────────────────────────────────────
 // Primary: Gemini 3.5 Flash-Lite (fast, free-tier-friendly pre-screen)
-// Secondary: Gemini 3.5 Flash (deep eval, fallback with retry)
+// Secondary: Gemini 3.1 Flash-Lite (high quota fallback)
+// Tertiary: Gemini 3.5 Flash (deep eval)
 const GEMINI_MODELS = {
-  lite:  { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite (Primary — Fast Screen)' },
-  flash: { id: 'gemini-3.5-flash',      label: 'Gemini 3.5 Flash (Secondary — Deep Eval)'    },
+  lite:      { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite (Primary — Fast Screen)' },
+  secondary: { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite (Secondary — High Quota)' },
+  flash:     { id: 'gemini-3.5-flash',      label: 'Gemini 3.5 Flash (Tertiary — Deep Eval)' },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -752,9 +754,9 @@ Return ONLY valid JSON. No markdown fences, no explanatory commentary outside th
   const cleanB64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
   const cleanMime = mimeType || 'image/jpeg';
   const models = [
-    { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
-    { id: 'gemini-3.5-flash',      name: 'Gemini 3.5 Flash' },
-    { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' },
+    { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite (Primary)' },
+    { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite (Secondary)' },
+    { id: 'gemini-3.5-flash',      name: 'Gemini 3.5 Flash (Deep Eval)' },
     { id: 'gemini-2.5-flash',      name: 'Gemini 2.5 Flash' }
   ];
   let lastErr = null;

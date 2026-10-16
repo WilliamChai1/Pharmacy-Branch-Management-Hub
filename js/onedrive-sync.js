@@ -249,6 +249,18 @@
         // Perform immediate bidirectional sync
         await this.manualSync();
 
+        // Cross-PC sync: Refresh timetable preferences & saved roster if scheduler is open
+        try {
+          if (typeof window.syncTeammatePreferencesWithCloud === 'function') {
+            window.syncTeammatePreferencesWithCloud();
+          }
+          if (typeof window.checkAndLoadSavedTimetable === 'function') {
+            const b = document.getElementById('schedulerBranchSelect')?.value || 'KS01';
+            const m = document.getElementById('schedulerMonth')?.value || '2026-11';
+            window.checkAndLoadSavedTimetable(b, m);
+          }
+        } catch (_) {}
+
         const folderDesc = this.mode === 'PARENT' 
           ? `Master "Patient care" (All 7 Outlets Connected)`
           : `Branch Outlet (${this.activeBranchFolder})`;
@@ -1127,7 +1139,11 @@
         const text = await file.text();
         if (!text || !text.trim()) return null;
         const parsed = JSON.parse(text);
-        return parsed.preferences || (Array.isArray(parsed) ? parsed : null);
+        const prefs = parsed.preferences || (Array.isArray(parsed) ? parsed : null);
+        if (prefs && Array.isArray(prefs)) {
+          prefs.lastUpdated = parsed.lastUpdated || null;
+        }
+        return prefs;
       } catch (_) {
         return null;
       }

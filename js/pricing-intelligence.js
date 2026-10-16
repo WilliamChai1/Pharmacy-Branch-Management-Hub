@@ -2773,12 +2773,12 @@ Our objective as Area Manager:
       if (statusPill) statusPill.textContent = 'Analyzing…';
 
       // Primary: Gemini 3.5 Flash-Lite (15 RPM / 500 RPD) — High speed routine market analysis
-      // Secondary: Gemini 3.5 Flash (5 RPM / 20 RPD) — Deep competitor dynamics reasoning
-      // Tertiary: Gemini 3.1 Flash-Lite (15 RPM / 500 RPD) — High quota fallback
+      // Secondary: Gemini 3.1 Flash-Lite (15 RPM / 500 RPD) — High quota fallback
+      // Tertiary: Gemini 3.5 Flash (5 RPM / 20 RPD) — Deep competitor dynamics reasoning
       const modelsToTry = [
-        { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
-        { code: 'gemini-3.5-flash',      name: 'Gemini 3.5 Flash' },
-        { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' }
+        { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite (Primary)' },
+        { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite (Secondary)' },
+        { code: 'gemini-3.5-flash',      name: 'Gemini 3.5 Flash' }
       ];
 
       let responseText = '';
@@ -3129,12 +3129,12 @@ Our objective as Area Manager:
       }
 
       // Primary: Gemini 3.5 Flash-Lite (15 RPM / 500 RPD)
-      // Secondary: Gemini 3.5 Flash (5 RPM / 20 RPD)
-      // Tertiary: Gemini 3.1 Flash-Lite (High Quota Fallback)
+      // Secondary: Gemini 3.1 Flash-Lite (15 RPM / 500 RPD)
+      // Tertiary: Gemini 3.5 Flash (5 RPM / 20 RPD)
       const modelsToTry = [
-        { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
-        { code: 'gemini-3.5-flash',      name: 'Gemini 3.5 Flash' },
-        { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' }
+        { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite (Primary)' },
+        { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite (Secondary)' },
+        { code: 'gemini-3.5-flash',      name: 'Gemini 3.5 Flash' }
       ];
 
       for (let c = 0; c < chunks.length; c++) {

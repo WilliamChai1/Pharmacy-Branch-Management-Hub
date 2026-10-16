@@ -759,6 +759,11 @@
               class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-300 flex items-center gap-1.5 transition">
               <i class="fa-solid fa-rotate-left"></i> Reset Defaults
             </button>
+            <button type="button" id="schedulerSyncCloudBtn" onclick="if(typeof window.syncTeammatePreferencesWithCloud==='function'){window.syncTeammatePreferencesWithCloud();if(typeof showSchedulerToast==='function')showSchedulerToast('Checking and syncing cloud preferences…','info');}"
+              class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold px-3 py-1.5 rounded-lg border border-indigo-200 shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
+              title="Pull latest teammate preferences from OneDrive / Google Apps Script cloud">
+              <i class="fa-solid fa-cloud-arrow-down text-indigo-600"></i> Sync Cloud
+            </button>
             <button type="button" id="schedulerSavePrefBtn"
               class="bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold px-4 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5 transition">
               <i class="fa-solid fa-floppy-disk"></i> Save Preferences
@@ -3644,32 +3649,39 @@ Date visit: 06.01.2026
           <p id="modalGeminiKeyStatus" class="text-[11px] text-gray-500 font-medium"></p>
         </div>
 
-        <!-- Active Tiers Card (Exact from User Screenshot) -->
+        <!-- Active Tiers Card -->
         <div class="p-4 bg-gray-50 border border-gray-200 rounded-xl space-y-2">
           <h4 class="font-bold text-gray-800 flex items-center gap-1.5">
             <i class="fa-solid fa-layer-group text-amber-600"></i> Active Model Tiers & Quotas:
           </h4>
           <div class="space-y-1.5 pt-1 text-[11px]">
+            <div class="bg-indigo-50 border border-indigo-200 text-indigo-900 font-medium px-3 py-2 rounded-lg flex items-center justify-between">
+              <span class="flex items-center gap-1.5">
+                <i class="fa-solid fa-calendar-days text-indigo-600 text-sm"></i>
+                <b>Timetable Generator:</b> <code>gemini-3.8-flash</code>
+              </span>
+              <span class="bg-indigo-200 text-indigo-900 font-bold px-2 py-0.5 rounded text-[10px]">Primary Scheduler</span>
+            </div>
             <div class="bg-emerald-50 border border-emerald-200 text-emerald-900 font-medium px-3 py-2 rounded-lg flex items-center justify-between">
               <span class="flex items-center gap-1.5">
                 <i class="fa-solid fa-bolt text-emerald-600 text-sm"></i>
-                <b>Primary:</b> <code>gemini-3.5-flash-lite</code>
+                <b>All Other Features (Primary):</b> <code>gemini-3.5-flash-lite</code>
               </span>
               <span class="bg-emerald-200 text-emerald-900 font-bold px-2 py-0.5 rounded text-[10px]">500 RPD (Free)</span>
-            </div>
-            <div class="bg-blue-50 border border-blue-200 text-blue-900 font-medium px-3 py-2 rounded-lg flex items-center justify-between">
-              <span class="flex items-center gap-1.5">
-                <i class="fa-solid fa-brain text-blue-600 text-sm"></i>
-                <b>Secondary:</b> <code>gemini-3.5-flash</code>
-              </span>
-              <span class="bg-blue-200 text-blue-900 font-bold px-2 py-0.5 rounded text-[10px]">20 RPD (Deep Eval)</span>
             </div>
             <div class="bg-purple-50 border border-purple-200 text-purple-900 font-medium px-3 py-2 rounded-lg flex items-center justify-between">
               <span class="flex items-center gap-1.5">
                 <i class="fa-solid fa-shield-halved text-purple-600 text-sm"></i>
-                <b>High-Quota Backup:</b> <code>gemini-3.1-flash-lite</code>
+                <b>All Other Features (Secondary):</b> <code>gemini-3.1-flash-lite</code>
               </span>
               <span class="bg-purple-200 text-purple-900 font-bold px-2 py-0.5 rounded text-[10px]">500 RPD (Failover)</span>
+            </div>
+            <div class="bg-blue-50 border border-blue-200 text-blue-900 font-medium px-3 py-2 rounded-lg flex items-center justify-between">
+              <span class="flex items-center gap-1.5">
+                <i class="fa-solid fa-brain text-blue-600 text-sm"></i>
+                <b>Deep Eval Backup:</b> <code>gemini-3.5-flash</code>
+              </span>
+              <span class="bg-blue-200 text-blue-900 font-bold px-2 py-0.5 rounded text-[10px]">20 RPD</span>
             </div>
           </div>
         </div>
@@ -6266,17 +6278,17 @@ ItemCode,Description,Brand,Category,Cost,SellingPrice,Supplier
 <script src="js/auth.js?v=20261004_v7"></script>
 <script src="js/inventory.js?v=20261004_v7"></script>
 <script src="js/roster.js?v=20261004_v7"></script>
-<script src="js/audit.js?v=20261004_v7"></script>
-<script src="js/scheduler.js?v=20261016_v4"></script>
+<script src="js/audit.js?v=20261017_v1"></script>
+<script src="js/scheduler.js?v=20261017_v1"></script>
 <script src="js/db.js?v=20261004_v7"></script>
-<script src="js/onedrive-sync.js?v=20261016_v3"></script>
-<script src="js/patient.js?v=20261015_v3"></script>
+<script src="js/onedrive-sync.js?v=20261017_v1"></script>
+<script src="js/patient.js?v=20261017_v1"></script>
 <script src="js/seed_expiry_data.js?v=20261013_v1"></script>
 <script src="js/hq_return_policy.js?v=20261013_v1"></script>
-<script src="js/expiry.js?v=20261016_v1"></script>
+<script src="js/expiry.js?v=20261017_v1"></script>
 <script src="js/returns-cn.js?v=20261013_v2"></script>
-<script src="js/pricing-intelligence.js?v=20261004_v7"></script>
-<script src="js/recruitment.js?v=20261004_v7"></script>
+<script src="js/pricing-intelligence.js?v=20261017_v1"></script>
+<script src="js/recruitment.js?v=20261017_v1"></script>
 <script src="js/admin-assets.js?v=20261005_v1"></script>
 <script src="js/commercial-admin.js?v=20261005_v1"></script>
 
@@ -6791,11 +6803,12 @@ async function testGlobalGeminiKey() {
     const listData = await listResp.json().catch(() => ({}));
     const availableModels = (listData.models || []).map(m => (m.name || '').replace(/^models\//, ''));
 
-    // 2. Select best active model matching user requirements (gemini-3.5-flash-lite / gemini-3.5-flash)
+    // 2. Select best active model matching user requirements (gemini-3.8-flash / gemini-3.5-flash-lite / gemini-3.1-flash-lite)
     const preferredCandidates = [
-      'gemini-3.5-flash-lite',
-      'gemini-3.5-flash',
       'gemini-3.8-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-3.1-flash-lite',
+      'gemini-3.5-flash',
       'gemini-2.5-flash',
       'gemini-2.0-flash-lite',
       'gemini-1.5-flash'

@@ -7,13 +7,14 @@ let auditChecklistState = {};  // { itemId: boolean }
 // ─── MULTI-TIER GEMINI CONFIGURATION ───────────────────────────────────────────
 // User tier requirement (Google AI Studio Free Tier):
 // Primary: Gemini 3.5 Flash-Lite (15 RPM / 500 RPD) — Ultra-fast, high-throughput routine tasks
-// Secondary: Gemini 3.5 Flash (5 RPM / 20 RPD) — Deep reasoning, 5S video & multimodal vision
-// Tertiary: Gemini 3.1 Flash-Lite (15 RPM / 500 RPD) — High-volume fallback
+// Primary: Gemini 3.5 Flash-Lite (15 RPM / 500 RPD) — Fast preliminary 5S compliance
+// Secondary: Gemini 3.1 Flash-Lite (15 RPM / 500 RPD) — High-volume fallback
+// Tertiary: Gemini 3.5 Flash (5 RPM / 20 RPD) — Deep reasoning & multimodal vision
 // Fallback: Gemini 2.5 Flash / 2.0 Flash-Lite / 1.5 Flash
 const AUDIT_PRIMARY_MODEL   = 'gemini-3.5-flash-lite';
-const AUDIT_SECONDARY_MODEL = 'gemini-3.5-flash';
-const AUDIT_TERTIARY_MODEL  = 'gemini-3.1-flash-lite';
-const AUDIT_FALLBACK_MODELS = ['gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash'];
+const AUDIT_SECONDARY_MODEL = 'gemini-3.1-flash-lite';
+const AUDIT_TERTIARY_MODEL  = 'gemini-3.5-flash';
+const AUDIT_FALLBACK_MODELS = ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash'];
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 function initAudit() {
@@ -90,8 +91,8 @@ async function testGeminiApiKey() {
 
   const candidateModels = [
     { code: AUDIT_PRIMARY_MODEL,   name: 'Gemini 3.5 Flash-Lite (Primary: 500 RPD)' },
-    { code: AUDIT_SECONDARY_MODEL, name: 'Gemini 3.5 Flash (Secondary: 20 RPD)' },
-    { code: AUDIT_TERTIARY_MODEL,  name: 'Gemini 3.1 Flash-Lite (High Quota: 500 RPD)' },
+    { code: AUDIT_SECONDARY_MODEL, name: 'Gemini 3.1 Flash-Lite (Secondary: 500 RPD)' },
+    { code: AUDIT_TERTIARY_MODEL,  name: 'Gemini 3.5 Flash (Deep Eval: 20 RPD)' },
     { code: 'gemini-2.5-flash',    name: 'Gemini 2.5 Flash' },
     { code: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash-Lite' },
     { code: 'gemini-1.5-flash',    name: 'Gemini 1.5 Flash (Fallback)' }
@@ -510,8 +511,8 @@ Return ONLY valid JSON matching this schema:
 
   const candidateModels = [
     { code: AUDIT_PRIMARY_MODEL,   name: 'Gemini 3.5 Flash-Lite (Primary: 500 RPD)' },
-    { code: AUDIT_SECONDARY_MODEL, name: 'Gemini 3.5 Flash (Secondary: 20 RPD)' },
-    { code: AUDIT_TERTIARY_MODEL,  name: 'Gemini 3.1 Flash-Lite (High Quota: 500 RPD)' },
+    { code: AUDIT_SECONDARY_MODEL, name: 'Gemini 3.1 Flash-Lite (Secondary: 500 RPD)' },
+    { code: AUDIT_TERTIARY_MODEL,  name: 'Gemini 3.5 Flash (Deep Eval: 20 RPD)' },
     { code: 'gemini-2.5-flash',    name: 'Gemini 2.5 Flash' },
     { code: 'gemini-1.5-flash',    name: 'Gemini 1.5 Flash (Fallback)' }
   ];
