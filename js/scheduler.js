@@ -788,11 +788,6 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
           Monday: 'Morning Half (5H)', Tuesday: 'RD', Wednesday: 'Flexible',
           Thursday: 'Flexible', Friday: 'Flexible', Saturday: 'Flexible', Sunday: 'Flexible'
         };
-      } else if (penny.dayPrefs.Wednesday === 'Morning Preferred' && penny.dayPrefs.Saturday === 'Morning Preferred') {
-        // Migrate legacy hardcoded script defaults on Penny
-        penny.dayPrefs.Wednesday = 'Flexible';
-        penny.dayPrefs.Saturday = 'Flexible';
-        if (penny.shiftPref === 'Morning Preferred') penny.shiftPref = 'Flexible';
       }
     }
 
@@ -1594,7 +1589,7 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
         const candidate = rotatingPool.find(tm => {
           if (d.shifts[tm.empNo] !== '8H_0730-1630') return false;
           const pref = tm.dayPrefs ? tm.dayPrefs[d.dayOfWeek] : null;
-          return pref !== 'Morning Only';
+          return pref !== 'Morning Only' && pref !== 'Morning Preferred';
         });
         if (!candidate) break;
         d.shifts[candidate.empNo] = '8H_1230-2130';
@@ -1606,7 +1601,7 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
         const candidate = rotatingPool.find(tm => {
           if (d.shifts[tm.empNo] !== '8H_1230-2130') return false;
           const pref = tm.dayPrefs ? tm.dayPrefs[d.dayOfWeek] : null;
-          return pref !== 'Night Only';
+          return pref !== 'Night Only' && pref !== 'Night Preferred';
         });
         if (!candidate) break;
         d.shifts[candidate.empNo] = '8H_0730-1630';
@@ -1637,6 +1632,8 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
         if (stat.m - stat.n >= 2) {
           for (const d of wDays) {
             if (d.shifts[tm.empNo] === '8H_0730-1630') {
+              const pref = tm.dayPrefs ? tm.dayPrefs[d.dayOfWeek] : null;
+              if (pref === 'Morning Only' || pref === 'Morning Preferred') continue;
               let curFullAm = 0, curHalfAm = 0, curPm = 0;
               Object.values(d.shifts).forEach(s => {
                 if (isFullMorningShift(s)) curFullAm++;
@@ -1664,6 +1661,8 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
         } else if (stat.n - stat.m >= 2) {
           for (const d of wDays) {
             if (d.shifts[tm.empNo] === '8H_1230-2130') {
+              const pref = tm.dayPrefs ? tm.dayPrefs[d.dayOfWeek] : null;
+              if (pref === 'Night Only' || pref === 'Night Preferred') continue;
               let curFullAm = 0, curHalfAm = 0, curPm = 0;
               Object.values(d.shifts).forEach(s => {
                 if (isFullMorningShift(s)) curFullAm++;
@@ -1707,7 +1706,7 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
             if (d.shifts[tAm.empNo] === '8H_0730-1630' && d.shifts[tPm.empNo] === '8H_1230-2130') {
               const prefAm = tAm.dayPrefs ? tAm.dayPrefs[d.dayOfWeek] : null;
               const prefPm = tPm.dayPrefs ? tPm.dayPrefs[d.dayOfWeek] : null;
-              if (prefAm === 'Morning Only' || prefPm === 'Night Only') continue;
+              if (prefAm === 'Morning Only' || prefAm === 'Morning Preferred' || prefPm === 'Night Only' || prefPm === 'Night Preferred') continue;
 
               let amCh = 0, pmCh = 0;
               currentTeammates.forEach(t => {
@@ -1746,7 +1745,7 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
             if (d.shifts[tPm.empNo] === '8H_1230-2130' && d.shifts[tAm.empNo] === '8H_0730-1630') {
               const prefPm = tPm.dayPrefs ? tPm.dayPrefs[d.dayOfWeek] : null;
               const prefAm = tAm.dayPrefs ? tAm.dayPrefs[d.dayOfWeek] : null;
-              if (prefPm === 'Night Only' || prefAm === 'Morning Only') continue;
+              if (prefPm === 'Night Only' || prefPm === 'Night Preferred' || prefAm === 'Morning Only' || prefAm === 'Morning Preferred') continue;
 
               let amCh = 0, pmCh = 0;
               currentTeammates.forEach(t => {
@@ -1799,6 +1798,8 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
       if (cum[tm.empNo].m - cum[tm.empNo].n >= 2) {
         for (const d of schedule.days) {
           if (d.shifts[tm.empNo] === '8H_0730-1630') {
+            const pref = tm.dayPrefs ? tm.dayPrefs[d.dayOfWeek] : null;
+            if (pref === 'Morning Only' || pref === 'Morning Preferred') continue;
             let curFullAm = 0, curHalfAm = 0, curPm = 0;
             Object.values(d.shifts).forEach(s => {
               if (isFullMorningShift(s)) curFullAm++;
@@ -1826,6 +1827,8 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
       } else if (cum[tm.empNo].n - cum[tm.empNo].m >= 2) {
         for (const d of schedule.days) {
           if (d.shifts[tm.empNo] === '8H_1230-2130') {
+            const pref = tm.dayPrefs ? tm.dayPrefs[d.dayOfWeek] : null;
+            if (pref === 'Night Only' || pref === 'Night Preferred') continue;
             let curFullAm = 0, curHalfAm = 0, curPm = 0;
             Object.values(d.shifts).forEach(s => {
               if (isFullMorningShift(s)) curFullAm++;
@@ -1881,7 +1884,7 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
             if (d.shifts[tAm.empNo] === '8H_0730-1630' && d.shifts[tPm.empNo] === '8H_1230-2130') {
               const prefAm = tAm.dayPrefs ? tAm.dayPrefs[d.dayOfWeek] : null;
               const prefPm = tPm.dayPrefs ? tPm.dayPrefs[d.dayOfWeek] : null;
-              if (prefAm === 'Morning Only' || prefPm === 'Night Only') continue;
+              if (prefAm === 'Morning Only' || prefAm === 'Morning Preferred' || prefPm === 'Night Only' || prefPm === 'Night Preferred') continue;
 
               let amCh = 0, pmCh = 0;
               currentTeammates.forEach(t => {
@@ -1934,7 +1937,7 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
             if (d.shifts[tPm.empNo] === '8H_1230-2130' && d.shifts[tAm.empNo] === '8H_0730-1630') {
               const prefPm = tPm.dayPrefs ? tPm.dayPrefs[d.dayOfWeek] : null;
               const prefAm = tAm.dayPrefs ? tAm.dayPrefs[d.dayOfWeek] : null;
-              if (prefPm === 'Night Only' || prefAm === 'Morning Only') continue;
+              if (prefPm === 'Night Only' || prefPm === 'Night Preferred' || prefAm === 'Morning Only' || prefAm === 'Morning Preferred') continue;
 
               let amCh = 0, pmCh = 0;
               currentTeammates.forEach(t => {
@@ -1988,7 +1991,7 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
       const candidates = rotatingPool.filter(tm => {
         if (d.shifts[tm.empNo] !== '8H_1230-2130') return false;
         const pref = tm.dayPrefs ? tm.dayPrefs[d.dayOfWeek] : null;
-        if (pref === 'Night Only') return false;
+        if (pref === 'Night Only' || pref === 'Night Preferred') return false;
         const s = getWeekStat(tm.empNo);
         return Math.abs((s.m + 1) - (s.n - 1)) <= 2;
       });
@@ -2008,7 +2011,7 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
       const candidates = rotatingPool.filter(tm => {
         if (d.shifts[tm.empNo] !== '8H_0730-1630') return false;
         const pref = tm.dayPrefs ? tm.dayPrefs[d.dayOfWeek] : null;
-        if (pref === 'Morning Only') return false;
+        if (pref === 'Morning Only' || pref === 'Morning Preferred') return false;
         const s = getWeekStat(tm.empNo);
         return Math.abs((s.m - 1) - (s.n + 1)) <= 2;
       });
@@ -2361,7 +2364,7 @@ OPERATIONAL RULES & PRIORITY CONSTRAINTS (IN ORDER OF PRIORITY):
    - Dynamically schedule each teammate according to their daySpecificPrefs, halfDayPref, and shiftPref.
    - Do NOT alter their fixed rest day or preset half day.
    - If a teammate has 'Morning Only' or 'Night Only', strictly assign only that shift type on that day.
-   - If a teammate has 'Morning Preferred' or 'Night Preferred', prioritize that shift type.
+   - If a teammate has 'Morning Preferred' or 'Night Preferred', prioritize that shift type. Specifically, if a teammate has 'Saturday: Morning Preferred', they MUST be scheduled on the Morning Shift ('8H_0730-1630') on Saturdays.
 
 7. ANTI-FATIGUE & HEALTH RESTRICTIONS:
    - Forbid assigning a Night shift ('8H_1230-2130') followed directly by a full Morning shift ('8H_0730-1630') the next day (turnaround rest must be >= 15 hours).
@@ -2613,11 +2616,11 @@ function generateLegalWeeklyPatterns(tm, weekDays, prevSundayShift, prevNightStr
                 if (isNightShift(shift)) prefScore += 2000;
                 else if (shift !== 'RD') invalidStrict = true;
               } else if (dp === 'Morning Preferred') {
-                if (isAnyMorningShift(shift)) prefScore += 1200;
-                else if (isNightShift(shift)) prefScore -= 400;
+                if (isAnyMorningShift(shift)) prefScore += 250000;
+                else if (isNightShift(shift)) prefScore -= 250000;
               } else if (dp === 'Night Preferred') {
-                if (isNightShift(shift)) prefScore += 1200;
-                else if (isFullMorningShift(shift)) prefScore -= 400;
+                if (isNightShift(shift)) prefScore += 250000;
+                else if (isFullMorningShift(shift)) prefScore -= 250000;
               } else if (dp === 'RD') {
                 if (shift !== 'RD') invalidStrict = true;
               } else if (dp.includes('Half') || dp.includes('4H') || dp.includes('5H')) {
@@ -2636,6 +2639,16 @@ function generateLegalWeeklyPatterns(tm, weekDays, prevSundayShift, prevNightStr
             else break;
           }
 
+          let hasViolatedPref = false;
+          if (tm.dayPrefs) {
+            weekDays.forEach((wd, dIdx) => {
+              const dp = tm.dayPrefs[wd.dayOfWeek];
+              const shift = seq[dIdx];
+              if (dp === 'Morning Preferred' && isNightShift(shift)) hasViolatedPref = true;
+              if (dp === 'Night Preferred' && isFullMorningShift(shift)) hasViolatedPref = true;
+            });
+          }
+
           const key = seq.join('|');
           if (!seen.has(key)) {
             seen.add(key);
@@ -2652,7 +2665,8 @@ function generateLegalWeeklyPatterns(tm, weekDays, prevSundayShift, prevNightStr
               endNightStreak,
               rdIdx: r,
               hdIdx: h,
-              prefScore
+              prefScore,
+              hasViolatedPref
             });
           }
         }
@@ -2663,16 +2677,16 @@ function generateLegalWeeklyPatterns(tm, weekDays, prevSundayShift, prevNightStr
     const filterAndNormalizeRatioGroup = (group) => {
       if (!group.length) return [];
       const minFull = Math.min(...group.map(p => p.fullTurnarounds));
-      const bestFullGroup = group.filter(p => p.fullTurnarounds <= minFull);
+      const maxAllowed = minFull === 0 ? 1 : minFull;
+      const bestFullGroup = group.filter(p => p.fullTurnarounds <= maxAllowed);
       const minHd = Math.min(...bestFullGroup.map(p => p.hdTurnarounds));
       return bestFullGroup
         .filter(p => p.hdTurnarounds <= minHd + 1)
         .map(p => {
-          const excess = (p.fullTurnarounds - minFull) * 10 + Math.max(0, p.hdTurnarounds - minHd);
           return {
             ...p,
-            excessFatigue: excess,
-            prefScore: p.prefScore - p.fullTurnarounds * 25000 - p.hdTurnarounds * 400 - excess * 1500
+            excessFatigue: 0,
+            prefScore: p.prefScore
           };
         });
     };
@@ -2702,6 +2716,11 @@ function generateLegalWeeklyPatterns(tm, weekDays, prevSundayShift, prevNightStr
     patterns = collectCandidates([0, 1, 2, 3, 4, 5, 6], [0, 1, 2, 3, 4, 5, 6], false);
   }
 
+  const nonViolating = patterns.filter(p => !p.hasViolatedPref);
+  if (nonViolating.length >= 3) {
+    return nonViolating;
+  }
+
   return patterns;
 }
 
@@ -2721,21 +2740,46 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
     const curAm = (cumStats[tm.empNo] && cumStats[tm.empNo].am !== undefined) ? cumStats[tm.empNo].am : 0;
     const curPm = (cumStats[tm.empNo] && cumStats[tm.empNo].pm !== undefined) ? cumStats[tm.empNo].pm : 0;
 
-    pats.sort((a, b) => {
-      const projDiffA = Math.abs((curAm + a.totalAm) - (curPm + a.pmFull));
-      const projDiffB = Math.abs((curAm + b.totalAm) - (curPm + b.pmFull));
-      if (a.fullTurnarounds !== b.fullTurnarounds) return a.fullTurnarounds - b.fullTurnarounds;
-      if (projDiffA !== projDiffB) return projDiffA - projDiffB;
-      if (b.prefScore !== a.prefScore) return b.prefScore - a.prefScore;
-      return Math.random() - 0.5;
-    });
+    const hasExplicitDayPref = Object.values(tm.dayPrefs || {}).some(v => v === 'Morning Preferred' || v === 'Night Preferred' || v === 'Morning Only' || v === 'Night Only');
+    const turnWeight = hasExplicitDayPref ? 25000 : 500000;
 
-    tmPatterns[tm.empNo] = pats;
+    const scoredPats = pats.map(p => {
+      const projDiff = Math.abs((curAm + p.totalAm) - (curPm + p.pmFull));
+      const score = p.prefScore - (p.fullTurnarounds || 0) * turnWeight - (p.hdTurnarounds || 0) * 400 - projDiff * 6000 + (Math.random() * 2000 - 1000);
+      return { p, score };
+    });
+    scoredPats.sort((a, b) => b.score - a.score);
+    tmPatterns[tm.empNo] = scoredPats.map(sp => sp.p);
   });
 
   const hasBranchManager = currentTeammates.some(t => t.position && t.position.toLowerCase().includes('branch manager') && !t.position.toLowerCase().includes('assistant'));
   const hasAssistantBranchManager = currentTeammates.some(t => t.position && t.position.toLowerCase().includes('assistant branch manager'));
   const managerRuleActive = hasBranchManager && hasAssistantBranchManager;
+
+  const tmMetadata = rotatingPool.map(tm => {
+    const hasExplicitDayPref = Object.values(tm.dayPrefs || {}).some(v => v === 'Morning Preferred' || v === 'Night Preferred' || v === 'Morning Only' || v === 'Night Only');
+    const turnWeight = hasExplicitDayPref ? 25000 : 500000;
+    const targetRdDay = extractRestDayName(tm);
+    const prefRdIdx = (targetRdDay && targetRdDay !== 'Flexible') ? weekDays.findIndex(d => d.dayOfWeek === targetRdDay) : -1;
+    const targetHdDay = extractHalfDayName(tm);
+    const prefHdIdx = (targetHdDay && targetHdDay !== 'None' && targetHdDay !== 'Flexible') ? weekDays.findIndex(d => d.dayOfWeek === targetHdDay) : -1;
+    const curAm = (cumStats[tm.empNo] && cumStats[tm.empNo].am !== undefined) ? cumStats[tm.empNo].am : 0;
+    const curPm = (cumStats[tm.empNo] && cumStats[tm.empNo].pm !== undefined) ? cumStats[tm.empNo].pm : 0;
+    const isChinese = tm.race === 'Chinese';
+    const isManager = tm.isPharmacist || (tm.position && (tm.position.includes('Manager') || tm.position.includes('Pharmacist')));
+    return {
+      tm,
+      empNo: tm.empNo,
+      isChinese,
+      isManager,
+      turnWeight,
+      prefRdIdx,
+      prefHdIdx,
+      curAm,
+      curPm
+    };
+  });
+  const vanessaMeta = tmMetadata.find(m => m.empNo === 'PMG03801' || m.tm.nickname === 'VANESSA');
 
   function evalCombination(selected) {
     let penalty = 0;
@@ -2750,24 +2794,21 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
       let mgrAm = (isAnyMorningShift(williamSeq[day]) ? 1 : 0);
       let mgrPm = (isNightShift(williamSeq[day]) ? 1 : 0);
 
-      rotatingPool.forEach(tm => {
-        const s = selected[tm.empNo].seq[day];
+      tmMetadata.forEach(m => {
+        const s = selected[m.empNo].seq[day];
         const isMorn = isAnyMorningShift(s);
         const isNight = isNightShift(s);
-        const isHalf = isHalfDayMorningShift(s);
-        const isChinese = tm.race === 'Chinese';
-        const isManager = tm.isPharmacist || (tm.position && (tm.position.includes('Manager') || tm.position.includes('Pharmacist')));
 
         if (isFullMorningShift(s)) fullAm++;
-        else if (isHalf) halfAm++;
+        else if (isHalfDayMorningShift(s)) halfAm++;
         else if (isNight) pm++;
 
         if (isMorn) {
-          if (isChinese) chAm++;
-          if (isManager) mgrAm++;
+          if (m.isChinese) chAm++;
+          if (m.isManager) mgrAm++;
         } else if (isNight) {
-          if (isChinese) chPm++;
-          if (isManager) mgrPm++;
+          if (m.isChinese) chPm++;
+          if (m.isManager) mgrPm++;
         }
       });
 
@@ -2794,21 +2835,23 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
       }
 
       // 2b. Vanessa Anak Blaise - Culture Adaptation Senior Pairing
-      const vanessa = rotatingPool.find(t => t.empNo === 'PMG03801' || t.nickname === 'VANESSA');
-      if (vanessa && selected[vanessa.empNo]) {
-        const vShift = selected[vanessa.empNo].seq[day];
+      if (vanessaMeta && selected[vanessaMeta.empNo]) {
+        const vShift = selected[vanessaMeta.empNo].seq[day];
         if (vShift && vShift !== 'RD' && vShift !== 'PH' && vShift !== 'OFF') {
           const isVAm = isAnyMorningShift(vShift);
           let seniorOnDuty = false;
-          rotatingPool.forEach(tm => {
-            if (tm.empNo !== vanessa.empNo) {
-              const ts = selected[tm.empNo].seq[day];
+          for (let k = 0; k < tmMetadata.length; k++) {
+            const m = tmMetadata[k];
+            if (m.empNo !== vanessaMeta.empNo) {
+              const ts = selected[m.empNo].seq[day];
               if (ts && ts !== 'RD' && ts !== 'PH' && ts !== 'OFF') {
-                const isTAm = isAnyMorningShift(ts);
-                if (isVAm === isTAm) seniorOnDuty = true;
+                if (isVAm === isAnyMorningShift(ts)) {
+                  seniorOnDuty = true;
+                  break;
+                }
               }
             }
-          });
+          }
           if (isVAm && isAnyMorningShift(williamSeq[day])) {
             seniorOnDuty = true;
           }
@@ -2826,23 +2869,19 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
     }
 
     // Weekly Parity and Cumulative Parity across ALL rotating staff
-    rotatingPool.forEach(tm => {
-      const p = selected[tm.empNo];
+    tmMetadata.forEach(m => {
+      const p = selected[m.empNo];
       penalty -= p.prefScore;
-      penalty += (p.fullTurnarounds || 0) * 5000000;
-      penalty += (p.excessFatigue || 0) * 250000;
+      penalty += (p.fullTurnarounds || 0) * m.turnWeight;
+      penalty += (p.hdTurnarounds || 0) * 400;
 
       // Hard constraint: Match preset fixed rest day from Teammate Profiles
-      const targetRdDay = extractRestDayName(tm);
-      const prefRdIdx = (targetRdDay && targetRdDay !== 'Flexible') ? weekDays.findIndex(d => d.dayOfWeek === targetRdDay) : -1;
-      if (prefRdIdx !== -1 && p.rdIdx !== prefRdIdx) {
+      if (m.prefRdIdx !== -1 && p.rdIdx !== m.prefRdIdx) {
         penalty += 10000000;
       }
 
       // Hard constraint: Match preset fixed half day from Teammate Profiles
-      const targetHdDay = extractHalfDayName(tm);
-      const prefHdIdx = (targetHdDay && targetHdDay !== 'None' && targetHdDay !== 'Flexible') ? weekDays.findIndex(d => d.dayOfWeek === targetHdDay) : -1;
-      if (prefHdIdx !== -1 && p.hdIdx !== prefHdIdx) {
+      if (m.prefHdIdx !== -1 && p.hdIdx !== m.prefHdIdx) {
         penalty += 10000000;
       }
 
@@ -2855,10 +2894,8 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
       penalty += weeklyDev * 2500;
 
       // Cumulative monthly AM (8H + 4H) vs PM (8H) parity
-      const curAm = (cumStats[tm.empNo] && cumStats[tm.empNo].am !== undefined) ? cumStats[tm.empNo].am : 0;
-      const curPm = (cumStats[tm.empNo] && cumStats[tm.empNo].pm !== undefined) ? cumStats[tm.empNo].pm : 0;
-      const newAm = curAm + p.totalAm;
-      const newPm = curPm + p.pmFull;
+      const newAm = m.curAm + p.totalAm;
+      const newPm = m.curPm + p.pmFull;
       const cumDiff = Math.abs(newAm - newPm);
       penalty += cumDiff * cumDiff * 8000;
       if (cumDiff > 2) {
@@ -2872,16 +2909,25 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
   let best = null;
   let minPenalty = Infinity;
 
-  // Phase 1: Exact bounded DFS over each rotating teammate's top balanced patterns (up to 4 per teammate = max 16,384 combinations)
-  const topCandidateLists = rotatingPool.map(tm => {
-    const pats = tmPatterns[tm.empNo] || [];
+  // Phase 1: Exact bounded DFS over each rotating teammate's top balanced patterns (up to 3 per teammate = 2,187 combinations)
+  const topCandidateLists = tmMetadata.map(m => {
+    const pats = tmPatterns[m.empNo] || [];
     if (!pats.length) return [{ seq: new Array(7).fill('RD'), amFull: 0, pmFull: 0, totalAm: 0, deviation: 0, fullTurnarounds: 0, hdTurnarounds: 0, excessFatigue: 0, endNightStreak: 0, prefScore: 0 }];
-    const balanced = pats.filter(p => p.amFull === 2 && p.pmFull === 3 && p.fullTurnarounds === 0);
-    const alt = pats.filter(p => !(p.amFull === 2 && p.pmFull === 3 && p.fullTurnarounds === 0));
-    // Dynamically shuffle top balanced candidates so repeated generations explore diverse valid solutions
-    const shuffledBalanced = [...balanced].sort(() => Math.random() - 0.5);
-    const shuffledAlt = [...alt].sort(() => Math.random() - 0.5);
-    return [...shuffledBalanced.slice(0, 4), ...shuffledAlt.slice(0, 2)].slice(0, 4);
+
+    // Rank candidate patterns by preference alignment, turnaround safety, and projected cumulative parity
+    const sorted = [...pats].map(p => {
+      const projAm = m.curAm + p.totalAm;
+      const projPm = m.curPm + p.pmFull;
+      const projDiff = Math.abs(projAm - projPm);
+      const candScore = p.prefScore
+        - (p.fullTurnarounds || 0) * m.turnWeight
+        - (p.hdTurnarounds || 0) * 400
+        - projDiff * 6000
+        + (Math.random() * 2000 - 1000); // Stochastic tie-breaking for diversity
+      return { p, candScore };
+    }).sort((a, b) => b.candScore - a.candScore);
+
+    return sorted.slice(0, 3).map(item => item.p);
   });
 
   let dfsCount = 0;
@@ -2978,7 +3024,16 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
     });
 
     while (pm < 3 && (fullAm + halfAm) > 3 && fullAm > 2) {
-      const candidates = rotatingPool.filter(tm => best[tm.empNo].seq[day] === '8H_0730-1630');
+      let candidates = rotatingPool.filter(tm => {
+        if (best[tm.empNo].seq[day] !== '8H_0730-1630') return false;
+        const dayName = weekDays[day]?.dayOfWeek;
+        const pref = tm.dayPrefs && dayName ? tm.dayPrefs[dayName] : null;
+        if (pref === 'Morning Preferred' || pref === 'Morning Only') return false;
+        return true;
+      });
+      if (!candidates.length) {
+        candidates = rotatingPool.filter(tm => best[tm.empNo].seq[day] === '8H_0730-1630');
+      }
       if (!candidates.length) break;
 
       candidates.sort((a, b) => {
@@ -3009,7 +3064,16 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
     }
 
     while ((fullAm + halfAm) < 3 && pm > 3) {
-      const pmCandidates = rotatingPool.filter(tm => best[tm.empNo].seq[day] && isNightShift(best[tm.empNo].seq[day]));
+      let pmCandidates = rotatingPool.filter(tm => {
+        if (!best[tm.empNo].seq[day] || !isNightShift(best[tm.empNo].seq[day])) return false;
+        const dayName = weekDays[day]?.dayOfWeek;
+        const pref = tm.dayPrefs && dayName ? tm.dayPrefs[dayName] : null;
+        if (pref === 'Night Preferred' || pref === 'Night Only') return false;
+        return true;
+      });
+      if (!pmCandidates.length) {
+        pmCandidates = rotatingPool.filter(tm => best[tm.empNo].seq[day] && isNightShift(best[tm.empNo].seq[day]));
+      }
       if (!pmCandidates.length) break;
 
       pmCandidates.sort((a, b) => {
