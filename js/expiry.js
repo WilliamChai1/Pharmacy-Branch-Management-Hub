@@ -228,6 +228,18 @@ function initExpiryModule() {
   setupExpiryEventListeners();
   renderExpiryUI();
   updateAccountsShareUi(document.getElementById('expiryBranchFilter')?.value || 'Kota Sentosa');
+
+  // Asynchronously hydrate from IndexedDB (preserves complete expiry dataset without localStorage quota limits)
+  if (typeof safeStorageGet === 'function') {
+    safeStorageGet(EXPIRY_STORAGE_KEY).then(idbItems => {
+      if (Array.isArray(idbItems) && idbItems.length > 0) {
+        if (!expiryItems || expiryItems.length < idbItems.length) {
+          expiryItems = ensureUniqueExpiryRowIds(idbItems);
+          renderExpiryUI();
+        }
+      }
+    }).catch(console.warn);
+  }
   
   // Immediately synchronize with OneDrive if folder is connected
   if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.syncStockExpiryWithOneDrive === 'function') {
@@ -294,7 +306,11 @@ function loadLocalExpiryData() {
 function saveLocalExpiryData() {
   try {
     expiryItems = ensureUniqueExpiryRowIds(expiryItems);
-    localStorage.setItem(EXPIRY_STORAGE_KEY, JSON.stringify(expiryItems));
+    if (typeof safeStorageSet === 'function') {
+      safeStorageSet(EXPIRY_STORAGE_KEY, expiryItems);
+    } else {
+      localStorage.setItem(EXPIRY_STORAGE_KEY, JSON.stringify(expiryItems));
+    }
   } catch (e) {
     console.warn('[PMG Expiry] Error saving local expiry data:', e);
   }

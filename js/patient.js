@@ -866,6 +866,20 @@ function initPatientModule() {
   updateBackupStatusBadge();
   updateDailyBackupBanner();
   renderPatientModule();
+
+  // Asynchronously hydrate from IndexedDB (preserves complete patient records even if localStorage was quota-capped)
+  if (typeof safeStorageGet === 'function') {
+    safeStorageGet(PATIENTS_STORAGE_KEY).then(idbPatients => {
+      if (Array.isArray(idbPatients) && idbPatients.length > 0) {
+        if (!patientsData || patientsData.length < idbPatients.length) {
+          console.log(`[PMG Patient] Hydrated ${idbPatients.length} patient records from IndexedDB.`);
+          patientsData = idbPatients;
+          renderPatientModule();
+        }
+      }
+    }).catch(err => console.warn('[PMG Patient] IDB hydration warning:', err));
+  }
+
   // Auto-sync customer online bookings from cloud relay (silent background fetch + continuous polling every 30s)
   if (typeof syncOnlineBookingsFromCloud === 'function') {
     syncOnlineBookingsFromCloud(false).catch(() => {});
@@ -1048,7 +1062,15 @@ function loadPatientsData() {
 }
 
 function savePatientsData() {
-  localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
+  if (typeof safeStorageSet === 'function') {
+    safeStorageSet(PATIENTS_STORAGE_KEY, patientsData);
+  } else {
+    try {
+      localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
+    } catch (e) {
+      console.warn('[PMG Patient] LocalStorage quota warning:', e);
+    }
+  }
   if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveToOneDrive === 'function') {
     window.pmgOneDriveSync.saveToOneDrive(patientsData).catch(err => {
       console.warn('[PMG OneDrive Sync] Auto-save error:', err);
@@ -2727,8 +2749,14 @@ function sendReminderBookingLinkWa(patientId, reminderType, medId) {
   // Persist locally & push to OneDrive
   if (typeof savePatientsData === 'function') {
     savePatientsData();
+  } else if (typeof safeStorageSet === 'function') {
+    safeStorageSet(PATIENTS_STORAGE_KEY, patientsData);
   } else if (typeof PATIENTS_STORAGE_KEY !== 'undefined') {
-    localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
+    try {
+      localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
+    } catch (e) {
+      console.warn('[PMG Patient] LocalStorage quota warning:', e);
+    }
   }
 
   // Immediately refresh schedule view so "Done (Link Sent)" badge appears

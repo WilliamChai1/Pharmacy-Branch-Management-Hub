@@ -247,7 +247,11 @@
         this._startBackgroundWatcher();
 
         // Perform immediate bidirectional sync
-        await this.manualSync();
+        try {
+          await this.manualSync();
+        } catch (syncErr) {
+          console.warn('[PMG OneDrive Sync] Initial sync warning during connect:', syncErr);
+        }
 
         // Cross-PC sync: Refresh timetable preferences & saved roster if scheduler is open
         try {
@@ -845,8 +849,16 @@
         }
 
         // Persist local patientsData and refresh views
-        if (typeof PATIENTS_STORAGE_KEY !== 'undefined' && typeof patientsData !== 'undefined') {
-          localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
+        if (typeof savePatientsData === 'function') {
+          savePatientsData();
+        } else if (typeof safeStorageSet === 'function') {
+          safeStorageSet(PATIENTS_STORAGE_KEY, patientsData);
+        } else if (typeof PATIENTS_STORAGE_KEY !== 'undefined' && typeof patientsData !== 'undefined') {
+          try {
+            localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
+          } catch (e) {
+            console.warn('[PMG OneDrive Sync] LocalStorage quota warning for patientsData:', e);
+          }
         }
         if (typeof renderPatientModule === 'function') {
           renderPatientModule();
@@ -857,9 +869,11 @@
           : (syncedBranches[0] || this.activeBranchFolder || 'Branch');
 
         // Record last backup details in localStorage
-        localStorage.setItem('pmg_last_backup_date', nowIso);
-        localStorage.setItem('pmg_last_backup_type', `OneDrive Live (${mainBranchLabel})`);
-        if (session?.displayName) localStorage.setItem('pmg_last_backup_user', session.displayName);
+        try {
+          localStorage.setItem('pmg_last_backup_date', nowIso);
+          localStorage.setItem('pmg_last_backup_type', `OneDrive Live (${mainBranchLabel})`);
+          if (session?.displayName) localStorage.setItem('pmg_last_backup_user', session.displayName);
+        } catch (_) {}
 
         if (typeof updateBackupStatusBadge === 'function') updateBackupStatusBadge();
         if (typeof updateDailyBackupBanner === 'function') updateDailyBackupBanner();
@@ -932,8 +946,16 @@
         if (typeof patientsData !== 'undefined') {
           const otherPatients = patientsData.filter(p => !this._patientMatchesBranch(p, targetBranch));
           patientsData = [...otherPatients, ...mergedBranchPatients];
-          if (typeof PATIENTS_STORAGE_KEY !== 'undefined') {
-            localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
+          if (typeof savePatientsData === 'function') {
+            savePatientsData();
+          } else if (typeof safeStorageSet === 'function') {
+            safeStorageSet(PATIENTS_STORAGE_KEY, patientsData);
+          } else if (typeof PATIENTS_STORAGE_KEY !== 'undefined') {
+            try {
+              localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
+            } catch (e) {
+              console.warn('[PMG OneDrive Sync] LocalStorage quota warning for patientsData:', e);
+            }
           }
         }
 
@@ -968,9 +990,11 @@
         this.lastKnownModified = writtenFile.lastModified;
 
         // Record last backup details in localStorage
-        localStorage.setItem('pmg_last_backup_date', nowIso);
-        localStorage.setItem('pmg_last_backup_type', `OneDrive Live (${targetBranch})`);
-        if (session?.displayName) localStorage.setItem('pmg_last_backup_user', session.displayName);
+        try {
+          localStorage.setItem('pmg_last_backup_date', nowIso);
+          localStorage.setItem('pmg_last_backup_type', `OneDrive Live (${targetBranch})`);
+          if (session?.displayName) localStorage.setItem('pmg_last_backup_user', session.displayName);
+        } catch (_) {}
 
         if (typeof updateBackupStatusBadge === 'function') updateBackupStatusBadge();
         if (typeof updateDailyBackupBanner === 'function') updateDailyBackupBanner();
@@ -1890,7 +1914,15 @@
         if (typeof expiryItems !== 'undefined') {
           expiryItems = merged;
         }
-        localStorage.setItem('pmg_stock_expiry_data', JSON.stringify(merged));
+        if (typeof safeStorageSet === 'function') {
+          safeStorageSet('pmg_stock_expiry_data', merged);
+        } else {
+          try {
+            localStorage.setItem('pmg_stock_expiry_data', JSON.stringify(merged));
+          } catch (e) {
+            console.warn('[PMG OneDrive Sync] LocalStorage quota warning for expiry:', e);
+          }
+        }
 
         // Re-render UI
         if (typeof renderExpiryUI === 'function') {
@@ -2056,7 +2088,11 @@
         }
 
         if (overallChanged) {
-          localStorage.setItem('pmg_returns_records_v1', JSON.stringify(localReturns));
+          try {
+            localStorage.setItem('pmg_returns_records_v1', JSON.stringify(localReturns));
+          } catch (e) {
+            console.warn('[PMG OneDrive Sync] LocalStorage quota warning for returns:', e);
+          }
           if (window.pmgReturns && typeof window.pmgReturns.onCloudSync === 'function') {
             await window.pmgReturns.onCloudSync(localReturns);
           } else if (typeof renderReturnsUI === 'function') {
@@ -2186,7 +2222,9 @@
             const localRaw = localStorage.getItem(`pmg_pharmacist_schedule_${bCode}`);
             const localSched = localRaw ? JSON.parse(localRaw) : null;
             if (!localSched || (remoteTime && remoteTime > (localSched.lastUpdated || ''))) {
-              localStorage.setItem(`pmg_pharmacist_schedule_${bCode}`, JSON.stringify(cloudSched));
+              try {
+                localStorage.setItem(`pmg_pharmacist_schedule_${bCode}`, JSON.stringify(cloudSched));
+              } catch (_) {}
               console.log(`[PMG OneDrive Sync] Auto-updated schedule for ${bCode} from OneDrive`);
             }
           }
@@ -2220,8 +2258,16 @@
         if (typeof patientsData !== 'undefined') {
           const merged = this._mergePatientArrays(patientsData, incomingPatients);
           patientsData = merged;
-          if (typeof PATIENTS_STORAGE_KEY !== 'undefined') {
-            localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
+          if (typeof savePatientsData === 'function') {
+            savePatientsData();
+          } else if (typeof safeStorageSet === 'function') {
+            safeStorageSet(PATIENTS_STORAGE_KEY, patientsData);
+          } else if (typeof PATIENTS_STORAGE_KEY !== 'undefined') {
+            try {
+              localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
+            } catch (e) {
+              console.warn('[PMG OneDrive Sync] LocalStorage quota warning for patientsData:', e);
+            }
           }
           if (typeof renderPatientModule === 'function') renderPatientModule();
 

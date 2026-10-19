@@ -2,8 +2,9 @@
 'use strict';
 
 const DB_NAME = 'PMG_HEALTH_DB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_DOCUMENTS = 'documents';
+const STORE_APP_DATA = 'app_data';
 
 let dbInstance = null;
 
@@ -19,6 +20,9 @@ function openIndexedDB() {
         const docStore = db.createObjectStore(STORE_DOCUMENTS, { keyPath: 'id' });
         docStore.createIndex('patientId', 'patientId', { unique: false });
         docStore.createIndex('date', 'date', { unique: false });
+      }
+      if (!db.objectStoreNames.contains(STORE_APP_DATA)) {
+        db.createObjectStore(STORE_APP_DATA);
       }
     };
 
@@ -217,7 +221,146 @@ async function importAllDocuments(docsList = []) {
   });
 }
 
+// ─── KEY-VALUE STORAGE ENGINE (LARGE DATASETS / ZERO QUOTA LIMITS) ───────────
+function getIdbItem(key) {
+  return new Promise(async (resolve) => {
+    try {
+      const db = await openIndexedDB();
+      if (!db.objectStoreNames.contains(STORE_APP_DATA)) return resolve(null);
+      const tx = db.transaction([STORE_APP_DATA], 'readonly');
+      const store = tx.objectStore(STORE_APP_DATA);
+      const req = store.get(key);
+      req.onsuccess = () => resolve(req.result !== undefined ? req.result : null);
+      req.onerror = () => resolve(null);
+    } catch (e) {
+      console.warn('[PMG IDB] getIdbItem error:', e);
+      resolve(null);
+    }
+  });
+}
+
+function setIdbItem(key, value) {
+  return new Promise(async (resolve) => {
+    try {
+      const db = await openIndexedDB();
+      if (!db.objectStoreNames.contains(STORE_APP_DATA)) return resolve(false);
+      const tx = db.transaction([STORE_APP_DATA], 'readwrite');
+      const store = tx.objectStore(STORE_APP_DATA);
+      const req = store.put(value, key);
+      req.onsuccess = () => resolve(true);
+      req.onerror = (e) => {
+        console.warn('[PMG IDB] setIdbItem error:', e);
+        resolve(false);
+      };
+    } catch (e) {
+      console.warn('[PMG IDB] setIdbItem exception:', e);
+      resolve(false);
+    }
+  });
+}
+
+function removeIdbItem(key) {
+  return new Promise(async (resolve) => {
+    try {
+      const db = await openIndexedDB();
+      if (!db.objectStoreNames.contains(STORE_APP_DATA)) return resolve(false);
+      const tx = db.transaction([STORE_APP_DATA], 'readwrite');
+      const store = tx.objectStore(STORE_APP_DATA);
+      const req = store.delete(key);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => resolve(false);
+    } catch (e) {
+      console.warn('[PMG IDB] removeIdbItem exception:', e);
+      resolve(false);
+    }
+  });
+}
+
+/**
+ * Universal safe storage helper.
+ * 1. Always persists complete data to IndexedDB (zero quota limits).
+ * 2. Manages localStorage with safety guards (catches QuotaExceededError and prunes if oversized).
+ */
+async function safeStorageSet(key, value) {
+  // Always persist to IndexedDB
+  await setIdbItem(key, value);
+
+  // Safely manage localStorage
+  try {
+    const serialized = typeof value === 'string' ? value : JSON.stringify(value);
+    // If payload is larger than 1.2MB, offload from localStorage to avoid exhausting quota
+    if (serialized.length > 1200000) {
+      try { localStorage.removeItem(key); } catch (_) {}
+      return true;
+    }
+    localStorage.setItem(key, serialized);
+  } catch (err) {
+    console.warn(`[PMG Storage] LocalStorage quota exceeded for "${key}". Data is safely persisted in IndexedDB.`, err);
+    try { localStorage.removeItem(key); } catch (_) {}
+  }
+  return true;
+}
+
+/**
+ * Universal safe storage retrieval.
+ * Tries IndexedDB first, falls back to localStorage.
+ */
+async function safeStorageGet(key) {
+  try {
+    const idbVal = await getIdbItem(key);
+    if (idbVal !== null && idbVal !== undefined) return idbVal;
+  } catch (_) {}
+
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) return JSON.parse(raw);
+  } catch (_) {}
+
+  return null;
+}
+
+/**
+ * Proactively clean up oversized items from localStorage to relieve quota pressure.
+ */
+async function autoRelieveLocalStorageQuota() {
+  try {
+    // 1. Stock expiry data (can be 2.8MB+)
+    const rawExpiry = localStorage.getItem('pmg_stock_expiry_data');
+    if (rawExpiry && rawExpiry.length > 800000) {
+      try {
+        const parsed = JSON.parse(rawExpiry);
+        await setIdbItem('pmg_stock_expiry_data', parsed);
+        localStorage.removeItem('pmg_stock_expiry_data');
+        console.log('[PMG Storage] Offloaded stock expiry data to IndexedDB to free localStorage quota.');
+      } catch (_) {}
+    }
+
+    // 2. Patient data (can be 1MB+)
+    const rawPatients = localStorage.getItem('pmg_patients_data_v1');
+    if (rawPatients) {
+      try {
+        const parsed = JSON.parse(rawPatients);
+        await setIdbItem('pmg_patients_data_v1', parsed);
+        if (rawPatients.length > 1200000) {
+          localStorage.removeItem('pmg_patients_data_v1');
+          console.log('[PMG Storage] Offloaded large patients data to IndexedDB to free localStorage quota.');
+        }
+      } catch (_) {}
+    }
+  } catch (e) {
+    console.warn('[PMG Storage] autoRelieveLocalStorageQuota warning:', e);
+  }
+}
+
+// Run auto-relief on script load
+if (typeof window !== 'undefined' && window.indexedDB) {
+  setTimeout(() => {
+    autoRelieveLocalStorageQuota().catch(() => {});
+  }, 100);
+}
+
 // Expose on window for cross-module & OneDrive sync engine access
+window.openIndexedDB = openIndexedDB;
 window.exportAllDocuments = exportAllDocuments;
 window.importAllDocuments = importAllDocuments;
 window.dataURLtoBlob = dataURLtoBlob;
@@ -225,4 +368,10 @@ window.blobToDataURL = blobToDataURL;
 window.savePatientDocument = savePatientDocument;
 window.getPatientDocuments = getPatientDocuments;
 window.getDocumentById = getDocumentById;
+window.getIdbItem = getIdbItem;
+window.setIdbItem = setIdbItem;
+window.removeIdbItem = removeIdbItem;
+window.safeStorageSet = safeStorageSet;
+window.safeStorageGet = safeStorageGet;
+window.autoRelieveLocalStorageQuota = autoRelieveLocalStorageQuota;
 
