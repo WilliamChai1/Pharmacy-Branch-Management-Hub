@@ -1570,6 +1570,11 @@
         const nowIso = new Date().toISOString();
         const updatedBy = session?.displayName || localStorage.getItem('pmg_user_name') || 'Staff';
 
+        let clearedKeysList = [];
+        try {
+          clearedKeysList = (typeof getClearedExpiryKeys === 'function') ? Array.from(getClearedExpiryKeys()) : JSON.parse(localStorage.getItem('pmg_cleared_expiry_keys') || '[]');
+        } catch (_) {}
+
         // 1. In PARENT mode (Area Manager Master View):
         if (this.mode === 'PARENT') {
           // A: Save master backup in EXPIRY_BACKUP/stock_expiry_master.json
@@ -1598,6 +1603,7 @@
               lastUpdated: nowIso,
               updatedBy: updatedBy,
               totalRecords: localItems.length,
+              clearedKeys: clearedKeysList,
               items: localItems
             };
 
@@ -1647,6 +1653,7 @@
                   lastUpdated: nowIso,
                   updatedBy: updatedBy,
                   totalRecords: bItems.length,
+                  clearedKeys: clearedKeysList,
                   items: bItems
                 };
 
@@ -1694,6 +1701,7 @@
               lastUpdated: nowIso,
               updatedBy: updatedBy,
               totalRecords: localItems.length,
+              clearedKeys: clearedKeysList,
               items: localItems
             };
 
@@ -1739,6 +1747,9 @@
             const text = await file.text();
             if (text && text.trim()) {
               const parsed = JSON.parse(text);
+              if (Array.isArray(parsed.clearedKeys) && typeof addClearedExpiryKey === 'function') {
+                parsed.clearedKeys.forEach(k => addClearedExpiryKey(k));
+              }
               if (Array.isArray(parsed.items)) cloudItems = parsed.items;
               else if (Array.isArray(parsed)) cloudItems = parsed;
             }
@@ -1766,6 +1777,9 @@
                 const bt = await bf.text();
                 if (bt && bt.trim()) {
                   const bp = JSON.parse(bt);
+                  if (Array.isArray(bp.clearedKeys) && typeof addClearedExpiryKey === 'function') {
+                    bp.clearedKeys.forEach(k => addClearedExpiryKey(k));
+                  }
                   const arr = Array.isArray(bp.items) ? bp.items : (Array.isArray(bp) ? bp : []);
                   if (arr.length > 0) {
                     const mergeFn = typeof mergeExpiryDatasets === 'function' ? mergeExpiryDatasets : (window.pmgExpiry?.mergeDatasets || null);
@@ -1800,6 +1814,9 @@
                 const t = await f.text();
                 if (t && t.trim()) {
                   const p = JSON.parse(t);
+                  if (Array.isArray(p.clearedKeys) && typeof addClearedExpiryKey === 'function') {
+                    p.clearedKeys.forEach(k => addClearedExpiryKey(k));
+                  }
                   const arr = Array.isArray(p.items) ? p.items : (Array.isArray(p) ? p : []);
                   if (arr.length > 0) {
                     cloudItems = arr;
@@ -1818,6 +1835,9 @@
               const t = await f.text();
               if (t && t.trim()) {
                 const p = JSON.parse(t);
+                if (Array.isArray(p.clearedKeys) && typeof addClearedExpiryKey === 'function') {
+                  p.clearedKeys.forEach(k => addClearedExpiryKey(k));
+                }
                 cloudItems = Array.isArray(p.items) ? p.items : (Array.isArray(p) ? p : []);
               }
             } catch (_) {}
