@@ -28,7 +28,8 @@ let activeExpiryFilter = {
   branch: 'Kota Sentosa',
   horizon: '9months', // '9months', '12months', 'critical', 'all', 'cleared'
   returnPolicy: 'all', // 'all', 'non_returnable', 'returnable', 'special', 'unlisted'
-  search: ''
+  search: '',
+  sortOrder: 'asc' // 'asc' (earliest expiry first) | 'desc' (latest expiry first)
 };
 let expiryCurrentPage = 1;
 const EXPIRY_PAGE_SIZE = 100;
@@ -3291,7 +3292,7 @@ function updateExpiryOfferedPrice(rowId, val) {
 
 // ─── FILTERING & UI RENDERING ────────────────────────────────────────────────
 function filterExpiryItems() {
-  return expiryItems.filter(it => {
+  const filtered = expiryItems.filter(it => {
     // 1. Branch filter
     if (activeExpiryFilter.branch && activeExpiryFilter.branch !== 'ALL') {
       const bNorm = normalizeBranchCode(it.branch);
@@ -3338,7 +3339,42 @@ function filterExpiryItems() {
 
     return true;
   });
+
+  if (activeExpiryFilter.sortOrder === 'asc' || activeExpiryFilter.sortOrder === 'desc') {
+    const isAsc = activeExpiryFilter.sortOrder === 'asc';
+    filtered.sort((a, b) => {
+      const dA = parseExpiryDate(a.expiryDate);
+      const dB = parseExpiryDate(b.expiryDate);
+      if (!dA && !dB) return 0;
+      if (!dA) return 1;
+      if (!dB) return -1;
+      return isAsc ? (dA.getTime() - dB.getTime()) : (dB.getTime() - dA.getTime());
+    });
+  }
+
+  return filtered;
 }
+
+function toggleExpiryDateSort() {
+  if (activeExpiryFilter.sortOrder === 'asc') {
+    activeExpiryFilter.sortOrder = 'desc';
+  } else {
+    activeExpiryFilter.sortOrder = 'asc';
+  }
+
+  const icon = document.getElementById('expiryDateSortIcon');
+  if (icon) {
+    if (activeExpiryFilter.sortOrder === 'asc') {
+      icon.className = 'fa-solid fa-arrow-down-short-wide text-blue-400 text-xs';
+    } else {
+      icon.className = 'fa-solid fa-arrow-up-wide-short text-amber-400 text-xs';
+    }
+  }
+
+  expiryCurrentPage = 1;
+  renderExpiryTable();
+}
+window.toggleExpiryDateSort = toggleExpiryDateSort;
 
 function renderExpiryUI() {
   expiryItems = ensureUniqueExpiryRowIds(expiryItems);

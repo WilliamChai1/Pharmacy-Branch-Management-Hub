@@ -191,6 +191,9 @@ async function checkAndLoadSavedTimetable(branchCode, monthStr) {
   }
 
   if (savedData && savedData.days && savedData.days.length) {
+    if (!savedData.days[0].stockDuty && !savedData.days[0].learningSlots) {
+      assignTraineeLearningAndStockDuties(savedData.days, currentTeammates);
+    }
     generatedScheduleData = savedData;
     renderScheduleMatrix(generatedScheduleData);
 
@@ -523,6 +526,7 @@ const DEFAULT_KS01_TEAMMATES = [
     halfDayPref: 'Sunday Morning (5H)',
     notes: 'Joined PMG Kota Sentosa 1/11/2026. Experienced at Peace & Joy Pharmacy Kuching. Culture adaptation phase.',
     adaptationPhase: true,
+    isTrainee: true,
     dayPrefs: {
       Monday: 'Flexible',
       Tuesday: 'Flexible',
@@ -574,6 +578,13 @@ const HISTORICAL_KS01_PRE_NOV26 = [
 let currentTeammates = [];
 let generatedScheduleData = null; // Stored { month, branch, days: [...] }
 let editingTeammateEmpNo = null;   // For Day Preferences Modal
+
+// ─── TRAINEE HELPER ───────────────────────────────────────────────────────────
+function isTraineeTeammate(tm) {
+  if (!tm) return false;
+  if (tm.isTrainee !== undefined) return !!tm.isTrainee;
+  return tm.empNo === 'PMG03801' || tm.nickname === 'VANESSA' || !!tm.adaptationPhase;
+}
 
 // ─── INIT SCHEDULER ───────────────────────────────────────────────────────────
 function initScheduler() {
@@ -742,6 +753,8 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
         if (defVanessa) {
           currentTeammates.push(JSON.parse(JSON.stringify(defVanessa)));
         }
+      } else if (vanessa.isTrainee === undefined) {
+        vanessa.isTrainee = true;
       }
     } else {
       // Historical schedule prior to Nov 2026: restore Ting and Kenix, omit Vanessa
@@ -1034,6 +1047,7 @@ function renderTeammatesTable() {
   currentTeammates.forEach(t => {
     const isPharm = t.isPharmacist || (t.position && t.position.includes('Pharmacist'));
     const isFixed = t.scheduleMode === 'Fixed' || t.empNo === 'PMG00831';
+    const isTrainee = isTraineeTeammate(t);
     const curRestDay = extractRestDayName(t);
     const curHalfDay = isFixed ? 'Saturday' : extractHalfDayName(t);
 
@@ -1051,9 +1065,10 @@ function renderTeammatesTable() {
     html += `
       <tr data-emp-no="${escHtml(t.empNo)}" class="hover:bg-gray-50 border-b border-gray-100 transition text-xs">
         <td class="px-3 py-3">
-          <div class="flex items-center gap-1.5">
+          <div class="flex items-center gap-1.5 flex-wrap">
             <span class="font-bold text-gray-900">${escHtml(t.empName)}</span>
             ${isFixed ? '<span class="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold border border-amber-200">Fixed Pattern</span>' : ''}
+            ${isTrainee ? '<span class="text-[10px] bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded font-bold border border-indigo-200" title="Trainee Learning Track Active (3x 1H sessions/week: Fri 14:00 HQ Video + 2 Overlap sessions)">🎓 Trainee</span>' : ''}
           </div>
           <div class="text-[11px] text-gray-500 font-mono flex items-center gap-1.5 mt-0.5">
             <span>${escHtml(t.empNo)}</span>
@@ -1158,6 +1173,22 @@ function openDayPrefsModal(empNo) {
     `;
   });
 
+  const isTrainee = isTraineeTeammate(tm);
+  formHtml += `
+    <div class="mt-4 pt-3 border-t border-gray-200 flex items-center justify-between">
+      <div>
+        <span class="font-bold text-gray-800 text-xs flex items-center gap-1.5">
+          <span>🎓</span> Trainee Learning Track (3-Month Adaptation)
+        </span>
+        <p class="text-[10px] text-gray-500 mt-0.5">Allocates 1H x 3 sessions/week (Friday 2:00 PM HQ Video + 2 overlap sessions)</p>
+      </div>
+      <label class="relative inline-flex items-center cursor-pointer">
+        <input type="checkbox" id="modalIsTraineeToggle" class="sr-only peer" ${isTrainee ? 'checked' : ''}>
+        <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+      </label>
+    </div>
+  `;
+
   if (tm.empNo === 'PMG00831') {
     formHtml = `
       <div class="p-3 bg-amber-50 text-amber-900 rounded-lg text-xs mb-3 border border-amber-200">
@@ -1199,6 +1230,17 @@ function saveDayPrefsModal() {
       newPrefs[day] = halfPrefVal;
     }
   });
+
+  const traineeToggle = document.getElementById('modalIsTraineeToggle');
+  if (traineeToggle) {
+    tm.isTrainee = traineeToggle.checked;
+    if (tm.isTrainee && newPrefs['Friday'] === 'RD') {
+      alert('Trainees must attend Friday 2:00 PM HQ Video Training and cannot have Friday as Rest Day (RD). Rest Day has been moved to Sunday.');
+      newPrefs['Friday'] = 'Flexible';
+      newPrefs['Sunday'] = 'RD';
+      foundRd = 'Sunday';
+    }
+  }
 
   tm.dayPrefs = newPrefs;
   tm.restDayPref = foundRd || 'Flexible';
@@ -2208,12 +2250,196 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
     }
   });
 
+  // 9b. Trainee Learning Track (3x 1H, Fri 14:00 HQ Video) & SSJ Stock Receiving (Mon PM, Tue, Wed)
+  assignTraineeLearningAndStockDuties(schedule.days, currentTeammates);
+
   // 10. Persist to Shift Registry
   const shiftRegistry = loadShiftRegistry(branchVal);
   schedule.days.forEach(d => {
     shiftRegistry[d.date] = d;
   });
   saveShiftRegistry(branchVal, shiftRegistry);
+}
+
+// ─── TRAINEE LEARNING & SSJ STOCK RECEIVING DUTIES ─────────────────────────────
+// 1. SSJ Stock Receiving Duty: Arrives Monday PM shift; 3-day intake/verification/shelving cycle (Mon PM, Tue, Wed).
+// 2. Trainee Learning Track: Exactly 3x 1-hour sessions per calendar week (Friday 14:00-15:00 HQ Video + 2x other overlap sessions).
+function assignTraineeLearningAndStockDuties(days, teammates) {
+  if (!days || !days.length || !teammates || !teammates.length) return;
+
+  const rotatingPool = teammates.filter(t => t.empNo !== 'PMG00831' && t.nickname !== 'WILLIAM');
+  const trainees = teammates.filter(t => isTraineeTeammate(t));
+
+  // Break days into 7-day Monday–Sunday weeks
+  const calWeeks = [];
+  for (let i = 0; i < days.length; i += 7) {
+    calWeeks.push(days.slice(i, i + 7));
+  }
+
+  // Stock Duty Counter across entire schedule for fair round-robin rotation
+  const stockDutyCounts = {};
+  rotatingPool.forEach(t => { stockDutyCounts[t.empNo] = 0; });
+
+  calWeeks.forEach(wDays => {
+    // ─── 1. SSJ STOCK RECEIVING DUTY (MON PM, TUE, WED) ───
+    // Monday: Incoming PM delivery intake & staging
+    const monDay = wDays.find(d => d.dayOfWeek === 'Monday');
+    if (monDay) {
+      // Find on-duty rotating staff working PM (Night) shift on Monday
+      const pmStaff = rotatingPool.filter(tm => {
+        const s = monDay.shifts && monDay.shifts[tm.empNo];
+        return isNightShift(s);
+      });
+      // Prefer experienced non-trainee for intake documentation, then lowest stock count
+      pmStaff.sort((a, b) => {
+        const aTr = isTraineeTeammate(a) ? 1 : 0;
+        const bTr = isTraineeTeammate(b) ? 1 : 0;
+        if (aTr !== bTr) return aTr - bTr;
+        return (stockDutyCounts[a.empNo] || 0) - (stockDutyCounts[b.empNo] || 0);
+      });
+      const monAssignee = pmStaff[0] || null;
+      if (monAssignee) {
+        stockDutyCounts[monAssignee.empNo] = (stockDutyCounts[monAssignee.empNo] || 0) + 1;
+        monDay.stockDuty = {
+          empNo: monAssignee.empNo,
+          nickname: monAssignee.nickname,
+          dayNumber: 'Day 1/3 (Intake)',
+          shift: 'Night (PM)',
+          task: 'SSJ Delivery Intake & Staging'
+        };
+      } else {
+        monDay.stockDuty = null;
+      }
+    }
+
+    // Tuesday: Batch/Expiry Check & System Entry
+    const tueDay = wDays.find(d => d.dayOfWeek === 'Tuesday');
+    if (tueDay) {
+      const workingStaff = rotatingPool.filter(tm => {
+        const s = tueDay.shifts && tueDay.shifts[tm.empNo];
+        return s && s !== 'RD' && s !== 'PH' && s !== 'OFF';
+      });
+      // Distribute workload: prefer teammate who did not do Mon intake
+      workingStaff.sort((a, b) => {
+        const aWasMon = (monDay && monDay.stockDuty && monDay.stockDuty.empNo === a.empNo) ? 1 : 0;
+        const bWasMon = (monDay && monDay.stockDuty && monDay.stockDuty.empNo === b.empNo) ? 1 : 0;
+        if (aWasMon !== bWasMon) return aWasMon - bWasMon;
+        return (stockDutyCounts[a.empNo] || 0) - (stockDutyCounts[b.empNo] || 0);
+      });
+      const tueAssignee = workingStaff[0] || null;
+      if (tueAssignee) {
+        stockDutyCounts[tueAssignee.empNo] = (stockDutyCounts[tueAssignee.empNo] || 0) + 1;
+        tueDay.stockDuty = {
+          empNo: tueAssignee.empNo,
+          nickname: tueAssignee.nickname,
+          dayNumber: 'Day 2/3 (Verification)',
+          shift: 'All-Day',
+          task: 'Batch/Expiry Check & System Entry'
+        };
+      } else {
+        tueDay.stockDuty = null;
+      }
+    }
+
+    // Wednesday: Gondola Merchandising & Shelving
+    const wedDay = wDays.find(d => d.dayOfWeek === 'Wednesday');
+    if (wedDay) {
+      const workingStaff = rotatingPool.filter(tm => {
+        const s = wedDay.shifts && wedDay.shifts[tm.empNo];
+        return s && s !== 'RD' && s !== 'PH' && s !== 'OFF';
+      });
+      workingStaff.sort((a, b) => {
+        return (stockDutyCounts[a.empNo] || 0) - (stockDutyCounts[b.empNo] || 0);
+      });
+      const wedAssignee = workingStaff[0] || null;
+      if (wedAssignee) {
+        stockDutyCounts[wedAssignee.empNo] = (stockDutyCounts[wedAssignee.empNo] || 0) + 1;
+        wedDay.stockDuty = {
+          empNo: wedAssignee.empNo,
+          nickname: wedAssignee.nickname,
+          dayNumber: 'Day 3/3 (Shelving)',
+          shift: 'All-Day',
+          task: 'Gondola Merchandising & Shelving'
+        };
+      } else {
+        wedDay.stockDuty = null;
+      }
+    }
+
+    // Reset non-delivery days to null
+    wDays.forEach(d => {
+      if (d.dayOfWeek !== 'Monday' && d.dayOfWeek !== 'Tuesday' && d.dayOfWeek !== 'Wednesday') {
+        d.stockDuty = null;
+      }
+    });
+
+    // ─── 2. TRAINEE LEARNING TRACK (3x 1-HOUR SESSIONS PER WEEK) ───
+    wDays.forEach(d => {
+      d.learningSlots = [];
+    });
+
+    trainees.forEach(tr => {
+      const workingDays = wDays.filter(d => {
+        const s = d.shifts && d.shifts[tr.empNo];
+        return s && s !== 'RD' && s !== 'PH' && s !== 'OFF';
+      });
+
+      // Session 1: Friday 14:00 - 15:00 HQ Video Training (strictly anchored)
+      const friDay = workingDays.find(d => d.dayOfWeek === 'Friday');
+      if (friDay) {
+        friDay.learningSlots.push({
+          empNo: tr.empNo,
+          nickname: tr.nickname,
+          time: '2:00 PM – 3:00 PM',
+          task: 'HQ Video Training',
+          isHqVideo: true
+        });
+      }
+
+      // Sessions 2 & 3: 2 other working days during overlap hours (14:00-15:00)
+      // Exclude Friday and exclude morning half-days (which end at 11:30 or 12:30 before 14:00)
+      const otherWorkingDays = workingDays.filter(d => d.dayOfWeek !== 'Friday' && !isHalfDayMorningShift(d.shifts[tr.empNo]));
+      otherWorkingDays.sort((a, b) => {
+        const sA = a.shifts[tr.empNo] || '';
+        const sB = b.shifts[tr.empNo] || '';
+        const aFull = sA.includes('8H') ? 1 : 0;
+        const bFull = sB.includes('8H') ? 1 : 0;
+        if (aFull !== bFull) return bFull - aFull;
+        return (b.workingTotal || 0) - (a.workingTotal || 0);
+      });
+
+      const selectedOtherDays = otherWorkingDays.slice(0, 2);
+      selectedOtherDays.forEach(d => {
+        d.learningSlots.push({
+          empNo: tr.empNo,
+          nickname: tr.nickname,
+          time: '2:00 PM – 3:00 PM',
+          task: 'Product & SOP Learning',
+          isHqVideo: false
+        });
+      });
+    });
+
+    // ─── 3. RESOLVE CLEANING vs LEARNING OVERLAP ───
+    // If a cleaner is also assigned to learning at 14:00, reassign cleaning to another available rotating staff
+    wDays.forEach(d => {
+      if (d.cleaningDuty && d.learningSlots && d.learningSlots.some(l => l.empNo === d.cleaningDuty.empNo)) {
+        const alternateCleaner = rotatingPool.filter(tm => {
+          const s = d.shifts && d.shifts[tm.empNo];
+          return s && s !== 'RD' && s !== 'PH' && s !== 'OFF' && !d.learningSlots.some(l => l.empNo === tm.empNo);
+        }).sort((a, b) => (stockDutyCounts[a.empNo] || 0) - (stockDutyCounts[b.empNo] || 0))[0];
+        if (alternateCleaner) {
+          d.cleaningDuty = {
+            empNo: alternateCleaner.empNo,
+            nickname: alternateCleaner.nickname,
+            empName: alternateCleaner.empName || alternateCleaner.nickname,
+            time: '2:00 PM – 3:30 PM',
+            task: 'Gondola Cleaning & Refilling'
+          };
+        }
+      }
+    });
+  });
 }
 
 // ─── GEMINI API CALLER ────────────────────────────────────────────────────────
@@ -2374,6 +2600,18 @@ OPERATIONAL RULES & PRIORITY CONSTRAINTS (IN ORDER OF PRIORITY):
    - Exactly 1 rotating teammate assigned per day for 14:00–15:30 Gondola Cleaning & Refill duty.
    - Shared equally among all rotating staff. William is excluded.
 
+9. TRAINEE LEARNING TRACK (3x 1-HOUR SESSIONS PER WEEK):
+   - For new incoming trainees (e.g. Vanessa Anak Blaise PMG03801 during their 3-month adaptation phase), allocate exactly 3 learning hours per calendar week.
+   - Session 1 MUST be Friday afternoon at 2:00 PM – 3:00 PM (14:00 - 15:00) for "HQ Video Training". Trainees must never take Rest Day on Friday.
+   - Sessions 2 & 3: Allocate on 2 other working days at 2:00 PM – 3:00 PM during shift overlap when floor staffing >= 3, for "Product & SOP Learning".
+
+10. HQ (SSJ) STOCK RECEIVING CONSIDERATION (MON PM, TUE, WED):
+   - HQ (SSJ) stock arrives every Monday PM shift and takes 3 days (Monday PM, Tuesday, Wednesday) to receive, check, and shelve.
+   - Designate a stock receiving duty among rotating floor staff on these 3 days:
+     * Monday: Day 1/3 - SSJ Delivery Intake & Staging (assigned to an on-duty PM shift staff)
+     * Tuesday: Day 2/3 - Batch/Expiry Check & System Entry (assigned to an on-duty rotating staff)
+     * Wednesday: Day 3/3 - Gondola Merchandising & Shelving (assigned to an on-duty rotating staff)
+
 SHIFT CODES:
 - '8H_0730-1630' (Full Morning 8H)
 - '8H_1230-2130' (Full Night 8H)
@@ -2402,13 +2640,29 @@ Respond ONLY with a valid JSON object containing the complete 7-day Monday–Sun
         "time": "2:00 PM – 3:30 PM",
         "task": "Gondola Cleaning & Refilling"
       },
+      "stockDuty": {
+        "empNo": "${firstRotating.empNo}",
+        "nickname": "${firstRotating.nickname}",
+        "dayNumber": "Day 1/3 (Intake)",
+        "shift": "Night (PM)",
+        "task": "SSJ Delivery Intake & Staging"
+      },
+      "learningSlots": [
+        {
+          "empNo": "PMG03801",
+          "nickname": "VANESSA",
+          "time": "2:00 PM – 3:00 PM",
+          "task": "HQ Video Training",
+          "isHqVideo": true
+        }
+      ],
       "amCount": 4,
       "pmCount": 3,
       "workingTotal": 7
     }
   ],
   "warnings": [],
-  "summary": "Summary of ${isNov2026OrLater ? 'adaptive Chinese speaker distribution' : 'whole-day Chinese speaker coverage'}, Monday-start weekly shift parity (deviation <= ±2), statutory rest days, anti-fatigue compliance, and 6S cleaning rotation."
+  "summary": "Summary of ${isNov2026OrLater ? 'adaptive Chinese speaker distribution' : 'whole-day Chinese speaker coverage'}, Monday-start weekly shift parity (deviation <= ±2), statutory rest days, anti-fatigue compliance, 6S cleaning rotation, SSJ stock receiving duties, and trainee learning track."
 }`;
 
   const controller = new AbortController();
@@ -2628,6 +2882,14 @@ function generateLegalWeeklyPatterns(tm, weekDays, prevSundayShift, prevNightStr
                 else invalidStrict = true;
               }
             });
+          }
+
+          // Trainees must be on duty on Friday for HQ Video Training (2:00 PM – 3:00 PM)
+          if (isTraineeTeammate(tm)) {
+            const friIdx = weekDays.findIndex(d => d.dayOfWeek === 'Friday');
+            if (friIdx !== -1 && seq[friIdx] === 'RD') {
+              invalidStrict = true;
+            }
           }
 
           if (invalidStrict) continue;
@@ -3288,6 +3550,9 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
     });
   });
 
+  // Allocate Trainee Learning Track (3x 1H, Fri 14:00 HQ Video) & SSJ Stock Receiving (Mon PM, Tue, Wed)
+  assignTraineeLearningAndStockDuties(dailySchedule, currentTeammates);
+
   // Persist updated shift registry to memory
   saveShiftRegistry(branchVal, shiftRegistry);
 
@@ -3338,6 +3603,8 @@ function renderScheduleMatrix(schedule) {
       rdCount: 0,
       hdCount: 0,
       cleanCount: 0,
+      stockCount: 0,
+      learnCount: 0,
       maxConsecutiveNights: 0,
       currentNightStreak: 0,
       pmToAmFatigueCount: 0,
@@ -3402,6 +3669,12 @@ function renderScheduleMatrix(schedule) {
 
       if (d.cleaningDuty && d.cleaningDuty.empNo === empNo) {
         teammateStats[empNo].cleanCount++;
+      }
+      if (d.stockDuty && d.stockDuty.empNo === empNo) {
+        teammateStats[empNo].stockCount++;
+      }
+      if (d.learningSlots && d.learningSlots.some(l => l.empNo === empNo)) {
+        teammateStats[empNo].learnCount++;
       }
     });
 
@@ -3569,7 +3842,7 @@ function renderScheduleMatrix(schedule) {
           </div>
           <div class="text-[10px] text-gray-400 truncate max-w-[170px]">${escHtml(tm.empName)}</div>
           <div class="text-[10px] text-gray-500 font-mono mt-0.5">
-            <span class="text-blue-600 font-bold">M: ${st.mCount + st.hdCount}</span> (${st.mCount} 8H + ${st.hdCount} ${isFixed ? '4H' : '5H'}) · <span class="text-purple-600 font-bold">N: ${st.nCount}</span>${st.cleanCount > 0 ? ` · <span class="text-teal-700 font-bold">🧹: ${st.cleanCount}</span>` : ''}
+            <span class="text-blue-600 font-bold">M: ${st.mCount + st.hdCount}</span> (${st.mCount} 8H + ${st.hdCount} ${isFixed ? '4H' : '5H'}) · <span class="text-purple-600 font-bold">N: ${st.nCount}</span>${st.cleanCount > 0 ? ` · <span class="text-teal-700 font-bold">🧹: ${st.cleanCount}</span>` : ''}${st.stockCount > 0 ? ` · <span class="text-amber-700 font-bold">📦: ${st.stockCount}</span>` : ''}${st.learnCount > 0 ? ` · <span class="text-indigo-700 font-bold">🎓: ${st.learnCount}h</span>` : ''}
           </div>
         </td>
     `;
@@ -3580,15 +3853,30 @@ function renderScheduleMatrix(schedule) {
       const shift = (d.shifts && d.shifts[tm.empNo]) || 'RD';
       const cellStyle = getShiftBadgeStyle(shift);
       const isCleaningDuty = d.cleaningDuty && d.cleaningDuty.empNo === tm.empNo;
+      const isStockDuty = d.stockDuty && d.stockDuty.empNo === tm.empNo;
+      const learnSlot = d.learningSlots && d.learningSlots.find(l => l.empNo === tm.empNo);
       const isShortage = d.amCount < 3 || d.pmCount < 3;
-      const colBg = isShortage ? 'bg-amber-50/70 hover:bg-amber-100/90' : (isCleaningDuty ? 'bg-teal-50/60' : 'hover:bg-blue-50/40');
+      const colBg = isShortage
+        ? 'bg-amber-50/70 hover:bg-amber-100/90'
+        : (isCleaningDuty ? 'bg-teal-50/60' : (isStockDuty ? 'bg-amber-50/50' : (learnSlot ? 'bg-indigo-50/40' : 'hover:bg-blue-50/40')));
+
+      let dutyBadges = '';
+      if (isCleaningDuty) {
+        dutyBadges += '<div class="text-[8px] font-bold text-teal-800 leading-none mt-0.5">🧹 Clean</div>';
+      }
+      if (isStockDuty) {
+        dutyBadges += `<div class="text-[8px] font-bold text-amber-900 bg-amber-100 border border-amber-200 rounded px-0.5 leading-none mt-0.5" title="${escHtml(d.stockDuty.task)} (${escHtml(d.stockDuty.dayNumber)})">📦 Stock</div>`;
+      }
+      if (learnSlot) {
+        dutyBadges += `<div class="text-[8px] font-bold text-indigo-900 ${learnSlot.isHqVideo ? 'bg-indigo-200 border border-indigo-300' : 'bg-indigo-100'} rounded px-0.5 leading-none mt-0.5" title="${escHtml(learnSlot.task)} (${escHtml(learnSlot.time)})">${learnSlot.isHqVideo ? '🎓 HQ Video' : '📚 Learn'}</div>`;
+      }
 
       bodyHtml += `
-        <td onclick="openDayShiftEditorModal('${d.date}', '${tm.empNo}')" class="px-1 py-1.5 text-center ${weekBorder} cursor-pointer transition ${colBg}" title="${shift}${isCleaningDuty ? ' | 🧹 14:00-15:30 Cleaning' : ''} (Click to fine-tune Day ${d.day})">
+        <td onclick="openDayShiftEditorModal('${d.date}', '${tm.empNo}')" class="px-1 py-1.5 text-center ${weekBorder} cursor-pointer transition ${colBg}" title="${shift}${isCleaningDuty ? ' | 🧹 14:00-15:30 Cleaning' : ''}${isStockDuty ? ` | 📦 ${d.stockDuty.task}` : ''}${learnSlot ? ` | ${learnSlot.task} (${learnSlot.time})` : ''} (Click to fine-tune Day ${d.day})">
           <span class="inline-block px-1.5 py-1 rounded text-[10px] font-mono font-bold leading-tight ${cellStyle.classes}">
             ${cellStyle.label}
           </span>
-          ${isCleaningDuty ? '<div class="text-[8px] font-bold text-teal-800 leading-none mt-0.5">🧹 Clean</div>' : ''}
+          ${dutyBadges}
         </td>
       `;
     });
@@ -3639,7 +3927,55 @@ function renderScheduleMatrix(schedule) {
   });
   cleaningRow += '</tr>';
 
-  // Whole-Day Chinese Speaker Coverage Indicators Row (Bottom 3)
+  // SSJ Stock Receiving Duty Row (Bottom 3)
+  let stockDutyRow = `
+    <tr class="bg-amber-50/70 border-t border-amber-200 font-semibold text-[11px] text-amber-950">
+      <td class="sticky left-0 bg-amber-50 z-10 px-3 py-2 border-r border-amber-200 font-bold">
+        📦 SSJ Stock Receiving
+        <div class="text-[9px] text-amber-700 font-normal">Mon PM Intake · Tue Check · Wed Shelf</div>
+      </td>
+  `;
+  schedule.days.forEach(d => {
+    const isSunday = d.dayOfWeek === 'Sunday';
+    const weekBorder = isSunday ? 'border-r-2 border-r-slate-400' : 'border-r border-amber-200';
+    const sd = d.stockDuty;
+    stockDutyRow += `
+      <td class="px-1 py-1 text-center ${weekBorder}">
+        ${sd ? `
+          <span class="inline-block px-1 py-0.5 rounded text-[9px] font-bold bg-amber-200/90 text-amber-950 font-mono truncate max-w-[65px]" title="${escHtml(sd.dayNumber)}: ${escHtml(sd.task)} (${escHtml(sd.shift)})">
+            ${escHtml(sd.nickname)}
+          </span>
+        ` : '<span class="text-gray-300 text-[10px]">-</span>'}
+      </td>
+    `;
+  });
+  stockDutyRow += '</tr>';
+
+  // Trainee Learning Track Row (Bottom 4)
+  let learningRow = `
+    <tr class="bg-indigo-50/70 border-t border-indigo-200 font-semibold text-[11px] text-indigo-950">
+      <td class="sticky left-0 bg-indigo-50 z-10 px-3 py-2 border-r border-indigo-200 font-bold">
+        📚 Trainee Learning Track
+        <div class="text-[9px] text-indigo-700 font-normal">Fri 14:00 HQ Video + 2x 1H Overlap</div>
+      </td>
+  `;
+  schedule.days.forEach(d => {
+    const isSunday = d.dayOfWeek === 'Sunday';
+    const weekBorder = isSunday ? 'border-r-2 border-r-slate-400' : 'border-r border-indigo-200';
+    const slots = d.learningSlots || [];
+    learningRow += `
+      <td class="px-1 py-1 text-center ${weekBorder}">
+        ${slots.length > 0 ? slots.map(sl => `
+          <span class="inline-block px-1 py-0.5 rounded text-[9px] font-bold ${sl.isHqVideo ? 'bg-indigo-200 text-indigo-950 border border-indigo-300' : 'bg-indigo-100 text-indigo-900'} font-mono truncate max-w-[65px]" title="${escHtml(sl.nickname)}: ${escHtml(sl.task)} (${escHtml(sl.time)})">
+            ${escHtml(sl.nickname)}${sl.isHqVideo ? ' 🎓' : ' 📚'}
+          </span>
+        `).join('') : '<span class="text-gray-300 text-[10px]">-</span>'}
+      </td>
+    `;
+  });
+  learningRow += '</tr>';
+
+  // Whole-Day Chinese Speaker Coverage Indicators Row (Bottom 5)
   let coverageRow = `
     <tr class="bg-gray-100 border-t border-gray-200 font-semibold text-[11px] text-gray-700">
       <td class="sticky left-0 bg-gray-100 z-10 px-3 py-2 border-r border-gray-200 font-bold">
@@ -3684,7 +4020,7 @@ function renderScheduleMatrix(schedule) {
   });
   coverageRow += '</tr>';
 
-  if (tbody) tbody.innerHTML = bodyHtml + densityRow + cleaningRow + coverageRow;
+  if (tbody) tbody.innerHTML = bodyHtml + densityRow + cleaningRow + stockDutyRow + learningRow + coverageRow;
 
   // Render Fairness Parity & 6S Cleaning Rotation Summary Section
   try {
@@ -3721,7 +4057,7 @@ function renderScheduleMatrix(schedule) {
                 <th class="py-2.5 px-3 text-center">Full Rest Days (RD)</th>
                 <th class="py-2.5 px-3 text-center">Half Days (4H/5H)</th>
                 <th class="py-2.5 px-3 text-center">Statutory Quota</th>
-                <th class="py-2.5 px-3 text-center">6S Cleaning Duties</th>
+                <th class="py-2.5 px-3 text-center">Duties & Learning</th>
                 <th class="py-2.5 px-3 text-center">Anti-Fatigue Status</th>
               </tr>
             </thead>
@@ -3795,8 +4131,13 @@ function renderScheduleMatrix(schedule) {
             <td class="py-2.5 px-3 text-center font-mono text-gray-700 font-semibold">${st.rdCount}</td>
             <td class="py-2.5 px-3 text-center font-mono text-amber-900 font-semibold">${st.hdCount}</td>
             <td class="py-2.5 px-3 text-center">${quotaBadge}</td>
-            <td class="py-2.5 px-3 text-center font-mono font-bold ${st.cleanCount > 0 ? 'text-teal-700' : 'text-gray-400'}">
-              ${st.cleanCount > 0 ? `🧹 ${st.cleanCount} days` : '—'}
+            <td class="py-2.5 px-3 text-center font-mono font-bold text-gray-700">
+              <div class="flex items-center justify-center gap-1 flex-wrap">
+                ${st.cleanCount > 0 ? `<span class="bg-teal-50 text-teal-800 border border-teal-200 px-1 py-0.5 rounded text-[10px]" title="6S Gondola Cleaning Duties">🧹 ${st.cleanCount}</span>` : ''}
+                ${st.stockCount > 0 ? `<span class="bg-amber-50 text-amber-900 border border-amber-200 px-1 py-0.5 rounded text-[10px]" title="SSJ Stock Receiving Duties">📦 ${st.stockCount}</span>` : ''}
+                ${st.learnCount > 0 ? `<span class="bg-indigo-50 text-indigo-900 border border-indigo-200 px-1 py-0.5 rounded text-[10px]" title="Trainee Learning Sessions">🎓 ${st.learnCount}h</span>` : ''}
+                ${!st.cleanCount && !st.stockCount && !st.learnCount ? '<span class="text-gray-400 font-normal">—</span>' : ''}
+              </div>
             </td>
             <td class="py-2.5 px-3 text-center">${fatigueBadge}</td>
           </tr>
@@ -4247,6 +4588,9 @@ function saveDayShiftEditorModal() {
     saveShiftRegistry(branchCode, reg);
   } catch (_) {}
 
+  // Re-verify trainee learning and stock receiving duties
+  assignTraineeLearningAndStockDuties(generatedScheduleData.days, currentTeammates);
+
   closeDayShiftEditorModal();
   renderScheduleMatrix(generatedScheduleData);
   saveGeneratedTimetable(false);
@@ -4594,19 +4938,27 @@ async function generateStyledPmgExcel(month, branch, days) {
       halfCell.alignment = { horizontal: 'center', vertical: 'middle' };
       halfCell.border = thinBorder;
 
-      // Col 18: NOTES (Includes 14:00-15:30 6S Cleaning Duty Assignment)
+      // Col 18: NOTES (Includes 14:00-15:30 6S Cleaning, SSJ Stock Receiving, Trainee Learning)
       const notesCell = row.getCell(18);
       const cleanerNick = d.cleaningDuty ? d.cleaningDuty.nickname : '';
+      const stockDuty = d.stockDuty;
+      const learnSlots = d.learningSlots || [];
+
       if (r === 0) {
-        if (holidayName) {
-          notesCell.value = `${holidayName}${cleanerNick ? ` | 🧹 14:00-15:30 Clean: ${cleanerNick}` : ''}`;
-        } else if (cleanerNick) {
-          notesCell.value = `🧹 2:00-3:30PM Cleaning: ${cleanerNick}`;
+        const noteParts = [];
+        if (holidayName) noteParts.push(holidayName);
+        if (cleanerNick) noteParts.push(`🧹 Clean: ${cleanerNick}`);
+        if (stockDuty) noteParts.push(`📦 Stock (${stockDuty.dayNumber.split(' ')[0]}): ${stockDuty.nickname}`);
+        if (learnSlots.length > 0) {
+          learnSlots.forEach(ls => {
+            noteParts.push(`${ls.isHqVideo ? '🎓 HQ Video' : '📚 Learn'}: ${ls.nickname}`);
+          });
         }
+        notesCell.value = noteParts.join(' | ');
       }
-      const hasCleanNote = notesCell.value && notesCell.value.toString().includes('Clean');
-      notesCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: holidayName ? 'FFFFE4E6' : (hasCleanNote ? 'FFF0FDFA' : 'FFFFFFFF') } };
-      notesCell.font = { name: 'Calibri', size: 9, bold: true, color: { argb: holidayName ? 'FFBE123C' : (hasCleanNote ? 'FF0F766E' : 'FF334155') } };
+      const hasDutyNote = notesCell.value && (notesCell.value.toString().includes('Clean') || notesCell.value.toString().includes('Stock') || notesCell.value.toString().includes('Learn') || notesCell.value.toString().includes('Video'));
+      notesCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: holidayName ? 'FFFFE4E6' : (hasDutyNote ? 'FFF0FDFA' : 'FFFFFFFF') } };
+      notesCell.font = { name: 'Calibri', size: 9, bold: true, color: { argb: holidayName ? 'FFBE123C' : (hasDutyNote ? 'FF0F766E' : 'FF334155') } };
       notesCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
       notesCell.border = thinBorder;
     }
@@ -4856,6 +5208,14 @@ function copyScheduleWhatsAppSummary() {
     text += `  🌙 *Night (12:30-21:30):* ${night.join(', ') || 'None'}\n`;
     if (d.cleaningDuty) {
       text += `  🧹 *6S Cleaning (14:00-15:30):* ${d.cleaningDuty.nickname} (${d.cleaningDuty.task})\n`;
+    }
+    if (d.stockDuty) {
+      text += `  📦 *Stock Receiving (${d.stockDuty.dayNumber.split(' ')[0]}):* ${d.stockDuty.nickname} (${d.stockDuty.task})\n`;
+    }
+    if (d.learningSlots && d.learningSlots.length > 0) {
+      d.learningSlots.forEach(ls => {
+        text += `  ${ls.isHqVideo ? '🎓 *HQ Video Training (14:00-15:00):*' : '📚 *Trainee Learning (14:00-15:00):*'} ${ls.nickname}\n`;
+      });
     }
     if (d.amCount !== undefined && d.pmCount !== undefined) {
       text += `  👥 *Floor Strength:* AM: ${d.amCount} | PM: ${d.pmCount} (Total Working: ${d.workingTotal})\n`;
