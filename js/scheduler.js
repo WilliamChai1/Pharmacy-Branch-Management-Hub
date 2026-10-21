@@ -2285,6 +2285,33 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
       d.warning = warn;
       if (!schedule.warnings.includes(warn)) schedule.warnings.push(warn);
     }
+
+    // Senior-to-Trainee Ratio check (Minimum 1:1 ratio, seniorCount >= traineeCount on every shift)
+    let seniorAm = 0, traineeAm = 0, seniorPm = 0, traineePm = 0;
+    currentTeammates.forEach(tm => {
+      const s = d.shifts[tm.empNo];
+      if (!s || s === 'RD' || s === 'PH' || s === 'OFF') return;
+      const isTr = isTraineeTeammate(tm);
+      if (isAnyMorningShift(s)) {
+        if (isTr) traineeAm++; else seniorAm++;
+      } else if (isNightShift(s)) {
+        if (isTr) traineePm++; else seniorPm++;
+      }
+    });
+
+    d.seniorAmCount = seniorAm;
+    d.traineeAmCount = traineeAm;
+    d.seniorPmCount = seniorPm;
+    d.traineePmCount = traineePm;
+    d.isRatioViolation = (traineeAm > 0 && seniorAm < traineeAm) || (traineePm > 0 && seniorPm < traineePm);
+
+    if (d.isRatioViolation) {
+      const shortDesc = (traineeAm > 0 && seniorAm < traineeAm)
+        ? `Morning Shift has ${traineeAm} trainee(s) with only ${seniorAm} senior(s)`
+        : `Night Shift has ${traineePm} trainee(s) with only ${seniorPm} senior(s)`;
+      const warn = `⚠️ Senior:Trainee Ratio Alert: ${d.date} (${d.dayOfWeek}) - ${shortDesc}. Rule requires at least 1:1 senior-to-trainee ratio (never leave 1 senior with 2 trainees).`;
+      if (!schedule.warnings.includes(warn)) schedule.warnings.push(warn);
+    }
   });
 
   // 9b. Trainee Learning Track (3x 1H, Fri 14:00 HQ Video) & SSJ Stock Receiving (Mon PM, Tue, Wed)
@@ -2597,17 +2624,25 @@ OPERATIONAL RULES & PRIORITY CONSTRAINTS (IN ORDER OF PRIORITY):
      * Night Shift (12:30 - 21:30): Minimum 3 staff (Night PM staff >= 3).
      * Total staff working per day must be at least 6. Never allow < 3 staff on any shift!
 
-4. SECOND LESS PRIORITY CONSTRAINTS (CHINESE SPEAKER, VANESSA CULTURE ADAPTATION, MANAGERS & PHARMACISTS):
+3b. MANDATORY SENIOR-TO-TRAINEE STAFFING RATIO (MINIMUM 1:1 RATIO ON EVERY SHIFT):
+   - When 2 trainees are present on the roster (or whenever trainees are scheduled):
+   - On ANY shift (Morning Shift 07:30–16:30 or Night Shift 12:30–21:30), the ratio of senior (current experienced staff) to new trainees MUST be at least 1 to 1:
+     [senior_count >= trainee_count on EVERY shift]
+   - STRICTLY PROHIBITED: NEVER leave only 1 senior with 2 trainees on any shift! 1 senior cannot handle retail customer flow, counter sales, and dispensary while supervising 2 trainees.
+   - If 2 trainees work on the same shift (Morning or Night), there MUST be at least 2 seniors on that shift (e.g. 2 seniors + 2 trainees = 4 staff total, or 1 trainee on Morning and 1 trainee on Night with seniors on both).
+   - If 1 trainee works on a shift, there must be at least 1 senior (as floor is min 3 staff, typically 2 or 3 seniors + 1 trainee).
+
+4. SECOND LESS PRIORITY CONSTRAINTS (CHINESE SPEAKER, TRAINEE MENTORING & RATIO, MANAGERS & PHARMACISTS):
    - A. CHINESE-SPEAKING AVAILABILITY:
      ${isNov2026OrLater
        ? `* NOTE FOR ${monthVal} ONWARDS: Ting Kwang Yu and Kenix Ling have departed PMG Kota Sentosa as of November 2026. The active Chinese speakers are William Chai (fixed Morning anchor only), Penny, and Christina Lee.
      * Because of the strict minimum 3 staff per shift floor and 7-day weekly shift parity (max 2-3 night shifts per rotating teammate), naturally distribute Penny and Christina across shifts as a soft, best-effort preference where possible.`
        : `* Having at least one Chinese-speaking staff (race: Chinese: William, Ting, Kenix, Penny, Christina) in EVERY shift (AM shift >= 1 Chinese speaker, PM shift >= 1 Chinese speaker).
      * As long as there is at least one Chinese speaker on each shift across the whole day, that satisfies the requirement!`}
-   - B. NEW TEAMMATE CULTURE ADAPTATION & MENTORING (VANESSA ANAK BLAISE):
+   - B. NEW TEAMMATE CULTURE ADAPTATION & SENIOR SUPERVISION (TRAINEES):
      ${isNov2026OrLater
-       ? `* Vanessa Anak Blaise joined PMG Kota Sentosa on 1/11/2026. She has prior pharmacy retail experience (Peace Pharmacy & Joy Pharmacy Kuching) but is in her culture adaptation phase at PMG.
-     * Ensure Vanessa is always scheduled alongside experienced PMG Kota Sentosa senior teammates (William, Louna, Penny, Fiona, Nurhafizah, Farizin, Christina) on every working shift for operational guidance and team support.`
+       ? `* Trainees (such as Vanessa Anak Blaise and any fellow trainee) are in their learning phase at PMG.
+     * Ensure trainees are always scheduled alongside experienced PMG Kota Sentosa senior teammates (William, Louna, Penny, Fiona, Nurhafizah, Farizin, Christina) maintaining at least a 1:1 senior-to-trainee ratio on every working shift for operational guidance, customer flow management, and team support.`
        : `* [Pre-Nov 2026]: Standard staffing team composition.`}
    - C. MANAGEMENT TEAM COVERAGE:
      ${managerRuleActive
@@ -3067,11 +3102,13 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
     const curPm = (cumStats[tm.empNo] && cumStats[tm.empNo].pm !== undefined) ? cumStats[tm.empNo].pm : 0;
     const isChinese = tm.race === 'Chinese';
     const isManager = tm.isPharmacist || (tm.position && (tm.position.includes('Manager') || tm.position.includes('Pharmacist')));
+    const isTrainee = isTraineeTeammate(tm);
     return {
       tm,
       empNo: tm.empNo,
       isChinese,
       isManager,
+      isTrainee,
       turnWeight,
       prefRdIdx,
       prefHdIdx,
@@ -3093,6 +3130,10 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
       let chPm = (isNightShift(williamSeq[day]) ? 1 : 0);
       let mgrAm = (isAnyMorningShift(williamSeq[day]) ? 1 : 0);
       let mgrPm = (isNightShift(williamSeq[day]) ? 1 : 0);
+      let seniorAm = (isAnyMorningShift(williamSeq[day]) ? 1 : 0);
+      let traineeAm = 0;
+      let seniorPm = (isNightShift(williamSeq[day]) ? 1 : 0);
+      let traineePm = 0;
 
       tmMetadata.forEach(m => {
         const s = selected[m.empNo].seq[day];
@@ -3106,9 +3147,13 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
         if (isMorn) {
           if (m.isChinese) chAm++;
           if (m.isManager) mgrAm++;
+          if (m.isTrainee) traineeAm++;
+          else seniorAm++;
         } else if (isNight) {
           if (m.isChinese) chPm++;
           if (m.isManager) mgrPm++;
+          if (m.isTrainee) traineePm++;
+          else seniorPm++;
         }
       });
 
@@ -3120,6 +3165,15 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
       if (fullAm < 2) penalty += (2 - fullAm) * 10000000;
       if (pm < 3) penalty += (3 - pm) * 10000000;
       if (working < 6) penalty += (6 - working) * 10000000;
+
+      // 1b. Senior-to-Trainee Ratio Constraint (Minimum 1:1 ratio, seniorCount >= traineeCount on every shift)
+      // Never leave 1 senior with 2 trainees on any shift!
+      if (traineeAm > 0 && seniorAm < traineeAm) {
+        penalty += (traineeAm - seniorAm) * 10000000;
+      }
+      if (traineePm > 0 && seniorPm < traineePm) {
+        penalty += (traineePm - seniorPm) * 10000000;
+      }
 
       // Soft preference for 3 full AM staff when headcount allows
       if (fullAm < 3) penalty += 150;
@@ -3134,30 +3188,17 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
         if (chPm < 1) penalty += 1500;
       }
 
-      // 2b. Vanessa Anak Blaise - Culture Adaptation Senior Pairing
-      if (vanessaMeta && selected[vanessaMeta.empNo]) {
-        const vShift = selected[vanessaMeta.empNo].seq[day];
-        if (vShift && vShift !== 'RD' && vShift !== 'PH' && vShift !== 'OFF') {
-          const isVAm = isAnyMorningShift(vShift);
-          let seniorOnDuty = false;
-          for (let k = 0; k < tmMetadata.length; k++) {
-            const m = tmMetadata[k];
-            if (m.empNo !== vanessaMeta.empNo) {
-              const ts = selected[m.empNo].seq[day];
-              if (ts && ts !== 'RD' && ts !== 'PH' && ts !== 'OFF') {
-                if (isVAm === isAnyMorningShift(ts)) {
-                  seniorOnDuty = true;
-                  break;
-                }
-              }
-            }
+      // 2b. Trainee Culture Adaptation & Senior Mentoring
+      tmMetadata.filter(m => m.isTrainee).forEach(trMeta => {
+        const trShift = selected[trMeta.empNo] ? selected[trMeta.empNo].seq[day] : null;
+        if (trShift && trShift !== 'RD' && trShift !== 'PH' && trShift !== 'OFF') {
+          const isTrAm = isAnyMorningShift(trShift);
+          const relevantSeniorCount = isTrAm ? seniorAm : seniorPm;
+          if (relevantSeniorCount < 1) {
+            penalty += 10000000;
           }
-          if (isVAm && isAnyMorningShift(williamSeq[day])) {
-            seniorOnDuty = true;
-          }
-          if (!seniorOnDuty) penalty += 500000;
         }
-      }
+      });
 
       // 3. Manager Coverage on Each Shift (Omitted if BM or ABM resigned/absent)
       if (managerRuleActive) {
@@ -3315,12 +3356,24 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
     let fullAm = isFullMorningShift(williamSeq[day]) ? 1 : 0;
     let halfAm = isHalfDayMorningShift(williamSeq[day]) ? 1 : 0;
     let pm = isNightShift(williamSeq[day]) ? 1 : 0;
+    let curSeniorAm = (isAnyMorningShift(williamSeq[day]) ? 1 : 0);
+    let curTraineeAm = 0;
+    let curSeniorPm = (isNightShift(williamSeq[day]) ? 1 : 0);
+    let curTraineePm = 0;
 
     rotatingPool.forEach(tm => {
       const s = best[tm.empNo].seq[day];
-      if (isFullMorningShift(s)) fullAm++;
-      else if (isHalfDayMorningShift(s)) halfAm++;
-      else if (isNightShift(s)) pm++;
+      const isTr = isTraineeTeammate(tm);
+      if (isFullMorningShift(s)) {
+        fullAm++;
+        if (isTr) curTraineeAm++; else curSeniorAm++;
+      } else if (isHalfDayMorningShift(s)) {
+        halfAm++;
+        if (isTr) curTraineeAm++; else curSeniorAm++;
+      } else if (isNightShift(s)) {
+        pm++;
+        if (isTr) curTraineePm++; else curSeniorPm++;
+      }
     });
 
     while (pm < 3 && (fullAm + halfAm) > 3 && fullAm > 2) {
@@ -3351,12 +3404,19 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
       for (const cand of candidates) {
         const nextShift = day < 6 ? best[cand.empNo].seq[day + 1] : null;
         if (isFullMorningShift(nextShift)) continue;
+        const isTr = isTraineeTeammate(cand);
+        // Protect 1:1 Senior:Trainee ratio: do not convert if it leaves fewer seniors than trainees on AM or PM
+        if (!isTr && curTraineeAm > 0 && (curSeniorAm - 1) < curTraineeAm) continue;
+        if (isTr && (curTraineePm + 1) > curSeniorPm) continue;
+
         best[cand.empNo].seq[day] = '8H_1230-2130';
         best[cand.empNo].amFull--;
         best[cand.empNo].totalAm--;
         best[cand.empNo].pmFull++;
         fullAm--;
         pm++;
+        if (isTr) { curTraineeAm--; curTraineePm++; }
+        else { curSeniorAm--; curSeniorPm++; }
         converted = true;
         break;
       }
@@ -3393,12 +3453,19 @@ function solveFullWeek(weekDays, prevSundayShifts, cumStats, rotatingPool, willi
         const canPrev = !prevShift || prevShift === 'RD' || prevShift === 'PH' || isAnyMorningShift(prevShift);
         if (!canPrev) continue;
 
+        const isTr = isTraineeTeammate(cand);
+        // Protect 1:1 Senior:Trainee ratio: do not convert if it leaves fewer seniors than trainees on PM or AM
+        if (!isTr && curTraineePm > 0 && (curSeniorPm - 1) < curTraineePm) continue;
+        if (isTr && (curTraineeAm + 1) > curSeniorAm) continue;
+
         best[cand.empNo].seq[day] = '8H_0730-1630';
         best[cand.empNo].pmFull--;
         best[cand.empNo].amFull++;
         best[cand.empNo].totalAm++;
         fullAm++;
         pm--;
+        if (isTr) { curTraineePm--; curTraineeAm++; }
+        else { curSeniorPm--; curSeniorAm++; }
         converted = true;
         break;
       }
@@ -3571,6 +3638,32 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
         if (!warnings.includes(warn)) warnings.push(warn);
       }
 
+      // Senior-to-Trainee Ratio check (Minimum 1:1 ratio, seniorCount >= traineeCount on every shift)
+      let seniorAm = 0, traineeAm = 0, seniorPm = 0, traineePm = 0;
+      currentTeammates.forEach(tm => {
+        const s = dayShifts[tm.empNo];
+        if (!s || s === 'RD' || s === 'PH' || s === 'OFF') return;
+        const isTr = isTraineeTeammate(tm);
+        if (isAnyMorningShift(s)) {
+          if (isTr) traineeAm++; else seniorAm++;
+        } else if (isNightShift(s)) {
+          if (isTr) traineePm++; else seniorPm++;
+        }
+      });
+      dayObj.seniorAmCount = seniorAm;
+      dayObj.traineeAmCount = traineeAm;
+      dayObj.seniorPmCount = seniorPm;
+      dayObj.traineePmCount = traineePm;
+      dayObj.isRatioViolation = (traineeAm > 0 && seniorAm < traineeAm) || (traineePm > 0 && seniorPm < traineePm);
+
+      if (dayObj.isRatioViolation) {
+        const shortDesc = (traineeAm > 0 && seniorAm < traineeAm)
+          ? `Morning Shift has ${traineeAm} trainee(s) with only ${seniorAm} senior(s)`
+          : `Night Shift has ${traineePm} trainee(s) with only ${seniorPm} senior(s)`;
+        const warn = `⚠️ Senior:Trainee Ratio Alert: ${d.date} (${d.dayOfWeek}) - ${shortDesc}. Rule requires at least 1:1 senior-to-trainee ratio (never leave 1 senior with 2 trainees).`;
+        if (!warnings.includes(warn)) warnings.push(warn);
+      }
+
       dailySchedule.push(dayObj);
       shiftRegistry[d.date] = dayObj;
     }
@@ -3655,6 +3748,8 @@ function renderScheduleMatrix(schedule) {
     let hasNightManager   = false;
     const morningRaces  = new Set();
     const nightRaces    = new Set();
+    let seniorAm = 0, traineeAm = 0;
+    let seniorPm = 0, traineePm = 0;
 
     Object.entries(d.shifts).forEach(([empNo, shift]) => {
       const tm = currentTeammates.find(t => t.empNo === empNo);
@@ -3664,6 +3759,7 @@ function renderScheduleMatrix(schedule) {
       if (isWorking) totalShifts++;
       else if (shift === 'RD' || shift === 'OFF' || shift === 'PH') totalRestDays++;
 
+      const isTr = isTraineeTeammate(tm);
       const isPharm = tm.isPharmacist || tm.position === 'Pharmacist';
       const isManager = isPharm || (tm.position && (tm.position.includes('Manager') || tm.position.includes('Pharmacist')));
       const isHalf  = shift && (shift.includes('4H') || shift.includes('5H') || shift.includes('Half') || shift.includes('0730-1130'));
@@ -3680,6 +3776,7 @@ function renderScheduleMatrix(schedule) {
 
       if (isMorning) {
         if (isManager) hasMorningManager = true;
+        if (isTr) traineeAm++; else seniorAm++;
         morningRaces.add(tm.race);
         if (isFullAm) {
           teammateStats[empNo].mCount++;
@@ -3692,6 +3789,7 @@ function renderScheduleMatrix(schedule) {
         }
       } else if (isNight) {
         if (isManager) hasNightManager = true;
+        if (isTr) traineePm++; else seniorPm++;
         nightRaces.add(tm.race);
         teammateStats[empNo].nCount++;
         teammateStats[empNo].currentNightStreak++;
@@ -3715,6 +3813,12 @@ function renderScheduleMatrix(schedule) {
         teammateStats[empNo].learnCount++;
       }
     });
+
+    d.seniorAmCount = seniorAm;
+    d.traineeAmCount = traineeAm;
+    d.seniorPmCount = seniorPm;
+    d.traineePmCount = traineePm;
+    d.isRatioViolation = (traineeAm > 0 && seniorAm < traineeAm) || (traineePm > 0 && seniorPm < traineePm);
 
     const hasMorningChinese = [...morningRaces].some(r => r === 'Chinese');
     const hasNightChinese   = [...nightRaces].some(r => r === 'Chinese');
@@ -3827,10 +3931,11 @@ function renderScheduleMatrix(schedule) {
     const isAmShortage = d.amCount < 3;
     const isPmShortage = d.pmCount < 3;
     const isShortage = isAmShortage || isPmShortage;
+    const isRatioViolation = !!d.isRatioViolation;
 
-    // Visual Grid Warning Badges: Amber highlight on column header where a shift has < 3 staff
+    // Visual Grid Warning Badges: Amber highlight on column header where a shift has < 3 staff or ratio violation
     let dayBg = 'bg-gray-50 text-gray-700';
-    if (isShortage) {
+    if (isShortage || isRatioViolation) {
       dayBg = 'bg-amber-100 text-amber-950 border-b-2 border-amber-500 ring-1 ring-amber-400 ring-inset shadow-xs';
     } else if (isHoliday) {
       dayBg = 'bg-rose-50 text-rose-900 border-rose-200';
@@ -3844,7 +3949,7 @@ function renderScheduleMatrix(schedule) {
 
     headerHtml += `
       <th class="px-2 py-2 text-center text-xs font-semibold ${dayBg} ${weekBorder} min-w-[75px]" title="${isHoliday ? HOLIDAYS_2026_SARAWAK[d.date] : ''}">
-        <div class="text-[10px] uppercase font-bold ${isHoliday ? 'text-rose-600' : (isShortage ? 'text-amber-800' : 'text-gray-400')}">${d.dayOfWeek.slice(0, 3)}</div>
+        <div class="text-[10px] uppercase font-bold ${isHoliday ? 'text-rose-600' : ((isShortage || isRatioViolation) ? 'text-amber-800' : 'text-gray-400')}">${d.dayOfWeek.slice(0, 3)}</div>
         <div class="text-sm font-extrabold">${d.day}</div>
         ${!d.isTargetMonth ? `<div class="text-[9px] text-indigo-600 font-extrabold">${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][(d.month || 1) - 1]}</div>` : ''}
         ${isHoliday ? '<span class="text-[9px] bg-rose-200 text-rose-800 px-1 rounded font-bold">PH</span>' : ''}
@@ -3854,6 +3959,14 @@ function renderScheduleMatrix(schedule) {
             title="${shortageTooltip}">
             <i class="fa-solid fa-triangle-exclamation"></i>
             <span>${isAmShortage ? `AM (${d.amCount}/3)` : `PM (${d.pmCount}/3)`}</span>
+          </button>
+        ` : ''}
+        ${isRatioViolation ? `
+          <button type="button" onclick="openDayShiftEditorModal('${d.date}')"
+            class="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-600 hover:bg-rose-700 text-white transition shadow-xs cursor-pointer whitespace-nowrap"
+            title="⚠️ Senior-to-Trainee Ratio &lt; 1:1 on ${d.date}: AM (${d.seniorAmCount} Senior : ${d.traineeAmCount} Trainee), PM (${d.seniorPmCount} Senior : ${d.traineePmCount} Trainee) - Click to edit">
+            <i class="fa-solid fa-users-slash"></i>
+            <span>Ratio &lt; 1:1</span>
           </button>
         ` : ''}
       </th>
@@ -3935,10 +4048,10 @@ function renderScheduleMatrix(schedule) {
   schedule.days.forEach(d => {
     const isSunday = d.dayOfWeek === 'Sunday';
     const weekBorder = isSunday ? 'border-r-2 border-r-slate-400' : 'border-r border-gray-200';
-    const isTargetMet = d.amCount >= 3 && d.pmCount >= 3;
+    const isTargetMet = d.amCount >= 3 && d.pmCount >= 3 && !d.isRatioViolation;
     densityRow += `
       <td class="px-1 py-1 text-center ${weekBorder} ${isTargetMet ? '' : 'bg-amber-100/90'}">
-        <button type="button" onclick="openDayShiftEditorModal('${d.date}')" class="w-full text-[9px] font-mono font-bold ${isTargetMet ? 'text-emerald-800 bg-emerald-100 hover:bg-emerald-200' : 'text-amber-900 bg-amber-200 hover:bg-amber-300 border border-amber-300'} px-1 py-0.5 rounded leading-tight transition cursor-pointer" title="Morning: ${d.amCount} (${d.fullAmCount || 0} Full 8H + ${d.halfAmCount || 0} Half 4H), Night: ${d.pmCount}, Total Working: ${d.workingTotal} (Click to fine-tune)">
+        <button type="button" onclick="openDayShiftEditorModal('${d.date}')" class="w-full text-[9px] font-mono font-bold ${isTargetMet ? 'text-emerald-800 bg-emerald-100 hover:bg-emerald-200' : 'text-amber-900 bg-amber-200 hover:bg-amber-300 border border-amber-300'} px-1 py-0.5 rounded leading-tight transition cursor-pointer" title="Morning: ${d.amCount} (${d.fullAmCount || 0} Full 8H + ${d.halfAmCount || 0} Half 4H), Night: ${d.pmCount}, Total Working: ${d.workingTotal} | Ratio: AM ${d.seniorAmCount || 0}S:${d.traineeAmCount || 0}T, PM ${d.seniorPmCount || 0}S:${d.traineePmCount || 0}T ${d.isRatioViolation ? '(! Ratio Violation)' : '(OK)'} (Click to fine-tune)">
           ${d.amCount}M / ${d.pmCount}N ${isTargetMet ? '' : '⚠️'}
         </button>
       </td>
@@ -4246,14 +4359,20 @@ function renderConflictInspector(schedule) {
     const isAmShortage = d.amCount < 3;
     const isPmShortage = d.pmCount < 3;
     const isDensityShortage = d.workingTotal < 6;
+    const isRatioViolation = !!d.isRatioViolation;
 
-    if (isAmShortage || isPmShortage || isDensityShortage) {
-      const shortageShift = isAmShortage && isPmShortage
-        ? 'Morning & Night Shifts'
-        : (isAmShortage ? 'Morning Shift' : (isPmShortage ? 'Night Shift' : 'Overall Manpower'));
+    if (isAmShortage || isPmShortage || isDensityShortage || isRatioViolation) {
+      const shortageShift = isRatioViolation
+        ? ((d.traineeAmCount > 0 && d.seniorAmCount < d.traineeAmCount)
+            ? `Morning Senior:Trainee Ratio (${d.seniorAmCount} Senior : ${d.traineeAmCount} Trainees)`
+            : `Night Senior:Trainee Ratio (${d.seniorPmCount} Senior : ${d.traineePmCount} Trainees)`)
+        : (isAmShortage && isPmShortage
+          ? 'Morning & Night Shifts'
+          : (isAmShortage ? 'Morning Shift' : (isPmShortage ? 'Night Shift' : 'Overall Manpower')));
 
       let deficit = 0;
-      if (isAmShortage && isPmShortage) deficit = (3 - d.amCount) + (3 - d.pmCount);
+      if (isRatioViolation) deficit = 1;
+      else if (isAmShortage && isPmShortage) deficit = (3 - d.amCount) + (3 - d.pmCount);
       else if (isAmShortage) deficit = 3 - d.amCount;
       else if (isPmShortage) deficit = 3 - d.pmCount;
       else deficit = 6 - d.workingTotal;
@@ -4277,6 +4396,10 @@ function renderConflictInspector(schedule) {
         surplusDayName = `${prevDay.dayOfWeek} or ${nextDay.dayOfWeek}`;
       }
 
+      const suggestion = isRatioViolation
+        ? `Ratio Rule: Cannot leave 1 senior with 2 trainees on a shift (ratio must be at least 1:1). Reassign 1 trainee to alternate shift or swap an experienced senior into this shift.`
+        : `Recommend moving 1 rest day to ${surplusDayName} to achieve minimum 3-staff ${shortageShift.toLowerCase()} coverage.`;
+
       bottlenecks.push({
         day: d.day,
         date: d.date,
@@ -4286,10 +4409,11 @@ function renderConflictInspector(schedule) {
         pmCount: d.pmCount,
         isAmShortage,
         isPmShortage,
+        isRatioViolation,
         shortageShift,
         deficit,
         restTeammates,
-        suggestion: `Recommend moving 1 rest day to ${surplusDayName} to achieve minimum 3-staff ${shortageShift.toLowerCase()} coverage.`
+        suggestion
       });
     }
   });
@@ -4497,21 +4621,26 @@ function updateDayShiftEditorMeter() {
   let totalWorking = 0;
   let hasMorningChinese = false;
   let hasNightChinese = false;
+  let seniorAm = 0, traineeAm = 0;
+  let seniorPm = 0, traineePm = 0;
 
   currentTeammates.forEach(tm => {
     const el = document.getElementById(`editShift_${tm.empNo}`);
     const s = el ? el.value : 'RD';
     const isChinese = tm.race === 'Chinese';
+    const isTr = isTraineeTeammate(tm);
 
     if (s && s !== 'RD' && s !== 'PH' && s !== 'OFF') {
       totalWorking++;
       if (s.includes('0730') || s.includes('0800') || s.includes('4H')) {
         amCount++;
         if (isChinese) hasMorningChinese = true;
+        if (isTr) traineeAm++; else seniorAm++;
       }
       if (s.includes('1230') || s.includes('1300') || s.includes('1630-2130') || s.startsWith('5H_1630')) {
         pmCount++;
         if (isChinese) hasNightChinese = true;
+        if (isTr) traineePm++; else seniorPm++;
       }
     } else {
       rdCount++;
@@ -4519,6 +4648,7 @@ function updateDayShiftEditorMeter() {
   });
 
   const isShortage = amCount < 3 || pmCount < 3;
+  const isTraineeRatioViolation = (traineeAm > 0 && seniorAm < traineeAm) || (traineePm > 0 && seniorPm < traineePm);
   const curMonthVal = generatedScheduleData ? generatedScheduleData.month : '';
   const isNov2026OrLater = !curMonthVal || curMonthVal >= '2026-11';
 
@@ -4543,14 +4673,21 @@ function updateDayShiftEditorMeter() {
         Night: <span class="${pmCount < 3 ? 'text-red-600 font-extrabold' : 'text-purple-700 font-bold'}">${pmCount}</span>
         ${pmChBadge}
       </div>
+      <div class="font-mono text-xs">
+        Ratio: <span class="${isTraineeRatioViolation ? 'text-rose-600 font-extrabold' : 'text-slate-700 font-bold'}">AM ${seniorAm}S:${traineeAm}T | PM ${seniorPm}S:${traineePm}T</span>
+      </div>
       <div class="font-mono text-gray-500">
         Off: <span>${rdCount}</span>
       </div>
     </div>
-    <div>
+    <div class="flex items-center gap-1.5 flex-wrap">
       ${isShortage
         ? `<span class="px-2 py-0.5 rounded font-extrabold text-[10px] bg-red-100 text-red-800 border border-red-200"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Shift Shortage (<3 floor)</span>`
         : `<span class="px-2 py-0.5 rounded font-bold text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-200"><i class="fa-solid fa-circle-check mr-1"></i>Floor Strength OK (≥3)</span>`
+      }
+      ${isTraineeRatioViolation
+        ? `<span class="px-2 py-0.5 rounded font-extrabold text-[10px] bg-rose-100 text-rose-800 border border-rose-300" title="Ratio must be at least 1 senior to 1 trainee. Never leave 1 senior with 2 trainees."><i class="fa-solid fa-users-slash mr-1"></i>Senior:Trainee Ratio &lt; 1:1</span>`
+        : ''
       }
     </div>
   `;
@@ -4571,6 +4708,8 @@ function saveDayShiftEditorModal() {
   let amCount = 0;
   let pmCount = 0;
   let totalWorking = 0;
+  let seniorAm = 0, traineeAm = 0;
+  let seniorPm = 0, traineePm = 0;
 
   currentTeammates.forEach(tm => {
     const el = document.getElementById(`editShift_${tm.empNo}`);
@@ -4581,15 +4720,37 @@ function saveDayShiftEditorModal() {
 
       if (shiftVal && shiftVal !== 'RD' && shiftVal !== 'PH' && shiftVal !== 'OFF') {
         totalWorking++;
-        if (shiftVal.includes('0730') || shiftVal.includes('0800')) amCount++;
-        if (shiftVal.includes('1230') || shiftVal.includes('1300') || shiftVal.includes('1630-2130') || shiftVal.startsWith('5H_1630')) pmCount++;
+        const isTr = isTraineeTeammate(tm);
+        if (shiftVal.includes('0730') || shiftVal.includes('0800') || shiftVal.includes('4H')) {
+          amCount++;
+          if (isTr) traineeAm++; else seniorAm++;
+        }
+        if (shiftVal.includes('1230') || shiftVal.includes('1300') || shiftVal.includes('1630-2130') || shiftVal.startsWith('5H_1630')) {
+          pmCount++;
+          if (isTr) traineePm++; else seniorPm++;
+        }
       }
     }
   });
 
+  const isRatioViolation = (traineeAm > 0 && seniorAm < traineeAm) || (traineePm > 0 && seniorPm < traineePm);
+  if (isRatioViolation) {
+    const shiftDesc = (traineeAm > 0 && seniorAm < traineeAm)
+      ? `Morning Shift has ${traineeAm} trainee(s) and only ${seniorAm} senior(s)`
+      : `Night Shift has ${traineePm} trainee(s) and only ${seniorPm} senior(s)`;
+    if (!confirm(`Warning: This schedule violates the Senior-to-Trainee ratio rule (ratio must be at least 1:1, never 1 senior with 2 trainees):\n\n${shiftDesc}.\n\nAre you sure you want to save this shift arrangement?`)) {
+      return;
+    }
+  }
+
   d.amCount = amCount;
   d.pmCount = pmCount;
   d.workingTotal = totalWorking;
+  d.seniorAmCount = seniorAm;
+  d.traineeAmCount = traineeAm;
+  d.seniorPmCount = seniorPm;
+  d.traineePmCount = traineePm;
+  d.isRatioViolation = isRatioViolation;
 
   // Cleaner duty
   const cleanerSelect = document.getElementById('editShift_cleaner');
@@ -4616,6 +4777,12 @@ function saveDayShiftEditorModal() {
       const isPmShort = pmCount < 3;
       const shortDesc = isAmShort ? `Deficit on Morning (${amCount}/3 staff)` : (isPmShort ? `Deficit on Night (${pmCount}/3 staff)` : `Total working staff below 6`);
       generatedScheduleData.warnings.push(`⚠️ Manpower Alert: Only ${totalWorking} staff on duty on ${d.date} (${d.dayOfWeek}). ${shortDesc}. Minimum 6 required to hit 3 AM / 3 PM floor.`);
+    }
+    if (isRatioViolation) {
+      const shortDesc = (traineeAm > 0 && seniorAm < traineeAm)
+        ? `Morning Shift has ${traineeAm} trainee(s) with only ${seniorAm} senior(s)`
+        : `Night Shift has ${traineePm} trainee(s) with only ${seniorPm} senior(s)`;
+      generatedScheduleData.warnings.push(`⚠️ Senior:Trainee Ratio Alert: ${d.date} (${d.dayOfWeek}) - ${shortDesc}. Rule requires at least 1:1 ratio.`);
     }
   }
 
