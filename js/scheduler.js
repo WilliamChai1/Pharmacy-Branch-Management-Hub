@@ -517,7 +517,7 @@ const DEFAULT_KS01_TEAMMATES = [
     empNo: 'PMG03801',
     nickname: 'VANESSA',
     empName: 'VANESSA ANAK BLAISE',
-    position: 'Staff',
+    position: 'Trainee',
     isPharmacist: false,
     scheduleMode: 'Rotating',
     race: 'Iban / Bidayuh',
@@ -582,6 +582,8 @@ let editingTeammateEmpNo = null;   // For Day Preferences Modal
 // ─── TRAINEE HELPER ───────────────────────────────────────────────────────────
 function isTraineeTeammate(tm) {
   if (!tm) return false;
+  const pos = String(tm.position || '').trim().toLowerCase();
+  if (pos === 'trainee' || pos.includes('trainee')) return true;
   if (tm.isTrainee !== undefined) return !!tm.isTrainee;
   return tm.empNo === 'PMG03801' || tm.nickname === 'VANESSA' || !!tm.adaptationPhase;
 }
@@ -753,7 +755,10 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
         if (defVanessa) {
           currentTeammates.push(JSON.parse(JSON.stringify(defVanessa)));
         }
-      } else if (vanessa.isTrainee === undefined) {
+      } else {
+        if (!vanessa.position || vanessa.position === 'Staff') {
+          vanessa.position = 'Trainee';
+        }
         vanessa.isTrainee = true;
       }
     } else {
@@ -832,6 +837,13 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
       }
     });
   }
+
+  // Ensure any teammate with position 'Trainee' has isTrainee = true
+  currentTeammates.forEach(tm => {
+    if (String(tm.position || '').trim().toLowerCase().includes('trainee')) {
+      tm.isTrainee = true;
+    }
+  });
 
   renderTeammatesTable();
 
@@ -913,9 +925,18 @@ function saveTeammatePreferences(silent = false) {
 
     const posVal = posEl ? posEl.value : (orig.position || 'Staff');
     const isPharm = posVal.includes('Pharmacist') || orig.isPharmacist || (orig.empNo === 'PMG00831');
+    const isTraineeVal = (posVal === 'Trainee' || posVal.toLowerCase().includes('trainee')) ? true : (orig.isTrainee !== undefined ? orig.isTrainee : false);
 
-    const restVal = restEl ? restEl.value : extractRestDayName(orig);
+    let restVal = restEl ? restEl.value : extractRestDayName(orig);
     const halfVal = halfEl ? halfEl.value : extractHalfDayName(orig);
+
+    if (isTraineeVal && restVal === 'Friday') {
+      if (!silent) {
+        alert(`Trainees (${orig.empName || orig.nickname}) must attend Friday 2:00 PM HQ Video Training and cannot have Friday as Rest Day. Rest Day has been moved to Sunday.`);
+      }
+      restVal = 'Sunday';
+      if (restEl) restEl.value = 'Sunday';
+    }
 
     const dayPrefs = orig.dayPrefs ? { ...orig.dayPrefs } : {
       Monday: 'Flexible', Tuesday: 'Flexible', Wednesday: 'Flexible',
@@ -931,6 +952,11 @@ function saveTeammatePreferences(silent = false) {
       });
       if (restVal && restVal !== 'Flexible') {
         dayPrefs[restVal] = 'RD';
+      }
+
+      if (isTraineeVal && dayPrefs['Friday'] === 'RD') {
+        dayPrefs['Friday'] = 'Flexible';
+        dayPrefs['Sunday'] = 'RD';
       }
 
       // Sync Morning Half in dayPrefs with halfVal (4H for William, 5H for rotating teammates)
@@ -952,6 +978,7 @@ function saveTeammatePreferences(silent = false) {
       ...orig,
       position:    posVal,
       isPharmacist: isPharm,
+      isTrainee:   isTraineeVal,
       race:        raceEl ? raceEl.value : (orig.race || 'Chinese'),
       shiftPref:   shiftEl ? shiftEl.value : (orig.shiftPref || 'Flexible'),
       restDayPref: restVal,
@@ -1037,7 +1064,7 @@ function renderTeammatesTable() {
     return;
   }
 
-  const positionOptions = ['Pharmacist', 'Provisional Registered Pharmacist', 'Branch Manager', 'Assistant Branch Manager', 'Staff'];
+  const positionOptions = ['Pharmacist', 'Provisional Registered Pharmacist', 'Branch Manager', 'Assistant Branch Manager', 'Staff', 'Trainee'];
   const raceOptions = ['Chinese', 'Malay', 'Iban / Bidayuh', 'Other'];
   const shiftOptions = ['Morning Preferred', 'Night Preferred', 'Flexible', 'Morning Only'];
   const restOptions = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Flexible'];
@@ -1079,7 +1106,7 @@ function renderTeammatesTable() {
           <select onchange="onTeammateRowPrefChange()" class="tm-position text-xs border border-gray-300 rounded px-2 py-1 bg-white font-medium focus:ring-1 focus:ring-purple-400 outline-none w-full" ${isFixed ? 'disabled' : ''}>
             ${positionOptions.map(p => `<option value="${p}" ${t.position === p ? 'selected' : ''}>${p}</option>`).join('')}
           </select>
-          ${isPharm ? '<span class="inline-block mt-1 text-[10px] text-blue-700 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200"><i class="fa-solid fa-mortar-pestle mr-1"></i>Rx Qualified</span>' : '<span class="inline-block mt-1 text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">Staff</span>'}
+          ${isPharm ? '<span class="inline-block mt-1 text-[10px] text-blue-700 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200"><i class="fa-solid fa-mortar-pestle mr-1"></i>Rx Qualified</span>' : (isTrainee ? '<span class="inline-block mt-1 text-[10px] text-indigo-700 font-bold bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200"><i class="fa-solid fa-graduation-cap mr-1"></i>Trainee</span>' : '<span class="inline-block mt-1 text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">Staff</span>')}
         </td>
         <td class="px-2 py-3">
           <select onchange="onTeammateRowPrefChange()" class="tm-race text-xs border border-gray-300 rounded px-2 py-1 bg-white font-medium focus:ring-1 focus:ring-purple-400 outline-none w-full">
@@ -1234,6 +1261,11 @@ function saveDayPrefsModal() {
   const traineeToggle = document.getElementById('modalIsTraineeToggle');
   if (traineeToggle) {
     tm.isTrainee = traineeToggle.checked;
+    if (tm.isTrainee) {
+      if (!tm.position || tm.position === 'Staff') tm.position = 'Trainee';
+    } else {
+      if (tm.position === 'Trainee') tm.position = 'Staff';
+    }
     if (tm.isTrainee && newPrefs['Friday'] === 'RD') {
       alert('Trainees must attend Friday 2:00 PM HQ Video Training and cannot have Friday as Rest Day (RD). Rest Day has been moved to Sunday.');
       newPrefs['Friday'] = 'Flexible';
@@ -1269,21 +1301,26 @@ function showAddTeammateModal() {
   if (!empName) return;
   const nickname = prompt('Enter Short Nickname (e.g. CONNY):', empName.split(' ')[0].toUpperCase()) || empName.split(' ')[0].toUpperCase();
   const empNo = prompt('Enter Employee ID (e.g. PMG09999):', `PMG0${Math.floor(1000 + Math.random() * 9000)}`) || 'PMG00000';
+  const posInput = prompt('Enter Position (Pharmacist / Provisional Registered Pharmacist / Branch Manager / Assistant Branch Manager / Staff / Trainee):', 'Staff');
+  const pos = (posInput && posInput.trim()) ? posInput.trim() : 'Staff';
+  const isTrainee = pos.toLowerCase().includes('trainee');
+  const isPharm = pos.toLowerCase().includes('pharmacist');
   
   currentTeammates.push({
     empNo: empNo.trim().toUpperCase(),
     nickname: nickname.trim().toUpperCase(),
     empName: empName.trim().toUpperCase(),
-    position: 'Staff',
-    isPharmacist: false,
+    position: pos,
+    isPharmacist: isPharm,
+    isTrainee: isTrainee,
     scheduleMode: 'Rotating',
     race: 'Chinese',
     shiftPref: 'Flexible',
-    restDayPref: 'Sunday',
+    restDayPref: isTrainee ? 'Wednesday' : 'Sunday',
     halfDayPref: 'Flexible',
     dayPrefs: {
-      Monday: 'Flexible', Tuesday: 'Flexible', Wednesday: 'Flexible',
-      Thursday: 'Flexible', Friday: 'Flexible', Saturday: 'Flexible', Sunday: 'RD'
+      Monday: 'Flexible', Tuesday: 'Flexible', Wednesday: isTrainee ? 'RD' : 'Flexible',
+      Thursday: 'Flexible', Friday: 'Flexible', Saturday: 'Flexible', Sunday: isTrainee ? 'Flexible' : 'RD'
     }
   });
 
@@ -2476,6 +2513,7 @@ async function callSchedulerGemini(model, branchVal, monthVal, totalDays, apiKey
       nickname: t.nickname,
       position: t.position,
       isPharmacist: !!(t.isPharmacist || (t.position && t.position.includes('Pharmacist')) || t.empNo === 'PMG00831'),
+      isTrainee: isTraineeTeammate(t),
       isManagerTeam: !!(t.isPharmacist || (t.position && (t.position.includes('Manager') || t.position.includes('Pharmacist')))),
       race: t.race,
       isChinese: t.race === 'Chinese',
@@ -2601,8 +2639,8 @@ OPERATIONAL RULES & PRIORITY CONSTRAINTS (IN ORDER OF PRIORITY):
    - Shared equally among all rotating staff. William is excluded.
 
 9. TRAINEE LEARNING TRACK (3x 1-HOUR SESSIONS PER WEEK):
-   - For new incoming trainees (e.g. Vanessa Anak Blaise PMG03801 during their 3-month adaptation phase), allocate exactly 3 learning hours per calendar week.
-   - Session 1 MUST be Friday afternoon at 2:00 PM – 3:00 PM (14:00 - 15:00) for "HQ Video Training". Trainees must never take Rest Day on Friday.
+   - For any teammate assigned position 'Trainee' or isTrainee = true (e.g. Vanessa Anak Blaise PMG03801 during their 3-month adaptation phase), allocate exactly 3 learning hours per calendar week (1 hour in a day across 3 separate working days).
+   - Session 1 MUST be Friday afternoon at 2:00 PM – 3:00 PM (14:00 - 15:00) for "HQ Video Training". Trainees must never take Rest Day on Friday; they must be scheduled to work on Friday (Morning or Night shift).
    - Sessions 2 & 3: Allocate on 2 other working days at 2:00 PM – 3:00 PM during shift overlap when floor staffing >= 3, for "Product & SOP Learning".
 
 10. HQ (SSJ) STOCK RECEIVING CONSIDERATION (MON PM, TUE, WED):
@@ -3828,6 +3866,7 @@ function renderScheduleMatrix(schedule) {
   currentTeammates.forEach(tm => {
     const isPharm = tm.isPharmacist || tm.position === 'Pharmacist';
     const isFixed = tm.scheduleMode === 'Fixed' || tm.empNo === 'PMG00831';
+    const isTrainee = isTraineeTeammate(tm);
     const st = teammateStats[tm.empNo];
 
     bodyHtml += `
@@ -3838,6 +3877,7 @@ function renderScheduleMatrix(schedule) {
             <div class="flex items-center gap-1">
               ${isPharm ? '<span class="text-[9px] px-1 py-0.5 rounded font-bold bg-blue-100 text-blue-800 border border-blue-200">Rx</span>' : ''}
               ${isFixed ? '<span class="text-[9px] px-1 py-0.5 rounded font-bold bg-amber-100 text-amber-800">Fixed</span>' : ''}
+              ${isTrainee ? '<span class="text-[9px] px-1 py-0.5 rounded font-bold bg-indigo-100 text-indigo-800 border border-indigo-200" title="Trainee Learning Track (3x 1H sessions/week)">🎓 Trainee</span>' : ''}
             </div>
           </div>
           <div class="text-[10px] text-gray-400 truncate max-w-[170px]">${escHtml(tm.empName)}</div>
