@@ -626,7 +626,7 @@
 
           // Step F3: Bidirectional sync of teammate preferences (schedule_preferences_*.json)
           try {
-            const bCode = FOLDER_BRANCH_CODE_MAP[branchName] || branchName;
+            const bCode = (FOLDER_BRANCH_CODE_MAP[branchName] || branchName || 'KS01').toUpperCase();
             const prefFileName = `schedule_preferences_${bCode}.json`;
             let cloudPrefs = null;
             let cloudPrefTime = '';
@@ -642,17 +642,24 @@
             } catch (_) {}
 
             const localPrefKey = `pmg_staff_preferences_v2_${bCode}`;
+            const localUpdatedKey = `pmg_staff_preferences_v2_${bCode}_updatedAt`;
             const localPrefRaw = localStorage.getItem(localPrefKey);
             const localPrefs = localPrefRaw ? JSON.parse(localPrefRaw) : null;
+            const localUpdated = localStorage.getItem(localUpdatedKey) || '';
 
-            if (cloudPrefs && (!localPrefs || (cloudPrefTime && cloudPrefTime > (localPrefs._lastUpdated || '')))) {
+            // Conflict comparison check: Do NOT overwrite local preferences if cloudData.lastUpdated is missing, null, or older than localUpdated
+            if (cloudPrefs && Array.isArray(cloudPrefs) && cloudPrefs.length > 0 && cloudPrefTime && (!localPrefs || !localUpdated || cloudPrefTime >= localUpdated)) {
               localStorage.setItem(localPrefKey, JSON.stringify(cloudPrefs));
-              console.log(`[PMG OneDrive Sync] Pulled newer staff preferences from OneDrive for ${bCode}`);
-            } else if (localPrefs && !cloudPrefs) {
+              localStorage.setItem(localUpdatedKey, cloudPrefTime);
+              localStorage.setItem(`pmg_schedule_prefs_cloud_updatedAt_${bCode}`, cloudPrefTime);
+              console.log(`[PMG OneDrive Sync] Pulled newer staff preferences from OneDrive for ${bCode} (updatedAt: ${cloudPrefTime})`);
+            } else if (localPrefs && Array.isArray(localPrefs) && localPrefs.length > 0 && (!cloudPrefs || !cloudPrefTime || (localUpdated && localUpdated > cloudPrefTime))) {
+              const effectiveUpdatedAt = localUpdated || nowIso;
+              localStorage.setItem(localUpdatedKey, effectiveUpdatedAt);
               const prefPayload = {
                 branch: branchName,
                 branchCode: bCode,
-                lastUpdated: nowIso,
+                lastUpdated: effectiveUpdatedAt,
                 updatedBy: session?.displayName || 'Pharmacist',
                 preferences: localPrefs
               };
@@ -660,7 +667,7 @@
               const pw = await pfHandle.createWritable();
               await pw.write(JSON.stringify(prefPayload, null, 2));
               await pw.close();
-              console.log(`[PMG OneDrive Sync] Uploaded local staff preferences to OneDrive for ${bCode}`);
+              console.log(`[PMG OneDrive Sync] Uploaded local staff preferences to OneDrive for ${bCode} (updatedAt: ${effectiveUpdatedAt})`);
             }
           } catch (prefSyncErr) {
             console.warn(`[PMG OneDrive Sync] Preferences sync warning for ${branchName}:`, prefSyncErr);
@@ -830,7 +837,7 @@
           if (window.pmgPricing && Array.isArray(window.pmgPricing.skus) && window.pmgPricing.skus.length > 0) {
             skus = window.pmgPricing.skus;
           } else {
-            const rawSkus = localStorage.getItem('pmg_pricing_skus_master_v1');
+            const rawSkus = localStorage.getItem('pmg_pricing_skus_master') || localStorage.getItem('pmg_pricing_skus_master_v1');
             if (rawSkus) skus = JSON.parse(rawSkus);
           }
           if (skus && skus.length > 0) {
@@ -1107,7 +1114,7 @@
     async saveTeammatePreferencesToOneDrive(branchCode, teammatesList) {
       if (!this.rootHandle || this.mode === 'DISCONNECTED') return false;
       const bFolder = BRANCH_FOLDER_MAP[(branchCode || '').toUpperCase()] || this.activeBranchFolder || 'KOTA SENTOSA';
-      const bCode = FOLDER_BRANCH_CODE_MAP[bFolder] || branchCode || 'KS01';
+      const bCode = (FOLDER_BRANCH_CODE_MAP[bFolder] || branchCode || 'KS01').toUpperCase();
       const dirHandle = await this._getTargetBranchDirectoryHandle(bFolder);
       if (!dirHandle) return false;
 
@@ -1117,11 +1124,17 @@
 
         const session = typeof getSession === 'function' ? getSession() : null;
         const nowIso = new Date().toISOString();
+        const localUpdatedKey = `pmg_staff_preferences_v2_${bCode}_updatedAt`;
+        const effectiveUpdatedAt = localStorage.getItem(localUpdatedKey) || nowIso;
+        try {
+          localStorage.setItem(localUpdatedKey, effectiveUpdatedAt);
+          localStorage.setItem(`pmg_schedule_prefs_cloud_updatedAt_${bCode}`, effectiveUpdatedAt);
+        } catch (_) {}
 
         const payload = {
           branch: bFolder,
           branchCode: bCode,
-          lastUpdated: nowIso,
+          lastUpdated: effectiveUpdatedAt,
           updatedBy: session?.displayName || 'Pharmacist',
           preferences: teammatesList
         };
@@ -1143,7 +1156,7 @@
     async loadTeammatePreferencesFromOneDrive(branchCode) {
       if (!this.rootHandle || this.mode === 'DISCONNECTED') return null;
       const bFolder = BRANCH_FOLDER_MAP[(branchCode || '').toUpperCase()] || this.activeBranchFolder || 'KOTA SENTOSA';
-      const bCode = FOLDER_BRANCH_CODE_MAP[bFolder] || branchCode || 'KS01';
+      const bCode = (FOLDER_BRANCH_CODE_MAP[bFolder] || branchCode || 'KS01').toUpperCase();
       const dirHandle = await this._getTargetBranchDirectoryHandle(bFolder);
       if (!dirHandle) return null;
 
@@ -1164,13 +1177,31 @@
         if (!text || !text.trim()) return null;
         const parsed = JSON.parse(text);
         const prefs = parsed.preferences || (Array.isArray(parsed) ? parsed : null);
-        // Sync metadata stored in a dedicated localStorage key (never as a property on the array)
+        if (!prefs || !Array.isArray(prefs) || prefs.length === 0) return null;
+
+        const cloudLastUpdated = parsed && parsed.lastUpdated ? String(parsed.lastUpdated) : '';
+        const localUpdatedKey = `pmg_staff_preferences_v2_${bCode}_updatedAt`;
+        const localPrefKey = `pmg_staff_preferences_v2_${bCode}`;
+        const localUpdated = localStorage.getItem(localUpdatedKey) || '';
+        const hasLocalPrefs = !!localStorage.getItem(localPrefKey);
+
+        // Conflict comparison check: Do NOT overwrite local preferences if cloudData.lastUpdated is missing, null, or older than localUpdated
+        if (hasLocalPrefs && (!cloudLastUpdated || (localUpdated && cloudLastUpdated < localUpdated))) {
+          console.log(`[PMG OneDrive Sync] Skipped overwriting local preferences for ${bCode} (cloud lastUpdated "${cloudLastUpdated || 'missing'}" is older than local "${localUpdated}")`);
+          return null;
+        }
+
+        // Sync metadata stored in dedicated localStorage keys (never as a property on the array)
         try {
           const metaKey = `pmg_schedule_prefs_cloud_updatedAt_${bCode}`;
-          if (parsed && parsed.lastUpdated) localStorage.setItem(metaKey, parsed.lastUpdated);
-          else localStorage.removeItem(metaKey);
+          if (cloudLastUpdated) {
+            localStorage.setItem(metaKey, cloudLastUpdated);
+            localStorage.setItem(localUpdatedKey, cloudLastUpdated);
+          } else {
+            localStorage.removeItem(metaKey);
+          }
         } catch (_) {}
-        return (prefs && Array.isArray(prefs)) ? prefs : null;
+        return prefs;
       } catch (_) {
         return null;
       }
@@ -1514,6 +1545,13 @@
         await csvWritable.write(csv);
         await csvWritable.close();
 
+        // Keep localStorage pmg_pricing_skus_master in sync when within quota
+        if (Array.isArray(skus) && skus.length > 0 && skus.length <= 1000) {
+          try {
+            localStorage.setItem('pmg_pricing_skus_master', JSON.stringify(skus));
+          } catch (_) {}
+        }
+
         console.log(`[PMG OneDrive Sync] Successfully auto-backed up ${skus.length} SKUs to OneDrive.`);
         return true;
       } catch (err) {
@@ -1541,7 +1579,13 @@
         const file = await fileHandle.getFile();
         const text = await file.text();
         const parsed = JSON.parse(text);
-        return parsed.skus || [];
+        const skus = parsed.skus || [];
+        if (Array.isArray(skus) && skus.length > 0 && skus.length <= 1000) {
+          try {
+            localStorage.setItem('pmg_pricing_skus_master', JSON.stringify(skus));
+          } catch (_) {}
+        }
+        return skus;
       } catch (e) {
         return null;
       }
