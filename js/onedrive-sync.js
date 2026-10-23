@@ -1164,10 +1164,13 @@
         if (!text || !text.trim()) return null;
         const parsed = JSON.parse(text);
         const prefs = parsed.preferences || (Array.isArray(parsed) ? parsed : null);
-        if (prefs && Array.isArray(prefs)) {
-          prefs.lastUpdated = parsed.lastUpdated || null;
-        }
-        return prefs;
+        // Sync metadata stored in a dedicated localStorage key (never as a property on the array)
+        try {
+          const metaKey = `pmg_schedule_prefs_cloud_updatedAt_${bCode}`;
+          if (parsed && parsed.lastUpdated) localStorage.setItem(metaKey, parsed.lastUpdated);
+          else localStorage.removeItem(metaKey);
+        } catch (_) {}
+        return (prefs && Array.isArray(prefs)) ? prefs : null;
       } catch (_) {
         return null;
       }

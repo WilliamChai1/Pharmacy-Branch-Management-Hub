@@ -843,6 +843,20 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
     if (String(tm.position || '').trim().toLowerCase().includes('trainee')) {
       tm.isTrainee = true;
     }
+    // Invariant: Trainees must NEVER have Friday RD (Friday 14:00-15:00 HQ Video Training)
+    if (isTraineeTeammate(tm) && tm.empNo !== 'PMG00831') {
+      if (!tm.dayPrefs) tm.dayPrefs = {};
+      const fridayIsRd = tm.dayPrefs['Friday'] === 'RD' || tm.restDayPref === 'Friday';
+      if (fridayIsRd) {
+        tm.dayPrefs['Friday'] = 'Flexible';
+        const halfDay = extractHalfDayName(tm);
+        const newRd = halfDay === 'Sunday' ? 'Wednesday' : 'Sunday';
+        Object.keys(tm.dayPrefs).forEach(k => { if (tm.dayPrefs[k] === 'RD') tm.dayPrefs[k] = 'Flexible'; });
+        tm.dayPrefs[newRd] = 'RD';
+        tm.restDayPref = newRd;
+        console.warn(`[PMG Scheduler] Trainee ${tm.nickname} had Friday RD; relocated to ${newRd} (Friday HQ Training invariant).`);
+      }
+    }
   });
 
   renderTeammatesTable();
@@ -858,7 +872,7 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
       try {
         const cloudPrefs = await window.pmgOneDriveSync.loadTeammatePreferencesFromOneDrive(branchCode);
         if (cloudPrefs && Array.isArray(cloudPrefs) && cloudPrefs.length > 0) {
-          const cloudUpdated = cloudPrefs.lastUpdated || '';
+          const cloudUpdated = localStorage.getItem(`pmg_schedule_prefs_cloud_updatedAt_${branchCode || 'KS01'}`) || '';
           // Adopt cloud if: no local timestamp recorded, or cloud is newer/equal, or local was pure initial defaults
           if (!localUpdated || !cloudUpdated || cloudUpdated >= localUpdated) {
             currentTeammates = cloudPrefs;
@@ -1653,6 +1667,21 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
           if (eligible) eligible.shifts[tm.empNo] = halfShiftCode;
         }
       }
+
+      // 3a. Invariant: Trainees must NEVER receive RD on Friday (14:00-15:00 HQ Video Training)
+      if (isTraineeTeammate(tm)) {
+        const fri = wDays.find(d => d.dayOfWeek === 'Friday');
+        if (fri && (fri.shifts[tm.empNo] === 'RD' || fri.shifts[tm.empNo] === 'OFF' || !fri.shifts[tm.empNo])) {
+          // Move RD to the first non-Friday full-shift day (prefer Sunday, then Wednesday, then others)
+          const order = ['Sunday', 'Wednesday', 'Thursday', 'Tuesday', 'Monday', 'Saturday'];
+          const target = order
+            .map(n => wDays.find(d => d.dayOfWeek === n))
+            .find(d => d && (isFullMorningShift(d.shifts[tm.empNo]) || isNightShift(d.shifts[tm.empNo])));
+          const swapShift = target ? target.shifts[tm.empNo] : '8H_0730-1630';
+          if (target) target.shifts[tm.empNo] = 'RD';
+          fri.shifts[tm.empNo] = swapShift;
+        }
+      }
     });
 
     // 4. Floor headcount correction per day (AM Total >= 3 with Full AM >= 2, and PM >= 3)
@@ -2186,6 +2215,21 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
       lastSh = s;
     });
     if (Math.abs(m - n) > 2 || fullViol > 0) needsDynamicResolve = true;
+    // Trainee Friday RD invariant violation → re-solve
+    if (isTraineeTeammate(tm) && schedule.days.some(d => d.dayOfWeek === 'Friday' && d.shifts[tm.empNo] === 'RD')) {
+      needsDynamicResolve = true;
+    }
+  });
+  // Senior:Trainee ratio < 1:1 on any shift → re-solve
+  schedule.days.forEach(d => {
+    let sAm = 0, tAm = 0, sPm = 0, tPm = 0;
+    currentTeammates.forEach(t => {
+      const s = d.shifts[t.empNo];
+      const tr = isTraineeTeammate(t);
+      if (isAnyMorningShift(s)) { if (tr) tAm++; else sAm++; }
+      else if (isNightShift(s)) { if (tr) tPm++; else sPm++; }
+    });
+    if ((tAm > 0 && sAm < tAm) || (tPm > 0 && sPm < tPm)) needsDynamicResolve = true;
   });
   schedule.days.forEach(d => {
     let amT = 0, pmT = 0;
