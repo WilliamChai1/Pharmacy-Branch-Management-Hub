@@ -1566,12 +1566,36 @@ async function generateTimetable() {
   }
 }
 
-// ─── PRESET LOCK GUARD HELPER ─────────────────────────────────────────────────
+// ─── PRESET LOCK GUARD HELPERS ────────────────────────────────────────────────
+function canSwapShift(teammate, dayOfWeek) {
+  const pref = (teammate && teammate.dayPrefs && dayOfWeek) ? teammate.dayPrefs[dayOfWeek] : 'Flexible';
+  // If the user preset this day (Morning, Night, Half Day, or RD), lock it
+  if (pref && pref !== 'Flexible') {
+    return false;
+  }
+  return true;
+}
+
 function isDayPresetLocked(tm, dayOfWeek) {
-  if (!tm || !tm.dayPrefs || !dayOfWeek) return false;
-  const dp = tm.dayPrefs[dayOfWeek];
-  if (!dp || dp === 'Flexible') return false;
-  return true; // 'Morning Only', 'Night Only', 'Morning Half (5H)', 'Morning Half (4H)', 'RD', 'Morning Preferred', 'Night Preferred' are IMMUTABLE
+  return !canSwapShift(tm, dayOfWeek);
+}
+
+function matchesTeammatePresets(pattern, dayPrefs, weekDays) {
+  if (!pattern || !dayPrefs) return true;
+  if (pattern.hasViolatedPref) return false;
+  const seq = Array.isArray(pattern.seq) ? pattern.seq : pattern;
+  const defaultDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  for (let i = 0; i < seq.length; i++) {
+    const dayName = (weekDays && weekDays[i] && weekDays[i].dayOfWeek) ? weekDays[i].dayOfWeek : defaultDays[i];
+    const pref = dayPrefs[dayName];
+    if (!pref || pref === 'Flexible') continue;
+    const shift = seq[i];
+    if (pref === 'RD' && shift !== 'RD') return false;
+    if ((pref.includes('Half') || pref.includes('4H') || pref.includes('5H')) && !isHalfDayMorningShift(shift)) return false;
+    if ((pref === 'Morning Only' || pref === 'Morning Preferred') && !isFullMorningShift(shift)) return false;
+    if ((pref === 'Night Only' || pref === 'Night Preferred') && !isNightShift(shift)) return false;
+  }
+  return true;
 }
 
 // ─── POST-PROCESS SCHEDULE CONSTRAINTS ────────────────────────────────────────
@@ -3111,12 +3135,17 @@ function generateLegalWeeklyPatterns(tm, weekDays, prevSundayShift, prevNightStr
     patterns = collectCandidates([0, 1, 2, 3, 4, 5, 6], [0, 1, 2, 3, 4, 5, 6], false);
   }
 
-  const nonViolating = patterns.filter(p => !p.hasViolatedPref);
+  const legalPatterns = patterns;
+  const nonViolating = legalPatterns.filter(pattern => {
+    return matchesTeammatePresets(pattern, tm.dayPrefs, weekDays);
+  });
+
+  // CRITICAL FIX: Ensure 1 or 2 matching preset patterns are NOT discarded
   if (nonViolating.length >= 1) {
     return nonViolating;
   }
 
-  return patterns;
+  return legalPatterns;
 }
 
 // Solve 1 week with dynamic preference scoring, whole-day Chinese speaker coverage, and strict weekly & cumulative shift parity
