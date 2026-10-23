@@ -285,23 +285,8 @@ function doGet(e) {
 
     // ── 4. ACTION: GET STAFF PREFERENCES ──
     if (action === 'getStaffPreferences') {
-      const prefSheet = ss.getSheetByName(TAB_PREFERENCES);
-      if (!prefSheet) {
-        return buildResponse({ success: true, preferences: [] });
-      }
-      const data = prefSheet.getDataRange().getValues();
-      const branchParam = (e.parameter.branch || 'KS01').trim().toUpperCase();
-      let prefs = [];
-      for (let i = 1; i < data.length; i++) {
-        const row = data[i];
-        if (row && String(row[0]).trim().toUpperCase() === branchParam) {
-          try {
-            prefs = JSON.parse(row[1]);
-          } catch (_) {}
-          break;
-        }
-      }
-      return buildResponse({ success: true, preferences: prefs });
+      const branchParam = (e.parameter.branch || 'KS01').trim();
+      return handleGetStaffPreferences(branchParam);
     }
 
     // ── 5. DEFAULT: GET PHARMACIST SCHEDULE ──
@@ -686,34 +671,7 @@ function doPost(e) {
 
     // ── 5. ACTION: SAVE STAFF PREFERENCES ──
     if (action === 'saveStaffPreferences') {
-      const prefSheet = ss.getSheetByName(TAB_PREFERENCES) || ss.insertSheet(TAB_PREFERENCES);
-      if (prefSheet.getLastRow() === 0) {
-        prefSheet.appendRow(['BranchCode', 'PreferencesJSON', 'LastUpdated', 'UpdatedBy']);
-        prefSheet.getRange(1, 1, 1, 4).setFontWeight('bold');
-      }
-
-      const branchCode = String(payload.branch || 'KS01').trim().toUpperCase();
-      const prefsStr = JSON.stringify(payload.preferences || []);
-      const pData = prefSheet.getDataRange().getValues();
-
-      let foundRow = 0;
-      for (let i = 1; i < pData.length; i++) {
-        if (String(pData[i][0]).trim().toUpperCase() === branchCode) {
-          foundRow = i + 1;
-          break;
-        }
-      }
-
-      if (foundRow > 1) {
-        prefSheet.getRange(foundRow, 2).setValue(prefsStr);
-        prefSheet.getRange(foundRow, 3).setValue(now);
-        prefSheet.getRange(foundRow, 4).setValue(updatedBy);
-      } else {
-        prefSheet.appendRow([branchCode, prefsStr, now, updatedBy]);
-      }
-
-      SpreadsheetApp.flush();
-      return buildResponse({ success: true, branch: branchCode });
+      return handleSaveStaffPreferences(payload);
     }
 
     // ── 6. ACTION: DELETE PATIENT PROFILE (CASCADE HARD DELETION) ──
@@ -981,6 +939,122 @@ function doPost(e) {
   }
 }
 
+/**
+ * Reads staff preferences for a specific branch.
+ * Expected Sheet Columns: [BranchCode (Col A), DataJson (Col B), LastUpdated (Col C), UpdatedBy (Col D)]
+ */
+function handleGetStaffPreferences(branchCode) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(TAB_PREFERENCES) || ss.getSheetByName('StaffPreferences');
+
+  if (!sheet) {
+    sheet = ss.insertSheet(TAB_PREFERENCES);
+    sheet.appendRow(['Branch', 'DataJson', 'LastUpdated', 'UpdatedBy']);
+    sheet.getRange(1, 1, 1, 4).setFontWeight('bold');
+  }
+
+  const targetBranch = String(branchCode || 'KS01').trim().toUpperCase();
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim().toUpperCase() === targetBranch) {
+      let parsedPrefs = [];
+      try {
+        parsedPrefs = JSON.parse(rows[i][1] || '[]');
+      } catch (_) {
+        parsedPrefs = [];
+      }
+      const lastUpdatedVal = rows[i][2]
+        ? (rows[i][2] instanceof Date ? rows[i][2].toISOString() : String(rows[i][2]))
+        : null;
+      const updatedByVal = rows[i][3] ? String(rows[i][3]) : 'System';
+
+      return createJsonResponse({
+        success: true,
+        status: 'success',
+        branch: targetBranch,
+        preferences: parsedPrefs,
+        data: parsedPrefs,
+        lastUpdated: lastUpdatedVal,
+        updatedBy: updatedByVal
+      });
+    }
+  }
+
+  return createJsonResponse({
+    success: true,
+    status: 'success',
+    branch: targetBranch,
+    preferences: [],
+    data: [],
+    lastUpdated: null,
+    updatedBy: null
+  });
+}
+
+/**
+ * Saves staff preferences with an ISO timestamp in Column C and UpdatedBy in Column D.
+ */
+function handleSaveStaffPreferences(payload) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(TAB_PREFERENCES) || ss.getSheetByName('StaffPreferences');
+
+  if (!sheet) {
+    sheet = ss.insertSheet(TAB_PREFERENCES);
+    sheet.appendRow(['Branch', 'DataJson', 'LastUpdated', 'UpdatedBy']);
+    sheet.getRange(1, 1, 1, 4).setFontWeight('bold');
+  } else if (sheet.getLastRow() === 0) {
+    sheet.appendRow(['Branch', 'DataJson', 'LastUpdated', 'UpdatedBy']);
+    sheet.getRange(1, 1, 1, 4).setFontWeight('bold');
+  }
+
+  const branchCode = String(payload.branch || 'KS01').trim().toUpperCase();
+  const prefArray = payload.preferences || payload.data || [];
+  const dataString = JSON.stringify(prefArray);
+  const timestamp = payload.lastUpdated ? new Date(payload.lastUpdated).toISOString() : new Date().toISOString();
+  const updatedBy = String(payload.updatedBy || 'Staff');
+
+  const rows = sheet.getDataRange().getValues();
+  let rowIndex = -1;
+
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim().toUpperCase() === branchCode) {
+      rowIndex = i + 1; // 1-based index
+      break;
+    }
+  }
+
+  if (rowIndex > 0) {
+    // Check if cloud timestamp is newer than payload (prevent race conditions)
+    const rawCloudTs = rows[rowIndex - 1][2];
+    const currentCloudTs = rawCloudTs
+      ? (rawCloudTs instanceof Date ? rawCloudTs.toISOString() : String(rawCloudTs))
+      : null;
+    if (currentCloudTs && new Date(currentCloudTs) > new Date(timestamp)) {
+      return createJsonResponse({
+        success: false,
+        status: 'conflict',
+        message: 'Cloud version is newer than submission.',
+        lastUpdated: currentCloudTs
+      });
+    }
+
+    // Save DataJson in Col B (2), ISO LastUpdated in Col C (3), and UpdatedBy in Col D (4)
+    sheet.getRange(rowIndex, 2, 1, 3).setValues([[dataString, timestamp, updatedBy]]);
+  } else {
+    sheet.appendRow([branchCode, dataString, timestamp, updatedBy]);
+  }
+
+  SpreadsheetApp.flush();
+
+  return createJsonResponse({
+    success: true,
+    status: 'success',
+    branch: branchCode,
+    lastUpdated: timestamp,
+    updatedBy: updatedBy
+  });
+}
+
 function formatDateStr(val) {
   if (!val) return '';
   if (val instanceof Date) {
@@ -992,8 +1066,15 @@ function formatDateStr(val) {
   return String(val).trim();
 }
 
-function buildResponse(obj) {
+/**
+ * Output helper to ensure clean JSON responses and eliminate CORS pre-flight drops
+ */
+function createJsonResponse(data) {
   return ContentService
-    .createTextOutput(JSON.stringify(obj))
+    .createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function buildResponse(obj) {
+  return createJsonResponse(obj);
 }
