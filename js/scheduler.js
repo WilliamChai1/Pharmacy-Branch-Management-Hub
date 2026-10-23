@@ -866,7 +866,6 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
     const bCode = (branchCode || 'KS01').toUpperCase();
     const localKey = getStorageKey(bCode);
     const localUpdatedKey = `pmg_staff_preferences_v2_${bCode}_updatedAt`;
-    const localUpdated = localStorage.getItem(localUpdatedKey) || '';
     let appliedCloud = false;
 
     // 1. Check OneDrive first
@@ -875,11 +874,8 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
         const cloudPrefs = await window.pmgOneDriveSync.loadTeammatePreferencesFromOneDrive(bCode);
         if (cloudPrefs && Array.isArray(cloudPrefs) && cloudPrefs.length > 0) {
           const cloudUpdated = localStorage.getItem(`pmg_schedule_prefs_cloud_updatedAt_${bCode}`) || localStorage.getItem(localUpdatedKey) || '';
-          // Conflict comparison check: Do NOT overwrite local preferences if cloudData.lastUpdated is missing, null, or older than local updatedAt
-          if (cloudUpdated && (!localUpdated || cloudUpdated >= localUpdated)) {
+          if (applyCloudPreferences(bCode, { data: cloudPrefs, lastUpdated: cloudUpdated })) {
             currentTeammates = cloudPrefs;
-            localStorage.setItem(localKey, JSON.stringify(cloudPrefs));
-            localStorage.setItem(localUpdatedKey, cloudUpdated);
             renderTeammatesTable();
             appliedCloud = true;
             console.log(`[PMG Scheduler] Loaded preferences from OneDrive for ${bCode}`);
@@ -900,11 +896,8 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
           if (json && json.success && Array.isArray(json.preferences) && json.preferences.length > 0) {
             const cloudPrefs = json.preferences;
             const cloudUpdated = json.lastUpdated || '';
-            // Conflict comparison check: Do NOT overwrite local preferences if cloudData.lastUpdated is missing, null, or older than local updatedAt
-            if (cloudUpdated && (!localUpdated || cloudUpdated >= localUpdated)) {
+            if (applyCloudPreferences(bCode, { data: cloudPrefs, lastUpdated: cloudUpdated })) {
               currentTeammates = cloudPrefs;
-              localStorage.setItem(localKey, JSON.stringify(cloudPrefs));
-              localStorage.setItem(localUpdatedKey, cloudUpdated);
               renderTeammatesTable();
               console.log(`[PMG Scheduler] Loaded preferences from Google Apps Script for ${bCode}`);
             }
@@ -917,6 +910,38 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
   syncTeammatesFromCloud();
   window.syncTeammatePreferencesWithCloud = syncTeammatesFromCloud;
 }
+
+// Saving Local Preferences:
+function saveLocalPreferences(branchCode, preferencesArray) {
+  const bCode = (branchCode || 'KS01').toUpperCase();
+  const timestamp = new Date().toISOString();
+  localStorage.setItem(`pmg_staff_preferences_v2_${bCode}`, JSON.stringify(preferencesArray));
+  localStorage.setItem(`pmg_staff_preferences_v2_${bCode}_updatedAt`, timestamp);
+  return timestamp;
+}
+
+// Ingesting Cloud Preferences:
+function applyCloudPreferences(branchCode, cloudPayload) {
+  if (!cloudPayload) return false;
+  const bCode = (branchCode || 'KS01').toUpperCase();
+  const localTs = localStorage.getItem(`pmg_staff_preferences_v2_${bCode}_updatedAt`);
+  const cloudTs = cloudPayload.lastUpdated;
+  const data = cloudPayload.data || cloudPayload.preferences;
+
+  if (localTs && (!cloudTs || new Date(cloudTs) <= new Date(localTs))) {
+    console.log(`[Sync] Local preferences are newer or identical. Skipping cloud overwrite.`);
+    return false;
+  }
+
+  if (!data || !Array.isArray(data) || data.length === 0) return false;
+
+  localStorage.setItem(`pmg_staff_preferences_v2_${bCode}`, JSON.stringify(data));
+  localStorage.setItem(`pmg_staff_preferences_v2_${bCode}_updatedAt`, cloudTs || new Date().toISOString());
+  return true;
+}
+
+window.saveLocalPreferences = saveLocalPreferences;
+window.applyCloudPreferences = applyCloudPreferences;
 
 function saveTeammatePreferences(silent = false) {
   const branchSelect = document.getElementById('schedulerBranchSelect');
@@ -1004,11 +1029,10 @@ function saveTeammatePreferences(silent = false) {
     });
   });
 
-  const nowIso = new Date().toISOString();
+  let nowIso = new Date().toISOString();
   if (updated.length > 0) {
     currentTeammates = updated;
-    localStorage.setItem(getStorageKey(branchCode), JSON.stringify(currentTeammates));
-    localStorage.setItem(`${getStorageKey(branchCode)}_updatedAt`, nowIso);
+    nowIso = saveLocalPreferences(branchCode, currentTeammates);
   }
 
   if (silent) return;

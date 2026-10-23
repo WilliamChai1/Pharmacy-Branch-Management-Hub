@@ -647,13 +647,11 @@
             const localPrefs = localPrefRaw ? JSON.parse(localPrefRaw) : null;
             const localUpdated = localStorage.getItem(localUpdatedKey) || '';
 
-            // Conflict comparison check: Do NOT overwrite local preferences if cloudData.lastUpdated is missing, null, or older than localUpdated
-            if (cloudPrefs && Array.isArray(cloudPrefs) && cloudPrefs.length > 0 && cloudPrefTime && (!localPrefs || !localUpdated || cloudPrefTime >= localUpdated)) {
-              localStorage.setItem(localPrefKey, JSON.stringify(cloudPrefs));
-              localStorage.setItem(localUpdatedKey, cloudPrefTime);
-              localStorage.setItem(`pmg_schedule_prefs_cloud_updatedAt_${bCode}`, cloudPrefTime);
+            // Conflict comparison check via applyCloudPreferences
+            if (cloudPrefs && Array.isArray(cloudPrefs) && cloudPrefs.length > 0 && this.applyCloudPreferences(bCode, { data: cloudPrefs, lastUpdated: cloudPrefTime })) {
+              if (cloudPrefTime) localStorage.setItem(`pmg_schedule_prefs_cloud_updatedAt_${bCode}`, cloudPrefTime);
               console.log(`[PMG OneDrive Sync] Pulled newer staff preferences from OneDrive for ${bCode} (updatedAt: ${cloudPrefTime})`);
-            } else if (localPrefs && Array.isArray(localPrefs) && localPrefs.length > 0 && (!cloudPrefs || !cloudPrefTime || (localUpdated && localUpdated > cloudPrefTime))) {
+            } else if (localPrefs && Array.isArray(localPrefs) && localPrefs.length > 0 && (!cloudPrefs || !cloudPrefTime || (localUpdated && new Date(localUpdated) > new Date(cloudPrefTime)))) {
               const effectiveUpdatedAt = localUpdated || nowIso;
               localStorage.setItem(localUpdatedKey, effectiveUpdatedAt);
               const prefPayload = {
@@ -1108,6 +1106,34 @@
       } catch (_) {
         return null;
       }
+    }
+
+    // ─── LOCAL / CLOUD PREFERENCES HELPERS ──────────────────────────────────
+    saveLocalPreferences(branchCode, preferencesArray) {
+      const bCode = (branchCode || 'KS01').toUpperCase();
+      const timestamp = new Date().toISOString();
+      localStorage.setItem(`pmg_staff_preferences_v2_${bCode}`, JSON.stringify(preferencesArray));
+      localStorage.setItem(`pmg_staff_preferences_v2_${bCode}_updatedAt`, timestamp);
+      return timestamp;
+    }
+
+    applyCloudPreferences(branchCode, cloudPayload) {
+      if (!cloudPayload) return false;
+      const bCode = (branchCode || 'KS01').toUpperCase();
+      const localTs = localStorage.getItem(`pmg_staff_preferences_v2_${bCode}_updatedAt`);
+      const cloudTs = cloudPayload.lastUpdated;
+      const data = cloudPayload.data || cloudPayload.preferences;
+
+      if (localTs && (!cloudTs || new Date(cloudTs) <= new Date(localTs))) {
+        console.log(`[Sync] Local preferences are newer or identical. Skipping cloud overwrite.`);
+        return false;
+      }
+
+      if (!data || !Array.isArray(data) || data.length === 0) return false;
+
+      localStorage.setItem(`pmg_staff_preferences_v2_${bCode}`, JSON.stringify(data));
+      localStorage.setItem(`pmg_staff_preferences_v2_${bCode}_updatedAt`, cloudTs || new Date().toISOString());
+      return true;
     }
 
     // ─── SAVE TEAMMATE PREFERENCES TO ONEDRIVE ──────────────────────────────
