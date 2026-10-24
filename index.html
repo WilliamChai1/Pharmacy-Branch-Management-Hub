@@ -4155,11 +4155,12 @@ Date visit: 06.01.2026
           </select>
         </div>
 
-        <!-- Action Plan Filter (including Blank filter) -->
+        <!-- Action Plan Filter (including Blank filter and Write-Off Queue) -->
         <div>
           <select id="expiryActionPlanFilter" class="border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold bg-white outline-none focus:ring-1 focus:ring-blue-400 text-slate-800">
             <option value="all">All Action Plans</option>
             <option value="blank" class="font-bold text-amber-600">⚠️ Blank / No Action Plan</option>
+            <option value="in_write_off_queue" class="font-bold text-rose-600">🗑️ In Write-Off Queue</option>
             <option value="Returnable with Condition">Returnable with Condition</option>
             <option value="Vendor Return Pending">Vendor Return Pending</option>
             <option value="Clearance Promo">Clearance Promo / PWP</option>
@@ -4666,12 +4667,16 @@ Date visit: 06.01.2026
           <span class="font-bold text-gray-700">Form Type:</span>
           <div class="inline-flex p-1 bg-white rounded-xl border border-rose-200 shadow-2xs">
             <button type="button" id="btnWriteOffTypePoison" onclick="setWriteOffFormType('poison')"
-              class="px-3 py-1 rounded-lg font-bold text-xs transition bg-rose-700 text-white shadow-2xs">
-              ☠️ Poison Write-Off Form
+              class="px-3 py-1 rounded-lg font-bold text-xs transition bg-rose-700 text-white shadow-2xs cursor-pointer">
+              ☠️ Poison Write-Off Form (<span id="poisonWriteOffTabCount">0</span>)
             </button>
             <button type="button" id="btnWriteOffTypeNonPoison" onclick="setWriteOffFormType('non_poison')"
-              class="px-3 py-1 rounded-lg font-bold text-xs transition text-gray-600 hover:text-gray-900">
-              📦 Non-Poison Write-Off Form
+              class="px-3 py-1 rounded-lg font-bold text-xs transition text-gray-600 hover:text-gray-900 cursor-pointer">
+              📦 Non-Poison Write-Off Form (<span id="nonPoisonWriteOffTabCount">0</span>)
+            </button>
+            <button type="button" id="btnWriteOffTypeAll" onclick="setWriteOffFormType('all')"
+              class="px-3 py-1 rounded-lg font-bold text-xs transition text-gray-600 hover:text-gray-900 cursor-pointer">
+              📋 All Accumulated (<span id="allWriteOffTabCount">0</span>)
             </button>
           </div>
         </div>
@@ -4703,6 +4708,22 @@ Date visit: 06.01.2026
           </div>
         </div>
 
+        <!-- Quick Add SKU Search to this Write-Off Form -->
+        <div class="relative bg-white rounded-xl border border-rose-200 p-2.5 shadow-2xs">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-plus text-rose-600 text-xs pl-1"></i>
+            <input type="text" id="writeOffModalSearchAdd"
+              placeholder="🔍 Search SKU code, item name, or batch to add more items to this write-off form..."
+              oninput="handleWriteOffModalSearch(this.value)"
+              class="w-full text-xs outline-none bg-transparent py-0.5 font-medium text-slate-800 placeholder-slate-400">
+            <span class="text-[10px] bg-rose-50 text-rose-700 font-bold px-2 py-0.5 rounded-md border border-rose-200 whitespace-nowrap">
+              Quick Add to Form
+            </span>
+          </div>
+          <div id="writeOffModalSearchResults" class="hidden absolute top-full left-0 right-0 z-30 bg-white border border-rose-200 rounded-xl shadow-xl max-h-60 overflow-y-auto mt-1.5 text-xs">
+          </div>
+        </div>
+
         <!-- Warning / Compliance Notice -->
         <div class="bg-amber-50 border-l-4 border-amber-500 p-3 rounded-r-xl text-amber-900 text-xs leading-relaxed">
           <p class="font-bold">⚠️ HQ Compliance Note:</p>
@@ -4715,6 +4736,7 @@ Date visit: 06.01.2026
             <thead class="bg-slate-900 text-white text-[10px] uppercase font-bold tracking-wider">
               <tr>
                 <th class="p-2.5 text-center w-8">No.</th>
+                <th class="p-2.5 text-center w-24">Category</th>
                 <th class="p-2.5 w-24">Item Code</th>
                 <th class="p-2.5">Item Description</th>
                 <th class="p-2.5 text-center w-24">Expiry Date</th>
@@ -4733,7 +4755,7 @@ Date visit: 06.01.2026
             </tbody>
             <tfoot class="bg-slate-100 font-extrabold text-xs border-t-2 border-slate-300">
               <tr>
-                <td colspan="7" class="p-2.5 text-right uppercase tracking-wider text-slate-700">Total Write-Off Cost:</td>
+                <td colspan="8" class="p-2.5 text-right uppercase tracking-wider text-slate-700">Total Write-Off Cost:</td>
                 <td id="writeOffTotalCostSum" class="p-2.5 text-right font-mono text-rose-700 text-sm">RM 0.00</td>
                 <td colspan="4" class="p-2.5 text-gray-500 font-normal text-[11px]">(Automatically Calculated)</td>
               </tr>
@@ -4764,6 +4786,10 @@ Date visit: 06.01.2026
           <button type="button" onclick="exportWriteOffCsv()"
             class="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold text-xs transition flex items-center gap-1.5 shadow-xs cursor-pointer">
             <i class="fa-solid fa-file-excel"></i> 📊 Export Excel / CSV
+          </button>
+          <button type="button" onclick="clearAllWriteOffSelection()"
+            class="px-3.5 py-2 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer" title="Empty write-off queue without deleting items from inventory">
+            <i class="fa-solid fa-trash-arrow-up"></i> Clear Queue
           </button>
         </div>
 
@@ -4936,6 +4962,30 @@ Date visit: 06.01.2026
       </form>
     </div>
   </div>
+  <!-- ─── FLOATING HQ WRITE-OFF ACCUMULATION DOCK ────────────────────────── -->
+  <div id="writeOffAccumulationDock" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-gradient-to-r from-rose-950 via-slate-900 to-rose-900 text-white px-5 py-3 rounded-2xl shadow-2xl border-2 border-rose-500/60 flex items-center gap-4 transition-all duration-300 hidden max-w-lg w-[94%] sm:w-auto">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-rose-600 flex items-center justify-center text-sm shadow-md flex-shrink-0 animate-pulse">
+        <i class="fa-solid fa-trash-can text-white"></i>
+      </div>
+      <div>
+        <div class="font-extrabold text-xs flex items-center gap-2">
+          <span>HQ Write-Off Form Queue</span>
+          <span id="dockWriteOffCountBadge" class="bg-rose-500 text-white text-[10px] px-2 py-0.5 rounded-full font-mono font-extrabold">0 Items</span>
+        </div>
+        <div id="dockWriteOffSubtext" class="text-[11px] text-rose-200">0 items accumulated for submission</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 ml-auto">
+      <button type="button" onclick="openStockWriteOffModal()" class="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer">
+        <i class="fa-solid fa-file-invoice"></i> Open Form
+      </button>
+      <button type="button" onclick="clearAllWriteOffSelection()" class="p-1.5 text-slate-400 hover:text-white transition cursor-pointer" title="Clear selection">
+        <i class="fa-solid fa-xmark text-sm"></i>
+      </button>
+    </div>
+  </div>
+
   <div id="expiryToast" class="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl text-xs font-bold flex items-center gap-2 transition-all duration-300 opacity-0 hidden border border-slate-700">
   </div>
 
@@ -6667,7 +6717,7 @@ ItemCode,Description,Brand,Category,Cost,SellingPrice,Supplier
 <script src="js/patient.js?v=20261024_v7"></script>
 <script src="js/seed_expiry_data.js?v=20261024_v7"></script>
 <script src="js/hq_return_policy.js?v=20261024_v7"></script>
-<script src="js/expiry.js?v=20261024_v7"></script>
+<script src="js/expiry.js?v=20261024_writeoff_v8"></script>
 <script src="js/returns-cn.js?v=20261024_v7"></script>
 <script src="js/pricing-intelligence.js?v=20261024_v7"></script>
 <script src="js/recruitment.js?v=20261024_v7"></script>

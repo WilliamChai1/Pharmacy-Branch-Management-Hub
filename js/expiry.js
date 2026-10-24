@@ -412,6 +412,7 @@ function initExpiryModule() {
   initHqReturnPolicy();
   loadLocalExpiryData();
   setupExpiryEventListeners();
+  loadAccumulatedWriteOffItems();
   renderExpiryUI();
   updateAccountsShareUi(document.getElementById('expiryBranchFilter')?.value || 'Kota Sentosa');
 
@@ -421,6 +422,7 @@ function initExpiryModule() {
       if (Array.isArray(idbItems) && idbItems.length > 0) {
         if (!expiryItems || expiryItems.length < idbItems.length) {
           expiryItems = ensureUniqueExpiryRowIds(idbItems);
+          loadAccumulatedWriteOffItems();
           renderExpiryUI();
         }
       }
@@ -2599,6 +2601,18 @@ function updateExpiryActionPlan(rowId, val) {
     item.pricingUpdatedAt = nowIso;
   }
 
+  // --- WRITE-OFF ACCUMULATION HANDLING ---
+  const isWriteOff = isWriteOffActionPlan(cleanVal);
+  if (isWriteOff) {
+    selectedWriteOffRowIds.add(String(item.rowId));
+    saveAccumulatedWriteOffItems();
+    updateWriteOffSelectedCounter();
+  } else if (selectedWriteOffRowIds.has(String(item.rowId))) {
+    selectedWriteOffRowIds.delete(String(item.rowId));
+    saveAccumulatedWriteOffItems();
+    updateWriteOffSelectedCounter();
+  }
+
   saveLocalExpiryData();
   renderExpiryUI();
 
@@ -2614,6 +2628,11 @@ function updateExpiryActionPlan(rowId, val) {
   // If user selected Clearance Promo (and didn't manually type a price inside the text), open the price tag modal for THIS exact item!
   if ((cleanVal.toLowerCase().includes('clearance') || cleanVal.toLowerCase().includes('promo')) && (!item.offeredPrice || !(m && m[1]))) {
     openClearancePriceTagModal(item);
+  }
+
+  // If user selected Write-Off / Dispose, trigger prompt banner with 1-click option to open form!
+  if (isWriteOff) {
+    showWriteOffActionPrompt(item);
   }
 }
 
@@ -2795,7 +2814,19 @@ async function handleEditExpiryItemSubmit(e) {
   item.quantity = isNaN(qtyVal) ? item.quantity : qtyVal;
   item.expiryDate = formattedDate;
 
-  if (actionPlanVal !== undefined) item.actionPlan = actionPlanVal;
+  if (actionPlanVal !== undefined) {
+    item.actionPlan = actionPlanVal;
+    if (isWriteOffActionPlan(actionPlanVal)) {
+      selectedWriteOffRowIds.add(String(item.rowId));
+      saveAccumulatedWriteOffItems();
+      updateWriteOffSelectedCounter();
+      showWriteOffActionPrompt(item);
+    } else if (selectedWriteOffRowIds.has(String(item.rowId))) {
+      selectedWriteOffRowIds.delete(String(item.rowId));
+      saveAccumulatedWriteOffItems();
+      updateWriteOffSelectedCounter();
+    }
+  }
   if (!isNaN(offeredPriceVal) && offeredPriceVal >= 0) {
     item.offeredPrice = offeredPriceVal;
     item.clearancePrice = offeredPriceVal;
@@ -3617,11 +3648,15 @@ function filterExpiryItems() {
       if (activeExpiryFilter.returnPolicy === 'unlisted' && returnStatus !== 'UNLISTED') return false;
     }
 
-    // 3.5 Action Plan Filter (including Blank filter)
+    // 3.5 Action Plan Filter (including Blank and In Write-Off Queue filter)
     if (activeExpiryFilter.actionPlan && activeExpiryFilter.actionPlan !== 'all') {
       const planRaw = String(it.actionPlan || '').trim();
       if (activeExpiryFilter.actionPlan === 'blank') {
         if (planRaw !== '') return false;
+      } else if (activeExpiryFilter.actionPlan === 'in_write_off_queue') {
+        if (!selectedWriteOffRowIds.has(String(it.rowId)) && !isWriteOffActionPlan(planRaw)) return false;
+      } else if (activeExpiryFilter.actionPlan === 'Write-off' || activeExpiryFilter.actionPlan === 'Write-off / Dispose') {
+        if (!isWriteOffActionPlan(planRaw) && !selectedWriteOffRowIds.has(String(it.rowId))) return false;
       } else {
         if (!planRaw.toLowerCase().includes(activeExpiryFilter.actionPlan.toLowerCase())) return false;
       }
@@ -3840,6 +3875,12 @@ function renderExpiryTable() {
                   title="Click to input offered price and print price tag">
                   <i class="fa-solid fa-tag text-amber-600 text-[9px]"></i> + Set Offer Price
                 </button>
+              ` : (selectedWriteOffRowIds.has(String(it.rowId)) || isWriteOffActionPlan(it.actionPlan)) ? `
+                <button type="button" onclick="openStockWriteOffModal()"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 transition cursor-pointer"
+                  title="Item in accumulated write-off form. Click to open form!">
+                  <i class="fa-solid fa-file-invoice text-rose-600 text-[9px]"></i> In Write-Off Form
+                </button>
               ` : ''}
             </div>
           `}
@@ -3905,6 +3946,11 @@ function renderExpiryTable() {
                 class="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
                 title="Edit item details (Description, Batch, Expiry, Qty)">
                 <i class="fa-solid fa-pen-to-square text-xs"></i>
+              </button>
+              <button onclick="toggleSelectWriteOffItem('${safeRowId}', ${!selectedWriteOffRowIds.has(String(it.rowId))})"
+                class="p-1.5 ${selectedWriteOffRowIds.has(String(it.rowId)) ? 'text-rose-700 bg-rose-100 border border-rose-300' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'} rounded-lg transition cursor-pointer"
+                title="${selectedWriteOffRowIds.has(String(it.rowId)) ? 'In Write-Off Form (Click to remove)' : 'Add to HQ Write-Off Form'}">
+                <i class="fa-solid fa-trash-can text-xs"></i>
               </button>
             </div>
           `}
@@ -4424,7 +4470,15 @@ function openSkuBatchExplorerModal(itemCode) {
         </td>
         <td class="p-2.5 text-center font-bold text-slate-800">${qty}</td>
         <td class="p-2.5 text-right font-mono font-semibold text-slate-700">RM ${cost.toFixed(2)}</td>
-        <td class="p-2.5 text-slate-600 text-xs">${escHtml(getItemActionPlan(m) || '—')}</td>
+        <td class="p-2.5 text-slate-600 text-xs">
+          ${escHtml(getItemActionPlan(m) || '—')}
+          <div class="mt-1">
+            <button type="button" onclick="quickAddBatchToWriteOff('${escHtml(m.rowId)}')"
+              class="px-2 py-0.5 rounded text-[10px] font-bold ${selectedWriteOffRowIds.has(String(m.rowId)) ? 'bg-rose-100 text-rose-800 border border-rose-300' : 'bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-200'} transition cursor-pointer">
+              <i class="fa-solid fa-file-invoice mr-1 text-rose-600"></i> ${selectedWriteOffRowIds.has(String(m.rowId)) ? 'In Write-Off Form' : '+ Write Off Batch'}
+            </button>
+          </div>
+        </td>
       </tr>
     `;
   }).join('');
@@ -4452,50 +4506,238 @@ function filterExpiryByCurrentSku() {
 
 // ─── WRITE-OFF SELECTION & 100% HQ COMPLIANT FORM ENGINE ───────────────────────
 const selectedWriteOffRowIds = new Set();
-let activeWriteOffFormType = 'poison'; // 'poison' | 'non_poison'
+let activeWriteOffFormType = 'poison'; // 'poison' | 'non_poison' | 'all'
+
+function isWriteOffActionPlan(str) {
+  if (!str) return false;
+  const s = String(str).toLowerCase().trim();
+  return s.includes('write-off') || s.includes('writeoff') || s.includes('write off') || s.includes('dispose') || s.includes('disposal');
+}
+
+function isItemPoison(item) {
+  if (!item) return false;
+  if (item.writeOffClassification === 'poison') return true;
+  if (item.writeOffClassification === 'non_poison') return false;
+  if (item.category && String(item.category).toUpperCase() === 'POISON') return true;
+  if (item.category && ['OTC', 'PC', 'M&B', 'SUP', 'FA', 'EC', 'F&B', 'H&L'].includes(String(item.category).toUpperCase())) return false;
+
+  if (typeof hqReturnPolicyList !== 'undefined' && Array.isArray(hqReturnPolicyList)) {
+    const code = String(item.itemCode || '').trim();
+    const desc = String(item.itemDescription || '').toUpperCase();
+    const found = hqReturnPolicyList.find(p => (code && String(p.itemCode || '').trim() === code) || (desc && String(p.brand || '').toUpperCase().includes(desc)));
+    if (found && found.category) {
+      return String(found.category).toUpperCase() === 'POISON';
+    }
+  }
+
+  const desc = String(item.itemDescription || '').toUpperCase();
+  if (desc.match(/\b(SHAMPOO|SOAP|LOTION|TOOTHPASTE|DIAPER|WIPES|BANDAGE|PLASTER|TEA|COFFEE|CANDY|LOZENGES|MASK|SANITIZER|SUPPLEMENT|VITAMIN|PROBIOTIC|CREAM CHEESE|HONEY|TOILETRIES)\b/)) {
+    return false;
+  }
+  if (desc.match(/\b(TAB|CAP|SYRUP|SUSPENSION|INJ|INJECTION|DROPS|SOLUTION|CREAM|OINTMENT|MG|MCG|ML)\b/)) {
+    return true;
+  }
+  return false;
+}
+
+function loadAccumulatedWriteOffItems() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('pmg_accumulated_write_off_ids') || '[]');
+    if (Array.isArray(saved)) {
+      saved.forEach(id => selectedWriteOffRowIds.add(String(id)));
+    }
+  } catch (e) {}
+
+  if (Array.isArray(expiryItems)) {
+    expiryItems.forEach(it => {
+      if (it.rowId && it.status !== 'Cleared' && it.status !== 'DONE' && isWriteOffActionPlan(it.actionPlan)) {
+        selectedWriteOffRowIds.add(String(it.rowId));
+      }
+    });
+  }
+
+  saveAccumulatedWriteOffItems();
+  updateWriteOffSelectedCounter();
+}
+
+function saveAccumulatedWriteOffItems() {
+  try {
+    localStorage.setItem('pmg_accumulated_write_off_ids', JSON.stringify(Array.from(selectedWriteOffRowIds)));
+  } catch (e) {}
+}
 
 function toggleSelectWriteOffItem(rowId, isChecked) {
+  const safeId = String(rowId);
+  const item = findExpiryItemById(safeId);
   if (isChecked) {
-    selectedWriteOffRowIds.add(rowId);
+    selectedWriteOffRowIds.add(safeId);
+    if (item && (!item.actionPlan || item.actionPlan === '')) {
+      item.actionPlan = 'Write-off / Dispose';
+      saveLocalExpiryData();
+    }
+    saveAccumulatedWriteOffItems();
+    updateWriteOffSelectedCounter();
+    if (item) showWriteOffActionPrompt(item);
   } else {
-    selectedWriteOffRowIds.delete(rowId);
+    selectedWriteOffRowIds.delete(safeId);
+    if (item && isWriteOffActionPlan(item.actionPlan)) {
+      item.actionPlan = '';
+      saveLocalExpiryData();
+    }
+    saveAccumulatedWriteOffItems();
+    updateWriteOffSelectedCounter();
   }
-  updateWriteOffSelectedCounter();
+  renderExpiryUI();
 }
 
 function toggleSelectAllExpiry(isChecked) {
   const displayed = filterExpiryItems();
   displayed.forEach(it => {
     if (it.rowId) {
-      if (isChecked) selectedWriteOffRowIds.add(it.rowId);
-      else selectedWriteOffRowIds.delete(it.rowId);
+      const safeId = String(it.rowId);
+      if (isChecked) {
+        selectedWriteOffRowIds.add(safeId);
+        if (!it.actionPlan || it.actionPlan === '') {
+          it.actionPlan = 'Write-off / Dispose';
+        }
+      } else {
+        selectedWriteOffRowIds.delete(safeId);
+        if (isWriteOffActionPlan(it.actionPlan)) {
+          it.actionPlan = '';
+        }
+      }
     }
   });
-  document.querySelectorAll('.expiry-write-off-cb').forEach(cb => {
-    cb.checked = isChecked;
-  });
+  saveLocalExpiryData();
+  saveAccumulatedWriteOffItems();
   updateWriteOffSelectedCounter();
+  renderExpiryUI();
+  if (isChecked && displayed.length > 0) {
+    showExpiryToast(`Added ${displayed.length} item(s) to Write-Off Form!`);
+  }
 }
 
 function updateWriteOffSelectedCounter() {
   const count = selectedWriteOffRowIds.size;
   const countEl = document.getElementById('writeOffSelectedCount');
   const btnEl = document.getElementById('btnOpenWriteOffModal');
+  const dock = document.getElementById('writeOffAccumulationDock');
+  const dockBadge = document.getElementById('dockWriteOffCountBadge');
+  const dockSub = document.getElementById('dockWriteOffSubtext');
+
   if (countEl) countEl.textContent = count;
   if (btnEl) {
-    if (count > 0) btnEl.classList.remove('hidden');
-    else btnEl.classList.add('hidden');
+    if (count > 0) {
+      btnEl.classList.remove('hidden');
+      btnEl.innerHTML = `<i class="fa-solid fa-file-invoice"></i> HQ Write-Off (${count})`;
+    } else {
+      btnEl.classList.add('hidden');
+    }
   }
+
+  if (dock) {
+    if (count > 0) {
+      dock.classList.remove('hidden');
+      if (dockBadge) dockBadge.textContent = `${count} Items`;
+      if (dockSub) dockSub.textContent = `${count} item(s) accumulated for HQ Write-Off Form`;
+    } else {
+      dock.classList.add('hidden');
+    }
+  }
+
   const allCb = document.getElementById('expirySelectAllCheckbox');
   if (allCb) {
     const displayed = filterExpiryItems();
-    allCb.checked = displayed.length > 0 && displayed.every(d => selectedWriteOffRowIds.has(d.rowId));
+    allCb.checked = displayed.length > 0 && displayed.every(d => selectedWriteOffRowIds.has(String(d.rowId)));
   }
+}
+
+function clearAllWriteOffSelection() {
+  if (selectedWriteOffRowIds.size === 0) return;
+  if (!confirm(`Remove all ${selectedWriteOffRowIds.size} accumulated item(s) from the Write-Off queue? (Items remain in your expiry tracking list)`)) {
+    return;
+  }
+  selectedWriteOffRowIds.clear();
+  saveAccumulatedWriteOffItems();
+  updateWriteOffSelectedCounter();
+  renderExpiryUI();
+  showExpiryToast('Cleared Write-Off queue.');
+}
+
+function showWriteOffActionPrompt(item) {
+  dismissWriteOffAlertBanner();
+  if (!item) return;
+
+  const count = selectedWriteOffRowIds.size;
+  const isPoison = isItemPoison(item);
+
+  const banner = document.createElement('div');
+  banner.id = 'writeOffAlertBanner';
+  banner.className = 'fixed top-16 right-4 sm:right-8 z-50 bg-slate-900/95 backdrop-blur-md border-2 border-rose-500 text-white p-4 rounded-2xl shadow-2xl max-w-md w-full animate-in slide-in-from-top-4 duration-200';
+  banner.innerHTML = `
+    <div class="flex items-start gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-rose-700 flex items-center justify-center text-lg flex-shrink-0 shadow-lg text-white">
+        <i class="fa-solid fa-trash-can"></i>
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-1.5">
+            <span class="font-extrabold text-sm text-white">Added to Write-Off Queue</span>
+            <span class="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${isPoison ? 'bg-rose-500/30 text-rose-200 border border-rose-400/50' : 'bg-blue-500/30 text-blue-200 border border-blue-400/50'}">
+              ${isPoison ? '☠️ Poison' : '📦 Non-Poison'}
+            </span>
+          </div>
+          <button type="button" onclick="dismissWriteOffAlertBanner()" class="text-gray-400 hover:text-white p-1 transition cursor-pointer">
+            <i class="fa-solid fa-xmark text-sm"></i>
+          </button>
+        </div>
+        
+        <p class="text-xs text-rose-100 font-bold truncate mt-1">${escHtml(item.itemDescription || 'Unknown SKU')}</p>
+        <div class="text-[11px] text-gray-300 mt-0.5 flex flex-wrap gap-x-2">
+          <span>Code: <b class="font-mono text-white">${escHtml(item.itemCode || '-')}</b></span>
+          <span>Qty: <b class="text-white">${item.quantity || 1}</b></span>
+          <span>Exp: <b class="font-mono text-white">${formatExpiryDateDisplay(item.expiryDate)}</b></span>
+        </div>
+
+        <div class="mt-3 p-2.5 bg-rose-950/70 rounded-xl border border-rose-800/60 flex items-center justify-between text-xs">
+          <div>
+            <div class="text-[10px] uppercase font-bold text-rose-300 tracking-wider">Accumulated in 1 Form</div>
+            <div class="text-xs font-bold text-white">${count} item(s) ready for submission</div>
+          </div>
+          <span class="text-xs font-extrabold font-mono text-rose-200 bg-rose-900/80 px-2.5 py-1 rounded-lg border border-rose-700">
+            ${count} Items
+          </span>
+        </div>
+
+        <div class="mt-3.5 flex items-center gap-2">
+          <button type="button" onclick="openStockWriteOffModal(); dismissWriteOffAlertBanner();"
+            class="flex-1 py-2 px-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-md hover:shadow-rose-600/30 transition cursor-pointer">
+            <i class="fa-solid fa-file-invoice"></i> Open HQ Write-Off Form (${count})
+          </button>
+          <button type="button" onclick="dismissWriteOffAlertBanner()"
+            class="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl font-semibold text-xs transition cursor-pointer">
+            + Keep Adding
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(banner);
+  if (window._writeOffAlertTimeout) clearTimeout(window._writeOffAlertTimeout);
+  window._writeOffAlertTimeout = setTimeout(() => {
+    dismissWriteOffAlertBanner();
+  }, 10000);
+}
+
+function dismissWriteOffAlertBanner() {
+  const el = document.getElementById('writeOffAlertBanner');
+  if (el) el.remove();
 }
 
 function openStockWriteOffModal() {
   if (selectedWriteOffRowIds.size === 0) {
-    alert('Please select at least 1 item using the checkbox to generate a Write-Off form.');
+    alert('Please select at least 1 item or set Action Plan to "Write-off / Dispose" to generate a Write-Off form.');
     return;
   }
   const modal = document.getElementById('stockWriteOffModal');
@@ -4507,31 +4749,55 @@ function openStockWriteOffModal() {
     dateInput.value = now.toISOString().split('T')[0];
   }
 
-  setWriteOffFormType(activeWriteOffFormType);
-  renderWriteOffModalItems();
+  setWriteOffFormType(activeWriteOffFormType || 'poison');
   modal.classList.remove('hidden');
 }
 
 function closeStockWriteOffModal() {
   const modal = document.getElementById('stockWriteOffModal');
   if (modal) modal.classList.add('hidden');
+  const searchInput = document.getElementById('writeOffModalSearchAdd');
+  if (searchInput) searchInput.value = '';
+  const resContainer = document.getElementById('writeOffModalSearchResults');
+  if (resContainer) {
+    resContainer.classList.add('hidden');
+    resContainer.innerHTML = '';
+  }
 }
 
 function setWriteOffFormType(type) {
   activeWriteOffFormType = type;
   const btnPoison = document.getElementById('btnWriteOffTypePoison');
   const btnNonPoison = document.getElementById('btnWriteOffTypeNonPoison');
+  const btnAll = document.getElementById('btnWriteOffTypeAll');
   const titleEl = document.getElementById('writeOffModalTitle');
 
+  const inactiveBtnClass = 'px-3 py-1 rounded-lg font-bold text-xs transition text-gray-600 hover:text-gray-900 cursor-pointer';
+  if (btnPoison) btnPoison.className = inactiveBtnClass;
+  if (btnNonPoison) btnNonPoison.className = inactiveBtnClass;
+  if (btnAll) btnAll.className = inactiveBtnClass;
+
   if (type === 'poison') {
-    if (btnPoison) btnPoison.className = 'px-3 py-1 rounded-lg font-bold text-xs transition bg-rose-700 text-white shadow-2xs';
-    if (btnNonPoison) btnNonPoison.className = 'px-3 py-1 rounded-lg font-bold text-xs transition text-gray-600 hover:text-gray-900';
+    if (btnPoison) btnPoison.className = 'px-3 py-1 rounded-lg font-bold text-xs transition bg-rose-700 text-white shadow-2xs cursor-pointer';
     if (titleEl) titleEl.textContent = 'HQ Official Poison Stock Write-Off Form';
-  } else {
-    if (btnPoison) btnPoison.className = 'px-3 py-1 rounded-lg font-bold text-xs transition text-gray-600 hover:text-gray-900';
-    if (btnNonPoison) btnNonPoison.className = 'px-3 py-1 rounded-lg font-bold text-xs transition bg-slate-800 text-white shadow-2xs';
+  } else if (type === 'non_poison') {
+    if (btnNonPoison) btnNonPoison.className = 'px-3 py-1 rounded-lg font-bold text-xs transition bg-slate-800 text-white shadow-2xs cursor-pointer';
     if (titleEl) titleEl.textContent = 'HQ Official Non-Poison Stock Write-Off Form';
+  } else {
+    if (btnAll) btnAll.className = 'px-3 py-1 rounded-lg font-bold text-xs transition bg-blue-700 text-white shadow-2xs cursor-pointer';
+    if (titleEl) titleEl.textContent = 'HQ Stock Write-Off Form — All Accumulated Items';
   }
+  renderWriteOffModalItems();
+}
+
+function toggleItemWriteOffClassification(rowId) {
+  const safeId = String(rowId);
+  const item = findExpiryItemById(safeId);
+  if (!item) return;
+
+  const currentIsP = isItemPoison(item);
+  item.writeOffClassification = currentIsP ? 'non_poison' : 'poison';
+  saveLocalExpiryData();
   renderWriteOffModalItems();
 }
 
@@ -4540,16 +4806,48 @@ function renderWriteOffModalItems() {
   const totalCostSumEl = document.getElementById('writeOffTotalCostSum');
   if (!tbody) return;
 
-  const selectedItems = expiryItems.filter(it => selectedWriteOffRowIds.has(it.rowId));
-  let totalCost = 0;
+  const allSelectedItems = expiryItems.filter(it => selectedWriteOffRowIds.has(String(it.rowId)));
 
-  tbody.innerHTML = selectedItems.map((it, idx) => {
+  const poisonItems = allSelectedItems.filter(it => isItemPoison(it));
+  const nonPoisonItems = allSelectedItems.filter(it => !isItemPoison(it));
+
+  const pTabEl = document.getElementById('poisonWriteOffTabCount');
+  const npTabEl = document.getElementById('nonPoisonWriteOffTabCount');
+  const allTabEl = document.getElementById('allWriteOffTabCount');
+  if (pTabEl) pTabEl.textContent = poisonItems.length;
+  if (npTabEl) npTabEl.textContent = nonPoisonItems.length;
+  if (allTabEl) allTabEl.textContent = allSelectedItems.length;
+
+  let itemsToRender = allSelectedItems;
+  if (activeWriteOffFormType === 'poison') {
+    itemsToRender = poisonItems;
+  } else if (activeWriteOffFormType === 'non_poison') {
+    itemsToRender = nonPoisonItems;
+  }
+
+  if (itemsToRender.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="13" class="p-8 text-center text-gray-400">
+          <i class="fa-solid fa-box-open text-3xl text-gray-300 block mb-2"></i>
+          No ${activeWriteOffFormType === 'poison' ? 'poison' : (activeWriteOffFormType === 'non_poison' ? 'non-poison' : '')} items in this form view.
+          ${allSelectedItems.length > 0 ? `<div class="mt-2 text-xs text-rose-600 font-bold">You have ${allSelectedItems.length} total items accumulated in the queue. Switch tabs above to view them!</div>` : ''}
+        </td>
+      </tr>
+    `;
+    if (totalCostSumEl) totalCostSumEl.textContent = 'RM 0.00';
+    return;
+  }
+
+  let totalCost = 0;
+  tbody.innerHTML = itemsToRender.map((it, idx) => {
+    const isP = isItemPoison(it);
     const qty = parseFloat(it.remainingQty !== undefined ? it.remainingQty : it.quantity) || 1;
     const unitCost = parseFloat(it.unitCost || it.costPrice || 0);
     const rowTotal = qty * unitCost;
     totalCost += rowTotal;
 
-    const defaultDisposal = activeWriteOffFormType === 'poison'
+    const defaultDisposal = isP
       ? 'SENT TO WAREHOUSE FOR DISPOSAL'
       : (it.disposalMethod || 'LOCAL DISPOSAL');
 
@@ -4558,8 +4856,18 @@ function renderWriteOffModalItems() {
     return `
       <tr class="border-b hover:bg-slate-50 transition" data-row-id="${escHtml(it.rowId)}">
         <td class="p-2 text-center font-bold text-gray-500">${idx + 1}</td>
+        <td class="p-2 text-center">
+          <button type="button" onclick="toggleItemWriteOffClassification('${escHtml(it.rowId)}')"
+            class="px-2 py-0.5 rounded-full text-[10px] font-bold transition cursor-pointer ${isP ? 'bg-rose-100 text-rose-800 border border-rose-300 hover:bg-rose-200' : 'bg-slate-100 text-slate-800 border border-slate-300 hover:bg-slate-200'}"
+            title="Click to toggle between Poison and Non-Poison form">
+            ${isP ? '☠️ Poison' : '📦 Non-Poison'}
+          </button>
+        </td>
         <td class="p-2 font-mono font-bold text-blue-900">${escHtml(it.itemCode)}</td>
-        <td class="p-2 font-semibold text-gray-800">${escHtml(it.itemDescription)}</td>
+        <td class="p-2 font-semibold text-gray-800">
+          ${escHtml(it.itemDescription)}
+          <div class="text-[10px] text-gray-400 font-mono mt-0.5">Batch: ${escHtml(it.batchNumber || 'N/A')}</div>
+        </td>
         <td class="p-2 text-center font-mono font-semibold">${formatExpiryDateDisplay(it.expiryDate)}</td>
         <td class="p-2 text-center">
           <input type="text" class="writeoff-uom w-12 text-center bg-white border border-gray-300 rounded px-1 py-0.5 text-xs font-bold" value="${escHtml(it.uom || 'Unit')}">
@@ -4594,6 +4902,92 @@ function renderWriteOffModalItems() {
   if (totalCostSumEl) totalCostSumEl.textContent = `RM ${totalCost.toFixed(2)}`;
 }
 
+function handleWriteOffModalSearch(query) {
+  const resContainer = document.getElementById('writeOffModalSearchResults');
+  if (!resContainer) return;
+  const q = (query || '').toLowerCase().trim();
+  if (q.length < 2) {
+    resContainer.classList.add('hidden');
+    resContainer.innerHTML = '';
+    return;
+  }
+
+  const matches = expiryItems.filter(it => {
+    if (it.status === 'Cleared' || it.status === 'DONE') return false;
+    if (selectedWriteOffRowIds.has(String(it.rowId))) return false;
+    const code = String(it.itemCode || '').toLowerCase();
+    const desc = String(it.itemDescription || '').toLowerCase();
+    const batch = String(it.batchNumber || '').toLowerCase();
+    return code.includes(q) || desc.includes(q) || batch.includes(q);
+  }).slice(0, 8);
+
+  if (matches.length === 0) {
+    resContainer.innerHTML = `<div class="p-3 text-center text-gray-400 text-xs">No matching stock items found.</div>`;
+    resContainer.classList.remove('hidden');
+    return;
+  }
+
+  resContainer.innerHTML = matches.map(it => {
+    const isP = isItemPoison(it);
+    return `
+      <div onclick="addSingleItemToWriteOff('${escHtml(it.rowId)}')"
+        class="p-2.5 hover:bg-rose-50/70 border-b last:border-0 flex items-center justify-between cursor-pointer transition">
+        <div class="flex-1 min-w-0 pr-3">
+          <div class="font-bold text-slate-800 truncate">${escHtml(it.itemDescription)}</div>
+          <div class="text-[11px] text-gray-500 font-mono flex items-center gap-2 mt-0.5">
+            <span>Code: <b class="text-blue-900">${escHtml(it.itemCode)}</b></span>
+            <span>Batch: <b>${escHtml(it.batchNumber || 'N/A')}</b></span>
+            <span>Exp: <b>${formatExpiryDateDisplay(it.expiryDate)}</b></span>
+            <span>Qty: <b>${it.quantity}</b></span>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <span class="text-[10px] px-2 py-0.5 rounded-full font-bold ${isP ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-700'}">
+            ${isP ? '☠️ Poison' : '📦 Non-Poison'}
+          </span>
+          <span class="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg shadow-2xs">
+            + Add to Form
+          </span>
+        </div>
+      </div>
+    `;
+  }).join('');
+  resContainer.classList.remove('hidden');
+}
+
+function addSingleItemToWriteOff(rowId) {
+  const safeId = String(rowId);
+  const item = findExpiryItemById(safeId);
+  if (!item) return;
+
+  selectedWriteOffRowIds.add(safeId);
+  item.actionPlan = 'Write-off / Dispose';
+  saveLocalExpiryData();
+  saveAccumulatedWriteOffItems();
+  updateWriteOffSelectedCounter();
+
+  const searchInput = document.getElementById('writeOffModalSearchAdd');
+  if (searchInput) searchInput.value = '';
+  const resContainer = document.getElementById('writeOffModalSearchResults');
+  if (resContainer) {
+    resContainer.classList.add('hidden');
+    resContainer.innerHTML = '';
+  }
+
+  renderWriteOffModalItems();
+  renderExpiryUI();
+  showExpiryToast(`Added "${item.itemDescription}" to Write-Off Form!`);
+}
+
+function quickAddBatchToWriteOff(rowId) {
+  const safeId = String(rowId);
+  const isSelected = selectedWriteOffRowIds.has(safeId);
+  toggleSelectWriteOffItem(safeId, !isSelected);
+  if (currentExplorerItemCode) {
+    openSkuBatchExplorerModal(currentExplorerItemCode);
+  }
+}
+
 function recalculateWriteOffRowTotal(inputEl) {
   const row = inputEl.closest('tr');
   if (!row) return;
@@ -4616,9 +5010,17 @@ function recalculateWriteOffRowTotal(inputEl) {
 }
 
 function removeWriteOffRow(rowId) {
-  selectedWriteOffRowIds.delete(rowId);
+  const safeId = String(rowId);
+  selectedWriteOffRowIds.delete(safeId);
+  const item = findExpiryItemById(safeId);
+  if (item && isWriteOffActionPlan(item.actionPlan)) {
+    item.actionPlan = '';
+    saveLocalExpiryData();
+  }
+  saveAccumulatedWriteOffItems();
   updateWriteOffSelectedCounter();
   renderWriteOffModalItems();
+  renderExpiryUI();
   if (selectedWriteOffRowIds.size === 0) {
     closeStockWriteOffModal();
   }
@@ -4630,16 +5032,16 @@ function printOfficialWriteOffForm() {
   const subDate = document.getElementById('writeOffSubmissionDate')?.value || new Date().toISOString().split('T')[0];
   const rows = Array.from(document.querySelectorAll('#writeOffItemsTbody tr'));
 
-  if (!rows.length) {
-    alert('No items to print.');
+  if (!rows.length || rows[0].querySelectorAll('td').length <= 1) {
+    alert('No items in this form to print.');
     return;
   }
 
   let grandTotal = 0;
   const tableRowsHtml = rows.map((r, i) => {
-    const code = r.children[1].textContent.trim();
-    const desc = r.children[2].textContent.trim();
-    const exp = r.children[3].textContent.trim();
+    const code = r.children[2]?.textContent.trim() || '';
+    const desc = r.children[3]?.textContent.trim().split('\n')[0] || '';
+    const exp = r.children[4]?.textContent.trim() || '';
     const uom = r.querySelector('.writeoff-uom')?.value || 'Unit';
     const qty = r.querySelector('.writeoff-qty')?.value || '1';
     const cost = parseFloat(r.querySelector('.writeoff-unitcost')?.value || 0).toFixed(2);
@@ -4783,7 +5185,7 @@ function exportWriteOffCsv() {
   const subDate = document.getElementById('writeOffSubmissionDate')?.value || new Date().toISOString().split('T')[0];
   const rows = Array.from(document.querySelectorAll('#writeOffItemsTbody tr'));
 
-  if (!rows.length) {
+  if (!rows.length || rows[0].querySelectorAll('td').length <= 1) {
     alert('No items to export.');
     return;
   }
@@ -4804,9 +5206,9 @@ function exportWriteOffCsv() {
 
   let grandTotal = 0;
   rows.forEach((r, i) => {
-    const code = r.children[1].textContent.trim();
-    const desc = r.children[2].textContent.trim();
-    const exp = r.children[3].textContent.trim();
+    const code = r.children[2]?.textContent.trim() || '';
+    const desc = r.children[3]?.textContent.trim().split('\n')[0] || '';
+    const exp = r.children[4]?.textContent.trim() || '';
     const uom = r.querySelector('.writeoff-uom')?.value || 'Unit';
     const qty = r.querySelector('.writeoff-qty')?.value || '1';
     const cost = parseFloat(r.querySelector('.writeoff-unitcost')?.value || 0).toFixed(2);
@@ -4852,11 +5254,11 @@ function confirmAndExecuteWriteOff() {
   const toRemove = new Set(selectedWriteOffRowIds);
   const archived = [];
   expiryItems = expiryItems.filter(it => {
-    if (toRemove.has(it.rowId)) {
+    if (toRemove.has(String(it.rowId))) {
       archived.push({
         ...it,
         writtenOffAt: new Date().toISOString(),
-        writeOffType: activeWriteOffFormType
+        writeOffType: it.writeOffClassification || (isItemPoison(it) ? 'poison' : 'non_poison')
       });
       return false;
     }
@@ -4871,7 +5273,16 @@ function confirmAndExecuteWriteOff() {
     console.warn('Failed to save to write-off archive:', err);
   }
 
+  // Push removal / written-off status to Google Sheets
+  archived.forEach(it => {
+    pushExpiryUpdateToSheets(it.rowId, 0, 'Written-Off', it.expiryDate, {
+      actionPlan: 'Written-Off',
+      branch: it.branch
+    }).catch(console.warn);
+  });
+
   selectedWriteOffRowIds.clear();
+  saveAccumulatedWriteOffItems();
   updateWriteOffSelectedCounter();
   saveLocalExpiryData();
   closeStockWriteOffModal();
@@ -4883,6 +5294,19 @@ function confirmAndExecuteWriteOff() {
 
   showExpiryToast(`✅ Successfully written off and removed ${count} expired item(s)!`);
 }
+
+// Window exports
+window.isWriteOffActionPlan = isWriteOffActionPlan;
+window.isItemPoison = isItemPoison;
+window.loadAccumulatedWriteOffItems = loadAccumulatedWriteOffItems;
+window.saveAccumulatedWriteOffItems = saveAccumulatedWriteOffItems;
+window.showWriteOffActionPrompt = showWriteOffActionPrompt;
+window.dismissWriteOffAlertBanner = dismissWriteOffAlertBanner;
+window.clearAllWriteOffSelection = clearAllWriteOffSelection;
+window.handleWriteOffModalSearch = handleWriteOffModalSearch;
+window.addSingleItemToWriteOff = addSingleItemToWriteOff;
+window.quickAddBatchToWriteOff = quickAddBatchToWriteOff;
+window.toggleItemWriteOffClassification = toggleItemWriteOffClassification;
 
 // Window exports
 window.openSkuBatchExplorerModal = openSkuBatchExplorerModal;
