@@ -2490,7 +2490,13 @@ async function confirmOcrBatchInsert(itemsToCommit = null) {
   }
   expiryItems = ensureUniqueExpiryRowIds(expiryItems);
   saveLocalExpiryData();
+  delete expiryItems._productBatchMap;
+  delete expiryItems._skuBatchMap;
   renderExpiryUI();
+
+  if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
+    openSkuBatchExplorerModal(currentExplorerProductKey);
+  }
 
   // 2. Save to OneDrive
   if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
@@ -2555,7 +2561,13 @@ function updateExpiryItemDate(rowId, newDateStr, inputEl) {
   item.updatedBy = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
 
   saveLocalExpiryData();
+  delete expiryItems._productBatchMap;
+  delete expiryItems._skuBatchMap;
   renderExpiryUI();
+
+  if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
+    openSkuBatchExplorerModal(currentExplorerProductKey);
+  }
   if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
     window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
   }
@@ -2586,7 +2598,13 @@ function updateExpiryItemQuantity(rowId, newQty) {
   item.updatedBy = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
 
   saveLocalExpiryData();
+  delete expiryItems._productBatchMap;
+  delete expiryItems._skuBatchMap;
   renderExpiryUI();
+
+  if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
+    openSkuBatchExplorerModal(currentExplorerProductKey);
+  }
   if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
     window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
   }
@@ -2655,7 +2673,13 @@ function updateExpiryActionPlan(rowId, val) {
   }
 
   saveLocalExpiryData();
+  delete expiryItems._productBatchMap;
+  delete expiryItems._skuBatchMap;
   renderExpiryUI();
+
+  if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
+    openSkuBatchExplorerModal(currentExplorerProductKey);
+  }
 
   if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
     window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
@@ -2714,7 +2738,13 @@ async function markExpiryItemCleared(rowId) {
   });
 
   saveLocalExpiryData();
+  delete expiryItems._productBatchMap;
+  delete expiryItems._skuBatchMap;
   renderExpiryUI();
+
+  if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
+    openSkuBatchExplorerModal(currentExplorerProductKey);
+  }
 
   // 2. Persist to OneDrive immediately so other connected computers sync this clearance
   try {
@@ -2769,7 +2799,13 @@ async function reactivateExpiryItem(rowId) {
   item.updatedBy = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
 
   saveLocalExpiryData();
+  delete expiryItems._productBatchMap;
+  delete expiryItems._skuBatchMap;
   renderExpiryUI();
+
+  if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
+    openSkuBatchExplorerModal(currentExplorerProductKey);
+  }
   if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
     window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
   }
@@ -2892,7 +2928,13 @@ async function handleEditExpiryItemSubmit(e) {
   item.updatedBy = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
 
   saveLocalExpiryData();
+  delete expiryItems._productBatchMap;
+  delete expiryItems._skuBatchMap;
   renderExpiryUI();
+
+  if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
+    openSkuBatchExplorerModal(currentExplorerProductKey);
+  }
   closeEditExpiryItemModal();
 
   if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
@@ -3380,7 +3422,13 @@ function saveClearancePriceTag(silent = false) {
 
   // Immediately save locally and refresh UI
   saveLocalExpiryData();
+  delete expiryItems._productBatchMap;
+  delete expiryItems._skuBatchMap;
   renderExpiryUI();
+
+  if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
+    openSkuBatchExplorerModal(currentExplorerProductKey);
+  }
 
   // Save to OneDrive immediately
   if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
@@ -3636,7 +3684,13 @@ function updateExpiryOfferedPrice(rowId, val) {
   }
 
   saveLocalExpiryData();
+  delete expiryItems._productBatchMap;
+  delete expiryItems._skuBatchMap;
   renderExpiryUI();
+
+  if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
+    openSkuBatchExplorerModal(currentExplorerProductKey);
+  }
 
   if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
     window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
@@ -3822,24 +3876,48 @@ function renderExpiryKpis() {
   setText('expiryKpiCleared', clearedCount);
 }
 
-function getSkuBatchMap() {
-  if (expiryItems._skuBatchMap && expiryItems._skuBatchMapLen === expiryItems.length) {
-    return expiryItems._skuBatchMap;
+function getExpiryProductPoolingKey(item) {
+  if (!item) return '';
+  const desc = String(item.itemDescription || '').trim();
+  const clean = desc
+    .toLowerCase()
+    .replace(/[^\w\s\u4e00-\u9fa5]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // If description is empty, generic placeholder, or fewer than 3 letters:
+  // Do NOT pool with other items; give each row its own unique key.
+  if (!clean || clean === 'n a' || clean === 'na' || clean === 'none' || clean === '-' || clean.length < 3) {
+    const rawId = item.rowId !== undefined && item.rowId !== null ? String(item.rowId).trim() : '';
+    return rawId ? `ROW_${rawId}` : `UNQ_${Math.random()}`;
+  }
+
+  return clean;
+}
+window.getExpiryProductPoolingKey = getExpiryProductPoolingKey;
+
+function getProductBatchMap() {
+  if (expiryItems._productBatchMap && expiryItems._productBatchMapLen === expiryItems.length) {
+    return expiryItems._productBatchMap;
   }
   const map = {};
   const len = expiryItems.length;
   for (let i = 0; i < len; i++) {
     const it = expiryItems[i];
     if (!it) continue;
-    const code = String(it.itemCode || '').trim();
-    if (code) {
-      if (!map[code]) map[code] = [];
-      map[code].push(it);
+    const key = getExpiryProductPoolingKey(it);
+    if (key) {
+      if (!map[key]) map[key] = [];
+      map[key].push(it);
     }
   }
-  expiryItems._skuBatchMap = map;
-  expiryItems._skuBatchMapLen = expiryItems.length;
+  expiryItems._productBatchMap = map;
+  expiryItems._productBatchMapLen = expiryItems.length;
   return map;
+}
+
+function getSkuBatchMap() {
+  return getProductBatchMap();
 }
 
 function renderExpiryTable() {
@@ -3880,7 +3958,7 @@ function renderExpiryTable() {
     }
   }
 
-  const skuBatchMap = getSkuBatchMap();
+  const productBatchMap = getProductBatchMap();
   const clearedSet = getClearedExpiryKeys();
   const { todayMs, todayDateStr } = getTodayContext();
 
@@ -3893,7 +3971,8 @@ function renderExpiryTable() {
     const safeRowId = escHtml(String(it.rowId).replace(/'/g, "\\'"));
     const offeredNum = parseFloat(it.offeredPrice !== undefined ? it.offeredPrice : it.clearancePrice);
     const hasValidOffer = !isNaN(offeredNum) && offeredNum > 0;
-    const itemBatches = skuBatchMap[String(it.itemCode || '').trim()] || [];
+    const productKey = getExpiryProductPoolingKey(it);
+    const itemBatches = productBatchMap[productKey] || [];
 
     let badgeClass = 'bg-gray-100 text-gray-600';
     if (h.level === 'expired' || h.level === 'critical') badgeClass = 'bg-rose-100 text-rose-700 font-bold border border-rose-200 animate-pulse';
@@ -3917,8 +3996,8 @@ function renderExpiryTable() {
           ${escHtml(it.itemDescription)}
           <div class="text-[10px] text-gray-400 font-mono mt-0.5">Batch: ${escHtml(it.batchNumber || 'N/A')} · File: ${escHtml(it.sourceFile || 'Direct')}</div>
           ${itemBatches.length > 1 ? `
-            <button type="button" onclick="openSkuBatchExplorerModal('${escHtml(String(it.itemCode).replace(/'/g, "\\'"))}')"
-              class="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold transition shadow-2xs cursor-pointer" title="View all ${itemBatches.length} batches and expiry dates for this SKU">
+            <button type="button" onclick="openSkuBatchExplorerModal('${escHtml(productKey.replace(/'/g, "\\'"))}')"
+              class="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold transition shadow-2xs cursor-pointer" title="View all ${itemBatches.length} batches and expiry dates for this product">
               <i class="fa-solid fa-boxes-stacked text-indigo-600"></i> ${itemBatches.length} Batches (View all)
             </button>
           ` : ''}
@@ -4399,7 +4478,13 @@ async function handleQuickAddSubmit(e) {
 
   expiryItems.unshift(newItem);
   saveLocalExpiryData();
+  delete expiryItems._productBatchMap;
+  delete expiryItems._skuBatchMap;
   renderExpiryUI();
+
+  if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
+    openSkuBatchExplorerModal(currentExplorerProductKey);
+  }
 
   if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
     window.pmgOneDriveSync.saveStockExpiryToOneDrive(branch).catch(console.warn);
@@ -4540,11 +4625,12 @@ function promptSetOneDriveShareLink() {
   }
 }
 
-// ─── MULTI-BATCH / SKU EXPIRY EXPLORER ─────────────────────────────────────────
-let currentExplorerItemCode = '';
+// ─── MULTI-BATCH / PRODUCT EXPIRY EXPLORER ─────────────────────────────────────
+let currentExplorerProductKey = '';
 
-function openSkuBatchExplorerModal(itemCode) {
-  currentExplorerItemCode = itemCode;
+function openSkuBatchExplorerModal(productKeyOrRowId) {
+  if (!productKeyOrRowId) return;
+  currentExplorerProductKey = String(productKeyOrRowId).trim();
   const modal = document.getElementById('skuBatchExplorerModal');
   const codeEl = document.getElementById('batchExplorerSkuCode');
   const nameEl = document.getElementById('batchExplorerSkuName');
@@ -4552,7 +4638,18 @@ function openSkuBatchExplorerModal(itemCode) {
   const qtyBadge = document.getElementById('batchExplorerTotalQtyBadge');
   if (!modal || !tbody) return;
 
-  const matches = expiryItems.filter(x => String(x.itemCode || '').trim() === String(itemCode).trim());
+  const targetKey = currentExplorerProductKey;
+  const matches = expiryItems.filter(x => {
+    if (!x) return false;
+    const k = getExpiryProductPoolingKey(x);
+    if (k && k === targetKey) return true;
+    if (targetKey.startsWith('ROW_') && String(x.rowId) === targetKey.slice(4)) return true;
+    if (String(x.rowId) === targetKey) return true;
+    // Fallback if someone passed an itemCode
+    if (x.itemCode && String(x.itemCode).trim() === targetKey && String(x.itemCode).toUpperCase() !== 'N/A') return true;
+    return false;
+  });
+
   matches.sort((a, b) => {
     const dA = parseExpiryDate(a.expiryDate);
     const dB = parseExpiryDate(b.expiryDate);
@@ -4563,8 +4660,13 @@ function openSkuBatchExplorerModal(itemCode) {
   });
 
   const first = matches[0] || {};
-  if (codeEl) codeEl.textContent = itemCode;
-  if (nameEl) nameEl.textContent = first.itemDescription || 'SKU Batches';
+  const hasCode = first.itemCode && String(first.itemCode).trim() !== '' && String(first.itemCode).toUpperCase() !== 'N/A';
+  if (codeEl) {
+    codeEl.textContent = hasCode ? first.itemCode : (first.itemDescription || 'Product Batches');
+  }
+  if (nameEl) {
+    nameEl.textContent = hasCode ? (first.itemDescription || '') : '';
+  }
 
   let totalQty = 0;
   tbody.innerHTML = matches.map((m, i) => {
@@ -4648,11 +4750,21 @@ async function updateBatchExplorerQty(rowId, newQty) {
   item.remainingQty = num;
   item.lastUpdated = new Date().toISOString();
 
+  // Invalidate cache
+  delete expiryItems._productBatchMap;
+  delete expiryItems._skuBatchMap;
+
   saveLocalExpiryData();
+  delete expiryItems._productBatchMap;
+  delete expiryItems._skuBatchMap;
   renderExpiryUI();
 
-  if (currentExplorerItemCode) {
-    openSkuBatchExplorerModal(currentExplorerItemCode);
+  if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
+    openSkuBatchExplorerModal(currentExplorerProductKey);
+  }
+
+  if (currentExplorerProductKey) {
+    openSkuBatchExplorerModal(currentExplorerProductKey);
   }
 
   showExpiryToast(`✅ Batch quantity updated to ${num}`);
@@ -4668,10 +4780,67 @@ async function markBatchItemDoneClear(rowId) {
   const item = findExpiryItemById(rowId);
   if (!item) return;
 
-  await markExpiryItemCleared(rowId);
+  // 1. Instantly mark as cleared in-memory and in persistent tombstone
+  const nowIso = new Date().toISOString();
+  const session = typeof getSession === 'function' ? getSession() : null;
+  const userName = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
+  const targetKey = getExpiryItemKey(item);
+  const targetIdStr = item.rowId !== undefined && item.rowId !== null ? String(item.rowId).trim() : '';
 
-  if (currentExplorerItemCode) {
-    openSkuBatchExplorerModal(currentExplorerItemCode);
+  if (targetIdStr && targetIdStr !== 'undefined' && targetIdStr !== 'null') {
+    addClearedExpiryKey(`ROW_${targetIdStr}`);
+  }
+  if (targetKey) addClearedExpiryKey(targetKey);
+
+  expiryItems.forEach(it => {
+    if (!it) return;
+    const itIdStr = it.rowId !== undefined && it.rowId !== null ? String(it.rowId).trim() : '';
+    const isSameId = targetIdStr && targetIdStr !== 'undefined' && itIdStr === targetIdStr;
+    const isSameKey = targetKey && (getExpiryItemKey(it) === targetKey);
+    if (isSameId || isSameKey) {
+      it.status = 'DONE';
+      it.quantity = 0;
+      it.remainingQty = 0;
+      it.clearedAt = nowIso;
+      it.lastUpdated = nowIso;
+      it.updatedBy = userName;
+    }
+  });
+
+  // Invalidate cache
+  delete expiryItems._productBatchMap;
+  delete expiryItems._skuBatchMap;
+
+  // 2. Persist locally and update background main table immediately
+  saveLocalExpiryData();
+  delete expiryItems._productBatchMap;
+  delete expiryItems._skuBatchMap;
+  renderExpiryUI();
+
+  if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
+    openSkuBatchExplorerModal(currentExplorerProductKey);
+  }
+
+  // 3. IMMEDIATELY re-render the modal in-place so user gets instant visual confirmation!
+  if (currentExplorerProductKey) {
+    openSkuBatchExplorerModal(currentExplorerProductKey);
+  }
+
+  showExpiryToast(`✅ Batch ${item.batchNumber || ''} marked as Cleared!`);
+
+  // 4. Background cloud sync without blocking UI
+  try {
+    if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
+      window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
+    }
+    pushExpiryUpdateToSheets(item.rowId, 0, 'DONE', item.expiryDate, {
+      branch: item.branch,
+      itemCode: item.itemCode,
+      itemDescription: item.itemDescription,
+      batchNumber: item.batchNumber
+    }).catch(console.warn);
+  } catch (err) {
+    console.warn('[markBatchItemDoneClear] Cloud sync warning:', err);
   }
 }
 window.markBatchItemDoneClear = markBatchItemDoneClear;
@@ -4682,15 +4851,19 @@ function closeSkuBatchExplorerModal() {
 }
 
 function filterExpiryByCurrentSku() {
-  if (!currentExplorerItemCode) return;
+  if (!currentExplorerProductKey) return;
+  const matches = expiryItems.filter(x => getExpiryProductPoolingKey(x) === currentExplorerProductKey);
+  const first = matches[0];
+  const query = first ? (first.itemDescription || '') : currentExplorerProductKey;
+
   const searchInput = document.getElementById('expirySearchInput');
   if (searchInput) {
-    searchInput.value = currentExplorerItemCode;
+    searchInput.value = query;
   }
   const clearBtn = document.getElementById('expirySearchClearBtn');
   if (clearBtn) clearBtn.classList.remove('hidden');
 
-  activeExpiryFilter.search = currentExplorerItemCode;
+  activeExpiryFilter.search = query;
   closeSkuBatchExplorerModal();
   expiryCurrentPage = 1;
   renderExpiryUI();
@@ -5308,8 +5481,8 @@ function quickAddBatchToWriteOff(rowId) {
   const safeId = String(rowId);
   const isSelected = selectedWriteOffRowIds.has(safeId);
   toggleSelectWriteOffItem(safeId, !isSelected);
-  if (currentExplorerItemCode) {
-    openSkuBatchExplorerModal(currentExplorerItemCode);
+  if (currentExplorerProductKey) {
+    openSkuBatchExplorerModal(currentExplorerProductKey);
   }
 }
 
