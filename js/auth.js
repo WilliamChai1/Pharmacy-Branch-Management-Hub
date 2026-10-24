@@ -91,60 +91,70 @@ function setGlobalActiveBranch(branchCodeOrName) {
   }
 
   // 2. Patient Care & Appointments (Module 3)
-  const patientSel = document.getElementById('patientBranchFilter');
-  if (patientSel) {
-    patientSel.value = branchCode;
-    if (typeof renderPatientModule === 'function') {
-      renderPatientModule();
-    }
-  }
-
-  // 3. AI Smart Timetable Generator (Area Manager Suite)
-  const schedulerSel = document.getElementById('schedulerBranchSelect');
-  if (schedulerSel) {
-    if (branchCode) {
-      schedulerSel.value = branchCode;
-    }
-    if (typeof loadTeammates === 'function') {
-      loadTeammates(schedulerSel.value || 'KS01');
-    }
-  }
-
-  // 4. Stock Expiry Tracker (Module 5)
-  const expirySel = document.getElementById('expiryBranchFilter');
-  if (expirySel) {
-    expirySel.value = branchName;
-    if (typeof activeExpiryFilter !== 'undefined') {
-      activeExpiryFilter.branch = branchName;
-      if (typeof renderExpiryUI === 'function') {
-        renderExpiryUI();
+  try {
+    const patientSel = document.getElementById('patientBranchFilter');
+    if (patientSel) {
+      patientSel.value = branchCode;
+      if (typeof renderPatientModule === 'function') {
+        renderPatientModule();
       }
     }
-    if (typeof updateAccountsShareUi === 'function') {
-      updateAccountsShareUi(branchName || 'Kota Sentosa');
+  } catch (e) { console.warn('[Auth] Patient module sync warning:', e); }
+
+  // 3. AI Smart Timetable Generator (Area Manager Suite)
+  try {
+    const schedulerSel = document.getElementById('schedulerBranchSelect');
+    if (schedulerSel) {
+      if (branchCode) {
+        schedulerSel.value = branchCode;
+      }
+      if (typeof loadTeammates === 'function') {
+        loadTeammates(schedulerSel.value || 'KS01');
+      }
     }
-  }
+  } catch (e) { console.warn('[Auth] Scheduler module sync warning:', e); }
+
+  // 4. Stock Expiry Tracker (Module 5)
+  try {
+    const expirySel = document.getElementById('expiryBranchFilter');
+    if (expirySel) {
+      expirySel.value = branchName;
+      if (typeof activeExpiryFilter !== 'undefined') {
+        activeExpiryFilter.branch = branchName;
+        if (typeof renderExpiryUI === 'function') {
+          renderExpiryUI();
+        }
+      }
+      if (typeof updateAccountsShareUi === 'function') {
+        updateAccountsShareUi(branchName || 'Kota Sentosa');
+      }
+    }
+  } catch (e) { console.warn('[Auth] Expiry module sync warning:', e); }
 
   // 5. Credit Note & Returns Tracker (Module 6)
-  const returnsSel = document.getElementById('returnsBranchFilter');
-  if (returnsSel) {
-    returnsSel.value = branchName;
-    if (window.pmgReturns && typeof window.pmgReturns.render === 'function') {
-      window.pmgReturns.render();
-    } else if (typeof renderReturnsUI === 'function') {
-      renderReturnsUI();
+  try {
+    const returnsSel = document.getElementById('returnsBranchFilter');
+    if (returnsSel) {
+      returnsSel.value = branchName;
+      if (window.pmgReturns && typeof window.pmgReturns.render === 'function') {
+        window.pmgReturns.render();
+      } else if (typeof renderReturnsUI === 'function') {
+        renderReturnsUI();
+      }
     }
-  }
+  } catch (e) { console.warn('[Auth] Returns module sync warning:', e); }
 
   // 6. OneDrive Sync Active Branch
-  if (window.pmgOneDriveSync) {
-    if (branchName) {
-      window.pmgOneDriveSync.activeBranchFolder = branchName.toUpperCase();
+  try {
+    if (window.pmgOneDriveSync) {
+      if (branchName) {
+        window.pmgOneDriveSync.activeBranchFolder = branchName.toUpperCase();
+      }
+      if (typeof updateSyncModalInfo === 'function') {
+        updateSyncModalInfo();
+      }
     }
-    if (typeof updateSyncModalInfo === 'function') {
-      updateSyncModalInfo();
-    }
-  }
+  } catch (e) { console.warn('[Auth] OneDrive sync warning:', e); }
 
   // Persist choice for Area Manager
   localStorage.setItem('pmg_global_branch', branchCode);
@@ -305,9 +315,17 @@ async function login() {
   // Store session and show main app
   setSession(matchedUser);
   hideAuthOverlay();
-  applyRoleUI(matchedUser);
   showMainApp();
-  switchTab('inventory');
+  try {
+    applyRoleUI(matchedUser);
+  } catch (err) {
+    console.error('[Auth] applyRoleUI warning:', err);
+  }
+  try {
+    switchTab('inventory');
+  } catch (err) {
+    console.error('[Auth] switchTab warning:', err);
+  }
 }
 
 function showLoginError(msg) {
@@ -344,9 +362,17 @@ function bootAuth() {
   const session = getSession();
   if (session) {
     hideAuthOverlay();
-    applyRoleUI(session);
     showMainApp();
-    switchTab('inventory');
+    try {
+      applyRoleUI(session);
+    } catch (err) {
+      console.error('[Auth] bootAuth applyRoleUI warning:', err);
+    }
+    try {
+      switchTab('inventory');
+    } catch (err) {
+      console.error('[Auth] bootAuth switchTab warning:', err);
+    }
   } else {
     // Wire enter key on login form
     ['loginUsername', 'loginPassword'].forEach(id => {

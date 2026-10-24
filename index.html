@@ -6656,23 +6656,23 @@ ItemCode,Description,Brand,Category,Cost,SellingPrice,Supplier
      SCRIPTS (load order matters: data → auth → modules)
 ══════════════════════════════════════════════════════════════════════════════ -->
 
-<script src="js/data.js?v=20261015_v1"></script>
-<script src="js/auth.js?v=20261004_v7"></script>
-<script src="js/inventory.js?v=20261004_v7"></script>
-<script src="js/roster.js?v=20261004_v7"></script>
-<script src="js/audit.js?v=20261017_v1"></script>
-<script src="js/scheduler.js?v=20261023_preset_lock_v2"></script>
-<script src="js/db.js?v=20261019_storage_v2"></script>
-<script src="js/onedrive-sync.js?v=20261023_preset_lock_v2"></script>
-<script src="js/patient.js?v=20261019_storage_v2"></script>
-<script src="js/seed_expiry_data.js?v=20261020_expiry_heal"></script>
-<script src="js/hq_return_policy.js?v=20261013_v1"></script>
-<script src="js/expiry.js?v=20261020_dedup_sync"></script>
-<script src="js/returns-cn.js?v=20261013_v2"></script>
-<script src="js/pricing-intelligence.js?v=20261017_v1"></script>
-<script src="js/recruitment.js?v=20261017_v1"></script>
-<script src="js/admin-assets.js?v=20261005_v1"></script>
-<script src="js/commercial-admin.js?v=20261005_v1"></script>
+<script src="js/data.js?v=20261024_v7"></script>
+<script src="js/auth.js?v=20261024_v7"></script>
+<script src="js/inventory.js?v=20261024_v7"></script>
+<script src="js/roster.js?v=20261024_v7"></script>
+<script src="js/audit.js?v=20261024_v7"></script>
+<script src="js/scheduler.js?v=20261024_v7"></script>
+<script src="js/db.js?v=20261024_v7"></script>
+<script src="js/onedrive-sync.js?v=20261024_v7"></script>
+<script src="js/patient.js?v=20261024_v7"></script>
+<script src="js/seed_expiry_data.js?v=20261024_v7"></script>
+<script src="js/hq_return_policy.js?v=20261024_v7"></script>
+<script src="js/expiry.js?v=20261024_v7"></script>
+<script src="js/returns-cn.js?v=20261024_v7"></script>
+<script src="js/pricing-intelligence.js?v=20261024_v7"></script>
+<script src="js/recruitment.js?v=20261024_v7"></script>
+<script src="js/admin-assets.js?v=20261024_v7"></script>
+<script src="js/commercial-admin.js?v=20261024_v7"></script>
 
 <script>
 // ─── TAB SWITCHER ─────────────────────────────────────────────────────────────
@@ -7328,23 +7328,30 @@ document.addEventListener('DOMContentLoaded', () => {
   // Pre-fill Gemini API key from localStorage across top bar & all modules
   updateGlobalGeminiBadge();
 
-  // Initialise modules
-  initInventory();
-  initRoster();
-  initAudit();
-  initScheduler();
-  initPatientModule();
-  initExpiryModule();
-  if (typeof initPricingIntelligence === 'function') initPricingIntelligence();
+  // Initialise modules (isolated in try/catch so a single module error never blocks bootAuth)
+  try { initInventory(); } catch (e) { console.error('[Boot] initInventory error:', e); }
+  try { initRoster(); } catch (e) { console.error('[Boot] initRoster error:', e); }
+  try { initAudit(); } catch (e) { console.error('[Boot] initAudit error:', e); }
+  try { initScheduler(); } catch (e) { console.error('[Boot] initScheduler error:', e); }
+  try { initPatientModule(); } catch (e) { console.error('[Boot] initPatientModule error:', e); }
+  try { initExpiryModule(); } catch (e) { console.error('[Boot] initExpiryModule error:', e); }
+  try { if (typeof initPricingIntelligence === 'function') initPricingIntelligence(); } catch (e) { console.error('[Boot] initPricingIntelligence error:', e); }
 
   // Fetch live data from Google Sheets (non-blocking background fetch).
-  loadLiveSheetData();
+  try { loadLiveSheetData(); } catch (e) { console.error('[Boot] loadLiveSheetData error:', e); }
 
   // Boot authentication
-  bootAuth();
+  try {
+    bootAuth();
+  } catch (e) {
+    console.error('[Boot] bootAuth error:', e);
+    if (typeof showMainApp === 'function' && typeof getSession === 'function' && getSession()) {
+      showMainApp();
+    }
+  }
 
   // Show footer once logged in
-  const session = getSession();
+  const session = typeof getSession === 'function' ? getSession() : null;
   if (session) {
     const footer = document.getElementById('mainFooter');
     if (footer) footer.classList.remove('hidden');
@@ -7352,7 +7359,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // PWA service worker
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js?v=20261024_v7').catch(() => {});
   }
 });
 

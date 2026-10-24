@@ -45,13 +45,13 @@ function escHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
-function normalizeBranchCode(b) {
-  if (typeof window !== 'undefined' && typeof window.normalizeBranchCode === 'function') {
-    return window.normalizeBranchCode(b);
+function normalizeBranchCode(code) {
+  if (!code) return 'Kota Sentosa';
+  const str = String(code).trim();
+  const clean = str.toUpperCase().replace(/[\s\-_\(\)\[\]]/g, '');
+  if (clean.includes('SENTOSA') || clean.includes('KS01') || clean.includes('PQ0147') || clean === 'KS' || clean === 'ALL' || clean === 'ALLBRANCHES') {
+    return 'Kota Sentosa';
   }
-  if (!b) return 'Kota Sentosa';
-  const str = String(b).trim();
-  if (/kota|sentosa|ks01|pq0147/i.test(str)) return 'Kota Sentosa';
   return str;
 }
 
