@@ -871,11 +871,11 @@ function initPatientModule() {
   if (typeof safeStorageGet === 'function') {
     safeStorageGet(PATIENTS_STORAGE_KEY).then(idbPatients => {
       if (Array.isArray(idbPatients) && idbPatients.length > 0) {
-        if (!patientsData || patientsData.length < idbPatients.length) {
-          console.log(`[PMG Patient] Hydrated ${idbPatients.length} patient records from IndexedDB.`);
-          patientsData = idbPatients;
-          renderPatientModule();
-        }
+        const countBefore = patientsData ? patientsData.length : 0;
+        patientsData = consolidatePatientList([...(patientsData || []), ...idbPatients]);
+        console.log(`[PMG Patient] Hydrated and consolidated from IndexedDB (${idbPatients.length} IDB records, resulting in ${patientsData.length} total profiles).`);
+        savePatientsData();
+        renderPatientModule();
       }
     }).catch(err => console.warn('[PMG Patient] IDB hydration warning:', err));
   }
@@ -948,6 +948,196 @@ function isPatientDeleted(patientId, ic = null, phone = null, name = null) {
   return false;
 }
 
+// ─── CORE PATIENT PROFILE DEDUPLICATION & CONSOLIDATION ENGINE ────────────────
+function normalizePhoneForMatching(phone) {
+  if (!phone || phone === '#ERROR!') return '';
+  let digits = String(phone).replace(/\D/g, '');
+  if (digits.startsWith('60')) digits = '0' + digits.slice(2);
+  return digits;
+}
+
+function normalizeIcForMatching(ic) {
+  if (!ic) return '';
+  return String(ic).replace(/\D/g, '');
+}
+
+function normalizeNameForMatching(name) {
+  if (!name) return '';
+  return String(name)
+    .toLowerCase()
+    .replace(/\b(mr|mrs|ms|dr|mdm|encik|puan|cik)\b\.?/gi, '')
+    .replace(/[^\w\s\u4e00-\u9fa5]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function areSamePatientRecord(p1, p2) {
+  if (!p1 || !p2) return false;
+  if (p1.id === p2.id) return true;
+  if (p1.aliasIds && p1.aliasIds.includes(p2.id)) return true;
+  if (p2.aliasIds && p2.aliasIds.includes(p1.id)) return true;
+
+  const ic1 = normalizeIcForMatching(p1.ic);
+  const ic2 = normalizeIcForMatching(p2.ic);
+  if (ic1 && ic2 && ic1 === ic2) return true;
+
+  const ph1 = normalizePhoneForMatching(p1.phone);
+  const ph2 = normalizePhoneForMatching(p2.phone);
+  const nm1 = normalizeNameForMatching(p1.name);
+  const nm2 = normalizeNameForMatching(p2.name);
+
+  // If phones match and are valid Malaysian numbers (at least 8 digits)
+  if (ph1 && ph2 && ph1.length >= 8 && ph1 === ph2) {
+    if (!nm1 || !nm2 || nm1 === nm2 || nm1.includes(nm2) || nm2.includes(nm1)) return true;
+  }
+
+  // If exact normalized names match
+  if (nm1 && nm2 && nm1 === nm2) {
+    if (!ph1 || !ph2 || ph1 === ph2 || ph1.includes(ph2) || ph2.includes(ph1)) return true;
+  }
+
+  return false;
+}
+
+function scorePatientRichness(p) {
+  let score = 0;
+  if (p.encounters && p.encounters.length) score += p.encounters.length * 10;
+  if (p.ic && p.ic.trim()) score += 15;
+  if (p.phone && p.phone.trim() && p.phone !== '#ERROR!') score += 5;
+  if (p.medications && p.medications.length) score += p.medications.length * 3;
+  if (p.conditions && p.conditions.length) score += p.conditions.length * 2;
+  if (p.age) score += 5;
+  if (p.gender && p.gender !== 'Other') score += 2;
+  const idStr = String(p.id || '');
+  if (!idStr.startsWith('PT-APT') && !idStr.startsWith('PT-PMGBK')) score += 20;
+  return score;
+}
+
+function mergeTwoPatientRecords(primary, secondary) {
+  let p1 = primary;
+  let p2 = secondary;
+  if (scorePatientRichness(p2) > scorePatientRichness(p1)) {
+    p1 = secondary;
+    p2 = primary;
+  }
+
+  const merged = JSON.parse(JSON.stringify(p1));
+
+  // Alias IDs (preserves all former/stub IDs for routing and links)
+  merged.aliasIds = Array.from(new Set([
+    ...(merged.aliasIds || []),
+    ...(p2.aliasIds || []),
+    p2.id
+  ])).filter(id => id && id !== merged.id);
+
+  // Demographic scalar fields
+  if (!merged.ic && p2.ic) merged.ic = p2.ic;
+  if ((!merged.phone || merged.phone === '#ERROR!') && p2.phone && p2.phone !== '#ERROR!') merged.phone = p2.phone;
+  if ((!merged.gender || merged.gender === 'Other') && p2.gender && p2.gender !== 'Other') merged.gender = p2.gender;
+  if ((!merged.race || merged.race === 'Other') && p2.race && p2.race !== 'Other') merged.race = p2.race;
+  if ((!merged.language || merged.language === 'English') && p2.language && p2.language !== 'English') merged.language = p2.language;
+  if ((merged.age === null || merged.age === undefined) && p2.age !== null && p2.age !== undefined) merged.age = p2.age;
+  if (!merged.dob && p2.dob) merged.dob = p2.dob;
+  if (!merged.branch || merged.branch === 'Kota Sentosa' || merged.branch === 'KS01') {
+    merged.branch = 'Kota Sentosa';
+  }
+
+  // Clinical conditions
+  merged.conditions = Array.from(new Set([...(merged.conditions || []), ...(p2.conditions || [])]))
+    .filter(c => c && c !== 'Pending Consultation');
+  if (!merged.conditions.length) merged.conditions = ['General Health Review'];
+
+  // Encounters (union by encounter ID or date+author, sorted descending)
+  const encMap = new Map();
+  (p2.encounters || []).forEach(e => {
+    const k = e.id || `${e.date}_${e.recordedBy}`;
+    encMap.set(k, e);
+  });
+  (merged.encounters || []).forEach(e => {
+    const k = e.id || `${e.date}_${e.recordedBy}`;
+    encMap.set(k, e);
+  });
+  merged.encounters = Array.from(encMap.values()).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  // Appointments (union by appointment ID, preserve completed/terminal statuses)
+  const aptMap = new Map();
+  (p2.appointments || []).forEach(a => {
+    const k = a.id || `${a.date}_${a.time}`;
+    aptMap.set(k, a);
+  });
+  (merged.appointments || []).forEach(a => {
+    const k = a.id || `${a.date}_${a.time}`;
+    if (!aptMap.has(k)) {
+      aptMap.set(k, a);
+    } else {
+      const existing = aptMap.get(k);
+      const isTermA = a.status === 'Completed' || a.status === 'Missed' || a.status === 'Cancelled';
+      const isTermB = existing.status === 'Completed' || existing.status === 'Missed' || existing.status === 'Cancelled';
+      if (isTermA && !isTermB) aptMap.set(k, a);
+      else if (!isTermA && isTermB) aptMap.set(k, existing);
+      else aptMap.set(k, { ...existing, ...a });
+    }
+  });
+  merged.appointments = Array.from(aptMap.values()).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+  // Medications (preserve full regimens)
+  const medMap = new Map();
+  (p2.medications || []).forEach(m => {
+    const k = (m.id || m.name || '').toLowerCase().trim();
+    if (k) medMap.set(k, m);
+  });
+  (merged.medications || []).forEach(m => {
+    const k = (m.id || m.name || '').toLowerCase().trim();
+    if (k) medMap.set(k, m);
+  });
+  merged.medications = Array.from(medMap.values());
+
+  // Documents
+  const docMap = new Map();
+  (p2.documents || []).forEach(d => docMap.set(d.id || d.title, d));
+  (merged.documents || []).forEach(d => docMap.set(d.id || d.title, d));
+  merged.documents = Array.from(docMap.values());
+
+  // TCA Reminders
+  if (!merged.nextTcaDate && p2.nextTcaDate) {
+    merged.nextTcaDate = p2.nextTcaDate;
+    merged.nextTcaPurpose = p2.nextTcaPurpose;
+    merged.nextTcaRecordedBy = p2.nextTcaRecordedBy;
+  }
+
+  // Notes: preserve rich consultation notes
+  if ((!merged.notes || merged.notes.startsWith('Imported customer booking')) && p2.notes && !p2.notes.startsWith('Imported customer booking')) {
+    merged.notes = p2.notes;
+  }
+
+  return merged;
+}
+
+function consolidatePatientList(patientList) {
+  if (!Array.isArray(patientList)) return [];
+  const result = [];
+  patientList.forEach(incoming => {
+    if (!incoming) return;
+    const idx = result.findIndex(existing => areSamePatientRecord(existing, incoming));
+    if (idx === -1) {
+      result.push(JSON.parse(JSON.stringify(incoming)));
+    } else {
+      result[idx] = mergeTwoPatientRecords(result[idx], incoming);
+    }
+  });
+  return result;
+}
+
+function findPatientById(patientId) {
+  if (!patientId || !Array.isArray(patientsData)) return null;
+  const targetId = String(patientId).trim();
+  let found = patientsData.find(pt => pt.id === targetId || (pt.aliasIds && pt.aliasIds.includes(targetId)));
+  if (found) return found;
+  // Fallback: search by appointments
+  found = patientsData.find(pt => (pt.appointments || []).some(a => a.id === targetId));
+  return found || null;
+}
+
 function loadPatientsData() {
   // Permanently tombstone test patients Tan Ah Kow and Hajah Fatimah Binti Osman
   addDeletedPatientRecord('PT-1001', '640512-13-5431', '+60168889922', 'Tan Ah Kow');
@@ -985,6 +1175,16 @@ function loadPatientsData() {
     savePatientsData();
   }
 
+  // Consolidate duplicate records immediately on load
+  if (Array.isArray(patientsData)) {
+    const countBefore = patientsData.length;
+    patientsData = consolidatePatientList(patientsData);
+    if (patientsData.length !== countBefore) {
+      console.log(`[PMG Patient] Consolidated duplicate profiles on boot from ${countBefore} to ${patientsData.length}.`);
+      savePatientsData();
+    }
+  }
+
   // Ensure all existing patients for Kota Sentosa are uniformly labeled 'Kota Sentosa'
   if (Array.isArray(patientsData)) {
     patientsData.forEach(p => {
@@ -1016,20 +1216,11 @@ function loadPatientsData() {
     // Auto-merge any default patient profiles (e.g. Liew Pay Sze, Jackson Ling) if not yet in user localStorage
     DEFAULT_PATIENTS_DATA.forEach(defPt => {
       if (isPatientDeleted(defPt.id, defPt.ic, defPt.phone)) return;
-      const idx = patientsData.findIndex(p => {
-        const icA = String(p.ic || '').replace(/\D/g, '');
-        const icB = String(defPt.ic || '').replace(/\D/g, '');
-        const phoneA = String(p.phone || '').replace(/\D/g, '');
-        const phoneB = String(defPt.phone || '').replace(/\D/g, '');
-        const nameA = String(p.name || '').trim().toLowerCase();
-        const nameB = String(defPt.name || '').trim().toLowerCase();
-        return (icA && icB && icA === icB) || 
-               (phoneA && phoneB && phoneA === phoneB) || 
-               (nameA && nameB && nameA === nameB) || 
-               p.id === defPt.id;
-      });
+      const idx = patientsData.findIndex(p => areSamePatientRecord(p, defPt));
       if (idx === -1) {
-        patientsData.push(JSON.parse(JSON.stringify(defPt)));
+        if (patientsData.length < 5) {
+          patientsData.push(JSON.parse(JSON.stringify(defPt)));
+        }
       } else {
         // Upgrade existing patient if default has more clinical visits or enriched fields
         if (!patientsData[idx].encounters || patientsData[idx].encounters.length < defPt.encounters.length) {
@@ -2081,7 +2272,7 @@ function buildWhatsAppRecallMessage(patient, item) {
 }
 
 function markAppointmentStatus(patientId, appointmentId, newStatus) {
-  const p = patientsData.find(pt => pt.id === patientId);
+  const p = findPatientById(patientId);
   if (!p || !p.appointments) return;
   const apt = p.appointments.find(a => a.id === appointmentId);
   if (!apt) return;
@@ -2676,7 +2867,7 @@ function renderPharmacistScheduleTab(patientsList) {
 // ─── DIRECT REMINDER & BOOKING LINK ACTIONS ──────────────────────────────────
 
 function sendDirectAppointmentReminderWa(patientId, appointmentId) {
-  const p = patientsData.find(pt => pt.id === patientId);
+  const p = findPatientById(patientId);
   if (!p) return;
   const apt = (p.appointments || []).find(a => a.id === appointmentId);
   if (!apt) return;
@@ -2790,7 +2981,7 @@ function openRescheduleModal(patientId, appointmentId, directWa = false) {
   const modal = document.getElementById('rescheduleAppointmentModal');
   if (!modal) return;
 
-  const p = patientsData.find(pt => pt.id === patientId);
+  const p = findPatientById(patientId);
   if (!p) {
     alert('Patient record not found.');
     return;
@@ -2803,7 +2994,7 @@ function openRescheduleModal(patientId, appointmentId, directWa = false) {
   }
 
   // Populate hidden keys
-  document.getElementById('reschedPatientId').value = patientId;
+  document.getElementById('reschedPatientId').value = p.id;
   document.getElementById('reschedAppointmentId').value = appointmentId;
 
   // Populate Summary
@@ -3718,6 +3909,9 @@ function showNewEncounterModal(patientId) {
   const modal = document.getElementById('patientEncounterModal');
   if (!modal) return;
 
+  const targetPt = patientId ? findPatientById(patientId) : null;
+  const actualPid = targetPt ? targetPt.id : patientId;
+
   const titleEl = document.getElementById('patientEncounterModalTitle');
   if (titleEl) {
     titleEl.innerHTML = '<i class="fa-solid fa-notes-medical text-teal-600"></i> Pharmacist Clinical Encounter & POCT Suite';
@@ -3732,13 +3926,14 @@ function showNewEncounterModal(patientId) {
   if (selectEl) {
     selectEl.disabled = false;
     selectEl.innerHTML = patientsData.map(p => `
-      <option value="${p.id}" ${patientId === p.id ? 'selected' : ''}>${p.name} (${p.branch} · ${p.phone || 'No phone'})</option>
+      <option value="${p.id}" ${actualPid === p.id ? 'selected' : ''}>${p.name} (${p.branch} · ${p.phone || 'No phone'})</option>
     `).join('');
+    if (actualPid) selectEl.value = actualPid;
   }
 
   // Pre-fill Preferred WhatsApp Language from patient record
-  const curPId = patientId || selectEl?.value;
-  const curPt = patientsData.find(p => p.id === curPId);
+  const curPId = actualPid || selectEl?.value;
+  const curPt = findPatientById(curPId);
   const waLangEl = document.getElementById('encWaLanguage');
   if (waLangEl && curPt) {
     waLangEl.value = normalizeLanguage(curPt.language || getPatientLanguageByRace(curPt));
@@ -5240,10 +5435,10 @@ function saveNewAppointment() {
 
 // ─── PATIENT FULL PROFILE & HISTORY MODAL ────────────────────────────────────
 function viewPatientProfile(patientId) {
-  const p = patientsData.find(pt => pt.id === patientId);
+  const p = findPatientById(patientId);
   if (!p) return;
 
-  viewingPatientId = patientId;
+  viewingPatientId = p.id;
   const modal = document.getElementById('patientProfileModal');
   if (!modal) return;
 
@@ -9771,21 +9966,27 @@ function importSingleBooking(booking, showNotification = false) {
   }
   localStorage.setItem('pmg_customer_bookings', JSON.stringify(custBookings));
 
-  // 2. Locate patient in patientsData
-  const cleanPhone = (booking.patientPhone || '').replace(/\D/g, '');
-  const cleanIc = (booking.patientIc || '').replace(/\D/g, '');
-  const cleanName = (booking.patientName || '').trim().toLowerCase();
+  // 2. Locate patient in patientsData using robust fuzzy & alias normalization
+  const cleanPhone = normalizePhoneForMatching(booking.patientPhone);
+  const cleanIc = normalizeIcForMatching(booking.patientIc);
+  const cleanName = normalizeNameForMatching(booking.patientName);
 
   let patient = patientsData.find(p => {
-    const pPhone = (p.phone || '').replace(/\D/g, '');
-    const pIc = (p.ic || '').replace(/\D/g, '');
-    const pName = (p.name || '').trim().toLowerCase();
+    if (booking.patientId && (p.id === booking.patientId || (p.aliasIds && p.aliasIds.includes(booking.patientId)))) return true;
+    const pPhone = normalizePhoneForMatching(p.phone);
+    const pIc = normalizeIcForMatching(p.ic);
+    const pName = normalizeNameForMatching(p.name);
     const hasApt = (p.appointments || []).some(a => a.id === ref);
-    return (cleanPhone && pPhone && cleanPhone === pPhone) ||
-           (cleanIc && pIc && cleanIc === pIc) ||
-           (cleanName && pName && cleanName === pName) ||
-           hasApt ||
-           (p.id === 'PT-JONGHUIWAN' && cleanName.includes('jong'));
+    if (hasApt) return true;
+    if (cleanIc && pIc && cleanIc === pIc) return true;
+    if (cleanPhone && pPhone && cleanPhone.length >= 8 && cleanPhone === pPhone) {
+      if (!cleanName || !pName || cleanName === pName || cleanName.includes(pName) || pName.includes(cleanName)) return true;
+    }
+    if (cleanName && pName && cleanName === pName) {
+      if (!cleanPhone || !pPhone || cleanPhone === pPhone) return true;
+    }
+    if (p.id === 'PT-JONGHUIWAN' && cleanName.includes('jong')) return true;
+    return false;
   });
 
   const aptObj = {
@@ -9820,7 +10021,7 @@ function importSingleBooking(booking, showNotification = false) {
       patient.appointments.unshift(aptObj);
       isNew = true;
     }
-    if (booking.patientPhone && !patient.phone) patient.phone = booking.patientPhone;
+    if (booking.patientPhone && (!patient.phone || patient.phone === '#ERROR!')) patient.phone = booking.patientPhone;
     if (booking.patientIc && !patient.ic) patient.ic = booking.patientIc;
   } else {
     isNew = true;
@@ -9844,7 +10045,8 @@ function importSingleBooking(booking, showNotification = false) {
       notes: booking.notes || `Imported customer booking: Ref ${ref}`,
       createdAt: booking.date || getTodayDateString(0)
     };
-    patientsData.unshift(newPatient);
+    patientsData.push(newPatient);
+    patientsData = consolidatePatientList(patientsData);
   }
 
   savePatientsData();
@@ -10070,7 +10272,7 @@ function submitManualQuickImport() {
  * extends the patient's Next TCA Reminder Date by 30 days, saves to storage, and syncs to OneDrive.
  */
 function approveRefillExtension(patientId, appointmentId) {
-  const p = patientsData.find(pt => pt.id === patientId);
+  const p = findPatientById(patientId);
   if (!p) {
     alert('Patient record not found.');
     return;
@@ -12692,23 +12894,6 @@ PMG Pharmacy Kota Sentosa
 }
 
 // ─── AUTOMATED PATIENT PROFILE DEDUPLICATION ENGINE ───────────────────────────
-function normalizePhoneForMatching(phone) {
-  if (!phone) return '';
-  let digits = String(phone).replace(/\D/g, '');
-  if (digits.startsWith('60')) digits = '0' + digits.slice(2);
-  return digits;
-}
-
-function normalizeNameForMatching(name) {
-  if (!name) return '';
-  return String(name)
-    .toLowerCase()
-    .replace(/\b(mr|mrs|ms|dr|mdm|encik|puan|cik)\b\.?/gi, '')
-    .replace(/[^\w\s\u4e00-\u9fa5]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 function deduplicatePatientProfiles() {
   if (!patientsData || patientsData.length < 2) {
     alert('No duplicate patients detected in database.');
@@ -12716,58 +12901,17 @@ function deduplicatePatientProfiles() {
   }
 
   const beforeCount = patientsData.length;
-  const mergedMap = new Map();
-  const phoneToId = new Map();
-  const nameToId = new Map();
-  const icToId = new Map();
+  patientsData = consolidatePatientList(patientsData);
+  const afterCount = patientsData.length;
+  const mergedCount = beforeCount - afterCount;
 
-  let mergedCount = 0;
-
-  patientsData.forEach(p => {
-    const icNorm = String(p.ic || '').replace(/\D/g, '');
-    const phoneNorm = normalizePhoneForMatching(p.phone);
-    const nameNorm = normalizeNameForMatching(p.name);
-
-    let matchId = null;
-    if (icNorm && icToId.has(icNorm)) matchId = icToId.get(icNorm);
-    else if (phoneNorm && phoneToId.has(phoneNorm)) matchId = phoneToId.get(phoneNorm);
-    else if (nameNorm && nameToId.has(nameNorm)) matchId = nameToId.get(nameNorm);
-
-    if (matchId && mergedMap.has(matchId)) {
-      // Merge with existing
-      const existing = mergedMap.get(matchId);
-      const existingDates = new Set((existing.encounters || []).map(e => e.date));
-      (p.encounters || []).forEach(e => {
-        if (!existingDates.has(e.date)) existing.encounters.push(e);
-      });
-      existing.encounters.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-
-      if (!existing.phone && p.phone) existing.phone = p.phone;
-      if (!existing.ic && p.ic) existing.ic = p.ic;
-      if (!existing.nextTcaDate && p.nextTcaDate) {
-        existing.nextTcaDate = p.nextTcaDate;
-        existing.nextTcaPurpose = p.nextTcaPurpose;
-      }
-
-      if (p.conditions && p.conditions.length) {
-        existing.conditions = Array.from(new Set([...(existing.conditions || []), ...p.conditions]));
-      }
-      mergedCount++;
-    } else {
-      mergedMap.set(p.id, { ...p, encounters: [...(p.encounters || [])] });
-      if (icNorm) icToId.set(icNorm, p.id);
-      if (phoneNorm) phoneToId.set(phoneNorm, p.id);
-      if (nameNorm) nameToId.set(nameNorm, p.id);
-    }
-  });
+  savePatientsData();
+  renderPatientModule();
 
   if (mergedCount > 0) {
-    patientsData = Array.from(mergedMap.values());
-    savePatientsData();
-    renderPatientModule();
-    alert(`✅ Deduplication complete!\nMerged ${mergedCount} duplicate patient records.\nTotal profiles consolidated from ${beforeCount} to ${patientsData.length}.`);
+    alert(`✅ Deduplication complete!\nMerged ${mergedCount} duplicate patient records.\nTotal profiles consolidated from ${beforeCount} to ${afterCount}.`);
   } else {
-    alert('✅ Checked all patient records. No duplicate phone numbers, ICs, or names found.');
+    alert('✅ Checked all patient records. All records are consolidated and up-to-date.');
   }
 }
 
@@ -12781,5 +12925,9 @@ window.deleteRental = deleteRental;
 window.sendRentalWhatsApp = sendRentalWhatsApp;
 window.renderEquipmentRentals = renderEquipmentRentals;
 window.deduplicatePatientProfiles = deduplicatePatientProfiles;
+window.consolidatePatientList = consolidatePatientList;
+window.findPatientById = findPatientById;
+window.areSamePatientRecord = areSamePatientRecord;
+window.normalizeIcForMatching = normalizeIcForMatching;
 window.normalizePhoneForMatching = normalizePhoneForMatching;
 window.normalizeNameForMatching = normalizeNameForMatching;

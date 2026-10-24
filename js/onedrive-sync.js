@@ -2429,11 +2429,22 @@
         return false;
       };
 
+      // If automated consolidation engine is available, utilize full fuzzy & stub consolidation
+      const cleanLocal = (localArr || []).filter(p => !isRecordDeleted(p));
+      const cleanCloud = (cloudArr || []).filter(p => !isRecordDeleted(p));
+      const consolidateFn = (typeof window !== 'undefined' && typeof window.consolidatePatientList === 'function')
+        ? window.consolidatePatientList
+        : (typeof consolidatePatientList === 'function' ? consolidatePatientList : null);
+
+      if (consolidateFn) {
+        return consolidateFn([...cleanLocal, ...cleanCloud]);
+      }
+
       const map = new Map();
 
       // Index all local patients (strictly drop any deleted)
-      (localArr || []).forEach(p => {
-        if (p && p.id && !isRecordDeleted(p)) map.set(p.id, JSON.parse(JSON.stringify(p)));
+      cleanLocal.forEach(p => {
+        if (p && p.id) map.set(p.id, JSON.parse(JSON.stringify(p)));
       });
 
       // Merge each cloud patient (strictly skip deleted, null ID, or status: DELETED)
