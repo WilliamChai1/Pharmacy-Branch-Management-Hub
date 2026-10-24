@@ -3905,10 +3905,10 @@ function renderExpiryTable() {
     return `
       <tr class="border-b hover:bg-slate-50/80 transition ${isCleared ? 'opacity-50 bg-gray-50' : ''}">
         <td class="p-3 text-center">
-          <input type="checkbox" class="expiry-write-off-cb w-4 h-4 text-rose-600 rounded cursor-pointer"
+          <input type="checkbox" class="expiry-batch-cb w-4 h-4 text-blue-600 rounded cursor-pointer accent-blue-600"
             data-row-id="${safeRowId}"
-            ${selectedWriteOffRowIds.has(it.rowId) ? 'checked' : ''}
-            onchange="toggleSelectWriteOffItem('${safeRowId}', this.checked)">
+            ${selectedBatchDecisionRowIds.has(String(it.rowId)) ? 'checked' : ''}
+            onchange="toggleSelectBatchItem('${safeRowId}', this.checked)">
         </td>
         <td class="p-3 font-mono text-xs font-extrabold text-blue-900 whitespace-nowrap">
           ${escHtml(it.itemCode)}
@@ -4038,6 +4038,8 @@ function renderExpiryTable() {
       </tr>
     `;
   }).join('');
+
+  updateBatchDecisionBar();
 }
 
 function loadMoreExpiryRows() {
@@ -4226,6 +4228,41 @@ function getShortDatedStockForReplenishment(maxMonths = 12) {
   return mapByCode;
 }
 
+let searchDebounceTimer = null;
+
+function handleExpirySearchChange(val) {
+  const cleanVal = (val || '').trim();
+  const clearBtn = document.getElementById('expirySearchClearBtn');
+  if (clearBtn) {
+    if (cleanVal) clearBtn.classList.remove('hidden');
+    else clearBtn.classList.add('hidden');
+  }
+
+  clearTimeout(searchDebounceTimer);
+
+  if (!cleanVal) {
+    activeExpiryFilter.search = '';
+    expiryCurrentPage = 1;
+    renderExpiryUI();
+    return;
+  }
+
+  searchDebounceTimer = setTimeout(() => {
+    activeExpiryFilter.search = cleanVal;
+    expiryCurrentPage = 1;
+    renderExpiryUI();
+  }, 100);
+}
+window.handleExpirySearchChange = handleExpirySearchChange;
+
+function clearExpirySearch() {
+  const searchInput = document.getElementById('expirySearchInput');
+  if (searchInput) searchInput.value = '';
+  handleExpirySearchChange('');
+  if (searchInput) searchInput.focus();
+}
+window.clearExpirySearch = clearExpirySearch;
+
 // ─── EVENT LISTENERS ─────────────────────────────────────────────────────────
 function setupExpiryEventListeners() {
   if (setupExpiryEventListeners._installed) return;
@@ -4270,15 +4307,13 @@ function setupExpiryEventListeners() {
 
   const searchInput = document.getElementById('expirySearchInput');
   if (searchInput) {
-    let searchDebounceTimer = null;
-    searchInput.addEventListener('input', e => {
-      clearTimeout(searchDebounceTimer);
-      searchDebounceTimer = setTimeout(() => {
-        activeExpiryFilter.search = e.target.value;
-        expiryCurrentPage = 1;
-        renderExpiryUI();
-      }, 150);
+    searchInput.addEventListener('input', e => handleExpirySearchChange(e.target.value));
+    searchInput.addEventListener('change', e => handleExpirySearchChange(e.target.value));
+    searchInput.addEventListener('keyup', e => {
+      if (e.key === 'Escape') clearExpirySearch();
+      else handleExpirySearchChange(e.target.value);
     });
+    searchInput.addEventListener('search', e => handleExpirySearchChange(e.target.value));
   }
 
   // PDF Dropzone & Multi-file Upload (Invoices + Credit Notes)
@@ -4533,10 +4568,12 @@ function openSkuBatchExplorerModal(itemCode) {
 
   let totalQty = 0;
   tbody.innerHTML = matches.map((m, i) => {
+    const isCleared = isItemMarkedDoneOrCleared(m);
     const qty = parseFloat(m.remainingQty !== undefined ? m.remainingQty : m.quantity) || 0;
-    totalQty += qty;
+    if (!isCleared) totalQty += qty;
     const h = calculateExpiryHorizon(m.expiryDate);
     const cost = parseFloat(m.unitCost || m.costPrice || 0);
+    const safeRowId = escHtml(String(m.rowId).replace(/'/g, "\\'"));
 
     let hBadge = 'bg-blue-100 text-blue-700';
     if (h.level === 'critical' || h.level === 'expired') hBadge = 'bg-rose-100 text-rose-700 font-bold';
@@ -4544,10 +4581,11 @@ function openSkuBatchExplorerModal(itemCode) {
     else if (h.level === 'kpi') hBadge = 'bg-yellow-100 text-yellow-800 font-bold';
 
     return `
-      <tr class="border-b hover:bg-slate-50 transition">
+      <tr class="border-b hover:bg-slate-50 transition ${isCleared ? 'opacity-50 bg-gray-50' : ''}">
         <td class="p-2.5 font-mono font-bold text-slate-800">
           ${escHtml(m.batchNumber || 'N/A')}
-          ${i === 0 ? '<span class="ml-1 text-[9px] bg-emerald-100 text-emerald-800 px-1 py-0.5 rounded font-bold">Earliest Expiry</span>' : ''}
+          ${i === 0 && !isCleared ? '<span class="ml-1 text-[9px] bg-emerald-100 text-emerald-800 px-1 py-0.5 rounded font-bold">Earliest Expiry</span>' : ''}
+          ${isCleared ? '<span class="ml-1 text-[9px] bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-bold">CLEARED</span>' : ''}
         </td>
         <td class="p-2.5 text-center font-mono font-bold text-slate-900">${formatExpiryDateDisplay(m.expiryDate)}</td>
         <td class="p-2.5 text-center">
@@ -4555,16 +4593,39 @@ function openSkuBatchExplorerModal(itemCode) {
             ${h.daysLeft !== null ? (h.daysLeft < 0 ? 'EXPIRED' : `${h.daysLeft}d left (${h.monthsLeft}m)`) : 'Valid'}
           </span>
         </td>
-        <td class="p-2.5 text-center font-bold text-slate-800">${qty}</td>
+        <td class="p-2.5 text-center">
+          ${isCleared ? `
+            <span class="font-mono text-gray-400 font-bold line-through">0</span>
+          ` : `
+            <input type="number" min="0" step="1" value="${qty}"
+              class="w-16 text-center text-xs font-bold border border-gray-300 rounded px-1.5 py-1 focus:ring-1 focus:ring-blue-400 focus:border-blue-400 bg-white"
+              onchange="updateBatchExplorerQty('${safeRowId}', this.value)"
+              title="Edit quantity for batch ${escHtml(m.batchNumber || '')}">
+          `}
+        </td>
         <td class="p-2.5 text-right font-mono font-semibold text-slate-700">RM ${cost.toFixed(2)}</td>
         <td class="p-2.5 text-slate-600 text-xs">
-          ${escHtml(getItemActionPlan(m) || '—')}
-          <div class="mt-1">
-            <button type="button" onclick="quickAddBatchToWriteOff('${escHtml(m.rowId)}')"
-              class="px-2 py-0.5 rounded text-[10px] font-bold ${selectedWriteOffRowIds.has(String(m.rowId)) ? 'bg-rose-100 text-rose-800 border border-rose-300' : 'bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-200'} transition cursor-pointer">
-              <i class="fa-solid fa-file-invoice mr-1 text-rose-600"></i> ${selectedWriteOffRowIds.has(String(m.rowId)) ? 'In Write-Off Form' : '+ Write Off Batch'}
-            </button>
+          <div class="font-semibold text-slate-800 ${isCleared ? 'line-through text-gray-400' : ''}">
+            ${escHtml(getItemActionPlan(m) || '—')}
           </div>
+          ${isCleared ? `
+            <span class="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-bold inline-block mt-1">
+              <i class="fa-solid fa-check-circle"></i> Cleared
+            </span>
+          ` : `
+            <div class="mt-1.5 flex items-center gap-1.5 flex-wrap">
+              <button type="button" onclick="markBatchItemDoneClear('${safeRowId}')"
+                class="px-2 py-1 rounded text-[10px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                title="Mark this specific batch as cleared">
+                <i class="fa-solid fa-check text-emerald-600"></i> Done Clear
+              </button>
+              <button type="button" onclick="quickAddBatchToWriteOff('${safeRowId}')"
+                class="px-2 py-1 rounded text-[10px] font-bold ${selectedWriteOffRowIds.has(String(m.rowId)) ? 'bg-rose-100 text-rose-800 border border-rose-300' : 'bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-200'} transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                title="Add this batch to HQ write-off form">
+                <i class="fa-solid fa-file-invoice text-rose-600"></i> ${selectedWriteOffRowIds.has(String(m.rowId)) ? 'In Write-Off' : 'Write Off'}
+              </button>
+            </div>
+          `}
         </td>
       </tr>
     `;
@@ -4573,6 +4634,47 @@ function openSkuBatchExplorerModal(itemCode) {
   if (qtyBadge) qtyBadge.textContent = `${totalQty} Units Total across ${matches.length} Batches`;
   modal.classList.remove('hidden');
 }
+
+async function updateBatchExplorerQty(rowId, newQty) {
+  const num = parseFloat(newQty);
+  if (isNaN(num) || num < 0) {
+    showExpiryToast('⚠️ Please enter a valid quantity.');
+    return;
+  }
+  const item = findExpiryItemById(rowId);
+  if (!item) return;
+
+  item.quantity = num;
+  item.remainingQty = num;
+  item.lastUpdated = new Date().toISOString();
+
+  saveLocalExpiryData();
+  renderExpiryUI();
+
+  if (currentExplorerItemCode) {
+    openSkuBatchExplorerModal(currentExplorerItemCode);
+  }
+
+  showExpiryToast(`✅ Batch quantity updated to ${num}`);
+
+  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
+    window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
+  }
+  pushExpiryUpdateToSheets(item.rowId, num, item.status, item.expiryDate).catch(console.warn);
+}
+window.updateBatchExplorerQty = updateBatchExplorerQty;
+
+async function markBatchItemDoneClear(rowId) {
+  const item = findExpiryItemById(rowId);
+  if (!item) return;
+
+  await markExpiryItemCleared(rowId);
+
+  if (currentExplorerItemCode) {
+    openSkuBatchExplorerModal(currentExplorerItemCode);
+  }
+}
+window.markBatchItemDoneClear = markBatchItemDoneClear;
 
 function closeSkuBatchExplorerModal() {
   const modal = document.getElementById('skuBatchExplorerModal');
@@ -4584,8 +4686,11 @@ function filterExpiryByCurrentSku() {
   const searchInput = document.getElementById('expirySearchInput');
   if (searchInput) {
     searchInput.value = currentExplorerItemCode;
-    activeExpiryFilter.search = currentExplorerItemCode;
   }
+  const clearBtn = document.getElementById('expirySearchClearBtn');
+  if (clearBtn) clearBtn.classList.remove('hidden');
+
+  activeExpiryFilter.search = currentExplorerItemCode;
   closeSkuBatchExplorerModal();
   expiryCurrentPage = 1;
   renderExpiryUI();
@@ -4653,6 +4758,167 @@ function saveAccumulatedWriteOffItems() {
   } catch (e) {}
 }
 
+// ─── BATCH DECISION & BULK OPERATIONS ENGINE ─────────────────────────────────
+const selectedBatchDecisionRowIds = new Set();
+
+function toggleSelectBatchItem(rowId, isChecked) {
+  const safeId = String(rowId);
+  if (isChecked) {
+    selectedBatchDecisionRowIds.add(safeId);
+  } else {
+    selectedBatchDecisionRowIds.delete(safeId);
+  }
+  updateBatchDecisionBar();
+}
+window.toggleSelectBatchItem = toggleSelectBatchItem;
+
+function toggleSelectAllExpiry(isChecked) {
+  const displayed = filterExpiryItems();
+  displayed.forEach(it => {
+    if (it && it.rowId !== undefined && it.rowId !== null) {
+      const safeId = String(it.rowId);
+      if (isChecked) {
+        selectedBatchDecisionRowIds.add(safeId);
+      } else {
+        selectedBatchDecisionRowIds.delete(safeId);
+      }
+    }
+  });
+  updateBatchDecisionBar();
+  document.querySelectorAll('.expiry-batch-cb').forEach(cb => {
+    const id = cb.getAttribute('data-row-id');
+    cb.checked = isChecked && selectedBatchDecisionRowIds.has(String(id));
+  });
+}
+window.toggleSelectAllExpiry = toggleSelectAllExpiry;
+
+function updateBatchDecisionBar() {
+  const count = selectedBatchDecisionRowIds.size;
+  const bar = document.getElementById('expiryBatchDecisionBar');
+  const countBadge = document.getElementById('batchDecisionCountBadge');
+  const allCb = document.getElementById('expirySelectAllCheckbox');
+
+  if (allCb) {
+    const displayed = filterExpiryItems();
+    allCb.checked = displayed.length > 0 && displayed.every(d => selectedBatchDecisionRowIds.has(String(d.rowId)));
+  }
+
+  if (!bar) return;
+
+  if (count > 0) {
+    bar.classList.remove('hidden');
+    if (countBadge) countBadge.textContent = `${count} Selected`;
+  } else {
+    bar.classList.add('hidden');
+  }
+}
+window.updateBatchDecisionBar = updateBatchDecisionBar;
+
+async function bulkMarkSelectedExpiryDone() {
+  const ids = Array.from(selectedBatchDecisionRowIds);
+  if (ids.length === 0) return;
+  if (!confirm(`Mark ${ids.length} selected item(s) as "Done Clear" (sold or cleared)?`)) {
+    return;
+  }
+
+  showExpiryToast(`⏳ Marking ${ids.length} items as Done Clear…`);
+  const nowIso = new Date().toISOString();
+  const session = typeof getSession === 'function' ? getSession() : null;
+  const userName = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
+
+  ids.forEach(id => {
+    const it = findExpiryItemById(id);
+    if (it) {
+      it.status = 'DONE';
+      it.quantity = 0;
+      it.clearedAt = nowIso;
+      it.lastUpdated = nowIso;
+      it.updatedBy = userName;
+      addClearedExpiryKey(`ROW_${id}`);
+      const targetKey = getExpiryItemKey(it);
+      if (targetKey) addClearedExpiryKey(targetKey);
+    }
+  });
+
+  selectedBatchDecisionRowIds.clear();
+  saveLocalExpiryData();
+  updateBatchDecisionBar();
+  renderExpiryUI();
+
+  showExpiryToast(`✅ ${ids.length} item(s) marked as Done Clear!`);
+
+  // Sync to OneDrive and Sheets
+  const branch = document.getElementById('expiryBranchFilter')?.value || 'Kota Sentosa';
+  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
+    window.pmgOneDriveSync.saveStockExpiryToOneDrive(branch).catch(console.warn);
+  }
+  ids.forEach(id => {
+    const it = findExpiryItemById(id);
+    if (it) pushExpiryUpdateToSheets(id, 0, 'DONE', it.expiryDate).catch(console.warn);
+  });
+}
+window.bulkMarkSelectedExpiryDone = bulkMarkSelectedExpiryDone;
+
+function bulkAddSelectedToWriteOff() {
+  const ids = Array.from(selectedBatchDecisionRowIds);
+  if (ids.length === 0) return;
+
+  ids.forEach(id => {
+    selectedWriteOffRowIds.add(id);
+    const it = findExpiryItemById(id);
+    if (it && (!it.actionPlan || it.actionPlan === '')) {
+      it.actionPlan = 'Write-off / Dispose';
+    }
+  });
+
+  selectedBatchDecisionRowIds.clear();
+  saveLocalExpiryData();
+  saveAccumulatedWriteOffItems();
+  updateWriteOffSelectedCounter();
+  updateBatchDecisionBar();
+  renderExpiryUI();
+
+  openStockWriteOffModal();
+  showExpiryToast(`✅ Added ${ids.length} item(s) to HQ Write-Off Form.`);
+}
+window.bulkAddSelectedToWriteOff = bulkAddSelectedToWriteOff;
+
+function bulkSetSelectedActionPlan(planValue) {
+  if (!planValue) return;
+  const ids = Array.from(selectedBatchDecisionRowIds);
+  if (ids.length === 0) return;
+
+  const finalPlan = planValue === '__CLEAR__' ? '' : planValue;
+  ids.forEach(id => {
+    const it = findExpiryItemById(id);
+    if (it) {
+      it.actionPlan = finalPlan;
+      it.lastUpdated = new Date().toISOString();
+      if (finalPlan === 'Write-off / Dispose') {
+        selectedWriteOffRowIds.add(id);
+      }
+    }
+  });
+
+  selectedBatchDecisionRowIds.clear();
+  saveLocalExpiryData();
+  saveAccumulatedWriteOffItems();
+  updateWriteOffSelectedCounter();
+  renderExpiryUI();
+
+  showExpiryToast(`✅ Updated action plan for ${ids.length} item(s).`);
+}
+window.bulkSetSelectedActionPlan = bulkSetSelectedActionPlan;
+
+function clearBatchDecisionSelection() {
+  selectedBatchDecisionRowIds.clear();
+  updateBatchDecisionBar();
+  document.querySelectorAll('.expiry-batch-cb').forEach(cb => cb.checked = false);
+  const allCb = document.getElementById('expirySelectAllCheckbox');
+  if (allCb) allCb.checked = false;
+}
+window.clearBatchDecisionSelection = clearBatchDecisionSelection;
+
 function toggleSelectWriteOffItem(rowId, isChecked) {
   const safeId = String(rowId);
   const item = findExpiryItemById(safeId);
@@ -4664,7 +4930,6 @@ function toggleSelectWriteOffItem(rowId, isChecked) {
     }
     saveAccumulatedWriteOffItems();
     updateWriteOffSelectedCounter();
-    if (item) showWriteOffActionPrompt(item);
   } else {
     selectedWriteOffRowIds.delete(safeId);
     if (item && isWriteOffActionPlan(item.actionPlan)) {
@@ -4675,33 +4940,6 @@ function toggleSelectWriteOffItem(rowId, isChecked) {
     updateWriteOffSelectedCounter();
   }
   renderExpiryUI();
-}
-
-function toggleSelectAllExpiry(isChecked) {
-  const displayed = filterExpiryItems();
-  displayed.forEach(it => {
-    if (it.rowId) {
-      const safeId = String(it.rowId);
-      if (isChecked) {
-        selectedWriteOffRowIds.add(safeId);
-        if (!it.actionPlan || it.actionPlan === '') {
-          it.actionPlan = 'Write-off / Dispose';
-        }
-      } else {
-        selectedWriteOffRowIds.delete(safeId);
-        if (isWriteOffActionPlan(it.actionPlan)) {
-          it.actionPlan = '';
-        }
-      }
-    }
-  });
-  saveLocalExpiryData();
-  saveAccumulatedWriteOffItems();
-  updateWriteOffSelectedCounter();
-  renderExpiryUI();
-  if (isChecked && displayed.length > 0) {
-    showExpiryToast(`Added ${displayed.length} item(s) to Write-Off Form!`);
-  }
 }
 
 function updateWriteOffSelectedCounter() {

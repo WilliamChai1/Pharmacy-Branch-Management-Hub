@@ -4165,11 +4165,18 @@ Date visit: 06.01.2026
           </select>
         </div>
 
-        <!-- Search Input -->
-        <div class="relative">
-          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+        <!-- Search Input with Clear Button -->
+        <div class="relative flex items-center">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
           <input id="expirySearchInput" type="text" placeholder="Search SKU, name, or batch…"
-            class="pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-xs focus:ring-1 focus:ring-blue-400 outline-none w-56">
+            oninput="handleExpirySearchChange(this.value)"
+            onchange="handleExpirySearchChange(this.value)"
+            onkeyup="handleExpirySearchChange(this.value)"
+            class="pl-8 pr-7 py-2 border border-gray-300 rounded-lg text-xs focus:ring-1 focus:ring-blue-400 outline-none w-56">
+          <button id="expirySearchClearBtn" type="button" onclick="clearExpirySearch()"
+            class="hidden absolute right-2 text-gray-400 hover:text-gray-700 p-1 text-xs cursor-pointer transition" title="Clear search and show all items">
+            <i class="fa-solid fa-circle-xmark"></i>
+          </button>
         </div>
       </div>
 
@@ -4189,7 +4196,7 @@ Date visit: 06.01.2026
           <thead>
             <tr class="bg-slate-900 text-white text-[11px] font-bold uppercase tracking-wider">
               <th class="p-3 text-center w-10">
-                <input type="checkbox" id="expirySelectAllCheckbox" class="w-4 h-4 text-rose-600 rounded cursor-pointer" title="Select All For Write-Off" onchange="toggleSelectAllExpiry(this.checked)">
+                <input type="checkbox" id="expirySelectAllCheckbox" class="w-4 h-4 text-blue-600 rounded cursor-pointer accent-blue-600" title="Select All For Batch Decision" onchange="toggleSelectAllExpiry(this.checked)">
               </th>
               <th class="p-3">Item Code</th>
               <th class="p-3">Item Description</th>
@@ -4947,6 +4954,51 @@ Date visit: 06.01.2026
       </form>
     </div>
   </div>
+  <!-- ─── FLOATING BATCH DECISION TOOLBAR ─────────────────────────────────── -->
+  <div id="expiryBatchDecisionBar" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white backdrop-blur-md px-5 py-3 rounded-2xl shadow-2xl border border-slate-700/80 flex items-center gap-3 flex-wrap hidden animate-in slide-in-from-bottom-4 duration-200">
+    <div class="flex items-center gap-2 pr-3 border-r border-slate-700">
+      <i class="fa-solid fa-list-check text-blue-400 text-sm"></i>
+      <span id="batchDecisionCountBadge" class="bg-blue-600 text-white font-extrabold text-xs px-2.5 py-1 rounded-lg">
+        0 Selected
+      </span>
+    </div>
+
+    <!-- Batch Decision 1: Done Clear -->
+    <button type="button" onclick="bulkMarkSelectedExpiryDone()"
+      class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+      title="Mark all selected items as Done Clear (sold / cleared)">
+      <i class="fa-solid fa-check-double text-emerald-200"></i> Done Clear
+    </button>
+
+    <!-- Batch Decision 2: Write-off / Dispose -->
+    <button type="button" onclick="bulkAddSelectedToWriteOff()"
+      class="px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+      title="Add all selected items to HQ Write-Off Form">
+      <i class="fa-solid fa-trash-can text-rose-200"></i> Add to Write-Off
+    </button>
+
+    <!-- Batch Decision 3: Set Action Plan -->
+    <div class="relative">
+      <select id="batchDecisionActionPlanSelect" onchange="bulkSetSelectedActionPlan(this.value); this.value='';"
+        class="bg-slate-800 border border-slate-600 text-slate-100 text-xs font-semibold rounded-xl px-3 py-2 outline-none focus:ring-1 focus:ring-blue-400 cursor-pointer">
+        <option value="" disabled selected>🏷️ Set Action Plan…</option>
+        <option value="Returnable with Condition">Returnable with Condition</option>
+        <option value="Vendor Return Pending">Vendor Return Pending</option>
+        <option value="Clearance Promo">Clearance Promo / PWP</option>
+        <option value="Staff Purchase">Staff Purchase</option>
+        <option value="Write-off / Dispose">Write-off / Dispose</option>
+        <option value="__CLEAR__">Clear Action Plan (Blank)</option>
+      </select>
+    </div>
+
+    <!-- Clear Selection -->
+    <button type="button" onclick="clearBatchDecisionSelection()"
+      class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer text-xs"
+      title="Clear selection">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+  </div>
+
   <!-- ─── FLOATING HQ WRITE-OFF ACCUMULATION DOCK ────────────────────────── -->
   <div id="writeOffAccumulationDock" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-gradient-to-r from-rose-950 via-slate-900 to-rose-900 text-white px-5 py-3 rounded-2xl shadow-2xl border-2 border-rose-500/60 flex items-center gap-4 transition-all duration-300 hidden max-w-lg w-[94%] sm:w-auto">
     <div class="flex items-center gap-3">
@@ -6702,7 +6754,7 @@ ItemCode,Description,Brand,Category,Cost,SellingPrice,Supplier
 <script src="js/patient.js?v=20261024_v7"></script>
 <script src="js/seed_expiry_data.js?v=20261024_v7"></script>
 <script src="js/hq_return_policy.js?v=20261024_v7"></script>
-<script src="js/expiry.js?v=20261024_perf_v9"></script>
+<script src="js/expiry.js?v=20261024_batch_v10"></script>
 <script src="js/returns-cn.js?v=20261024_v7"></script>
 <script src="js/pricing-intelligence.js?v=20261024_v7"></script>
 <script src="js/recruitment.js?v=20261024_v7"></script>
@@ -7394,7 +7446,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // PWA service worker
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js?v=20261024_v9').catch(() => {});
+    navigator.serviceWorker.register('sw.js?v=20261024_v10').catch(() => {});
   }
 });
 
