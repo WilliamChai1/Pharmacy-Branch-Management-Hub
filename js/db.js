@@ -135,6 +135,37 @@ function dataURLtoBlob(dataurl) {
   return new Blob([u8arr], { type: mime });
 }
 
+// ─── EXPORT ALL DOCUMENTS METADATA (LIGHTWEIGHT, NO BASE64 MEMORY LEAKS) ──────
+async function exportAllDocumentsMetadata() {
+  const db = await openIndexedDB();
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction([STORE_DOCUMENTS], 'readonly');
+      const store = tx.objectStore(STORE_DOCUMENTS);
+      const req = store.getAll();
+
+      req.onsuccess = (e) => {
+        const records = e.target.result || [];
+        const metadata = records.map(rec => ({
+          id: rec.id,
+          patientId: rec.patientId,
+          name: rec.name,
+          type: rec.type,
+          size: rec.size,
+          date: rec.date,
+          createdAt: rec.createdAt,
+          notes: rec.notes || ''
+        }));
+        resolve(metadata);
+      };
+
+      req.onerror = () => reject(req.error);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 // ─── EXPORT ALL DOCUMENTS (FOR PEN DRIVE BACKUP) ─────────────────────────────
 async function exportAllDocuments() {
   const db = await openIndexedDB();
@@ -362,6 +393,7 @@ if (typeof window !== 'undefined' && window.indexedDB) {
 // Expose on window for cross-module & OneDrive sync engine access
 window.openIndexedDB = openIndexedDB;
 window.exportAllDocuments = exportAllDocuments;
+window.exportAllDocumentsMetadata = exportAllDocumentsMetadata;
 window.importAllDocuments = importAllDocuments;
 window.dataURLtoBlob = dataURLtoBlob;
 window.blobToDataURL = blobToDataURL;

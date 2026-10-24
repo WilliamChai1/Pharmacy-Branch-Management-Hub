@@ -1080,7 +1080,7 @@ function savePatientsData() {
 
 // ─── EVENT LISTENERS ─────────────────────────────────────────────────────────
 function setupPatientEventListeners() {
-  ['today', 'upcoming', 'overdue', 'all', 'schedule'].forEach(tab => {
+  ['today', 'upcoming', 'overdue', 'all', 'schedule', 'rentals'].forEach(tab => {
     const btn = document.getElementById(`patientSubTabBtn_${tab}`);
     if (btn) btn.addEventListener('click', () => switchPatientSubTab(tab));
   });
@@ -1151,7 +1151,7 @@ function setupPatientEventListeners() {
 
 function switchPatientSubTab(tab) {
   activePatientSubTab = tab;
-  ['today', 'upcoming', 'overdue', 'all', 'schedule'].forEach(t => {
+  ['today', 'upcoming', 'overdue', 'all', 'schedule', 'rentals'].forEach(t => {
     const btn = document.getElementById(`patientSubTabBtn_${t}`);
     const view = document.getElementById(`patientView_${t}`);
     if (btn) {
@@ -1171,6 +1171,10 @@ function switchPatientSubTab(tab) {
   if (tab === 'schedule') {
     if (typeof switchSchedViewMode === 'function') {
       switchSchedViewMode(currentSchedViewMode || 'booked');
+    }
+  } else if (tab === 'rentals') {
+    if (typeof renderEquipmentRentals === 'function') {
+      renderEquipmentRentals();
     }
   }
   renderPatientModule();
@@ -7184,14 +7188,17 @@ function confirmLarkImport() {
     const existingIdx = patientsData.findIndex(p => {
       const icA = String(p.ic || '').replace(/\D/g, '');
       const icB = String(newPt.ic || '').replace(/\D/g, '');
-      const phoneA = String(p.phone || '').replace(/\D/g, '');
-      const phoneB = String(newPt.phone || '').replace(/\D/g, '');
-      const nameA = String(p.name || '').trim().toLowerCase();
-      const nameB = String(newPt.name || '').trim().toLowerCase();
-      return (icA && icB && icA === icB) || 
-             (phoneA && phoneB && phoneA === phoneB) || 
-             (nameA && nameB && nameA === nameB) || 
-             (p.id === newPt.id);
+      if (icA && icB && icA === icB) return true;
+
+      const phoneA = normalizePhoneForMatching(p.phone);
+      const phoneB = normalizePhoneForMatching(newPt.phone);
+      if (phoneA && phoneB && phoneA === phoneB) return true;
+
+      const nameA = normalizeNameForMatching(p.name);
+      const nameB = normalizeNameForMatching(newPt.name);
+      if (nameA && nameB && nameA === nameB) return true;
+
+      return (p.id === newPt.id);
     });
 
     if (existingIdx >= 0) {
@@ -12299,3 +12306,480 @@ function downloadChronotherapyImage() {
     alert('✅ Chronotherapy schedule image downloaded successfully!');
   }
 }
+
+// ─── MEDICAL EQUIPMENT RENTAL MANAGEMENT & REMINDERS ─────────────────────────
+const RENTALS_STORAGE_KEY = 'pmg_medical_equipment_rentals_KS01';
+
+function loadRentals() {
+  try {
+    const raw = localStorage.getItem(RENTALS_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (err) {
+    console.warn('Failed to load rentals:', err);
+  }
+  return [];
+}
+
+function saveRentals(rentals) {
+  try {
+    localStorage.setItem(RENTALS_STORAGE_KEY, JSON.stringify(rentals));
+    if (window.pmgOneDriveSync?.saveCustomKeyToOneDrive) {
+      window.pmgOneDriveSync.saveCustomKeyToOneDrive('medical_equipment_rentals', rentals);
+    }
+  } catch (err) {
+    console.warn('Failed to save rentals:', err);
+  }
+}
+
+function renderEquipmentRentals() {
+  const tbody = document.getElementById('rentalTableTbody');
+  const rentals = loadRentals();
+  const todayStr = new Date().toISOString().split('T')[0];
+  const today = new Date(todayStr);
+
+  let activeCount = 0;
+  let overdueCount = 0;
+  let totalDueRm = 0;
+  let totalDepositRm = 0;
+
+  // Compute metrics
+  rentals.forEach(r => {
+    const amount = parseFloat(r.amountDue) || 0;
+    const deposit = parseFloat(r.deposit) || 0;
+    totalDepositRm += deposit;
+
+    if (r.status !== 'Returned') {
+      activeCount++;
+      totalDueRm += amount;
+      if (r.dueDate && r.dueDate < todayStr) {
+        overdueCount++;
+      }
+    }
+  });
+
+  // Update KPI counters
+  const kpiActive = document.getElementById('rentalKpiActive');
+  const kpiOverdue = document.getElementById('rentalKpiOverdue');
+  const kpiTotalDue = document.getElementById('rentalKpiTotalDue');
+  const kpiDeposit = document.getElementById('rentalKpiDeposit');
+  const badgeCount = document.getElementById('rentalsBadgeCount');
+
+  if (kpiActive) kpiActive.textContent = activeCount;
+  if (kpiOverdue) kpiOverdue.textContent = overdueCount;
+  if (kpiTotalDue) kpiTotalDue.textContent = `RM ${totalDueRm.toFixed(2)}`;
+  if (kpiDeposit) kpiDeposit.textContent = `RM ${totalDepositRm.toFixed(2)}`;
+  if (badgeCount) badgeCount.textContent = overdueCount > 0 ? `${overdueCount} Overdue` : activeCount;
+
+  if (!tbody) return;
+
+  // Filter
+  const statusFilter = document.getElementById('rentalStatusFilter')?.value || 'active';
+  const searchQ = (document.getElementById('rentalSearchInput')?.value || '').toLowerCase().trim();
+
+  let filtered = rentals.filter(r => {
+    const isReturned = r.status === 'Returned';
+    const isOverdue = !isReturned && r.dueDate && r.dueDate < todayStr;
+
+    if (statusFilter === 'active' && isReturned) return false;
+    if (statusFilter === 'overdue' && !isOverdue) return false;
+    if (statusFilter === 'returned' && !isReturned) return false;
+
+    if (searchQ) {
+      const name = (r.patientName || '').toLowerCase();
+      const phone = (r.patientPhone || '').toLowerCase();
+      const item = (r.itemDescription || '').toLowerCase();
+      const notes = (r.notes || '').toLowerCase();
+      if (!name.includes(searchQ) && !phone.includes(searchQ) && !item.includes(searchQ) && !notes.includes(searchQ)) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  // Sort: Overdue first, then earliest due date
+  filtered.sort((a, b) => {
+    if (a.status === 'Returned' && b.status !== 'Returned') return 1;
+    if (a.status !== 'Returned' && b.status === 'Returned') return -1;
+    return (a.dueDate || '').localeCompare(b.dueDate || '');
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="8" class="text-center py-8 text-gray-400">
+          <i class="fa-solid fa-wheelchair text-3xl mb-2 text-gray-300 block"></i>
+          No medical equipment rentals found. Click <b>"+ New Rental Record"</b> to register.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(r => {
+    const isReturned = r.status === 'Returned';
+    const isOverdue = !isReturned && r.dueDate && r.dueDate < todayStr;
+    const dueD = r.dueDate ? new Date(r.dueDate) : null;
+    let daysDiff = 0;
+    if (dueD) {
+      daysDiff = Math.ceil((dueD - today) / (1000 * 60 * 60 * 24));
+    }
+
+    let statusBadge = '';
+    if (isReturned) {
+      statusBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-600">⚪ Returned</span>';
+    } else if (isOverdue) {
+      statusBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 animate-pulse border border-rose-300">⚠️ Overdue (${Math.abs(daysDiff)}d)</span>`;
+    } else if (daysDiff <= 3) {
+      statusBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">⏳ Due in ${daysDiff}d</span>`;
+    } else {
+      statusBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">🟢 Active (${daysDiff}d left)</span>`;
+    }
+
+    const amt = parseFloat(r.amountDue) || 0;
+    const dep = parseFloat(r.deposit) || 0;
+
+    return `
+      <tr class="border-b hover:bg-slate-50 transition ${isReturned ? 'opacity-60 bg-gray-50/50' : (isOverdue ? 'bg-rose-50/40' : '')}">
+        <td class="px-4 py-3 font-semibold text-slate-800">
+          <div class="font-bold text-slate-900">${escHtml(r.patientName)}</div>
+          <div class="text-[11px] font-mono text-gray-500 flex items-center gap-1">
+            <i class="fa-solid fa-phone text-[9px] text-emerald-600"></i> ${escHtml(r.patientPhone)}
+          </div>
+        </td>
+        <td class="px-4 py-3">
+          <div class="font-bold text-slate-800">${escHtml(r.itemDescription)}</div>
+          ${r.notes ? `<div class="text-[11px] text-gray-500 mt-0.5">${escHtml(r.notes)}</div>` : ''}
+        </td>
+        <td class="px-4 py-3 text-center font-mono text-xs text-gray-600 whitespace-nowrap">
+          ${escHtml(r.startDate || '—')}
+        </td>
+        <td class="px-4 py-3 text-center font-mono font-bold ${isOverdue ? 'text-rose-700' : 'text-slate-800'} whitespace-nowrap">
+          ${escHtml(r.dueDate || '—')}
+        </td>
+        <td class="px-4 py-3 text-center font-mono font-extrabold text-blue-900 whitespace-nowrap">
+          RM ${amt.toFixed(2)}
+        </td>
+        <td class="px-4 py-3 text-center font-mono text-slate-600 whitespace-nowrap">
+          RM ${dep.toFixed(2)}
+        </td>
+        <td class="px-4 py-3 text-center whitespace-nowrap">
+          ${statusBadge}
+        </td>
+        <td class="px-4 py-3 text-right whitespace-nowrap space-x-1">
+          ${!isReturned ? `
+            <button type="button" onclick="sendRentalWhatsApp('${r.id}')"
+              class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition inline-flex items-center gap-1 shadow-2xs cursor-pointer"
+              title="1-Click WhatsApp Rental Payment Reminder">
+              <i class="fa-brands fa-whatsapp text-sm"></i> Remind
+            </button>
+            <button type="button" onclick="markRentalReturned('${r.id}')"
+              class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition inline-flex items-center gap-1 cursor-pointer"
+              title="Mark Equipment Returned">
+              <i class="fa-solid fa-check"></i>
+            </button>
+          ` : ''}
+          <button type="button" onclick="editRental('${r.id}')"
+            class="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition inline-flex items-center gap-1 cursor-pointer"
+            title="Edit Rental Details">
+            <i class="fa-solid fa-pen-to-square"></i>
+          </button>
+          <button type="button" onclick="deleteRental('${r.id}')"
+            class="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold transition inline-flex items-center gap-1 cursor-pointer"
+            title="Delete Record">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function openNewRentalModal() {
+  const form = document.getElementById('formRentalEntry');
+  if (form) form.reset();
+  const idEl = document.getElementById('rentalRecordId');
+  if (idEl) idEl.value = '';
+
+  const titleEl = document.getElementById('modalRentalTitle');
+  if (titleEl) titleEl.textContent = 'New Medical Equipment Rental';
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const startEl = document.getElementById('rentalStartDate');
+  const dueEl = document.getElementById('rentalDueDate');
+  if (startEl) startEl.value = todayStr;
+
+  if (dueEl) {
+    const due = new Date();
+    due.setDate(due.getDate() + 30);
+    dueEl.value = due.toISOString().split('T')[0];
+  }
+
+  const statusEl = document.getElementById('rentalStatus');
+  if (statusEl) statusEl.value = 'Active';
+
+  const modal = document.getElementById('modalRentalEntry');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeRentalModal() {
+  const modal = document.getElementById('modalRentalEntry');
+  if (modal) modal.classList.add('hidden');
+}
+
+function editRental(id) {
+  const rentals = loadRentals();
+  const r = rentals.find(x => x.id === id);
+  if (!r) return;
+
+  const idEl = document.getElementById('rentalRecordId');
+  const nameEl = document.getElementById('rentalCustomerName');
+  const phoneEl = document.getElementById('rentalCustomerPhone');
+  const itemEl = document.getElementById('rentalItemDesc');
+  const startEl = document.getElementById('rentalStartDate');
+  const dueEl = document.getElementById('rentalDueDate');
+  const amtEl = document.getElementById('rentalAmountDue');
+  const depEl = document.getElementById('rentalDeposit');
+  const statusEl = document.getElementById('rentalStatus');
+  const notesEl = document.getElementById('rentalNotes');
+  const titleEl = document.getElementById('modalRentalTitle');
+
+  if (idEl) idEl.value = r.id;
+  if (nameEl) nameEl.value = r.patientName || '';
+  if (phoneEl) phoneEl.value = r.patientPhone || '';
+  if (itemEl) itemEl.value = r.itemDescription || '';
+  if (startEl) startEl.value = r.startDate || '';
+  if (dueEl) dueEl.value = r.dueDate || '';
+  if (amtEl) amtEl.value = r.amountDue || '';
+  if (depEl) depEl.value = r.deposit || '';
+  if (statusEl) statusEl.value = r.status || 'Active';
+  if (notesEl) notesEl.value = r.notes || '';
+  if (titleEl) titleEl.textContent = 'Edit Medical Equipment Rental';
+
+  const modal = document.getElementById('modalRentalEntry');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function handleSaveRentalForm(e) {
+  e.preventDefault();
+  const id = document.getElementById('rentalRecordId')?.value.trim();
+  const name = document.getElementById('rentalCustomerName')?.value.trim();
+  const phone = document.getElementById('rentalCustomerPhone')?.value.trim();
+  const item = document.getElementById('rentalItemDesc')?.value.trim();
+  const startDate = document.getElementById('rentalStartDate')?.value;
+  const dueDate = document.getElementById('rentalDueDate')?.value;
+  const amountDue = parseFloat(document.getElementById('rentalAmountDue')?.value) || 0;
+  const deposit = parseFloat(document.getElementById('rentalDeposit')?.value) || 0;
+  const status = document.getElementById('rentalStatus')?.value || 'Active';
+  const notes = document.getElementById('rentalNotes')?.value.trim() || '';
+
+  if (!name || !phone || !item || !dueDate) {
+    alert('Please fill in Customer Name, Phone, Equipment Item, and Due Date.');
+    return;
+  }
+
+  const rentals = loadRentals();
+  const nowIso = new Date().toISOString();
+
+  if (id) {
+    const idx = rentals.findIndex(x => x.id === id);
+    if (idx >= 0) {
+      rentals[idx] = {
+        ...rentals[idx],
+        patientName: name,
+        patientPhone: phone,
+        itemDescription: item,
+        startDate: startDate,
+        dueDate: dueDate,
+        amountDue: amountDue,
+        deposit: deposit,
+        status: status,
+        notes: notes,
+        updatedAt: nowIso
+      };
+    }
+  } else {
+    rentals.unshift({
+      id: 'rent_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+      patientName: name,
+      patientPhone: phone,
+      itemDescription: item,
+      startDate: startDate,
+      dueDate: dueDate,
+      amountDue: amountDue,
+      deposit: deposit,
+      status: status,
+      notes: notes,
+      branch: 'Kota Sentosa',
+      createdAt: nowIso,
+      updatedAt: nowIso
+    });
+  }
+
+  saveRentals(rentals);
+  closeRentalModal();
+  renderEquipmentRentals();
+
+  if (typeof showExpiryToast === 'function') {
+    showExpiryToast(`✅ Equipment rental record for ${name} saved successfully!`);
+  }
+}
+
+function markRentalReturned(id) {
+  const conf = confirm('Confirm that this medical equipment has been returned by customer?');
+  if (!conf) return;
+
+  const rentals = loadRentals();
+  const idx = rentals.findIndex(x => x.id === id);
+  if (idx >= 0) {
+    rentals[idx].status = 'Returned';
+    rentals[idx].returnedAt = new Date().toISOString();
+    saveRentals(rentals);
+    renderEquipmentRentals();
+    if (typeof showExpiryToast === 'function') {
+      showExpiryToast('✅ Marked equipment rental as returned.');
+    }
+  }
+}
+
+function deleteRental(id) {
+  const conf = confirm('Are you sure you want to delete this rental record?');
+  if (!conf) return;
+
+  let rentals = loadRentals();
+  rentals = rentals.filter(x => x.id !== id);
+  saveRentals(rentals);
+  renderEquipmentRentals();
+  if (typeof showExpiryToast === 'function') {
+    showExpiryToast('Rental record deleted.');
+  }
+}
+
+function sendRentalWhatsApp(id) {
+  const rentals = loadRentals();
+  const r = rentals.find(x => x.id === id);
+  if (!r) return;
+
+  let rawPhone = String(r.patientPhone || '').replace(/\D/g, '');
+  if (rawPhone.startsWith('0')) {
+    rawPhone = '60' + rawPhone.slice(1);
+  } else if (!rawPhone.startsWith('60')) {
+    rawPhone = '60' + rawPhone;
+  }
+
+  const amt = (parseFloat(r.amountDue) || 0).toFixed(2);
+  const msg =
+`Salam / Hello ${r.patientName || 'Customer'},
+
+This is PMG Pharmacy Kota Sentosa.
+Friendly reminder regarding your rented medical equipment:
+
+📦 Item: ${r.itemDescription || 'Medical Equipment'}
+📅 Due Date: ${r.dueDate || 'Soon'}
+💰 Rental Fee Due: RM ${amt}
+
+Kindly let us know if you would like to renew the rental or arrange for return.
+For online bank transfer, you may transfer to:
+*PMG PHARMACY SDN BHD*
+*Public Bank: 3192080318*
+(Please share the payment slip with us after transfer).
+
+Thank you!
+PMG Pharmacy Kota Sentosa
+📞 Tel: 082-629881 / WhatsApp: 012-8889831`;
+
+  const waUrl = `https://wa.me/${rawPhone}?text=${encodeURIComponent(msg)}`;
+  window.open(waUrl, '_blank');
+}
+
+// ─── AUTOMATED PATIENT PROFILE DEDUPLICATION ENGINE ───────────────────────────
+function normalizePhoneForMatching(phone) {
+  if (!phone) return '';
+  let digits = String(phone).replace(/\D/g, '');
+  if (digits.startsWith('60')) digits = '0' + digits.slice(2);
+  return digits;
+}
+
+function normalizeNameForMatching(name) {
+  if (!name) return '';
+  return String(name)
+    .toLowerCase()
+    .replace(/\b(mr|mrs|ms|dr|mdm|encik|puan|cik)\b\.?/gi, '')
+    .replace(/[^\w\s\u4e00-\u9fa5]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function deduplicatePatientProfiles() {
+  if (!patientsData || patientsData.length < 2) {
+    alert('No duplicate patients detected in database.');
+    return;
+  }
+
+  const beforeCount = patientsData.length;
+  const mergedMap = new Map();
+  const phoneToId = new Map();
+  const nameToId = new Map();
+  const icToId = new Map();
+
+  let mergedCount = 0;
+
+  patientsData.forEach(p => {
+    const icNorm = String(p.ic || '').replace(/\D/g, '');
+    const phoneNorm = normalizePhoneForMatching(p.phone);
+    const nameNorm = normalizeNameForMatching(p.name);
+
+    let matchId = null;
+    if (icNorm && icToId.has(icNorm)) matchId = icToId.get(icNorm);
+    else if (phoneNorm && phoneToId.has(phoneNorm)) matchId = phoneToId.get(phoneNorm);
+    else if (nameNorm && nameToId.has(nameNorm)) matchId = nameToId.get(nameNorm);
+
+    if (matchId && mergedMap.has(matchId)) {
+      // Merge with existing
+      const existing = mergedMap.get(matchId);
+      const existingDates = new Set((existing.encounters || []).map(e => e.date));
+      (p.encounters || []).forEach(e => {
+        if (!existingDates.has(e.date)) existing.encounters.push(e);
+      });
+      existing.encounters.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+      if (!existing.phone && p.phone) existing.phone = p.phone;
+      if (!existing.ic && p.ic) existing.ic = p.ic;
+      if (!existing.nextTcaDate && p.nextTcaDate) {
+        existing.nextTcaDate = p.nextTcaDate;
+        existing.nextTcaPurpose = p.nextTcaPurpose;
+      }
+
+      if (p.conditions && p.conditions.length) {
+        existing.conditions = Array.from(new Set([...(existing.conditions || []), ...p.conditions]));
+      }
+      mergedCount++;
+    } else {
+      mergedMap.set(p.id, { ...p, encounters: [...(p.encounters || [])] });
+      if (icNorm) icToId.set(icNorm, p.id);
+      if (phoneNorm) phoneToId.set(phoneNorm, p.id);
+      if (nameNorm) nameToId.set(nameNorm, p.id);
+    }
+  });
+
+  if (mergedCount > 0) {
+    patientsData = Array.from(mergedMap.values());
+    savePatientsData();
+    renderPatientModule();
+    alert(`✅ Deduplication complete!\nMerged ${mergedCount} duplicate patient records.\nTotal profiles consolidated from ${beforeCount} to ${patientsData.length}.`);
+  } else {
+    alert('✅ Checked all patient records. No duplicate phone numbers, ICs, or names found.');
+  }
+}
+
+// Window Exports
+window.openNewRentalModal = openNewRentalModal;
+window.closeRentalModal = closeRentalModal;
+window.editRental = editRental;
+window.handleSaveRentalForm = handleSaveRentalForm;
+window.markRentalReturned = markRentalReturned;
+window.deleteRental = deleteRental;
+window.sendRentalWhatsApp = sendRentalWhatsApp;
+window.renderEquipmentRentals = renderEquipmentRentals;
+window.deduplicatePatientProfiles = deduplicatePatientProfiles;
+window.normalizePhoneForMatching = normalizePhoneForMatching;
+window.normalizeNameForMatching = normalizeNameForMatching;

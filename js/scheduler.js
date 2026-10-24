@@ -1739,22 +1739,22 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
       } else {
         let hasHd = wDays.some(d => isHalfDayMorningShift(d.shifts[tm.empNo]));
         if (!hasHd) {
-          const eligible = wDays.find(d => d.shifts[tm.empNo] !== 'RD' && !isDayPresetLocked(tm, d.dayOfWeek) && d.dayOfWeek !== 'Sunday' && d.dayOfWeek !== 'Saturday');
+          const eligible = wDays.find(d => d.shifts[tm.empNo] !== 'RD' && !isDayPresetLocked(tm, d.dayOfWeek) && d.dayOfWeek !== 'Sunday' && d.dayOfWeek !== 'Saturday' && (!isTraineeTeammate(tm) || d.dayOfWeek !== 'Friday'));
           if (eligible) eligible.shifts[tm.empNo] = halfShiftCode;
         }
       }
 
-      // 3a. Invariant: Trainees must NEVER receive RD on Friday (14:00-15:00 HQ Video Training)
+      // 3a. Invariant: Trainees must NEVER receive RD or Morning Half on Friday (14:00-15:00 HQ Video Training)
       if (isTraineeTeammate(tm)) {
         const fri = wDays.find(d => d.dayOfWeek === 'Friday');
-        if (fri && (fri.shifts[tm.empNo] === 'RD' || fri.shifts[tm.empNo] === 'OFF' || !fri.shifts[tm.empNo])) {
-          // Move RD to the first non-Friday full-shift day (prefer Sunday, then Wednesday, then others)
+        if (fri && (fri.shifts[tm.empNo] === 'RD' || fri.shifts[tm.empNo] === 'OFF' || isHalfDayMorningShift(fri.shifts[tm.empNo]) || !fri.shifts[tm.empNo])) {
+          // Move RD or Morning Half to first non-Friday full-shift day
           const order = ['Sunday', 'Wednesday', 'Thursday', 'Tuesday', 'Monday', 'Saturday'];
           const target = order
             .map(n => wDays.find(d => d.dayOfWeek === n))
             .find(d => d && (isFullMorningShift(d.shifts[tm.empNo]) || isNightShift(d.shifts[tm.empNo])));
           const swapShift = target ? target.shifts[tm.empNo] : '8H_0730-1630';
-          if (target) target.shifts[tm.empNo] = 'RD';
+          if (target) target.shifts[tm.empNo] = fri.shifts[tm.empNo] || 'RD';
           fri.shifts[tm.empNo] = swapShift;
         }
       }
@@ -2342,7 +2342,8 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
     if (!d.cleaningDuty || !d.cleaningDuty.empNo || d.cleaningDuty.empNo === 'PMG00831') {
       const dutyRotating = rotatingPool.filter(a => {
         const s = d.shifts[a.empNo];
-        return s && s !== 'RD' && s !== 'PH' && s !== 'OFF';
+        // 6S Cleaning (14:00 - 15:30) requires staff to be on duty; excludes morning half-day staff who leave at 12:30
+        return s && s !== 'RD' && s !== 'PH' && s !== 'OFF' && !isHalfDayMorningShift(s);
       });
       if (dutyRotating.length > 0) {
         dutyRotating.sort((a, b) => {
@@ -2954,9 +2955,16 @@ function generateLegalWeeklyPatterns(tm, weekDays, prevSundayShift, prevNightStr
   const targetHdDay = extractHalfDayName(tm);
   const prefHdIdx = (targetHdDay && targetHdDay !== 'None' && targetHdDay !== 'Flexible') ? weekDays.findIndex(d => d.dayOfWeek === targetHdDay) : -1;
 
-  const targetRdList = prefRdIdx !== -1 ? [prefRdIdx] : [0, 1, 2, 3, 4, 5, 6];
+  const isTrainee = isTraineeTeammate(tm);
+  let targetRdList = prefRdIdx !== -1 ? [prefRdIdx] : [0, 1, 2, 3, 4, 5, 6];
   // Saturday is William's fixed 4H anchor; only allow Sat half day for rotating staff if explicitly requested or Flexible
-  const targetHdList = prefHdIdx !== -1 ? [prefHdIdx] : [0, 1, 2, 3, 4, 6];
+  let targetHdList = prefHdIdx !== -1 ? [prefHdIdx] : [0, 1, 2, 3, 4, 6];
+
+  if (isTrainee) {
+    // Invariant: Trainees must NEVER receive RD or Morning Half on Friday (index 4) due to 14:00-15:00 HQ Video Training
+    targetRdList = targetRdList.filter(idx => idx !== 4);
+    targetHdList = targetHdList.filter(idx => idx !== 4);
+  }
   const halfShiftCode = getHalfDayShiftCode(tm);
 
   const collectCandidates = (rdCandidates, hdCandidates, checkCrossWeekStreak) => {
@@ -3643,8 +3651,11 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
 
       // William fixed schedule
       if (william) {
-        dayShifts[william.empNo] = williamSeq[day];
-        const ws = williamSeq[day];
+        let ws = williamSeq[day];
+        if (!d.isTargetMonth && shiftRegistry[d.date]?.shifts?.[william.empNo]) {
+          ws = shiftRegistry[d.date].shifts[william.empNo];
+        }
+        dayShifts[william.empNo] = ws;
         if (ws === 'RD' || ws === 'PH') cumStats[william.empNo].rd++;
         else if (ws.includes('4H')) { cumStats[william.empNo].am++; cumStats[william.empNo].hd++; }
         else cumStats[william.empNo].am++;
@@ -3652,7 +3663,11 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
 
       // Rotating teammates
       rotatingPool.forEach(tm => {
-        const s = selected[tm.empNo].seq[day];
+        let s = selected[tm.empNo].seq[day];
+        // If this transition day is outside the target month and was already scheduled in shiftRegistry, PRESERVE it to maintain cross-month continuity!
+        if (!d.isTargetMonth && shiftRegistry[d.date]?.shifts?.[tm.empNo]) {
+          s = shiftRegistry[d.date].shifts[tm.empNo];
+        }
         dayShifts[tm.empNo] = s;
         if (s === 'RD') cumStats[tm.empNo].rd++;
         else if (isHalfDayMorningShift(s)) { cumStats[tm.empNo].am++; cumStats[tm.empNo].hd++; }
@@ -3692,8 +3707,11 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
         });
       }
 
-      // 6S Cleaning Duty: 14:00 - 15:30 Round-Robin
-      const workingStaff = rotatingPool.filter(tm => dayShifts[tm.empNo] && dayShifts[tm.empNo] !== 'RD' && dayShifts[tm.empNo] !== 'PH' && dayShifts[tm.empNo] !== 'OFF');
+      // 6S Cleaning Duty: 14:00 - 15:30 Round-Robin (Excludes half-day morning staff who leave at 12:30)
+      const workingStaff = rotatingPool.filter(tm => {
+        const s = dayShifts[tm.empNo];
+        return s && s !== 'RD' && s !== 'PH' && s !== 'OFF' && !isHalfDayMorningShift(s);
+      });
       workingStaff.sort((a, b) => (cleaningCounts[a.empNo] || 0) - (cleaningCounts[b.empNo] || 0));
       const cleaner = workingStaff[0] || null;
       let cleaningDuty = null;
@@ -4128,7 +4146,7 @@ function renderScheduleMatrix(schedule) {
         dutyBadges += `<div class="text-[8px] font-bold text-amber-900 bg-amber-100 border border-amber-200 rounded px-0.5 leading-none mt-0.5" title="${escHtml(d.stockDuty.task)} (${escHtml(d.stockDuty.dayNumber)})">📦 Stock</div>`;
       }
       if (learnSlot) {
-        dutyBadges += `<div class="text-[8px] font-bold text-indigo-900 ${learnSlot.isHqVideo ? 'bg-indigo-200 border border-indigo-300' : 'bg-indigo-100'} rounded px-0.5 leading-none mt-0.5" title="${escHtml(learnSlot.task)} (${escHtml(learnSlot.time)})">${learnSlot.isHqVideo ? '🎓 HQ Video' : '📚 Learn'}</div>`;
+        dutyBadges += `<div class="text-[7.5px] font-bold text-indigo-950 ${learnSlot.isHqVideo ? 'bg-indigo-200 border border-indigo-300' : 'bg-indigo-100 border border-indigo-200'} rounded px-0.5 py-0.5 leading-tight mt-0.5 shadow-2xs" title="${escHtml(learnSlot.task)} (${escHtml(learnSlot.time)})">${learnSlot.isHqVideo ? '🎓 HQ Video: 2-3pm' : '📚 Learn: 2-3pm'}</div>`;
       }
 
       bodyHtml += `
@@ -4226,8 +4244,8 @@ function renderScheduleMatrix(schedule) {
     learningRow += `
       <td class="px-1 py-1 text-center ${weekBorder}">
         ${slots.length > 0 ? slots.map(sl => `
-          <span class="inline-block px-1 py-0.5 rounded text-[9px] font-bold ${sl.isHqVideo ? 'bg-indigo-200 text-indigo-950 border border-indigo-300' : 'bg-indigo-100 text-indigo-900'} font-mono truncate max-w-[65px]" title="${escHtml(sl.nickname)}: ${escHtml(sl.task)} (${escHtml(sl.time)})">
-            ${escHtml(sl.nickname)}${sl.isHqVideo ? ' 🎓' : ' 📚'}
+          <span class="inline-block px-1 py-0.5 rounded text-[9px] font-bold ${sl.isHqVideo ? 'bg-indigo-200 text-indigo-950 border border-indigo-300' : 'bg-indigo-100 text-indigo-900'} font-mono truncate max-w-[75px]" title="${escHtml(sl.nickname)}: ${escHtml(sl.task)} (${escHtml(sl.time)})">
+            ${escHtml(sl.nickname)}${sl.isHqVideo ? ' 🎓 (2-3pm)' : ' 📚 (2-3pm)'}
           </span>
         `).join('') : '<span class="text-gray-300 text-[10px]">-</span>'}
       </td>

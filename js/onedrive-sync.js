@@ -687,8 +687,10 @@
               }
             } catch (_) {}
 
-            // 2. Export local documents from IndexedDB
-            const allLocalDocs = (typeof window.exportAllDocuments === 'function') ? await window.exportAllDocuments() : [];
+            // 2. Export local documents metadata from IndexedDB (memory-leak free; avoids massive base64 conversion)
+            const allLocalDocs = (typeof window.exportAllDocumentsMetadata === 'function')
+              ? await window.exportAllDocumentsMetadata()
+              : ((typeof window.exportAllDocuments === 'function') ? await window.exportAllDocuments() : []);
             const localBranchDocs = allLocalDocs.filter(d => branchPatientIds.has(d.patientId));
             const localDocIdMap = new Map(localBranchDocs.map(d => [d.id, d]));
 
@@ -699,13 +701,13 @@
               console.log(`[PMG OneDrive Sync] Imported ${docsToImport.length} cloud patient document(s) into local IndexedDB for ${branchName}`);
             }
 
-            // 4. Merge all documents
+            // 4. Merge all document metadata
             const mergedDocsMap = new Map();
             cloudDocs.forEach(d => mergedDocsMap.set(d.id, d));
             localBranchDocs.forEach(d => mergedDocsMap.set(d.id, d));
             const finalMergedDocs = Array.from(mergedDocsMap.values());
 
-            // 5. Write merged patient_documents.json back to OneDrive
+            // 5. Write merged patient_documents.json back to OneDrive (lightweight JSON)
             const docFileHandle = await dirHandle.getFileHandle('patient_documents.json', { create: true });
             const docWritable = await docFileHandle.createWritable();
             await docWritable.write(JSON.stringify({
@@ -720,25 +722,34 @@
             try {
               const reportsFolder = await dirHandle.getDirectoryHandle('Patient_Reports', { create: true });
               for (const doc of finalMergedDocs) {
-                if (doc.dataUrl && typeof window.dataURLtoBlob === 'function') {
+                try {
+                  const safeName = `${doc.patientId}_${(doc.name || 'report.pdf').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+                  let fileExists = false;
                   try {
-                    const safeName = `${doc.patientId}_${(doc.name || 'report.pdf').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-                    let fileExists = false;
-                    try {
-                      await reportsFolder.getFileHandle(safeName, { create: false });
-                      fileExists = true;
-                    } catch (_) { fileExists = false; }
+                    await reportsFolder.getFileHandle(safeName, { create: false });
+                    fileExists = true;
+                  } catch (_) { fileExists = false; }
 
-                    if (!fileExists) {
-                      const blob = window.dataURLtoBlob(doc.dataUrl);
+                  if (!fileExists) {
+                    let blobToWrite = null;
+                    if (typeof window.getDocumentById === 'function') {
+                      const fullDoc = await window.getDocumentById(doc.id);
+                      if (fullDoc && fullDoc.blob) {
+                        blobToWrite = fullDoc.blob;
+                      }
+                    } else if (doc.dataUrl && typeof window.dataURLtoBlob === 'function') {
+                      blobToWrite = window.dataURLtoBlob(doc.dataUrl);
+                    }
+
+                    if (blobToWrite) {
                       const reportFileHandle = await reportsFolder.getFileHandle(safeName, { create: true });
                       const rw = await reportFileHandle.createWritable();
-                      await rw.write(blob);
+                      await rw.write(blobToWrite);
                       await rw.close();
                     }
-                  } catch (fErr) {
-                    console.warn('[PMG OneDrive Sync] Individual file write skipped:', fErr);
                   }
+                } catch (fErr) {
+                  console.warn('[PMG OneDrive Sync] Individual file write skipped:', fErr);
                 }
               }
             } catch (dirErr) {

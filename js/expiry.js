@@ -28,6 +28,7 @@ let activeExpiryFilter = {
   branch: 'Kota Sentosa',
   horizon: '9months', // '9months', '12months', 'critical', 'all', 'cleared'
   returnPolicy: 'all', // 'all', 'non_returnable', 'returnable', 'special', 'unlisted'
+  actionPlan: 'all', // 'all', 'blank', or specific action plan
   search: '',
   sortOrder: 'asc' // 'asc' (earliest expiry first) | 'desc' (latest expiry first)
 };
@@ -42,6 +43,16 @@ function escHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function normalizeBranchCode(b) {
+  if (typeof window !== 'undefined' && typeof window.normalizeBranchCode === 'function') {
+    return window.normalizeBranchCode(b);
+  }
+  if (!b) return 'Kota Sentosa';
+  const str = String(b).trim();
+  if (/kota|sentosa|ks01|pq0147/i.test(str)) return 'Kota Sentosa';
+  return str;
 }
 
 // ─── PERSISTENT CLEARED / DONE EXPIRY TOMBSTONES ─────────────────────────────
@@ -3606,6 +3617,16 @@ function filterExpiryItems() {
       if (activeExpiryFilter.returnPolicy === 'unlisted' && returnStatus !== 'UNLISTED') return false;
     }
 
+    // 3.5 Action Plan Filter (including Blank filter)
+    if (activeExpiryFilter.actionPlan && activeExpiryFilter.actionPlan !== 'all') {
+      const planRaw = String(it.actionPlan || '').trim();
+      if (activeExpiryFilter.actionPlan === 'blank') {
+        if (planRaw !== '') return false;
+      } else {
+        if (!planRaw.toLowerCase().includes(activeExpiryFilter.actionPlan.toLowerCase())) return false;
+      }
+    }
+
     // 4. Search filter
     if (activeExpiryFilter.search) {
       const q = activeExpiryFilter.search.toLowerCase().trim();
@@ -3735,6 +3756,14 @@ function renderExpiryTable() {
     }
   }
 
+  const skuBatchMap = {};
+  expiryItems.forEach(x => {
+    const code = String(x.itemCode || '').trim();
+    if (!code) return;
+    if (!skuBatchMap[code]) skuBatchMap[code] = [];
+    skuBatchMap[code].push(x);
+  });
+
   tbody.innerHTML = displayedItems.map((it, idx) => {
     const h = calculateExpiryHorizon(it.expiryDate);
     const isCleared = isItemMarkedDoneOrCleared(it);
@@ -3744,6 +3773,7 @@ function renderExpiryTable() {
     const safeRowId = escHtml(String(it.rowId).replace(/'/g, "\\'"));
     const offeredNum = parseFloat(it.offeredPrice !== undefined ? it.offeredPrice : it.clearancePrice);
     const hasValidOffer = !isNaN(offeredNum) && offeredNum > 0;
+    const itemBatches = skuBatchMap[String(it.itemCode || '').trim()] || [];
 
     let badgeClass = 'bg-gray-100 text-gray-600';
     if (h.level === 'expired' || h.level === 'critical') badgeClass = 'bg-rose-100 text-rose-700 font-bold border border-rose-200 animate-pulse';
@@ -3754,6 +3784,12 @@ function renderExpiryTable() {
 
     return `
       <tr class="border-b hover:bg-slate-50/80 transition ${isCleared ? 'opacity-50 bg-gray-50' : ''}">
+        <td class="p-3 text-center">
+          <input type="checkbox" class="expiry-write-off-cb w-4 h-4 text-rose-600 rounded cursor-pointer"
+            data-row-id="${safeRowId}"
+            ${selectedWriteOffRowIds.has(it.rowId) ? 'checked' : ''}
+            onchange="toggleSelectWriteOffItem('${safeRowId}', this.checked)">
+        </td>
         <td class="p-3 text-xs font-bold text-gray-700 whitespace-nowrap">
           <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-100 border text-slate-700">
             <i class="fa-solid fa-shop text-[10px] text-blue-600"></i> ${escHtml(it.branch)}
@@ -3765,6 +3801,12 @@ function renderExpiryTable() {
         <td class="p-3 text-xs font-semibold text-gray-800 ${isCleared ? 'line-through text-gray-400' : ''}">
           ${escHtml(it.itemDescription)}
           <div class="text-[10px] text-gray-400 font-mono mt-0.5">Batch: ${escHtml(it.batchNumber || 'N/A')} · File: ${escHtml(it.sourceFile || 'Direct')}</div>
+          ${itemBatches.length > 1 ? `
+            <button type="button" onclick="openSkuBatchExplorerModal('${escHtml(String(it.itemCode).replace(/'/g, "\\'"))}')"
+              class="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold transition shadow-2xs cursor-pointer" title="View all ${itemBatches.length} batches and expiry dates for this SKU">
+              <i class="fa-solid fa-boxes-stacked text-indigo-600"></i> ${itemBatches.length} Batches (View all)
+            </button>
+          ` : ''}
         </td>
         <td class="p-3 text-center whitespace-nowrap text-xs">
           ${renderHqReturnPolicyBadge(it)}
@@ -4088,6 +4130,15 @@ function setupExpiryEventListeners() {
     });
   }
 
+  const actionPlanSelect = document.getElementById('expiryActionPlanFilter');
+  if (actionPlanSelect) {
+    actionPlanSelect.addEventListener('change', e => {
+      activeExpiryFilter.actionPlan = e.target.value;
+      expiryCurrentPage = 1;
+      renderExpiryUI();
+    });
+  }
+
   const searchInput = document.getElementById('expirySearchInput');
   if (searchInput) {
     searchInput.addEventListener('input', e => {
@@ -4321,7 +4372,532 @@ function promptSetOneDriveShareLink() {
   }
 }
 
+// ─── MULTI-BATCH / SKU EXPIRY EXPLORER ─────────────────────────────────────────
+let currentExplorerItemCode = '';
+
+function openSkuBatchExplorerModal(itemCode) {
+  currentExplorerItemCode = itemCode;
+  const modal = document.getElementById('skuBatchExplorerModal');
+  const codeEl = document.getElementById('batchExplorerSkuCode');
+  const nameEl = document.getElementById('batchExplorerSkuName');
+  const tbody = document.getElementById('batchExplorerTbody');
+  const qtyBadge = document.getElementById('batchExplorerTotalQtyBadge');
+  if (!modal || !tbody) return;
+
+  const matches = expiryItems.filter(x => String(x.itemCode || '').trim() === String(itemCode).trim());
+  matches.sort((a, b) => {
+    const dA = parseExpiryDate(a.expiryDate);
+    const dB = parseExpiryDate(b.expiryDate);
+    if (!dA && !dB) return 0;
+    if (!dA) return 1;
+    if (!dB) return -1;
+    return dA.getTime() - dB.getTime();
+  });
+
+  const first = matches[0] || {};
+  if (codeEl) codeEl.textContent = itemCode;
+  if (nameEl) nameEl.textContent = first.itemDescription || 'SKU Batches';
+
+  let totalQty = 0;
+  tbody.innerHTML = matches.map((m, i) => {
+    const qty = parseFloat(m.remainingQty !== undefined ? m.remainingQty : m.quantity) || 0;
+    totalQty += qty;
+    const h = calculateExpiryHorizon(m.expiryDate);
+    const cost = parseFloat(m.unitCost || m.costPrice || 0);
+
+    let hBadge = 'bg-blue-100 text-blue-700';
+    if (h.level === 'critical' || h.level === 'expired') hBadge = 'bg-rose-100 text-rose-700 font-bold';
+    else if (h.level === 'urgent') hBadge = 'bg-amber-100 text-amber-800 font-bold';
+    else if (h.level === 'kpi') hBadge = 'bg-yellow-100 text-yellow-800 font-bold';
+
+    return `
+      <tr class="border-b hover:bg-slate-50 transition">
+        <td class="p-2.5 font-mono font-bold text-slate-800">
+          ${escHtml(m.batchNumber || 'N/A')}
+          ${i === 0 ? '<span class="ml-1 text-[9px] bg-emerald-100 text-emerald-800 px-1 py-0.5 rounded font-bold">Earliest Expiry</span>' : ''}
+        </td>
+        <td class="p-2.5 text-center font-mono font-bold text-slate-900">${formatExpiryDateDisplay(m.expiryDate)}</td>
+        <td class="p-2.5 text-center">
+          <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold ${hBadge}">
+            ${h.daysLeft !== null ? (h.daysLeft < 0 ? 'EXPIRED' : `${h.daysLeft}d left (${h.monthsLeft}m)`) : 'Valid'}
+          </span>
+        </td>
+        <td class="p-2.5 text-center font-bold text-slate-800">${qty}</td>
+        <td class="p-2.5 text-right font-mono font-semibold text-slate-700">RM ${cost.toFixed(2)}</td>
+        <td class="p-2.5 text-slate-600 text-xs">${escHtml(getItemActionPlan(m) || '—')}</td>
+      </tr>
+    `;
+  }).join('');
+
+  if (qtyBadge) qtyBadge.textContent = `${totalQty} Units Total across ${matches.length} Batches`;
+  modal.classList.remove('hidden');
+}
+
+function closeSkuBatchExplorerModal() {
+  const modal = document.getElementById('skuBatchExplorerModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function filterExpiryByCurrentSku() {
+  if (!currentExplorerItemCode) return;
+  const searchInput = document.getElementById('expirySearchInput');
+  if (searchInput) {
+    searchInput.value = currentExplorerItemCode;
+    activeExpiryFilter.search = currentExplorerItemCode;
+  }
+  closeSkuBatchExplorerModal();
+  expiryCurrentPage = 1;
+  renderExpiryUI();
+}
+
+// ─── WRITE-OFF SELECTION & 100% HQ COMPLIANT FORM ENGINE ───────────────────────
+const selectedWriteOffRowIds = new Set();
+let activeWriteOffFormType = 'poison'; // 'poison' | 'non_poison'
+
+function toggleSelectWriteOffItem(rowId, isChecked) {
+  if (isChecked) {
+    selectedWriteOffRowIds.add(rowId);
+  } else {
+    selectedWriteOffRowIds.delete(rowId);
+  }
+  updateWriteOffSelectedCounter();
+}
+
+function toggleSelectAllExpiry(isChecked) {
+  const displayed = filterExpiryItems();
+  displayed.forEach(it => {
+    if (it.rowId) {
+      if (isChecked) selectedWriteOffRowIds.add(it.rowId);
+      else selectedWriteOffRowIds.delete(it.rowId);
+    }
+  });
+  document.querySelectorAll('.expiry-write-off-cb').forEach(cb => {
+    cb.checked = isChecked;
+  });
+  updateWriteOffSelectedCounter();
+}
+
+function updateWriteOffSelectedCounter() {
+  const count = selectedWriteOffRowIds.size;
+  const countEl = document.getElementById('writeOffSelectedCount');
+  const btnEl = document.getElementById('btnOpenWriteOffModal');
+  if (countEl) countEl.textContent = count;
+  if (btnEl) {
+    if (count > 0) btnEl.classList.remove('hidden');
+    else btnEl.classList.add('hidden');
+  }
+  const allCb = document.getElementById('expirySelectAllCheckbox');
+  if (allCb) {
+    const displayed = filterExpiryItems();
+    allCb.checked = displayed.length > 0 && displayed.every(d => selectedWriteOffRowIds.has(d.rowId));
+  }
+}
+
+function openStockWriteOffModal() {
+  if (selectedWriteOffRowIds.size === 0) {
+    alert('Please select at least 1 item using the checkbox to generate a Write-Off form.');
+    return;
+  }
+  const modal = document.getElementById('stockWriteOffModal');
+  if (!modal) return;
+
+  const dateInput = document.getElementById('writeOffSubmissionDate');
+  if (dateInput && !dateInput.value) {
+    const now = new Date();
+    dateInput.value = now.toISOString().split('T')[0];
+  }
+
+  setWriteOffFormType(activeWriteOffFormType);
+  renderWriteOffModalItems();
+  modal.classList.remove('hidden');
+}
+
+function closeStockWriteOffModal() {
+  const modal = document.getElementById('stockWriteOffModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function setWriteOffFormType(type) {
+  activeWriteOffFormType = type;
+  const btnPoison = document.getElementById('btnWriteOffTypePoison');
+  const btnNonPoison = document.getElementById('btnWriteOffTypeNonPoison');
+  const titleEl = document.getElementById('writeOffModalTitle');
+
+  if (type === 'poison') {
+    if (btnPoison) btnPoison.className = 'px-3 py-1 rounded-lg font-bold text-xs transition bg-rose-700 text-white shadow-2xs';
+    if (btnNonPoison) btnNonPoison.className = 'px-3 py-1 rounded-lg font-bold text-xs transition text-gray-600 hover:text-gray-900';
+    if (titleEl) titleEl.textContent = 'HQ Official Poison Stock Write-Off Form';
+  } else {
+    if (btnPoison) btnPoison.className = 'px-3 py-1 rounded-lg font-bold text-xs transition text-gray-600 hover:text-gray-900';
+    if (btnNonPoison) btnNonPoison.className = 'px-3 py-1 rounded-lg font-bold text-xs transition bg-slate-800 text-white shadow-2xs';
+    if (titleEl) titleEl.textContent = 'HQ Official Non-Poison Stock Write-Off Form';
+  }
+  renderWriteOffModalItems();
+}
+
+function renderWriteOffModalItems() {
+  const tbody = document.getElementById('writeOffItemsTbody');
+  const totalCostSumEl = document.getElementById('writeOffTotalCostSum');
+  if (!tbody) return;
+
+  const selectedItems = expiryItems.filter(it => selectedWriteOffRowIds.has(it.rowId));
+  let totalCost = 0;
+
+  tbody.innerHTML = selectedItems.map((it, idx) => {
+    const qty = parseFloat(it.remainingQty !== undefined ? it.remainingQty : it.quantity) || 1;
+    const unitCost = parseFloat(it.unitCost || it.costPrice || 0);
+    const rowTotal = qty * unitCost;
+    totalCost += rowTotal;
+
+    const defaultDisposal = activeWriteOffFormType === 'poison'
+      ? 'SENT TO WAREHOUSE FOR DISPOSAL'
+      : (it.disposalMethod || 'LOCAL DISPOSAL');
+
+    const defaultPiSupplier = it.supplier || it.sourceFile || 'N/A';
+
+    return `
+      <tr class="border-b hover:bg-slate-50 transition" data-row-id="${escHtml(it.rowId)}">
+        <td class="p-2 text-center font-bold text-gray-500">${idx + 1}</td>
+        <td class="p-2 font-mono font-bold text-blue-900">${escHtml(it.itemCode)}</td>
+        <td class="p-2 font-semibold text-gray-800">${escHtml(it.itemDescription)}</td>
+        <td class="p-2 text-center font-mono font-semibold">${formatExpiryDateDisplay(it.expiryDate)}</td>
+        <td class="p-2 text-center">
+          <input type="text" class="writeoff-uom w-12 text-center bg-white border border-gray-300 rounded px-1 py-0.5 text-xs font-bold" value="${escHtml(it.uom || 'Unit')}">
+        </td>
+        <td class="p-2 text-center">
+          <input type="number" min="1" step="1" class="writeoff-qty w-14 text-center bg-white border border-gray-300 rounded px-1 py-0.5 text-xs font-bold" value="${qty}" onchange="recalculateWriteOffRowTotal(this)">
+        </td>
+        <td class="p-2 text-right">
+          <input type="number" min="0" step="0.01" class="writeoff-unitcost w-20 text-right bg-white border border-gray-300 rounded px-1 py-0.5 text-xs font-mono font-bold" value="${unitCost.toFixed(2)}" onchange="recalculateWriteOffRowTotal(this)">
+        </td>
+        <td class="p-2 text-right font-mono font-extrabold text-rose-700 writeoff-row-total">
+          RM ${rowTotal.toFixed(2)}
+        </td>
+        <td class="p-2">
+          <input type="text" class="writeoff-reason w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-xs font-medium" value="${escHtml(it.writeOffReason || 'LACK OF MONITORING')}">
+        </td>
+        <td class="p-2">
+          <input type="text" class="writeoff-pisupplier w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-xs font-medium" value="${escHtml(defaultPiSupplier)}">
+        </td>
+        <td class="p-2">
+          <input type="text" class="writeoff-disposal w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-xs font-medium" value="${escHtml(defaultDisposal)}">
+        </td>
+        <td class="p-2 text-center">
+          <button type="button" onclick="removeWriteOffRow('${escHtml(it.rowId)}')" class="text-gray-400 hover:text-rose-600 p-1 transition cursor-pointer" title="Remove from this write-off list">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  if (totalCostSumEl) totalCostSumEl.textContent = `RM ${totalCost.toFixed(2)}`;
+}
+
+function recalculateWriteOffRowTotal(inputEl) {
+  const row = inputEl.closest('tr');
+  if (!row) return;
+  const qtyEl = row.querySelector('.writeoff-qty');
+  const unitCostEl = row.querySelector('.writeoff-unitcost');
+  const totalEl = row.querySelector('.writeoff-row-total');
+
+  const q = parseFloat(qtyEl?.value) || 0;
+  const c = parseFloat(unitCostEl?.value) || 0;
+  const tot = q * c;
+  if (totalEl) totalEl.textContent = `RM ${tot.toFixed(2)}`;
+
+  let grandTotal = 0;
+  document.querySelectorAll('.writeoff-row-total').forEach(el => {
+    const val = parseFloat(el.textContent.replace(/[^\d.]/g, '')) || 0;
+    grandTotal += val;
+  });
+  const totalCostSumEl = document.getElementById('writeOffTotalCostSum');
+  if (totalCostSumEl) totalCostSumEl.textContent = `RM ${grandTotal.toFixed(2)}`;
+}
+
+function removeWriteOffRow(rowId) {
+  selectedWriteOffRowIds.delete(rowId);
+  updateWriteOffSelectedCounter();
+  renderWriteOffModalItems();
+  if (selectedWriteOffRowIds.size === 0) {
+    closeStockWriteOffModal();
+  }
+}
+
+function printOfficialWriteOffForm() {
+  const isPoison = activeWriteOffFormType === 'poison';
+  const preparedBy = document.getElementById('writeOffPreparedBy')?.value || 'William Chai';
+  const subDate = document.getElementById('writeOffSubmissionDate')?.value || new Date().toISOString().split('T')[0];
+  const rows = Array.from(document.querySelectorAll('#writeOffItemsTbody tr'));
+
+  if (!rows.length) {
+    alert('No items to print.');
+    return;
+  }
+
+  let grandTotal = 0;
+  const tableRowsHtml = rows.map((r, i) => {
+    const code = r.children[1].textContent.trim();
+    const desc = r.children[2].textContent.trim();
+    const exp = r.children[3].textContent.trim();
+    const uom = r.querySelector('.writeoff-uom')?.value || 'Unit';
+    const qty = r.querySelector('.writeoff-qty')?.value || '1';
+    const cost = parseFloat(r.querySelector('.writeoff-unitcost')?.value || 0).toFixed(2);
+    const tot = parseFloat(r.querySelector('.writeoff-row-total')?.textContent.replace(/[^\d.]/g, '') || 0).toFixed(2);
+    grandTotal += parseFloat(tot);
+    const reason = r.querySelector('.writeoff-reason')?.value || 'LACK OF MONITORING';
+    const pi = r.querySelector('.writeoff-pisupplier')?.value || 'N/A';
+    const disposal = r.querySelector('.writeoff-disposal')?.value || (isPoison ? 'SENT TO WAREHOUSE FOR DISPOSAL' : 'LOCAL DISPOSAL');
+
+    return `
+      <tr>
+        <td style="text-align:center; padding: 6px; border: 1px solid #333;">${i + 1}</td>
+        <td style="font-family: monospace; font-weight: bold; padding: 6px; border: 1px solid #333;">${escHtml(code)}</td>
+        <td style="padding: 6px; border: 1px solid #333;">${escHtml(desc)}</td>
+        <td style="text-align:center; font-family: monospace; padding: 6px; border: 1px solid #333;">${escHtml(exp)}</td>
+        <td style="text-align:center; padding: 6px; border: 1px solid #333;">${escHtml(uom)}</td>
+        <td style="text-align:center; font-weight: bold; padding: 6px; border: 1px solid #333;">${escHtml(qty)}</td>
+        <td style="text-align:right; font-family: monospace; padding: 6px; border: 1px solid #333;">${cost}</td>
+        <td style="text-align:right; font-family: monospace; font-weight: bold; padding: 6px; border: 1px solid #333;">${tot}</td>
+        <td style="padding: 6px; border: 1px solid #333;">${escHtml(reason)}</td>
+        <td style="padding: 6px; border: 1px solid #333;">${escHtml(pi)}</td>
+        <td style="padding: 6px; border: 1px solid #333;">${escHtml(disposal)}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    alert('Please allow popups to open the official printable HQ form.');
+    return;
+  }
+
+  const printHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>HQ ${isPoison ? 'Poison' : 'Non-Poison'} Stock Write-Off Form - PMG PHARMACY KOTA SENTOSA</title>
+      <style>
+        @page { size: A4 landscape; margin: 12mm; }
+        body { font-family: Arial, sans-serif; font-size: 11px; color: #111; margin: 0; padding: 0; }
+        .notes-box { font-size: 10px; margin-bottom: 8px; line-height: 1.35; color: #333; }
+        .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 11px; }
+        .meta-table td { padding: 4px 6px; }
+        .main-table { width: 100%; border-collapse: collapse; font-size: 10.5px; margin-top: 5px; }
+        .main-table th { background: #f0f0f0; border: 1px solid #333; padding: 6px; text-transform: uppercase; font-size: 10px; }
+        .total-row td { font-weight: bold; background: #fafafa; border: 1px solid #333; padding: 6px; font-size: 11px; }
+        .sig-container { margin-top: 30px; display: flex; justify-content: flex-end; }
+        .sig-box { width: 320px; border-top: 1px solid #333; padding-top: 6px; text-align: left; }
+        @media print {
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="notes-box">
+        <b>NOTE:</b> This form must be submitted to the Admin in Charge (AIC) for approval to write off expired products that are non-returnable or cannot be credited (CN).<br>
+        Attach clear photos showing the item, correct quantity, and expiry/manufacturing date via email.<br>
+        <b>Do not dispose of the products until AIC approval has been obtained.</b><br>
+        <b>Monthly Submission Date:</b> 14th of the month | Should be attached to the Stock Expiry List upon submission.
+      </div>
+
+      <h3 style="margin: 8px 0; text-transform: uppercase; border-bottom: 2px solid #222; padding-bottom: 4px;">
+        ${isPoison ? 'POISON' : 'NON-POISON'} STOCK WRITE OFF FORM
+      </h3>
+
+      <table class="meta-table">
+        <tr>
+          <td style="width: 15%; font-weight: bold;">Branch Code</td>
+          <td style="width: 35%; font-family: monospace; font-weight: bold;">PQ0147MI</td>
+          <td style="width: 15%; font-weight: bold;">Prepared By</td>
+          <td style="width: 35%;">${escHtml(preparedBy)}</td>
+        </tr>
+        <tr>
+          <td style="font-weight: bold;">Branch Name</td>
+          <td style="font-weight: bold;">PMG PHARMACY KOTA SENTOSA</td>
+          <td style="font-weight: bold;">Date</td>
+          <td>${escHtml(subDate)}</td>
+        </tr>
+      </table>
+
+      <div style="font-size: 10px; font-style: italic; margin-bottom: 4px; color: #555;">
+        The Total Cost will be Automatically Calculated
+      </div>
+
+      <table class="main-table">
+        <thead>
+          <tr>
+            <th style="width: 30px;">No.</th>
+            <th style="width: 80px;">Item Code</th>
+            <th>Item Description</th>
+            <th style="width: 80px;">Expiry Date</th>
+            <th style="width: 50px;">UOM</th>
+            <th style="width: 50px;">Quantity</th>
+            <th style="width: 80px;">Unit Cost (RM)</th>
+            <th style="width: 90px;">Total Cost (RM)</th>
+            <th style="width: 140px;">Reason for Expiry</th>
+            <th style="width: 170px;">PI No. / Supplier / Date</th>
+            <th style="width: 150px;">Disposal Method</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tableRowsHtml}
+        </tbody>
+        <tfoot>
+          <tr class="total-row">
+            <td colspan="7" style="text-align: right; text-transform: uppercase;">TOTAL</td>
+            <td style="text-align: right; font-family: monospace; color: #b91c1c;">RM ${grandTotal.toFixed(2)}</td>
+            <td colspan="3"></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <div class="sig-container">
+        <div class="sig-box">
+          <b>Verified by:</b><br>
+          <span style="font-size: 10px; color: #555;">(sign & include pharmacist chop)</span>
+          <div style="height: 50px;"></div>
+          <b>(Pharmacist Person-in-charge)</b><br>
+          ${escHtml(preparedBy)}
+        </div>
+      </div>
+
+      <script>
+        window.onload = function() {
+          window.focus();
+          window.print();
+        };
+      <\/script>
+    </body>
+    </html>
+  `;
+
+  printWindow.document.open();
+  printWindow.document.write(printHtml);
+  printWindow.document.close();
+}
+
+function exportWriteOffCsv() {
+  const isPoison = activeWriteOffFormType === 'poison';
+  const preparedBy = document.getElementById('writeOffPreparedBy')?.value || 'William Chai';
+  const subDate = document.getElementById('writeOffSubmissionDate')?.value || new Date().toISOString().split('T')[0];
+  const rows = Array.from(document.querySelectorAll('#writeOffItemsTbody tr'));
+
+  if (!rows.length) {
+    alert('No items to export.');
+    return;
+  }
+
+  const lines = [
+    `"NOTE: This form must be submitted to the Admin in Charge (AIC) for approval to write off expired products that are non-returnable or cannot be credited (CN)."`,
+    `"Attach clear photos showing the item, correct quantity, and expiry/manufacturing date via email."`,
+    `"Do not dispose of the products until AIC approval has been obtained."`,
+    `"Monthly Submission Date: 14th of the month"`,
+    `"Should be attached to the Stock Expiry List upon submission."`,
+    `""`,
+    `"Branch Code","PQ0147MI","Prepared By","${preparedBy}"`,
+    `"Branch Name","PMG PHARMACY KOTA SENTOSA","Date","${subDate}"`,
+    `"Form Type","${isPoison ? 'POISON WRITE OFF FORM' : 'NON-POISON WRITE OFF FORM'}"`,
+    `"The Total Cost will be Automatically Calculated"`,
+    `"No.","Item Code","Item Description","Expiry Date","UOM","Quantity","Unit Cost (RM)","Total Cost (RM)","Reason for Expiry","PI No. / Supplier / Purchase Date","Disposal Method"`
+  ];
+
+  let grandTotal = 0;
+  rows.forEach((r, i) => {
+    const code = r.children[1].textContent.trim();
+    const desc = r.children[2].textContent.trim();
+    const exp = r.children[3].textContent.trim();
+    const uom = r.querySelector('.writeoff-uom')?.value || 'Unit';
+    const qty = r.querySelector('.writeoff-qty')?.value || '1';
+    const cost = parseFloat(r.querySelector('.writeoff-unitcost')?.value || 0).toFixed(2);
+    const tot = parseFloat(r.querySelector('.writeoff-row-total')?.textContent.replace(/[^\d.]/g, '') || 0).toFixed(2);
+    grandTotal += parseFloat(tot);
+    const reason = r.querySelector('.writeoff-reason')?.value || 'LACK OF MONITORING';
+    const pi = r.querySelector('.writeoff-pisupplier')?.value || 'N/A';
+    const disposal = r.querySelector('.writeoff-disposal')?.value || (isPoison ? 'SENT TO WAREHOUSE FOR DISPOSAL' : 'LOCAL DISPOSAL');
+
+    lines.push(`"${i + 1}","${code}","${desc.replace(/"/g, '""')}","${exp}","${uom}","${qty}","${cost}","${tot}","${reason}","${pi.replace(/"/g, '""')}","${disposal}"`);
+  });
+
+  lines.push(`"","","","","","TOTAL","","${grandTotal.toFixed(2)}","","",""`);
+  lines.push(`""`);
+  lines.push(`"","","","","","","","Verified by: (sign & include pharmacist chop)","","(Pharmacist Person-in-charge)"`);
+
+  const csvContent = '\uFEFF' + lines.join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', `PMG_${isPoison ? 'Poison' : 'NonPoison'}_WriteOff_PQ0147MI_${subDate}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function confirmAndExecuteWriteOff() {
+  const count = selectedWriteOffRowIds.size;
+  if (count === 0) return;
+
+  const conf = confirm(
+    `Are you sure you want to write off these ${count} item(s)?\n\n` +
+    `Once confirmed:\n` +
+    `1. They will be removed from your active stock expiry tracking list.\n` +
+    `2. A local archive entry is recorded.\n\n` +
+    `Ensure you have printed or exported the official HQ write-off form first.`
+  );
+  if (!conf) return;
+
+  // Mark/remove from expiryItems
+  const toRemove = new Set(selectedWriteOffRowIds);
+  const archived = [];
+  expiryItems = expiryItems.filter(it => {
+    if (toRemove.has(it.rowId)) {
+      archived.push({
+        ...it,
+        writtenOffAt: new Date().toISOString(),
+        writeOffType: activeWriteOffFormType
+      });
+      return false;
+    }
+    return true;
+  });
+
+  // Save archived items
+  try {
+    const existingArchive = JSON.parse(localStorage.getItem('pmg_written_off_stock_archive') || '[]');
+    localStorage.setItem('pmg_written_off_stock_archive', JSON.stringify([...existingArchive, ...archived]));
+  } catch (err) {
+    console.warn('Failed to save to write-off archive:', err);
+  }
+
+  selectedWriteOffRowIds.clear();
+  updateWriteOffSelectedCounter();
+  saveLocalExpiryData();
+  closeStockWriteOffModal();
+  renderExpiryUI();
+
+  if (window.pmgOneDriveSync?.saveStockExpiryToOneDrive) {
+    window.pmgOneDriveSync.saveStockExpiryToOneDrive('Kota Sentosa');
+  }
+
+  showExpiryToast(`✅ Successfully written off and removed ${count} expired item(s)!`);
+}
+
 // Window exports
+window.openSkuBatchExplorerModal = openSkuBatchExplorerModal;
+window.closeSkuBatchExplorerModal = closeSkuBatchExplorerModal;
+window.filterExpiryByCurrentSku = filterExpiryByCurrentSku;
+window.toggleSelectWriteOffItem = toggleSelectWriteOffItem;
+window.toggleSelectAllExpiry = toggleSelectAllExpiry;
+window.openStockWriteOffModal = openStockWriteOffModal;
+window.closeStockWriteOffModal = closeStockWriteOffModal;
+window.setWriteOffFormType = setWriteOffFormType;
+window.recalculateWriteOffRowTotal = recalculateWriteOffRowTotal;
+window.removeWriteOffRow = removeWriteOffRow;
+window.printOfficialWriteOffForm = printOfficialWriteOffForm;
+window.exportWriteOffCsv = exportWriteOffCsv;
+window.confirmAndExecuteWriteOff = confirmAndExecuteWriteOff;
 window.updateAccountsShareUi = updateAccountsShareUi;
 window.copyAccountsWhatsAppSummary = copyAccountsWhatsAppSummary;
 window.promptSetOneDriveShareLink = promptSetOneDriveShareLink;

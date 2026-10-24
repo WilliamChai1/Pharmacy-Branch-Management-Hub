@@ -1615,6 +1615,11 @@
           <i class="fa-solid fa-user-clock text-indigo-600"></i> Pharmacist Schedule & Bookings
           <span id="scheduleBadgeCount" class="bg-indigo-100 text-indigo-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold ml-1">0</span>
         </button>
+        <button id="patientSubTabBtn_rentals" type="button"
+          class="px-5 py-3 text-xs font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-800 flex items-center gap-2 transition whitespace-nowrap">
+          <i class="fa-solid fa-wheelchair text-emerald-600"></i> Medical Equipment Rentals
+          <span id="rentalsBadgeCount" class="bg-emerald-100 text-emerald-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold ml-1">0</span>
+        </button>
       </div>
 
       <!-- Tab View 1: Today's Queue -->
@@ -1896,6 +1901,107 @@
         </div>
       </div>
 
+      <!-- Tab View 6: Medical Equipment Rentals & Payment Reminders -->
+      <div id="patientView_rentals" class="hidden p-4 sm:p-5">
+        <!-- Top Toolbar -->
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5 pb-4 border-b border-gray-200">
+          <div>
+            <h4 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
+              <i class="fa-solid fa-wheelchair text-emerald-600"></i> Medical Equipment Rental Management
+              <span class="text-xs bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">Kota Sentosa</span>
+            </h4>
+            <p class="text-xs text-gray-500 mt-0.5">Track patient rental devices (wheelchairs, oxygen concentrators, hospital beds) & 1-click WhatsApp payment reminders</p>
+          </div>
+
+          <div class="flex items-center gap-2 flex-wrap">
+            <button type="button" onclick="openNewRentalModal()"
+              class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer">
+              <i class="fa-solid fa-plus"></i> New Rental Record
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter & KPI Strip -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+          <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between">
+            <div>
+              <span class="text-[11px] font-bold text-gray-500 uppercase">Active Rentals</span>
+              <div id="rentalKpiActive" class="text-xl font-extrabold text-slate-800">0</div>
+            </div>
+            <div class="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+              <i class="fa-solid fa-clock-rotate-left"></i>
+            </div>
+          </div>
+          <div class="bg-rose-50 border border-rose-200 rounded-xl p-3 flex items-center justify-between">
+            <div>
+              <span class="text-[11px] font-bold text-rose-600 uppercase">Overdue Fee</span>
+              <div id="rentalKpiOverdue" class="text-xl font-extrabold text-rose-700">0</div>
+            </div>
+            <div class="w-9 h-9 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center font-bold">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+          </div>
+          <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center justify-between">
+            <div>
+              <span class="text-[11px] font-bold text-blue-600 uppercase">Monthly Dues (RM)</span>
+              <div id="rentalKpiTotalDue" class="text-xl font-extrabold text-blue-900">RM 0.00</div>
+            </div>
+            <div class="w-9 h-9 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+              <i class="fa-solid fa-money-bill-wave"></i>
+            </div>
+          </div>
+          <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between">
+            <div>
+              <span class="text-[11px] font-bold text-amber-600 uppercase">Total Deposits Held</span>
+              <div id="rentalKpiDeposit" class="text-xl font-extrabold text-amber-800">RM 0.00</div>
+            </div>
+            <div class="w-9 h-9 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
+              <i class="fa-solid fa-vault"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filter Controls -->
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-3 mb-4 bg-gray-50 p-2.5 rounded-xl border border-gray-200">
+          <div class="relative w-full sm:w-72">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+            <input type="text" id="rentalSearchInput" placeholder="Search customer, phone, or equipment…"
+              oninput="renderEquipmentRentals()"
+              class="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-lg text-xs outline-none focus:ring-1 focus:ring-emerald-500 bg-white">
+          </div>
+
+          <div class="flex items-center gap-2 w-full sm:w-auto">
+            <label class="text-xs font-bold text-gray-600 whitespace-nowrap">Filter Status:</label>
+            <select id="rentalStatusFilter" onchange="renderEquipmentRentals()" class="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-bold bg-white outline-none">
+              <option value="all">All Records</option>
+              <option value="active" selected>Active & Due Soon</option>
+              <option value="overdue">⚠️ Overdue Only</option>
+              <option value="returned">Returned / Closed</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Rentals Table -->
+        <div class="bg-white rounded-xl border border-gray-200 overflow-x-auto shadow-2xs">
+          <table class="w-full text-xs text-left">
+            <thead class="bg-slate-900 text-white font-semibold text-[11px] uppercase tracking-wider">
+              <tr>
+                <th class="px-4 py-3">Customer Details</th>
+                <th class="px-4 py-3">Equipment Description</th>
+                <th class="px-4 py-3 text-center">Rental Period</th>
+                <th class="px-4 py-3 text-center">Due Date</th>
+                <th class="px-4 py-3 text-center">Amount (RM)</th>
+                <th class="px-4 py-3 text-center">Deposit</th>
+                <th class="px-4 py-3 text-center">Status</th>
+                <th class="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="rentalTableTbody" class="divide-y divide-gray-100">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
   </div><!-- /content-patient -->
@@ -1925,16 +2031,11 @@
       <div class="p-5 overflow-y-auto space-y-4 text-xs flex-1">
         <div class="flex items-center justify-between gap-3 flex-wrap bg-blue-50/80 p-3 rounded-xl border border-blue-200">
           <div class="flex items-center gap-2">
-            <label class="font-bold text-blue-950">Assign to Branch:</label>
-            <select id="larkImportBranch" class="border border-gray-300 rounded-lg px-2.5 py-1 text-xs font-bold bg-white">
-              <option value="Kota Sentosa">Kota Sentosa</option>
-              <option value="Matang Jaya">Matang Jaya</option>
-              <option value="Sungai Moyan">Sungai Moyan</option>
-              <option value="Malihah">Malihah</option>
-              <option value="Metrocity">Metrocity</option>
-              <option value="Astana">Astana</option>
-              <option value="Samariang">Samariang</option>
-            </select>
+            <label class="font-bold text-blue-950">Branch:</label>
+            <input type="hidden" id="larkImportBranch" value="Kota Sentosa">
+            <span class="px-2.5 py-1 text-xs font-bold bg-blue-100 text-blue-900 rounded-lg border border-blue-200">
+              <i class="fa-solid fa-shop text-blue-600 mr-1"></i> Kota Sentosa (Fixed)
+            </span>
           </div>
           <div class="flex items-center gap-2">
             <label class="cursor-pointer text-xs bg-white hover:bg-slate-50 text-blue-700 border border-blue-300 px-3 py-1 rounded-lg font-bold transition flex items-center gap-1.5 shadow-2xs" title="Upload Lark exported Word document (.docx) or text file">
@@ -2042,13 +2143,7 @@ Date visit: 06.01.2026
           <div>
             <label class="block font-semibold text-gray-700 mb-1">Branch</label>
             <select id="newPatientBranch" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none font-semibold text-gray-800">
-              <option value="Kota Sentosa">Kota Sentosa</option>
-              <option value="Matang Jaya">Matang Jaya</option>
-              <option value="Sungai Moyan">Sungai Moyan</option>
-              <option value="MALIHAH">Malihah</option>
-              <option value="METROCITY">Metrocity</option>
-              <option value="ASTANA">Astana</option>
-              <option value="SAMARIANG">Samariang</option>
+              <option value="Kota Sentosa" selected>Kota Sentosa</option>
             </select>
           </div>
         </div>
@@ -2156,8 +2251,8 @@ Date visit: 06.01.2026
           <div class="p-4 space-y-3.5 bg-white">
             <div>
               <label class="block font-bold text-xs sm:text-sm text-gray-700 mb-1">Chief Complaint (CC) *</label>
-              <input type="text" id="encChiefComplaint" placeholder="e.g. Routine Chronic Refill & BP Review"
-                class="w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm sm:text-base font-medium focus:ring-2 focus:ring-blue-500 outline-none mb-2">
+              <textarea id="encChiefComplaint" rows="2" placeholder="e.g. Routine Chronic Refill & BP Review"
+                class="w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm sm:text-base font-medium focus:ring-2 focus:ring-blue-500 outline-none mb-2 resize-y min-h-[60px]"></textarea>
               <!-- Quick-fill chips -->
               <div class="flex flex-wrap gap-1.5 text-xs sm:text-sm">
                 <span class="text-gray-400 self-center mr-1 text-xs">Quick:</span>
@@ -2172,7 +2267,7 @@ Date visit: 06.01.2026
             <div>
               <label class="block font-bold text-xs sm:text-sm text-gray-700 mb-1">History of Present Illness (HPI)</label>
               <textarea id="encHpi" rows="2" placeholder="Onset, duration, severity, compliance with current medications, dietary triggers, etc."
-                class="w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm sm:text-base leading-relaxed focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
+                class="w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm sm:text-base leading-relaxed focus:ring-2 focus:ring-blue-500 outline-none resize-y min-h-[60px]"></textarea>
             </div>
             <div>
               <div class="flex items-center justify-between mb-1">
@@ -2184,7 +2279,7 @@ Date visit: 06.01.2026
                 </button>
               </div>
               <textarea id="encMedicalHistory" rows="2" placeholder="Past medical illnesses, chronic diseases, past hospitalizations/surgeries, family history, etc."
-                class="w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm sm:text-base leading-relaxed focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
+                class="w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm sm:text-base leading-relaxed focus:ring-2 focus:ring-blue-500 outline-none resize-y min-h-[60px]"></textarea>
             </div>
           </div>
         </div>
@@ -3274,13 +3369,7 @@ Date visit: 06.01.2026
         <div class="flex items-center gap-2">
           <label class="text-xs font-bold text-gray-700">Branch:</label>
           <select id="hoursBranchSelect" onchange="onHoursBranchChange()" class="border border-gray-300 rounded-lg px-3 py-1.5 text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none">
-            <option value="Kota Sentosa">Kota Sentosa</option>
-            <option value="Matang Jaya">Matang Jaya</option>
-            <option value="Sungai Moyan">Sungai Moyan</option>
-            <option value="MALIHAH">Malihah</option>
-            <option value="METROCITY">Metrocity</option>
-            <option value="ASTANA">Astana</option>
-            <option value="SAMARIANG">Samariang</option>
+            <option value="Kota Sentosa" selected>Kota Sentosa</option>
           </select>
         </div>
 
@@ -4066,6 +4155,19 @@ Date visit: 06.01.2026
           </select>
         </div>
 
+        <!-- Action Plan Filter (including Blank filter) -->
+        <div>
+          <select id="expiryActionPlanFilter" class="border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold bg-white outline-none focus:ring-1 focus:ring-blue-400 text-slate-800">
+            <option value="all">All Action Plans</option>
+            <option value="blank" class="font-bold text-amber-600">⚠️ Blank / No Action Plan</option>
+            <option value="Returnable with Condition">Returnable with Condition</option>
+            <option value="Vendor Return Pending">Vendor Return Pending</option>
+            <option value="Clearance Promo">Clearance Promo / PWP</option>
+            <option value="Staff Purchase">Staff Purchase</option>
+            <option value="Write-off">Write-off / Dispose</option>
+          </select>
+        </div>
+
         <!-- Search Input -->
         <div class="relative">
           <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
@@ -4075,6 +4177,10 @@ Date visit: 06.01.2026
       </div>
 
       <div class="flex items-center gap-2">
+        <button id="btnOpenWriteOffModal" type="button" onclick="openStockWriteOffModal()"
+          class="hidden px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer">
+          <i class="fa-solid fa-file-invoice"></i> HQ Write-Off (<span id="writeOffSelectedCount">0</span>)
+        </button>
         <span id="expiryFilteredCount" class="text-xs text-gray-400 font-bold">0 items</span>
       </div>
     </div>
@@ -4085,6 +4191,9 @@ Date visit: 06.01.2026
         <table class="w-full text-left border-collapse">
           <thead>
             <tr class="bg-slate-900 text-white text-[11px] font-bold uppercase tracking-wider">
+              <th class="p-3 text-center w-10">
+                <input type="checkbox" id="expirySelectAllCheckbox" class="w-4 h-4 text-rose-600 rounded cursor-pointer" title="Select All For Write-Off" onchange="toggleSelectAllExpiry(this.checked)">
+              </th>
               <th class="p-3">Branch</th>
               <th class="p-3">Item Code</th>
               <th class="p-3">Item Description</th>
@@ -4148,13 +4257,7 @@ Date visit: 06.01.2026
         <div class="flex items-center gap-2 text-xs">
           <label class="font-bold text-gray-700">Assign to Branch:</label>
           <select id="expiryOcrBranchSelect" class="border border-gray-300 rounded px-2.5 py-1 text-xs font-bold bg-white">
-            <option value="Kota Sentosa">Kota Sentosa</option>
-            <option value="Matang Jaya">Matang Jaya</option>
-            <option value="Sungai Moyan">Sungai Moyan</option>
-            <option value="Malihah">Malihah</option>
-            <option value="Metrocity">Metrocity</option>
-            <option value="Astana">Astana</option>
-            <option value="Samariang">Samariang</option>
+            <option value="Kota Sentosa" selected>Kota Sentosa</option>
           </select>
         </div>
         <p class="text-xs text-gray-500">
@@ -4207,13 +4310,7 @@ Date visit: 06.01.2026
         <div>
           <label class="block font-bold text-gray-700 mb-1">Branch</label>
           <select id="qaBranch" class="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white font-bold">
-            <option value="Kota Sentosa">Kota Sentosa</option>
-            <option value="Matang Jaya">Matang Jaya</option>
-            <option value="Sungai Moyan">Sungai Moyan</option>
-            <option value="Malihah">Malihah</option>
-            <option value="Metrocity">Metrocity</option>
-            <option value="Astana">Astana</option>
-            <option value="Samariang">Samariang</option>
+            <option value="Kota Sentosa" selected>Kota Sentosa</option>
           </select>
         </div>
         <div>
@@ -4273,13 +4370,7 @@ Date visit: 06.01.2026
         <div>
           <label class="block font-bold text-gray-700 mb-1">Branch</label>
           <select id="editBranch" class="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white font-bold">
-            <option value="Kota Sentosa">Kota Sentosa</option>
-            <option value="Matang Jaya">Matang Jaya</option>
-            <option value="Sungai Moyan">Sungai Moyan</option>
-            <option value="Malihah">Malihah</option>
-            <option value="Metrocity">Metrocity</option>
-            <option value="Astana">Astana</option>
-            <option value="Samariang">Samariang</option>
+            <option value="Kota Sentosa" selected>Kota Sentosa</option>
           </select>
         </div>
         <div>
@@ -4547,7 +4638,304 @@ Date visit: 06.01.2026
     </div>
   </div>
 
-  <!-- ─── FLOATING EXPIRY TOAST NOTIFICATION ─────────────────────────────────── -->
+  <!-- ─── HQ STOCK WRITE-OFF MODAL (POISON & NON-POISON) ────────────────────────── -->
+  <div id="stockWriteOffModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs hidden p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in duration-150 border border-gray-100">
+      <!-- Modal Header -->
+      <div class="bg-gradient-to-r from-rose-800 via-rose-700 to-slate-900 text-white px-6 py-4 flex items-center justify-between shadow-xs">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-xl shadow-inner">
+            <i class="fa-solid fa-file-invoice text-rose-300"></i>
+          </div>
+          <div>
+            <h3 class="font-extrabold text-base flex items-center gap-2">
+              <span id="writeOffModalTitle">HQ Official Stock Write-Off Form</span>
+              <span class="text-[10px] bg-rose-500/30 text-rose-200 border border-rose-400/40 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">100% HQ Template</span>
+            </h3>
+            <p class="text-xs text-rose-100">Generate, print, or export official write-off submission for Admin in Charge (AIC)</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeStockWriteOffModal()" class="text-white/80 hover:text-white text-lg p-1.5 transition">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Form Selector Strip & HQ Instructions -->
+      <div class="bg-rose-50/70 border-b border-rose-100 px-6 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div class="flex items-center gap-2">
+          <span class="font-bold text-gray-700">Form Type:</span>
+          <div class="inline-flex p-1 bg-white rounded-xl border border-rose-200 shadow-2xs">
+            <button type="button" id="btnWriteOffTypePoison" onclick="setWriteOffFormType('poison')"
+              class="px-3 py-1 rounded-lg font-bold text-xs transition bg-rose-700 text-white shadow-2xs">
+              ☠️ Poison Write-Off Form
+            </button>
+            <button type="button" id="btnWriteOffTypeNonPoison" onclick="setWriteOffFormType('non_poison')"
+              class="px-3 py-1 rounded-lg font-bold text-xs transition text-gray-600 hover:text-gray-900">
+              📦 Non-Poison Write-Off Form
+            </button>
+          </div>
+        </div>
+
+        <div class="text-gray-600 text-[11px] leading-tight">
+          <span class="font-bold text-rose-800">Monthly Submission Date:</span> 14th of the month · Attach photos & Stock Expiry List
+        </div>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-6 overflow-y-auto space-y-4 flex-1">
+        <!-- HQ Form Meta Card -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
+          <div>
+            <span class="text-gray-500 font-bold block text-[10px] uppercase">Branch Code</span>
+            <span class="font-mono font-extrabold text-slate-800">PQ0147MI</span>
+          </div>
+          <div>
+            <span class="text-gray-500 font-bold block text-[10px] uppercase">Branch Name</span>
+            <span class="font-bold text-slate-800">PMG PHARMACY KOTA SENTOSA</span>
+          </div>
+          <div>
+            <span class="text-gray-500 font-bold block text-[10px] uppercase">Prepared By</span>
+            <input type="text" id="writeOffPreparedBy" value="William Chai" class="w-full bg-white border border-gray-300 rounded px-2 py-0.5 font-bold text-slate-800 text-xs outline-none focus:ring-1 focus:ring-rose-400">
+          </div>
+          <div>
+            <span class="text-gray-500 font-bold block text-[10px] uppercase">Submission Date</span>
+            <input type="date" id="writeOffSubmissionDate" class="w-full bg-white border border-gray-300 rounded px-2 py-0.5 font-bold text-slate-800 text-xs outline-none focus:ring-1 focus:ring-rose-400">
+          </div>
+        </div>
+
+        <!-- Warning / Compliance Notice -->
+        <div class="bg-amber-50 border-l-4 border-amber-500 p-3 rounded-r-xl text-amber-900 text-xs leading-relaxed">
+          <p class="font-bold">⚠️ HQ Compliance Note:</p>
+          <p class="mt-0.5">This form must be submitted to the Admin in Charge (AIC) for approval to write off expired products that are non-returnable or cannot be credited (CN). Attach clear photos showing the item, correct quantity, and expiry/manufacturing date. <b>Do not dispose of the products until AIC approval has been obtained.</b></p>
+        </div>
+
+        <!-- Selected Items Table -->
+        <div class="border border-gray-200 rounded-xl overflow-x-auto shadow-2xs">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead class="bg-slate-900 text-white text-[10px] uppercase font-bold tracking-wider">
+              <tr>
+                <th class="p-2.5 text-center w-8">No.</th>
+                <th class="p-2.5 w-24">Item Code</th>
+                <th class="p-2.5">Item Description</th>
+                <th class="p-2.5 text-center w-24">Expiry Date</th>
+                <th class="p-2.5 text-center w-14">UOM</th>
+                <th class="p-2.5 text-center w-16">Quantity</th>
+                <th class="p-2.5 text-right w-20">Unit Cost (RM)</th>
+                <th class="p-2.5 text-right w-24">Total Cost (RM)</th>
+                <th class="p-2.5 w-36">Reason for Expiry</th>
+                <th class="p-2.5 w-48">PI No. / Supplier / Date</th>
+                <th class="p-2.5 w-40">Disposal Method</th>
+                <th class="p-2.5 text-center w-8"></th>
+              </tr>
+            </thead>
+            <tbody id="writeOffItemsTbody" class="divide-y divide-gray-100">
+              <!-- Rendered dynamically -->
+            </tbody>
+            <tfoot class="bg-slate-100 font-extrabold text-xs border-t-2 border-slate-300">
+              <tr>
+                <td colspan="7" class="p-2.5 text-right uppercase tracking-wider text-slate-700">Total Write-Off Cost:</td>
+                <td id="writeOffTotalCostSum" class="p-2.5 text-right font-mono text-rose-700 text-sm">RM 0.00</td>
+                <td colspan="4" class="p-2.5 text-gray-500 font-normal text-[11px]">(Automatically Calculated)</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <!-- Verification Signature Preview Box -->
+        <div class="bg-gray-50 p-4 rounded-xl border border-gray-200 text-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <div class="font-bold text-slate-800">Verified by:</div>
+            <div class="text-gray-500 text-[11px] italic mt-0.5">(Sign & include pharmacist chop)</div>
+            <div class="mt-2 text-slate-700 font-medium">William Chai (Pharmacist Person-in-charge)</div>
+          </div>
+          <div class="border-2 border-dashed border-gray-300 rounded-lg p-3 text-center text-gray-400 text-[11px] w-48 h-20 flex items-center justify-center">
+            Pharmacist Official Chop & Signature
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="bg-gray-50 px-6 py-3.5 border-t border-gray-200 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="printOfficialWriteOffForm()"
+            class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs transition flex items-center gap-1.5 shadow-xs cursor-pointer">
+            <i class="fa-solid fa-print"></i> 🖨️ Print HQ Form
+          </button>
+          <button type="button" onclick="exportWriteOffCsv()"
+            class="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold text-xs transition flex items-center gap-1.5 shadow-xs cursor-pointer">
+            <i class="fa-solid fa-file-excel"></i> 📊 Export Excel / CSV
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="closeStockWriteOffModal()"
+            class="px-4 py-2 bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-bold text-xs transition cursor-pointer">
+            Close
+          </button>
+          <button type="button" onclick="confirmAndExecuteWriteOff()"
+            class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs transition flex items-center gap-1.5 shadow-sm cursor-pointer">
+            <i class="fa-solid fa-trash-can"></i> Confirm & Remove from Active Expiry List
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── MULTI-BATCH / SKU EXPIRY EXPLORER MODAL ────────────────────────────────── -->
+  <div id="skuBatchExplorerModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs hidden p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in duration-150 border border-gray-100">
+      <div class="bg-gradient-to-r from-indigo-900 via-blue-900 to-slate-900 text-white px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-xl shadow-inner">
+            <i class="fa-solid fa-boxes-stacked text-indigo-300"></i>
+          </div>
+          <div>
+            <h3 class="font-extrabold text-base flex items-center gap-2">
+              <span id="batchExplorerSkuCode">SKU Batches</span>
+              <span class="text-[10px] bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 font-bold px-2 py-0.5 rounded-full">Multi-Batch Explorer</span>
+            </h3>
+            <p id="batchExplorerSkuName" class="text-xs text-indigo-100 line-clamp-1">Product Description</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeSkuBatchExplorerModal()" class="text-white/80 hover:text-white text-lg p-1.5 transition">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="p-6 overflow-y-auto space-y-4 flex-1">
+        <div class="flex items-center justify-between bg-indigo-50 p-3 rounded-xl border border-indigo-200 text-xs">
+          <div>
+            <span class="text-indigo-950 font-bold block">All Tracked Batches for this SKU</span>
+            <span class="text-indigo-700 text-[11px]">Compare expiry dates across shipments to prioritize oldest stock first</span>
+          </div>
+          <span id="batchExplorerTotalQtyBadge" class="bg-indigo-600 text-white font-extrabold text-xs px-2.5 py-1 rounded-lg">0 Units Total</span>
+        </div>
+
+        <div class="border border-gray-200 rounded-xl overflow-x-auto shadow-2xs">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead class="bg-slate-900 text-white text-[10px] uppercase font-bold tracking-wider">
+              <tr>
+                <th class="p-2.5">Batch No.</th>
+                <th class="p-2.5 text-center">Expiry Date</th>
+                <th class="p-2.5 text-center">Urgency / Horizon</th>
+                <th class="p-2.5 text-center">Qty</th>
+                <th class="p-2.5 text-right">Unit Cost</th>
+                <th class="p-2.5">Action Plan</th>
+              </tr>
+            </thead>
+            <tbody id="batchExplorerTbody" class="divide-y divide-gray-100">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="bg-gray-50 px-6 py-3 border-t border-gray-200 flex items-center justify-between">
+        <button type="button" id="btnFilterMainTableBySku" onclick="filterExpiryByCurrentSku()"
+          class="px-4 py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer">
+          <i class="fa-solid fa-filter"></i> Filter Main List to this SKU
+        </button>
+        <button type="button" onclick="closeSkuBatchExplorerModal()"
+          class="px-4 py-2 bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-bold text-xs transition cursor-pointer">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── MEDICAL EQUIPMENT RENTAL ENTRY / EDIT MODAL ───────────────────────────── -->
+  <div id="modalRentalEntry" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs hidden p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in duration-150 border border-gray-100">
+      <div class="bg-gradient-to-r from-emerald-800 to-teal-800 text-white px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-lg">
+            <i class="fa-solid fa-wheelchair text-emerald-300"></i>
+          </div>
+          <div>
+            <h3 id="modalRentalTitle" class="font-extrabold text-base text-white">New Medical Equipment Rental</h3>
+            <p class="text-xs text-emerald-100">Manage patient rental period, dues & WhatsApp reminders</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeRentalModal()" class="text-white/80 hover:text-white text-lg p-1.5 transition">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <form id="formRentalEntry" onsubmit="handleSaveRentalForm(event)" class="p-6 overflow-y-auto space-y-3.5 flex-1 text-xs">
+        <input type="hidden" id="rentalRecordId" value="">
+
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Customer Name *</label>
+          <input type="text" id="rentalCustomerName" required placeholder="e.g. John Tan / Mdm Mary"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-semibold focus:ring-1 focus:ring-emerald-500 outline-none">
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">Customer Phone Number *</label>
+            <input type="tel" id="rentalCustomerPhone" required placeholder="e.g. 0128889831"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono font-bold focus:ring-1 focus:ring-emerald-500 outline-none">
+          </div>
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">Rental Status</label>
+            <select id="rentalStatus" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold bg-white focus:ring-1 focus:ring-emerald-500 outline-none">
+              <option value="Active">🟢 Active Rental</option>
+              <option value="Returned">⚪ Returned & Closed</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Item Description / Equipment *</label>
+          <input type="text" id="rentalItemDesc" required placeholder="e.g. Lightweight Foldable Wheelchair (Chrome)"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-semibold focus:ring-1 focus:ring-emerald-500 outline-none">
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">Rental Start Date</label>
+            <input type="date" id="rentalStartDate" required
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold focus:ring-1 focus:ring-emerald-500 outline-none">
+          </div>
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">Due Date for Fee Payment *</label>
+            <input type="date" id="rentalDueDate" required
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold focus:ring-1 focus:ring-emerald-500 outline-none">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">Rental Amount Due (RM) *</label>
+            <input type="number" step="0.01" min="0" id="rentalAmountDue" required placeholder="50.00"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono font-bold focus:ring-1 focus:ring-emerald-500 outline-none">
+          </div>
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">Deposit Paid (RM)</label>
+            <input type="number" step="0.01" min="0" id="rentalDeposit" placeholder="100.00"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono font-bold focus:ring-1 focus:ring-emerald-500 outline-none">
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Remarks / Serial No. / Condition</label>
+          <textarea id="rentalNotes" rows="2" placeholder="e.g. Serial #WC-0941, includes detachable footrests"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs leading-relaxed focus:ring-1 focus:ring-emerald-500 outline-none resize-y"></textarea>
+        </div>
+
+        <div class="pt-3 border-t border-gray-200 flex items-center justify-end gap-2">
+          <button type="button" onclick="closeRentalModal()"
+            class="px-4 py-2 bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-bold text-xs transition cursor-pointer">
+            Cancel
+          </button>
+          <button type="submit"
+            class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs transition shadow-sm cursor-pointer">
+            💾 Save Rental Record
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
   <div id="expiryToast" class="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl text-xs font-bold flex items-center gap-2 transition-all duration-300 opacity-0 hidden border border-slate-700">
   </div>
 
@@ -4570,7 +4958,7 @@ Date visit: 06.01.2026
         </div>
         <div class="flex items-center gap-2 flex-wrap">
           <select id="returnsBranchFilter" onchange="pmgReturns.render()" class="text-xs bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-teal-500">
-            <!-- Populated dynamically -->
+            <option value="Kota Sentosa" selected>KS01 – Kota Sentosa</option>
           </select>
           <button type="button" onclick="pmgReturns.exportExcel()" class="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold px-3 py-2 rounded-lg text-xs flex items-center gap-1.5 shadow-sm transition">
             <i class="fa-solid fa-file-excel text-emerald-600"></i> Export Excel
@@ -4706,13 +5094,7 @@ Date visit: 06.01.2026
             <div>
               <label class="block font-semibold text-gray-700 mb-1">Branch</label>
               <select id="nrBranchSelect" onchange="pmgReturns.onNrBranchChanged()" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white outline-none focus:ring-2 focus:ring-teal-500">
-                <option value="Kota Sentosa">KS01 – Kota Sentosa</option>
-                <option value="Matang Jaya">MATANG JAYA – Matang Jaya</option>
-                <option value="Sungai Moyan">SUNGAI MOYAN – Sungai Moyan</option>
-                <option value="Malihah">MALIHAH – Malihah</option>
-                <option value="Metrocity">METROCITY – Metrocity</option>
-                <option value="Astana">ASTANA – Astana</option>
-                <option value="Samariang">SAMARIANG – Samariang</option>
+                <option value="Kota Sentosa" selected>KS01 – Kota Sentosa</option>
               </select>
             </div>
             <div>
@@ -4905,13 +5287,7 @@ Date visit: 06.01.2026
             <div>
               <label class="block font-semibold text-gray-700 mb-1">Branch</label>
               <select id="erBranchSelect" onchange="pmgReturns.onErBranchChanged()" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white outline-none focus:ring-2 focus:ring-amber-500">
-                <option value="Kota Sentosa">KS01 – Kota Sentosa</option>
-                <option value="Matang Jaya">MATANG JAYA – Matang Jaya</option>
-                <option value="Sungai Moyan">SUNGAI MOYAN – Sungai Moyan</option>
-                <option value="Malihah">MALIHAH – Malihah</option>
-                <option value="Metrocity">METROCITY – Metrocity</option>
-                <option value="Astana">ASTANA – Astana</option>
-                <option value="Samariang">SAMARIANG – Samariang</option>
+                <option value="Kota Sentosa" selected>KS01 – Kota Sentosa</option>
               </select>
             </div>
             <div>
