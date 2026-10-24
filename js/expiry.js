@@ -57,14 +57,19 @@ function normalizeBranchCode(code) {
 
 // ─── PERSISTENT CLEARED / DONE EXPIRY TOMBSTONES ─────────────────────────────
 const EXPIRY_CLEARED_KEYS_KEY = 'pmg_cleared_expiry_keys';
+let _cachedClearedExpiryKeysSet = null;
 
-function getClearedExpiryKeys() {
+function getClearedExpiryKeys(forceRefresh = false) {
+  if (!forceRefresh && _cachedClearedExpiryKeysSet !== null) {
+    return _cachedClearedExpiryKeysSet;
+  }
   try {
     const raw = localStorage.getItem(EXPIRY_CLEARED_KEYS_KEY);
-    return raw ? new Set(JSON.parse(raw)) : new Set();
+    _cachedClearedExpiryKeysSet = raw ? new Set(JSON.parse(raw)) : new Set();
   } catch (_) {
-    return new Set();
+    _cachedClearedExpiryKeysSet = new Set();
   }
+  return _cachedClearedExpiryKeysSet;
 }
 
 function addClearedExpiryKey(key) {
@@ -72,6 +77,7 @@ function addClearedExpiryKey(key) {
   try {
     const set = getClearedExpiryKeys();
     set.add(String(key).trim().toUpperCase());
+    _cachedClearedExpiryKeysSet = set;
     localStorage.setItem(EXPIRY_CLEARED_KEYS_KEY, JSON.stringify(Array.from(set)));
   } catch (e) {
     console.warn('[PMG Expiry] Error saving cleared expiry key:', e);
@@ -83,6 +89,7 @@ function removeClearedExpiryKey(key) {
   try {
     const set = getClearedExpiryKeys();
     set.delete(String(key).trim().toUpperCase());
+    _cachedClearedExpiryKeysSet = set;
     localStorage.setItem(EXPIRY_CLEARED_KEYS_KEY, JSON.stringify(Array.from(set)));
   } catch (e) {
     console.warn('[PMG Expiry] Error removing cleared expiry key:', e);
@@ -96,6 +103,7 @@ function isItemMarkedDoneOrCleared(item, clearedKeysSet = null) {
     return true;
   }
   const set = clearedKeysSet || getClearedExpiryKeys();
+  if (!set || set.size === 0) return false;
   const codeUpper = String(item.itemCode || '').trim().toUpperCase();
   if (codeUpper && codeUpper !== 'N/A' && set.has(codeUpper)) return true;
   const rId = item.rowId !== undefined && item.rowId !== null ? String(item.rowId).trim() : '';
@@ -1644,16 +1652,49 @@ function getExpiryMonthYearKey(dateVal) {
   return 'UNSCHEDULED';
 }
 
-function calculateExpiryHorizon(dateVal) {
+let _todayDateStr = '';
+let _todayMs = 0;
+
+function getTodayContext() {
+  const now = new Date();
+  const dStr = now.toDateString();
+  if (dStr !== _todayDateStr) {
+    _todayDateStr = dStr;
+    const t = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    _todayMs = t.getTime();
+  }
+  return { todayMs: _todayMs, todayDateStr: _todayDateStr };
+}
+
+function getItemHorizon(it, todayMs, todayDateStr) {
+  if (!it) {
+    return { monthsLeft: 999, daysLeft: 9999, label: 'Unknown', color: 'gray', level: 'safe' };
+  }
+  if (it._horizon && it._horizonDateStr === todayDateStr) {
+    return it._horizon;
+  }
+  const h = calculateExpiryHorizon(it.expiryDate, todayMs);
+  it._horizon = h;
+  it._horizonDateStr = todayDateStr;
+  return h;
+}
+
+function getItemParsedExpiryDate(it) {
+  if (!it) return null;
+  if (it._parsedExpDate !== undefined) return it._parsedExpDate;
+  it._parsedExpDate = parseExpiryDate(it.expiryDate);
+  return it._parsedExpDate;
+}
+
+function calculateExpiryHorizon(dateVal, overrideTodayMs) {
   const d = parseExpiryDate(dateVal);
   if (!d) {
     return { monthsLeft: 999, daysLeft: 9999, label: 'Unknown', color: 'gray', level: 'safe' };
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const todayMs = overrideTodayMs !== undefined ? overrideTodayMs : getTodayContext().todayMs;
 
-  const diffMs = d.getTime() - today.getTime();
+  const diffMs = d.getTime() - todayMs;
   const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
   const monthsLeft = +(daysLeft / 30.4375).toFixed(1);
 
@@ -3614,73 +3655,93 @@ function updateExpiryOfferedPrice(rowId, val) {
 
 // ─── FILTERING & UI RENDERING ────────────────────────────────────────────────
 function filterExpiryItems() {
-  const filtered = expiryItems.filter(it => {
+  const targetBranch = activeExpiryFilter.branch;
+  const isBranchAll = !targetBranch || targetBranch === 'ALL';
+  const targetBranchNorm = isBranchAll ? '' : targetBranch.toLowerCase();
+
+  const targetHorizon = activeExpiryFilter.horizon;
+  const targetReturnPolicy = activeExpiryFilter.returnPolicy;
+  const targetActionPlan = activeExpiryFilter.actionPlan;
+  const searchQ = (activeExpiryFilter.search || '').toLowerCase().trim();
+
+  const clearedSet = getClearedExpiryKeys();
+  const { todayMs, todayDateStr } = getTodayContext();
+
+  const filtered = [];
+  const len = expiryItems.length;
+
+  for (let i = 0; i < len; i++) {
+    const it = expiryItems[i];
+    if (!it) continue;
+
     // 1. Branch filter
-    if (activeExpiryFilter.branch && activeExpiryFilter.branch !== 'ALL') {
-      const bNorm = normalizeBranchCode(it.branch);
-      if (bNorm.toLowerCase() !== activeExpiryFilter.branch.toLowerCase()) return false;
+    if (!isBranchAll) {
+      const bNorm = it._bNorm || (it._bNorm = normalizeBranchCode(it.branch).toLowerCase());
+      if (bNorm !== targetBranchNorm) continue;
     }
 
     // 2. Horizon / Status filter
-    const horizon = calculateExpiryHorizon(it.expiryDate);
-    const isCleared = isItemMarkedDoneOrCleared(it);
+    const isCleared = isItemMarkedDoneOrCleared(it, clearedSet);
 
-    if (activeExpiryFilter.horizon === 'cleared') {
-      if (!isCleared) return false;
-    } else if (activeExpiryFilter.horizon === 'promo') {
-      if (isCleared) return false;
+    if (targetHorizon === 'cleared') {
+      if (!isCleared) continue;
+    } else if (targetHorizon === 'promo') {
+      if (isCleared) continue;
       const isPromo = Boolean(it.offeredPrice) || Boolean(it.clearancePrice) || String(it.actionPlan || '').toLowerCase().includes('promo') || String(it.actionPlan || '').toLowerCase().includes('clearance');
-      if (!isPromo) return false;
+      if (!isPromo) continue;
     } else {
       // Non-cleared views
-      if (isCleared) return false;
-      if (activeExpiryFilter.horizon === '9months' && horizon.monthsLeft > 9) return false;
-      if (activeExpiryFilter.horizon === '12months' && horizon.monthsLeft > 12) return false;
-      if (activeExpiryFilter.horizon === 'critical' && horizon.monthsLeft >= 6) return false;
+      if (isCleared) continue;
+      if (targetHorizon !== 'all') {
+        const horizon = getItemHorizon(it, todayMs, todayDateStr);
+        if (targetHorizon === '9months' && horizon.monthsLeft > 9) continue;
+        if (targetHorizon === '12months' && horizon.monthsLeft > 12) continue;
+        if (targetHorizon === 'critical' && horizon.monthsLeft >= 6) continue;
+      }
     }
 
     // 3. HQ Return Policy filter
-    if (activeExpiryFilter.returnPolicy && activeExpiryFilter.returnPolicy !== 'all') {
+    if (targetReturnPolicy && targetReturnPolicy !== 'all') {
       const returnStatus = getItemHqReturnStatus(it);
-      if (activeExpiryFilter.returnPolicy === 'non_returnable' && returnStatus !== 'NON-RETURNABLE') return false;
-      if (activeExpiryFilter.returnPolicy === 'returnable' && returnStatus !== 'RETURNABLE') return false;
-      if (activeExpiryFilter.returnPolicy === 'special' && returnStatus !== 'SPECIAL') return false;
-      if (activeExpiryFilter.returnPolicy === 'unlisted' && returnStatus !== 'UNLISTED') return false;
+      if (targetReturnPolicy === 'non_returnable' && returnStatus !== 'NON-RETURNABLE') continue;
+      if (targetReturnPolicy === 'returnable' && returnStatus !== 'RETURNABLE') continue;
+      if (targetReturnPolicy === 'special' && returnStatus !== 'SPECIAL') continue;
+      if (targetReturnPolicy === 'unlisted' && returnStatus !== 'UNLISTED') continue;
     }
 
     // 3.5 Action Plan Filter (including Blank and In Write-Off Queue filter)
-    if (activeExpiryFilter.actionPlan && activeExpiryFilter.actionPlan !== 'all') {
+    if (targetActionPlan && targetActionPlan !== 'all') {
       const planRaw = String(it.actionPlan || '').trim();
-      if (activeExpiryFilter.actionPlan === 'blank') {
-        if (planRaw !== '') return false;
-      } else if (activeExpiryFilter.actionPlan === 'in_write_off_queue') {
-        if (!selectedWriteOffRowIds.has(String(it.rowId)) && !isWriteOffActionPlan(planRaw)) return false;
-      } else if (activeExpiryFilter.actionPlan === 'Write-off' || activeExpiryFilter.actionPlan === 'Write-off / Dispose') {
-        if (!isWriteOffActionPlan(planRaw) && !selectedWriteOffRowIds.has(String(it.rowId))) return false;
+      const rIdStr = String(it.rowId || '');
+      if (targetActionPlan === 'blank') {
+        if (planRaw !== '') continue;
+      } else if (targetActionPlan === 'in_write_off_queue') {
+        if (!selectedWriteOffRowIds.has(rIdStr) && !isWriteOffActionPlan(planRaw)) continue;
+      } else if (targetActionPlan === 'Write-off' || targetActionPlan === 'Write-off / Dispose') {
+        if (!isWriteOffActionPlan(planRaw) && !selectedWriteOffRowIds.has(rIdStr)) continue;
       } else {
-        if (!planRaw.toLowerCase().includes(activeExpiryFilter.actionPlan.toLowerCase())) return false;
+        if (!planRaw.toLowerCase().includes(targetActionPlan.toLowerCase())) continue;
       }
     }
 
     // 4. Search filter
-    if (activeExpiryFilter.search) {
-      const q = activeExpiryFilter.search.toLowerCase().trim();
+    if (searchQ) {
       const code = String(it.itemCode || '').toLowerCase();
       const desc = String(it.itemDescription || '').toLowerCase();
       const batch = String(it.batchNumber || '').toLowerCase();
       const plan = String(it.actionPlan || '').toLowerCase();
       const promoRem = String(it.promoRemark || '').toLowerCase();
-      if (!code.includes(q) && !desc.includes(q) && !batch.includes(q) && !plan.includes(q) && !promoRem.includes(q)) return false;
+      if (!code.includes(searchQ) && !desc.includes(searchQ) && !batch.includes(searchQ) && !plan.includes(searchQ) && !promoRem.includes(searchQ)) continue;
     }
 
-    return true;
-  });
+    filtered.push(it);
+  }
 
   if (activeExpiryFilter.sortOrder === 'asc' || activeExpiryFilter.sortOrder === 'desc') {
     const isAsc = activeExpiryFilter.sortOrder === 'asc';
     filtered.sort((a, b) => {
-      const dA = parseExpiryDate(a.expiryDate);
-      const dB = parseExpiryDate(b.expiryDate);
+      const dA = getItemParsedExpiryDate(a);
+      const dB = getItemParsedExpiryDate(b);
       if (!dA && !dB) return 0;
       if (!dA) return 1;
       if (!dB) return -1;
@@ -3713,7 +3774,6 @@ function toggleExpiryDateSort() {
 window.toggleExpiryDateSort = toggleExpiryDateSort;
 
 function renderExpiryUI() {
-  expiryItems = ensureUniqueExpiryRowIds(expiryItems);
   renderExpiryKpis();
   renderExpiryTable();
 }
@@ -3726,23 +3786,32 @@ function renderExpiryKpis() {
   let clearedCount = 0;
 
   const targetBranch = activeExpiryFilter.branch;
+  const isBranchAll = !targetBranch || targetBranch === 'ALL';
+  const targetBranchNorm = isBranchAll ? '' : targetBranch.toLowerCase();
+  const clearedSet = getClearedExpiryKeys();
+  const { todayMs, todayDateStr } = getTodayContext();
 
-  expiryItems.forEach(it => {
-    if (targetBranch && targetBranch !== 'ALL') {
-      if (normalizeBranchCode(it.branch).toLowerCase() !== targetBranch.toLowerCase()) return;
+  const len = expiryItems.length;
+  for (let i = 0; i < len; i++) {
+    const it = expiryItems[i];
+    if (!it) continue;
+
+    if (!isBranchAll) {
+      const bNorm = it._bNorm || (it._bNorm = normalizeBranchCode(it.branch).toLowerCase());
+      if (bNorm !== targetBranchNorm) continue;
     }
 
-    if (isItemMarkedDoneOrCleared(it)) {
+    if (isItemMarkedDoneOrCleared(it, clearedSet)) {
       clearedCount++;
-      return;
+      continue;
     }
 
-    const h = calculateExpiryHorizon(it.expiryDate);
+    const h = getItemHorizon(it, todayMs, todayDateStr);
     if (h.monthsLeft < 3) criticalCount++;
     else if (h.monthsLeft < 6) urgentCount++;
     else if (h.monthsLeft <= 9) kpi9mCount++;
     else if (h.monthsLeft <= 12) monitor12mCount++;
-  });
+  }
 
   const total9mKpi = criticalCount + urgentCount + kpi9mCount;
 
@@ -3751,6 +3820,26 @@ function renderExpiryKpis() {
   setText('expiryKpi9m', total9mKpi);
   setText('expiryKpi12m', monitor12mCount);
   setText('expiryKpiCleared', clearedCount);
+}
+
+function getSkuBatchMap() {
+  if (expiryItems._skuBatchMap && expiryItems._skuBatchMapLen === expiryItems.length) {
+    return expiryItems._skuBatchMap;
+  }
+  const map = {};
+  const len = expiryItems.length;
+  for (let i = 0; i < len; i++) {
+    const it = expiryItems[i];
+    if (!it) continue;
+    const code = String(it.itemCode || '').trim();
+    if (code) {
+      if (!map[code]) map[code] = [];
+      map[code].push(it);
+    }
+  }
+  expiryItems._skuBatchMap = map;
+  expiryItems._skuBatchMapLen = expiryItems.length;
+  return map;
 }
 
 function renderExpiryTable() {
@@ -3764,7 +3853,7 @@ function renderExpiryTable() {
   if (items.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="9" class="text-center py-12 text-gray-400">
+        <td colspan="10" class="text-center py-12 text-gray-400">
           <i class="fa-solid fa-box-open text-4xl mb-3 text-gray-300 block"></i>
           No expiry stock records found matching your filters.
           <p class="text-xs text-gray-400 mt-1">Upload a PDF invoice or click "+ Quick Add" to begin tracking.</p>
@@ -3791,17 +3880,13 @@ function renderExpiryTable() {
     }
   }
 
-  const skuBatchMap = {};
-  expiryItems.forEach(x => {
-    const code = String(x.itemCode || '').trim();
-    if (!code) return;
-    if (!skuBatchMap[code]) skuBatchMap[code] = [];
-    skuBatchMap[code].push(x);
-  });
+  const skuBatchMap = getSkuBatchMap();
+  const clearedSet = getClearedExpiryKeys();
+  const { todayMs, todayDateStr } = getTodayContext();
 
   tbody.innerHTML = displayedItems.map((it, idx) => {
-    const h = calculateExpiryHorizon(it.expiryDate);
-    const isCleared = isItemMarkedDoneOrCleared(it);
+    const h = getItemHorizon(it, todayMs, todayDateStr);
+    const isCleared = isItemMarkedDoneOrCleared(it, clearedSet);
     if (!it.rowId || String(it.rowId).trim() === '' || String(it.rowId).trim() === 'undefined') {
       it.rowId = getExpiryRowUid(it, idx);
     }
@@ -3824,11 +3909,6 @@ function renderExpiryTable() {
             data-row-id="${safeRowId}"
             ${selectedWriteOffRowIds.has(it.rowId) ? 'checked' : ''}
             onchange="toggleSelectWriteOffItem('${safeRowId}', this.checked)">
-        </td>
-        <td class="p-3 text-xs font-bold text-gray-700 whitespace-nowrap">
-          <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-100 border text-slate-700">
-            <i class="fa-solid fa-shop text-[10px] text-blue-600"></i> ${escHtml(it.branch)}
-          </span>
         </td>
         <td class="p-3 font-mono text-xs font-extrabold text-blue-900 whitespace-nowrap">
           ${escHtml(it.itemCode)}
@@ -4148,8 +4228,11 @@ function getShortDatedStockForReplenishment(maxMonths = 12) {
 
 // ─── EVENT LISTENERS ─────────────────────────────────────────────────────────
 function setupExpiryEventListeners() {
+  if (setupExpiryEventListeners._installed) return;
+  setupExpiryEventListeners._installed = true;
+
   const branchSelect = document.getElementById('expiryBranchFilter');
-  if (branchSelect) {
+  if (branchSelect && branchSelect.tagName === 'SELECT') {
     branchSelect.addEventListener('change', e => {
       activeExpiryFilter.branch = e.target.value;
       expiryCurrentPage = 1;
@@ -4187,10 +4270,14 @@ function setupExpiryEventListeners() {
 
   const searchInput = document.getElementById('expirySearchInput');
   if (searchInput) {
+    let searchDebounceTimer = null;
     searchInput.addEventListener('input', e => {
-      activeExpiryFilter.search = e.target.value;
-      expiryCurrentPage = 1;
-      renderExpiryUI();
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        activeExpiryFilter.search = e.target.value;
+        expiryCurrentPage = 1;
+        renderExpiryUI();
+      }, 150);
     });
   }
 

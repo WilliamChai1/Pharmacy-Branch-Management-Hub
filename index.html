@@ -4125,12 +4125,8 @@ Date visit: 06.01.2026
     <!-- Filter & Search Controls Bar -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4 flex flex-wrap gap-3 items-center justify-between">
       <div class="flex items-center gap-3 flex-wrap">
-        <!-- Branch Selector (Kota Sentosa Scope) -->
-        <div>
-          <select id="expiryBranchFilter" class="border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold bg-white outline-none focus:ring-1 focus:ring-blue-400 text-blue-900">
-            <option value="Kota Sentosa" selected>PMG Kota Sentosa</option>
-          </select>
-        </div>
+        <!-- Fixed Outlet: Kota Sentosa (Single outlet mode) -->
+        <input type="hidden" id="expiryBranchFilter" value="Kota Sentosa">
 
         <!-- Horizon Filter -->
         <div>
@@ -4195,7 +4191,6 @@ Date visit: 06.01.2026
               <th class="p-3 text-center w-10">
                 <input type="checkbox" id="expirySelectAllCheckbox" class="w-4 h-4 text-rose-600 rounded cursor-pointer" title="Select All For Write-Off" onchange="toggleSelectAllExpiry(this.checked)">
               </th>
-              <th class="p-3">Branch</th>
               <th class="p-3">Item Code</th>
               <th class="p-3">Item Description</th>
               <th class="p-3 text-center">HQ Return Policy</th>
@@ -4256,10 +4251,10 @@ Date visit: 06.01.2026
 
       <div class="p-4 bg-blue-50/60 border-b border-blue-100 flex items-center justify-between gap-4 flex-wrap">
         <div class="flex items-center gap-2 text-xs">
-          <label class="font-bold text-gray-700">Assign to Branch:</label>
-          <select id="expiryOcrBranchSelect" class="border border-gray-300 rounded px-2.5 py-1 text-xs font-bold bg-white">
-            <option value="Kota Sentosa" selected>Kota Sentosa</option>
-          </select>
+          <input type="hidden" id="expiryOcrBranchSelect" value="Kota Sentosa">
+          <span class="text-xs font-bold text-blue-900 bg-white px-2.5 py-1 rounded border border-blue-200">
+            <i class="fa-solid fa-shop text-blue-600 mr-1"></i> PMG Kota Sentosa
+          </span>
         </div>
         <p class="text-xs text-gray-500">
           Verify item details and dates before committing. Click fields to edit if needed.
@@ -4308,12 +4303,7 @@ Date visit: 06.01.2026
       </div>
 
       <form id="expiryQuickAddForm" onsubmit="handleQuickAddSubmit(event)" class="p-6 space-y-4 text-xs">
-        <div>
-          <label class="block font-bold text-gray-700 mb-1">Branch</label>
-          <select id="qaBranch" class="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white font-bold">
-            <option value="Kota Sentosa" selected>Kota Sentosa</option>
-          </select>
-        </div>
+        <input type="hidden" id="qaBranch" value="Kota Sentosa">
         <div>
           <label class="block font-bold text-gray-700 mb-1">Item Code / SKU</label>
           <input id="qaItemCode" type="text" placeholder="e.g. 100234" required
@@ -4368,12 +4358,7 @@ Date visit: 06.01.2026
 
       <form id="expiryEditForm" onsubmit="handleEditExpiryItemSubmit(event)" class="p-6 space-y-4 text-xs">
         <input type="hidden" id="editRowId">
-        <div>
-          <label class="block font-bold text-gray-700 mb-1">Branch</label>
-          <select id="editBranch" class="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white font-bold">
-            <option value="Kota Sentosa" selected>Kota Sentosa</option>
-          </select>
-        </div>
+        <input type="hidden" id="editBranch" value="Kota Sentosa">
         <div>
           <label class="block font-bold text-gray-700 mb-1">Item Code / SKU</label>
           <input id="editItemCode" type="text" placeholder="e.g. 100234" required
@@ -6717,7 +6702,7 @@ ItemCode,Description,Brand,Category,Cost,SellingPrice,Supplier
 <script src="js/patient.js?v=20261024_v7"></script>
 <script src="js/seed_expiry_data.js?v=20261024_v7"></script>
 <script src="js/hq_return_policy.js?v=20261024_v7"></script>
-<script src="js/expiry.js?v=20261024_writeoff_v8"></script>
+<script src="js/expiry.js?v=20261024_perf_v9"></script>
 <script src="js/returns-cn.js?v=20261024_v7"></script>
 <script src="js/pricing-intelligence.js?v=20261024_v7"></script>
 <script src="js/recruitment.js?v=20261024_v7"></script>
@@ -7409,7 +7394,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // PWA service worker
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js?v=20261024_v7').catch(() => {});
+    navigator.serviceWorker.register('sw.js?v=20261024_v9').catch(() => {});
   }
 });
 
