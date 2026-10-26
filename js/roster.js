@@ -60,7 +60,8 @@ function initRoster() {
   const dlBtn = document.getElementById('rosterDownloadBtn');
   if (dlBtn) dlBtn.addEventListener('click', downloadRymnetCSV);
 
-
+  const dlXlsxBtn = document.getElementById('rosterDownloadXlsxBtn');
+  if (dlXlsxBtn) dlXlsxBtn.addEventListener('click', downloadRymnetExcel);
 }
 
 // ─── FILE HANDLER ─────────────────────────────────────────────────────────────
@@ -835,26 +836,32 @@ function downloadRymnetCSV() {
 
   const branchStaff = STAFF_MAP.filter(s => !s.branchCode || s.branchCode === branchVal);
   (branchStaff.length > 0 ? branchStaff : STAFF_MAP).forEach(s => {
-    employeeMap.set(s.empNo, {
-      empNo: s.empNo,
+    const eNo = s.empNo === 'PMG03801' ? 'PMG04331' : s.empNo;
+    employeeMap.set(eNo, {
+      empNo: eNo,
       empName: s.empName,
       days: {}
     });
   });
 
   rosterFlatRecords.forEach(rec => {
-    if (!employeeMap.has(rec.empNo)) {
-      employeeMap.set(rec.empNo, {
-        empNo: rec.empNo,
+    let eNo = rec.empNo;
+    if (eNo === 'PMG03801' || (rec.nickname && rec.nickname.toUpperCase() === 'VANESSA')) eNo = 'PMG04331';
+    if (!employeeMap.has(eNo)) {
+      employeeMap.set(eNo, {
+        empNo: eNo,
         empName: rec.empName,
         days: {}
       });
     }
-    employeeMap.get(rec.empNo).days[rec.day] = rec;
+    employeeMap.get(eNo).days[rec.day] = rec;
   });
 
+  // Sort employees by employee number ascending matching Picture 2
+  const sortedEmps = Array.from(employeeMap.values()).sort((a, b) => a.empNo.localeCompare(b.empNo, undefined, { numeric: true }));
+
   // 3. For each employee, generate paired Shift row and Leave row
-  employeeMap.forEach(emp => {
+  sortedEmps.forEach(emp => {
     const shiftRow = [emp.empNo, `"${emp.empName.replace(/"/g, '""')}"`];
     const leaveRow = ['', ''];
 
@@ -907,6 +914,112 @@ function downloadRymnetCSV() {
     setTimeout(() => { dlBtn.innerHTML = orig; dlBtn.disabled = false; }, 3000);
   }
 }
+window.downloadRymnetCSV = downloadRymnetCSV;
+
+// ─── DOWNLOAD RYMNET MATRIX EXCEL (.XLSX) ─────────────────────────────────────
+function downloadRymnetExcel() {
+  if (!rosterFlatRecords.length) {
+    alert('No records to export. Please upload a roster file first.');
+    return;
+  }
+  if (typeof XLSX === 'undefined') {
+    alert('SheetJS (XLSX) library not loaded.');
+    return;
+  }
+
+  const monthVal  = document.getElementById('rosterMonth')?.value  || '2026-09';
+  const branchVal = document.getElementById('rosterBranchCode')?.value?.trim() || 'KS01';
+
+  const [yearStr, monthStr] = monthVal.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+  const maxDayInMonth = new Date(year, month, 0).getDate();
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  const wsData = [];
+  const headerCols = ['Employee No', 'Employee Name'];
+  for (let d = 1; d <= maxDayInMonth; d++) {
+    const dt = new Date(year, month - 1, d);
+    const dayName = dayNames[dt.getDay()];
+    headerCols.push(`${String(d).padStart(2, '0')} (${dayName})`);
+  }
+  wsData.push(headerCols);
+
+  const employeeMap = new Map();
+  const branchStaff = STAFF_MAP.filter(s => !s.branchCode || s.branchCode === branchVal);
+  (branchStaff.length > 0 ? branchStaff : STAFF_MAP).forEach(s => {
+    const eNo = s.empNo === 'PMG03801' ? 'PMG04331' : s.empNo;
+    employeeMap.set(eNo, {
+      empNo: eNo,
+      empName: s.empName,
+      days: {}
+    });
+  });
+
+  rosterFlatRecords.forEach(rec => {
+    let eNo = rec.empNo;
+    if (eNo === 'PMG03801' || (rec.nickname && rec.nickname.toUpperCase() === 'VANESSA')) eNo = 'PMG04331';
+    if (!employeeMap.has(eNo)) {
+      employeeMap.set(eNo, {
+        empNo: eNo,
+        empName: rec.empName,
+        days: {}
+      });
+    }
+    employeeMap.get(eNo).days[rec.day] = rec;
+  });
+
+  const sortedEmps = Array.from(employeeMap.values()).sort((a, b) => a.empNo.localeCompare(b.empNo, undefined, { numeric: true }));
+
+  sortedEmps.forEach(emp => {
+    const shiftRow = [emp.empNo, emp.empName];
+    const leaveRow = ['', ''];
+
+    for (let d = 1; d <= maxDayInMonth; d++) {
+      const rec = emp.days[d];
+      let sVal = '';
+      let lVal = '';
+
+      if (rec) {
+        sVal = rec.shiftCode || '';
+        lVal = rec.leaveCode || '';
+
+        if (['RD', 'OD', 'OFF', 'ANL', 'AL', 'SL', 'MC', 'PH', 'RPL', 'BL', 'EL', 'UPL', 'TRG'].includes(sVal.toUpperCase())) {
+          if (!lVal) lVal = sVal;
+          sVal = '';
+        }
+
+        if (lVal.toUpperCase() === 'OFF') lVal = 'RD';
+        if (lVal.toUpperCase() === 'AL')  lVal = 'ANL';
+        if (lVal.toUpperCase() === 'MC')  lVal = 'SL';
+      } else {
+        sVal = '';
+        lVal = 'RD';
+      }
+
+      shiftRow.push(sVal);
+      leaveRow.push(lVal);
+    }
+
+    wsData.push(shiftRow);
+    wsData.push(leaveRow);
+  });
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  ws['!cols'] = [{ wch: 15 }, { wch: 34 }, ...Array(maxDayInMonth).fill({ wch: 16 })];
+  XLSX.utils.book_append_sheet(wb, ws, `Rymnet_${monthVal}`);
+  XLSX.writeFile(wb, `rymnet_monthly_schedule_${branchVal}_${monthVal}.xlsx`);
+
+  const dlXlsxBtn = document.getElementById('rosterDownloadXlsxBtn');
+  if (dlXlsxBtn) {
+    const orig = dlXlsxBtn.innerHTML;
+    dlXlsxBtn.innerHTML = '<i class="fa-solid fa-circle-check mr-2"></i>Downloaded Rymnet Excel!';
+    dlXlsxBtn.disabled = true;
+    setTimeout(() => { dlXlsxBtn.innerHTML = orig; dlXlsxBtn.disabled = false; }, 3000);
+  }
+}
+window.downloadRymnetExcel = downloadRymnetExcel;
 
 
 

@@ -502,9 +502,16 @@
       <!-- Action buttons -->
       <div class="flex items-center justify-end flex-wrap gap-3">
         <button id="rosterDownloadBtn" type="button"
-          class="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-6 py-2.5 rounded-lg flex items-center gap-2 transition shadow-sm">
-          <i class="fa-solid fa-file-arrow-down"></i>
-          Download Rymnet Import CSV (Matrix Format)
+          class="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg flex items-center gap-2 transition shadow-sm"
+          title="Download official Rymnet HRMS Import CSV (paired Shift & Leave matrix with Employee No, Employee Name, and Day-of-week headers)">
+          <i class="fa-solid fa-file-csv"></i>
+          Download Rymnet Import CSV
+        </button>
+        <button id="rosterDownloadXlsxBtn" type="button"
+          class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg flex items-center gap-2 transition shadow-sm"
+          title="Download official Rymnet HRMS Import Excel (.xlsx) exactly formatted for Rymnet">
+          <i class="fa-solid fa-file-excel"></i>
+          Download Rymnet Import Excel (.xlsx)
         </button>
       </div>
     </div>
@@ -949,12 +956,14 @@
               <i class="fa-solid fa-file-excel"></i> Export PMG Visual Timeline (.xlsx)
             </button>
             <button id="schedulerDownloadCsvBtn" type="button"
-              class="bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-4 py-2.5 rounded-lg flex items-center gap-1.5 transition shadow-sm">
+              class="bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-4 py-2.5 rounded-lg flex items-center gap-1.5 transition shadow-sm"
+              title="Download official Rymnet HRMS Import CSV (paired Shift & Leave matrix with Employee No, Employee Name, and Day-of-week headers)">
               <i class="fa-solid fa-file-csv"></i> Download Rymnet Matrix CSV
             </button>
             <button id="schedulerDownloadXlsxBtn" type="button"
-              class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-2.5 rounded-lg flex items-center gap-1.5 transition shadow-sm">
-              <i class="fa-solid fa-table"></i> Matrix Excel
+              class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3.5 py-2.5 rounded-lg flex items-center gap-1.5 transition shadow-sm"
+              title="Download official Rymnet HRMS Import Excel (.xlsx) (paired Shift & Leave matrix exactly formatted for Rymnet)">
+              <i class="fa-solid fa-file-excel"></i> Rymnet Excel (.xlsx)
             </button>
             <button id="schedulerCopyWaBtn" type="button"
               class="bg-gray-700 hover:bg-gray-800 text-white text-xs font-semibold px-3 py-2.5 rounded-lg flex items-center gap-1.5 transition shadow-sm">
@@ -6746,12 +6755,12 @@ ItemCode,Description,Brand,Category,Cost,SellingPrice,Supplier
      SCRIPTS (load order matters: data → auth → modules)
 ══════════════════════════════════════════════════════════════════════════════ -->
 
-<script src="js/data.js?v=20261024_v7"></script>
+<script src="js/data.js?v=20261026_rymnet_v8"></script>
 <script src="js/auth.js?v=20261024_v7"></script>
 <script src="js/inventory.js?v=20261024_v7"></script>
-<script src="js/roster.js?v=20261024_v7"></script>
+<script src="js/roster.js?v=20261026_rymnet_v8"></script>
 <script src="js/audit.js?v=20261024_v7"></script>
-<script src="js/scheduler.js?v=20261024_v7"></script>
+<script src="js/scheduler.js?v=20261026_rymnet_v8"></script>
 <script src="js/db.js?v=20261024_v7"></script>
 <script src="js/patient.js?v=20261026_merge_v11"></script>
 <script src="js/onedrive-sync.js?v=20261024_merge_v8"></script>

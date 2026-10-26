@@ -70,6 +70,8 @@ let USERS = [
   { username: 'Penny',       password: '692692', branch: 'Kota Sentosa', role: 'Staff',      displayName: 'Jong Pei Choo (Staff)',        empNo: 'PMG02694' },
   { username: 'Nurhafizah',  password: '161799', branch: 'Kota Sentosa', role: 'Staff',      displayName: 'Nurhafizah (Staff)',           empNo: 'PMG02070' },
   { username: 'Christina',   password: '303300', branch: 'Kota Sentosa', role: 'Pharmacist', displayName: 'Christina Lee Ying Ying (PRP)', empNo: 'PMG03033' },
+  { username: 'Meylina',     password: '1234',   branch: 'Kota Sentosa', role: 'Staff',      displayName: 'Meylina Elvy (Staff)',         empNo: 'PMG04324' },
+  { username: 'Vanessa',     password: '1234',   branch: 'Kota Sentosa', role: 'Staff',      displayName: 'Vanessa Anak Blaise (Staff)',  empNo: 'PMG04331' },
 ];
 
 // ─── STAFF NICKNAME → RYMNET MAPPING (offline fallback) ──────────────────────
@@ -77,11 +79,11 @@ let USERS = [
 // Roselin (PMG03631) and Jamie (PMG03532) have left PMG — removed 19 Sep 2026.
 // Daniela Janet (PMG03062) has resigned — removed 04 Oct 2026.
 // Ting Kwang Yu (PMG00723) and Kenix Ling (PMG02963) left PMG Kota Sentosa effective Nov 2026.
-// Vanessa Anak Blaise (PMG03801) joined PMG Kota Sentosa on 1 Nov 2026.
+// Vanessa Anak Blaise (PMG04331) joined PMG Kota Sentosa on 1 Nov 2026.
 let STAFF_MAP = [
   // ── Kota Sentosa (KS01) — active staff only ──
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'TING',       empNo: 'PMG00723', empName: 'TING KWANG YU'                   },
-  { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'WILLIAM',    empNo: 'PMG00831', empName: 'WILLIAM CHAI YEE SIAN'           },
+  { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'WILLIAM',    empNo: 'PMG00831', empName: 'CHAI YEE SIAN'                   },
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'LOUNA',      empNo: 'PMG01294', empName: 'HANIESHA LOUNA ANAK DAGENG'       },
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'FIONA',      empNo: 'PMG01780', empName: 'FIONA FIENA ANAK JAMES'           },
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'NURHAFIZAH', empNo: 'PMG02070', empName: 'NURHAFIZAH BINTI PAULI'           },
@@ -89,7 +91,8 @@ let STAFF_MAP = [
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'KENIX',      empNo: 'PMG02963', empName: 'KENIX LING WANG YIING'            },
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'FARIZIN',    empNo: 'PMG03375', empName: 'MUHAMMAD NUR FARIZIN BIN ABDULLAH'},
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'CHRISTINA',  empNo: 'PMG03033', empName: 'CHRISTINA LEE YING YING'          },
-  { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'VANESSA',    empNo: 'PMG03801', empName: 'VANESSA ANAK BLAISE'              },
+  { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'MEYLINA',    empNo: 'PMG04324', empName: 'MEYLINA ELVY ANAK JOSWAI'         },
+  { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'VANESSA',    empNo: 'PMG04331', empName: 'VANESSA ANAK BLAISE'              },
   // ── BR02–BR06: add rows here OR just update the Google Sheet ──
 ];
 

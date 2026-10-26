@@ -514,7 +514,28 @@ const DEFAULT_KS01_TEAMMATES = [
     }
   },
   {
-    empNo: 'PMG03801',
+    empNo: 'PMG04324',
+    nickname: 'MEYLINA',
+    empName: 'MEYLINA ELVY ANAK JOSWAI',
+    position: 'Staff',
+    isPharmacist: false,
+    scheduleMode: 'Rotating',
+    race: 'Iban / Bidayuh',
+    shiftPref: 'Flexible',
+    restDayPref: 'Wednesday',
+    halfDayPref: 'Friday Morning (5H)',
+    dayPrefs: {
+      Monday: 'Flexible',
+      Tuesday: 'Flexible',
+      Wednesday: 'RD',
+      Thursday: 'Flexible',
+      Friday: 'Morning Half (5H)',
+      Saturday: 'Flexible',
+      Sunday: 'Flexible'
+    }
+  },
+  {
+    empNo: 'PMG04331',
     nickname: 'VANESSA',
     empName: 'VANESSA ANAK BLAISE',
     position: 'Trainee',
@@ -585,7 +606,7 @@ function isTraineeTeammate(tm) {
   const pos = String(tm.position || '').trim().toLowerCase();
   if (pos === 'trainee' || pos.includes('trainee')) return true;
   if (tm.isTrainee !== undefined) return !!tm.isTrainee;
-  return tm.empNo === 'PMG03801' || tm.nickname === 'VANESSA' || !!tm.adaptationPhase;
+  return tm.empNo === 'PMG04331' || tm.empNo === 'PMG03801' || tm.nickname === 'VANESSA' || !!tm.adaptationPhase;
 }
 
 // ─── INIT SCHEDULER ───────────────────────────────────────────────────────────
@@ -653,7 +674,7 @@ function initScheduler() {
   if (dlCsvBtn) dlCsvBtn.addEventListener('click', exportScheduleToRymnetCSV);
 
   const dlXlsxBtn = document.getElementById('schedulerDownloadXlsxBtn');
-  if (dlXlsxBtn) dlXlsxBtn.addEventListener('click', exportScheduleToExcel);
+  if (dlXlsxBtn) dlXlsxBtn.addEventListener('click', exportScheduleToRymnetExcel);
 
   const copyWaBtn = document.getElementById('schedulerCopyWaBtn');
   if (copyWaBtn) copyWaBtn.addEventListener('click', copyScheduleWhatsAppSummary);
@@ -746,24 +767,33 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
     // 1. Purge Daniela Janet (Resigned)
     currentTeammates = currentTeammates.filter(t => t.empNo !== 'PMG03062' && t.nickname !== 'JANET');
 
-    // 2. November 2026 Staff Realignment: Ting & Kenix departure; Vanessa arrival
+    // 2. November 2026 Staff Realignment: Ting & Kenix departure; Vanessa arrival & Meylina
     if (isNov2026OrLater) {
       currentTeammates = currentTeammates.filter(t => t.empNo !== 'PMG00723' && t.nickname !== 'TING' && t.empNo !== 'PMG02963' && t.nickname !== 'KENIX');
-      const vanessa = currentTeammates.find(t => t.empNo === 'PMG03801' || t.nickname === 'VANESSA');
+      const vanessa = currentTeammates.find(t => t.empNo === 'PMG04331' || t.empNo === 'PMG03801' || t.nickname === 'VANESSA');
       if (!vanessa) {
         const defVanessa = DEFAULT_KS01_TEAMMATES.find(t => t.nickname === 'VANESSA');
         if (defVanessa) {
           currentTeammates.push(JSON.parse(JSON.stringify(defVanessa)));
         }
       } else {
+        vanessa.empNo = 'PMG04331';
         if (!vanessa.position || vanessa.position === 'Staff') {
           vanessa.position = 'Trainee';
         }
         vanessa.isTrainee = true;
       }
+      // Ensure Meylina is present for KS01
+      const meylina = currentTeammates.find(t => t.empNo === 'PMG04324' || (t.nickname && t.nickname.toUpperCase() === 'MEYLINA'));
+      if (!meylina) {
+        const defMeylina = DEFAULT_KS01_TEAMMATES.find(t => t.nickname === 'MEYLINA');
+        if (defMeylina) {
+          currentTeammates.push(JSON.parse(JSON.stringify(defMeylina)));
+        }
+      }
     } else {
       // Historical schedule prior to Nov 2026: restore Ting and Kenix, omit Vanessa
-      currentTeammates = currentTeammates.filter(t => t.empNo !== 'PMG03801' && t.nickname !== 'VANESSA');
+      currentTeammates = currentTeammates.filter(t => t.empNo !== 'PMG04331' && t.empNo !== 'PMG03801' && t.nickname !== 'VANESSA');
       HISTORICAL_KS01_PRE_NOV26.forEach(histTm => {
         if (!currentTeammates.some(t => t.empNo === histTm.empNo || t.nickname === histTm.nickname)) {
           currentTeammates.push(JSON.parse(JSON.stringify(histTm)));
@@ -4937,6 +4967,53 @@ window.updateDayShiftEditorMeter = updateDayShiftEditorMeter;
 window.closeDayShiftEditorModal = closeDayShiftEditorModal;
 window.saveDayShiftEditorModal = saveDayShiftEditorModal;
 
+// Helper to safely format CSV cells
+function escapeRymnetCsvCell(cell) {
+  if (cell === null || cell === undefined) return '';
+  const str = String(cell);
+  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+// Helper to resolve official employee number
+function getRymnetEmpNo(tm) {
+  const raw = String(tm.empNo || '').trim();
+  const nick = String(tm.nickname || '').trim().toUpperCase();
+  if (raw === 'PMG03801' || nick === 'VANESSA') return 'PMG04331';
+  if (raw) return raw;
+  const staff = STAFF_MAP.find(s => tm.nickname && s.nickname.toUpperCase() === tm.nickname.toUpperCase());
+  if (staff && staff.empNo) {
+    if (staff.empNo === 'PMG03801' || nick === 'VANESSA') return 'PMG04331';
+    return staff.empNo;
+  }
+  return '';
+}
+
+// Helper to resolve official employee full name matching Rymnet HRMS
+function getRymnetEmpName(tm) {
+  if (tm.empName && String(tm.empName).trim()) {
+    let name = String(tm.empName).trim();
+    if (name.toUpperCase().includes('WILLIAM CHAI') || name.toUpperCase() === 'WILLIAM CHAI YEE SIAN') {
+      return 'CHAI YEE SIAN';
+    }
+    return name;
+  }
+  const staff = STAFF_MAP.find(s => s.empNo === tm.empNo || (tm.nickname && s.nickname.toUpperCase() === tm.nickname.toUpperCase()));
+  if (staff && staff.empName) {
+    let name = staff.empName;
+    if (name.toUpperCase().includes('WILLIAM CHAI') || name.toUpperCase() === 'WILLIAM CHAI YEE SIAN') {
+      return 'CHAI YEE SIAN';
+    }
+    return name;
+  }
+  if (tm.displayName) {
+    return tm.displayName.replace(/\s*\(.*?\)\s*/g, '').trim();
+  }
+  return tm.nickname || tm.name || '';
+}
+
 // ─── EXPORT TO RYMNET MATRIX CSV ──────────────────────────────────────────────
 function exportScheduleToRymnetCSV() {
   if (!generatedScheduleData || !generatedScheduleData.days) {
@@ -4947,48 +5024,179 @@ function exportScheduleToRymnetCSV() {
   const { month, branch, days } = generatedScheduleData;
   const [yearStr, monthStr] = month.split('-');
   const year = parseInt(yearStr, 10);
-  const totalDaysInMonth = new Date(year, parseInt(monthStr, 10), 0).getDate();
+  const mIdx = parseInt(monthStr, 10) - 1;
+  const totalDaysInMonth = new Date(year, mIdx + 1, 0).getDate();
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   const lines = [];
 
-  // Row 1: Days of month
-  const headerDays = ['BRANCH', 'CODE'];
-  for (let d = 1; d <= totalDaysInMonth; d++) headerDays.push(d);
-  headerDays.push(''); // Trailing comma
-  lines.push(headerDays.join(','));
+  // Row 1: Header matching Rymnet system format (Picture 2)
+  // Column A: 'Employee No', Column B: 'Employee Name', then '01 (Sun)', '02 (Mon)', ...
+  const headerCols = ['Employee No', 'Employee Name'];
+  for (let d = 1; d <= totalDaysInMonth; d++) {
+    const dt = new Date(year, mIdx, d);
+    const dayName = dayNames[dt.getDay()];
+    headerCols.push(`${String(d).padStart(2, '0')} (${dayName})`);
+  }
+  headerCols.push(''); // Trailing empty column matching Rymnet matrix format
+  lines.push(headerCols.map(escapeRymnetCsvCell).join(','));
+
+  // Sort teammates by employee number ascending (PMG00831, PMG01294... PMG04331) matching Picture 2
+  const sortedTeammates = [...currentTeammates].sort((a, b) => {
+    const noA = getRymnetEmpNo(a);
+    const noB = getRymnetEmpNo(b);
+    return noA.localeCompare(noB, undefined, { numeric: true });
+  });
 
   // Staff rows (2 lines per staff: Shift code row, then Leave code row)
-  currentTeammates.forEach(tm => {
-    const shiftRow = [branch, tm.empNo];
-    const leaveRow = [branch, tm.empNo];
+  sortedTeammates.forEach(tm => {
+    const empNo = getRymnetEmpNo(tm);
+    const empName = getRymnetEmpName(tm);
+
+    const shiftRow = [empNo, empName];
+    const leaveRow = ['', ''];
 
     for (let d = 1; d <= totalDaysInMonth; d++) {
       const dayObj = days.find(x => (x.date && x.date.startsWith(month) && x.day === d) || (x.day === d && x.isTargetMonth !== false)) || days.find(x => x.day === d);
-      const code = dayObj && dayObj.shifts ? dayObj.shifts[tm.empNo] : 'RD';
-
-      if (code === 'RD' || code === 'OFF') {
-        shiftRow.push('');
-        leaveRow.push('RD');
-      } else if (code === 'PH') {
-        shiftRow.push('');
-        leaveRow.push('PH');
-      } else {
-        shiftRow.push(code);
-        leaveRow.push('');
+      
+      let rawCode = '';
+      if (dayObj && dayObj.shifts) {
+        rawCode = dayObj.shifts[empNo] || dayObj.shifts[tm.empNo] || (tm.nickname ? dayObj.shifts[tm.nickname] : '');
+        if (!rawCode && (empNo === 'PMG04331' || tm.nickname === 'VANESSA')) {
+          rawCode = dayObj.shifts['PMG04331'] || dayObj.shifts['PMG03801'] || '';
+        }
       }
+      if (!rawCode) rawCode = 'RD';
+
+      const upper = String(rawCode).trim().toUpperCase();
+
+      let shiftVal = '';
+      let leaveVal = '';
+
+      if (upper === 'RD' || upper === 'OFF' || upper === 'OD') {
+        leaveVal = 'RD';
+      } else if (upper === 'PH') {
+        leaveVal = 'PH';
+      } else if (['ANL', 'AL', 'SL', 'MC', 'EL', 'UPL', 'RPL', 'TRG', 'BL'].includes(upper)) {
+        if (upper === 'AL') leaveVal = 'ANL';
+        else if (upper === 'MC') leaveVal = 'SL';
+        else leaveVal = upper;
+      } else {
+        // Working shift (e.g. 8H_0730-1630, 8H_1230-2130, 5H_0730-1230, etc.)
+        shiftVal = rawCode;
+      }
+
+      shiftRow.push(shiftVal);
+      leaveRow.push(leaveVal);
     }
 
-    shiftRow.push('');
-    leaveRow.push('');
+    shiftRow.push(''); // Trailing comma
+    leaveRow.push(''); // Trailing comma
 
-    lines.push(shiftRow.join(','));
-    lines.push(leaveRow.join(','));
+    lines.push(shiftRow.map(escapeRymnetCsvCell).join(','));
+    lines.push(leaveRow.map(escapeRymnetCsvCell).join(','));
   });
 
   const csvContent = lines.join('\r\n') + '\r\n';
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  saveAs(blob, `rymnet_ai_generated_${branch}_${month}.csv`);
+  saveAs(blob, `rymnet_monthly_schedule_${branch}_${month}.csv`);
 }
+window.exportScheduleToRymnetCSV = exportScheduleToRymnetCSV;
+
+// ─── EXPORT TO RYMNET MATRIX EXCEL (.XLSX) ───────────────────────────────────
+function exportScheduleToRymnetExcel() {
+  if (!generatedScheduleData || !generatedScheduleData.days) {
+    alert('Please generate a schedule first before exporting.');
+    return;
+  }
+
+  if (typeof XLSX === 'undefined') {
+    alert('SheetJS (XLSX) library not loaded.');
+    return;
+  }
+
+  const { month, branch, days } = generatedScheduleData;
+  const [yearStr, monthStr] = month.split('-');
+  const year = parseInt(yearStr, 10);
+  const mIdx = parseInt(monthStr, 10) - 1;
+  const totalDaysInMonth = new Date(year, mIdx + 1, 0).getDate();
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  const wsData = [];
+
+  // Row 1: Header matching Rymnet system format (Picture 2)
+  const headerCols = ['Employee No', 'Employee Name'];
+  for (let d = 1; d <= totalDaysInMonth; d++) {
+    const dt = new Date(year, mIdx, d);
+    const dayName = dayNames[dt.getDay()];
+    headerCols.push(`${String(d).padStart(2, '0')} (${dayName})`);
+  }
+  wsData.push(headerCols);
+
+  const sortedTeammates = [...currentTeammates].sort((a, b) => {
+    const noA = getRymnetEmpNo(a);
+    const noB = getRymnetEmpNo(b);
+    return noA.localeCompare(noB, undefined, { numeric: true });
+  });
+
+  sortedTeammates.forEach(tm => {
+    const empNo = getRymnetEmpNo(tm);
+    const empName = getRymnetEmpName(tm);
+
+    const shiftRow = [empNo, empName];
+    const leaveRow = ['', ''];
+
+    for (let d = 1; d <= totalDaysInMonth; d++) {
+      const dayObj = days.find(x => (x.date && x.date.startsWith(month) && x.day === d) || (x.day === d && x.isTargetMonth !== false)) || days.find(x => x.day === d);
+      
+      let rawCode = '';
+      if (dayObj && dayObj.shifts) {
+        rawCode = dayObj.shifts[empNo] || dayObj.shifts[tm.empNo] || (tm.nickname ? dayObj.shifts[tm.nickname] : '');
+        if (!rawCode && (empNo === 'PMG04331' || tm.nickname === 'VANESSA')) {
+          rawCode = dayObj.shifts['PMG04331'] || dayObj.shifts['PMG03801'] || '';
+        }
+      }
+      if (!rawCode) rawCode = 'RD';
+
+      const upper = String(rawCode).trim().toUpperCase();
+
+      let shiftVal = '';
+      let leaveVal = '';
+
+      if (upper === 'RD' || upper === 'OFF' || upper === 'OD') {
+        leaveVal = 'RD';
+      } else if (upper === 'PH') {
+        leaveVal = 'PH';
+      } else if (['ANL', 'AL', 'SL', 'MC', 'EL', 'UPL', 'RPL', 'TRG', 'BL'].includes(upper)) {
+        if (upper === 'AL') leaveVal = 'ANL';
+        else if (upper === 'MC') leaveVal = 'SL';
+        else leaveVal = upper;
+      } else {
+        shiftVal = rawCode;
+      }
+
+      shiftRow.push(shiftVal);
+      leaveRow.push(leaveVal);
+    }
+
+    wsData.push(shiftRow);
+    wsData.push(leaveRow);
+  });
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // Set column widths matching Picture 2
+  const colWidths = [{ wch: 15 }, { wch: 34 }];
+  for (let d = 1; d <= totalDaysInMonth; d++) {
+    colWidths.push({ wch: 16 });
+  }
+  ws['!cols'] = colWidths;
+
+  XLSX.utils.book_append_sheet(wb, ws, `Rymnet_${month}`);
+  XLSX.writeFile(wb, `rymnet_monthly_schedule_${branch}_${month}.xlsx`);
+}
+window.exportScheduleToRymnetExcel = exportScheduleToRymnetExcel;
 
 // ─── ENSURE EXCELJS IS LOADED ────────────────────────────────────────────────
 async function ensureExcelJS() {
