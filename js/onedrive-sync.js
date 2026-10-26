@@ -1973,6 +1973,9 @@
 
           const isCleared = (it) => {
             if (!it) return false;
+            if (typeof isItemMarkedDoneOrCleared === 'function') {
+              return isItemMarkedDoneOrCleared(it, clearedKeySet);
+            }
             const st = String(it.status || '').toUpperCase().trim();
             if (st === 'DONE' || st === 'COMPLETED' || st === 'CLEARED' || it.quantity === 0) return true;
             if (it.itemCode && clearedKeySet.has(String(it.itemCode).toUpperCase().trim())) return true;
