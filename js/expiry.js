@@ -99,7 +99,15 @@ function removeClearedExpiryKey(key) {
 function isItemMarkedDoneOrCleared(item, clearedKeysSet = null) {
   if (!item) return false;
   const statusUpper = String(item.status || '').trim().toUpperCase();
-  if (statusUpper === 'DONE' || statusUpper === 'COMPLETED' || statusUpper === 'CLEARED' || item.quantity === 0) {
+  const qtyNum = Number(item.quantity);
+  const remQtyNum = Number(item.remainingQty);
+  if (statusUpper === 'DONE' || statusUpper === 'COMPLETED' || statusUpper === 'CLEARED') {
+    return true;
+  }
+  if (item.quantity === 0 || (!isNaN(qtyNum) && qtyNum === 0 && item.quantity !== '' && item.quantity !== null && item.quantity !== undefined)) {
+    return true;
+  }
+  if (item.remainingQty !== undefined && item.remainingQty !== null && !isNaN(remQtyNum) && remQtyNum === 0 && String(item.remainingQty).trim() !== '') {
     return true;
   }
   const set = clearedKeysSet || getClearedExpiryKeys();
@@ -107,7 +115,10 @@ function isItemMarkedDoneOrCleared(item, clearedKeysSet = null) {
   const codeUpper = String(item.itemCode || '').trim().toUpperCase();
   if (codeUpper && codeUpper !== 'N/A' && set.has(codeUpper)) return true;
   const rId = item.rowId !== undefined && item.rowId !== null ? String(item.rowId).trim() : '';
-  if (rId && rId !== 'undefined' && rId !== 'null' && set.has(`ROW_${rId}`.toUpperCase())) return true;
+  if (rId && rId !== 'undefined' && rId !== 'null') {
+    const rUpper = rId.toUpperCase();
+    if (set.has(rUpper) || set.has(`ROW_${rUpper}`)) return true;
+  }
   const itemKey = typeof getExpiryItemKey === 'function' ? getExpiryItemKey(item) : '';
   if (itemKey && set.has(itemKey.toUpperCase())) return true;
   // Also check legacy 3-part key (BRANCH|CODE|BATCH)
@@ -238,10 +249,10 @@ function healAndConsolidateExpiryItems(items) {
     const it = items[i];
     if (!it) continue;
 
-    const rId = String(it.rowId || '').trim();
-    if (rId && (clearedSet.has(rId) || clearedSet.has(`ROW_${rId}`))) {
+    if (isItemMarkedDoneOrCleared(it, clearedSet)) {
       it.status = 'DONE';
       it.quantity = 0;
+      it.remainingQty = 0;
     }
 
     const descUpper = String(it.itemDescription || '').toUpperCase();
@@ -2716,9 +2727,10 @@ async function markExpiryItemCleared(rowId) {
   const targetKey = getExpiryItemKey(target);
   const targetIdStr = target.rowId !== undefined && target.rowId !== null ? String(target.rowId).trim() : '';
 
-  // Add specific row & batch/expiry key to persistent tombstone set permanently (never bare itemCode, which would clear future batches!)
+  // Add specific row & batch/expiry key to persistent tombstone set permanently
   if (targetIdStr && targetIdStr !== 'undefined' && targetIdStr !== 'null') {
     addClearedExpiryKey(`ROW_${targetIdStr}`);
+    addClearedExpiryKey(targetIdStr);
   }
   if (targetKey) addClearedExpiryKey(targetKey);
 
@@ -2731,12 +2743,15 @@ async function markExpiryItemCleared(rowId) {
     if (isSameId || isSameKey) {
       it.status = 'DONE';
       it.quantity = 0;
+      it.remainingQty = 0;
       it.clearedAt = nowIso;
       it.lastUpdated = nowIso;
       it.updatedBy = userName;
     }
   });
 
+  delete expiryItems._productBatchMap;
+  delete expiryItems._skuBatchMap;
   saveLocalExpiryData();
   delete expiryItems._productBatchMap;
   delete expiryItems._skuBatchMap;
@@ -2745,6 +2760,9 @@ async function markExpiryItemCleared(rowId) {
   if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
     openSkuBatchExplorerModal(currentExplorerProductKey);
   }
+
+  // Instant notification — never block UI with network calls
+  showExpiryToast(`✅ Marked ${target.itemDescription || target.itemCode} as Done Clear!`);
 
   // 2. Persist to OneDrive immediately so other connected computers sync this clearance
   try {
@@ -2755,19 +2773,18 @@ async function markExpiryItemCleared(rowId) {
     console.warn('[markExpiryItemCleared] OneDrive sync notice:', odErr);
   }
 
-  // 3. Persist to connected Google Sheet
+  // 3. Persist to connected Google Sheet in background
   try {
-    await pushExpiryUpdateToSheets(target.rowId, 0, 'DONE', target.expiryDate, {
+    pushExpiryUpdateToSheets(target.rowId, 0, 'DONE', target.expiryDate, {
       branch: target.branch,
       itemCode: target.itemCode,
       itemDescription: target.itemDescription,
       batchNumber: target.batchNumber
+    }).catch(err => {
+      console.warn('[markExpiryItemCleared] Cloud sheet sync in background:', err);
     });
-    showExpiryToast(`✅ Marked ${target.itemDescription || target.itemCode} as DONE and persisted!`);
   } catch (err) {
-    console.warn('[markExpiryItemCleared] Cloud sheet notice (persisted locally & in tombstone):', err);
-    // DO NOT ROLL BACK. Local clearance is authoritative and tombstoned permanently.
-    showExpiryToast(`✅ Marked ${target.itemDescription || target.itemCode} as DONE (Saved locally & queued for cloud sync)`);
+    console.warn('[markExpiryItemCleared] Cloud sheet notice:', err);
   }
 }
 
@@ -3900,11 +3917,13 @@ function getProductBatchMap() {
   if (expiryItems._productBatchMap && expiryItems._productBatchMapLen === expiryItems.length) {
     return expiryItems._productBatchMap;
   }
+  const clearedSet = getClearedExpiryKeys();
   const map = {};
   const len = expiryItems.length;
   for (let i = 0; i < len; i++) {
     const it = expiryItems[i];
     if (!it) continue;
+    if (isItemMarkedDoneOrCleared(it, clearedSet)) continue;
     const key = getExpiryProductPoolingKey(it);
     if (key) {
       if (!map[key]) map[key] = [];
@@ -4639,7 +4658,10 @@ function openSkuBatchExplorerModal(productKeyOrRowId) {
   if (!modal || !tbody) return;
 
   const targetKey = currentExplorerProductKey;
-  const matches = expiryItems.filter(x => {
+  const clearedSet = getClearedExpiryKeys();
+
+  // Find all matches for this product key
+  const allMatches = expiryItems.filter(x => {
     if (!x) return false;
     const k = getExpiryProductPoolingKey(x);
     if (k && k === targetKey) return true;
@@ -4650,7 +4672,20 @@ function openSkuBatchExplorerModal(productKeyOrRowId) {
     return false;
   });
 
-  matches.sort((a, b) => {
+  // Filter for ACTIVE (non-cleared) batches only!
+  const activeMatches = allMatches.filter(x => !isItemMarkedDoneOrCleared(x, clearedSet));
+
+  // If all batches are cleared, dismiss modal immediately and notify user
+  if (activeMatches.length === 0) {
+    closeSkuBatchExplorerModal();
+    if (allMatches.length > 0) {
+      showExpiryToast('✅ All batches for this item have been cleared!');
+    }
+    renderExpiryUI();
+    return;
+  }
+
+  activeMatches.sort((a, b) => {
     const dA = parseExpiryDate(a.expiryDate);
     const dB = parseExpiryDate(b.expiryDate);
     if (!dA && !dB) return 0;
@@ -4659,7 +4694,7 @@ function openSkuBatchExplorerModal(productKeyOrRowId) {
     return dA.getTime() - dB.getTime();
   });
 
-  const first = matches[0] || {};
+  const first = activeMatches[0] || {};
   const hasCode = first.itemCode && String(first.itemCode).trim() !== '' && String(first.itemCode).toUpperCase() !== 'N/A';
   if (codeEl) {
     codeEl.textContent = hasCode ? first.itemCode : (first.itemDescription || 'Product Batches');
@@ -4669,10 +4704,9 @@ function openSkuBatchExplorerModal(productKeyOrRowId) {
   }
 
   let totalQty = 0;
-  tbody.innerHTML = matches.map((m, i) => {
-    const isCleared = isItemMarkedDoneOrCleared(m);
+  tbody.innerHTML = activeMatches.map((m, i) => {
     const qty = parseFloat(m.remainingQty !== undefined ? m.remainingQty : m.quantity) || 0;
-    if (!isCleared) totalQty += qty;
+    totalQty += qty;
     const h = calculateExpiryHorizon(m.expiryDate);
     const cost = parseFloat(m.unitCost || m.costPrice || 0);
     const safeRowId = escHtml(String(m.rowId).replace(/'/g, "\\'"));
@@ -4683,11 +4717,10 @@ function openSkuBatchExplorerModal(productKeyOrRowId) {
     else if (h.level === 'kpi') hBadge = 'bg-yellow-100 text-yellow-800 font-bold';
 
     return `
-      <tr class="border-b hover:bg-slate-50 transition ${isCleared ? 'opacity-50 bg-gray-50' : ''}">
+      <tr class="border-b hover:bg-slate-50 transition" id="batchExplorerRow_${safeRowId}">
         <td class="p-2.5 font-mono font-bold text-slate-800">
           ${escHtml(m.batchNumber || 'N/A')}
-          ${i === 0 && !isCleared ? '<span class="ml-1 text-[9px] bg-emerald-100 text-emerald-800 px-1 py-0.5 rounded font-bold">Earliest Expiry</span>' : ''}
-          ${isCleared ? '<span class="ml-1 text-[9px] bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-bold">CLEARED</span>' : ''}
+          ${i === 0 ? '<span class="ml-1 text-[9px] bg-emerald-100 text-emerald-800 px-1 py-0.5 rounded font-bold">Earliest Expiry</span>' : ''}
         </td>
         <td class="p-2.5 text-center font-mono font-bold text-slate-900">${formatExpiryDateDisplay(m.expiryDate)}</td>
         <td class="p-2.5 text-center">
@@ -4696,44 +4729,34 @@ function openSkuBatchExplorerModal(productKeyOrRowId) {
           </span>
         </td>
         <td class="p-2.5 text-center">
-          ${isCleared ? `
-            <span class="font-mono text-gray-400 font-bold line-through">0</span>
-          ` : `
-            <input type="number" min="0" step="1" value="${qty}"
-              class="w-16 text-center text-xs font-bold border border-gray-300 rounded px-1.5 py-1 focus:ring-1 focus:ring-blue-400 focus:border-blue-400 bg-white"
-              onchange="updateBatchExplorerQty('${safeRowId}', this.value)"
-              title="Edit quantity for batch ${escHtml(m.batchNumber || '')}">
-          `}
+          <input type="number" min="0" step="1" value="${qty}"
+            class="w-16 text-center text-xs font-bold border border-gray-300 rounded px-1.5 py-1 focus:ring-1 focus:ring-blue-400 focus:border-blue-400 bg-white"
+            onchange="updateBatchExplorerQty('${safeRowId}', this.value)"
+            title="Edit quantity for batch ${escHtml(m.batchNumber || '')}">
         </td>
         <td class="p-2.5 text-right font-mono font-semibold text-slate-700">RM ${cost.toFixed(2)}</td>
         <td class="p-2.5 text-slate-600 text-xs">
-          <div class="font-semibold text-slate-800 ${isCleared ? 'line-through text-gray-400' : ''}">
+          <div class="font-semibold text-slate-800">
             ${escHtml(getItemActionPlan(m) || '—')}
           </div>
-          ${isCleared ? `
-            <span class="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-bold inline-block mt-1">
-              <i class="fa-solid fa-check-circle"></i> Cleared
-            </span>
-          ` : `
-            <div class="mt-1.5 flex items-center gap-1.5 flex-wrap">
-              <button type="button" onclick="markBatchItemDoneClear('${safeRowId}')"
-                class="px-2 py-1 rounded text-[10px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                title="Mark this specific batch as cleared">
-                <i class="fa-solid fa-check text-emerald-600"></i> Done Clear
-              </button>
-              <button type="button" onclick="quickAddBatchToWriteOff('${safeRowId}')"
-                class="px-2 py-1 rounded text-[10px] font-bold ${selectedWriteOffRowIds.has(String(m.rowId)) ? 'bg-rose-100 text-rose-800 border border-rose-300' : 'bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-200'} transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                title="Add this batch to HQ write-off form">
-                <i class="fa-solid fa-file-invoice text-rose-600"></i> ${selectedWriteOffRowIds.has(String(m.rowId)) ? 'In Write-Off' : 'Write Off'}
-              </button>
-            </div>
-          `}
+          <div class="mt-1.5 flex items-center gap-1.5 flex-wrap">
+            <button type="button" onclick="markBatchItemDoneClear('${safeRowId}')"
+              class="px-2 py-1 rounded text-[10px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 transition cursor-pointer flex items-center gap-1 shadow-2xs"
+              title="Mark this specific batch as cleared">
+              <i class="fa-solid fa-check text-emerald-600"></i> Done Clear
+            </button>
+            <button type="button" onclick="quickAddBatchToWriteOff('${safeRowId}')"
+              class="px-2 py-1 rounded text-[10px] font-bold ${selectedWriteOffRowIds.has(String(m.rowId)) ? 'bg-rose-100 text-rose-800 border border-rose-300' : 'bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-200'} transition cursor-pointer flex items-center gap-1 shadow-2xs"
+              title="Add this batch to HQ write-off form">
+              <i class="fa-solid fa-file-invoice text-rose-600"></i> ${selectedWriteOffRowIds.has(String(m.rowId)) ? 'In Write-Off' : 'Write Off'}
+            </button>
+          </div>
         </td>
       </tr>
     `;
   }).join('');
 
-  if (qtyBadge) qtyBadge.textContent = `${totalQty} Units Total across ${matches.length} Batches`;
+  if (qtyBadge) qtyBadge.textContent = `${totalQty} Units Total across ${activeMatches.length} Batch${activeMatches.length > 1 ? 'es' : ''}`;
   modal.classList.remove('hidden');
 }
 
@@ -4743,6 +4766,13 @@ async function updateBatchExplorerQty(rowId, newQty) {
     showExpiryToast('⚠️ Please enter a valid quantity.');
     return;
   }
+
+  // If user sets qty to 0, mark as Done Clear automatically!
+  if (num === 0) {
+    markBatchItemDoneClear(rowId);
+    return;
+  }
+
   const item = findExpiryItemById(rowId);
   if (!item) return;
 
@@ -4760,10 +4790,6 @@ async function updateBatchExplorerQty(rowId, newQty) {
   renderExpiryUI();
 
   if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
-    openSkuBatchExplorerModal(currentExplorerProductKey);
-  }
-
-  if (currentExplorerProductKey) {
     openSkuBatchExplorerModal(currentExplorerProductKey);
   }
 
@@ -4789,6 +4815,7 @@ async function markBatchItemDoneClear(rowId) {
 
   if (targetIdStr && targetIdStr !== 'undefined' && targetIdStr !== 'null') {
     addClearedExpiryKey(`ROW_${targetIdStr}`);
+    addClearedExpiryKey(targetIdStr);
   }
   if (targetKey) addClearedExpiryKey(targetKey);
 
@@ -4817,16 +4844,24 @@ async function markBatchItemDoneClear(rowId) {
   delete expiryItems._skuBatchMap;
   renderExpiryUI();
 
-  if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
-    openSkuBatchExplorerModal(currentExplorerProductKey);
-  }
+  // 3. Check remaining active batches for this product in explorer modal
+  const clearedSet = getClearedExpiryKeys();
+  const remainingActive = expiryItems.filter(x => {
+    if (!x) return false;
+    const k = getExpiryProductPoolingKey(x);
+    const matchesProduct = (k && k === currentExplorerProductKey) || (String(x.rowId) === currentExplorerProductKey);
+    return matchesProduct && !isItemMarkedDoneOrCleared(x, clearedSet);
+  });
 
-  // 3. IMMEDIATELY re-render the modal in-place so user gets instant visual confirmation!
-  if (currentExplorerProductKey) {
-    openSkuBatchExplorerModal(currentExplorerProductKey);
+  if (remainingActive.length === 0) {
+    closeSkuBatchExplorerModal();
+    showExpiryToast(`✅ Batch ${item.batchNumber || ''} marked as Done Clear! (All batches completed)`);
+  } else {
+    if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
+      openSkuBatchExplorerModal(currentExplorerProductKey);
+    }
+    showExpiryToast(`✅ Batch ${item.batchNumber || ''} marked as Done Clear! (${remainingActive.length} remaining)`);
   }
-
-  showExpiryToast(`✅ Batch ${item.batchNumber || ''} marked as Cleared!`);
 
   // 4. Background cloud sync without blocking UI
   try {
@@ -4844,7 +4879,6 @@ async function markBatchItemDoneClear(rowId) {
   }
 }
 window.markBatchItemDoneClear = markBatchItemDoneClear;
-
 function closeSkuBatchExplorerModal() {
   const modal = document.getElementById('skuBatchExplorerModal');
   if (modal) modal.classList.add('hidden');
@@ -5004,19 +5038,29 @@ async function bulkMarkSelectedExpiryDone() {
     if (it) {
       it.status = 'DONE';
       it.quantity = 0;
+      it.remainingQty = 0;
       it.clearedAt = nowIso;
       it.lastUpdated = nowIso;
       it.updatedBy = userName;
       addClearedExpiryKey(`ROW_${id}`);
+      addClearedExpiryKey(id);
       const targetKey = getExpiryItemKey(it);
       if (targetKey) addClearedExpiryKey(targetKey);
     }
   });
 
   selectedBatchDecisionRowIds.clear();
+  delete expiryItems._productBatchMap;
+  delete expiryItems._skuBatchMap;
   saveLocalExpiryData();
+  delete expiryItems._productBatchMap;
+  delete expiryItems._skuBatchMap;
   updateBatchDecisionBar();
   renderExpiryUI();
+
+  if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
+    openSkuBatchExplorerModal(currentExplorerProductKey);
+  }
 
   showExpiryToast(`✅ ${ids.length} item(s) marked as Done Clear!`);
 
