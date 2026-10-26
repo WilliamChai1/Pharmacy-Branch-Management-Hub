@@ -1014,42 +1014,65 @@ function scorePatientRichness(p) {
 }
 
 function mergeTwoPatientRecords(primary, secondary) {
-  let p1 = primary;
-  let p2 = secondary;
-  if (scorePatientRichness(p2) > scorePatientRichness(p1)) {
-    p1 = secondary;
-    p2 = primary;
+  const t1 = new Date(primary.updatedAt || primary.lastUpdated || primary.createdAt || 0).getTime();
+  const t2 = new Date(secondary.updatedAt || secondary.lastUpdated || secondary.createdAt || 0).getTime();
+  const newer = t2 > t1 ? secondary : primary;
+  const older = t2 > t1 ? primary : secondary;
+
+  let base = primary;
+  let other = secondary;
+  const isP1Stub = String(primary.id || '').startsWith('PT-APT') || String(primary.id || '').startsWith('PT-PMGBK');
+  const isP2Stub = String(secondary.id || '').startsWith('PT-APT') || String(secondary.id || '').startsWith('PT-PMGBK');
+  if (isP1Stub && !isP2Stub) {
+    base = secondary;
+    other = primary;
+  } else if (!isP1Stub && isP2Stub) {
+    base = primary;
+    other = secondary;
+  } else if (scorePatientRichness(secondary) > scorePatientRichness(primary)) {
+    base = secondary;
+    other = primary;
   }
 
-  const merged = JSON.parse(JSON.stringify(p1));
+  const merged = JSON.parse(JSON.stringify(base));
 
   // Alias IDs (preserves all former/stub IDs for routing and links)
   merged.aliasIds = Array.from(new Set([
     ...(merged.aliasIds || []),
-    ...(p2.aliasIds || []),
-    p2.id
+    ...(other.aliasIds || []),
+    other.id
   ])).filter(id => id && id !== merged.id);
 
-  // Demographic scalar fields
-  if (!merged.ic && p2.ic) merged.ic = p2.ic;
-  if ((!merged.phone || merged.phone === '#ERROR!') && p2.phone && p2.phone !== '#ERROR!') merged.phone = p2.phone;
-  if ((!merged.gender || merged.gender === 'Other') && p2.gender && p2.gender !== 'Other') merged.gender = p2.gender;
-  if ((!merged.race || merged.race === 'Other') && p2.race && p2.race !== 'Other') merged.race = p2.race;
-  if ((!merged.language || merged.language === 'English') && p2.language && p2.language !== 'English') merged.language = p2.language;
-  if ((merged.age === null || merged.age === undefined) && p2.age !== null && p2.age !== undefined) merged.age = p2.age;
-  if (!merged.dob && p2.dob) merged.dob = p2.dob;
-  if (!merged.branch || merged.branch === 'Kota Sentosa' || merged.branch === 'KS01') {
-    merged.branch = 'Kota Sentosa';
+  // Demographic scalar fields: ALWAYS adopt latest non-empty edits from the newer record!
+  merged.name = newer.name || older.name || merged.name;
+  merged.phone = (newer.phone && newer.phone !== '#ERROR!') ? newer.phone : (older.phone || merged.phone);
+  merged.ic = newer.ic || older.ic || merged.ic;
+  merged.gender = (newer.gender && newer.gender !== 'Other') ? newer.gender : (older.gender || merged.gender || 'Other');
+  merged.race = (newer.race && newer.race !== 'Other') ? newer.race : (older.race || merged.race || 'Other');
+  merged.language = (newer.language && newer.language !== 'English') ? newer.language : (older.language || merged.language || 'English');
+  if (newer.age !== null && newer.age !== undefined && newer.age !== '') {
+    merged.age = Number(newer.age);
+  } else if (older.age !== null && older.age !== undefined && older.age !== '') {
+    merged.age = Number(older.age);
   }
+  if (!merged.dob && (newer.dob || older.dob)) merged.dob = newer.dob || older.dob;
+  if (typeof normalizeBranchCode === 'function') {
+    merged.branch = normalizeBranchCode(newer.branch || older.branch || merged.branch || 'Kota Sentosa');
+  } else {
+    merged.branch = newer.branch || older.branch || merged.branch || 'Kota Sentosa';
+  }
+  merged.allergies = newer.allergies || older.allergies || merged.allergies;
+  merged.notes = newer.notes || older.notes || merged.notes;
+  merged.updatedAt = newer.updatedAt || older.updatedAt || new Date().toISOString();
 
   // Clinical conditions
-  merged.conditions = Array.from(new Set([...(merged.conditions || []), ...(p2.conditions || [])]))
+  merged.conditions = Array.from(new Set([...(merged.conditions || []), ...(other.conditions || [])]))
     .filter(c => c && c !== 'Pending Consultation');
   if (!merged.conditions.length) merged.conditions = ['General Health Review'];
 
   // Encounters (union by encounter ID or date+author, sorted descending)
   const encMap = new Map();
-  (p2.encounters || []).forEach(e => {
+  (other.encounters || []).forEach(e => {
     const k = e.id || `${e.date}_${e.recordedBy}`;
     encMap.set(k, e);
   });
@@ -1061,7 +1084,7 @@ function mergeTwoPatientRecords(primary, secondary) {
 
   // Appointments (union by appointment ID, preserve completed/terminal statuses)
   const aptMap = new Map();
-  (p2.appointments || []).forEach(a => {
+  (other.appointments || []).forEach(a => {
     const k = a.id || `${a.date}_${a.time}`;
     aptMap.set(k, a);
   });
@@ -1082,7 +1105,7 @@ function mergeTwoPatientRecords(primary, secondary) {
 
   // Medications (preserve full regimens)
   const medMap = new Map();
-  (p2.medications || []).forEach(m => {
+  (other.medications || []).forEach(m => {
     const k = (m.id || m.name || '').toLowerCase().trim();
     if (k) medMap.set(k, m);
   });
@@ -1094,20 +1117,20 @@ function mergeTwoPatientRecords(primary, secondary) {
 
   // Documents
   const docMap = new Map();
-  (p2.documents || []).forEach(d => docMap.set(d.id || d.title, d));
+  (other.documents || []).forEach(d => docMap.set(d.id || d.title, d));
   (merged.documents || []).forEach(d => docMap.set(d.id || d.title, d));
   merged.documents = Array.from(docMap.values());
 
   // TCA Reminders
-  if (!merged.nextTcaDate && p2.nextTcaDate) {
-    merged.nextTcaDate = p2.nextTcaDate;
-    merged.nextTcaPurpose = p2.nextTcaPurpose;
-    merged.nextTcaRecordedBy = p2.nextTcaRecordedBy;
+  if (!merged.nextTcaDate && other.nextTcaDate) {
+    merged.nextTcaDate = other.nextTcaDate;
+    merged.nextTcaPurpose = other.nextTcaPurpose;
+    merged.nextTcaRecordedBy = other.nextTcaRecordedBy;
   }
 
   // Notes: preserve rich consultation notes
-  if ((!merged.notes || merged.notes.startsWith('Imported customer booking')) && p2.notes && !p2.notes.startsWith('Imported customer booking')) {
-    merged.notes = p2.notes;
+  if ((!merged.notes || merged.notes.startsWith('Imported customer booking')) && other.notes && !other.notes.startsWith('Imported customer booking')) {
+    merged.notes = other.notes;
   }
 
   return merged;
@@ -1973,9 +1996,24 @@ function renderPatientDirectory(patients) {
 // ─── WHATSAPP MESSAGE BUILDERS ───────────────────────────────────────────────
 function formatPhoneForWa(phone) {
   if (!phone) return '';
-  let cleaned = phone.replace(/[^0-9]/g, '');
+  let cleaned = String(phone).replace(/[^0-9]/g, '');
   if (cleaned.startsWith('0')) cleaned = '60' + cleaned.slice(1);
+  else if (cleaned.startsWith('1') && !cleaned.startsWith('60')) cleaned = '60' + cleaned;
   return cleaned;
+}
+
+function normalizePhoneDisplay(phone) {
+  if (!phone) return '';
+  let digits = String(phone).replace(/\D/g, '');
+  if (digits.startsWith('60')) digits = '0' + digits.slice(2);
+  else if (digits.startsWith('1') && !digits.startsWith('0')) digits = '0' + digits;
+
+  if (digits.startsWith('011') && digits.length === 11) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 7)} ${digits.slice(7)}`;
+  } else if (digits.startsWith('01') && digits.length === 10) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 6)} ${digits.slice(6)}`;
+  }
+  return phone;
 }
 
 /**
@@ -2207,7 +2245,7 @@ function buildPatientSupplyBookingMessage(patient) {
  * Directly triggers WhatsApp to send the customer self-booking link with supply reminder.
  */
 function sendPatientBookingWhatsApp(patientId) {
-  const p = patientsData.find(pt => pt.id === patientId);
+  const p = findPatientById(patientId);
   if (!p) {
     alert('Patient record not found.');
     return;
@@ -2217,7 +2255,8 @@ function sendPatientBookingWhatsApp(patientId) {
   if (!phone || phone.trim() === '') {
     phone = prompt(`Please enter WhatsApp mobile number for ${p.name}:`, '01');
     if (!phone || phone.trim() === '') return;
-    p.phone = phone.trim();
+    p.phone = normalizePhoneDisplay(phone.trim());
+    p.updatedAt = new Date().toISOString();
     savePatientsData();
   }
 
@@ -2872,8 +2911,7 @@ function sendDirectAppointmentReminderWa(patientId, appointmentId) {
   const apt = (p.appointments || []).find(a => a.id === appointmentId);
   if (!apt) return;
 
-  let cleanPhone = (p.phone || '').replace(/\D/g, '');
-  if (cleanPhone.startsWith('0')) cleanPhone = '60' + cleanPhone.slice(1);
+  let cleanPhone = formatPhoneForWa(p.phone);
   if (!cleanPhone) {
     alert('This patient does not have a recorded phone number for WhatsApp.');
     return;
@@ -2903,11 +2941,10 @@ function sendDirectAppointmentReminderWa(patientId, appointmentId) {
 }
 
 function sendReminderBookingLinkWa(patientId, reminderType, medId) {
-  const p = patientsData.find(pt => pt.id === patientId);
+  const p = findPatientById(patientId);
   if (!p) return;
 
-  let cleanPhone = (p.phone || '').replace(/\D/g, '');
-  if (cleanPhone.startsWith('0')) cleanPhone = '60' + cleanPhone.slice(1);
+  let cleanPhone = formatPhoneForWa(p.phone);
   if (!cleanPhone) {
     alert('This patient does not have a recorded phone number for WhatsApp.');
     return;
@@ -3258,6 +3295,41 @@ function onPatientIcInput(icVal) {
   }
 }
 
+// ─── UNIQUE PATIENT ID GENERATOR (COLLISION-FREE) ──────────────────────────
+function generateUniquePatientId(ic = '') {
+  const cleanIc = String(ic || '').replace(/\D/g, '');
+  if (cleanIc.length >= 6) {
+    const candidateIcId = 'PT-' + cleanIc.slice(-6);
+    if (!patientsData.some(p => p.id === candidateIcId || (p.aliasIds && p.aliasIds.includes(candidateIcId)))) {
+      return candidateIcId;
+    }
+  }
+
+  let maxNum = 1100;
+  (patientsData || []).forEach(p => {
+    const m = String(p.id || '').match(/^PT-(\d+)$/i);
+    if (m) {
+      const num = parseInt(m[1], 10);
+      if (num < 100000 && num > maxNum) maxNum = num;
+    }
+    (p.aliasIds || []).forEach(aid => {
+      const ma = String(aid || '').match(/^PT-(\d+)$/i);
+      if (ma) {
+        const numa = parseInt(ma[1], 10);
+        if (numa < 100000 && numa > maxNum) maxNum = numa;
+      }
+    });
+  });
+
+  let nextNum = maxNum + 1;
+  let candidate = 'PT-' + nextNum;
+  while (patientsData.some(p => p.id === candidate || (p.aliasIds && p.aliasIds.includes(candidate)))) {
+    nextNum++;
+    candidate = 'PT-' + nextNum;
+  }
+  return candidate;
+}
+
 // ─── NEW / EDIT PATIENT MODAL ────────────────────────────────────────────────
 let editingPatientId = null;
 let returnToProfilePatientId = null;
@@ -3296,7 +3368,7 @@ function showNewPatientModal() {
 }
 
 function editPatientProfile(patientId) {
-  const p = patientsData.find(pt => pt.id === patientId);
+  const p = findPatientById(patientId);
   if (!p) return;
 
   // Immediately close patient profile modal so the edit form is fully visible
@@ -3360,10 +3432,13 @@ function closeNewPatientModal() {
 
 function saveNewPatient() {
   const name = document.getElementById('newPatientName').value.trim();
-  const phone = document.getElementById('newPatientPhone').value.trim();
+  let phone = document.getElementById('newPatientPhone').value.trim();
   if (!name) {
     alert('Please enter patient name.');
     return;
+  }
+  if (phone) {
+    phone = normalizePhoneDisplay(phone);
   }
 
   const conditions = [];
@@ -3379,8 +3454,9 @@ function saveNewPatient() {
   const notes = document.getElementById('newPatientNotes').value.trim();
 
   if (editingPatientId) {
-    const p = patientsData.find(pt => pt.id === editingPatientId);
+    const p = findPatientById(editingPatientId) || patientsData.find(pt => pt.id === editingPatientId);
     if (p) {
+      const oldPhone = p.phone;
       p.name = name;
       p.ic = ic;
       p.phone = phone;
@@ -3394,6 +3470,25 @@ function saveNewPatient() {
       p.allergies = allergies;
       p.notes = notes;
       p.updatedAt = new Date().toISOString();
+
+      // If phone was updated, synchronize pmg_customer_bookings in localStorage so background cloud sync doesn't revert it
+      if (oldPhone !== phone) {
+        try {
+          const custBookings = JSON.parse(localStorage.getItem('pmg_customer_bookings') || '[]');
+          let cbUpdated = false;
+          custBookings.forEach(cb => {
+            if (cb.patientId === p.id || (p.aliasIds && p.aliasIds.includes(cb.patientId)) || (cb.patientIc && p.ic && normalizeIcForMatching(cb.patientIc) === normalizeIcForMatching(p.ic)) || (cb.ref && (p.appointments || []).some(a => a.id === cb.ref))) {
+              cb.patientPhone = phone;
+              cb.phone = phone;
+              cb.customerPhone = phone;
+              cbUpdated = true;
+            }
+          });
+          if (cbUpdated) {
+            localStorage.setItem('pmg_customer_bookings', JSON.stringify(custBookings));
+          }
+        } catch (_) {}
+      }
 
       savePatientsData();
       const pidToReturn = returnToProfilePatientId || editingPatientId;
@@ -3414,7 +3509,7 @@ function saveNewPatient() {
     }
   }
 
-  const newId = 'PT-' + (1000 + patientsData.length + 1);
+  const newId = generateUniquePatientId(ic);
   const newPatient = {
     id: newId,
     name,
@@ -3438,9 +3533,18 @@ function saveNewPatient() {
   patientsData.unshift(newPatient);
   savePatientsData();
   closeNewPatientModal();
+
+  // Clear any active search query so the new patient is immediately visible
+  const searchInput = document.getElementById('patientSearchInput');
+  if (searchInput) searchInput.value = '';
+
   renderPatientModule();
+
+  // Immediately open the new patient profile so the pharmacist sees the newly created patient
+  viewPatientProfile(newPatient.id);
+
   if (typeof showPmgToast === 'function') {
-    showPmgToast(`✅ Patient ${newPatient.name} registered!`, 'success');
+    showPmgToast(`✅ Patient ${newPatient.name} (${newPatient.id}) registered!`, 'success');
   }
 }
 
@@ -5443,7 +5547,11 @@ function viewPatientProfile(patientId) {
   if (!modal) return;
 
   document.getElementById('profName').textContent = p.name;
-  document.getElementById('profMeta').textContent = `${p.gender}, ${p.age} yrs · IC: ${p.ic || '—'} · Phone: ${p.phone || '—'} · Branch: ${p.branch} · Language: ${p.language}`;
+  const cleanPhone = (typeof formatPhoneForWa === 'function') ? formatPhoneForWa(p.phone) : (p.phone || '').replace(/\D/g, '');
+  const phoneHtml = cleanPhone
+    ? `<a href="https://wa.me/${cleanPhone}" target="_blank" rel="noopener" class="text-emerald-700 font-bold hover:underline inline-flex items-center gap-1" title="Open WhatsApp chat with ${escapeHtml(p.name)}"><i class="fa-brands fa-whatsapp text-emerald-600"></i> ${escapeHtml(p.phone)}</a>`
+    : escapeHtml(p.phone || '—');
+  document.getElementById('profMeta').innerHTML = `${escapeHtml(p.gender || 'Unknown')}, ${p.age != null && p.age !== '' ? p.age + ' yrs' : '—'} &bull; IC: ${escapeHtml(p.ic || '—')} &bull; Phone: ${phoneHtml} &bull; Branch: ${escapeHtml(p.branch || 'Kota Sentosa')} &bull; Language: ${escapeHtml(p.language || 'English')}`;
   document.getElementById('profConditions').innerHTML = (p.conditions || []).map(c => `
     <span class="inline-block bg-blue-100 text-blue-800 text-sm font-bold px-3 py-1 rounded-xl">${c}</span>
   `).join('') || '<span class="text-sm text-gray-400">None recorded</span>';
@@ -5459,6 +5567,14 @@ function closePatientProfileModal() {
   const modal = document.getElementById('patientProfileModal');
   if (modal) modal.classList.add('hidden');
   viewingPatientId = null;
+}
+
+function sendCurrentPatientWhatsApp() {
+  if (typeof viewingPatientId !== 'undefined' && viewingPatientId) {
+    sendPatientBookingWhatsApp(viewingPatientId);
+  } else {
+    alert('No patient profile currently open.');
+  }
 }
 
 async function deleteCurrentPatientProfile() {
@@ -5888,9 +6004,7 @@ function renderEncounterVitalsPoctBadges(enc, p) {
  * Send encounter consultation summary via WhatsApp with explicit or preferred language
  */
 function sendEncounterWa(patientId, encId, explicitLang = null) {
-  const p = (typeof patientsData !== 'undefined' && Array.isArray(patientsData))
-    ? patientsData.find(pt => pt.id === patientId)
-    : null;
+  const p = findPatientById(patientId);
   if (!p) {
     alert('Patient not found.');
     return;
