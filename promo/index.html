@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PMG Customer WhatsApp Promo Broadcaster</title>
+  <meta name="description" content="Lightweight Standalone WhatsApp Customer Broadcaster for PMG Pharmacy Branches. Zero lag, memory optimized.">
+  <meta name="theme-color" content="#059669">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- PapaParse for Customer CSV uploading -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+  <style>
+    /* Custom scrollbars & smooth interactions */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .shadow-2xs { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased min-h-screen flex flex-col font-sans">
+
+  <!-- TOP STANDALONE APP BAR -->
+  <header class="bg-white border-b border-gray-200 sticky top-0 z-40 shadow-xs">
+    <div class="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <a href="../index.html"
+          class="px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+          title="Return to the main PMG Management Hub">
+          <i class="fa-solid fa-arrow-left text-gray-500"></i>
+          <span>Back to PMG Hub</span>
+        </a>
+        <div class="h-5 w-px bg-gray-200"></div>
+        <div class="flex items-center gap-2">
+          <div class="w-7 h-7 rounded-lg bg-emerald-600 flex items-center justify-center text-white text-xs shadow-xs">
+            <i class="fa-brands fa-whatsapp text-sm"></i>
+          </div>
+          <span class="font-black text-sm text-gray-900 tracking-tight hidden sm:inline">PMG WhatsApp Broadcaster</span>
+          <span class="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded-full border border-emerald-200">
+            ⚡ Standalone (~15MB RAM)
+          </span>
+        </div>
+      </div>
+
+      <!-- Right App Bar Status -->
+      <div class="flex items-center gap-2">
+        <label class="hidden md:flex items-center gap-1.5 text-[11px] font-semibold text-gray-600 bg-gray-50 px-2.5 py-1 rounded-lg border border-gray-200 cursor-pointer"
+          title="Reuses a single WhatsApp tab to keep counter PC RAM usage low">
+          <input type="checkbox" id="promoSingleTabCheckbox" checked onchange="togglePromoSingleTab(this)"
+            class="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500">
+          <span>Reuse WhatsApp Tab (Saves RAM)</span>
+        </label>
+        <span class="text-[11px] text-gray-400 font-mono">v2026.10</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN APP CONTAINER -->
+  <main class="flex-grow max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full">
+    <div id="content-promo-broadcast" class="block">
+
+    <!-- Module Header -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 mb-5">
+      <div class="flex items-start justify-between gap-4 flex-wrap">
+        <div class="flex items-start gap-3.5">
+          <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-md flex-shrink-0">
+            <i class="fa-brands fa-whatsapp text-2xl"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2 mb-1 flex-wrap">
+              <h2 class="text-xl font-black text-gray-900 tracking-tight">Product Offer & Customer WhatsApp Broadcaster</h2>
+              <span class="text-xs bg-emerald-100 text-emerald-800 font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-300">
+                <i class="fa-solid fa-bullhorn mr-1"></i>PROMOTIONS
+              </span>
+              <span class="text-xs bg-blue-50 text-blue-700 font-bold px-2.5 py-0.5 rounded-full border border-blue-200">
+                🤖 Auto BM / 华语 智能匹配
+              </span>
+            </div>
+            <p class="text-gray-500 text-xs sm:text-sm max-w-3xl">
+              Target past buyers with 1-click personalized WhatsApp offers. Auto-routes Malay/Dayak customers to Bahasa Malaysia and Chinese customers to Mandarin, with auto-translation and poster clipboard support!
+            </p>
+          </div>
+        </div>
+
+        <!-- Top Right Campaign Actions -->
+        <div class="flex items-center gap-2 flex-wrap">
+          <div class="flex items-center gap-1.5 bg-gray-50 p-1 rounded-xl border border-gray-200">
+            <span class="text-[11px] font-bold text-gray-500 pl-2 uppercase tracking-wide">Campaign:</span>
+            <select id="promoCampaignSelect" onchange="switchPromoCampaign(this.value)"
+              class="text-xs font-bold text-gray-800 bg-white border border-gray-300 rounded-lg py-1.5 px-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+              <!-- Rendered dynamically -->
+            </select>
+          </div>
+
+          <!-- Cloud Sync (OneDrive) -->
+          <button id="promoCloudSyncBtn" type="button" onclick="syncPromoBroadcastWithOneDrive()"
+            class="px-3 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-300 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+            title="Sync campaigns and broadcast progress across computers via OneDrive">
+            <i class="fa-solid fa-cloud-arrow-up text-sky-600"></i>
+            <span id="promoCloudSyncLabel">OneDrive Sync</span>
+          </button>
+
+          <!-- Backup / Restore JSON Buttons -->
+          <button type="button" onclick="exportPromoBroadcastJson()"
+            class="px-2.5 py-2 rounded-xl bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer"
+            title="Backup campaign progress to JSON file">
+            <i class="fa-solid fa-download text-gray-500"></i>
+            <span>Backup</span>
+          </button>
+
+          <button type="button" onclick="triggerImportPromoJson()"
+            class="px-2.5 py-2 rounded-xl bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer"
+            title="Restore/Sync campaign progress from JSON file">
+            <i class="fa-solid fa-upload text-gray-500"></i>
+            <span>Restore</span>
+          </button>
+          <input type="file" id="promoJsonFileInput" accept=".json" class="hidden" onchange="handleImportPromoJson(event)">
+
+          <button type="button" onclick="openUploadCustomerCsvModal()"
+            class="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer">
+            <i class="fa-solid fa-file-circle-plus"></i>
+            <span>Upload CSV</span>
+          </button>
+
+          <button type="button" onclick="exportPromoCustomerListCsv()"
+            class="px-3 py-2 rounded-xl bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+            title="Download CSV report of targeted customers and broadcast status">
+            <i class="fa-solid fa-file-arrow-down text-gray-500"></i>
+            <span>Export CSV</span>
+          </button>
+
+          <button type="button" onclick="resetCampaignSentStatus()"
+            class="px-3 py-2 rounded-xl bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+            title="Reset sent checkmarks back to Pending">
+            <i class="fa-solid fa-rotate-left"></i>
+            <span>Reset</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Campaign & KPI Summary -->
+    <div class="bg-white rounded-2xl shadow-sm border border-emerald-100 p-5 mb-5 bg-gradient-to-r from-emerald-50/40 via-teal-50/20 to-white">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <span class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md border border-emerald-200">
+            Current Targeted Product
+          </span>
+          <h3 id="promoActiveCampaignTitle" class="text-lg font-black text-slate-900 mt-1">
+            NUTRIBRIDGE NUTRI ALPHA 800GM
+          </h3>
+          <p id="promoActiveCampaignBadge" class="text-xs text-slate-500 font-medium">
+            147 Targeted Customers · RM 115 Normal Price
+          </p>
+        </div>
+        <div class="text-right">
+          <span class="text-xs font-bold text-slate-500">Outreach Progress:</span>
+          <span id="promoProgressPct" class="text-lg font-black text-emerald-700 ml-1">0%</span>
+        </div>
+      </div>
+
+      <!-- Progress Bar -->
+      <div class="w-full bg-gray-200 h-2.5 rounded-full overflow-hidden mb-4 shadow-inner">
+        <div id="promoProgressBar" class="h-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-300" style="width: 0%"></div>
+      </div>
+
+      <!-- KPI Cards -->
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div class="bg-white rounded-xl p-3 border border-gray-200 shadow-2xs">
+          <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Target Customers</p>
+          <p id="promoKpiTotalCust" class="text-2xl font-black text-gray-900 mt-0.5">147</p>
+          <p class="text-[10px] text-gray-400 mt-0.5">Unique buyers</p>
+        </div>
+        <div class="bg-white rounded-xl p-3 border border-emerald-200 shadow-2xs">
+          <p class="text-[10px] text-emerald-700 font-bold uppercase tracking-wider">Messages Sent</p>
+          <p id="promoKpiSent" class="text-2xl font-black text-emerald-600 mt-0.5">0</p>
+          <p class="text-[10px] text-emerald-600 mt-0.5 font-medium">Completed outreach</p>
+        </div>
+        <div class="bg-white rounded-xl p-3 border border-amber-200 shadow-2xs">
+          <p class="text-[10px] text-amber-700 font-bold uppercase tracking-wider">Pending Outreach</p>
+          <p id="promoKpiPending" class="text-2xl font-black text-amber-600 mt-0.5">147</p>
+          <p class="text-[10px] text-amber-700 mt-0.5">Ready to WhatsApp</p>
+        </div>
+        <div class="bg-white rounded-xl p-3 border border-blue-200 shadow-2xs">
+          <p class="text-[10px] text-blue-700 font-bold uppercase tracking-wider">Valid Mobile Reach</p>
+          <p id="promoKpiReach" class="text-lg font-black text-blue-800 mt-1">145 / 147</p>
+          <p class="text-[10px] text-blue-600 mt-0.5 font-medium">98.6% WhatsApp ready</p>
+        </div>
+        <div class="bg-white rounded-xl p-3 border border-purple-200 shadow-2xs">
+          <p class="text-[10px] text-purple-700 font-bold uppercase tracking-wider">Historical Purchases</p>
+          <p id="promoKpiHistoricalQty" class="text-lg font-black text-purple-800 mt-1">209 Records</p>
+          <p class="text-[10px] text-purple-600 mt-0.5 font-medium">Past sales volume</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Two-Column Workstation Layout -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+
+      <!-- LEFT COLUMN (5 cols): Interactive Message Composer & WhatsApp Live Mockup -->
+      <div class="lg:col-span-5 space-y-5 lg:sticky lg:top-4">
+
+        <!-- Composer Card -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 space-y-3.5">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-pen-to-square text-emerald-600 text-base"></i>
+              <h4 class="font-extrabold text-sm text-gray-900">Custom Message Composer</h4>
+            </div>
+            <span class="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+              <i class="fa-solid fa-arrows-up-down mr-0.5"></i> All Boxes Draggable
+            </span>
+          </div>
+
+          <!-- Language Selector -->
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="text-[11px] font-bold text-gray-700">Target Language Mode:</label>
+              <span class="text-[10px] text-gray-400">Auto mode selects BM or Mandarin per customer</span>
+            </div>
+            <div class="grid grid-cols-3 sm:grid-cols-6 gap-1">
+              <button type="button" onclick="handlePromoLangSwitch('auto')" data-lang="auto"
+                class="promo-lang-btn text-[11px] py-1.5 px-1 rounded-lg border font-bold text-center transition flex flex-col items-center justify-center gap-0.5 cursor-pointer bg-emerald-600 text-white border-emerald-700 shadow-xs"
+                title="Automatically sends BM to Malay/Dayak names, Mandarin to Chinese names">
+                <span class="text-sm">🤖</span> <span class="leading-tight">Auto (Smart)</span>
+              </button>
+              <button type="button" onclick="handlePromoLangSwitch('bm')" data-lang="bm"
+                class="promo-lang-btn text-[11px] py-1.5 px-1 rounded-lg border font-bold text-center transition flex flex-col items-center justify-center gap-0.5 cursor-pointer bg-gray-100 text-gray-700 border-gray-300">
+                <span class="text-sm">🇲🇾</span> <span class="leading-tight">BM</span>
+              </button>
+              <button type="button" onclick="handlePromoLangSwitch('zh')" data-lang="zh"
+                class="promo-lang-btn text-[11px] py-1.5 px-1 rounded-lg border font-bold text-center transition flex flex-col items-center justify-center gap-0.5 cursor-pointer bg-gray-100 text-gray-700 border-gray-300">
+                <span class="text-sm">🇨🇳</span> <span class="leading-tight">华语</span>
+              </button>
+              <button type="button" onclick="handlePromoLangSwitch('bilingual')" data-lang="bilingual"
+                class="promo-lang-btn text-[11px] py-1.5 px-1 rounded-lg border font-bold text-center transition flex flex-col items-center justify-center gap-0.5 cursor-pointer bg-gray-100 text-gray-700 border-gray-300">
+                <span class="text-sm">🇲🇾🇨🇳</span> <span class="leading-tight">双语</span>
+              </button>
+              <button type="button" onclick="handlePromoLangSwitch('en')" data-lang="en"
+                class="promo-lang-btn text-[11px] py-1.5 px-1 rounded-lg border font-bold text-center transition flex flex-col items-center justify-center gap-0.5 cursor-pointer bg-gray-100 text-gray-700 border-gray-300">
+                <span class="text-sm">🇬🇧</span> <span class="leading-tight">English</span>
+              </button>
+              <button type="button" onclick="handlePromoLangSwitch('custom')" data-lang="custom"
+                class="promo-lang-btn text-[11px] py-1.5 px-1 rounded-lg border font-bold text-center transition flex flex-col items-center justify-center gap-0.5 cursor-pointer bg-gray-100 text-gray-700 border-gray-300">
+                <span class="text-sm">✏️</span> <span class="leading-tight">Custom</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Store & Staff Contacts (Editable & Saved!) -->
+          <div class="bg-indigo-50/50 p-3 rounded-xl border border-indigo-100 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold text-indigo-900">
+                <i class="fa-solid fa-address-book text-indigo-600 mr-1"></i> Store & Pharmacist Contacts:
+              </span>
+              <span class="text-[10px] text-indigo-600 font-mono">Editable & Auto-saved</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-[10px] font-bold text-gray-600 mb-0.5">
+                  <i class="fa-solid fa-store text-emerald-600 mr-1"></i> Shop Phone (Hotline):
+                </label>
+                <input type="text" id="promoComposerShopPhone" oninput="handleComposerInputChange()"
+                  value="+60149773924" placeholder="+60149773924"
+                  class="w-full text-xs font-bold text-gray-800 bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-gray-600 mb-0.5">
+                  <i class="fa-solid fa-user-doctor text-blue-600 mr-1"></i> Pharmacist William:
+                </label>
+                <input type="text" id="promoComposerPharmacistPhone" oninput="handleComposerInputChange()"
+                  value="01110990693" placeholder="01110990693"
+                  class="w-full text-xs font-bold text-gray-800 bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              </div>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-gray-600 mb-0.5">Branch Location:</label>
+              <input type="text" id="promoComposerBranch" oninput="handleComposerInputChange()"
+                value="Kota Sentosa" placeholder="e.g. Kota Sentosa"
+                class="w-full text-xs font-medium text-gray-800 bg-white border border-gray-300 rounded-lg px-2.5 py-1 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            </div>
+          </div>
+
+          <!-- Special Offer & Auto-Translator -->
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2.5">
+            <div class="flex items-center justify-between flex-wrap gap-1">
+              <label class="block text-[11px] font-bold text-gray-700">
+                <i class="fa-solid fa-tag text-emerald-600 mr-1"></i> Special Offer Details (Key in English / BM / Chinese):
+              </label>
+              <button type="button" onclick="autoTranslatePromoOffer()"
+                class="px-2 py-0.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-md text-[10px] font-bold shadow-2xs flex items-center gap-1 cursor-pointer transition">
+                <i class="fa-solid fa-wand-magic-sparkles text-[10px]"></i>
+                <span>⚡ Auto-Translate to BM & 华语</span>
+              </button>
+            </div>
+
+            <!-- Resizable Main / English Offer Textarea -->
+            <textarea id="promoComposerOffer" oninput="handleComposerInputChange()" rows="2"
+              style="resize: vertical; min-height: 52px;"
+              placeholder="e.g. Buy 2 Tins at RM210 (Save RM20) + Free Shaker Cup, while stocks last"
+              class="w-full text-xs font-semibold text-gray-800 bg-white border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none"></textarea>
+
+            <!-- Dual Translated Sub-fields (Accordion / Visible for fine-tuning) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-slate-200">
+              <div>
+                <label class="block text-[10px] font-bold text-blue-800 mb-0.5 flex items-center gap-1">
+                  <span>🇲🇾 BM Version (for Malay & Dayak customers):</span>
+                </label>
+                <textarea id="promoComposerOfferBm" oninput="handleComposerInputChange()" rows="2"
+                  style="resize: vertical; min-height: 48px;"
+                  placeholder="Beli 2 Tin RM210 (Jimat RM20) + Percuma Shaker Cup"
+                  class="w-full text-[11px] font-medium text-gray-800 bg-white border border-blue-200 rounded-lg p-1.5 focus:ring-2 focus:ring-blue-500 focus:outline-none"></textarea>
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-red-800 mb-0.5 flex items-center gap-1">
+                  <span>🇨🇳 华语版本 (for Chinese customers):</span>
+                </label>
+                <textarea id="promoComposerOfferZh" oninput="handleComposerInputChange()" rows="2"
+                  style="resize: vertical; min-height: 48px;"
+                  placeholder="买2罐特价 RM210（节省 RM20）+ 免费赠送摇摇杯"
+                  class="w-full text-[11px] font-medium text-gray-800 bg-white border border-red-200 rounded-lg p-1.5 focus:ring-2 focus:ring-red-500 focus:outline-none"></textarea>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[10px] font-bold text-gray-700 mb-0.5">
+                <i class="fa-regular fa-calendar-days text-purple-600 mr-1"></i> Promo Validity Period:
+              </label>
+              <input type="text" id="promoComposerPeriod" oninput="handleComposerInputChange()"
+                placeholder="e.g. Sementara Stok Masih Ada / 存货有限，售完即止"
+                class="w-full text-xs font-medium bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-purple-500 focus:outline-none">
+            </div>
+          </div>
+
+          <!-- Promotional Poster Image Card (NEW) -->
+          <div id="promoPosterCard" class="bg-amber-50/50 p-3 rounded-xl border border-amber-200 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold text-amber-900">
+                <i class="fa-solid fa-image text-amber-600 mr-1"></i> Promotional Poster / Picture:
+              </span>
+              <span class="text-[10px] text-amber-700 font-medium">Auto-Copy on WhatsApp Click</span>
+            </div>
+
+            <!-- Empty State -->
+            <div id="promoPosterEmptyState" class="border-2 border-dashed border-amber-300 rounded-xl p-3 text-center bg-white/70 hover:bg-white transition cursor-pointer"
+              onclick="document.getElementById('promoPosterFileInput').click()">
+              <i class="fa-solid fa-cloud-arrow-up text-amber-500 text-xl mb-1"></i>
+              <p class="text-xs font-bold text-gray-700">Click to Upload Poster Picture (JPG / PNG)</p>
+              <p class="text-[10px] text-gray-400">Can be copied to clipboard and pasted (Ctrl+V) directly into WhatsApp!</p>
+            </div>
+            <input type="file" id="promoPosterFileInput" accept="image/*" class="hidden" onchange="handlePosterFileSelected(event)">
+
+            <!-- Active Poster State -->
+            <div id="promoPosterActiveState" class="hidden flex items-center justify-between gap-3 bg-white p-2 rounded-xl border border-amber-200 shadow-2xs">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <img id="promoPosterThumb" src="" alt="Poster" class="w-12 h-12 object-cover rounded-lg border border-gray-200 flex-shrink-0">
+                <div class="min-w-0">
+                  <p id="promoPosterName" class="text-xs font-bold text-gray-800 truncate">promo_poster.png</p>
+                  <p class="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
+                    <i class="fa-solid fa-circle-check"></i> Ready to paste in WhatsApp
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center gap-1.5 flex-shrink-0">
+                <button type="button" onclick="copyPosterToClipboard()"
+                  class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                  title="Copy poster image to clipboard now">
+                  <i class="fa-regular fa-copy"></i>
+                  <span>Copy Poster</span>
+                </button>
+                <button type="button" onclick="removePromoPoster()"
+                  class="w-7 h-7 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center text-xs transition cursor-pointer"
+                  title="Remove poster">
+                  <i class="fa-solid fa-trash-can"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Auto-Copy Checkbox -->
+            <label class="flex items-center gap-2 text-[11px] font-semibold text-gray-700 cursor-pointer pt-0.5">
+              <input type="checkbox" id="promoAutoCopyPosterCheckbox" onchange="toggleAutoCopyPoster(this)" checked
+                class="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500">
+              <span>Automatically copy poster to clipboard when clicking "Send WhatsApp" (Press <strong>Ctrl+V</strong> in chat!)</span>
+            </label>
+          </div>
+
+          <!-- Message Textarea (Explicitly Resizable) -->
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-[11px] font-bold text-gray-700">
+                <i class="fa-solid fa-comment-dots text-emerald-600 mr-1"></i> Full Message Body (Drag corner to expand):
+              </label>
+              <span class="text-[10px] text-gray-400 font-mono">WhatsApp markdown: *bold*, _italic_</span>
+            </div>
+            <textarea id="promoComposerTextarea" rows="9" oninput="handleComposerInputChange()"
+              style="resize: vertical !important; min-height: 180px; height: 260px;"
+              class="w-full text-xs font-mono font-medium border border-gray-300 rounded-xl p-3 bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition shadow-2xs leading-relaxed"
+              placeholder="Type your WhatsApp promotional message here..."></textarea>
+          </div>
+
+          <!-- Variable Injection Tags -->
+          <div>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">Click to Insert Dynamic Tags:</span>
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <button type="button" onclick="insertPromoPlaceholder('{name}')"
+                class="px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-mono font-bold transition shadow-2xs cursor-pointer">
+                +{name}
+              </button>
+              <button type="button" onclick="insertPromoPlaceholder('{product}')"
+                class="px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 text-[11px] font-mono font-bold transition shadow-2xs cursor-pointer">
+                +{product}
+              </button>
+              <button type="button" onclick="insertPromoPlaceholder('{offer_details}')"
+                class="px-2 py-0.5 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-mono font-bold transition shadow-2xs cursor-pointer">
+                +{offer_details}
+              </button>
+              <button type="button" onclick="insertPromoPlaceholder('{promo_period}')"
+                class="px-2 py-0.5 rounded-md bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 text-[11px] font-mono font-bold transition shadow-2xs cursor-pointer">
+                +{promo_period}
+              </button>
+              <button type="button" onclick="insertPromoPlaceholder('{contact}')"
+                class="px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-[11px] font-mono font-bold transition shadow-2xs cursor-pointer">
+                +{contact}
+              </button>
+              <button type="button" onclick="insertPromoPlaceholder('{shop_phone}')"
+                class="px-2 py-0.5 rounded-md bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-[11px] font-mono font-bold transition shadow-2xs cursor-pointer">
+                +{shop_phone}
+              </button>
+              <button type="button" onclick="insertPromoPlaceholder('{pharmacist_phone}')"
+                class="px-2 py-0.5 rounded-md bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 text-[11px] font-mono font-bold transition shadow-2xs cursor-pointer">
+                +{pharmacist_phone}
+              </button>
+              <button type="button" onclick="insertPromoPlaceholder('{branch}')"
+                class="px-2 py-0.5 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 text-[11px] font-mono font-bold transition shadow-2xs cursor-pointer">
+                +{branch}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live WhatsApp Phone Mockup -->
+        <div class="bg-slate-900 rounded-3xl p-3 shadow-xl border-4 border-slate-700">
+          <div class="w-20 h-1.5 bg-slate-700 rounded-full mx-auto mb-2.5"></div>
+
+          <!-- WhatsApp Chat Header -->
+          <div class="bg-emerald-700 rounded-t-2xl px-3.5 py-2.5 flex items-center gap-2.5 text-white">
+            <div class="w-8 h-8 rounded-full bg-white text-emerald-700 flex items-center justify-center font-bold text-xs flex-shrink-0 shadow-inner">
+              <i class="fa-solid fa-cross text-emerald-600"></i>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="font-bold text-xs truncate">PMG Pharmacy (Official)</div>
+              <div class="text-[10px] text-emerald-100 truncate flex items-center gap-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-300 inline-block"></span>
+                <span>Verified WhatsApp Channel</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- WhatsApp Chat Wallpaper Area -->
+          <div class="bg-[#efeae2] p-3 rounded-b-2xl min-h-[160px] max-h-[340px] overflow-y-auto">
+            <div class="text-center mb-2">
+              <span id="promoPreviewCustomerBadge" class="text-[10px] bg-white/80 text-gray-600 px-2 py-0.5 rounded-full shadow-2xs border border-gray-200">
+                Previewing for: Lai Jon Sen (601121093229)
+              </span>
+            </div>
+
+            <!-- WhatsApp Speech Bubble with Optional Poster -->
+            <div class="bg-[#dcf8c6] rounded-2xl rounded-tr-xs p-3 shadow-sm border border-emerald-100 max-w-[94%] ml-auto text-xs text-gray-800 leading-relaxed font-sans">
+              <!-- Poster Thumbnail inside bubble if uploaded -->
+              <div id="promoChatPreviewPoster" class="hidden mb-2 rounded-xl overflow-hidden border border-emerald-200 shadow-2xs bg-white">
+                <img src="" alt="Poster" class="w-full max-h-48 object-cover rounded-xl">
+              </div>
+
+              <div id="promoChatPreviewContent" class="break-words">
+                <!-- Live preview injected here -->
+              </div>
+              <div class="text-[10px] text-gray-400 text-right mt-1.5 flex items-center justify-end gap-1 font-mono">
+                <span>11:38 AM</span>
+                <i class="fa-solid fa-check-double text-blue-500"></i>
+              </div>
+            </div>
+
+            <div class="mt-2 text-center">
+              <span class="text-[10px] text-gray-500 bg-white/60 px-2 py-0.5 rounded-full">
+                💡 Tip: Press <strong class="text-emerald-700">Ctrl + V</strong> in WhatsApp to attach your poster picture!
+              </span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- RIGHT COLUMN (7 cols): Customer Broadcast Target List -->
+      <div class="lg:col-span-7 space-y-4">
+
+        <!-- Sticky Fast Action "Send Next Unsent" Button -->
+        <div class="bg-white p-3 rounded-2xl shadow-sm border border-emerald-200 flex items-center gap-3">
+          <button id="promoSendNextBtn" type="button"
+            class="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition cursor-pointer active:scale-98">
+            <i class="fa-brands fa-whatsapp text-lg"></i>
+            <span>Send Next: Lai Jon Sen</span>
+          </button>
+        </div>
+
+        <!-- Search & Filter Bar -->
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 space-y-3">
+          <!-- Top Row: Search & Count -->
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <div class="relative flex-1 min-w-[220px]">
+              <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+              <input type="text" id="promoSearchInput" oninput="handlePromoSearch(this.value)"
+                placeholder="Search by customer name, mobile, or staff..."
+                class="w-full text-xs pl-9 pr-3 py-2 bg-gray-50 border border-gray-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition">
+            </div>
+
+            <div class="flex items-center gap-2 flex-wrap">
+              <!-- Loyalty Tier Filter -->
+              <select id="promoLoyaltySelect" onchange="setPromoLoyaltyFilter(this.value)"
+                class="text-xs font-semibold bg-gray-50 border border-gray-300 rounded-xl py-2 px-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                <option value="all">All Buyer Tiers</option>
+                <option value="vip">⭐ VIP Buyers (3+ Cans)</option>
+                <option value="regular">Repeat Buyers (2 Cans)</option>
+                <option value="single">Single Cans (1 Can)</option>
+              </select>
+
+              <!-- Sort Order -->
+              <select id="promoSortSelect" onchange="setPromoSortBy(this.value)"
+                class="text-xs font-semibold bg-gray-50 border border-gray-300 rounded-xl py-2 px-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                <option value="recent">Most Recent Purchase</option>
+                <option value="qty_desc">Highest Total Cans</option>
+                <option value="spent_desc">Highest Spend (RM)</option>
+                <option value="name_asc">Name (A–Z)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Bottom Row: Status Tabs & Total Count -->
+          <div class="flex items-center justify-between border-t border-gray-100 pt-3 flex-wrap gap-2">
+            <div class="flex items-center gap-1">
+              <button type="button" onclick="setPromoStatusFilter('all')" data-status="all"
+                class="promo-status-tab px-3 py-1.5 rounded-lg text-xs border-b-2 font-bold text-emerald-700 border-emerald-600 transition cursor-pointer">
+                All Customers
+              </button>
+              <button type="button" onclick="setPromoStatusFilter('pending')" data-status="pending"
+                class="promo-status-tab px-3 py-1.5 rounded-lg text-xs border-b-2 font-medium text-gray-500 border-transparent hover:text-gray-800 transition cursor-pointer">
+                Pending Outreach
+              </button>
+              <button type="button" onclick="setPromoStatusFilter('sent')" data-status="sent"
+                class="promo-status-tab px-3 py-1.5 rounded-lg text-xs border-b-2 font-medium text-gray-500 border-transparent hover:text-gray-800 transition cursor-pointer">
+                Sent ✅
+              </button>
+            </div>
+
+            <div class="text-xs text-gray-500 font-semibold">
+              Showing: <span id="promoFilteredCount" class="font-extrabold text-gray-800">147 Customers</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Customer Table Card -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50 border-b border-gray-200 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                  <th class="p-3 text-center w-10">#</th>
+                  <th class="p-3">Customer & Preferred Lang</th>
+                  <th class="p-3">WhatsApp Mobile</th>
+                  <th class="p-3 text-center">Past Qty</th>
+                  <th class="p-3 text-center">Status</th>
+                  <th class="p-3 text-center w-36">Action</th>
+                </tr>
+              </thead>
+              <tbody id="promoCustomerTbody" class="divide-y divide-gray-100 text-xs">
+                <!-- Injected dynamically -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Load More Pagination Button -->
+          <div class="p-3 border-t border-gray-100 bg-gray-50 text-center">
+            <button id="promoLoadMoreBtn" type="button" onclick="loadMorePromoCustomers()"
+              class="hidden px-5 py-2 rounded-xl bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 font-bold text-xs shadow-2xs transition cursor-pointer">
+              Load More Customers
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- PREVIEW CUSTOMER MESSAGE MODAL -->
+    <div id="promoPreviewModal" class="hidden fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+        <div class="flex items-center justify-between border-b pb-3">
+          <h3 class="font-bold text-base text-gray-900 flex items-center gap-2">
+            <i class="fa-brands fa-whatsapp text-emerald-600"></i>
+            <span>Customer Message Preview</span>
+          </h3>
+          <button type="button" onclick="closePromoPreviewModal()" class="text-gray-400 hover:text-gray-600 text-lg">
+            &times;
+          </button>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-gray-500 mb-1">Target Customer:</label>
+          <div id="promoModalCustomerName" class="font-extrabold text-sm text-gray-900">Lai Jon Sen</div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-gray-500 mb-1">Personalized Message to be Sent:</label>
+          <textarea id="promoModalMessageBody" rows="10" readonly
+            style="resize: vertical; min-height: 180px;"
+            class="w-full text-xs font-mono bg-slate-50 border border-gray-300 rounded-xl p-3 focus:outline-none"></textarea>
+        </div>
+
+        <div class="flex items-center justify-end gap-2">
+          <button type="button" onclick="closePromoPreviewModal()" class="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-50 cursor-pointer">
+            Close
+          </button>
+          <button id="promoModalSendBtn" type="button" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer">
+            <i class="fa-brands fa-whatsapp"></i> Send on WhatsApp
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- UPLOAD CSV MODAL -->
+    <div id="promoCsvUploadModal" class="hidden fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div class="flex items-center justify-between border-b pb-3">
+          <h3 class="font-bold text-base text-gray-900 flex items-center gap-2">
+            <i class="fa-solid fa-file-csv text-emerald-600"></i>
+            <span>Upload POS Customer Sales CSV</span>
+          </h3>
+          <button type="button" onclick="closeUploadCustomerCsvModal()" class="text-gray-400 hover:text-gray-600 text-lg">
+            &times;
+          </button>
+        </div>
+
+        <p class="text-xs text-gray-500 leading-relaxed">
+          Upload any CSV exported from your POS system for any product. The broadcaster will automatically extract Customer Names, Mobile Numbers, Purchase Quantities, and Dates.
+        </p>
+
+        <div class="border-2 border-dashed border-gray-300 hover:border-emerald-500 rounded-2xl p-6 text-center transition cursor-pointer bg-gray-50 hover:bg-emerald-50/30"
+          onclick="document.getElementById('promoCsvModalFileInput').click()">
+          <i class="fa-solid fa-cloud-arrow-up text-3xl text-emerald-600 mb-2"></i>
+          <p class="text-xs font-bold text-gray-700">Click to Choose or Drag CSV File Here</p>
+          <p class="text-[10px] text-gray-400 mt-1">Supports standard retail sales CSV exports</p>
+          <input type="file" id="promoCsvModalFileInput" accept=".csv" class="hidden" onchange="handlePromoCsvFileInput(event)">
+        </div>
+
+        <div class="flex items-center justify-end gap-2">
+          <button type="button" onclick="closeUploadCustomerCsvModal()" class="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-50 cursor-pointer">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  </main>
+
+  <!-- TOAST NOTIFICATIONS -->
+  <div id="promoToast"
+    class="fixed bottom-5 right-5 z-50 bg-gray-900/95 text-white text-xs px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none max-w-sm backdrop-blur-xs">
+    <i class="fa-solid fa-circle-check text-emerald-400"></i>
+    <span id="promoToastMsg">Action completed</span>
+  </div>
+
+  <!-- PROMO SCRIPTS -->
+  <script src="promo.js?v=20261028_standalone_v1"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      if (typeof initPromoBroadcastModule === 'function') {
+        initPromoBroadcastModule();
+      }
+    });
+
+    function togglePromoSingleTab(cb) {
+      if (typeof promoComposerState !== 'undefined') {
+        promoComposerState.reuseWaTab = cb.checked;
+        if (typeof savePromoComposerState === 'function') savePromoComposerState();
+      }
+    }
+  </script>
+</body>
+</html>
