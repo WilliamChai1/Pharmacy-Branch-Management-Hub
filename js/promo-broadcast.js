@@ -240,7 +240,7 @@ let promoActiveCampaign = null;
 let promoCachedPosterBlob = null;
 let promoComposerState = {
   language: 'auto', // 'auto' (smart customer match) | 'bm' | 'zh' | 'bilingual' | 'en' | 'custom'
-  offerDetails: 'Beli 2 Tin RM210 (Jimat RM20) + Percuma Shaker / 买2罐特价RM210送摇摇杯',
+  offerDetails: 'Beli 2 Tin RM210 (Jimat RM20) + Percuma Shaker / 买2罐特惠 RM210（节省 RM20）+ 免费赠送摇摇杯，存货有限售完即止',
   offerDetailsEn: 'Buy 2 Tins at RM210 (Save RM20) + Free Shaker Cup, while stocks last',
   offerDetailsBm: 'Beli 2 Tin pada harga RM210 (Jimat RM20) + Percuma Shaker Cup, sementara stok masih ada',
   offerDetailsZh: '买2罐特惠 RM210（节省 RM20）+ 免费赠送摇摇杯，存货有限售完即止',
@@ -253,6 +253,13 @@ let promoComposerState = {
   posterFileName: '',
   autoCopyPoster: true,
   customText: '',
+  templates: {
+    bm: '',
+    zh: '',
+    bilingual: '',
+    en: '',
+    custom: ''
+  },
   nameFormat: 'title'
 };
 let promoProgressMap = {}; // { [campaignId]: { [customerId]: { sent: true, sentAt: '...', langOverride: 'bm'|'zh' } } }
@@ -315,6 +322,9 @@ function loadPromoComposerState() {
     if (raw) {
       const saved = JSON.parse(raw);
       promoComposerState = { ...promoComposerState, ...saved };
+      if (saved.templates && typeof saved.templates === 'object') {
+        promoComposerState.templates = { ...promoComposerState.templates, ...saved.templates };
+      }
     }
   } catch (e) {
     console.warn('[PMG Promo] Error loading composer state:', e);
@@ -326,6 +336,9 @@ function loadPromoComposerState() {
   if (!promoComposerState.pharmacistName) promoComposerState.pharmacistName = 'William';
   if (!promoComposerState.branchName) promoComposerState.branchName = 'Kota Sentosa';
   if (!promoComposerState.language) promoComposerState.language = 'auto';
+  if (!promoComposerState.templates) {
+    promoComposerState.templates = { bm: '', zh: '', bilingual: '', en: '', custom: '' };
+  }
 }
 
 function savePromoComposerState() {
@@ -530,14 +543,14 @@ function getCustomerEffectiveLanguage(cust) {
 
 function getActivePromoTemplateText(targetLang) {
   const lang = targetLang || promoComposerState.language || 'auto';
-  if (lang === 'custom' && promoComposerState.customText && promoComposerState.customText.trim()) {
-    return promoComposerState.customText;
+  if (lang === 'custom') {
+    return (promoComposerState.templates && promoComposerState.templates.custom) || promoComposerState.customText || PROMO_DEFAULT_TEMPLATES.bm;
   }
-  if (lang === 'auto') {
-    // In auto mode, default display template is BM or Bilingual for general view
-    return PROMO_DEFAULT_TEMPLATES.bm;
+  const effectiveLang = (lang === 'auto') ? 'bm' : lang;
+  if (promoComposerState.templates && promoComposerState.templates[effectiveLang] && promoComposerState.templates[effectiveLang].trim()) {
+    return promoComposerState.templates[effectiveLang];
   }
-  return PROMO_DEFAULT_TEMPLATES[lang] || PROMO_DEFAULT_TEMPLATES.bm;
+  return PROMO_DEFAULT_TEMPLATES[effectiveLang] || PROMO_DEFAULT_TEMPLATES.bm;
 }
 
 function generatePersonalizedMessage(customer) {
@@ -546,24 +559,36 @@ function generatePersonalizedMessage(customer) {
   const effLang = getCustomerEffectiveLanguage(customer);
 
   let template = '';
-  if (promoComposerState.language === 'custom' && promoComposerState.customText && promoComposerState.customText.trim()) {
-    template = promoComposerState.customText;
+  if (promoComposerState.language === 'custom') {
+    template = (promoComposerState.templates && promoComposerState.templates.custom) || promoComposerState.customText || PROMO_DEFAULT_TEMPLATES.bm;
+  } else if (promoComposerState.language === 'auto') {
+    // In auto mode, use user-edited template for customer's language if available, else default
+    if (promoComposerState.templates && promoComposerState.templates[effLang] && promoComposerState.templates[effLang].trim()) {
+      template = promoComposerState.templates[effLang];
+    } else {
+      template = PROMO_DEFAULT_TEMPLATES[effLang] || PROMO_DEFAULT_TEMPLATES.bm;
+    }
   } else {
-    template = PROMO_DEFAULT_TEMPLATES[effLang] || PROMO_DEFAULT_TEMPLATES.bm;
+    // Specifically selected language mode (zh, bm, bilingual, en)
+    const mode = promoComposerState.language;
+    if (promoComposerState.templates && promoComposerState.templates[mode] && promoComposerState.templates[mode].trim()) {
+      template = promoComposerState.templates[mode];
+    } else {
+      template = PROMO_DEFAULT_TEMPLATES[mode] || PROMO_DEFAULT_TEMPLATES.bm;
+    }
   }
 
   const rawName = customer.name || 'Pelanggan Dihormati / 尊敬的顾客';
   const name = promoComposerState.nameFormat === 'upper' ? rawName.toUpperCase() : formatTitleCase(rawName);
   const product = promoActiveCampaign.productName || 'NUTRIBRIDGE NUTRI ALPHA 800GM';
 
-  // Offer details resolution based on customer language
+  // Offer details resolution based on customer language:
+  // Chinese customer -> use offerDetailsZh; BM customer -> use offerDetailsBm
   let offerDetails = promoComposerState.offerDetails;
-  if (promoComposerState.language === 'auto') {
-    if (effLang === 'bm' && promoComposerState.offerDetailsBm) {
-      offerDetails = promoComposerState.offerDetailsBm;
-    } else if (effLang === 'zh' && promoComposerState.offerDetailsZh) {
-      offerDetails = promoComposerState.offerDetailsZh;
-    }
+  if (effLang === 'zh') {
+    offerDetails = promoComposerState.offerDetailsZh || promoComposerState.offerDetails || '';
+  } else if (effLang === 'bm') {
+    offerDetails = promoComposerState.offerDetailsBm || promoComposerState.offerDetails || '';
   }
 
   const promoPeriod = promoComposerState.promoPeriod || 'Sementara Stok Masih Ada / 存货有限，售完即止';
@@ -583,6 +608,9 @@ function generatePersonalizedMessage(customer) {
     .replace(/\{shop_phone\}/g, shopPhone)
     .replace(/\{pharmacist_phone\}/g, pharmacistPhone)
     .replace(/\{last_date\}/g, lastDate);
+
+  // Auto sanitize any accidental replacement diamonds into clean bullet points
+  msg = msg.replace(/\uFFFD/g, '•');
 
   return msg;
 }
@@ -733,11 +761,9 @@ function renderPromoComposer() {
 
 function handlePromoLangSwitch(langKey) {
   promoComposerState.language = langKey;
-  if (langKey !== 'custom') {
-    promoComposerState.customText = PROMO_DEFAULT_TEMPLATES[langKey] || '';
-  }
   savePromoComposerState();
   renderPromoComposer();
+  renderPromoChatPreview();
   renderPromoCustomerTable();
 }
 window.handlePromoLangSwitch = handlePromoLangSwitch;
@@ -754,16 +780,41 @@ function handleComposerInputChange() {
   const pharm = document.getElementById('promoComposerPharmacistPhone')?.value || '';
   const textarea = document.getElementById('promoComposerTextarea')?.value || '';
 
-  promoComposerState.offerDetails = offer;
-  promoComposerState.offerDetailsEn = offer;
-  promoComposerState.offerDetailsBm = offerBm || offer;
-  promoComposerState.offerDetailsZh = offerZh || offer;
+  // Clean any pasted \uFFFD replacement diamonds into bullets immediately
+  const cleanOffer = offer.replace(/\uFFFD/g, '•');
+  const cleanOfferBm = offerBm.replace(/\uFFFD/g, '•');
+  const cleanOfferZh = offerZh.replace(/\uFFFD/g, '•');
+  const cleanTextarea = textarea.replace(/\uFFFD/g, '•');
+
+  promoComposerState.offerDetails = cleanOffer;
+  promoComposerState.offerDetailsEn = cleanOffer;
+  promoComposerState.offerDetailsBm = cleanOfferBm || cleanOffer;
+  promoComposerState.offerDetailsZh = cleanOfferZh || cleanOffer;
   promoComposerState.promoPeriod = period;
   promoComposerState.branchName = branch;
   promoComposerState.shopPhone = shop;
   promoComposerState.pharmacistPhone = pharm;
-  if (promoComposerState.language === 'custom') {
-    promoComposerState.customText = textarea;
+
+  if (!promoComposerState.templates) {
+    promoComposerState.templates = { bm: '', zh: '', bilingual: '', en: '', custom: '' };
+  }
+
+  // Live save textarea to the active language template so user edits take effect immediately!
+  const activeLang = promoComposerState.language || 'auto';
+  if (activeLang === 'custom') {
+    promoComposerState.customText = cleanTextarea;
+    promoComposerState.templates.custom = cleanTextarea;
+  } else if (activeLang === 'auto') {
+    // In auto mode, if user types Chinese characters, update zh template, else update bm template
+    if (/[\u4e00-\u9fa5]/.test(cleanTextarea)) {
+      promoComposerState.templates.zh = cleanTextarea;
+    } else {
+      promoComposerState.templates.bm = cleanTextarea;
+    }
+    promoComposerState.customText = cleanTextarea;
+  } else {
+    promoComposerState.templates[activeLang] = cleanTextarea;
+    promoComposerState.customText = cleanTextarea;
   }
 
   // Update preview immediately, debounce saving to disk
@@ -1188,11 +1239,15 @@ function sendCustomerPromoWhatsApp(customerId) {
     return;
   }
 
-  // 1. Generate personalized message synchronously (BM for Malay/Dayak, Mandarin for Chinese)
-  const msg = generatePersonalizedMessage(cust);
-  const waUrl = `https://wa.me/${val.cleanPhone}?text=${encodeURIComponent(msg)}`;
+  // 1. Generate personalized message synchronously (with user updates and diamond sanitizing)
+  const msg = generatePersonalizedMessage(cust).replace(/\uFFFD/g, '•');
 
-  // 2. Open WhatsApp Web / App SYNCHRONOUSLY FIRST (guarantees Chrome popup blocker will NEVER block it!)
+  // 2. Direct WhatsApp URL (Direct WhatsApp Web on Desktop bypasses wa.me redirect bug so emojis NEVER corrupt!)
+  const isMobile = /Android|iPhone|iPad|iPod|Windows Phone|webOS/i.test(navigator.userAgent);
+  const baseUrl = isMobile ? 'https://api.whatsapp.com/send' : 'https://web.whatsapp.com/send';
+  const waUrl = `${baseUrl}?phone=${val.cleanPhone}&text=${encodeURIComponent(msg)}`;
+
+  // 3. Open WhatsApp Web / App SYNCHRONOUSLY FIRST (guarantees Chrome popup blocker will NEVER block it!)
   let waWindow = null;
   try {
     waWindow = window.open(waUrl, '_blank', 'noopener,noreferrer');
@@ -1211,31 +1266,24 @@ function sendCustomerPromoWhatsApp(customerId) {
     }, 100);
   }
 
-  // 3. Auto-copy poster to clipboard in background (non-blocking, 0ms lag!)
+  // 4. Auto-copy poster to clipboard in background (non-blocking, 0ms lag!)
   if (promoComposerState.autoCopyPoster) {
     if (promoCachedPosterBlob && navigator.clipboard && navigator.clipboard.write) {
       navigator.clipboard.write([
         new ClipboardItem({ 'image/png': promoCachedPosterBlob })
       ]).then(() => {
-        showPromoToast('✅ WhatsApp opened! Poster copied to clipboard — press Ctrl+V in chat to attach.');
+        showPromoToast(`Poster copied! Opening WhatsApp for ${formatTitleCase(cust.name)}... (Press Ctrl + V in chat to attach poster)`);
       }).catch(err => {
-        console.warn('[Poster clipboard copy notice]', err);
-      });
-    } else if (promoComposerState.posterUrl) {
-      preparePosterBlob(promoComposerState.posterUrl).then(blob => {
-        if (blob && navigator.clipboard && navigator.clipboard.write) {
-          navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).catch(() => {});
-        }
+        console.warn('[PMG Promo] Clipboard copy failed:', err);
       });
     }
   }
 
-  // 4. Mark customer as sent
-  setCustomerSentStatus(promoActiveCampaign.id, cust.id, true);
-
-  // 5. Update only the single row & "Send Next" button (0ms lag, no redraw!)
-  promoPreviewCustomerId = cust.id;
+  // 5. Update status in 0ms (targeted single row update without full table re-render)
+  const campaignId = promoActiveCampaign.id;
+  setCustomerSentStatus(campaignId, cust.id, true);
   updateSingleCustomerRowInTable(cust.id);
+  renderPromoKpis();
   renderPromoChatPreview();
 }
 window.sendCustomerPromoWhatsApp = sendCustomerPromoWhatsApp;
@@ -1245,7 +1293,7 @@ function copyCustomerPromoMessage(customerId) {
   const cust = (promoActiveCampaign.customers || []).find(c => c.id === customerId);
   if (!cust) return;
 
-  const msg = generatePersonalizedMessage(cust);
+  const msg = generatePersonalizedMessage(cust).replace(/\uFFFD/g, '•');
   if (navigator.clipboard) {
     navigator.clipboard.writeText(msg).then(() => {
       showPromoToast(`Message for ${formatTitleCase(cust.name)} copied to clipboard!`);
@@ -1269,19 +1317,15 @@ function previewPromoCustomerMessageModal(customerId) {
   const cust = (promoActiveCampaign.customers || []).find(c => c.id === customerId);
   if (!cust) return;
 
-  promoPreviewCustomerId = cust.id;
-  renderPromoChatPreview();
-
+  const msg = generatePersonalizedMessage(cust).replace(/\uFFFD/g, '•');
   const modal = document.getElementById('promoPreviewModal');
-  const modalCustName = document.getElementById('promoModalCustomerName');
-  const modalText = document.getElementById('promoModalMessageBody');
+  const modalTitle = document.getElementById('promoModalCustomerTitle');
+  const modalBody = document.getElementById('promoModalMessageBody');
   const modalSendBtn = document.getElementById('promoModalSendBtn');
 
-  if (modal && modalCustName && modalText) {
-    const effLang = getCustomerEffectiveLanguage(cust);
-    const langFlag = effLang === 'zh' ? '🇨🇳 华语' : '🇲🇾 BM';
-    modalCustName.textContent = `${formatTitleCase(cust.name)} (${cust.phone || 'No Phone'}) [${langFlag}]`;
-    modalText.value = generatePersonalizedMessage(cust);
+  if (modal && modalBody) {
+    if (modalTitle) modalTitle.textContent = `${cust.name} (${cust.phone})`;
+    modalBody.value = msg;
     if (modalSendBtn) {
       modalSendBtn.onclick = () => {
         sendCustomerPromoWhatsApp(cust.id);
