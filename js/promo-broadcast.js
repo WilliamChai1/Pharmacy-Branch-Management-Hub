@@ -15,7 +15,7 @@ const NUTRI_ALPHA_PRESET_CAMPAIGN = {
 };
 
 // ─── SURNAMES & MALAYSIAN NAME CLASSIFIER ─────────────────────────────────────
-const CHINESE_SURNAMES = new Set([
+const PROMO_CHINESE_SURNAMES = new Set([
   'ang','au','aw','bai','ban','bao','bee','beh','biu','boey','bok','bong','boon','cha','chai','cham','chan','chang','chao',
   'chau','chaw','chee','cheah','chen','cheng','cheo','cheok','cheong','chew','chia','chiang','chiao','chien','chieng','chiew',
   'chin','ching','chiong','chiu','cho','choi','chok','chong','choo','chooi','choon','chou','chow','choy','chu','chua','chuah',
@@ -62,7 +62,7 @@ function detectCustomerLanguagePreference(customerName) {
   if (bmIndicators.some(w => norm.includes(w))) return 'bm';
 
   const words = norm.trim().split(/\s+/).filter(Boolean);
-  const hasChinese = words.some(w => CHINESE_SURNAMES.has(w));
+  const hasChinese = words.some(w => PROMO_CHINESE_SURNAMES.has(w));
   return hasChinese ? 'zh' : 'bm';
 }
 
@@ -709,7 +709,7 @@ function handlePromoLangSwitch(langKey) {
 window.handlePromoLangSwitch = handlePromoLangSwitch;
 
 // Debounced input handler to eliminate typing lag
-let composerDebounceTimer = null;
+let promoComposerDebounceTimer = null;
 function handleComposerInputChange() {
   const offer = document.getElementById('promoComposerOffer')?.value || '';
   const offerBm = document.getElementById('promoComposerOfferBm')?.value || '';
@@ -735,8 +735,8 @@ function handleComposerInputChange() {
   // Update preview immediately, debounce saving to disk
   renderPromoChatPreview();
 
-  clearTimeout(composerDebounceTimer);
-  composerDebounceTimer = setTimeout(() => {
+  clearTimeout(promoComposerDebounceTimer);
+  promoComposerDebounceTimer = setTimeout(() => {
     savePromoComposerState();
   }, 300);
 }
@@ -1263,10 +1263,10 @@ function setPromoStatusFilter(status) {
 }
 window.setPromoStatusFilter = setPromoStatusFilter;
 
-let searchDebounceTimer = null;
+let promoSearchDebounceTimer = null;
 function handlePromoSearch(val) {
-  clearTimeout(searchDebounceTimer);
-  searchDebounceTimer = setTimeout(() => {
+  clearTimeout(promoSearchDebounceTimer);
+  promoSearchDebounceTimer = setTimeout(() => {
     promoFilter.search = val;
     promoCurrentPage = 1;
     renderPromoCustomerTable();
