@@ -864,6 +864,15 @@
           console.warn('[PMG OneDrive Sync] Universal sync: Expiry warning:', expErr);
         }
 
+        // ─── STEP K: UNIVERSAL SYNC — CUSTOMER PROMO & WHATSAPP BROADCASTER ─────
+        try {
+          if (typeof window.syncPromoBroadcastWithOneDrive === 'function') {
+            await window.syncPromoBroadcastWithOneDrive();
+          }
+        } catch (promoSyncErr) {
+          console.warn('[PMG OneDrive Sync] Universal sync: Promo warning:', promoSyncErr);
+        }
+
         // Persist local patientsData and refresh views
         if (typeof savePatientsData === 'function') {
           savePatientsData();

@@ -5946,7 +5946,7 @@ Date visit: 06.01.2026
        MODULE 8: CUSTOMER PROMO & WHATSAPP BROADCASTER
        (Special Offers, Multilingual WhatsApp Outreach, CSV Campaign Importer)
   ───────────────────────────────────────────────────────────────────────────── -->
-  <div id="content-promo-broadcast" class="tab-content hidden">
+    <div id="content-promo-broadcast" class="tab-content hidden">
 
     <!-- Module Header -->
     <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 mb-5">
@@ -5961,12 +5961,12 @@ Date visit: 06.01.2026
               <span class="text-xs bg-emerald-100 text-emerald-800 font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-300">
                 <i class="fa-solid fa-bullhorn mr-1"></i>PROMOTIONS
               </span>
-              <span class="text-xs bg-blue-50 text-blue-700 font-semibold px-2 py-0.5 rounded-full border border-blue-200">
-                BM · 中文 · Bilingual
+              <span class="text-xs bg-blue-50 text-blue-700 font-bold px-2.5 py-0.5 rounded-full border border-blue-200">
+                🤖 Auto BM / 华语 智能匹配
               </span>
             </div>
             <p class="text-gray-500 text-xs sm:text-sm max-w-3xl">
-              Target past buyers with 1-click personalized WhatsApp offers during PMG promotional days. Fully customizable manual message with auto-templates in Bahasa Malaysia and Mandarin.
+              Target past buyers with 1-click personalized WhatsApp offers. Auto-routes Malay/Dayak customers to Bahasa Malaysia and Chinese customers to Mandarin, with auto-translation and poster clipboard support!
             </p>
           </div>
         </div>
@@ -5981,10 +5981,34 @@ Date visit: 06.01.2026
             </select>
           </div>
 
+          <!-- Cloud Sync (OneDrive) -->
+          <button id="promoCloudSyncBtn" type="button" onclick="syncPromoBroadcastWithOneDrive()"
+            class="px-3 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-300 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+            title="Sync campaigns and broadcast progress across computers via OneDrive">
+            <i class="fa-solid fa-cloud-arrow-up text-sky-600"></i>
+            <span id="promoCloudSyncLabel">OneDrive Sync</span>
+          </button>
+
+          <!-- Backup / Restore JSON Buttons -->
+          <button type="button" onclick="exportPromoBroadcastJson()"
+            class="px-2.5 py-2 rounded-xl bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer"
+            title="Backup campaign progress to JSON file">
+            <i class="fa-solid fa-download text-gray-500"></i>
+            <span>Backup</span>
+          </button>
+
+          <button type="button" onclick="triggerImportPromoJson()"
+            class="px-2.5 py-2 rounded-xl bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer"
+            title="Restore/Sync campaign progress from JSON file">
+            <i class="fa-solid fa-upload text-gray-500"></i>
+            <span>Restore</span>
+          </button>
+          <input type="file" id="promoJsonFileInput" accept=".json" class="hidden" onchange="handleImportPromoJson(event)">
+
           <button type="button" onclick="openUploadCustomerCsvModal()"
-            class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer">
+            class="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer">
             <i class="fa-solid fa-file-circle-plus"></i>
-            <span>Upload New CSV</span>
+            <span>Upload CSV</span>
           </button>
 
           <button type="button" onclick="exportPromoCustomerListCsv()"
@@ -6066,80 +6090,199 @@ Date visit: 06.01.2026
       <div class="lg:col-span-5 space-y-5 lg:sticky lg:top-4">
 
         <!-- Composer Card -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
-          <div class="flex items-center justify-between mb-3">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 space-y-3.5">
+          <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <i class="fa-solid fa-pen-to-square text-emerald-600 text-base"></i>
               <h4 class="font-extrabold text-sm text-gray-900">Custom Message Composer</h4>
             </div>
-            <span class="text-[10px] text-gray-400 font-mono">Live Editable</span>
+            <span class="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+              <i class="fa-solid fa-arrows-up-down mr-0.5"></i> All Boxes Draggable
+            </span>
           </div>
 
-          <p class="text-xs text-gray-500 mb-3">
-            Click a language template below, or manually edit any text directly. Tags like <code class="text-emerald-700 font-bold">{name}</code> auto-fill each customer's details!
-          </p>
-
-          <!-- Language Template Switcher -->
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mb-3.5">
-            <button type="button" onclick="handlePromoLangSwitch('bm')" data-lang="bm"
-              class="promo-lang-btn text-xs py-2 px-2.5 rounded-lg border font-bold text-center transition flex items-center justify-center gap-1 cursor-pointer">
-              <span>🇲🇾</span> <span>BM (Malay)</span>
-            </button>
-            <button type="button" onclick="handlePromoLangSwitch('zh')" data-lang="zh"
-              class="promo-lang-btn text-xs py-2 px-2.5 rounded-lg border font-bold text-center transition flex items-center justify-center gap-1 cursor-pointer">
-              <span>🇨🇳</span> <span>华语 (Mandarin)</span>
-            </button>
-            <button type="button" onclick="handlePromoLangSwitch('bilingual')" data-lang="bilingual"
-              class="promo-lang-btn text-xs py-2 px-2.5 rounded-lg border font-bold text-center transition flex items-center justify-center gap-1 cursor-pointer">
-              <span>🇲🇾+🇨🇳</span> <span>Bilingual</span>
-            </button>
-            <button type="button" onclick="handlePromoLangSwitch('en')" data-lang="en"
-              class="promo-lang-btn text-xs py-2 px-2.5 rounded-lg border font-bold text-center transition flex items-center justify-center gap-1 cursor-pointer">
-              <span>🇬🇧</span> <span>English</span>
-            </button>
-          </div>
-
-          <!-- Quick Offer Fillers -->
-          <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 mb-3 space-y-2.5">
-            <div>
-              <label class="block text-[11px] font-bold text-gray-700 mb-1">
-                <i class="fa-solid fa-tag text-emerald-600 mr-1"></i> Special Offer / Promo Price Details:
-              </label>
-              <input type="text" id="promoComposerOffer" oninput="handleComposerInputChange()"
-                placeholder="e.g. Beli 2 Tin RM210 (Jimat RM20) + Free Shaker / 买2罐特价RM210送摇摇杯"
-                class="w-full text-xs font-semibold bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+          <!-- Language Selector -->
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="text-[11px] font-bold text-gray-700">Target Language Mode:</label>
+              <span class="text-[10px] text-gray-400">Auto mode selects BM or Mandarin per customer</span>
             </div>
+            <div class="grid grid-cols-3 sm:grid-cols-6 gap-1">
+              <button type="button" onclick="handlePromoLangSwitch('auto')" data-lang="auto"
+                class="promo-lang-btn text-[11px] py-1.5 px-1 rounded-lg border font-bold text-center transition flex flex-col items-center justify-center gap-0.5 cursor-pointer bg-emerald-600 text-white border-emerald-700 shadow-xs"
+                title="Automatically sends BM to Malay/Dayak names, Mandarin to Chinese names">
+                <span class="text-sm">🤖</span> <span class="leading-tight">Auto (Smart)</span>
+              </button>
+              <button type="button" onclick="handlePromoLangSwitch('bm')" data-lang="bm"
+                class="promo-lang-btn text-[11px] py-1.5 px-1 rounded-lg border font-bold text-center transition flex flex-col items-center justify-center gap-0.5 cursor-pointer bg-gray-100 text-gray-700 border-gray-300">
+                <span class="text-sm">🇲🇾</span> <span class="leading-tight">BM</span>
+              </button>
+              <button type="button" onclick="handlePromoLangSwitch('zh')" data-lang="zh"
+                class="promo-lang-btn text-[11px] py-1.5 px-1 rounded-lg border font-bold text-center transition flex flex-col items-center justify-center gap-0.5 cursor-pointer bg-gray-100 text-gray-700 border-gray-300">
+                <span class="text-sm">🇨🇳</span> <span class="leading-tight">华语</span>
+              </button>
+              <button type="button" onclick="handlePromoLangSwitch('bilingual')" data-lang="bilingual"
+                class="promo-lang-btn text-[11px] py-1.5 px-1 rounded-lg border font-bold text-center transition flex flex-col items-center justify-center gap-0.5 cursor-pointer bg-gray-100 text-gray-700 border-gray-300">
+                <span class="text-sm">🇲🇾🇨🇳</span> <span class="leading-tight">双语</span>
+              </button>
+              <button type="button" onclick="handlePromoLangSwitch('en')" data-lang="en"
+                class="promo-lang-btn text-[11px] py-1.5 px-1 rounded-lg border font-bold text-center transition flex flex-col items-center justify-center gap-0.5 cursor-pointer bg-gray-100 text-gray-700 border-gray-300">
+                <span class="text-sm">🇬🇧</span> <span class="leading-tight">English</span>
+              </button>
+              <button type="button" onclick="handlePromoLangSwitch('custom')" data-lang="custom"
+                class="promo-lang-btn text-[11px] py-1.5 px-1 rounded-lg border font-bold text-center transition flex flex-col items-center justify-center gap-0.5 cursor-pointer bg-gray-100 text-gray-700 border-gray-300">
+                <span class="text-sm">✏️</span> <span class="leading-tight">Custom</span>
+              </button>
+            </div>
+          </div>
 
+          <!-- Store & Staff Contacts (Editable & Saved!) -->
+          <div class="bg-indigo-50/50 p-3 rounded-xl border border-indigo-100 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold text-indigo-900">
+                <i class="fa-solid fa-address-book text-indigo-600 mr-1"></i> Store & Pharmacist Contacts:
+              </span>
+              <span class="text-[10px] text-indigo-600 font-mono">Editable & Auto-saved</span>
+            </div>
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <label class="block text-[11px] font-bold text-gray-700 mb-1">
-                  <i class="fa-regular fa-calendar-days text-blue-600 mr-1"></i> Promo Period:
+                <label class="block text-[10px] font-bold text-gray-600 mb-0.5">
+                  <i class="fa-solid fa-store text-emerald-600 mr-1"></i> Shop Phone (Hotline):
                 </label>
-                <input type="text" id="promoComposerPeriod" oninput="handleComposerInputChange()"
-                  placeholder="e.g. 28 Okt - 03 Nov 2026 (Stok Terhad)"
-                  class="w-full text-xs font-medium bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                <input type="text" id="promoComposerShopPhone" oninput="handleComposerInputChange()"
+                  value="+60149773924" placeholder="+60149773924"
+                  class="w-full text-xs font-bold text-gray-800 bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
               </div>
               <div>
-                <label class="block text-[11px] font-bold text-gray-700 mb-1">
-                  <i class="fa-solid fa-store text-indigo-600 mr-1"></i> Branch / Contact:
+                <label class="block text-[10px] font-bold text-gray-600 mb-0.5">
+                  <i class="fa-solid fa-user-doctor text-blue-600 mr-1"></i> Pharmacist William:
                 </label>
-                <input type="text" id="promoComposerBranch" oninput="handleComposerInputChange()"
-                  value="Kota Sentosa"
-                  placeholder="Branch Name"
-                  class="w-full text-xs font-medium bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                <input type="text" id="promoComposerPharmacistPhone" oninput="handleComposerInputChange()"
+                  value="01110990693" placeholder="01110990693"
+                  class="w-full text-xs font-bold text-gray-800 bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
               </div>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-gray-600 mb-0.5">Branch Location:</label>
+              <input type="text" id="promoComposerBranch" oninput="handleComposerInputChange()"
+                value="Kota Sentosa" placeholder="e.g. Kota Sentosa"
+                class="w-full text-xs font-medium text-gray-800 bg-white border border-gray-300 rounded-lg px-2.5 py-1 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
             </div>
           </div>
 
-          <!-- Message Textarea -->
-          <div class="mb-2">
+          <!-- Special Offer & Auto-Translator -->
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2.5">
+            <div class="flex items-center justify-between flex-wrap gap-1">
+              <label class="block text-[11px] font-bold text-gray-700">
+                <i class="fa-solid fa-tag text-emerald-600 mr-1"></i> Special Offer Details (Key in English / BM / Chinese):
+              </label>
+              <button type="button" onclick="autoTranslatePromoOffer()"
+                class="px-2 py-0.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-md text-[10px] font-bold shadow-2xs flex items-center gap-1 cursor-pointer transition">
+                <i class="fa-solid fa-wand-magic-sparkles text-[10px]"></i>
+                <span>⚡ Auto-Translate to BM & 华语</span>
+              </button>
+            </div>
+
+            <!-- Resizable Main / English Offer Textarea -->
+            <textarea id="promoComposerOffer" oninput="handleComposerInputChange()" rows="2"
+              style="resize: vertical; min-height: 52px;"
+              placeholder="e.g. Buy 2 Tins at RM210 (Save RM20) + Free Shaker Cup, while stocks last"
+              class="w-full text-xs font-semibold text-gray-800 bg-white border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none"></textarea>
+
+            <!-- Dual Translated Sub-fields (Accordion / Visible for fine-tuning) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-slate-200">
+              <div>
+                <label class="block text-[10px] font-bold text-blue-800 mb-0.5 flex items-center gap-1">
+                  <span>🇲🇾 BM Version (for Malay & Dayak customers):</span>
+                </label>
+                <textarea id="promoComposerOfferBm" oninput="handleComposerInputChange()" rows="2"
+                  style="resize: vertical; min-height: 48px;"
+                  placeholder="Beli 2 Tin RM210 (Jimat RM20) + Percuma Shaker Cup"
+                  class="w-full text-[11px] font-medium text-gray-800 bg-white border border-blue-200 rounded-lg p-1.5 focus:ring-2 focus:ring-blue-500 focus:outline-none"></textarea>
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-red-800 mb-0.5 flex items-center gap-1">
+                  <span>🇨🇳 华语版本 (for Chinese customers):</span>
+                </label>
+                <textarea id="promoComposerOfferZh" oninput="handleComposerInputChange()" rows="2"
+                  style="resize: vertical; min-height: 48px;"
+                  placeholder="买2罐特价 RM210（节省 RM20）+ 免费赠送摇摇杯"
+                  class="w-full text-[11px] font-medium text-gray-800 bg-white border border-red-200 rounded-lg p-1.5 focus:ring-2 focus:ring-red-500 focus:outline-none"></textarea>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[10px] font-bold text-gray-700 mb-0.5">
+                <i class="fa-regular fa-calendar-days text-purple-600 mr-1"></i> Promo Validity Period:
+              </label>
+              <input type="text" id="promoComposerPeriod" oninput="handleComposerInputChange()"
+                placeholder="e.g. Sementara Stok Masih Ada / 存货有限，售完即止"
+                class="w-full text-xs font-medium bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-purple-500 focus:outline-none">
+            </div>
+          </div>
+
+          <!-- Promotional Poster Image Card (NEW) -->
+          <div id="promoPosterCard" class="bg-amber-50/50 p-3 rounded-xl border border-amber-200 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold text-amber-900">
+                <i class="fa-solid fa-image text-amber-600 mr-1"></i> Promotional Poster / Picture:
+              </span>
+              <span class="text-[10px] text-amber-700 font-medium">Auto-Copy on WhatsApp Click</span>
+            </div>
+
+            <!-- Empty State -->
+            <div id="promoPosterEmptyState" class="border-2 border-dashed border-amber-300 rounded-xl p-3 text-center bg-white/70 hover:bg-white transition cursor-pointer"
+              onclick="document.getElementById('promoPosterFileInput').click()">
+              <i class="fa-solid fa-cloud-arrow-up text-amber-500 text-xl mb-1"></i>
+              <p class="text-xs font-bold text-gray-700">Click to Upload Poster Picture (JPG / PNG)</p>
+              <p class="text-[10px] text-gray-400">Can be copied to clipboard and pasted (Ctrl+V) directly into WhatsApp!</p>
+            </div>
+            <input type="file" id="promoPosterFileInput" accept="image/*" class="hidden" onchange="handlePosterFileSelected(event)">
+
+            <!-- Active Poster State -->
+            <div id="promoPosterActiveState" class="hidden flex items-center justify-between gap-3 bg-white p-2 rounded-xl border border-amber-200 shadow-2xs">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <img id="promoPosterThumb" src="" alt="Poster" class="w-12 h-12 object-cover rounded-lg border border-gray-200 flex-shrink-0">
+                <div class="min-w-0">
+                  <p id="promoPosterName" class="text-xs font-bold text-gray-800 truncate">promo_poster.png</p>
+                  <p class="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
+                    <i class="fa-solid fa-circle-check"></i> Ready to paste in WhatsApp
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center gap-1.5 flex-shrink-0">
+                <button type="button" onclick="copyPosterToClipboard()"
+                  class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                  title="Copy poster image to clipboard now">
+                  <i class="fa-regular fa-copy"></i>
+                  <span>Copy Poster</span>
+                </button>
+                <button type="button" onclick="removePromoPoster()"
+                  class="w-7 h-7 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center text-xs transition cursor-pointer"
+                  title="Remove poster">
+                  <i class="fa-solid fa-trash-can"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Auto-Copy Checkbox -->
+            <label class="flex items-center gap-2 text-[11px] font-semibold text-gray-700 cursor-pointer pt-0.5">
+              <input type="checkbox" id="promoAutoCopyPosterCheckbox" onchange="toggleAutoCopyPoster(this)" checked
+                class="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500">
+              <span>Automatically copy poster to clipboard when clicking "Send WhatsApp" (Press <strong>Ctrl+V</strong> in chat!)</span>
+            </label>
+          </div>
+
+          <!-- Message Textarea (Explicitly Resizable) -->
+          <div>
             <div class="flex items-center justify-between mb-1">
               <label class="text-[11px] font-bold text-gray-700">
-                <i class="fa-solid fa-comment-dots text-emerald-600 mr-1"></i> Full Message Body (Manual Editing Allowed):
+                <i class="fa-solid fa-comment-dots text-emerald-600 mr-1"></i> Full Message Body (Drag corner to expand):
               </label>
-              <span class="text-[10px] text-gray-400">WhatsApp markdown: *bold*, _italic_</span>
+              <span class="text-[10px] text-gray-400 font-mono">WhatsApp markdown: *bold*, _italic_</span>
             </div>
             <textarea id="promoComposerTextarea" rows="9" oninput="handleComposerInputChange()"
+              style="resize: vertical !important; min-height: 180px; height: 260px;"
               class="w-full text-xs font-mono font-medium border border-gray-300 rounded-xl p-3 bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition shadow-2xs leading-relaxed"
               placeholder="Type your WhatsApp promotional message here..."></textarea>
           </div>
@@ -6164,13 +6307,21 @@ Date visit: 06.01.2026
                 class="px-2 py-0.5 rounded-md bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 text-[11px] font-mono font-bold transition shadow-2xs cursor-pointer">
                 +{promo_period}
               </button>
-              <button type="button" onclick="insertPromoPlaceholder('{branch}')"
+              <button type="button" onclick="insertPromoPlaceholder('{contact}')"
                 class="px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-[11px] font-mono font-bold transition shadow-2xs cursor-pointer">
-                +{branch}
+                +{contact}
               </button>
-              <button type="button" onclick="insertPromoPlaceholder('{last_date}')"
+              <button type="button" onclick="insertPromoPlaceholder('{shop_phone}')"
+                class="px-2 py-0.5 rounded-md bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-[11px] font-mono font-bold transition shadow-2xs cursor-pointer">
+                +{shop_phone}
+              </button>
+              <button type="button" onclick="insertPromoPlaceholder('{pharmacist_phone}')"
+                class="px-2 py-0.5 rounded-md bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 text-[11px] font-mono font-bold transition shadow-2xs cursor-pointer">
+                +{pharmacist_phone}
+              </button>
+              <button type="button" onclick="insertPromoPlaceholder('{branch}')"
                 class="px-2 py-0.5 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 text-[11px] font-mono font-bold transition shadow-2xs cursor-pointer">
-                +{last_date}
+                +{branch}
               </button>
             </div>
           </div>
@@ -6178,7 +6329,6 @@ Date visit: 06.01.2026
 
         <!-- Live WhatsApp Phone Mockup -->
         <div class="bg-slate-900 rounded-3xl p-3 shadow-xl border-4 border-slate-700">
-          <!-- Phone Speaker Notch -->
           <div class="w-20 h-1.5 bg-slate-700 rounded-full mx-auto mb-2.5"></div>
 
           <!-- WhatsApp Chat Header -->
@@ -6196,15 +6346,20 @@ Date visit: 06.01.2026
           </div>
 
           <!-- WhatsApp Chat Wallpaper Area -->
-          <div class="bg-[#efeae2] p-3 rounded-b-2xl min-h-[160px] max-h-[300px] overflow-y-auto">
+          <div class="bg-[#efeae2] p-3 rounded-b-2xl min-h-[160px] max-h-[340px] overflow-y-auto">
             <div class="text-center mb-2">
               <span id="promoPreviewCustomerBadge" class="text-[10px] bg-white/80 text-gray-600 px-2 py-0.5 rounded-full shadow-2xs border border-gray-200">
                 Previewing for: Lai Jon Sen (601121093229)
               </span>
             </div>
 
-            <!-- WhatsApp Speech Bubble -->
-            <div class="bg-[#dcf8c6] rounded-2xl rounded-tr-xs p-3 shadow-sm border border-emerald-100 max-w-[92%] ml-auto text-xs text-gray-800 leading-relaxed font-sans">
+            <!-- WhatsApp Speech Bubble with Optional Poster -->
+            <div class="bg-[#dcf8c6] rounded-2xl rounded-tr-xs p-3 shadow-sm border border-emerald-100 max-w-[94%] ml-auto text-xs text-gray-800 leading-relaxed font-sans">
+              <!-- Poster Thumbnail inside bubble if uploaded -->
+              <div id="promoChatPreviewPoster" class="hidden mb-2 rounded-xl overflow-hidden border border-emerald-200 shadow-2xs bg-white">
+                <img src="" alt="Poster" class="w-full max-h-48 object-cover rounded-xl">
+              </div>
+
               <div id="promoChatPreviewContent" class="break-words">
                 <!-- Live preview injected here -->
               </div>
@@ -6212,6 +6367,12 @@ Date visit: 06.01.2026
                 <span>11:38 AM</span>
                 <i class="fa-solid fa-check-double text-blue-500"></i>
               </div>
+            </div>
+
+            <div class="mt-2 text-center">
+              <span class="text-[10px] text-gray-500 bg-white/60 px-2 py-0.5 rounded-full">
+                💡 Tip: Press <strong class="text-emerald-700">Ctrl + V</strong> in WhatsApp to attach your poster picture!
+              </span>
             </div>
           </div>
         </div>
@@ -6237,7 +6398,7 @@ Date visit: 06.01.2026
             <div class="relative flex-1 min-w-[220px]">
               <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
               <input type="text" id="promoSearchInput" oninput="handlePromoSearch(this.value)"
-                placeholder="Search by customer name or phone number..."
+                placeholder="Search by customer name, mobile, or staff..."
                 class="w-full text-xs pl-9 pr-3 py-2 bg-gray-50 border border-gray-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition">
             </div>
 
@@ -6292,23 +6453,23 @@ Date visit: 06.01.2026
               <thead>
                 <tr class="bg-slate-50 border-b border-gray-200 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
                   <th class="p-3 text-center w-10">#</th>
-                  <th class="p-3">Customer Name & History</th>
+                  <th class="p-3">Customer & Preferred Lang</th>
                   <th class="p-3">WhatsApp Mobile</th>
                   <th class="p-3 text-center">Past Qty</th>
                   <th class="p-3 text-center">Status</th>
                   <th class="p-3 text-center w-36">Action</th>
                 </tr>
               </thead>
-              <tbody id="promoCustomerTbody" class="divide-y divide-gray-100">
-                <!-- Dynamically populated -->
+              <tbody id="promoCustomerTbody" class="divide-y divide-gray-100 text-xs">
+                <!-- Injected dynamically -->
               </tbody>
             </table>
           </div>
 
-          <!-- Table Footer Pagination -->
-          <div class="p-4 border-t border-gray-100 text-center bg-gray-50/50">
+          <!-- Load More Pagination Button -->
+          <div class="p-3 border-t border-gray-100 bg-gray-50 text-center">
             <button id="promoLoadMoreBtn" type="button" onclick="loadMorePromoCustomers()"
-              class="hidden px-5 py-2 rounded-xl bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold text-xs shadow-2xs transition cursor-pointer">
+              class="hidden px-5 py-2 rounded-xl bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 font-bold text-xs shadow-2xs transition cursor-pointer">
               Load More Customers
             </button>
           </div>
@@ -6318,85 +6479,76 @@ Date visit: 06.01.2026
 
     </div>
 
-    <!-- ─── MODAL: UPLOAD NEW CUSTOMER CSV ────────────────────────────────────── -->
-    <div id="promoUploadCsvModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 hidden">
-      <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-200 relative animate-scale-in">
-        <button type="button" onclick="closeUploadCustomerCsvModal()" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 p-1">
-          <i class="fa-solid fa-xmark text-lg"></i>
-        </button>
-
-        <div class="flex items-center gap-2.5 mb-2">
-          <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-lg">
-            <i class="fa-solid fa-file-csv"></i>
-          </div>
-          <div>
-            <h3 class="text-base font-extrabold text-gray-900">Upload Customer Sales CSV</h3>
-            <p class="text-xs text-gray-500">Create a new promotional broadcast campaign from your POS extract</p>
-          </div>
-        </div>
-
-        <div class="my-4 border-2 border-dashed border-emerald-300 rounded-2xl p-6 text-center bg-emerald-50/30 hover:bg-emerald-50/60 transition cursor-pointer relative">
-          <input type="file" id="promoCsvFileInput" accept=".csv" onchange="handlePromoCsvFileInput(event)"
-            class="absolute inset-0 opacity-0 w-full h-full cursor-pointer">
-          <i class="fa-solid fa-cloud-arrow-up text-3xl text-emerald-600 mb-2 block"></i>
-          <p class="text-xs font-bold text-gray-800">Click to choose or drag & drop CSV file</p>
-          <p class="text-[11px] text-gray-500 mt-1">Supports POS sales CSVs (e.g. nutri alpha edited.csv, ensure.csv, etc.)</p>
-        </div>
-
-        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 mb-4 text-xs text-slate-600 space-y-1">
-          <div class="font-bold text-slate-800 mb-1 flex items-center gap-1">
-            <i class="fa-solid fa-circle-info text-blue-500"></i> Auto-Detected Columns:
-          </div>
-          <div>• <strong>Customer Name:</strong> Client Name, Customer Name, Nama</div>
-          <div>• <strong>Mobile Number:</strong> Client Mobile, Mobile, Phone, Tel</div>
-          <div>• <strong>Product Name:</strong> Item Name, Product, Description</div>
-          <div>• <strong>Sales Date & Qty:</strong> Sales Date, Quantity, Price</div>
-        </div>
-
-        <div class="flex items-center justify-end gap-2">
-          <button type="button" onclick="closeUploadCustomerCsvModal()" class="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-50">
-            Cancel
+    <!-- PREVIEW CUSTOMER MESSAGE MODAL -->
+    <div id="promoPreviewModal" class="hidden fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+        <div class="flex items-center justify-between border-b pb-3">
+          <h3 class="font-bold text-base text-gray-900 flex items-center gap-2">
+            <i class="fa-brands fa-whatsapp text-emerald-600"></i>
+            <span>Customer Message Preview</span>
+          </h3>
+          <button type="button" onclick="closePromoPreviewModal()" class="text-gray-400 hover:text-gray-600 text-lg">
+            &times;
           </button>
         </div>
-      </div>
-    </div>
 
-    <!-- ─── MODAL: PREVIEW SINGLE CUSTOMER MESSAGE ───────────────────────────── -->
-    <div id="promoMessagePreviewModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 hidden">
-      <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-200 relative">
-        <button type="button" onclick="closePromoPreviewModal()" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 p-1">
-          <i class="fa-solid fa-xmark text-lg"></i>
-        </button>
+        <div>
+          <label class="block text-xs font-bold text-gray-500 mb-1">Target Customer:</label>
+          <div id="promoModalCustomerName" class="font-extrabold text-sm text-gray-900">Lai Jon Sen</div>
+        </div>
 
-        <h3 class="text-base font-extrabold text-gray-900 mb-3 flex items-center gap-2">
-          <i class="fa-brands fa-whatsapp text-emerald-600"></i> WhatsApp Message Preview
-        </h3>
-
-        <div class="bg-[#efeae2] p-4 rounded-2xl mb-4 border border-gray-300">
-          <div class="bg-[#dcf8c6] rounded-2xl rounded-tr-xs p-3 shadow-sm text-xs text-gray-800 leading-relaxed font-sans">
-            <div id="promoModalPreviewBubble" class="break-words">
-              <!-- Content -->
-            </div>
-            <div class="text-[10px] text-gray-400 text-right mt-1.5 flex items-center justify-end gap-1 font-mono">
-              <span>Now</span>
-              <i class="fa-solid fa-check-double text-blue-500"></i>
-            </div>
-          </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-500 mb-1">Personalized Message to be Sent:</label>
+          <textarea id="promoModalMessageBody" rows="10" readonly
+            style="resize: vertical; min-height: 180px;"
+            class="w-full text-xs font-mono bg-slate-50 border border-gray-300 rounded-xl p-3 focus:outline-none"></textarea>
         </div>
 
         <div class="flex items-center justify-end gap-2">
-          <button type="button" onclick="closePromoPreviewModal()" class="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-50">
+          <button type="button" onclick="closePromoPreviewModal()" class="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-50 cursor-pointer">
             Close
           </button>
-          <button type="button" onclick="sendFromPreviewModal()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm">
+          <button id="promoModalSendBtn" type="button" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer">
             <i class="fa-brands fa-whatsapp"></i> Send on WhatsApp
           </button>
         </div>
       </div>
     </div>
 
+    <!-- UPLOAD CSV MODAL -->
+    <div id="promoCsvUploadModal" class="hidden fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div class="flex items-center justify-between border-b pb-3">
+          <h3 class="font-bold text-base text-gray-900 flex items-center gap-2">
+            <i class="fa-solid fa-file-csv text-emerald-600"></i>
+            <span>Upload POS Customer Sales CSV</span>
+          </h3>
+          <button type="button" onclick="closeUploadCustomerCsvModal()" class="text-gray-400 hover:text-gray-600 text-lg">
+            &times;
+          </button>
+        </div>
+
+        <p class="text-xs text-gray-500 leading-relaxed">
+          Upload any CSV exported from your POS system for any product. The broadcaster will automatically extract Customer Names, Mobile Numbers, Purchase Quantities, and Dates.
+        </p>
+
+        <div class="border-2 border-dashed border-gray-300 hover:border-emerald-500 rounded-2xl p-6 text-center transition cursor-pointer bg-gray-50 hover:bg-emerald-50/30"
+          onclick="document.getElementById('promoCsvModalFileInput').click()">
+          <i class="fa-solid fa-cloud-arrow-up text-3xl text-emerald-600 mb-2"></i>
+          <p class="text-xs font-bold text-gray-700">Click to Choose or Drag CSV File Here</p>
+          <p class="text-[10px] text-gray-400 mt-1">Supports standard retail sales CSV exports</p>
+          <input type="file" id="promoCsvModalFileInput" accept=".csv" class="hidden" onchange="handlePromoCsvFileInput(event)">
+        </div>
+
+        <div class="flex items-center justify-end gap-2">
+          <button type="button" onclick="closeUploadCustomerCsvModal()" class="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-50 cursor-pointer">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+
   </div>
-\n
 
 </main>
 
