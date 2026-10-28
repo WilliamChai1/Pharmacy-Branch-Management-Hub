@@ -237,6 +237,7 @@ const STORAGE_PROMO_POSTER     = 'pmg_promo_poster_data';
 
 let promoCampaigns = [];
 let promoActiveCampaign = null;
+let promoCachedPosterBlob = null;
 let promoComposerState = {
   language: 'auto', // 'auto' (smart customer match) | 'bm' | 'zh' | 'bilingual' | 'en' | 'custom'
   offerDetails: 'Beli 2 Tin RM210 (Jimat RM20) + Percuma Shaker / 买2罐特价RM210送摇摇杯',
@@ -335,6 +336,36 @@ function savePromoComposerState() {
   }
 }
 
+async function preparePosterBlob(dataUrl) {
+  if (!dataUrl) {
+    promoCachedPosterBlob = null;
+    return null;
+  }
+  try {
+    const res = await fetch(dataUrl);
+    let blob = await res.blob();
+    if (blob.type !== 'image/png') {
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = dataUrl;
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+    }
+    promoCachedPosterBlob = blob;
+    return blob;
+  } catch (err) {
+    console.warn('[Promo Poster Pre-Cache]', err);
+    return null;
+  }
+}
+
 function loadPromoPoster() {
   try {
     const data = localStorage.getItem(STORAGE_PROMO_POSTER);
@@ -343,6 +374,7 @@ function loadPromoPoster() {
       if (parsed && parsed.dataUrl) {
         promoComposerState.posterUrl = parsed.dataUrl;
         promoComposerState.posterFileName = parsed.fileName || 'promo_poster.png';
+        preparePosterBlob(parsed.dataUrl);
       }
     }
   } catch (e) {
@@ -356,7 +388,9 @@ function savePromoPoster(dataUrl, fileName) {
     promoComposerState.posterFileName = fileName || '';
     if (dataUrl) {
       localStorage.setItem(STORAGE_PROMO_POSTER, JSON.stringify({ dataUrl, fileName }));
+      preparePosterBlob(dataUrl);
     } else {
+      promoCachedPosterBlob = null;
       localStorage.removeItem(STORAGE_PROMO_POSTER);
     }
   } catch (e) {
@@ -849,34 +883,18 @@ function renderPosterPreviewUI() {
 }
 
 async function copyPosterToClipboard() {
-  if (!promoComposerState.posterUrl) {
+  if (!promoCachedPosterBlob && promoComposerState.posterUrl) {
+    await preparePosterBlob(promoComposerState.posterUrl);
+  }
+  if (!promoCachedPosterBlob) {
     showPromoToast('No poster uploaded yet.');
     return false;
   }
 
   try {
-    const res = await fetch(promoComposerState.posterUrl);
-    let blob = await res.blob();
-
-    // Standardize to PNG
-    if (blob.type !== 'image/png') {
-      const img = new Image();
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = promoComposerState.posterUrl;
-      });
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
-    }
-
     if (navigator.clipboard && navigator.clipboard.write) {
       await navigator.clipboard.write([
-        new ClipboardItem({ 'image/png': blob })
+        new ClipboardItem({ 'image/png': promoCachedPosterBlob })
       ]);
       showPromoToast('📋 Poster copied to clipboard! In WhatsApp, just press Ctrl+V to attach.');
       return true;
@@ -1060,7 +1078,7 @@ function renderPromoCustomerTable() {
     }
 
     return `
-      <tr class="border-b border-gray-100 hover:bg-emerald-50/30 transition ${isSent ? 'bg-slate-50/50' : ''}">
+      <tr id="promoRow_${safeId}" class="border-b border-gray-100 hover:bg-emerald-50/30 transition ${isSent ? 'bg-slate-50/50' : ''}">
         <td class="p-3 text-center text-xs text-gray-400 font-mono">${idx + 1}</td>
 
         <td class="p-3">
@@ -1085,14 +1103,14 @@ function renderPromoCustomerTable() {
           <span class="text-[10px] text-gray-400 block">cans</span>
         </td>
 
-        <td class="p-3 text-center">
+        <td class="p-3 text-center promo-status-cell">
           ${statusBadge}
         </td>
 
-        <td class="p-3 text-center">
+        <td class="p-3 text-center promo-action-cell">
           <div class="flex items-center justify-center gap-1.5">
-            <button type="button" onclick="sendCustomerPromoWhatsApp('${safeId}')"
-              class="px-3 py-1.5 rounded-lg ${isSent ? 'bg-gray-100 hover:bg-emerald-50 text-gray-700 hover:text-emerald-700 border border-gray-300' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'} font-bold text-xs flex items-center gap-1 transition cursor-pointer"
+            <button type="button" data-action="promo-send" onclick="sendCustomerPromoWhatsApp('${safeId}')"
+              class="promo-send-btn px-3 py-1.5 rounded-lg ${isSent ? 'bg-gray-100 hover:bg-emerald-50 text-gray-700 hover:text-emerald-700 border border-gray-300' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'} font-bold text-xs flex items-center gap-1 transition cursor-pointer"
               title="Open WhatsApp chat with prefilled personalized message">
               <i class="fa-brands fa-whatsapp text-sm"></i>
               <span>${isSent ? 'Resend' : 'Send'}</span>
@@ -1117,6 +1135,30 @@ function renderPromoCustomerTable() {
   tbody.innerHTML = rowsHtml;
 }
 
+function updateSingleCustomerRowInTable(customerId) {
+  const safeId = String(customerId);
+  const tr = document.getElementById(`promoRow_${safeId}`);
+  if (tr) {
+    const statusCell = tr.querySelector('.promo-status-cell');
+    const actionCell = tr.querySelector('.promo-action-cell');
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (statusCell) {
+      statusCell.innerHTML = `
+        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+          <i class="fa-solid fa-circle-check text-emerald-600"></i> Sent (${timeStr})
+        </span>`;
+    }
+    if (actionCell) {
+      const sendBtn = actionCell.querySelector('[data-action="promo-send"]');
+      if (sendBtn) {
+        sendBtn.className = 'promo-send-btn px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-emerald-50 text-gray-700 hover:text-emerald-700 border border-gray-300 font-bold text-xs flex items-center gap-1 transition cursor-pointer';
+        sendBtn.innerHTML = '<i class="fa-brands fa-whatsapp text-sm"></i> <span>Resend</span>';
+      }
+    }
+    tr.classList.add('bg-slate-50/50');
+  }
+}
+
 function toggleCustomerLangPref(customerId) {
   if (!promoActiveCampaign) return;
   const campaignId = promoActiveCampaign.id;
@@ -1131,7 +1173,7 @@ function toggleCustomerLangPref(customerId) {
 window.toggleCustomerLangPref = toggleCustomerLangPref;
 
 // ─── SENDING WHATSAPP ─────────────────────────────────────────────────────────
-async function sendCustomerPromoWhatsApp(customerId) {
+function sendCustomerPromoWhatsApp(customerId) {
   if (!promoActiveCampaign) return;
   const cust = (promoActiveCampaign.customers || []).find(c => c.id === customerId);
   if (!cust) return;
@@ -1146,25 +1188,55 @@ async function sendCustomerPromoWhatsApp(customerId) {
     return;
   }
 
-  // 1. Auto-copy poster to clipboard if enabled
-  if (promoComposerState.autoCopyPoster && promoComposerState.posterUrl) {
-    await copyPosterToClipboard();
+  // 1. Generate personalized message synchronously (BM for Malay/Dayak, Mandarin for Chinese)
+  const msg = generatePersonalizedMessage(cust);
+  const waUrl = `https://wa.me/${val.cleanPhone}?text=${encodeURIComponent(msg)}`;
+
+  // 2. Open WhatsApp Web / App SYNCHRONOUSLY FIRST (guarantees Chrome popup blocker will NEVER block it!)
+  let waWindow = null;
+  try {
+    waWindow = window.open(waUrl, '_blank', 'noopener,noreferrer');
+  } catch (_) {}
+
+  // Fallback anchor click if window.open was intercepted by popup blocker
+  if (!waWindow || waWindow.closed || typeof waWindow.closed === 'undefined') {
+    const a = document.createElement('a');
+    a.href = waUrl;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      if (a.parentNode) a.parentNode.removeChild(a);
+    }, 100);
   }
 
-  // 2. Generate personalized message
-  const msg = generatePersonalizedMessage(cust);
+  // 3. Auto-copy poster to clipboard in background (non-blocking, 0ms lag!)
+  if (promoComposerState.autoCopyPoster) {
+    if (promoCachedPosterBlob && navigator.clipboard && navigator.clipboard.write) {
+      navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': promoCachedPosterBlob })
+      ]).then(() => {
+        showPromoToast('✅ WhatsApp opened! Poster copied to clipboard — press Ctrl+V in chat to attach.');
+      }).catch(err => {
+        console.warn('[Poster clipboard copy notice]', err);
+      });
+    } else if (promoComposerState.posterUrl) {
+      preparePosterBlob(promoComposerState.posterUrl).then(blob => {
+        if (blob && navigator.clipboard && navigator.clipboard.write) {
+          navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).catch(() => {});
+        }
+      });
+    }
+  }
 
-  // 3. Mark as sent immediately
+  // 4. Mark customer as sent
   setCustomerSentStatus(promoActiveCampaign.id, cust.id, true);
 
-  // 4. Update preview customer
+  // 5. Update only the single row & "Send Next" button (0ms lag, no redraw!)
   promoPreviewCustomerId = cust.id;
+  updateSingleCustomerRowInTable(cust.id);
   renderPromoChatPreview();
-  renderPromoCustomerTable();
-
-  // 5. Open WhatsApp Web / App
-  const waUrl = `https://wa.me/${val.cleanPhone}?text=${encodeURIComponent(msg)}`;
-  window.open(waUrl, '_blank', 'noopener,noreferrer');
 }
 window.sendCustomerPromoWhatsApp = sendCustomerPromoWhatsApp;
 
