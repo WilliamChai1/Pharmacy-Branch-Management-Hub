@@ -94,11 +94,11 @@
           <span>Gemini AI</span>
         </button>
 
-        <button id="patientCloudSyncBtn" type="button" onclick="syncOnlineBookingsFromCloud(true)"
-          class="px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-300 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
-          title="Sync patient database & bookings via OneDrive cloud">
-          <i class="fa-solid fa-cloud-arrow-up text-sky-600"></i>
-          <span id="patientCloudSyncLabel">OneDrive Sync</span>
+        <button id="headerOneDriveSyncBadge" type="button" onclick="openOneDriveSyncModal()"
+          class="px-3 py-1.5 rounded-xl bg-blue-800 hover:bg-blue-700 text-blue-100 border border-blue-600 font-bold text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+          title="Universal OneDrive Sync (Multi-PC Live Sync). Click to link folder or sync now.">
+          <i id="headerOneDriveSyncIcon" class="fa-brands fa-microsoft text-sky-300"></i>
+          <span id="headerOneDriveSyncText">OneDrive: Connect Folder</span>
         </button>
       </div>
     </div>
@@ -2451,6 +2451,113 @@ Date visit: 06.01.2026
           class="px-5 py-2 bg-blue-900 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition shadow-sm">
           Done
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: PMG OneDrive Live Sync Manager (Universal Hub Sync) -->
+  <div id="oneDriveSyncModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+      <!-- Header -->
+      <div class="bg-gradient-to-r from-blue-900 to-indigo-900 px-6 py-4 flex items-center justify-between text-white">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-sky-300 text-xl">
+            <i class="fa-brands fa-microsoft"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold">Universal OneDrive Live Sync Engine</h3>
+            <p class="text-xs text-blue-200">Synchronizes Patient Care, Consultations, Bookings & POCT</p>
+          </div>
+        </div>
+        <button onclick="closeOneDriveSyncModal()" class="text-white/70 hover:text-white text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="p-6 space-y-4 text-xs overflow-y-auto max-h-[70vh]">
+        <!-- Current Status Box -->
+        <div class="p-4 bg-gray-50 border border-gray-200 rounded-xl space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-gray-700">Current Sync Status:</span>
+            <span id="syncModalStatusPill" class="px-2.5 py-1 rounded-full text-xs font-bold bg-gray-200 text-gray-700">Checking...</span>
+          </div>
+          <div class="flex items-center justify-between text-gray-600">
+            <span>Linked Folder:</span>
+            <span id="syncModalFolderName" class="font-mono font-bold text-blue-700 truncate max-w-[260px]">—</span>
+          </div>
+          <div class="flex items-center justify-between text-gray-600">
+            <span>Active Branch:</span>
+            <span id="syncModalBranchName" class="font-bold text-gray-800">—</span>
+          </div>
+          <div class="flex items-center justify-between text-gray-600">
+            <span>Last Synced:</span>
+            <span id="syncModalLastSyncTime" class="font-semibold text-emerald-700">Ready to sync</span>
+          </div>
+        </div>
+
+        <!-- Live Sync Progress & Result Feedback Banner -->
+        <div id="syncModalFeedback" class="hidden p-3 rounded-xl border text-xs transition"></div>
+
+        <!-- Universal Synced Modules Scope -->
+        <div class="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-2">
+          <h4 class="font-bold text-emerald-950 flex items-center gap-1.5">
+            <i class="fa-solid fa-cloud-arrow-up text-emerald-600"></i> Multi-PC Clinical Synchronization:
+          </h4>
+          <div class="grid grid-cols-2 gap-2 text-[11px] text-gray-700 font-medium">
+            <div class="flex items-center gap-1.5"><i class="fa-solid fa-circle-check text-emerald-600 text-xs"></i> <span>Patient Profiles & Demographics</span></div>
+            <div class="flex items-center gap-1.5"><i class="fa-solid fa-circle-check text-emerald-600 text-xs"></i> <span>Pharmacist Clinical Consultations</span></div>
+            <div class="flex items-center gap-1.5"><i class="fa-solid fa-circle-check text-emerald-600 text-xs"></i> <span>POCT Screenings (BP, Glucose, Lipids)</span></div>
+            <div class="flex items-center gap-1.5"><i class="fa-solid fa-circle-check text-emerald-600 text-xs"></i> <span>Medication & Chronic Refills</span></div>
+            <div class="flex items-center gap-1.5"><i class="fa-solid fa-circle-check text-emerald-600 text-xs"></i> <span>Customer Online Bookings</span></div>
+            <div class="flex items-center gap-1.5"><i class="fa-solid fa-circle-check text-emerald-600 text-xs"></i> <span>Equipment Rental Records</span></div>
+          </div>
+        </div>
+
+        <!-- 7 Branches Detected List -->
+        <div class="p-4 bg-blue-50/70 border border-blue-200 rounded-xl">
+          <h4 class="font-bold text-blue-950 mb-1 flex items-center gap-1.5">
+            <i class="fa-solid fa-store text-blue-700"></i> Supported PMG Outlets (OneDrive Live Sync):
+          </h4>
+          <p class="text-gray-600 mb-2">Folder path: <code class="bg-blue-100/80 text-blue-900 px-1 py-0.5 rounded font-mono text-[11px]">OneDrive - Public Medicare Group Sdn Bhd > William (Pharmacist) > Patient care</code></p>
+          <div class="grid grid-cols-2 gap-1.5 text-[11px] font-semibold text-gray-700">
+            <span class="flex items-center gap-1"><i class="fa-solid fa-circle-check text-emerald-600 text-[10px]"></i> ASTANA</span>
+            <span class="flex items-center gap-1"><i class="fa-solid fa-circle-check text-emerald-600 text-[10px]"></i> KOTA SENTOSA</span>
+            <span class="flex items-center gap-1"><i class="fa-solid fa-circle-check text-emerald-600 text-[10px]"></i> MALIHAH</span>
+            <span class="flex items-center gap-1"><i class="fa-solid fa-circle-check text-emerald-600 text-[10px]"></i> MATANG JAYA</span>
+            <span class="flex items-center gap-1"><i class="fa-solid fa-circle-check text-emerald-600 text-[10px]"></i> METROCITY</span>
+            <span class="flex items-center gap-1"><i class="fa-solid fa-circle-check text-emerald-600 text-[10px]"></i> SAMARIANG</span>
+            <span class="flex items-center gap-1"><i class="fa-solid fa-circle-check text-emerald-600 text-[10px]"></i> SUNGAI MOYAN</span>
+          </div>
+        </div>
+
+        <!-- Instructions -->
+        <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-xl space-y-1.5 text-amber-950">
+          <p class="font-bold flex items-center gap-1.5"><i class="fa-solid fa-circle-info text-amber-600"></i> Multi-PC Seamless Sync Instructions:</p>
+          <ul class="list-disc pl-4 space-y-1 text-gray-700">
+            <li><b>For Branch Pharmacists:</b> Click "Link / Change Folder" once on this computer and choose your branch folder (e.g. <code>KOTA SENTOSA</code>).</li>
+            <li><b>For Pharmacist William:</b> Choose your designated branch folder or master patient folder to automatically sync all records.</li>
+            <li>Once linked, records automatically sync across devices every 60 seconds. You can also click <b>"Sync All Modules Now"</b> anytime to force an instant cross-computer update.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="bg-gray-50 px-6 py-4 border-t flex items-center justify-between flex-wrap gap-2">
+        <button type="button" onclick="window.pmgOneDriveSync.disconnectFolder(); updateSyncModalInfo();"
+          class="px-3 py-2 text-rose-600 hover:text-rose-800 text-xs font-semibold">
+          Disconnect Sync
+        </button>
+        <div class="flex items-center gap-2">
+          <button id="btnModalSyncNow" type="button" onclick="triggerManualSyncFromModal()"
+            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+            <i class="fa-solid fa-arrows-rotate"></i> <span>Sync All Modules Now</span>
+          </button>
+          <button type="button" onclick="window.pmgOneDriveSync.connectFolder().then(res => { updateSyncModalInfo(); if(res) triggerManualSyncFromModal(); })"
+            class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-gray-300">
+            <i class="fa-solid fa-folder-open text-blue-700"></i> <span>Link / Change Folder</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
