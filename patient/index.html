@@ -74,7 +74,7 @@
 
       <!-- Quick Actions in Header -->
       <div class="flex items-center gap-2 flex-wrap">
-        <button type="button" onclick="openNewPatientModal()"
+        <button type="button" onclick="showNewPatientModal()"
           class="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer">
           <i class="fa-solid fa-user-plus text-xs"></i>
           <span>New Patient</span>
@@ -122,11 +122,11 @@
           <p class="text-gray-500 text-sm">Record patient health screenings (BP, Glucose, Lipids, Uric Acid), track chronic medication refills, schedule follow-up appointments, and send 1-click multilingual WhatsApp reminders.</p>
         </div>
         <div class="flex items-center gap-2 flex-wrap">
-          <button type="button" onclick="switchTab('promo-broadcast')"
+          <a href="../promo/index.html"
             class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer">
             <i class="fa-brands fa-whatsapp text-sm"></i>
             <span>Product Promo Broadcast (Nutri Alpha & Offers)</span>
-          </button>
+          </a>
         </div>
       </div>
     </div>
@@ -2463,7 +2463,98 @@ Date visit: 06.01.2026
   <script src="../js/patient.js"></script>
 
   <script>
-    // Global Gemini Modal Helpers
+    // Compatibility alias for New Patient modal
+    window.openNewPatientModal = function() {
+      if (typeof showNewPatientModal === 'function') {
+        showNewPatientModal();
+      }
+    };
+
+    // Global Gemini Key Management
+    function getGlobalGeminiKey() {
+      const stored = (localStorage.getItem('pmg_gemini_key') || '').trim();
+      if (stored) return stored;
+      const modalInput = document.getElementById('modalGeminiApiKey')?.value.trim();
+      if (modalInput) return modalInput;
+      return '';
+    }
+    window.getGlobalGeminiKey = getGlobalGeminiKey;
+
+    function setGlobalGeminiKey(val) {
+      const clean = (val || '').trim();
+      if (clean) {
+        localStorage.setItem('pmg_gemini_key', clean);
+      } else {
+        localStorage.removeItem('pmg_gemini_key');
+      }
+      const modalInput = document.getElementById('modalGeminiApiKey');
+      if (modalInput && modalInput.value !== clean) modalInput.value = clean;
+      updateGlobalGeminiBadge();
+    }
+    window.setGlobalGeminiKey = setGlobalGeminiKey;
+
+    function handleModalGeminiKeyInput(val) {
+      setGlobalGeminiKey(val);
+    }
+    window.handleModalGeminiKeyInput = handleModalGeminiKeyInput;
+
+    function toggleModalGeminiKeyVisibility() {
+      const inp = document.getElementById('modalGeminiApiKey');
+      const icon = document.getElementById('modalKeyEyeIcon');
+      if (!inp) return;
+      if (inp.type === 'password') {
+        inp.type = 'text';
+        if (icon) icon.className = 'fa-solid fa-eye-slash';
+      } else {
+        inp.type = 'password';
+        if (icon) icon.className = 'fa-solid fa-eye';
+      }
+    }
+    window.toggleModalGeminiKeyVisibility = toggleModalGeminiKeyVisibility;
+
+    async function testGlobalGeminiKey() {
+      const key = (localStorage.getItem('pmg_gemini_key') || document.getElementById('modalGeminiApiKey')?.value || '').trim();
+      const statusEl = document.getElementById('modalGeminiKeyStatus');
+      const btn = document.getElementById('btnModalTestGeminiKey');
+      if (!key) {
+        alert('Please enter or paste your Gemini API key first.');
+        return;
+      }
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Testing…';
+      }
+      if (statusEl) {
+        statusEl.textContent = 'Validating key with Google Gemini API…';
+        statusEl.className = 'text-[11px] text-blue-600 font-semibold';
+      }
+
+      try {
+        const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
+        if (!listResp.ok) {
+          const errData = await listResp.json().catch(() => ({}));
+          throw new Error(errData?.error?.message || `HTTP ${listResp.status}`);
+        }
+        if (statusEl) {
+          statusEl.textContent = '✅ Success! API key verified & active across all modules.';
+          statusEl.className = 'text-[11px] text-emerald-700 font-bold';
+        }
+        localStorage.setItem('pmg_gemini_key', key);
+        updateGlobalGeminiBadge();
+      } catch (e) {
+        if (statusEl) {
+          statusEl.textContent = '❌ Key validation error: ' + e.message;
+          statusEl.className = 'text-[11px] text-rose-700 font-semibold';
+        }
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-bolt"></i> Test Key';
+        }
+      }
+    }
+    window.testGlobalGeminiKey = testGlobalGeminiKey;
+
     function openGlobalGeminiModal() {
       updateGlobalGeminiBadge();
       document.getElementById('globalGeminiModal')?.classList.remove('hidden');
@@ -2475,42 +2566,28 @@ Date visit: 06.01.2026
     }
     window.closeGlobalGeminiModal = closeGlobalGeminiModal;
 
-    function saveGlobalGeminiKey() {
-      const input = document.getElementById('globalGeminiKeyInput');
-      const key = (input ? input.value : '').trim();
-      if (!key) {
-        alert('Please enter a valid Gemini API key.');
-        return;
-      }
-      localStorage.setItem('pmg_gemini_key', key);
-      updateGlobalGeminiBadge();
-      closeGlobalGeminiModal();
-      alert('Gemini API key saved securely in browser storage!');
-    }
-    window.saveGlobalGeminiKey = saveGlobalGeminiKey;
-
     function clearGlobalGeminiKey() {
-      if (confirm('Clear the Gemini API key from this device?')) {
+      if (confirm('Clear the Gemini API key from this device?\n\nClinical AI summaries will be paused until a new key is added.')) {
         localStorage.removeItem('pmg_gemini_key');
+        const modalInput = document.getElementById('modalGeminiApiKey');
+        if (modalInput) modalInput.value = '';
         updateGlobalGeminiBadge();
-        const input = document.getElementById('globalGeminiKeyInput');
-        if (input) input.value = '';
       }
     }
     window.clearGlobalGeminiKey = clearGlobalGeminiKey;
 
     function updateGlobalGeminiBadge() {
       const key = (localStorage.getItem('pmg_gemini_key') || '').trim();
-      const badge = document.getElementById('globalGeminiStatusBadge');
-      const input = document.getElementById('globalGeminiKeyInput');
-      if (input && key) input.value = key;
-      if (badge) {
+      const modalInput = document.getElementById('modalGeminiApiKey');
+      if (modalInput && modalInput.value !== key) modalInput.value = key;
+      const statusEl = document.getElementById('modalGeminiKeyStatus');
+      if (statusEl) {
         if (key) {
-          badge.className = 'text-xs bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-300';
-          badge.innerHTML = '<i class="fa-solid fa-circle-check mr-1"></i>Active';
+          statusEl.textContent = `✓ Key active (${key.slice(0, 6)}••••••••). Connected to Patient Care & Consultations.`;
+          statusEl.className = 'text-[11px] text-emerald-700 font-semibold';
         } else {
-          badge.className = 'text-xs bg-gray-100 text-gray-600 font-bold px-2 py-0.5 rounded-full border border-gray-300';
-          badge.innerHTML = '<i class="fa-solid fa-circle-xmark mr-1"></i>Not Configured';
+          statusEl.textContent = 'No key set. Enter key to enable Gemini AI clinical reviews.';
+          statusEl.className = 'text-[11px] text-gray-500 font-medium';
         }
       }
     }
@@ -2520,9 +2597,10 @@ Date visit: 06.01.2026
     document.addEventListener('DOMContentLoaded', () => {
       updateGlobalGeminiBadge();
       if (typeof initAuth === 'function') initAuth();
-      if (typeof renderPatientModule === 'function') renderPatientModule();
-      if (typeof syncOnlineBookingsFromCloud === 'function') {
-        syncOnlineBookingsFromCloud(false).catch(() => {});
+      if (typeof initPatientModule === 'function') {
+        initPatientModule();
+      } else if (typeof renderPatientModule === 'function') {
+        renderPatientModule();
       }
     });
   </script>
