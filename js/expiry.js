@@ -458,28 +458,33 @@ function initExpiryModule() {
   loadLocalExpiryData();
   setupExpiryEventListeners();
   loadAccumulatedWriteOffItems();
-  renderExpiryUI();
   updateAccountsShareUi(document.getElementById('expiryBranchFilter')?.value || 'Kota Sentosa');
+
+  // Defer initial UI render until expiry tab is active to eliminate page startup lag
+  const expiryTabContent = document.getElementById('content-expiry');
+  if (expiryTabContent && !expiryTabContent.classList.contains('hidden')) {
+    renderExpiryUI();
+  }
 
   // Asynchronously hydrate from IndexedDB (preserves complete expiry dataset without localStorage quota limits)
   if (typeof safeStorageGet === 'function') {
     safeStorageGet(EXPIRY_STORAGE_KEY).then(idbItems => {
       if (Array.isArray(idbItems) && idbItems.length > 0) {
-        if (!expiryItems || expiryItems.length < idbItems.length) {
-          expiryItems = ensureUniqueExpiryRowIds(idbItems);
-          loadAccumulatedWriteOffItems();
+        // IDB items hold the user's latest edits! Merge with master seed dataset so user edits win!
+        expiryItems = mergeExpiryDatasets(idbItems, window.PMG_SEED_EXPIRY_DATA || []);
+        loadAccumulatedWriteOffItems();
+        if (expiryTabContent && !expiryTabContent.classList.contains('hidden')) {
           renderExpiryUI();
         }
+      } else if (Array.isArray(window.PMG_SEED_EXPIRY_DATA) && window.PMG_SEED_EXPIRY_DATA.length > 0) {
+        // First boot: seed into IndexedDB
+        expiryItems = ensureUniqueExpiryRowIds(window.PMG_SEED_EXPIRY_DATA);
+        saveLocalExpiryData();
       }
     }).catch(console.warn);
   }
-  
-  // Immediately synchronize with OneDrive if folder is connected
-  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.syncStockExpiryWithOneDrive === 'function') {
-    window.pmgOneDriveSync.syncStockExpiryWithOneDrive(true).catch(console.warn);
-  }
 
-  // Fetch fresh data from Google Sheet in background
+  // Fetch fresh data from Google Sheet in background (Stock Expiry syncs exclusively via Google Sheets)
   syncExpiryFromSheets(false);
 }
 
@@ -1787,12 +1792,7 @@ async function syncExpiryFromSheets(showPrompt = true) {
   }
 
   try {
-    // 1. Synchronize with OneDrive first (local-first, conflict-free merge)
-    if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.syncStockExpiryWithOneDrive === 'function') {
-      await window.pmgOneDriveSync.syncStockExpiryWithOneDrive(!showPrompt);
-    }
-
-    // 2. Fetch live data from Google Sheets
+    // 1. Fetch live data from Google Sheets (Stock Expiry syncs exclusively via Google Sheets)
     try {
       const url = `${PMG_EXPIRY_API_URL}?action=getExpiry&branch=all`;
       const controller = new AbortController();
@@ -1805,9 +1805,11 @@ async function syncExpiryFromSheets(showPrompt = true) {
         if (data && data.success && Array.isArray(data.items) && data.items.length > 0) {
           expiryItems = mergeExpiryDatasets(expiryItems, data.items);
           saveLocalExpiryData();
-          renderExpiryUI();
+          if (!document.getElementById('content-expiry')?.classList.contains('hidden')) {
+            renderExpiryUI();
+          }
           if (showPrompt) {
-            showExpiryToast(`✅ Synced ${expiryItems.length} items live with OneDrive & Google Sheets!`);
+            showExpiryToast(`✅ Synced ${expiryItems.length} items live with Google Sheets!`);
           }
           return;
         }
@@ -1825,7 +1827,7 @@ async function syncExpiryFromSheets(showPrompt = true) {
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = `<i class="fa-solid fa-arrows-rotate text-sm mr-1.5"></i>Sync Cloud & Folder`;
+      btn.innerHTML = `<i class="fa-solid fa-arrows-rotate text-sm mr-1.5"></i>Sync Google Sheet`;
     }
   }
 }
@@ -2554,11 +2556,6 @@ async function confirmOcrBatchInsert(itemsToCommit = null) {
     openSkuBatchExplorerModal(currentExplorerProductKey);
   }
 
-  // 2. Save to OneDrive
-  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
-    window.pmgOneDriveSync.saveStockExpiryToOneDrive(targetBranch).catch(console.warn);
-  }
-
   // 3. Push updates to Google Sheet
   // For merged existing items: update quantity in Sheets
   for (const upItem of itemsToUpdateInSheets) {
@@ -2624,10 +2621,7 @@ function updateExpiryItemDate(rowId, newDateStr, inputEl) {
   if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
     openSkuBatchExplorerModal(currentExplorerProductKey);
   }
-  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
-    window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
-  }
-  pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate);
+  pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate).catch(console.warn);
   showExpiryToast(`✅ Expiry date updated to ${formattedDate} (${item.itemDescription || item.itemCode})`);
 }
 
@@ -2661,10 +2655,7 @@ function updateExpiryItemQuantity(rowId, newQty) {
   if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
     openSkuBatchExplorerModal(currentExplorerProductKey);
   }
-  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
-    window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
-  }
-  pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate);
+  pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate).catch(console.warn);
 }
 
 function getItemActionPlan(it) {
@@ -2731,20 +2722,27 @@ function updateExpiryActionPlan(rowId, val) {
   saveLocalExpiryData();
   delete expiryItems._productBatchMap;
   delete expiryItems._skuBatchMap;
-  renderExpiryUI();
+
+  // In-place DOM update for zero-lag response (avoids expensive full-table re-rendering)
+  const safeRowId = String(rowId || '').trim();
+  const rowEl = document.getElementById(`expiryRow_${safeRowId}`);
+  if (rowEl) {
+    const actionPlanInput = rowEl.querySelector('input[list="actionPlanOptions"]');
+    if (actionPlanInput && actionPlanInput.value !== getItemActionPlan(item)) {
+      actionPlanInput.value = getItemActionPlan(item);
+    }
+  }
 
   if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
     openSkuBatchExplorerModal(currentExplorerProductKey);
   }
 
-  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
-    window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
-  }
+  // Push exclusively to Google Sheets (zero-lag asynchronous background push)
   pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate, {
     actionPlan: item.actionPlan,
     offeredPrice: item.offeredPrice,
     clearancePrice: item.clearancePrice
-  });
+  }).catch(console.warn);
 
   // If user selected Clearance Promo (and didn't manually type a price inside the text), open the price tag modal for THIS exact item!
   if ((cleanVal.toLowerCase().includes('clearance') || cleanVal.toLowerCase().includes('promo')) && (!item.offeredPrice || !(m && m[1]))) {
@@ -2862,15 +2860,6 @@ async function markExpiryItemCleared(rowId, btnEl = null, ev = null) {
   // Instant notification — never block UI with network calls
   showExpiryToast(`✅ Marked ${target.itemDescription || target.itemCode} as Done Clear!`);
 
-  // 3. Persist to OneDrive immediately so other connected computers sync this clearance
-  try {
-    if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
-      window.pmgOneDriveSync.saveStockExpiryToOneDrive(target.branch).catch(console.warn);
-    }
-  } catch (odErr) {
-    console.warn('[markExpiryItemCleared] OneDrive sync notice:', odErr);
-  }
-
   // 4. Persist to connected Google Sheet in background
   try {
     pushExpiryUpdateToSheets(target.rowId, 0, 'DONE', target.expiryDate, {
@@ -2921,9 +2910,6 @@ async function reactivateExpiryItem(rowId) {
 
   if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
     openSkuBatchExplorerModal(currentExplorerProductKey);
-  }
-  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
-    window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
   }
   try {
     await pushExpiryUpdateToSheets(item.rowId, item.quantity, 'Active', item.expiryDate);
@@ -3053,9 +3039,6 @@ async function handleEditExpiryItemSubmit(e) {
   }
   closeEditExpiryItemModal();
 
-  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
-    window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
-  }
 
   pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate, {
     branch: item.branch,
@@ -3546,11 +3529,6 @@ function saveClearancePriceTag(silent = false) {
     openSkuBatchExplorerModal(currentExplorerProductKey);
   }
 
-  // Save to OneDrive immediately
-  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
-    window.pmgOneDriveSync.saveStockExpiryToOneDrive(activePriceTagItem.branch).catch(console.warn);
-  }
-
   // Push to Google Sheets in background
   pushExpiryUpdateToSheets(activePriceTagItem.rowId, activePriceTagItem.quantity, activePriceTagItem.status, activePriceTagItem.expiryDate, {
     actionPlan: formattedPlan,
@@ -3808,9 +3786,6 @@ function updateExpiryOfferedPrice(rowId, val) {
     openSkuBatchExplorerModal(currentExplorerProductKey);
   }
 
-  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
-    window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
-  }
 
   pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate, {
     actionPlan: formattedPlan,
@@ -4605,10 +4580,6 @@ async function handleQuickAddSubmit(e) {
     openSkuBatchExplorerModal(currentExplorerProductKey);
   }
 
-  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
-    window.pmgOneDriveSync.saveStockExpiryToOneDrive(branch).catch(console.warn);
-  }
-
   // Push to Sheets
   await pushBatchExpiryToSheets([newItem]);
 
@@ -4898,9 +4869,6 @@ async function updateBatchExplorerQty(rowId, newQty) {
 
   showExpiryToast(`✅ Batch quantity updated to ${num}`);
 
-  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
-    window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
-  }
   pushExpiryUpdateToSheets(item.rowId, num, item.status, item.expiryDate).catch(console.warn);
 }
 window.updateBatchExplorerQty = updateBatchExplorerQty;
@@ -5014,9 +4982,6 @@ async function markBatchItemDoneClear(rowId, btnEl = null, ev = null) {
 
   // 5. Background cloud sync without blocking UI
   try {
-    if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
-      window.pmgOneDriveSync.saveStockExpiryToOneDrive(item.branch).catch(console.warn);
-    }
     pushExpiryUpdateToSheets(item.rowId, 0, 'DONE', item.expiryDate, {
       branch: item.branch,
       itemCode: item.itemCode,
@@ -5248,9 +5213,6 @@ async function bulkMarkSelectedExpiryDone() {
 
   // Sync to OneDrive and Sheets
   const branch = document.getElementById('expiryBranchFilter')?.value || 'Kota Sentosa';
-  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveStockExpiryToOneDrive === 'function') {
-    window.pmgOneDriveSync.saveStockExpiryToOneDrive(branch).catch(console.warn);
-  }
   ids.forEach(id => {
     const it = findExpiryItemById(id);
     if (it) pushExpiryUpdateToSheets(id, 0, 'DONE', it.expiryDate).catch(console.warn);
@@ -6012,9 +5974,6 @@ function confirmAndExecuteWriteOff() {
   closeStockWriteOffModal();
   renderExpiryUI();
 
-  if (window.pmgOneDriveSync?.saveStockExpiryToOneDrive) {
-    window.pmgOneDriveSync.saveStockExpiryToOneDrive('Kota Sentosa');
-  }
 
   showExpiryToast(`✅ Successfully written off and removed ${count} expired item(s)!`);
 }
@@ -6088,8 +6047,8 @@ window.pmgExpiry = {
   getItemKey: getExpiryItemKey,
   saveLocal: saveLocalExpiryData,
   renderUI: renderExpiryUI,
-  syncFromOneDrive: () => window.pmgOneDriveSync?.syncStockExpiryWithOneDrive(false),
-  saveToOneDrive: (branch) => window.pmgOneDriveSync?.saveStockExpiryToOneDrive(branch),
+  syncFromOneDrive: () => syncExpiryFromSheets(false),
+  saveToOneDrive: (branch) => Promise.resolve(true),
   syncFromSheets: syncExpiryFromSheets,
   getShortDatedStock: getShortDatedStockForReplenishment,
   syncHqReturnPolicy: syncHqReturnPolicy,

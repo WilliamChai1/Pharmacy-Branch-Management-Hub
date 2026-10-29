@@ -1847,6 +1847,100 @@ Date visit: 06.01.2026
     </div>
   </div>
 
+  <!-- ─── MEDICAL EQUIPMENT RENTAL ENTRY / EDIT MODAL ───────────────────────────── -->
+  <div id="modalRentalEntry" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs hidden p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in duration-150 border border-gray-100">
+      <div class="bg-gradient-to-r from-emerald-800 to-teal-800 text-white px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-lg">
+            <i class="fa-solid fa-wheelchair text-emerald-300"></i>
+          </div>
+          <div>
+            <h3 id="modalRentalTitle" class="font-extrabold text-base text-white">New Medical Equipment Rental</h3>
+            <p class="text-xs text-emerald-100">Manage patient rental period, dues & WhatsApp reminders</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeRentalModal()" class="text-white/80 hover:text-white text-lg p-1.5 transition">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <form id="formRentalEntry" onsubmit="handleSaveRentalForm(event)" class="p-6 overflow-y-auto space-y-3.5 flex-1 text-xs">
+        <input type="hidden" id="rentalRecordId" value="">
+
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Customer Name *</label>
+          <input type="text" id="rentalCustomerName" required placeholder="e.g. John Tan / Mdm Mary"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-semibold focus:ring-1 focus:ring-emerald-500 outline-none">
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">Customer Phone Number *</label>
+            <input type="tel" id="rentalCustomerPhone" required placeholder="e.g. 0128889831"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono font-bold focus:ring-1 focus:ring-emerald-500 outline-none">
+          </div>
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">Rental Status</label>
+            <select id="rentalStatus" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold bg-white focus:ring-1 focus:ring-emerald-500 outline-none">
+              <option value="Active">🟢 Active Rental</option>
+              <option value="Returned">⚪ Returned & Closed</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Item Description / Equipment *</label>
+          <input type="text" id="rentalItemDesc" required placeholder="e.g. Lightweight Foldable Wheelchair (Chrome)"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-semibold focus:ring-1 focus:ring-emerald-500 outline-none">
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">Rental Start Date</label>
+            <input type="date" id="rentalStartDate" required
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold focus:ring-1 focus:ring-emerald-500 outline-none">
+          </div>
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">Due Date for Fee Payment *</label>
+            <input type="date" id="rentalDueDate" required
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold focus:ring-1 focus:ring-emerald-500 outline-none">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">Rental Amount Due (RM) *</label>
+            <input type="number" step="0.01" min="0" id="rentalAmountDue" required placeholder="50.00"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono font-bold focus:ring-1 focus:ring-emerald-500 outline-none">
+          </div>
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">Deposit Paid (RM)</label>
+            <input type="number" step="0.01" min="0" id="rentalDeposit" placeholder="100.00"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono font-bold focus:ring-1 focus:ring-emerald-500 outline-none">
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Remarks / Serial No. / Condition</label>
+          <textarea id="rentalNotes" rows="2" placeholder="e.g. Serial #WC-0941, includes detachable footrests"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs leading-relaxed focus:ring-1 focus:ring-emerald-500 outline-none resize-y"></textarea>
+        </div>
+
+        <div class="pt-3 border-t border-gray-200 flex items-center justify-end gap-2">
+          <button type="button" onclick="closeRentalModal()"
+            class="px-4 py-2 bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-bold text-xs transition cursor-pointer">
+            Cancel
+          </button>
+          <button type="submit"
+            class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs transition shadow-sm cursor-pointer">
+            💾 Save Rental Record
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Modal 6: Share Customer Booking Link Modal -->
   <div id="shareBookingModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 hidden" style="z-index: 60;">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-purple-100 animate-fade-in">

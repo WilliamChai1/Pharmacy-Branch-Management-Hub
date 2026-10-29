@@ -2702,99 +2702,6 @@
     </div>
   </div>
 
-  <!-- ─── MEDICAL EQUIPMENT RENTAL ENTRY / EDIT MODAL ───────────────────────────── -->
-  <div id="modalRentalEntry" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs hidden p-4">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in duration-150 border border-gray-100">
-      <div class="bg-gradient-to-r from-emerald-800 to-teal-800 text-white px-6 py-4 flex items-center justify-between">
-        <div class="flex items-center gap-2.5">
-          <div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-lg">
-            <i class="fa-solid fa-wheelchair text-emerald-300"></i>
-          </div>
-          <div>
-            <h3 id="modalRentalTitle" class="font-extrabold text-base text-white">New Medical Equipment Rental</h3>
-            <p class="text-xs text-emerald-100">Manage patient rental period, dues & WhatsApp reminders</p>
-          </div>
-        </div>
-        <button type="button" onclick="closeRentalModal()" class="text-white/80 hover:text-white text-lg p-1.5 transition">
-          <i class="fa-solid fa-xmark"></i>
-        </button>
-      </div>
-
-      <form id="formRentalEntry" onsubmit="handleSaveRentalForm(event)" class="p-6 overflow-y-auto space-y-3.5 flex-1 text-xs">
-        <input type="hidden" id="rentalRecordId" value="">
-
-        <div>
-          <label class="block font-bold text-gray-700 mb-1">Customer Name *</label>
-          <input type="text" id="rentalCustomerName" required placeholder="e.g. John Tan / Mdm Mary"
-            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-semibold focus:ring-1 focus:ring-emerald-500 outline-none">
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label class="block font-bold text-gray-700 mb-1">Customer Phone Number *</label>
-            <input type="tel" id="rentalCustomerPhone" required placeholder="e.g. 0128889831"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono font-bold focus:ring-1 focus:ring-emerald-500 outline-none">
-          </div>
-          <div>
-            <label class="block font-bold text-gray-700 mb-1">Rental Status</label>
-            <select id="rentalStatus" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold bg-white focus:ring-1 focus:ring-emerald-500 outline-none">
-              <option value="Active">🟢 Active Rental</option>
-              <option value="Returned">⚪ Returned & Closed</option>
-            </select>
-          </div>
-        </div>
-
-        <div>
-          <label class="block font-bold text-gray-700 mb-1">Item Description / Equipment *</label>
-          <input type="text" id="rentalItemDesc" required placeholder="e.g. Lightweight Foldable Wheelchair (Chrome)"
-            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-semibold focus:ring-1 focus:ring-emerald-500 outline-none">
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label class="block font-bold text-gray-700 mb-1">Rental Start Date</label>
-            <input type="date" id="rentalStartDate" required
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold focus:ring-1 focus:ring-emerald-500 outline-none">
-          </div>
-          <div>
-            <label class="block font-bold text-gray-700 mb-1">Due Date for Fee Payment *</label>
-            <input type="date" id="rentalDueDate" required
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold focus:ring-1 focus:ring-emerald-500 outline-none">
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label class="block font-bold text-gray-700 mb-1">Rental Amount Due (RM) *</label>
-            <input type="number" step="0.01" min="0" id="rentalAmountDue" required placeholder="50.00"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono font-bold focus:ring-1 focus:ring-emerald-500 outline-none">
-          </div>
-          <div>
-            <label class="block font-bold text-gray-700 mb-1">Deposit Paid (RM)</label>
-            <input type="number" step="0.01" min="0" id="rentalDeposit" placeholder="100.00"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono font-bold focus:ring-1 focus:ring-emerald-500 outline-none">
-          </div>
-        </div>
-
-        <div>
-          <label class="block font-bold text-gray-700 mb-1">Remarks / Serial No. / Condition</label>
-          <textarea id="rentalNotes" rows="2" placeholder="e.g. Serial #WC-0941, includes detachable footrests"
-            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs leading-relaxed focus:ring-1 focus:ring-emerald-500 outline-none resize-y"></textarea>
-        </div>
-
-        <div class="pt-3 border-t border-gray-200 flex items-center justify-end gap-2">
-          <button type="button" onclick="closeRentalModal()"
-            class="px-4 py-2 bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 rounded-xl font-bold text-xs transition cursor-pointer">
-            Cancel
-          </button>
-          <button type="submit"
-            class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs transition shadow-sm cursor-pointer">
-            💾 Save Rental Record
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
   <!-- ─── FLOATING BATCH DECISION TOOLBAR ─────────────────────────────────── -->
   <div id="expiryBatchDecisionBar" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white backdrop-blur-md px-5 py-3 rounded-2xl shadow-2xl border border-slate-700/80 flex items-center gap-3 flex-wrap hidden animate-in slide-in-from-bottom-4 duration-200">
     <div class="flex items-center gap-2 pr-3 border-r border-slate-700">
@@ -4634,11 +4541,11 @@ ItemCode,Description,Brand,Category,Cost,SellingPrice,Supplier
 <script src="js/audit.js?v=20261024_v7"></script>
 <script src="js/scheduler.js?v=20261026_rymnet_v8"></script>
 <script src="js/db.js?v=20261024_v7"></script>
-<script src="js/patient.js?v=20261026_merge_v11"></script>
-<script src="js/onedrive-sync.js?v=20261026_expiry_v14"></script>
-<script src="js/seed_expiry_data.js?v=20261024_v7"></script>
+<!-- Patient module extracted to standalone /patient/ webapp for zero-lag performance -->
+<script src="js/onedrive-sync.js?v=20261029_fix_v15"></script>
+<script src="js/seed_expiry_data.js?v=20261029_actionplans_v8"></script>
 <script src="js/hq_return_policy.js?v=20261024_v7"></script>
-<script src="js/expiry.js?v=20261026_expiry_v14"></script>
+<script src="js/expiry.js?v=20261029_gsheet_v15"></script>
 <script src="js/returns-cn.js?v=20261024_v7"></script>
 <script src="js/pricing-intelligence.js?v=20261024_v7"></script>
 <script src="js/recruitment.js?v=20261024_v7"></script>
@@ -5236,59 +5143,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Check URL parameters for Customer Self-Booking Mode (?book=1 or ?action=book)
   if (urlParams.get('book') === '1' || urlParams.get('action') === 'book') {
-    document.getElementById('authOverlay')?.classList.add('hidden');
-    document.getElementById('mainHeader')?.classList.add('hidden');
-    document.getElementById('mainNav')?.classList.add('hidden');
-    document.getElementById('mainContent')?.classList.add('hidden');
-    const custView = document.getElementById('customerBookingView');
-    if (custView) custView.classList.remove('hidden');
-    if (typeof initCustomerBooking === 'function') {
-      initCustomerBooking(urlParams.get('branch') || 'Kota Sentosa');
-    }
+    window.location.replace(`patient/index.html${window.location.search}`);
     return; // Exit staff app boot
   }
 
   // Check URL parameter for 1-Click Customer Booking Import (?importBooking=...)
   const importBookingParam = urlParams.get('importBooking');
   if (importBookingParam) {
-    try {
-      let jsonStr = '';
-      try {
-        jsonStr = decodeURIComponent(atob(importBookingParam));
-      } catch (_) {
-        jsonStr = atob(importBookingParam);
-      }
-      const b = JSON.parse(jsonStr);
-      if (b && (b.ref || b.name)) {
-        setTimeout(() => {
-          if (typeof importSingleBooking === 'function') {
-            importSingleBooking({
-              id: b.ref || ('PMG-BK-' + Date.now()),
-              ref: b.ref || ('PMG-BK-' + Date.now()),
-              patientName: b.name,
-              patientPhone: b.phone || '',
-              patientIc: b.ic || '',
-              date: b.date || getTodayDateString(0),
-              time: b.time || '12:30',
-              service: b.service || 'In-Person Consultation & Health Screening',
-              purpose: b.service || 'In-Person Consultation & Health Screening',
-              branchName: b.branch || 'Kota Sentosa',
-              branchCode: b.branch || 'Kota Sentosa',
-              bookingType: b.type || 'in_person',
-              pharmacist: 'William Chai Yee Sian (Pharmacist)',
-              status: 'Scheduled',
-              notes: `Imported via 1-Click WhatsApp Link (Ref: ${b.ref})`
-            }, true);
-            if (typeof switchTab === 'function') switchTab('patient');
-            if (typeof switchPatientSubTab === 'function') switchPatientSubTab('today');
-          }
-        }, 500);
-      }
-      // Clean query parameter from URL without page reload
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } catch (err) {
-      console.warn('Could not parse importBooking param:', err);
-    }
+    window.location.replace(`patient/index.html${window.location.search}`);
+    return;
   }
 
   // Set default month for roster to current month
@@ -5308,7 +5171,6 @@ document.addEventListener('DOMContentLoaded', () => {
   try { initRoster(); } catch (e) { console.error('[Boot] initRoster error:', e); }
   try { initAudit(); } catch (e) { console.error('[Boot] initAudit error:', e); }
   try { initScheduler(); } catch (e) { console.error('[Boot] initScheduler error:', e); }
-  try { initPatientModule(); } catch (e) { console.error('[Boot] initPatientModule error:', e); }
   try { initExpiryModule(); } catch (e) { console.error('[Boot] initExpiryModule error:', e); }
   try { if (typeof initPricingIntelligence === 'function') initPricingIntelligence(); } catch (e) { console.error('[Boot] initPricingIntelligence error:', e); }
 
@@ -5334,7 +5196,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // PWA service worker
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js?v=20261024_v10').catch(() => {});
+    navigator.serviceWorker.register('sw.js?v=20261029_v11').catch(() => {});
   }
 });
 

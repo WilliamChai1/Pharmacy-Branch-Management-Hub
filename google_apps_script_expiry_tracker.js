@@ -5,7 +5,7 @@
 
 const MASTER_TAB = 'Master_Expiry';
 const MONTH_NAMES = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-const HEADERS = ['Branch', 'Batch number', 'Item code', 'Item description', 'Expiry date', 'Quantity', 'Source File', 'Status', 'LastUpdated', 'UpdatedBy'];
+const HEADERS = ['Branch', 'Batch number', 'Item code', 'Item description', 'Expiry date', 'Quantity', 'Source File', 'Status', 'LastUpdated', 'UpdatedBy', 'Action Plan', 'Offered Price'];
 const MONTHLY_HEADERS = ['Batch number', 'Item code', 'Item description', 'Expiry date', 'Quantity', 'Source File', 'Branch'];
 
 function onOpen() {
@@ -267,6 +267,8 @@ function doGet(e) {
     const qtyIdx    = headers.indexOf('quantity');
     const fileIdx   = headers.indexOf('source file');
     const statIdx   = headers.indexOf('status');
+    const planIdx   = headers.indexOf('action plan');
+    const priceIdx  = headers.indexOf('offered price');
 
     const items = [];
     for (let i = 1; i < data.length; i++) {
@@ -294,7 +296,9 @@ function doGet(e) {
         expiryDate: formatDate(row[expIdx]),
         quantity: parseFloat(row[qtyIdx]) || 0,
         sourceFile: String(row[fileIdx] || ''),
-        status: rStatus || 'Active'
+        status: rStatus || 'Active',
+        actionPlan: planIdx !== -1 && row[planIdx] ? String(row[planIdx]).trim() : '',
+        offeredPrice: priceIdx !== -1 && row[priceIdx] && !isNaN(parseFloat(row[priceIdx])) ? parseFloat(row[priceIdx]) : undefined
       });
     }
 
@@ -332,6 +336,7 @@ function doPost(e) {
       const items = payload.items || [];
       const rowsToAdd = [];
       items.forEach(it => {
+        const offPrice = it.offeredPrice !== undefined ? it.offeredPrice : (it.clearancePrice !== undefined ? it.clearancePrice : '');
         rowsToAdd.push([
           it.branch || 'Kota Sentosa',
           it.batchNumber || 'N/A',
@@ -342,12 +347,17 @@ function doPost(e) {
           it.sourceFile || 'Direct Upload',
           it.status || 'Active',
           now,
-          updatedBy
+          updatedBy,
+          it.actionPlan || '',
+          offPrice
         ]);
       });
 
       if (rowsToAdd.length > 0) {
-        sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAdd.length, 10).setValues(rowsToAdd);
+        if (sheet.getLastColumn() < HEADERS.length) {
+          sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]).setFontWeight('bold');
+        }
+        sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAdd.length, HEADERS.length).setValues(rowsToAdd);
         if (!payload.skipDistribution) {
           distributeToMonthlyTabs(ss);
         }
@@ -362,7 +372,7 @@ function doPost(e) {
     }
 
     // ── ACTION: UPDATE QTY / MARK CLEARED / UPDATE EXPIRY / UPDATE ITEM ──
-    if (action === 'update_qty' || action === 'mark_cleared' || action === 'update_expiry' || action === 'update_item' || action === 'updateExpiryItem') {
+    if (action === 'update_qty' || action === 'mark_cleared' || action === 'update_expiry' || action === 'update_item' || action === 'updateExpiryItem' || action === 'update_action_plan') {
       const rowId = parseInt(payload.rowId, 10);
       const isMarkCleared = action === 'mark_cleared' || payload.subAction === 'mark_cleared' || String(payload.status).toUpperCase() === 'DONE' || String(payload.status).toUpperCase() === 'CLEARED' || String(payload.status).toUpperCase() === 'COMPLETED';
       const newQty = isMarkCleared ? 0 : (payload.quantity !== undefined ? parseFloat(payload.quantity) : null);
@@ -402,9 +412,18 @@ function doPost(e) {
         sheet.getRange(targetRow, 8).setValue(newStatus);
         sheet.getRange(targetRow, 9).setValue(now);
         sheet.getRange(targetRow, 10).setValue(updatedBy);
+        if (payload.actionPlan !== undefined) {
+          if (sheet.getLastColumn() < 11) sheet.getRange(1, 11).setValue('Action Plan').setFontWeight('bold');
+          sheet.getRange(targetRow, 11).setValue(payload.actionPlan || '');
+        }
+        if (payload.offeredPrice !== undefined || payload.clearancePrice !== undefined) {
+          if (sheet.getLastColumn() < 12) sheet.getRange(1, 12).setValue('Offered Price').setFontWeight('bold');
+          const offPrice = payload.offeredPrice !== undefined ? payload.offeredPrice : payload.clearancePrice;
+          sheet.getRange(targetRow, 12).setValue(offPrice !== undefined && offPrice !== null ? offPrice : '');
+        }
         SpreadsheetApp.flush();
         if (!payload.skipDistribution) distributeToMonthlyTabs(ss);
-        return buildResponse({ success: true, rowId: targetRow, status: newStatus, expiryDate: newExp, quantity: newQty });
+        return buildResponse({ success: true, rowId: targetRow, status: newStatus, expiryDate: newExp, quantity: newQty, actionPlan: payload.actionPlan, offeredPrice: payload.offeredPrice });
       }
 
       // If item was being marked cleared/done but was not in sheet yet, append row as DONE
@@ -419,7 +438,9 @@ function doPost(e) {
           'Manual Clearance',
           newStatus,
           now,
-          updatedBy
+          updatedBy,
+          payload.actionPlan || '',
+          payload.offeredPrice || payload.clearancePrice || ''
         ]);
         SpreadsheetApp.flush();
         targetRow = sheet.getLastRow();

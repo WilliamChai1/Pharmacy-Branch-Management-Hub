@@ -203,7 +203,7 @@
             await this._inspectAndConfigureHandle(savedHandle);
             this._startBackgroundWatcher();
             await this.syncWithOneDriveFolder(true);
-            await this.syncStockExpiryWithOneDrive(true);
+            // Stock expiry data syncs exclusively via Google Sheets as requested
             await this.syncReturnsWithOneDrive(true);
             return;
           } else {
@@ -857,12 +857,7 @@
           console.warn('[PMG OneDrive Sync] Universal sync: Pricing warning:', pricingErr);
         }
 
-        // ─── STEP J: UNIVERSAL SYNC — STOCK EXPIRY & DISPOSAL TRACKER ──────────
-        try {
-          await this.syncStockExpiryWithOneDrive(true);
-        } catch (expErr) {
-          console.warn('[PMG OneDrive Sync] Universal sync: Expiry warning:', expErr);
-        }
+        // ─── STEP J: STOCK EXPIRY (SYNCED EXCLUSIVELY VIA GOOGLE SHEETS) ───────
 
         // ─── STEP K: UNIVERSAL SYNC — CUSTOMER PROMO & WHATSAPP BROADCASTER ─────
         try {
@@ -2347,10 +2342,6 @@
         } catch (_) {}
 
         // Also check and sync stock expiry in background
-        try {
-          await this.syncStockExpiryWithOneDrive(true);
-        } catch (_) {}
-
         // Also check and sync returns & credit notes in background
         try {
           await this.syncReturnsWithOneDrive(true);
