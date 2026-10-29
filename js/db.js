@@ -406,4 +406,5 @@ window.removeIdbItem = removeIdbItem;
 window.safeStorageSet = safeStorageSet;
 window.safeStorageGet = safeStorageGet;
 window.autoRelieveLocalStorageQuota = autoRelieveLocalStorageQuota;
+window.PATIENTS_STORAGE_KEY = 'pmg_patients_data_v1';
 

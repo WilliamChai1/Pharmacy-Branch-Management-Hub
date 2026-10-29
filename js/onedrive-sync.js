@@ -6,6 +6,7 @@
   const DB_VERSION = 1;
   const STORE_NAME = 'handles';
   const HANDLE_KEY = 'pmg_onedrive_root_handle';
+  const PATIENTS_STORAGE_KEY = (typeof window !== 'undefined' && window.PATIENTS_STORAGE_KEY) || 'pmg_patients_data_v1';
 
   // ── UNIVERSAL BACKGROUND POLLING PAUSE GUARD ──
   window._pmgSyncPausedUntil = 0;
@@ -441,6 +442,7 @@
 
         let totalMergedPatients = 0;
         let syncedBranches = [];
+        let allMergedPatientsAcrossBranches = [];
         const nowIso = new Date().toISOString();
         const session = typeof getSession === 'function' ? getSession() : null;
 
@@ -465,15 +467,16 @@
           }
 
           // Step B: Extract local patients belonging to this branch
-          const localBranchPatients = (typeof patientsData !== 'undefined' ? patientsData : []).filter(p => {
+          const localBranchPatients = (typeof patientsData !== 'undefined' && Array.isArray(patientsData) ? patientsData : []).filter(p => {
             return this._patientMatchesBranch(p, branchName);
           });
 
           // Step C: Bidirectional conflict-free merge
           const mergedBranchPatients = this._mergePatientArrays(localBranchPatients, cloudPatients);
+          allMergedPatientsAcrossBranches.push(...mergedBranchPatients);
 
           // Step D: Update global patientsData
-          if (typeof patientsData !== 'undefined') {
+          if (typeof patientsData !== 'undefined' && Array.isArray(patientsData)) {
             const otherPatients = patientsData.filter(p => !this._patientMatchesBranch(p, branchName));
             patientsData = [...otherPatients, ...mergedBranchPatients];
           }
@@ -871,13 +874,25 @@
         // Persist local patientsData and refresh views
         if (typeof savePatientsData === 'function') {
           savePatientsData();
-        } else if (typeof safeStorageSet === 'function') {
-          safeStorageSet(PATIENTS_STORAGE_KEY, patientsData);
-        } else if (typeof PATIENTS_STORAGE_KEY !== 'undefined' && typeof patientsData !== 'undefined') {
-          try {
-            localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
-          } catch (e) {
-            console.warn('[PMG OneDrive Sync] LocalStorage quota warning for patientsData:', e);
+        } else if (typeof patientsData !== 'undefined' && Array.isArray(patientsData)) {
+          if (typeof safeStorageSet === 'function') {
+            safeStorageSet(PATIENTS_STORAGE_KEY, patientsData);
+          } else {
+            try {
+              localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
+            } catch (e) {
+              console.warn('[PMG OneDrive Sync] LocalStorage quota warning for patientsData:', e);
+            }
+          }
+        } else if (allMergedPatientsAcrossBranches.length > 0) {
+          if (typeof safeStorageSet === 'function') {
+            safeStorageSet(PATIENTS_STORAGE_KEY, allMergedPatientsAcrossBranches);
+          } else {
+            try {
+              localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(allMergedPatientsAcrossBranches));
+            } catch (e) {
+              console.warn('[PMG OneDrive Sync] LocalStorage quota warning for patientsData:', e);
+            }
           }
         }
         if (typeof renderPatientModule === 'function') {
@@ -963,14 +978,14 @@
         const mergedBranchPatients = this._mergePatientArrays(localBranchPatients, cloudPatients);
 
         // Step 3: Update global in-memory patientsData and localStorage
-        if (typeof patientsData !== 'undefined') {
+        if (typeof patientsData !== 'undefined' && Array.isArray(patientsData)) {
           const otherPatients = patientsData.filter(p => !this._patientMatchesBranch(p, targetBranch));
           patientsData = [...otherPatients, ...mergedBranchPatients];
           if (typeof savePatientsData === 'function') {
             savePatientsData();
           } else if (typeof safeStorageSet === 'function') {
             safeStorageSet(PATIENTS_STORAGE_KEY, patientsData);
-          } else if (typeof PATIENTS_STORAGE_KEY !== 'undefined') {
+          } else {
             try {
               localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
             } catch (e) {
@@ -2362,14 +2377,14 @@
         const incomingPatients = data.patients || [];
 
         // Conflict-Free Merge with local patientsData
-        if (typeof patientsData !== 'undefined') {
+        if (typeof patientsData !== 'undefined' && Array.isArray(patientsData)) {
           const merged = this._mergePatientArrays(patientsData, incomingPatients);
           patientsData = merged;
           if (typeof savePatientsData === 'function') {
             savePatientsData();
           } else if (typeof safeStorageSet === 'function') {
             safeStorageSet(PATIENTS_STORAGE_KEY, patientsData);
-          } else if (typeof PATIENTS_STORAGE_KEY !== 'undefined') {
+          } else {
             try {
               localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
             } catch (e) {
