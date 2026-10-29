@@ -880,13 +880,13 @@ function initPatientModule() {
     }).catch(err => console.warn('[PMG Patient] IDB hydration warning:', err));
   }
 
-  // Auto-sync customer online bookings from cloud relay (silent background fetch + continuous polling every 30s)
+  // Auto-sync customer online bookings from cloud relay (silent background fetch + continuous polling every 60s)
   if (typeof syncOnlineBookingsFromCloud === 'function') {
     syncOnlineBookingsFromCloud(false).catch(() => {});
     if (!window._pmgCloudSyncInterval) {
       window._pmgCloudSyncInterval = setInterval(() => {
         syncOnlineBookingsFromCloud(false).catch(() => {});
-      }, 30000);
+      }, 60000);
     }
   }
 }
@@ -1094,24 +1094,44 @@ function mergeTwoPatientRecords(primary, secondary) {
       aptMap.set(k, a);
     } else {
       const existing = aptMap.get(k);
-      const isTermA = a.status === 'Completed' || a.status === 'Missed' || a.status === 'Cancelled';
-      const isTermB = existing.status === 'Completed' || existing.status === 'Missed' || existing.status === 'Cancelled';
-      if (isTermA && !isTermB) aptMap.set(k, a);
-      else if (!isTermA && isTermB) aptMap.set(k, existing);
-      else aptMap.set(k, { ...existing, ...a });
+      // If either copy is marked Completed, strictly keep Completed!
+      if (a.status === 'Completed' && existing.status !== 'Completed') {
+        aptMap.set(k, a);
+      } else if (existing.status === 'Completed' && a.status !== 'Completed') {
+        // Keep existing Completed
+      } else {
+        const isTermA = a.status === 'Cancelled' || a.status === 'Missed';
+        const isTermB = existing.status === 'Cancelled' || existing.status === 'Missed';
+        if (isTermA && !isTermB) aptMap.set(k, a);
+        else if (!isTermA && isTermB) aptMap.set(k, existing);
+        else aptMap.set(k, { ...existing, ...a });
+      }
     }
   });
   merged.appointments = Array.from(aptMap.values()).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
-  // Medications (preserve full regimens)
+  // Medications (preserve full regimens & cleared/overdueDismissed flags)
   const medMap = new Map();
   (other.medications || []).forEach(m => {
     const k = (m.id || m.name || '').toLowerCase().trim();
-    if (k) medMap.set(k, m);
+    if (k) medMap.set(k, { ...m });
   });
   (merged.medications || []).forEach(m => {
     const k = (m.id || m.name || '').toLowerCase().trim();
-    if (k) medMap.set(k, m);
+    if (!k) return;
+    if (medMap.has(k)) {
+      const existing = medMap.get(k);
+      const isCleared = !!(existing.cleared || m.cleared || existing.overdueDismissed || m.overdueDismissed);
+      medMap.set(k, {
+        ...existing,
+        ...m,
+        cleared: isCleared,
+        overdueDismissed: isCleared,
+        clearedAt: existing.clearedAt || m.clearedAt
+      });
+    } else {
+      medMap.set(k, { ...m });
+    }
   });
   merged.medications = Array.from(medMap.values());
 
@@ -1579,12 +1599,21 @@ function renderPatientModule() {
   const upcomingList = [];
   const overdueList = [];
 
+  let clearedOverdueSet = new Set();
+  try {
+    const rawCleared = localStorage.getItem('pmg_cleared_overdue_records');
+    if (rawCleared) clearedOverdueSet = new Set(JSON.parse(rawCleared));
+  } catch (_) {}
+
   filteredPatients.forEach(p => {
     (p.appointments || []).forEach(apt => {
       // Filter by selected pharmacist if specified
       if (selectedPharm && !(apt.pharmacist || '').toLowerCase().includes(selectedPharm)) {
         return;
       }
+      const aptKey = `${p.id}_${apt.id}`;
+      const isClearedApt = clearedOverdueSet.has(aptKey) || apt.status === 'Completed' || apt.status === 'Cancelled' || apt.cleared;
+
       const isPending = (apt.status === 'Scheduled' || apt.status === 'Pending Approval');
       if (apt.date === todayStr && isPending) {
         todayAptCount++;
@@ -1592,16 +1621,20 @@ function renderPatientModule() {
       } else if (apt.date > todayStr && apt.date <= next7DaysStr && isPending) {
         dueIn7DaysCount++;
         upcomingList.push({ patient: p, appointment: apt });
-      } else if (apt.date < todayStr && (apt.status === 'Scheduled' || apt.status === 'Missed' || apt.status === 'Pending Approval')) {
+      } else if (!isClearedApt && apt.date < todayStr && (apt.status === 'Scheduled' || apt.status === 'Missed' || apt.status === 'Pending Approval')) {
         overdueCount++;
         overdueList.push({ patient: p, appointment: apt, type: 'Missed Appointment' });
       }
     });
 
     (p.medications || []).forEach(med => {
-      if (med.nextRefillDate && !med.cleared && !med.overdueDismissed) {
+      const medKeyId = `${p.id}_${med.id || ''}`;
+      const medKeyName = `${p.id}_${med.name || ''}`;
+      const isClearedMed = clearedOverdueSet.has(medKeyId) || clearedOverdueSet.has(medKeyName) || med.cleared || med.overdueDismissed;
+
+      if (med.nextRefillDate && !isClearedMed) {
         if (med.nextRefillDate < todayStr) {
-          const exists = overdueList.some(item => item.patient.id === p.id && item.medication && item.medication.id === med.id);
+          const exists = overdueList.some(item => item.patient.id === p.id && item.medication && (item.medication.id === med.id || item.medication.name === med.name));
           if (!exists) {
             overdueCount++;
             overdueList.push({ patient: p, medication: med, type: 'Overdue Refill' });
@@ -1806,7 +1839,8 @@ function renderOverdueQueue(items) {
 
     const dateStr = apt ? apt.date : (med ? med.nextRefillDate : '—');
     const details = apt ? (apt.purpose || 'Missed Appointment') : (med ? `${med.name} (Due: ${med.nextRefillDate})` : 'Overdue');
-    const recordId = apt ? apt.id : (med ? med.id : '');
+    const recordId = apt ? apt.id : (med ? (med.id || med.name) : '');
+    const cleanRecordId = String(recordId || '').replace(/'/g, "\\'");
 
     return `
       <tr class="hover:bg-rose-50/30 transition border-b border-gray-100">
@@ -1827,7 +1861,7 @@ function renderOverdueQueue(items) {
           <span class="bg-rose-50 text-rose-700 text-xs font-bold px-2 py-0.5 rounded">Requires Follow-up</span>
         </td>
         <td class="px-4 py-3 text-right whitespace-nowrap">
-          <button onclick="clearOverdueRecord('${p.id}', '${recordId}', '${item.type}')"
+          <button onclick="clearOverdueRecord('${p.id}', '${cleanRecordId}', '${item.type}')"
             class="bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 text-xs font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 transition mr-1"
             title="Mark as Completed / Clear from Overdue">
             <i class="fa-solid fa-check"></i> Done
@@ -2318,6 +2352,20 @@ function markAppointmentStatus(patientId, appointmentId, newStatus) {
 
   apt.status = newStatus;
   apt.statusUpdatedAt = new Date().toISOString();
+  if (newStatus === 'Completed' || newStatus === 'Cancelled') {
+    apt.cleared = true;
+    try {
+      let clearedRecords = JSON.parse(localStorage.getItem('pmg_cleared_overdue_records') || '[]');
+      const tombstoneKey = `${patientId}_${appointmentId}`;
+      if (!clearedRecords.includes(tombstoneKey)) {
+        clearedRecords.push(tombstoneKey);
+        localStorage.setItem('pmg_cleared_overdue_records', JSON.stringify(clearedRecords));
+        if (typeof safeStorageSet === 'function') {
+          safeStorageSet('pmg_cleared_overdue_records', clearedRecords);
+        }
+      }
+    } catch (_) {}
+  }
   savePatientsData();
 
   // Also update pmg_customer_bookings in localStorage so local bookings stay consistently updated
@@ -5422,7 +5470,8 @@ async function saveNewEncounter() {
   // Update patient's active medications to strictly match the latest consultation
   // If no medications were entered, they are no longer on those medications
   p.medications = planMedsVal
-    ? planMedsVal.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(m => ({
+    ? planMedsVal.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map((m, idx) => ({
+        id: 'MED-' + Date.now().toString(36) + '-' + (idx + 1),
         name: m,
         dosage: '',
         frequency: '',
@@ -5680,23 +5729,63 @@ async function deletePatientDirect(patientId) {
 window.deletePatientDirect = deletePatientDirect;
 
 function clearOverdueRecord(patientId, recordId, type) {
+  if (!patientId) return;
+
+  // 1. Record persistent tombstone so this item never re-appears in overdue queue
+  let clearedRecords = [];
+  try {
+    clearedRecords = JSON.parse(localStorage.getItem('pmg_cleared_overdue_records') || '[]');
+  } catch (_) { clearedRecords = []; }
+  const cleanRecId = String(recordId || '').trim();
+  const tombstoneKey = `${patientId}_${cleanRecId}`;
+  if (cleanRecId && !clearedRecords.includes(tombstoneKey)) {
+    clearedRecords.push(tombstoneKey);
+    try {
+      localStorage.setItem('pmg_cleared_overdue_records', JSON.stringify(clearedRecords));
+    } catch (_) {}
+    if (typeof safeStorageSet === 'function') {
+      safeStorageSet('pmg_cleared_overdue_records', clearedRecords);
+    }
+  }
+
   if (type === 'Missed Appointment') {
     markAppointmentStatus(patientId, recordId, 'Completed');
     return;
   }
+
   const p = patientsData.find(pt => pt.id === patientId);
   if (!p) return;
-  if (type === 'Overdue Refill' && p.medications) {
-    const med = p.medications.find(m => m.id === recordId);
+
+  if (type === 'Overdue Refill' && Array.isArray(p.medications)) {
+    const med = p.medications.find(m => (m.id && m.id === recordId) || (m.name && m.name.trim().toLowerCase() === cleanRecId.toLowerCase()));
     if (med) {
       med.cleared = true;
       med.overdueDismissed = true;
       med.clearedAt = new Date().toISOString();
+      if (!med.id) med.id = 'MED-' + Date.now().toString(36);
+      const nameKey = `${patientId}_${med.name}`;
+      const idKey = `${patientId}_${med.id}`;
+      if (!clearedRecords.includes(nameKey)) clearedRecords.push(nameKey);
+      if (!clearedRecords.includes(idKey)) clearedRecords.push(idKey);
+      try {
+        localStorage.setItem('pmg_cleared_overdue_records', JSON.stringify(clearedRecords));
+      } catch (_) {}
       savePatientsData();
       renderPatientModule();
       if (typeof showExpiryToast === 'function') {
         showExpiryToast(`✅ Refill follow-up for "${med.name}" marked as completed.`);
       }
+    } else {
+      // Fallback: mark any overdue med matching recordId as cleared
+      p.medications.forEach(m => {
+        if (m.nextRefillDate && (!cleanRecId || m.name.toLowerCase().includes(cleanRecId.toLowerCase()) || cleanRecId.toLowerCase().includes(m.name.toLowerCase()))) {
+          m.cleared = true;
+          m.overdueDismissed = true;
+          m.clearedAt = new Date().toISOString();
+        }
+      });
+      savePatientsData();
+      renderPatientModule();
     }
   }
 }
@@ -10122,8 +10211,10 @@ function importSingleBooking(booking, showNotification = false) {
     const aptIdx = patient.appointments.findIndex(a => a.id === ref);
     if (aptIdx >= 0) {
       const existingStatus = patient.appointments[aptIdx].status;
-      // If incoming status from Google Sheet is terminal (Completed, Missed, Approved), adopt it!
-      if (booking.status && booking.status !== 'Scheduled') {
+      // If local is already marked Completed, strictly keep Completed!
+      if (existingStatus === 'Completed') {
+        aptObj.status = 'Completed';
+      } else if (booking.status && booking.status !== 'Scheduled') {
         aptObj.status = booking.status;
         aptObj.statusUpdatedAt = booking.statusUpdatedAt || new Date().toISOString();
       } else if (existingStatus && existingStatus !== 'Scheduled' && (!booking.status || booking.status === 'Scheduled')) {
@@ -10249,11 +10340,9 @@ async function syncOnlineBookingsFromCloud(showPrompt = false) {
       if (showPrompt) {
         alert(`✅ Successfully synchronized ${newImportCount} appointment(s) from Google Sheets!`);
       }
-    } else {
+    } else if (showPrompt) {
       renderPatientModule();
-      if (showPrompt) {
-        alert(`All appointments for ${branch} are already synchronized (${allBookingsMap.size} total).`);
-      }
+      alert(`All appointments for ${branch} are already synchronized (${allBookingsMap.size} total).`);
     }
   } catch (err) {
     console.warn('[PMG Cloud Sync] Sync failed:', err);

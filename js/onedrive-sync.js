@@ -21,54 +21,14 @@
     return Date.now() < (window._pmgSyncPausedUntil || 0);
   };
 
-  // Recognized branch folders created in PMG OneDrive (Strictly the 7 Outlets Managed by AM)
+  // Recognized branch folders created in PMG OneDrive (Strictly Kota Sentosa)
   const KNOWN_BRANCH_FOLDERS = [
-    'MATANG JAYA',
-    'SUNGAI MOYAN',
-    'MALIHAH',
-    'METROCITY',
-    'ASTANA',
-    'SAMARIANG',
     'KOTA SENTOSA'
   ];
 
   // Mapping between branch codes/aliases and official OneDrive folder names
   const BRANCH_FOLDER_MAP = {
-    // Matang Jaya
-    'MATANG JAYA': 'MATANG JAYA',
-    'MATANG': 'MATANG JAYA',
-    'MJ01': 'MATANG JAYA',
-    'PMG PHARMACY (MATANG JAYA) SDN BHD': 'MATANG JAYA',
-    'PMG PHARMACY MATANG JAYA': 'MATANG JAYA',
-
-    // Sungai Moyan
-    'SUNGAI MOYAN': 'SUNGAI MOYAN',
-    'MOYAN': 'SUNGAI MOYAN',
-    'PMG PHARMACY (SUNGAI MOYAN) SDN BHD': 'SUNGAI MOYAN',
-    'PMG PHARMACY SUNGAI MOYAN': 'SUNGAI MOYAN',
-
-    // Malihah
-    'MALIHAH': 'MALIHAH',
-    'PMG PHARMACY (MALIHAH) SDN BHD': 'MALIHAH',
-    'PMG PHARMACY MALIHAH': 'MALIHAH',
-
-    // Metrocity
-    'METROCITY': 'METROCITY',
-    'PMG PHARMACY (METROCITY) SDN BHD': 'METROCITY',
-    'PMG PHARMACY METROCITY': 'METROCITY',
-
-    // Astana
-    'ASTANA': 'ASTANA',
-    'PMG PHARMACY (ASTANA) SDN BHD': 'ASTANA',
-    'PMG PHARMACY ASTANA': 'ASTANA',
-
-    // Samariang
-    'SAMARIANG': 'SAMARIANG',
-    'SEMARIANG': 'SAMARIANG',
-    'PMG PHARMACY (SAMARIANG) SDN BHD': 'SAMARIANG',
-    'PMG PHARMACY SAMARIANG': 'SAMARIANG',
-
-    // Kota Sentosa
+    // Kota Sentosa (Single Outlet Active)
     'KS01': 'KOTA SENTOSA',
     'KOTA SENTOSA': 'KOTA SENTOSA',
     'PMG PHARMACY (KOTA SENTOSA) SDN BHD': 'KOTA SENTOSA',
@@ -77,15 +37,6 @@
 
   // Reverse mapping from folder name to storage branch code
   const FOLDER_BRANCH_CODE_MAP = {
-    'MATANG JAYA': 'MATANG JAYA',
-    'MATANG': 'MATANG JAYA',
-    'SUNGAI MOYAN': 'SUNGAI MOYAN',
-    'MOYAN': 'SUNGAI MOYAN',
-    'MALIHAH': 'MALIHAH',
-    'METROCITY': 'METROCITY',
-    'ASTANA': 'ASTANA',
-    'SAMARIANG': 'SAMARIANG',
-    'SEMARIANG': 'SAMARIANG',
     'KOTA SENTOSA': 'KS01',
     'KS01': 'KS01'
   };
@@ -93,13 +44,13 @@
   class OneDriveSyncEngine {
     constructor() {
       this.rootHandle = null;
-      this.mode = 'DISCONNECTED'; // 'PARENT' (all 7 outlets), 'BRANCH' (single outlet), 'DISCONNECTED'
+      this.mode = 'DISCONNECTED'; // 'PARENT' (Kota Sentosa), 'BRANCH' (single outlet), 'DISCONNECTED'
       this.activeBranchFolder = null;
       this.branchSubHandles = {};
       this.lastKnownModified = 0;
       this.isSyncing = false;
       this.watcherInterval = null;
-      this.autoSyncSeconds = 60;
+      this.autoSyncSeconds = 90;
       this.initDone = false;
     }
 
@@ -267,7 +218,7 @@
         } catch (_) {}
 
         const folderDesc = this.mode === 'PARENT' 
-          ? `Master "Patient care" (All 7 Outlets Connected)`
+          ? `Master "Patient care" (Kota Sentosa)`
           : `Branch Outlet (${this.activeBranchFolder})`;
 
         alert(`✅ PMG OneDrive Connected Successfully!\n\nFolder: ${handle.name}\nMode: ${folderDesc}\n\nClinical records, encounters, and appointments are now synchronized in real-time across branch PCs and with Area Manager.`);
@@ -305,6 +256,17 @@
       const folderName = (handle.name || '').trim().toUpperCase();
       this.branchSubHandles = {};
 
+      // Automated cleanup: remove legacy non-Kota Sentosa branch folders if present
+      const LEGACY_BRANCHES_TO_CLEANUP = [
+        'MATANG JAYA', 'SUNGAI MOYAN', 'MALIHAH', 'METROCITY', 'ASTANA', 'SAMARIANG', 'MATANG', 'MOYAN', 'SEMARIANG'
+      ];
+      for (const legacyBranch of LEGACY_BRANCHES_TO_CLEANUP) {
+        try {
+          await handle.removeEntry(legacyBranch, { recursive: true });
+          console.log(`[PMG OneDrive Sync] 🧹 Auto-removed legacy branch folder: ${legacyBranch}`);
+        } catch (_) {}
+      }
+
       // Check if handle has subfolders matching our branch names
       let detectedSubfolders = [];
       try {
@@ -328,10 +290,10 @@
       }
 
       if (detectedSubfolders.length > 0) {
-        // Connected to parent "Patient care" folder (Area Manager Master View)
+        // Connected to parent "Patient care" folder (Kota Sentosa)
         this.mode = 'PARENT';
         this.activeBranchFolder = this._resolveCurrentBranchName();
-        this._updateBadge('CONNECTED', `OneDrive: Live (All 7 Outlets)`);
+        this._updateBadge('CONNECTED', `OneDrive: Live (Kota Sentosa)`);
       } else if (KNOWN_BRANCH_FOLDERS.includes(folderName) || BRANCH_FOLDER_MAP[folderName]) {
         // Connected directly to a branch folder (e.g. "KOTA SENTOSA")
         const canonical = BRANCH_FOLDER_MAP[folderName] || folderName;
@@ -899,9 +861,7 @@
           renderPatientModule();
         }
 
-        const mainBranchLabel = syncedBranches.length > 1 
-          ? `All 7 Outlets (${syncedBranches.length} branches)` 
-          : (syncedBranches[0] || this.activeBranchFolder || 'Branch');
+        const mainBranchLabel = syncedBranches[0] || this.activeBranchFolder || 'Kota Sentosa';
 
         // Record last backup details in localStorage
         try {
@@ -1038,8 +998,7 @@
         this._updateBadge('CONNECTED', `OneDrive: Synced ${timeStr} (${targetBranch})`);
         return true;
       } catch (err) {
-        console.error('[PMG OneDrive Sync] Write error:', err);
-        this._updateBadge('ERROR', 'OneDrive: Sync Warning');
+        console.warn('[PMG OneDrive Sync] Write warning:', err);
         return false;
       } finally {
         this.isSyncing = false;
@@ -2368,7 +2327,9 @@
         }
 
         this.isSyncing = true;
-        this._updateBadge('SYNCING', 'OneDrive: Syncing…');
+        if (force) {
+          this._updateBadge('SYNCING', 'OneDrive: Syncing…');
+        }
 
         const text = await file.text();
         if (!text.trim()) return false;
@@ -2379,19 +2340,22 @@
         // Conflict-Free Merge with local patientsData
         if (typeof patientsData !== 'undefined' && Array.isArray(patientsData)) {
           const merged = this._mergePatientArrays(patientsData, incomingPatients);
+          const hasChanged = !this._arePatientArraysEqual(patientsData, merged);
           patientsData = merged;
-          if (typeof savePatientsData === 'function') {
-            savePatientsData();
-          } else if (typeof safeStorageSet === 'function') {
-            safeStorageSet(PATIENTS_STORAGE_KEY, patientsData);
-          } else {
-            try {
-              localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
-            } catch (e) {
-              console.warn('[PMG OneDrive Sync] LocalStorage quota warning for patientsData:', e);
+          if (hasChanged) {
+            if (typeof savePatientsData === 'function') {
+              savePatientsData();
+            } else if (typeof safeStorageSet === 'function') {
+              safeStorageSet(PATIENTS_STORAGE_KEY, patientsData);
+            } else {
+              try {
+                localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patientsData));
+              } catch (e) {
+                console.warn('[PMG OneDrive Sync] LocalStorage quota warning for patientsData:', e);
+              }
             }
+            if (typeof renderPatientModule === 'function') renderPatientModule();
           }
-          if (typeof renderPatientModule === 'function') renderPatientModule();
 
           // If incoming file had deleted records or differences, update OneDrive file with the cleaned array
           if (!this._arePatientArraysEqual(merged, incomingPatients)) {
@@ -2408,7 +2372,10 @@
         this._updateBadge('CONNECTED', `OneDrive: Synced ${timeStr} (${targetBranch})`);
         return true;
       } catch (err) {
-        console.warn('[PMG OneDrive Sync] Read/Merge error:', err);
+        console.warn('[PMG OneDrive Sync] Read/Merge warning:', err);
+        if (force) {
+          this._updateBadge('ERROR', 'OneDrive: Sync Warning');
+        }
         return false;
       } finally {
         this.isSyncing = false;
@@ -2479,13 +2446,32 @@
           (cloudP.encounters || []).forEach(e => encMap.set(e.id || `${e.date}_${e.recordedBy}`, e));
           localP.encounters = Array.from(encMap.values()).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
-          // Merge medications by name/id
+          // Merge medications by name/id (preserve cleared & overdueDismissed flags)
           const medMap = new Map();
-          (localP.medications || []).forEach(m => medMap.set(m.id || m.name, m));
-          (cloudP.medications || []).forEach(m => medMap.set(m.id || m.name, m));
+          (localP.medications || []).forEach(m => {
+            const k = (m.id || m.name || '').toLowerCase().trim();
+            if (k) medMap.set(k, { ...m });
+          });
+          (cloudP.medications || []).forEach(m => {
+            const k = (m.id || m.name || '').toLowerCase().trim();
+            if (!k) return;
+            if (medMap.has(k)) {
+              const existing = medMap.get(k);
+              const isCleared = !!(existing.cleared || m.cleared || existing.overdueDismissed || m.overdueDismissed);
+              medMap.set(k, {
+                ...m,
+                ...existing,
+                cleared: isCleared,
+                overdueDismissed: isCleared,
+                clearedAt: existing.clearedAt || m.clearedAt
+              });
+            } else {
+              medMap.set(k, { ...m });
+            }
+          });
           localP.medications = Array.from(medMap.values());
 
-          // Merge appointments by id safely (preserve Completed/Missed terminal status)
+          // Merge appointments by id safely (preserve Completed/Cancelled terminal status)
           const aptMap = new Map();
           (localP.appointments || []).forEach(a => {
             if (a.status !== 'DELETED' && String(a.status).toUpperCase() !== 'DELETED') {
@@ -2499,17 +2485,24 @@
               aptMap.set(key, cloudApt);
             } else {
               const localApt = aptMap.get(key);
-              const localIsTerminal = localApt.status === 'Completed' || localApt.status === 'Missed' || localApt.status === 'Cancelled';
-              const cloudIsTerminal = cloudApt.status === 'Completed' || cloudApt.status === 'Missed' || cloudApt.status === 'Cancelled';
-              if (localIsTerminal && !cloudIsTerminal) {
-                // Keep local completed/missed appointment
-              } else if (cloudIsTerminal && !localIsTerminal) {
+              // If either local or cloud has Completed status, strictly keep Completed!
+              if (localApt.status === 'Completed' && cloudApt.status !== 'Completed') {
+                // Keep local completed status
+              } else if (cloudApt.status === 'Completed' && localApt.status !== 'Completed') {
                 aptMap.set(key, cloudApt);
               } else {
-                const lTime = new Date(localApt.statusUpdatedAt || localApt.lastUpdated || localApt.date || 0).getTime();
-                const cTime = new Date(cloudApt.statusUpdatedAt || cloudApt.lastUpdated || cloudApt.date || 0).getTime();
-                if (cTime > lTime) {
+                const localIsTerminal = localApt.status === 'Cancelled' || localApt.status === 'Missed';
+                const cloudIsTerminal = cloudApt.status === 'Cancelled' || cloudApt.status === 'Missed';
+                if (localIsTerminal && !cloudIsTerminal) {
+                  // Keep local terminal appointment
+                } else if (cloudIsTerminal && !localIsTerminal) {
                   aptMap.set(key, cloudApt);
+                } else {
+                  const lTime = new Date(localApt.statusUpdatedAt || localApt.lastUpdated || localApt.date || 0).getTime();
+                  const cTime = new Date(cloudApt.statusUpdatedAt || cloudApt.lastUpdated || cloudApt.date || 0).getTime();
+                  if (cTime > lTime) {
+                    aptMap.set(key, cloudApt);
+                  }
                 }
               }
             }
@@ -2715,17 +2708,22 @@
     _startBackgroundWatcher() {
       if (this.watcherInterval) clearInterval(this.watcherInterval);
 
-      // Periodic check every 60 seconds
+      // Periodic check every 90 seconds
       this.watcherInterval = setInterval(() => {
         if (!document.hidden) {
           this.syncWithOneDriveFolder(false);
         }
       }, this.autoSyncSeconds * 1000);
 
-      // Check immediately when user switches back to browser tab
+      // Check when user switches back to browser tab (debounced: at least 20s between checks)
+      let lastTabSyncTime = 0;
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
-          this.syncWithOneDriveFolder(false);
+          const now = Date.now();
+          if (now - lastTabSyncTime >= 20000) {
+            lastTabSyncTime = now;
+            this.syncWithOneDriveFolder(false);
+          }
         }
       });
     }
@@ -2855,7 +2853,7 @@
     if (pill) {
       if (isConn) {
         pill.className = 'px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200';
-        pill.textContent = window.pmgOneDriveSync.mode === 'PARENT' ? '✅ Connected (All 7 Outlets)' : '✅ Connected (Branch)';
+        pill.textContent = '✅ Connected (Kota Sentosa)';
       } else {
         pill.className = 'px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-700 border border-gray-200';
         pill.textContent = '❌ Disconnected';
@@ -2867,14 +2865,8 @@
     }
 
     if (branchEl) {
-      const branchSel = document.getElementById('patientBranchFilter');
-      const selected = branchSel ? branchSel.value : '';
-      if (window.pmgOneDriveSync.mode === 'PARENT' && (!selected || selected === 'ALL')) {
-        branchEl.textContent = 'All 7 Outlets (Master View)';
-      } else {
-        const b = window.pmgOneDriveSync._resolveCurrentBranchName();
-        branchEl.textContent = b === 'KOTA SENTOSA' ? 'Kota Sentosa (KS01)' : b;
-      }
+      const b = window.pmgOneDriveSync._resolveCurrentBranchName();
+      branchEl.textContent = b === 'KOTA SENTOSA' ? 'Kota Sentosa (KS01)' : b;
     }
 
     if (lastSyncEl) {
