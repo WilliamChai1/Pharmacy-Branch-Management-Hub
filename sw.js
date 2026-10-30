@@ -1,7 +1,7 @@
 // sw.js — Service Worker for PMG Branch Operations & Management Hub
 'use strict';
 
-const CACHE_NAME = 'pmg-hub-cache-v29';
+const CACHE_NAME = 'pmg-hub-cache-v30';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -24,6 +24,9 @@ const STATIC_ASSETS = [
   './promo/promo.js',
   './patient/',
   './patient/index.html',
+  './performance/',
+  './performance/index.html',
+  './performance/performance.js',
   './icons/icon-192.png',
   './icons/icon-512.png'
 ];

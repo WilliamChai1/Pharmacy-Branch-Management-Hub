@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PMG Outlet Monthly Performance & AI Strategic Analytics — Kota Sentosa</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    @media print {
+      .no-print { display: none !important; }
+      body { background: #fff !important; }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-900 min-h-screen flex flex-col">
+
+  <!-- Toast Notification Host -->
+  <div id="perfToastHost" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-md no-print"></div>
+
+  <!-- Preloaded Sample Warning & 1-Click Removal Banner -->
+  <div id="preloadedSampleBanner" class="bg-amber-500 text-slate-950 px-4 py-2 text-xs font-bold flex flex-wrap items-center justify-between gap-2 shadow-xs no-print">
+    <div class="flex items-center gap-2">
+      <span class="px-2 py-0.5 rounded bg-slate-950 text-amber-300 text-[10px] font-extrabold uppercase">Preloaded Sample Active</span>
+      <span>Currently viewing verified <strong>October FY2026 vs October FY2025</strong> sample data from <code>Sample/</code> for testing. Click Clear anytime to prevent misleading data.</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <button onclick="clearPreloadedSampleData()" class="px-3 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 text-white text-xs font-extrabold transition cursor-pointer shadow-2xs">
+        🗑️ Clear Preloaded Sample Data Now
+      </button>
+    </div>
+  </div>
+
+  <!-- Top Navigation Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-2xs no-print">
+    <div class="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-700 text-white flex items-center justify-center font-black text-lg shadow-xs">
+          📊
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight">PMG Outlet Performance & Gemini AI Strategic Suite</h1>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">Memory-Isolated Tab</span>
+          </div>
+          <div class="text-xs text-slate-500 mt-0.5 flex flex-wrap items-center gap-1">
+            <span>Branch: <strong class="text-slate-700">PMG Pharmacy Kota Sentosa (7th Mile)</strong></span>
+            <span class="mx-1">•</span>
+            <span id="activePeriodHeaderBadge">Loading period...</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <button onclick="switchPerfTab('tab5')" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-xs transition cursor-pointer">
+          ✨ AI Strategy & SWOT
+        </button>
+        <button onclick="switchPerfTab('tab7')" class="px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-bold transition cursor-pointer">
+          📥 Upload CSVs
+        </button>
+        <button onclick="restorePreloadedSampleData()" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer" title="Restore October 2026 vs 2025 Sample">
+          🔄 Restore Sample
+        </button>
+        <a href="../index.html" class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition">
+          ← Back to PMG Hub
+        </a>
+      </div>
+    </div>
+
+    <!-- 7 Sub-Tab Bar -->
+    <div class="max-w-[1600px] mx-auto px-4 sm:px-6 py-2 border-t border-slate-100 flex items-center gap-1.5 overflow-x-auto">
+      <button id="btn-tab1" onclick="switchPerfTab('tab1')" class="px-3.5 py-2 rounded-xl text-xs font-extrabold bg-indigo-600 text-white shadow-xs transition cursor-pointer whitespace-nowrap">
+        1. Executive KPIs (1–5) & 3M Trend
+      </button>
+      <button id="btn-tab2" onclick="switchPerfTab('tab2')" class="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer whitespace-nowrap">
+        2. 11 HQ Categories & Stock Cycle (7–10)
+      </button>
+      <button id="btn-tab3" onclick="switchPerfTab('tab3')" class="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer whitespace-nowrap">
+        3. Teammate Personal Sales (6)
+      </button>
+      <button id="btn-tab4" onclick="switchPerfTab('tab4')" class="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer whitespace-nowrap">
+        4. SKU Item Sales YoY & 6M Aging
+      </button>
+      <button id="btn-tab5" onclick="switchPerfTab('tab5')" class="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer whitespace-nowrap">
+        5. Gemini AI Strategy, SWOT & Coaching
+      </button>
+      <button id="btn-tab6" onclick="switchPerfTab('tab6')" class="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer whitespace-nowrap flex items-center gap-1.5">
+        <span>6. 1-Month Task List</span>
+        <span id="navTaskCountBadge" class="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-extrabold">0/0</span>
+      </button>
+      <button id="btn-tab7" onclick="switchPerfTab('tab7')" class="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer whitespace-nowrap">
+        7. Upload CSV & Data Studio
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content Panels -->
+  <main class="max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-6 flex-1">
+    <section id="panel-tab1">
+      <div id="tab1ExecutiveContainer"></div>
+    </section>
+
+    <section id="panel-tab2" class="hidden">
+      <div id="tab2CategoriesContainer"></div>
+    </section>
+
+    <section id="panel-tab3" class="hidden">
+      <div id="tab3TeammatesContainer"></div>
+    </section>
+
+    <section id="panel-tab4" class="hidden">
+      <div id="tab4SkusContainer"></div>
+    </section>
+
+    <section id="panel-tab5" class="hidden">
+      <div id="tab5AiContainer"></div>
+    </section>
+
+    <section id="panel-tab6" class="hidden">
+      <div id="tab6TasksContainer"></div>
+    </section>
+
+    <section id="panel-tab7" class="hidden">
+      <div id="tab7UploadContainer"></div>
+    </section>
+  </main>
+
+  <footer class="bg-white border-t border-slate-200 py-3 px-6 text-center text-[11px] text-slate-400 no-print">
+    PMG Pharmacy Kota Sentosa • Standalone Monthly Performance & AI Strategic Analytics Suite (Primary: Gemini 3.5 Flash-Lite | Secondary: Gemini 3.1 Flash-Lite)
+  </footer>
+
+  <!-- Scripts -->
+  <script src="sample-data.js"></script>
+  <script src="performance.js"></script>
+</body>
+</html>
