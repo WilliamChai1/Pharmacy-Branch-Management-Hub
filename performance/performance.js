@@ -62,7 +62,7 @@ const DEFAULT_ROLE_MAP = {
 // ─── RUNTIME STATE ──────────────────────────────────────────────────────────
 let perfState = null;
 let computedMetrics = null;
-let activeCategoryMode = 'HQ11'; // 'HQ11' or 'ALL12'
+let activeCategoryMode = 'ALL12'; // 'ALL12' (default: includes all 12 categories) or 'HQ11' (excludes WYMED-EX)
 let showAllTeammates = false;    // false = active Latest Month staff (>= RM 500 or active), true = all rows including 2025-only
 let skuFilterState = {
   search: '',
@@ -998,11 +998,12 @@ function buildDynamicBaselineReport(m, state) {
   if (!m) return null;
   const o = m.outlet;
   const hq = m.catSummaryHq11;
-  const catsHq = m.categories.filter(c => c.isHqFocus);
-  const upCats = catsHq.filter(c => c.priceDiffRm > 0).sort((a, b) => b.priceDiffRm - a.priceDiffRm);
-  const downCats = catsHq.filter(c => c.priceDiffRm < 0).sort((a, b) => a.priceDiffRm - b.priceDiffRm);
-  const profitUpCats = catsHq.filter(c => c.profitDiffRm > 0).sort((a, b) => b.profitDiffRm - a.profitDiffRm);
-  const profitDownCats = catsHq.filter(c => c.profitDiffRm < 0).sort((a, b) => a.profitDiffRm - b.profitDiffRm);
+  const all12 = m.catSummaryAll12;
+  const catsAll = m.categories; // Include all 12 categories for Net Sold Price, Net Sold Profit, and GP Margin %
+  const upCats = catsAll.filter(c => c.priceDiffRm > 0).sort((a, b) => b.priceDiffRm - a.priceDiffRm);
+  const downCats = catsAll.filter(c => c.priceDiffRm < 0).sort((a, b) => a.priceDiffRm - b.priceDiffRm);
+  const profitUpCats = catsAll.filter(c => c.profitDiffRm > 0).sort((a, b) => b.profitDiffRm - a.profitDiffRm);
+  const profitDownCats = catsAll.filter(c => c.profitDiffRm < 0).sort((a, b) => a.profitDiffRm - b.profitDiffRm);
 
   const activeStaff = m.teammates.filter(t => t.isActiveLatest);
   const topHbStaff = [...activeStaff].sort((a, b) => b.hbPctOwnTsLatest - a.hbPctOwnTsLatest);
@@ -1042,7 +1043,7 @@ function buildDynamicBaselineReport(m, state) {
         category: c.category,
         summary: `Net Sold Price DOWN ${fmtRM(c.priceDiffRm)} (${fmtPct(c.priceDiffPct, 2, true)}) to ${fmtRM(c.netSoldPriceLatest)} | Net Profit ${c.profitDiffRm >= 0 ? 'UP +' + fmtRM(c.profitDiffRm) : 'DOWN ' + fmtRM(c.profitDiffRm)} (${fmtPct(c.gpPctLatest)} GP%, ${fmtPP(c.gpPctDiffPP)}) | Stock Cycle (Custom Cost ÷ COS): ${c.pmgStockCycle.toFixed(2)} (Target: 2.0, ${c.pmgStockCycle <= 2.0 ? '✅ On Target' : '⚠️ +' + c.stockCycleVarVsTarget.toFixed(2) + ' over'}).`
       })),
-      stockCycleComment: `HQ 11 Focus Categories recorded Net Sold Price of ${fmtRM(hq.netSoldPriceLatest)} (vs ${fmtRM(hq.netSoldPricePrev)} LY) and Net Sold Profit of ${fmtRM(hq.netSoldProfitLatest)} (GP% improved +${fmtPP(hq.gpPctDiffPP)} to ${fmtPct(hq.gpPctLatest)}). Using PMG's Stock Cycle formula (Total Custom Cost ÷ Cost of Sales MTD) against the 2.0 HQ Target: Total Custom Cost (${fmtRM(hq.totalCustomCost)}) ÷ Total Cost of Sales (${fmtRM(hq.costOfSalesLatest)}) = Average Stock Cycle of ${hq.averageStockCycle.toFixed(2)} (unweighted category mean: ${hq.meanCategoryCycle.toFixed(2)}). Only 3 HQ categories meet the ≤ 2.0 target: NON-SC-P (1.85), SCHE-DRU (1.90), and NON-SCHE (1.98), while SUPPLEME (2.13) and OTC (2.32) are close. The 6 overstocked categories exceeding 2.0 are HOME&LIV (6.61), MOM&BABY (5.94), FIR-AID (4.59), PERSONAL (4.34), ELDERLY (3.65), and F & B (2.63) — requiring a net inventory reduction of ${fmtRM(hq.excessStockRm)} to reach the 2.0 branch target.`
+      stockCycleComment: `Across all 12 categories, Category Net Sold Price is ${fmtRM(all12.netSoldPriceLatest)} vs ${fmtRM(all12.netSoldPricePrev)} LY (${fmtRM(all12.priceDiffRm)} / ${fmtPct(all12.priceDiffPct, 2, true)}), Category Net Sold Profit is ${fmtRM(all12.netSoldProfitLatest)} vs ${fmtRM(all12.netSoldProfitPrev)} LY (${fmtRM(all12.profitDiffRm)} / ${fmtPct(all12.profitDiffPct, 2, true)}), and Category Gross Profit Margin improved by ${fmtPP(all12.gpPctDiffPP)} (from ${fmtPct(all12.gpPctPrev)} to ${fmtPct(all12.gpPctLatest)}). Using PMG's Stock Cycle formula (Total Custom Cost ÷ Cost of Sales MTD) against the 2.0 HQ Target: across the 11 HQ Focus Categories (excluding WYMED-EX), Total Custom Cost (${fmtRM(hq.totalCustomCost)}) ÷ Total Cost of Sales (${fmtRM(hq.costOfSalesLatest)}) = Average Stock Cycle of ${hq.averageStockCycle.toFixed(2)} (All 12 Categories Stock Cycle: ${all12.averageStockCycle.toFixed(2)}). Categories meeting the ≤ 2.0 target are WYMED-EX (1.70), NON-SC-P (1.85), SCHE-DRU (1.90), and NON-SCHE (1.98), while SUPPLEME (2.13) and OTC (2.32) are close. The 6 overstocked categories exceeding 2.0 are HOME&LIV (6.61), MOM&BABY (5.94), FIR-AID (4.59), PERSONAL (4.34), ELDERLY (3.65), and F & B (2.63) — requiring a net inventory reduction of ${fmtRM(hq.excessStockRm)} to reach the 2.0 branch target.`
     },
 
     swot: {
@@ -1195,8 +1196,9 @@ function buildDynamicBaselineReport(m, state) {
 function buildGeminiPrompt(m, state) {
   const o = m.outlet;
   const hq = m.catSummaryHq11;
+  const all12 = m.catSummaryAll12;
   const cats = m.categories.map(c =>
-    `- ${c.category}${c.isHqFocus ? '' : ' (Excluded from HQ 11)'}: Latest Price RM ${c.netSoldPriceLatest.toFixed(2)} vs Prev RM ${c.netSoldPricePrev.toFixed(2)} (${c.priceDiffPct.toFixed(2)}%), Latest Profit RM ${c.netSoldProfitLatest.toFixed(2)} vs Prev RM ${c.netSoldProfitPrev.toFixed(2)} (${c.profitDiffPct.toFixed(2)}%), GP% ${c.gpPctLatest.toFixed(2)}% vs ${c.gpPctPrev.toFixed(2)}% (${c.gpPctDiffPP >= 0 ? '+' : ''}${c.gpPctDiffPP.toFixed(2)} pp), CostOfSales RM ${c.costOfSalesLatest.toFixed(2)}, ClosingCustomCost RM ${c.totalCustomCost.toFixed(2)}, PMG_StockCycle (CustomCost / COS) = ${c.pmgStockCycle.toFixed(2)} (HQ Target = 2.0), 6M_AgedValue RM ${c.agedValueRm.toFixed(2)}`
+    `- ${c.category}${c.isHqFocus ? '' : ' (Excluded from HQ 11 Stock Cycle focus)'}: Latest Price RM ${c.netSoldPriceLatest.toFixed(2)} vs Prev RM ${c.netSoldPricePrev.toFixed(2)} (${c.priceDiffPct.toFixed(2)}%), Latest Profit RM ${c.netSoldProfitLatest.toFixed(2)} vs Prev RM ${c.netSoldProfitPrev.toFixed(2)} (${c.profitDiffPct.toFixed(2)}%), GP% ${c.gpPctLatest.toFixed(2)}% vs ${c.gpPctPrev.toFixed(2)}% (${c.gpPctDiffPP >= 0 ? '+' : ''}${c.gpPctDiffPP.toFixed(2)} pp), CostOfSales RM ${c.costOfSalesLatest.toFixed(2)}, ClosingCustomCost RM ${c.totalCustomCost.toFixed(2)}, PMG_StockCycle (CustomCost / COS) = ${c.pmgStockCycle.toFixed(2)} (HQ Target = 2.0), 6M_AgedValue RM ${c.agedValueRm.toFixed(2)}`
   ).join('\n');
 
   const staff = m.teammates.filter(t => t.isActiveLatest || t.hasPrevYear).map(t =>
@@ -1224,9 +1226,10 @@ Analyze the following verified monthly performance dataset comparing Latest Mont
 - HB Basket Size: RM ${o.basketHbLatest.toFixed(2)} vs LY RM ${o.basketHbPrev.toFixed(2)} (${o.basketHbDiffPct.toFixed(2)}%)
 - 3-Month Horizon: M-2 TS RM ${(m.threeMonthTrend.m2.ts || 0).toFixed(2)}, M-1 TS RM ${(m.threeMonthTrend.m1.ts || 0).toFixed(2)}, Latest TS RM ${o.tsLatest.toFixed(2)}
 
-2. 11 HQ FOCUS CATEGORIES + WYMED-EX & PMG STOCK CYCLE:
+2. ALL 12 CATEGORIES (NET SOLD PRICE, PROFIT & GP%) & 11 HQ FOCUS STOCK CYCLE:
 Formula: COST OF SALES = NET SOLD PRICE - NET SOLD PROFIT; STOCK CYCLE = TOTAL CUSTOM COST / COST OF SALES (HQ TARGET = 2.0); AVERAGE STOCK CYCLE = TOTAL CUSTOM COST / TOTAL COST OF SALES
-HQ 11 Subtotal: Net Sold Price RM ${hq.netSoldPriceLatest.toFixed(2)} (vs LY RM ${hq.netSoldPricePrev.toFixed(2)}), Net Sold Profit RM ${hq.netSoldProfitLatest.toFixed(2)} (vs LY RM ${hq.netSoldProfitPrev.toFixed(2)}), GP% ${hq.gpPctLatest.toFixed(2)}% (vs LY ${hq.gpPctPrev.toFixed(2)}%), Cost of Sales RM ${hq.costOfSalesLatest.toFixed(2)}, Closing Custom Cost RM ${hq.totalCustomCost.toFixed(2)}, Average Stock Cycle = ${hq.averageStockCycle.toFixed(2)} vs HQ Target 2.0 (Excess Stock above 2.0 target = RM ${hq.excessStockRm.toFixed(2)}).
+All 12 Categories Total (KPIs 7, 8, 9): Net Sold Price RM ${all12.netSoldPriceLatest.toFixed(2)} (vs LY RM ${all12.netSoldPricePrev.toFixed(2)}, ${all12.priceDiffPct.toFixed(2)}%), Net Sold Profit RM ${all12.netSoldProfitLatest.toFixed(2)} (vs LY RM ${all12.netSoldProfitPrev.toFixed(2)}, ${all12.profitDiffPct.toFixed(2)}%), GP% ${all12.gpPctLatest.toFixed(2)}% (vs LY ${all12.gpPctPrev.toFixed(2)}%, +${all12.gpPctDiffPP.toFixed(2)} pp).
+HQ 11 Focus Stock Cycle Subtotal (Excl. WYMED-EX): Cost of Sales RM ${hq.costOfSalesLatest.toFixed(2)}, Closing Custom Cost RM ${hq.totalCustomCost.toFixed(2)}, Average Stock Cycle = ${hq.averageStockCycle.toFixed(2)} vs HQ Target 2.0 (Excess Stock above 2.0 target = RM ${hq.excessStockRm.toFixed(2)}).
 Category Breakdown:
 ${cats}
 
@@ -1721,8 +1724,8 @@ function renderTab1ExecutiveOverview() {
           <span class="ml-1 font-bold ${o.tsDiffRm >= 0 ? 'text-emerald-600' : 'text-rose-600'}">(${o.tsDiffRm >= 0 ? '+' : ''}${fmtRM(o.tsDiffRm)})</span>
         </div>
         <div class="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500 flex justify-between">
-          <span>HQ 11 Net Sold: <strong>${fmtRM(hq.netSoldPriceLatest)}</strong></span>
-          <span>12 Cat: <strong>${fmtRM(all12.netSoldPriceLatest)}</strong></span>
+          <span>All 12 Cat Net Sold: <strong>${fmtRM(all12.netSoldPriceLatest)}</strong></span>
+          <span>LY: <strong>${fmtRM(all12.netSoldPricePrev)}</strong></span>
         </div>
       </div>
 
@@ -1769,8 +1772,8 @@ function renderTab1ExecutiveOverview() {
           <span class="font-bold text-emerald-700">${fmtPP(o.personalGpMarginDiffPP)}</span>
         </div>
         <div class="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500 flex justify-between">
-          <span>HQ 11 Profit: <strong>${fmtRM(hq.netSoldProfitLatest)}</strong> (${fmtPct(hq.gpPctLatest)})</span>
-          <span>LY: ${fmtPct(hq.gpPctPrev)}</span>
+          <span>All 12 Cat Profit: <strong>${fmtRM(all12.netSoldProfitLatest)}</strong> (${fmtPct(all12.gpPctLatest)})</span>
+          <span>LY: ${fmtPct(all12.gpPctPrev)}</span>
         </div>
       </div>
 
@@ -1873,25 +1876,25 @@ function renderTab1ExecutiveOverview() {
                 <td class="py-2.5 px-4 text-right">${badgeDelta(o.basketHbDiffPct, true)}</td>
               </tr>
               <tr class="hover:bg-slate-50/80 bg-emerald-50/30">
-                <td class="py-2.5 px-4 font-bold">7. Net Sold Price (11 HQ Focus Categories) <span class="text-[10px] font-normal text-slate-500 block">12 Categories Total: ${fmtRM(all12.netSoldPriceLatest)} vs LY ${fmtRM(all12.netSoldPricePrev)}</span></td>
-                <td class="py-2.5 px-4 text-right font-bold">${fmtRM(hq.netSoldPriceLatest)}</td>
-                <td class="py-2.5 px-4 text-right">${fmtRM(hq.netSoldPricePrev)}</td>
-                <td class="py-2.5 px-4 text-right font-semibold ${hq.priceDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${hq.priceDiffRm >= 0 ? '+' : ''}${fmtRM(hq.priceDiffRm)}</td>
-                <td class="py-2.5 px-4 text-right">${badgeDelta(hq.priceDiffPct, true)}</td>
+                <td class="py-2.5 px-4 font-bold">7. Net Sold Price (All 12 Categories) <span class="text-[10px] font-normal text-slate-500 block">HQ 11 Focus (Excl. WYMED-EX): ${fmtRM(hq.netSoldPriceLatest)} vs LY ${fmtRM(hq.netSoldPricePrev)}</span></td>
+                <td class="py-2.5 px-4 text-right font-bold">${fmtRM(all12.netSoldPriceLatest)}</td>
+                <td class="py-2.5 px-4 text-right">${fmtRM(all12.netSoldPricePrev)}</td>
+                <td class="py-2.5 px-4 text-right font-semibold ${all12.priceDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${all12.priceDiffRm >= 0 ? '+' : ''}${fmtRM(all12.priceDiffRm)}</td>
+                <td class="py-2.5 px-4 text-right">${badgeDelta(all12.priceDiffPct, true)}</td>
               </tr>
               <tr class="hover:bg-slate-50/80 bg-emerald-50/30">
-                <td class="py-2.5 px-4 font-bold">8. Net Sold Profit (11 HQ Focus Categories) <span class="text-[10px] font-normal text-slate-500 block">12 Categories Total: ${fmtRM(all12.netSoldProfitLatest)} vs LY ${fmtRM(all12.netSoldProfitPrev)}</span></td>
-                <td class="py-2.5 px-4 text-right font-bold text-emerald-800">${fmtRM(hq.netSoldProfitLatest)}</td>
-                <td class="py-2.5 px-4 text-right">${fmtRM(hq.netSoldProfitPrev)}</td>
-                <td class="py-2.5 px-4 text-right font-semibold ${hq.profitDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${hq.profitDiffRm >= 0 ? '+' : ''}${fmtRM(hq.profitDiffRm)}</td>
-                <td class="py-2.5 px-4 text-right">${badgeDelta(hq.profitDiffPct, true)}</td>
+                <td class="py-2.5 px-4 font-bold">8. Net Sold Profit (All 12 Categories) <span class="text-[10px] font-normal text-slate-500 block">HQ 11 Focus (Excl. WYMED-EX): ${fmtRM(hq.netSoldProfitLatest)} vs LY ${fmtRM(hq.netSoldProfitPrev)}</span></td>
+                <td class="py-2.5 px-4 text-right font-bold text-emerald-800">${fmtRM(all12.netSoldProfitLatest)}</td>
+                <td class="py-2.5 px-4 text-right">${fmtRM(all12.netSoldProfitPrev)}</td>
+                <td class="py-2.5 px-4 text-right font-semibold ${all12.profitDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${all12.profitDiffRm >= 0 ? '+' : ''}${fmtRM(all12.profitDiffRm)}</td>
+                <td class="py-2.5 px-4 text-right">${badgeDelta(all12.profitDiffPct, true)}</td>
               </tr>
               <tr class="hover:bg-slate-50/80 bg-emerald-50/30">
-                <td class="py-2.5 px-4 font-bold">9. Category Gross Profit Margin (%) (11 HQ Focus) <span class="text-[10px] font-normal text-slate-500 block">12 Categories GP%: ${fmtPct(all12.gpPctLatest)} vs LY ${fmtPct(all12.gpPctPrev)}</span></td>
-                <td class="py-2.5 px-4 text-right font-bold text-emerald-800">${fmtPct(hq.gpPctLatest)}</td>
-                <td class="py-2.5 px-4 text-right">${fmtPct(hq.gpPctPrev)}</td>
-                <td class="py-2.5 px-4 text-right font-semibold text-emerald-700">${fmtPP(hq.gpPctDiffPP)}</td>
-                <td class="py-2.5 px-4 text-right">${badgeDelta(hq.gpPctDiffPP, true, 2, ' pp')}</td>
+                <td class="py-2.5 px-4 font-bold">9. Category Gross Profit Margin (%) (All 12 Categories) <span class="text-[10px] font-normal text-slate-500 block">HQ 11 Focus GP%: ${fmtPct(hq.gpPctLatest)} vs LY ${fmtPct(hq.gpPctPrev)}</span></td>
+                <td class="py-2.5 px-4 text-right font-bold text-emerald-800">${fmtPct(all12.gpPctLatest)}</td>
+                <td class="py-2.5 px-4 text-right">${fmtPct(all12.gpPctPrev)}</td>
+                <td class="py-2.5 px-4 text-right font-semibold text-emerald-700">${fmtPP(all12.gpPctDiffPP)}</td>
+                <td class="py-2.5 px-4 text-right">${badgeDelta(all12.gpPctDiffPP, true, 2, ' pp')}</td>
               </tr>
             </tbody>
           </table>
@@ -1989,29 +1992,30 @@ function renderTab2CategoryAndStockCycle() {
     ? computedMetrics.categories.filter(c => c.isHqFocus)
     : computedMetrics.categories;
 
-  const upCats = computedMetrics.categories.filter(c => c.isHqFocus && c.priceDiffRm > 0);
-  const downCats = computedMetrics.categories.filter(c => c.isHqFocus && c.priceDiffRm < 0);
+  const upCats = computedMetrics.categories.filter(c => c.priceDiffRm > 0);
+  const downCats = computedMetrics.categories.filter(c => c.priceDiffRm < 0);
 
   container.innerHTML = `
-    <!-- Formula Banner & HQ 11 vs All 12 Toggle -->
+    <!-- Formula Banner & All 12 vs HQ 11 Toggle -->
     <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-5 mb-6 shadow-md flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
       <div>
         <div class="flex items-center gap-2">
           <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">KPIs 7, 8, 9 & 10</span>
-          <h3 class="text-base font-extrabold tracking-wide">PMG Category Performance & Stock Cycle Matrix</h3>
+          <h3 class="text-base font-extrabold tracking-wide">PMG Category Performance (All 12 Categories) & Stock Cycle Matrix</h3>
         </div>
         <div class="text-xs text-slate-300 mt-1.5 space-y-0.5 font-mono">
+          <div>• <strong>KPIs 7, 8 & 9 (Net Sold Price, Profit & GP%)</strong> = Includes All 12 Categories</div>
           <div>• <strong>COST OF SALES (MTD)</strong> = NET SOLD PRICE − NET SOLD PROFIT</div>
           <div>• <strong>STOCK CYCLE</strong> = TOTAL CUSTOM COST ÷ COST OF SALES (MTD) &nbsp;<span class="text-emerald-300 font-bold">[HQ TARGET = 2.0]</span></div>
           <div>• <strong>AVERAGE STOCK CYCLE</strong> = TOTAL CUSTOM COST ÷ TOTAL COST OF SALES &nbsp;|&nbsp; <span class="text-amber-300">HQ Focus = 11 Categories (Excludes WYMED-EX)</span></div>
         </div>
       </div>
       <div class="flex items-center gap-2 shrink-0">
-        <button onclick="setCategoryFocusMode('HQ11')" class="px-4 py-2 rounded-xl text-xs font-bold transition ${activeCategoryMode === 'HQ11' ? 'bg-emerald-500 text-slate-950 shadow-sm' : 'bg-white/10 text-white hover:bg-white/20'}">
-          HQ 11 Focus Categories (Excl. WYMED-EX)
+        <button onclick="setCategoryFocusMode('ALL12')" class="px-4 py-2 rounded-xl text-xs font-bold transition ${activeCategoryMode === 'ALL12' ? 'bg-emerald-500 text-slate-950 shadow-sm' : 'bg-white/10 text-white hover:bg-white/20'}">
+          All 12 Categories (Default)
         </button>
-        <button onclick="setCategoryFocusMode('ALL12')" class="px-4 py-2 rounded-xl text-xs font-bold transition ${activeCategoryMode === 'ALL12' ? 'bg-indigo-500 text-white shadow-sm' : 'bg-white/10 text-white hover:bg-white/20'}">
-          All 12 Categories (Incl. WYMED-EX)
+        <button onclick="setCategoryFocusMode('HQ11')" class="px-4 py-2 rounded-xl text-xs font-bold transition ${activeCategoryMode === 'HQ11' ? 'bg-indigo-500 text-white shadow-sm' : 'bg-white/10 text-white hover:bg-white/20'}">
+          HQ 11 Focus Only (Excl. WYMED-EX)
         </button>
       </div>
     </div>
@@ -2019,24 +2023,26 @@ function renderTab2CategoryAndStockCycle() {
     <!-- Top Stock Cycle & Category Summary Cards -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
       <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
-        <div class="text-xs font-bold text-slate-500 uppercase">7. Net Sold Price (${activeCategoryMode === 'HQ11' ? '11 HQ Cats' : 'All 12 Cats'})</div>
-        <div class="text-xl font-extrabold text-slate-900 mt-1">${fmtRM(activeSummary.netSoldPriceLatest)}</div>
+        <div class="text-xs font-bold text-slate-500 uppercase">7. Net Sold Price (All 12 Categories)</div>
+        <div class="text-xl font-extrabold text-slate-900 mt-1">${fmtRM(all12.netSoldPriceLatest)}</div>
         <div class="text-xs text-slate-500 mt-1 flex justify-between items-center">
-          <span>Prev Year: ${fmtRM(activeSummary.netSoldPricePrev)}</span>
-          ${badgeDelta(activeSummary.priceDiffPct, true)}
+          <span>Prev Year: ${fmtRM(all12.netSoldPricePrev)} (${all12.priceDiffRm >= 0 ? '+' : ''}${fmtRM(all12.priceDiffRm)})</span>
+          ${badgeDelta(all12.priceDiffPct, true)}
         </div>
+        <div class="text-[10px] text-slate-400 mt-1">HQ 11 (Excl. WYMED-EX): ${fmtRM(hq.netSoldPriceLatest)} vs LY ${fmtRM(hq.netSoldPricePrev)}</div>
       </div>
 
       <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
-        <div class="text-xs font-bold text-emerald-700 uppercase">8 & 9. Net Sold Profit & GP%</div>
+        <div class="text-xs font-bold text-emerald-700 uppercase">8 & 9. Net Sold Profit & GP% (All 12 Cats)</div>
         <div class="flex items-baseline justify-between mt-1">
-          <span class="text-xl font-extrabold text-emerald-800">${fmtRM(activeSummary.netSoldProfitLatest)}</span>
-          <span class="text-base font-extrabold text-indigo-700">${fmtPct(activeSummary.gpPctLatest)}</span>
+          <span class="text-xl font-extrabold text-emerald-800">${fmtRM(all12.netSoldProfitLatest)}</span>
+          <span class="text-base font-extrabold text-indigo-700">${fmtPct(all12.gpPctLatest)}</span>
         </div>
         <div class="text-xs text-slate-500 mt-1 flex justify-between items-center">
-          <span>LY: ${fmtRM(activeSummary.netSoldProfitPrev)} (${fmtPct(activeSummary.gpPctPrev)})</span>
-          <span class="font-bold text-emerald-700">${fmtPP(activeSummary.gpPctDiffPP)}</span>
+          <span>LY: ${fmtRM(all12.netSoldProfitPrev)} (${fmtPct(all12.gpPctPrev)})</span>
+          <span class="font-bold text-emerald-700">${fmtPP(all12.gpPctDiffPP)}</span>
         </div>
+        <div class="text-[10px] text-slate-400 mt-1">HQ 11 Profit: ${fmtRM(hq.netSoldProfitLatest)} (${fmtPct(hq.gpPctLatest)})</div>
       </div>
 
       <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
@@ -2061,7 +2067,7 @@ function renderTab2CategoryAndStockCycle() {
           Formula: Custom Cost (${fmtRM(activeSummary.totalCustomCost)}) ÷ COS (${fmtRM(activeSummary.costOfSalesLatest)})
         </div>
         <div class="text-[11px] font-semibold text-indigo-800 mt-0.5">
-          Excess vs 2.0 Target: <strong class="text-rose-700">${fmtRM(activeSummary.excessStockRm)}</strong> | Mean: ${activeSummary.meanCategoryCycle.toFixed(2)}
+          HQ 11 Cycle: <strong>${hq.averageStockCycle.toFixed(2)}</strong> | All 12 Cycle: <strong>${all12.averageStockCycle.toFixed(2)}</strong>
         </div>
       </div>
     </div>
@@ -2069,7 +2075,7 @@ function renderTab2CategoryAndStockCycle() {
     <!-- Category Up vs Down Quick Summary Strip -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
       <div class="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4">
-        <div class="text-xs font-extrabold uppercase text-emerald-900 mb-2">📈 HQ Categories UP YoY in Net Sold Price (${upCats.length} Categories)</div>
+        <div class="text-xs font-extrabold uppercase text-emerald-900 mb-2">📈 Categories UP YoY in Net Sold Price (${upCats.length} Categories)</div>
         <div class="flex flex-wrap gap-2">
           ${upCats.map(c => `
             <div class="bg-white px-3 py-1.5 rounded-xl border border-emerald-200 text-xs shadow-2xs">
@@ -2082,7 +2088,7 @@ function renderTab2CategoryAndStockCycle() {
       </div>
 
       <div class="bg-rose-50/70 border border-rose-200 rounded-2xl p-4">
-        <div class="text-xs font-extrabold uppercase text-rose-900 mb-2">📉 HQ Categories DOWN YoY in Net Sold Price (${downCats.length} Categories)</div>
+        <div class="text-xs font-extrabold uppercase text-rose-900 mb-2">📉 Categories DOWN YoY in Net Sold Price (${downCats.length} Categories)</div>
         <div class="flex flex-wrap gap-2">
           ${downCats.map(c => `
             <div class="bg-white px-3 py-1.5 rounded-xl border border-rose-200 text-xs shadow-2xs">
@@ -2158,20 +2164,35 @@ function renderTab2CategoryAndStockCycle() {
             `).join('')}
           </tbody>
           <tfoot>
-            <tr class="bg-slate-900 text-white font-extrabold text-xs">
-              <td class="py-3 px-3">TOTAL (${activeCategoryMode === 'HQ11' ? '11 HQ FOCUS CATEGORIES' : 'ALL 12 CATEGORIES'})</td>
-              <td class="py-3 px-3 text-right">${fmtRM(activeSummary.netSoldPriceLatest)}</td>
-              <td class="py-3 px-3 text-right text-slate-300">${fmtRM(activeSummary.netSoldPricePrev)}</td>
-              <td class="py-3 px-3 text-right ${activeSummary.priceDiffRm >= 0 ? 'text-emerald-300' : 'text-rose-300'}">${activeSummary.priceDiffRm >= 0 ? '+' : ''}${fmtRM(activeSummary.priceDiffRm)} (${fmtPct(activeSummary.priceDiffPct, 2, true)})</td>
-              <td class="py-3 px-3 text-right text-emerald-300">${fmtRM(activeSummary.netSoldProfitLatest)}</td>
-              <td class="py-3 px-3 text-right text-slate-300">${fmtRM(activeSummary.netSoldProfitPrev)}</td>
-              <td class="py-3 px-3 text-right ${activeSummary.profitDiffRm >= 0 ? 'text-emerald-300' : 'text-rose-300'}">${activeSummary.profitDiffRm >= 0 ? '+' : ''}${fmtRM(activeSummary.profitDiffRm)} (${fmtPct(activeSummary.profitDiffPct, 2, true)})</td>
-              <td class="py-3 px-3 text-right text-amber-300">${fmtPct(activeSummary.gpPctLatest)}</td>
-              <td class="py-3 px-3 text-right text-slate-300">${fmtPct(activeSummary.gpPctPrev)} (${fmtPP(activeSummary.gpPctDiffPP)})</td>
-              <td class="py-3 px-3 text-right bg-indigo-950">${fmtRM(activeSummary.costOfSalesLatest)}</td>
-              <td class="py-3 px-3 text-right bg-indigo-950">${fmtRM(activeSummary.totalCustomCost)}</td>
-              <td class="py-3 px-3 text-right bg-indigo-900 text-amber-300">${activeSummary.averageStockCycle.toFixed(2)} (Target: 2.0)</td>
-              <td class="py-3 px-3 text-right text-amber-200">${fmtRM(activeSummary.agedValueRm)}</td>
+            <tr class="bg-slate-900 text-white font-extrabold text-xs border-b border-slate-700">
+              <td class="py-3 px-3">TOTAL (ALL 12 CATEGORIES — PRICE, PROFIT & GP%)</td>
+              <td class="py-3 px-3 text-right">${fmtRM(all12.netSoldPriceLatest)}</td>
+              <td class="py-3 px-3 text-right text-slate-300">${fmtRM(all12.netSoldPricePrev)}</td>
+              <td class="py-3 px-3 text-right ${all12.priceDiffRm >= 0 ? 'text-emerald-300' : 'text-rose-300'}">${all12.priceDiffRm >= 0 ? '+' : ''}${fmtRM(all12.priceDiffRm)} (${fmtPct(all12.priceDiffPct, 2, true)})</td>
+              <td class="py-3 px-3 text-right text-emerald-300">${fmtRM(all12.netSoldProfitLatest)}</td>
+              <td class="py-3 px-3 text-right text-slate-300">${fmtRM(all12.netSoldProfitPrev)}</td>
+              <td class="py-3 px-3 text-right ${all12.profitDiffRm >= 0 ? 'text-emerald-300' : 'text-rose-300'}">${all12.profitDiffRm >= 0 ? '+' : ''}${fmtRM(all12.profitDiffRm)} (${fmtPct(all12.profitDiffPct, 2, true)})</td>
+              <td class="py-3 px-3 text-right text-amber-300">${fmtPct(all12.gpPctLatest)}</td>
+              <td class="py-3 px-3 text-right text-slate-300">${fmtPct(all12.gpPctPrev)} (${fmtPP(all12.gpPctDiffPP)})</td>
+              <td class="py-3 px-3 text-right bg-indigo-950">${fmtRM(all12.costOfSalesLatest)}</td>
+              <td class="py-3 px-3 text-right bg-indigo-950">${fmtRM(all12.totalCustomCost)}</td>
+              <td class="py-3 px-3 text-right bg-indigo-900 text-amber-300">${all12.averageStockCycle.toFixed(2)} (Target: 2.0)</td>
+              <td class="py-3 px-3 text-right text-amber-200">${fmtRM(all12.agedValueRm)}</td>
+            </tr>
+            <tr class="bg-slate-800 text-slate-200 font-bold text-[11px]">
+              <td class="py-2.5 px-3">HQ 11 FOCUS SUBTOTAL (EXCL. WYMED-EX)</td>
+              <td class="py-2.5 px-3 text-right">${fmtRM(hq.netSoldPriceLatest)}</td>
+              <td class="py-2.5 px-3 text-right text-slate-400">${fmtRM(hq.netSoldPricePrev)}</td>
+              <td class="py-2.5 px-3 text-right ${hq.priceDiffRm >= 0 ? 'text-emerald-300' : 'text-rose-300'}">${hq.priceDiffRm >= 0 ? '+' : ''}${fmtRM(hq.priceDiffRm)} (${fmtPct(hq.priceDiffPct, 2, true)})</td>
+              <td class="py-2.5 px-3 text-right text-emerald-300">${fmtRM(hq.netSoldProfitLatest)}</td>
+              <td class="py-2.5 px-3 text-right text-slate-400">${fmtRM(hq.netSoldProfitPrev)}</td>
+              <td class="py-2.5 px-3 text-right ${hq.profitDiffRm >= 0 ? 'text-emerald-300' : 'text-rose-300'}">${hq.profitDiffRm >= 0 ? '+' : ''}${fmtRM(hq.profitDiffRm)} (${fmtPct(hq.profitDiffPct, 2, true)})</td>
+              <td class="py-2.5 px-3 text-right text-amber-300">${fmtPct(hq.gpPctLatest)}</td>
+              <td class="py-2.5 px-3 text-right text-slate-400">${fmtPct(hq.gpPctPrev)} (${fmtPP(hq.gpPctDiffPP)})</td>
+              <td class="py-2.5 px-3 text-right bg-indigo-950/80">${fmtRM(hq.costOfSalesLatest)}</td>
+              <td class="py-2.5 px-3 text-right bg-indigo-950/80">${fmtRM(hq.totalCustomCost)}</td>
+              <td class="py-2.5 px-3 text-right bg-indigo-900/80 text-amber-300">${hq.averageStockCycle.toFixed(2)} (Target: 2.0)</td>
+              <td class="py-2.5 px-3 text-right text-amber-200">${fmtRM(hq.agedValueRm)}</td>
             </tr>
           </tfoot>
         </table>
