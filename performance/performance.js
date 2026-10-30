@@ -607,12 +607,13 @@ function computeAllMetrics(state) {
 
     // PMG Formula (KPI 10):
     // COST OF SALES (MTD) = NET SOLD PRICE - NET SOLD PROFIT
-    // STOCK CYCLE = COST OF SALES (MTD) - TOTAL CUSTOMER COST
+    // STOCK CYCLE = COST OF SALES (MTD) / TOTAL CUSTOM COST
     const costOfSalesLatest = +(l.netSoldPrice - l.netSoldProfit).toFixed(2);
     const costOfSalesPrev   = +(p.netSoldPrice - p.netSoldProfit).toFixed(2);
     const totalCustomCost   = +(cl.customCost || 0).toFixed(2);
-    const pmgStockCycleRm   = +(costOfSalesLatest - totalCustomCost).toFixed(2);
-    // Also compute stock cover months (Total Custom Cost / Cost of Sales MTD) for operational clarity
+    const pmgStockCycle     = totalCustomCost > 0 ? +(costOfSalesLatest / totalCustomCost).toFixed(4) : 0;
+    const pmgStockCyclePct  = totalCustomCost > 0 ? +((costOfSalesLatest / totalCustomCost) * 100).toFixed(2) : 0;
+    // Also compute stock cover months (Total Custom Cost / Cost of Sales MTD = 1 / Stock Cycle)
     const stockCoverMonths  = costOfSalesLatest > 0 ? +(totalCustomCost / costOfSalesLatest).toFixed(2) : 0;
 
     return {
@@ -637,7 +638,8 @@ function computeAllMetrics(state) {
       costOfSalesPrev,
       skuCountClosing: cl.skuCount,
       totalCustomCost,
-      pmgStockCycleRm,
+      pmgStockCycle,
+      pmgStockCyclePct,
       stockCoverMonths,
       agedSkuCount: ag.skuCount,
       agedQty6MPlus: ag.agedQty6MPlus,
@@ -659,9 +661,12 @@ function computeAllMetrics(state) {
     const costOfSalesPrev     = +(netSoldPricePrev - netSoldProfitPrev).toFixed(2);
     const totalCustomCost     = +catSubset.reduce((s, c) => s + c.totalCustomCost, 0).toFixed(2);
     const skuCountClosing     = catSubset.reduce((s, c) => s + c.skuCountClosing, 0);
-    // AVERAGE STOCK CYCLE = TOTAL COST OF SALES - TOTAL CUSTOM COST (per user's PMG formula)
-    const averageStockCycleRm = +(costOfSalesLatest - totalCustomCost).toFixed(2);
-    const avgPerCategoryCycleRm = catSubset.length > 0 ? +(averageStockCycleRm / catSubset.length).toFixed(2) : 0;
+    // AVERAGE STOCK CYCLE = TOTAL COST OF SALES / TOTAL CUSTOM COST (per user's PMG formula)
+    const averageStockCycle    = totalCustomCost > 0 ? +(costOfSalesLatest / totalCustomCost).toFixed(4) : 0;
+    const averageStockCyclePct = totalCustomCost > 0 ? +((costOfSalesLatest / totalCustomCost) * 100).toFixed(2) : 0;
+    const meanCategoryCycle    = catSubset.length > 0
+      ? +(catSubset.reduce((s, c) => s + c.pmgStockCycle, 0) / catSubset.length).toFixed(4)
+      : 0;
     const stockCoverMonths    = costOfSalesLatest > 0 ? +(totalCustomCost / costOfSalesLatest).toFixed(2) : 0;
     const agedValueRm         = +catSubset.reduce((s, c) => s + c.agedValueRm, 0).toFixed(2);
     const agedSkuCount        = catSubset.reduce((s, c) => s + c.agedSkuCount, 0);
@@ -685,8 +690,9 @@ function computeAllMetrics(state) {
       costOfSalesPrev,
       totalCustomCost,
       skuCountClosing,
-      averageStockCycleRm,
-      avgPerCategoryCycleRm,
+      averageStockCycle,
+      averageStockCyclePct,
+      meanCategoryCycle,
       stockCoverMonths,
       agedValueRm,
       agedSkuCount
@@ -1018,20 +1024,20 @@ function buildDynamicBaselineReport(m, state) {
       },
       {
         title: 'Working Capital & 11-Category Stock Cycle Pressure',
-        detail: `Across the 11 HQ Focus Categories, Cost of Sales (MTD) is ${fmtRM(hq.costOfSalesLatest)} against Total OH Custom Cost of ${fmtRM(hq.totalCustomCost)}, yielding a PMG Stock Cycle figure of ${fmtRM(hq.averageStockCycleRm)} (${hq.stockCoverMonths} months of stock cover). With ${fmtNum(m.agingSummary.totalAgedSkus)} SKUs (${fmtRM(m.agingSummary.totalAgedValueRm)}) aged ≥ 6 months, cash is tied up in slow-moving F & B, SCHE-DRU, and SUPPLEME lines.`
+        detail: `Across the 11 HQ Focus Categories, Cost of Sales (MTD) is ${fmtRM(hq.costOfSalesLatest)} divided by Total OH Custom Cost of ${fmtRM(hq.totalCustomCost)}, yielding an Average Stock Cycle of ${hq.averageStockCycle.toFixed(2)} (${hq.averageStockCyclePct}% monthly turnover / ${hq.stockCoverMonths} months of stock cover). With ${fmtNum(m.agingSummary.totalAgedSkus)} SKUs (${fmtRM(m.agingSummary.totalAgedValueRm)}) aged ≥ 6 months, working capital is tied up in slow-cycling categories like HOME&LIV (0.15), MOM&BABY (0.17), FIR-AID (0.22), and PERSONAL (0.23).`
       }
     ],
 
     categoryAndStockFindings: {
       categoriesUp: upCats.map(c => ({
         category: c.category,
-        summary: `Net Sold Price UP +${fmtRM(c.priceDiffRm)} (${fmtPct(c.priceDiffPct, 2, true)}) to ${fmtRM(c.netSoldPriceLatest)} | Net Profit ${c.profitDiffRm >= 0 ? 'UP +' + fmtRM(c.profitDiffRm) : 'DOWN ' + fmtRM(c.profitDiffRm)} (${fmtPct(c.gpPctLatest)} GP%, ${fmtPP(c.gpPctDiffPP)}) | PMG Stock Cycle: ${fmtRM(c.pmgStockCycleRm)}.`
+        summary: `Net Sold Price UP +${fmtRM(c.priceDiffRm)} (${fmtPct(c.priceDiffPct, 2, true)}) to ${fmtRM(c.netSoldPriceLatest)} | Net Profit ${c.profitDiffRm >= 0 ? 'UP +' + fmtRM(c.profitDiffRm) : 'DOWN ' + fmtRM(c.profitDiffRm)} (${fmtPct(c.gpPctLatest)} GP%, ${fmtPP(c.gpPctDiffPP)}) | PMG Stock Cycle (COS ÷ Cost): ${c.pmgStockCycle.toFixed(2)} (${c.pmgStockCyclePct}%).`
       })),
       categoriesDown: downCats.map(c => ({
         category: c.category,
-        summary: `Net Sold Price DOWN ${fmtRM(c.priceDiffRm)} (${fmtPct(c.priceDiffPct, 2, true)}) to ${fmtRM(c.netSoldPriceLatest)} | Net Profit ${c.profitDiffRm >= 0 ? 'UP +' + fmtRM(c.profitDiffRm) : 'DOWN ' + fmtRM(c.profitDiffRm)} (${fmtPct(c.gpPctLatest)} GP%, ${fmtPP(c.gpPctDiffPP)}) | PMG Stock Cycle: ${fmtRM(c.pmgStockCycleRm)}.`
+        summary: `Net Sold Price DOWN ${fmtRM(c.priceDiffRm)} (${fmtPct(c.priceDiffPct, 2, true)}) to ${fmtRM(c.netSoldPriceLatest)} | Net Profit ${c.profitDiffRm >= 0 ? 'UP +' + fmtRM(c.profitDiffRm) : 'DOWN ' + fmtRM(c.profitDiffRm)} (${fmtPct(c.gpPctLatest)} GP%, ${fmtPP(c.gpPctDiffPP)}) | PMG Stock Cycle (COS ÷ Cost): ${c.pmgStockCycle.toFixed(2)} (${c.pmgStockCyclePct}%).`
       })),
-      stockCycleComment: `HQ 11 Focus Categories recorded Net Sold Price of ${fmtRM(hq.netSoldPriceLatest)} (vs ${fmtRM(hq.netSoldPricePrev)} LY) and Net Sold Profit of ${fmtRM(hq.netSoldProfitLatest)} (GP% improved +${fmtPP(hq.gpPctDiffPP)} to ${fmtPct(hq.gpPctLatest)}). Using PMG's formula: Cost of Sales (MTD) = ${fmtRM(hq.costOfSalesLatest)}; Total Custom Cost = ${fmtRM(hq.totalCustomCost)}; Overall Stock Cycle = ${fmtRM(hq.averageStockCycleRm)} (Average per HQ Category: ${fmtRM(hq.avgPerCategoryCycleRm)}). Notably, ELDERLY achieved +${fmtRM(6128.34 - 5152.76)} higher profit (+18.93%) despite -4.12% lower top-line price because GP% jumped +5.67 pp (from 23.58% to 29.25%). Conversely, SCHE-DRU suffers the heaviest negative stock cycle (${fmtRM(catsHq.find(c=>c.category==='SCHE-DRU')?.pmgStockCycleRm || 0)}) and margin compression (-2.22 pp).`
+      stockCycleComment: `HQ 11 Focus Categories recorded Net Sold Price of ${fmtRM(hq.netSoldPriceLatest)} (vs ${fmtRM(hq.netSoldPricePrev)} LY) and Net Sold Profit of ${fmtRM(hq.netSoldProfitLatest)} (GP% improved +${fmtPP(hq.gpPctDiffPP)} to ${fmtPct(hq.gpPctLatest)}). Using PMG's Stock Cycle formula (Cost of Sales ÷ Total Custom Cost): Total Cost of Sales (MTD) = ${fmtRM(hq.costOfSalesLatest)} ÷ Total Custom Cost = ${fmtRM(hq.totalCustomCost)} = Average Stock Cycle of ${hq.averageStockCycle.toFixed(2)} (exact: ${hq.averageStockCycle.toFixed(4)} or ${hq.averageStockCyclePct}%; unweighted mean across 11 categories: ${hq.meanCategoryCycle.toFixed(2)}). Fast-cycling categories are NON-SC-P (0.54), SCHE-DRU (0.53), NON-SCHE (0.50), and SUPPLEME (0.47), whereas HOME&LIV (0.15), MOM&BABY (0.17), FIR-AID (0.22), PERSONAL (0.23), and ELDERLY (0.27) have slow stock cycles and need inventory trimming.`
     },
 
     swot: {
@@ -1185,7 +1191,7 @@ function buildGeminiPrompt(m, state) {
   const o = m.outlet;
   const hq = m.catSummaryHq11;
   const cats = m.categories.map(c =>
-    `- ${c.category}${c.isHqFocus ? '' : ' (Excluded from HQ 11)'}: Latest Price RM ${c.netSoldPriceLatest.toFixed(2)} vs Prev RM ${c.netSoldPricePrev.toFixed(2)} (${c.priceDiffPct.toFixed(2)}%), Latest Profit RM ${c.netSoldProfitLatest.toFixed(2)} vs Prev RM ${c.netSoldProfitPrev.toFixed(2)} (${c.profitDiffPct.toFixed(2)}%), GP% ${c.gpPctLatest.toFixed(2)}% vs ${c.gpPctPrev.toFixed(2)}% (${c.gpPctDiffPP >= 0 ? '+' : ''}${c.gpPctDiffPP.toFixed(2)} pp), CostOfSales RM ${c.costOfSalesLatest.toFixed(2)}, ClosingCustomCost RM ${c.totalCustomCost.toFixed(2)}, PMG_StockCycle RM ${c.pmgStockCycleRm.toFixed(2)}, 6M_AgedValue RM ${c.agedValueRm.toFixed(2)}`
+    `- ${c.category}${c.isHqFocus ? '' : ' (Excluded from HQ 11)'}: Latest Price RM ${c.netSoldPriceLatest.toFixed(2)} vs Prev RM ${c.netSoldPricePrev.toFixed(2)} (${c.priceDiffPct.toFixed(2)}%), Latest Profit RM ${c.netSoldProfitLatest.toFixed(2)} vs Prev RM ${c.netSoldProfitPrev.toFixed(2)} (${c.profitDiffPct.toFixed(2)}%), GP% ${c.gpPctLatest.toFixed(2)}% vs ${c.gpPctPrev.toFixed(2)}% (${c.gpPctDiffPP >= 0 ? '+' : ''}${c.gpPctDiffPP.toFixed(2)} pp), CostOfSales RM ${c.costOfSalesLatest.toFixed(2)}, ClosingCustomCost RM ${c.totalCustomCost.toFixed(2)}, PMG_StockCycle (COS / CustomCost) = ${c.pmgStockCycle.toFixed(4)} (${c.pmgStockCyclePct.toFixed(2)}%), 6M_AgedValue RM ${c.agedValueRm.toFixed(2)}`
   ).join('\n');
 
   const staff = m.teammates.filter(t => t.isActiveLatest || t.hasPrevYear).map(t =>
@@ -1214,8 +1220,8 @@ Analyze the following verified monthly performance dataset comparing Latest Mont
 - 3-Month Horizon: M-2 TS RM ${(m.threeMonthTrend.m2.ts || 0).toFixed(2)}, M-1 TS RM ${(m.threeMonthTrend.m1.ts || 0).toFixed(2)}, Latest TS RM ${o.tsLatest.toFixed(2)}
 
 2. 11 HQ FOCUS CATEGORIES + WYMED-EX & PMG STOCK CYCLE:
-Formula: COST OF SALES = NET SOLD PRICE - NET SOLD PROFIT; STOCK CYCLE = COST OF SALES - TOTAL CUSTOM COST
-HQ 11 Subtotal: Net Sold Price RM ${hq.netSoldPriceLatest.toFixed(2)} (vs LY RM ${hq.netSoldPricePrev.toFixed(2)}), Net Sold Profit RM ${hq.netSoldProfitLatest.toFixed(2)} (vs LY RM ${hq.netSoldProfitPrev.toFixed(2)}), GP% ${hq.gpPctLatest.toFixed(2)}% (vs LY ${hq.gpPctPrev.toFixed(2)}%), Cost of Sales RM ${hq.costOfSalesLatest.toFixed(2)}, Closing Custom Cost RM ${hq.totalCustomCost.toFixed(2)}, Overall Stock Cycle RM ${hq.averageStockCycleRm.toFixed(2)}.
+Formula: COST OF SALES = NET SOLD PRICE - NET SOLD PROFIT; STOCK CYCLE = COST OF SALES / TOTAL CUSTOM COST; AVERAGE STOCK CYCLE = TOTAL COST OF SALES / TOTAL CUSTOM COST
+HQ 11 Subtotal: Net Sold Price RM ${hq.netSoldPriceLatest.toFixed(2)} (vs LY RM ${hq.netSoldPricePrev.toFixed(2)}), Net Sold Profit RM ${hq.netSoldProfitLatest.toFixed(2)} (vs LY RM ${hq.netSoldProfitPrev.toFixed(2)}), GP% ${hq.gpPctLatest.toFixed(2)}% (vs LY ${hq.gpPctPrev.toFixed(2)}%), Cost of Sales RM ${hq.costOfSalesLatest.toFixed(2)}, Closing Custom Cost RM ${hq.totalCustomCost.toFixed(2)}, Average Stock Cycle = ${hq.averageStockCycle.toFixed(4)} (${hq.averageStockCyclePct.toFixed(2)}%).
 Category Breakdown:
 ${cats}
 
@@ -1991,8 +1997,8 @@ function renderTab2CategoryAndStockCycle() {
         </div>
         <div class="text-xs text-slate-300 mt-1.5 space-y-0.5 font-mono">
           <div>• <strong>COST OF SALES (MTD)</strong> = NET SOLD PRICE − NET SOLD PROFIT</div>
-          <div>• <strong>STOCK CYCLE</strong> = COST OF SALES (MTD) − TOTAL CUSTOMER (CUSTOM) COST</div>
-          <div>• <strong>AVERAGE STOCK CYCLE</strong> = TOTAL COST OF SALES − TOTAL CUSTOM COST &nbsp;|&nbsp; <span class="text-amber-300">HQ Focus = 11 Categories (Excludes WYMED-EX)</span></div>
+          <div>• <strong>STOCK CYCLE</strong> = COST OF SALES (MTD) ÷ TOTAL CUSTOMER (CUSTOM) COST</div>
+          <div>• <strong>AVERAGE STOCK CYCLE</strong> = TOTAL COST OF SALES ÷ TOTAL CUSTOM COST &nbsp;|&nbsp; <span class="text-amber-300">HQ Focus = 11 Categories (Excludes WYMED-EX)</span></div>
         </div>
       </div>
       <div class="flex items-center gap-2 shrink-0">
@@ -2037,12 +2043,15 @@ function renderTab2CategoryAndStockCycle() {
 
       <div class="bg-white rounded-2xl p-4 border-2 border-indigo-200 shadow-xs bg-indigo-50/30">
         <div class="text-xs font-bold text-indigo-950 uppercase">10B. PMG Average Stock Cycle</div>
-        <div class="text-xl font-extrabold ${activeSummary.averageStockCycleRm >= 0 ? 'text-emerald-700' : 'text-rose-700'} mt-1">${fmtRM(activeSummary.averageStockCycleRm)}</div>
+        <div class="flex items-baseline justify-between mt-1">
+          <span class="text-2xl font-extrabold text-indigo-900">${activeSummary.averageStockCycle.toFixed(2)}</span>
+          <span class="text-sm font-extrabold text-emerald-700">${activeSummary.averageStockCycle.toFixed(4)} (${activeSummary.averageStockCyclePct}%)</span>
+        </div>
         <div class="text-[11px] text-slate-600 mt-1">
-          Formula: Total COS (${fmtRM(activeSummary.costOfSalesLatest)}) − Total Custom Cost (${fmtRM(activeSummary.totalCustomCost)})
+          Formula: Total COS (${fmtRM(activeSummary.costOfSalesLatest)}) ÷ Total Custom Cost (${fmtRM(activeSummary.totalCustomCost)})
         </div>
         <div class="text-[11px] font-semibold text-indigo-800 mt-0.5">
-          Mean per Category (${activeSummary.count} cats): ${fmtRM(activeSummary.avgPerCategoryCycleRm)}
+          Mean across ${activeSummary.count} Categories: ${activeSummary.meanCategoryCycle.toFixed(2)} (${(activeSummary.meanCategoryCycle * 100).toFixed(2)}%)
         </div>
       </div>
     </div>
@@ -2093,7 +2102,7 @@ function renderTab2CategoryAndStockCycle() {
               <th class="py-3 px-3 text-right">Prev GP%</th>
               <th class="py-3 px-3 text-right bg-indigo-950">Cost of Sales (MTD)</th>
               <th class="py-3 px-3 text-right bg-indigo-950">Total Custom Cost</th>
-              <th class="py-3 px-3 text-right bg-indigo-900">PMG Stock Cycle (COS − Cost)</th>
+              <th class="py-3 px-3 text-right bg-indigo-900">PMG Stock Cycle (COS ÷ Cost)</th>
               <th class="py-3 px-3 text-right">6M Aged Stock</th>
             </tr>
           </thead>
@@ -2127,9 +2136,9 @@ function renderTab2CategoryAndStockCycle() {
                   <div>${fmtRM(c.totalCustomCost)}</div>
                   <div class="text-[10px] text-slate-400">${fmtNum(c.skuCountClosing)} SKUs</div>
                 </td>
-                <td class="py-2.5 px-3 text-right font-extrabold bg-indigo-50/80 ${c.pmgStockCycleRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">
-                  <div>${fmtRM(c.pmgStockCycleRm)}</div>
-                  <div class="text-[10px] text-slate-500 font-normal">${c.stockCoverMonths}m cover</div>
+                <td class="py-2.5 px-3 text-right font-extrabold bg-indigo-50/80 ${c.pmgStockCycle >= 0.35 ? 'text-emerald-700' : 'text-amber-800'}">
+                  <div class="text-sm">${c.pmgStockCycle.toFixed(2)} <span class="text-[10px] font-semibold">(${c.pmgStockCyclePct}%)</span></div>
+                  <div class="text-[10px] text-slate-500 font-normal">Exact: ${c.pmgStockCycle.toFixed(4)} • ${c.stockCoverMonths}m cover</div>
                 </td>
                 <td class="py-2.5 px-3 text-right">
                   <div class="font-semibold text-amber-800">${fmtRM(c.agedValueRm)}</div>
@@ -2151,7 +2160,7 @@ function renderTab2CategoryAndStockCycle() {
               <td class="py-3 px-3 text-right text-slate-300">${fmtPct(activeSummary.gpPctPrev)} (${fmtPP(activeSummary.gpPctDiffPP)})</td>
               <td class="py-3 px-3 text-right bg-indigo-950">${fmtRM(activeSummary.costOfSalesLatest)}</td>
               <td class="py-3 px-3 text-right bg-indigo-950">${fmtRM(activeSummary.totalCustomCost)}</td>
-              <td class="py-3 px-3 text-right bg-indigo-900 text-amber-300">${fmtRM(activeSummary.averageStockCycleRm)}</td>
+              <td class="py-3 px-3 text-right bg-indigo-900 text-amber-300">${activeSummary.averageStockCycle.toFixed(2)} (${activeSummary.averageStockCyclePct}%)</td>
               <td class="py-3 px-3 text-right text-amber-200">${fmtRM(activeSummary.agedValueRm)}</td>
             </tr>
           </tfoot>
