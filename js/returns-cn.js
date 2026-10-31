@@ -240,7 +240,659 @@
   }
 
   // ─── INITIAL SEED DATA ────────────────────────────────────────────────────────
-  const SEED_RETURNS = [];
+  const SEED_RETURNS = [
+  {
+    "id": "ret-1793416498055-146",
+    "doNumber": "DO-KS-2610-633",
+    "branch": "Kota Sentosa",
+    "branchCode": "KS01",
+    "companyName": "PMG PHARMACY (KOTA SENTOSA) SDN BHD",
+    "companyAddress": "GROUND FLOOR, NO. 7, LOT 39, BLOCK 233, KNLD, 7TH MILE BAZAAR, PENRISSEN ROAD, 93250 KUCHING, SARAWAK.",
+    "date": "31.10.2026",
+    "supplier": "SSJ PHARMA SDN BHD",
+    "destCompany": "SSJ PHARMA SDN BHD - sarikei",
+    "destAddress": "rtp - lot 1564, lorong 6, jalan rentap, 96100 sarikei, sarawak",
+    "destAttn": "MR. CHIONG",
+    "destPhone": "",
+    "totalCartons": 18,
+    "status": "pending_pickup",
+    "verifiedBy": "Chai Yee Sian",
+    "pickupBy": "",
+    "pickupDate": "",
+    "signedProof": null,
+    "cnNumber": "",
+    "cnAmount": 0,
+    "cnDate": "",
+    "xilnexKeyed": false,
+    "xilnexKeyedDate": "",
+    "xilnexKeyedBy": "",
+    "remarks": "",
+    "items": [
+      {
+        "cartonNo": "1",
+        "itemCode": "",
+        "itemDescription": "GONDOLA RETURN",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "",
+        "reason": "Other",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "2",
+        "itemCode": "",
+        "itemDescription": "GONDOLA RETURN",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "",
+        "reason": "Other",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "3",
+        "itemCode": "",
+        "itemDescription": "GONDOLA RETURN",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "",
+        "reason": "Other",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "4",
+        "itemCode": "",
+        "itemDescription": "GONDOLA RETURN",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "",
+        "reason": "Other",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "5",
+        "itemCode": "",
+        "itemDescription": "GONDOLA RETURN",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "",
+        "reason": "Other",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "6",
+        "itemCode": "",
+        "itemDescription": "GONDOLA RETURN",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "",
+        "reason": "Other",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "7",
+        "itemCode": "",
+        "itemDescription": "GONDOLA RETURN",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "",
+        "reason": "Other",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "8",
+        "itemCode": "",
+        "itemDescription": "GONDOLA RETURN",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "",
+        "reason": "Other",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "9",
+        "itemCode": "",
+        "itemDescription": "GONDOLA RETURN",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "",
+        "reason": "Other",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "10",
+        "itemCode": "",
+        "itemDescription": "GONDOLA RETURN",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "",
+        "reason": "Other",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "11",
+        "itemCode": "",
+        "itemDescription": "GONDOLA RETURN",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "",
+        "reason": "Other",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "12",
+        "itemCode": "",
+        "itemDescription": "GONDOLA RETURN",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "",
+        "reason": "Other",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "13",
+        "itemCode": "",
+        "itemDescription": "GONDOLA RETURN",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "",
+        "reason": "Other",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "14",
+        "itemCode": "",
+        "itemDescription": "GONDOLA RETURN",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "",
+        "reason": "Other",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "15",
+        "itemCode": "",
+        "itemDescription": "GONDOLA RETURN",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "",
+        "reason": "Other",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "16",
+        "itemCode": "",
+        "itemDescription": "GONDOLA RETURN",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "",
+        "reason": "Other",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "17",
+        "itemCode": "",
+        "itemDescription": "GONDOLA RETURN",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "",
+        "reason": "Other",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "18",
+        "itemCode": "",
+        "itemDescription": "GONDOLA RETURN",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "",
+        "reason": "Other",
+        "batchNo": "",
+        "expiryDate": ""
+      }
+    ],
+    "createdAt": "2026-10-31T03:14:58.055Z",
+    "updatedAt": "2026-10-31T03:19:39.239Z"
+  },
+  {
+    "id": "ret-1791340215701-423",
+    "doNumber": "DO-KS-2610-214",
+    "branch": "Kota Sentosa",
+    "branchCode": "KS01",
+    "companyName": "PMG PHARMACY (KOTA SENTOSA) SDN BHD",
+    "companyAddress": "GROUND FLOOR, NO. 7, LOT 39, BLOCK 233, KNLD, 7TH MILE BAZAAR, PENRISSEN ROAD, 93250 KUCHING, SARAWAK.",
+    "date": "07.10.2026",
+    "supplier": "kwong heng lee",
+    "destCompany": "kwong heng lee",
+    "destAddress": "",
+    "destAttn": "DS",
+    "destPhone": "60128119019",
+    "totalCartons": 1,
+    "status": "awaiting_cn",
+    "verifiedBy": "Chai Yee Sian",
+    "pickupBy": "DICKSON",
+    "pickupDate": "15.10.2026",
+    "signedProof": {
+      "fileName": "DO-KS-2610-214.jpg",
+      "path": "KOTA SENTOSA/DO/2026/10 - October/kwong heng lee/DO-KS-2610-214_Signed_Proof.jpg",
+      "oneDriveSynced": true,
+      "timestamp": "2026-10-28T07:06:20.043Z"
+    },
+    "cnNumber": "",
+    "cnAmount": 0,
+    "cnDate": "",
+    "xilnexKeyed": false,
+    "xilnexKeyedDate": "",
+    "xilnexKeyedBy": "",
+    "remarks": "",
+    "items": [
+      {
+        "cartonNo": "1",
+        "itemCode": "126607",
+        "itemDescription": "VIDA C (BLACKCURRENT) TIN 325ML - VITAMIN C 1000MG",
+        "quantity": "19",
+        "uom": "UNIT",
+        "prnNumber": "74734 - KINV-00033566",
+        "reason": "Expired",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "1",
+        "itemCode": "118559",
+        "itemDescription": "VIDA C (ORANGE) TIN 325ML - VITAMIN C 1000MG",
+        "quantity": "22",
+        "uom": "UNIT",
+        "prnNumber": "74734 - KINV-00033566",
+        "reason": "Expired",
+        "batchNo": "",
+        "expiryDate": ""
+      }
+    ],
+    "createdAt": "2026-10-07T02:30:15.701Z",
+    "updatedAt": "2026-10-28T07:06:20.043Z"
+  },
+  {
+    "id": "ret-1791353300582-975",
+    "doNumber": "DO-KS-2610-560",
+    "branch": "Kota Sentosa",
+    "branchCode": "KS01",
+    "companyName": "PMG PHARMACY (KOTA SENTOSA) SDN BHD",
+    "companyAddress": "GROUND FLOOR, NO. 7, LOT 39, BLOCK 233, KNLD, 7TH MILE BAZAAR, PENRISSEN ROAD, 93250 KUCHING, SARAWAK.",
+    "date": "07.10.2026",
+    "supplier": "SSJ PHARMA SDN BHD",
+    "destCompany": "SSJ PHARMA SDN BHD (SCD)",
+    "destAddress": "",
+    "destAttn": "MR DOUGLAS",
+    "destPhone": "",
+    "totalCartons": 1,
+    "status": "completed",
+    "verifiedBy": "Chai Yee Sian",
+    "pickupBy": "KING SUCCESS",
+    "pickupDate": "12.10.2026",
+    "signedProof": {
+      "fileName": "DO-KS-2610-560.pdf",
+      "path": "KOTA SENTOSA/DO/2026/10 - October/SSJ PHARMA SDN BHD/DO-KS-2610-560_Signed_Proof.pdf",
+      "oneDriveSynced": true,
+      "timestamp": "2026-10-13T08:11:57.131Z"
+    },
+    "cnNumber": "sr126780",
+    "cnAmount": 138.1,
+    "cnDate": "16.10.2026",
+    "xilnexKeyed": true,
+    "xilnexKeyedDate": "16.10.2026",
+    "xilnexKeyedBy": "Chai Yee Sian",
+    "remarks": "",
+    "items": [
+      {
+        "cartonNo": "1",
+        "itemCode": "135258 - TUBE",
+        "itemDescription": "Y.O.U ACNEPLUS MULTI-ACTION SKIN CREAM 30G",
+        "quantity": "2",
+        "uom": "BOX",
+        "prnNumber": "74735",
+        "reason": "Supplier Recall",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "1",
+        "itemCode": "135246 - BBOX5",
+        "itemDescription": "Y.O.U ACNEPLUS B5 SOOTHING SHEET MASK 5'S",
+        "quantity": "3",
+        "uom": "BOX",
+        "prnNumber": "74735",
+        "reason": "Supplier Recall",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "1",
+        "itemCode": "135255 - TUBE",
+        "itemDescription": "Y.O.U HY! AMINO BYE-BYETERIA ANTI BACTERIAL FACIAL WASH 100G",
+        "quantity": "3",
+        "uom": "BOX",
+        "prnNumber": "74735",
+        "reason": "Supplier Recall",
+        "batchNo": "",
+        "expiryDate": ""
+      }
+    ],
+    "createdAt": "2026-10-07T06:08:20.582Z",
+    "updatedAt": "2026-10-16T03:51:01.375Z"
+  },
+  {
+    "id": "ret-1791445897272-509",
+    "doNumber": "DO-KS-2610-432",
+    "branch": "Kota Sentosa",
+    "branchCode": "KS01",
+    "companyName": "PMG PHARMACY (KOTA SENTOSA) SDN BHD",
+    "companyAddress": "GROUND FLOOR, NO. 7, LOT 39, BLOCK 233, KNLD, 7TH MILE BAZAAR, PENRISSEN ROAD, 93250 KUCHING, SARAWAK.",
+    "date": "08.10.2026",
+    "supplier": "ZUELLIG PHARMA SDN BHD",
+    "destCompany": "ZUELLIG PHARMA SDN BHD",
+    "destAddress": "",
+    "destAttn": "",
+    "destPhone": "",
+    "totalCartons": 1,
+    "status": "pending_pickup",
+    "verifiedBy": "Chai Yee Sian",
+    "pickupBy": "",
+    "pickupDate": "",
+    "signedProof": null,
+    "cnNumber": "",
+    "cnAmount": 0,
+    "cnDate": "",
+    "xilnexKeyed": false,
+    "xilnexKeyedDate": "",
+    "xilnexKeyedBy": "",
+    "remarks": "",
+    "items": [
+      {
+        "cartonNo": "1",
+        "itemCode": "102405 - BOT130",
+        "itemDescription": "BIO-LIFE LIVASIL 100'S+30'S",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "74736",
+        "reason": "Near Expiry",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "1",
+        "itemCode": "102405 - BOT100",
+        "itemDescription": "BIO-LIFE LIVASIL 100'S+30'S",
+        "quantity": "1",
+        "uom": "BOX",
+        "prnNumber": "74736",
+        "reason": "Near Expiry",
+        "batchNo": "",
+        "expiryDate": ""
+      }
+    ],
+    "createdAt": "2026-10-08T07:51:37.272Z",
+    "updatedAt": "2026-10-08T07:51:57.831Z"
+  },
+  {
+    "id": "ret-1791879785460-627",
+    "doNumber": "DO-KS-2610-245",
+    "branch": "Kota Sentosa",
+    "branchCode": "KS01",
+    "companyName": "PMG PHARMACY (KOTA SENTOSA) SDN BHD",
+    "companyAddress": "GROUND FLOOR, NO. 7, LOT 39, BLOCK 233, KNLD, 7TH MILE BAZAAR, PENRISSEN ROAD, 93250 KUCHING, SARAWAK.",
+    "date": "13.10.2026",
+    "supplier": "SSJ PHARMA SDN BHD",
+    "destCompany": "SSJ PHARMA SDN BHD (SCD)",
+    "destAddress": "",
+    "destAttn": "MR DOUGLAS",
+    "destPhone": "",
+    "totalCartons": 1,
+    "status": "completed",
+    "verifiedBy": "Chai Yee Sian",
+    "pickupBy": "KING SUCCESS",
+    "pickupDate": "19.10.2026",
+    "signedProof": {
+      "fileName": "DO-KS-2610-245.pdf",
+      "path": "KOTA SENTOSA/DO/2026/10 - October/SSJ PHARMA SDN BHD/DO-KS-2610-245_Signed_Proof.pdf",
+      "oneDriveSynced": true,
+      "timestamp": "2026-10-20T02:22:53.502Z"
+    },
+    "cnNumber": "SR127038",
+    "cnAmount": 168.54,
+    "cnDate": "22.10.2026",
+    "xilnexKeyed": true,
+    "xilnexKeyedDate": "28.10.2026",
+    "xilnexKeyedBy": "Chai Yee Sian",
+    "remarks": "",
+    "items": [
+      {
+        "cartonNo": "1",
+        "itemCode": "102083 - BOX16",
+        "itemDescription": "GAVISCON DOUBLE ACTION 250MG TAB 8'SX2",
+        "quantity": "3",
+        "uom": "BOX",
+        "prnNumber": "74737",
+        "reason": "Near Expiry",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "1",
+        "itemCode": "141583 -BOX24",
+        "itemDescription": "GAVISCON LIQUID (PEPPERMINT) 10ML SAC 24'S",
+        "quantity": "1",
+        "uom": "BOX",
+        "prnNumber": "74737",
+        "reason": "Expired",
+        "batchNo": "",
+        "expiryDate": ""
+      },
+      {
+        "cartonNo": "1",
+        "itemCode": "100489 - BOT",
+        "itemDescription": "SOLUWAX EAR DROPS 10ML BOT",
+        "quantity": "2",
+        "uom": "UNIT",
+        "prnNumber": "74737",
+        "reason": "Near Expiry",
+        "batchNo": "",
+        "expiryDate": ""
+      }
+    ],
+    "createdAt": "2026-10-13T08:23:05.460Z",
+    "updatedAt": "2026-10-28T07:09:03.798Z"
+  },
+  {
+    "id": "ret-1791880755586-686",
+    "doNumber": "DO-KS-2610-340",
+    "branch": "Kota Sentosa",
+    "branchCode": "KS01",
+    "companyName": "PMG PHARMACY (KOTA SENTOSA) SDN BHD",
+    "companyAddress": "GROUND FLOOR, NO. 7, LOT 39, BLOCK 233, KNLD, 7TH MILE BAZAAR, PENRISSEN ROAD, 93250 KUCHING, SARAWAK.",
+    "date": "13.10.2026",
+    "supplier": "ZUELLIG PHARMA SDN BHD",
+    "destCompany": "ZUELLIG PHARMA SDN BHD",
+    "destAddress": "",
+    "destAttn": "",
+    "destPhone": "",
+    "totalCartons": 1,
+    "status": "pending_pickup",
+    "verifiedBy": "Chai Yee Sian",
+    "pickupBy": "",
+    "pickupDate": "",
+    "signedProof": null,
+    "cnNumber": "",
+    "cnAmount": 0,
+    "cnDate": "",
+    "xilnexKeyed": false,
+    "xilnexKeyedDate": "",
+    "xilnexKeyedBy": "",
+    "remarks": "",
+    "items": [
+      {
+        "cartonNo": "1",
+        "itemCode": "104853 - BOX",
+        "itemDescription": "SENSODYNE REPAIR & PROTECT 100G",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "74738",
+        "reason": "Expired",
+        "batchNo": "",
+        "expiryDate": ""
+      }
+    ],
+    "createdAt": "2026-10-13T08:39:15.586Z",
+    "updatedAt": "2026-10-13T08:39:15.586Z"
+  },
+  {
+    "id": "ret-1792562282660-78",
+    "doNumber": "DO-KS-2610-293",
+    "branch": "Kota Sentosa",
+    "branchCode": "KS01",
+    "companyName": "PMG PHARMACY (KOTA SENTOSA) SDN BHD",
+    "companyAddress": "GROUND FLOOR, NO. 7, LOT 39, BLOCK 233, KNLD, 7TH MILE BAZAAR, PENRISSEN ROAD, 93250 KUCHING, SARAWAK.",
+    "date": "21.10.2026",
+    "supplier": "EASTERN FOREVER SDN BHD",
+    "destCompany": "EASTERN FOREVER SDN BHD",
+    "destAddress": "",
+    "destAttn": "CHONG",
+    "destPhone": "601125089879",
+    "totalCartons": 1,
+    "status": "pending_pickup",
+    "verifiedBy": "Chai Yee Sian",
+    "pickupBy": "",
+    "pickupDate": "",
+    "signedProof": null,
+    "cnNumber": "",
+    "cnAmount": 0,
+    "cnDate": "",
+    "xilnexKeyed": false,
+    "xilnexKeyedDate": "",
+    "xilnexKeyedBy": "",
+    "remarks": "",
+    "items": [
+      {
+        "cartonNo": "1",
+        "itemCode": "122889 - TUBE",
+        "itemDescription": "WRIGLEY'S DOUBLEMINT MINT CANDY (LEMON) 30G",
+        "quantity": "2",
+        "uom": "UNIT",
+        "prnNumber": "74739",
+        "reason": "Expired",
+        "batchNo": "",
+        "expiryDate": ""
+      }
+    ],
+    "createdAt": "2026-10-21T05:58:02.660Z",
+    "updatedAt": "2026-10-21T05:58:02.660Z"
+  },
+  {
+    "id": "ret-1792629630385-931",
+    "doNumber": "DO-KS-2610-423",
+    "branch": "Kota Sentosa",
+    "branchCode": "KS01",
+    "companyName": "PMG PHARMACY (KOTA SENTOSA) SDN BHD",
+    "companyAddress": "GROUND FLOOR, NO. 7, LOT 39, BLOCK 233, KNLD, 7TH MILE BAZAAR, PENRISSEN ROAD, 93250 KUCHING, SARAWAK.",
+    "date": "22.10.2026",
+    "supplier": "CHOON HUA TRADING CORPORATION",
+    "destCompany": "CHOON HUA TRADING CORPORATION",
+    "destAddress": "",
+    "destAttn": "ANGELA",
+    "destPhone": "60128118310",
+    "totalCartons": 1,
+    "status": "awaiting_cn",
+    "verifiedBy": "Chai Yee Sian",
+    "pickupBy": "ANTHONY",
+    "pickupDate": "24.10.2026",
+    "signedProof": {
+      "fileName": "DO-KS-2610-423.pdf",
+      "path": "KOTA SENTOSA/DO/2026/10 - October/CHOON HUA TRADING CORPORATION/DO-KS-2610-423_Signed_Proof.pdf",
+      "oneDriveSynced": true,
+      "timestamp": "2026-10-27T08:27:55.538Z"
+    },
+    "cnNumber": "",
+    "cnAmount": 0,
+    "cnDate": "",
+    "xilnexKeyed": false,
+    "xilnexKeyedDate": "",
+    "xilnexKeyedBy": "",
+    "remarks": "",
+    "items": [
+      {
+        "cartonNo": "1",
+        "itemCode": "-",
+        "itemDescription": "ORIENTAL HIMALAYAN SALT WHITE COFFEE 38G X 10S X 20EA",
+        "quantity": "3",
+        "uom": "BOX",
+        "prnNumber": "74743",
+        "reason": "Wrong Delivery",
+        "batchNo": "",
+        "expiryDate": ""
+      }
+    ],
+    "createdAt": "2026-10-22T00:40:30.386Z",
+    "updatedAt": "2026-10-27T08:27:55.538Z"
+  },
+  {
+    "id": "ret-1793233485459-300",
+    "doNumber": "DO-KS-2610-323",
+    "branch": "Kota Sentosa",
+    "branchCode": "KS01",
+    "companyName": "PMG PHARMACY (KOTA SENTOSA) SDN BHD",
+    "companyAddress": "GROUND FLOOR, NO. 7, LOT 39, BLOCK 233, KNLD, 7TH MILE BAZAAR, PENRISSEN ROAD, 93250 KUCHING, SARAWAK.",
+    "date": "29.10.2026",
+    "supplier": "SSJ PHARMA SDN BHD",
+    "destCompany": "SSJ PHARMA SDN BHD (SCD)",
+    "destAddress": "",
+    "destAttn": "MR DOUGLAS",
+    "destPhone": "",
+    "totalCartons": 1,
+    "status": "pending_pickup",
+    "verifiedBy": "Chai Yee Sian",
+    "pickupBy": "",
+    "pickupDate": "",
+    "signedProof": null,
+    "cnNumber": "",
+    "cnAmount": 0,
+    "cnDate": "",
+    "xilnexKeyed": false,
+    "xilnexKeyedDate": "",
+    "xilnexKeyedBy": "",
+    "remarks": "NO NEED TO SEND PHYSICAL STOCK",
+    "items": [
+      {
+        "cartonNo": "1",
+        "itemCode": "139152",
+        "itemDescription": "VICTORIA V2016-PC (2.50) PC FRAME READING",
+        "quantity": "1",
+        "uom": "UNIT",
+        "prnNumber": "104103",
+        "reason": "Damaged Goods",
+        "batchNo": "",
+        "expiryDate": ""
+      }
+    ],
+    "createdAt": "2026-10-29T00:24:45.460Z",
+    "updatedAt": "2026-10-29T00:24:45.460Z"
+  }
+];
 
   // ─── INDEXEDDB HELPERS ────────────────────────────────────────────────────────
   function openDatabase() {
@@ -411,6 +1063,72 @@
     }
   }
 
+  // ─── GOOGLE SHEETS LIVE CLOUD SYNC (FOR MOBILE, LAPTOP & COUNTER PCS) ──────────
+  const PMG_SCHEDULE_API_URL = (typeof window !== 'undefined' && window.PMG_SCHEDULE_API_URL) || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+
+  async function syncReturnsWithGoogleSheets(targetBranch) {
+    if (!PMG_SCHEDULE_API_URL) return;
+    const branchName = targetBranch || getActiveBranchName() || 'Kota Sentosa';
+    try {
+      const res = await fetch(`${PMG_SCHEDULE_API_URL}?branch=${encodeURIComponent(branchName)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_returns') || '["ret-ks-2609-002", "ret-lnd-2609-001"]');
+      let changed = false;
+
+      if (data && data.success && data.schedule && Array.isArray(data.schedule.branchReturns)) {
+        const cloudReturns = data.schedule.branchReturns.filter(r => r && r.id && !deletedIds.includes(r.id));
+        const map = new Map();
+        returnsData.filter(r => !deletedIds.includes(r.id)).forEach(r => map.set(r.id, r));
+
+        cloudReturns.forEach(r => {
+          if (map.has(r.id)) {
+            const loc = map.get(r.id);
+            const locT = loc.updatedAt || loc.createdAt || '';
+            const cldT = r.updatedAt || r.createdAt || '';
+            if (cldT > locT) {
+              map.set(r.id, { ...loc, ...r });
+              changed = true;
+            }
+          } else {
+            map.set(r.id, r);
+            changed = true;
+          }
+        });
+
+        if (changed || returnsData.length === 0) {
+          returnsData = Array.from(map.values());
+          await saveAllReturnsToDb(returnsData);
+          localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
+          renderReturnsUI();
+        }
+      }
+
+      // If local has records and cloud needs update, push back to cloud
+      if (returnsData.length > 0 && data && data.schedule) {
+        const sched = data.schedule;
+        const currentCloudIds = new Set((sched.branchReturns || []).map(r => r.id));
+        const hasLocalNew = returnsData.some(r => !currentCloudIds.has(r.id));
+        if (hasLocalNew) {
+          sched.branchReturns = returnsData;
+          await fetch(PMG_SCHEDULE_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+              branch: branchName,
+              schedule: sched,
+              updatedBy: getCurrentUserDisplayName() || 'Pharmacist'
+            }),
+            redirect: 'follow'
+          });
+          console.log(`[PMG Returns] Synced ${returnsData.length} returns with Google Cloud for ${branchName}`);
+        }
+      }
+    } catch (err) {
+      console.warn('[PMG Returns] Google Sheets cloud sync note:', err.message);
+    }
+  }
+
   async function onCloudSync(incomingData) {
     if (!Array.isArray(incomingData)) return;
     const deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_returns') || '["ret-ks-2609-002", "ret-lnd-2609-001"]');
@@ -485,10 +1203,15 @@
     populateReturnsBranchFilter();
     renderReturnsUI();
 
-    // Trigger OneDrive cloud sync in background
+    // 1. Live Google Sheets Cloud Sync (Instant on Mobile, Laptop & Counter PC)
+    setTimeout(() => {
+      syncReturnsWithGoogleSheets(getActiveBranchName()).catch(() => {});
+    }, 400);
+
+    // 2. Trigger OneDrive cloud sync in background if on desktop
     setTimeout(() => {
       syncReturnsWithOneDrive(getActiveBranchName());
-    }, 1200);
+    }, 1500);
   }
 
   function populateReturnsBranchFilter() {
@@ -1116,8 +1839,9 @@
     await saveSingleReturnToDb(newRecord);
     localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
 
-    // Sync to OneDrive
+    // Sync to OneDrive & Google Cloud
     syncReturnsWithOneDrive(branch);
+    syncReturnsWithGoogleSheets(branch);
 
     closeNewReturnModal();
     renderReturnsUI();
@@ -1488,8 +2212,9 @@
     await saveSingleReturnToDb(activeReturnForEdit);
     localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
 
-    // Sync to OneDrive
+    // Sync to OneDrive & Google Cloud
     syncReturnsWithOneDrive(branch);
+    syncReturnsWithGoogleSheets(branch);
 
     const savedId = activeReturnForEdit.id;
     closeEditReturnModal();
@@ -2571,6 +3296,7 @@
       await saveSingleReturnToDb(activeReturnForUpload);
       localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
       syncReturnsWithOneDrive(activeReturnForUpload.branch);
+      syncReturnsWithGoogleSheets(activeReturnForUpload.branch);
 
       closeUploadSignedDoModal();
       renderReturnsUI();
@@ -2645,6 +3371,7 @@
     await saveSingleReturnToDb(activeReturnForCn);
     localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
     syncReturnsWithOneDrive(activeReturnForCn.branch);
+    syncReturnsWithGoogleSheets(activeReturnForCn.branch);
 
     closeSettleCnModal();
     renderReturnsUI();
@@ -2675,6 +3402,7 @@
       const branchOnlyData = returnsData.filter(r => (r.branch || '').toUpperCase() === ret.branch.toUpperCase() && !deletedIds.includes(r.id));
       await window.pmgOneDriveSync.saveReturnsDatabaseToOneDrive(ret.branch, branchOnlyData);
     }
+    syncReturnsWithGoogleSheets(ret.branch);
 
     renderReturnsUI();
   }
@@ -2783,7 +3511,8 @@
     getReturnsData: getReturnsData,
     setReturnsData: setReturnsData,
     onCloudSync: onCloudSync,
-    syncWithOneDrive: () => syncReturnsWithOneDrive(getActiveBranchName())
+    syncWithOneDrive: () => syncReturnsWithOneDrive(getActiveBranchName()),
+    syncWithGoogleSheets: () => syncReturnsWithGoogleSheets(getActiveBranchName())
   };
 
   // Global convenience aliases

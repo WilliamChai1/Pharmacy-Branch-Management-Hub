@@ -1367,6 +1367,10 @@ async function runLiveGeminiAnalysis() {
 }
 
 // ─── MONTHLY TASK LIST (30-DAY EXECUTION TRACKER) ───────────────────────────
+const PMG_SCHEDULE_API_URL = (typeof window !== 'undefined' && window.PMG_SCHEDULE_API_URL) || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+let isSyncingTasks = false;
+let lastTasksCloudSyncTime = null;
+
 function loadTasks() {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.TASKS);
@@ -1374,13 +1378,153 @@ function loadTasks() {
   } catch (e) {
     monthlyTasks = [];
   }
+  updateTaskCounterBadges();
+
+  // Automatically sync tasks from Google Sheets Cloud in background (Works across Laptop, Outlet PC & Mobile)
+  setTimeout(() => {
+    syncTasksWithGoogleCloud(false).catch(() => {});
+  }, 300);
 }
 
-function saveTasks() {
+function saveTasks(skipCloudPush = false) {
   try {
     localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(monthlyTasks));
   } catch (e) { /* ignore */ }
   updateTaskCounterBadges();
+
+  if (!skipCloudPush) {
+    pushTasksToGoogleCloud().catch(() => {});
+  }
+}
+
+async function syncTasksWithGoogleCloud(showToastFeedback = false) {
+  if (!PMG_SCHEDULE_API_URL || isSyncingTasks) return;
+  isSyncingTasks = true;
+  updateTaskSyncUiState(true);
+
+  try {
+    const branchName = 'Kota Sentosa';
+    const res = await fetch(`${PMG_SCHEDULE_API_URL}?branch=${encodeURIComponent(branchName)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    if (data && data.success && data.schedule && Array.isArray(data.schedule.performanceTasks)) {
+      const cloudTasks = data.schedule.performanceTasks;
+      const taskMap = new Map();
+      monthlyTasks.forEach(t => taskMap.set(t.id, t));
+
+      let importedCount = 0;
+      cloudTasks.forEach(ct => {
+        if (!taskMap.has(ct.id)) {
+          taskMap.set(ct.id, ct);
+          importedCount++;
+        } else {
+          const loc = taskMap.get(ct.id);
+          const locT = loc.updatedAt || loc.approvedAt || '';
+          const cldT = ct.updatedAt || ct.approvedAt || '';
+          if (cldT > locT) {
+            taskMap.set(ct.id, { ...loc, ...ct });
+          }
+        }
+      });
+
+      monthlyTasks = Array.from(taskMap.values());
+      monthlyTasks.sort((a, b) => {
+        const order = { 'TODO': 1, 'IN_PROGRESS': 2, 'COMPLETED': 3 };
+        return (order[a.status] || 2) - (order[b.status] || 2);
+      });
+
+      localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(monthlyTasks));
+      updateTaskCounterBadges();
+      renderTaskListSection();
+      renderAiAnalysisSection();
+
+      lastTasksCloudSyncTime = new Date();
+      updateTaskSyncUiState(false, true);
+
+      if (showToastFeedback) {
+        showToast(`✅ Synced with Outlet via Google Cloud! (${monthlyTasks.length} tasks)`, 'success');
+      }
+    } else {
+      if (monthlyTasks.length > 0 && data && data.schedule) {
+        await pushTasksToGoogleCloud(data.schedule);
+      }
+      lastTasksCloudSyncTime = new Date();
+      updateTaskSyncUiState(false, true);
+    }
+  } catch (err) {
+    console.warn('[Performance Tasks] Cloud sync note:', err.message);
+    updateTaskSyncUiState(false, false);
+    if (showToastFeedback) {
+      showToast('Could not reach Google Cloud. Working with local tasks.', 'warning');
+    }
+  } finally {
+    isSyncingTasks = false;
+  }
+}
+
+async function pushTasksToGoogleCloud(existingSchedule) {
+  if (!PMG_SCHEDULE_API_URL) return;
+  try {
+    const branchName = 'Kota Sentosa';
+    let sched = existingSchedule;
+    if (!sched) {
+      const res = await fetch(`${PMG_SCHEDULE_API_URL}?branch=${encodeURIComponent(branchName)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && data.schedule) {
+          sched = data.schedule;
+        }
+      }
+    }
+    if (!sched) sched = {};
+    sched.performanceTasks = monthlyTasks;
+
+    await fetch(PMG_SCHEDULE_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        branch: branchName,
+        schedule: sched,
+        updatedBy: 'Pharmacist'
+      }),
+      redirect: 'follow'
+    });
+    console.log(`[Performance Tasks] ✅ Pushed ${monthlyTasks.length} tasks to Google Cloud.`);
+    lastTasksCloudSyncTime = new Date();
+    updateTaskSyncUiState(false, true);
+  } catch (err) {
+    console.warn('[Performance Tasks] Cloud push error:', err.message);
+  }
+}
+
+function updateTaskSyncUiState(inProgress, isSuccess = true) {
+  const btn = document.getElementById('btnSyncTasksCloud');
+  const icon = document.getElementById('syncTasksCloudIcon');
+  const text = document.getElementById('syncTasksCloudText');
+  const pill = document.getElementById('taskSyncStatusPill');
+
+  if (btn) {
+    btn.disabled = inProgress;
+  }
+  if (icon) {
+    icon.textContent = inProgress ? '⏳' : '🔄';
+  }
+  if (text) {
+    text.textContent = inProgress ? 'Syncing...' : 'Sync with Outlet';
+  }
+  if (pill) {
+    if (inProgress) {
+      pill.textContent = '⏳ Syncing with Google Cloud...';
+      pill.className = 'text-[11px] text-amber-700 font-bold mt-1';
+    } else if (isSuccess) {
+      pill.textContent = `☁️ Synced with Outlet & Mobile (${lastTasksCloudSyncTime ? lastTasksCloudSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Active'})`;
+      pill.className = 'text-[11px] text-teal-800 font-bold mt-1';
+    } else {
+      pill.textContent = '⚠️ Cloud sync offline (Using local storage)';
+      pill.className = 'text-[11px] text-slate-500 font-semibold mt-1';
+    }
+  }
 }
 
 function updateTaskCounterBadges() {
@@ -1559,7 +1703,246 @@ function exportTasksCsv() {
   URL.revokeObjectURL(url);
 }
 
-// ─── DATA PERSISTENCE, PRELOAD & CLEAR CONTROLS ─────────────────────────────
+// ─── OFFICIAL PMG PHYSICAL STOCK COUNT EXCEL EXPORT (BY CATEGORY) ─────────────
+async function exportAgingStockCountExcel(targetCategory) {
+  if (typeof ExcelJS === 'undefined') {
+    showToast('ExcelJS library is loading, please try again in a moment.', 'warning');
+    return;
+  }
+  const categoryFilter = (targetCategory || skuFilterState.category || 'ALL').toUpperCase().trim();
+  const rawAging = (perfState && perfState.stockAgingLatest && Array.isArray(perfState.stockAgingLatest.items))
+    ? perfState.stockAgingLatest.items
+    : [];
+
+  if (rawAging.length === 0) {
+    showToast('No Stock Aging items loaded to export.', 'warning');
+    return;
+  }
+
+  // Filter by category
+  let itemsToExport = rawAging;
+  if (categoryFilter !== 'ALL') {
+    itemsToExport = rawAging.filter(it => (it.category || '').toUpperCase().trim() === categoryFilter);
+  }
+
+  if (itemsToExport.length === 0) {
+    showToast(`No aged stock found for category "${categoryFilter}".`, 'info');
+    return;
+  }
+
+  // Sort by Aged Value descending (highest inventory risk first)
+  itemsToExport = [...itemsToExport].sort((a, b) => (b.agedValue || 0) - (a.agedValue || 0));
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'PMG Management Hub';
+  wb.created = new Date();
+
+  const sheetName = categoryFilter === 'ALL' ? 'Stock Count - ALL' : `Stock Count - ${categoryFilter}`.slice(0, 31);
+  const ws = wb.addWorksheet(sheetName, {
+    views: [{ showGridLines: true }],
+    pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 }
+  });
+
+  // Setup Column Widths
+  ws.columns = [
+    { width: 6 },   // A: Seq No.
+    { width: 14 },  // B: Item Code
+    { width: 38 },  // C: Item Description
+    { width: 14 },  // D: Category
+    { width: 12 },  // E: System OH Qty
+    { width: 13 },  // F: 6M+ Aged Qty
+    { width: 13 },  // G: >1 Year Qty
+    { width: 14 },  // H: Avg Cost (RM)
+    { width: 16 },  // I: Aged Value (RM)
+    { width: 16 },  // J: PHYSICAL COUNT (ACTUAL) [BLANK]
+    { width: 16 },  // K: VARIANCE (COUNT - SYSTEM) [FORMULA]
+    { width: 16 },  // L: SHELF EXPIRY DATE [BLANK]
+    { width: 26 }   // M: ACTION PLAN / REMARKS
+  ];
+
+  // Title Block
+  ws.mergeCells('A1:M1');
+  const titleCell = ws.getCell('A1');
+  titleCell.value = 'PMG PHARMACY (KOTA SENTOSA) — PHYSICAL STOCK COUNT & AGING AUDIT SHEET';
+  titleCell.font = { name: 'Arial', size: 13, bold: true, color: { argb: 'FFFFFFFF' } };
+  titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } }; // PMG Navy
+  titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+  ws.getRow(1).height = 28;
+
+  // Subheader
+  ws.mergeCells('A2:M2');
+  const subCell = ws.getCell('A2');
+  subCell.value = `Target Category: ${categoryFilter}  |  Audit Date: ${new Date().toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}  |  Total Aged SKUs: ${itemsToExport.length}  |  Generated by PMG Performance Suite`;
+  subCell.font = { name: 'Arial', size: 9.5, italic: true, color: { argb: 'FF334155' } };
+  subCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+  subCell.alignment = { horizontal: 'center', vertical: 'middle' };
+  ws.getRow(2).height = 20;
+
+  // Sign-off row
+  ws.mergeCells('A3:F3');
+  ws.getCell('A3').value = 'Counted By (Staff Name & Signature): _______________________________';
+  ws.getCell('A3').font = { name: 'Arial', size: 9, bold: true };
+  ws.getCell('A3').alignment = { vertical: 'middle' };
+
+  ws.mergeCells('G3:M3');
+  ws.getCell('G3').value = 'Verified By (Pharmacist / PIC Signature): _______________________________';
+  ws.getCell('G3').font = { name: 'Arial', size: 9, bold: true };
+  ws.getCell('G3').alignment = { vertical: 'middle' };
+  ws.getRow(3).height = 24;
+
+  // Spacer row
+  ws.getRow(4).height = 6;
+
+  // Table Headers (Row 5)
+  const headers = [
+    'NO',
+    'ITEM CODE',
+    'ITEM DESCRIPTION',
+    'CATEGORY',
+    'SYSTEM OH',
+    '6M+ AGED',
+    '>1 YR AGED',
+    'AVG COST (RM)',
+    'AGED VAL (RM)',
+    'PHYSICAL COUNT',
+    'VARIANCE',
+    'SHELF EXPIRY',
+    'ACTION / SOP REMARKS'
+  ];
+  const hRow = ws.getRow(5);
+  hRow.values = headers;
+  hRow.height = 25;
+  hRow.font = { name: 'Arial', size: 9.5, bold: true, color: { argb: 'FFFFFFFF' } };
+
+  headers.forEach((_, colIdx) => {
+    const cell = hRow.getCell(colIdx + 1);
+    if (colIdx === 9) {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0D9488' } }; // Teal
+    } else if (colIdx === 10) {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD97706' } }; // Amber
+    } else {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } }; // Slate 900
+    }
+    cell.alignment = { horizontal: (colIdx >= 4 && colIdx <= 10) ? 'center' : (colIdx === 0 ? 'center' : 'left'), vertical: 'middle' };
+    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'medium' }, right: { style: 'thin' } };
+  });
+
+  // Data Rows
+  const startDataRow = 6;
+  itemsToExport.forEach((item, idx) => {
+    const rIdx = startDataRow + idx;
+    const row = ws.getRow(rIdx);
+    row.height = 20;
+
+    row.getCell(1).value = idx + 1;
+    row.getCell(2).value = String(item.itemCode || '');
+    row.getCell(3).value = item.itemName || '';
+    row.getCell(4).value = item.category || '';
+    row.getCell(5).value = item.ohQty || 0;
+    row.getCell(6).value = item.agedQty6MPlus || 0;
+    row.getCell(7).value = item.above1Yr || 0;
+    row.getCell(8).value = +(item.avgCost || 0);
+    row.getCell(9).value = +(item.agedValue || 0);
+    row.getCell(10).value = null; // PHYSICAL COUNT (Blank for write-in)
+    row.getCell(11).value = { formula: `IF(ISBLANK(J${rIdx}), "", J${rIdx}-E${rIdx})` }; // Variance
+    row.getCell(12).value = ''; // Shelf Expiry (Blank)
+
+    let defaultAction = '';
+    if ((item.above1Yr || 0) > 0) defaultAction = 'SSJ Return / Aging Recall';
+    else if ((item.agedValue || 0) > 200) defaultAction = 'Push Promo / Bundle Discount';
+    else defaultAction = 'FIFO Front Facing & Reposition';
+    row.getCell(13).value = defaultAction;
+
+    const isEven = idx % 2 === 0;
+    const bgArgb = isEven ? 'FFFFFFFF' : 'FFF8FAFC';
+
+    for (let c = 1; c <= 13; c++) {
+      const cell = row.getCell(c);
+      cell.font = { name: 'Arial', size: 9 };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+      };
+
+      if (c === 10) { // Physical Count column
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFBEB' } };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFD97706' } },
+          bottom: { style: 'thin', color: { argb: 'FFD97706' } },
+          left: { style: 'medium', color: { argb: 'FF0D9488' } },
+          right: { style: 'medium', color: { argb: 'FF0D9488' } }
+        };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      } else if (c === 11) { // Variance
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.numFmt = '+#,##0;-#,##0;0';
+        cell.font = { name: 'Arial', size: 9, bold: true };
+      } else if (c === 5 || c === 6 || c === 7) {
+        cell.alignment = { horizontal: 'right', vertical: 'middle' };
+        cell.numFmt = '#,##0';
+      } else if (c === 8 || c === 9) {
+        cell.alignment = { horizontal: 'right', vertical: 'middle' };
+        cell.numFmt = '#,##0.00';
+      } else if (c === 1 || c === 2) {
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      } else {
+        cell.alignment = { horizontal: 'left', vertical: 'middle' };
+      }
+
+      if (c !== 10) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgArgb } };
+      }
+    }
+  });
+
+  // Totals Row
+  const totalRowIdx = startDataRow + itemsToExport.length;
+  const totRow = ws.getRow(totalRowIdx);
+  totRow.height = 24;
+  totRow.getCell(3).value = `TOTAL: ${itemsToExport.length} SKUs`;
+  totRow.getCell(3).font = { name: 'Arial', size: 9.5, bold: true };
+
+  totRow.getCell(5).value = { formula: `SUM(E${startDataRow}:E${totalRowIdx - 1})` };
+  totRow.getCell(6).value = { formula: `SUM(F${startDataRow}:F${totalRowIdx - 1})` };
+  totRow.getCell(7).value = { formula: `SUM(G${startDataRow}:G${totalRowIdx - 1})` };
+  totRow.getCell(9).value = { formula: `SUM(I${startDataRow}:I${totalRowIdx - 1})` };
+  totRow.getCell(10).value = { formula: `SUM(J${startDataRow}:J${totalRowIdx - 1})` };
+  totRow.getCell(11).value = { formula: `SUM(K${startDataRow}:K${totalRowIdx - 1})` };
+
+  for (let c = 1; c <= 13; c++) {
+    const cell = totRow.getCell(c);
+    cell.font = { name: 'Arial', size: 9.5, bold: true };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+    cell.border = { top: { style: 'medium' }, bottom: { style: 'double' }, left: { style: 'thin' }, right: { style: 'thin' } };
+    if (c === 5 || c === 6 || c === 7 || c === 10) {
+      cell.alignment = { horizontal: 'right', vertical: 'middle' };
+      cell.numFmt = '#,##0';
+    } else if (c === 9) {
+      cell.alignment = { horizontal: 'right', vertical: 'middle' };
+      cell.numFmt = '#,##0.00';
+    } else if (c === 11) {
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.numFmt = '+#,##0;-#,##0;0';
+    }
+  }
+
+  // Export buffer & trigger browser download
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const cleanCat = categoryFilter.replace(/[^A-Za-z0-9_-]/g, '_');
+  a.download = `PMG_Stock_Count_${cleanCat}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  showToast(`✅ Exported Stock Count Sheet for ${categoryFilter} (${itemsToExport.length} SKUs)!`, 'success');
+}
 function createEmptyState() {
   return {
     meta: {
@@ -2439,7 +2822,17 @@ function renderTab4SkusAndAging() {
 
     <!-- 6-Month Stock Aging Breakdown by Category -->
     <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs mb-6">
-      <h3 class="text-sm font-extrabold text-slate-900 uppercase tracking-wide mb-3">📦 6-Month Non-Moving / Slow-Moving Stock Aging by Category (≥ 150 Days to &gt;1 Year)</h3>
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+        <div>
+          <h3 class="text-sm font-extrabold text-slate-900 uppercase tracking-wide">📦 6-Month Non-Moving / Slow-Moving Stock Aging by Category (≥ 150 Days to &gt;1 Year)</h3>
+          <p class="text-xs text-slate-500 mt-0.5">Click any category below to filter, or export a formatted Excel Stock Count Sheet for floor audit.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="exportAgingStockCountExcel('${escapeHtml(skuFilterState.category)}')" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer">
+            <span>📥 Export Stock Count Sheet (${escapeHtml(skuFilterState.category)})</span>
+          </button>
+        </div>
+      </div>
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
         ${agSum.byCategory.map(c => `
           <div onclick="updateSkuFilter('category', '${escapeHtml(c.category)}'); updateSkuFilter('mode', 'AGED_6M');" class="p-3 rounded-xl border border-slate-200 hover:border-indigo-400 bg-slate-50/70 cursor-pointer transition">
@@ -2464,12 +2857,15 @@ function renderTab4SkusAndAging() {
         <button onclick="updateSkuFilter('mode', 'AGED_6M')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition ${skuFilterState.mode === 'AGED_6M' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-900 hover:bg-amber-100'}">📦 In 6-Month Aging Report</button>
       </div>
 
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 flex-wrap">
         <select onchange="updateSkuFilter('category', this.value)" class="px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-bold bg-white text-slate-800">
           <option value="ALL" ${skuFilterState.category === 'ALL' ? 'selected' : ''}>All 12 Categories</option>
           ${ALL_12_CATEGORIES.map(c => `<option value="${c}" ${skuFilterState.category === c ? 'selected' : ''}>${c}</option>`).join('')}
         </select>
-        <input type="text" value="${escapeHtml(skuFilterState.search)}" oninput="updateSkuFilter('search', this.value)" placeholder="Search SKU code or item name..." class="px-3.5 py-1.5 rounded-xl border border-slate-300 text-xs w-64 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <input type="text" value="${escapeHtml(skuFilterState.search)}" oninput="updateSkuFilter('search', this.value)" placeholder="Search SKU code or item name..." class="px-3.5 py-1.5 rounded-xl border border-slate-300 text-xs w-52 sm:w-64 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <button onclick="exportAgingStockCountExcel(skuFilterState.category)" title="Export formatted Stock Count Excel for current category filter" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer">
+          <span>📊 Stock Count (.xlsx)</span>
+        </button>
       </div>
     </div>
 
@@ -2743,8 +3139,13 @@ function renderTaskListSection() {
           <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-100 text-emerald-800">30-Day Execution Tracker</span>
           <h3 class="text-base font-extrabold text-slate-900 mt-1">Approved Monthly Action Plan & Task List (${completed}/${total} Completed — ${pct}%)</h3>
           <p class="text-xs text-slate-500 mt-0.5">Track approved AI recommendations across Pharmacist (PIC), ABM, PRP, and PA roles to complete within 1 month.</p>
+          <div id="taskSyncStatusPill" class="text-[11px] text-teal-800 font-bold mt-1">☁️ Synced with Outlet & Mobile (${lastTasksCloudSyncTime ? lastTasksCloudSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Ready'})</div>
         </div>
         <div class="flex flex-wrap items-center gap-2">
+          <button id="btnSyncTasksCloud" onclick="syncTasksWithGoogleCloud(true)" class="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1.5 transition">
+            <span id="syncTasksCloudIcon">🔄</span>
+            <span id="syncTasksCloudText">Sync with Outlet</span>
+          </button>
           <button onclick="approveAllRecommendations()" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs cursor-pointer">+ Import All AI Recommendations</button>
           <button onclick="exportTasksCsv()" class="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold cursor-pointer">📥 Export CSV</button>
           <button onclick="window.print()" class="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold cursor-pointer">🖨️ Print</button>

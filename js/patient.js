@@ -14,6 +14,23 @@ function getTodayDateString(offsetDays = 0) {
   return `${y}-${m}-${day}`;
 }
 
+// Helper to normalize appointment time into clean HH:mm (24-hour format)
+function normalizeAppointmentTime(timeStr) {
+  if (!timeStr) return '10:00';
+  const s = String(timeStr).trim();
+  if (!s || s === '-' || s.toLowerCase() === 'undefined' || s.toLowerCase() === 'null') return '10:00';
+  const match = s.match(/(?:T|\s|^)(\d{1,2}):(\d{2})(?::\d{2})?(?:\s*(AM|PM))?/i);
+  if (match) {
+    let hour = parseInt(match[1], 10);
+    const minute = match[2];
+    const ampm = match[3] ? match[3].toUpperCase() : null;
+    if (ampm === 'PM' && hour < 12) hour += 12;
+    if (ampm === 'AM' && hour === 12) hour = 0;
+    return String(hour).padStart(2, '0') + ':' + minute;
+  }
+  return s;
+}
+
 // Helper to extract numeric value from clinical input that may contain <, >, <=, >= symbols
 function extractNumericVal(val) {
   if (val == null) return null;
@@ -165,71 +182,6 @@ const DEFAULT_PATIENTS_DATA = [
     nextTcaDate: '2026-10-16',
     nextTcaPurpose: 'In-Person Consultation & Health Screening',
     nextTcaRecordedBy: 'William Chai Yee Sian (Pharmacist)'
-  },
-  {
-    id: 'PT-1003',
-    name: 'Alexander Anak Stephen',
-    ic: '811105-13-6113',
-    phone: '+60198547210',
-    gender: 'Male',
-    age: 45,
-    race: 'Iban / Bidayuh',
-    language: 'English',
-    branch: 'Kota Sentosa',
-    conditions: ['Hyperuricemia / Gout'],
-    allergies: 'Aspirin',
-    notes: 'Recurrent gout flare-ups on 1st MTP joint.',
-    createdAt: getTodayDateString(-45),
-    encounters: [
-      {
-        id: 'ENC-103',
-        date: getTodayDateString(-15),
-        recordedBy: 'Kenix Ling (Pharmacist)',
-        chiefComplaint: 'Right big toe swelling and severe throbbing pain',
-        hpi: 'Pain began 2 nights ago after seafood dinner. Score 8/10. Unable to wear tight shoes.',
-        vitals: {
-          bpSys: 122,
-          bpDia: 78,
-          pulse: 72,
-          spo2: 99,
-          weight: 84,
-          height: 172,
-          bmi: 28.4
-        },
-        lipidPanel: { tc: 4.8, tg: 1.5, hdl: 1.3, ldl: 2.8, ai: 2.69, rChd: 3.69 },
-        liverPanel: { ast: 24, alt: 26, alb: 44 },
-        kidneyPanel: { ua: 495, creatinine: 92, urea: 5.1, egfr: 88 },
-        glycemicHeme: { glucose: 5.4, glucoseType: 'Fasting', hba1c: null, hb: 15.0, hct: 45.0 },
-        specialtyScans: {},
-        customTests: [],
-        preDiagnostic: 'Acute Gouty Arthritis flare with underlying chronic Hyperuricemia (UA 495 umol/L).',
-        planMedications: 'Colchicine 500mcg for acute flare, continue Allopurinol 100mg after acute phase settles.',
-        planSupplements: 'Tart Cherry extract + Celery seed extract 1 cap BD + Vitamin C 1000mg.',
-        planCounselling: 'Strict low-purine diet (avoid beer, shellfish, organ meats). Drink 3L water daily.',
-        referral: 'Return for Uric Acid POCT in 2 weeks.',
-        attachedDocs: []
-      }
-    ],
-    medications: [
-      {
-        id: 'MED-105',
-        name: 'Allopurinol 100mg',
-        dosage: '1 tab OD (After food)',
-        lastDispensed: getTodayDateString(-15),
-        supplyDays: 30,
-        nextRefillDate: getTodayDateString(15)
-      }
-    ],
-    appointments: [
-      {
-        id: 'APT-103',
-        date: getTodayDateString(0),
-        time: '15:00',
-        purpose: 'Uric Acid POCT & Joint Review',
-        status: 'Scheduled',
-        notes: 'Check UA level and assess joint recovery.'
-      }
-    ]
   },
   {
     id: 'PT-130412',
@@ -1182,11 +1134,13 @@ function findPatientById(patientId) {
 }
 
 function loadPatientsData() {
-  // Permanently tombstone test patients Tan Ah Kow and Hajah Fatimah Binti Osman
+  // Permanently tombstone test patients Tan Ah Kow, Hajah Fatimah Binti Osman, and Alexander Anak Stephen
   addDeletedPatientRecord('PT-1001', '640512-13-5431', '+60168889922', 'Tan Ah Kow');
   addDeletedPatientRecord('PT-1002', '680824-13-5890', '+60138012345', 'Hajah Fatimah Binti Osman');
+  addDeletedPatientRecord('PT-1003', '811105-13-6113', '+60198547210', 'Alexander Anak Stephen');
   addDeletedPatientRecord('tan ah kow');
   addDeletedPatientRecord('hajah fatimah binti osman');
+  addDeletedPatientRecord('alexander anak stephen');
 
   // Explicitly un-tombstone recovered patient Lai Ling Fah so she is never filtered out or blocked by sync
   removeDeletedPatientRecord('PT-135720', '701206-13-5720', '+60198472986', 'LAI LING FAH');
@@ -1243,10 +1197,20 @@ function loadPatientsData() {
       if (!p) return false;
       const id = String(p.id || '').toLowerCase().trim();
       const name = String(p.name || '').toLowerCase().trim();
-      if (id === 'pt-1001' || id === 'pt-1002') return false;
-      if (name === 'tan ah kow' || name === 'hajah fatimah binti osman') return false;
+      if (id === 'pt-1001' || id === 'pt-1002' || id === 'pt-1003') return false;
+      if (name === 'tan ah kow' || name === 'hajah fatimah binti osman' || name.includes('alexander anak stephen')) return false;
       if (isPatientDeleted(p.id, p.ic, p.phone, p.name)) return false;
       return true;
+    });
+
+    // Sanitize appointment times and purge obsolete mock appointment APT-103
+    patientsData.forEach(p => {
+      if (Array.isArray(p.appointments)) {
+        p.appointments = p.appointments.filter(a => a.id !== 'APT-103');
+        p.appointments.forEach(a => {
+          if (a.time) a.time = normalizeAppointmentTime(a.time);
+        });
+      }
     });
 
     if (patientsData.length !== prevLen) {
@@ -1694,7 +1658,7 @@ function renderTodayQueue(items) {
 
     return `
       <tr class="hover:bg-blue-50/40 transition border-b border-gray-100">
-        <td class="px-4 py-3 font-semibold text-gray-900">${apt.time || '—'}</td>
+        <td class="px-4 py-3 font-semibold text-gray-900">${normalizeAppointmentTime(apt.time) || '—'}</td>
         <td class="px-4 py-3">
           <button onclick="viewPatientProfile('${p.id}')" class="text-blue-700 hover:underline font-bold text-left block">
             ${p.name}
@@ -1773,7 +1737,7 @@ function renderUpcomingQueue(items) {
 
     return `
       <tr class="hover:bg-blue-50/40 transition border-b border-gray-100">
-        <td class="px-4 py-3 font-semibold text-gray-800">${apt.date} <span class="text-xs text-gray-400">(${apt.time || '—'})</span></td>
+        <td class="px-4 py-3 font-semibold text-gray-800">${apt.date} <span class="text-xs text-gray-400">(${normalizeAppointmentTime(apt.time) || '—'})</span></td>
         <td class="px-4 py-3">
           <button onclick="viewPatientProfile('${p.id}')" class="text-blue-700 hover:underline font-bold text-left block">
             ${p.name}
@@ -2628,7 +2592,7 @@ function renderPharmacistScheduleTab(patientsList) {
               </div>
               <div class="text-indigo-700 font-bold text-xs mt-1 flex items-center gap-1.5">
                 <i class="fa-regular fa-clock text-[11px]"></i>
-                <span>${escHtml(apt.time || '10:00')}</span>
+                <span>${escHtml(normalizeAppointmentTime(apt.time) || '10:00')}</span>
               </div>
             </td>
 
@@ -2974,14 +2938,15 @@ function sendDirectAppointmentReminderWa(patientId, appointmentId) {
   const bookingUrl = typeof getPatientSelfBookingUrl === 'function' ? getPatientSelfBookingUrl(p) : window.location.href;
 
   const lang = typeof getPatientLanguageByRace === 'function' ? getPatientLanguageByRace(p) : 'Chinese';
+  const aptTime = normalizeAppointmentTime(apt.time) || '10:00';
   let msg = '';
 
   if (lang === 'Chinese') {
-    msg = `您好 *${p.name}*，这里是 *PMG Pharmacy (${branchName})* 的温馨预约提醒。\n\n您在我们药剂行已预订了健康咨询/续药服务：\n📅 *预约日期：* ${apt.date}\n⏰ *预约时间：* ${apt.time || '10:00'}\n👨‍⚕️ *主理药剂师：* ${dutyPharm}\n\n期待您的到来！如需更改时间或查看预约详情，也可使用您的专属链接：\n🔗 ${bookingUrl}\n\n祝您身体健康！\n*PMG Pharmacy*`;
+    msg = `您好 *${p.name}*，这里是 *PMG Pharmacy (${branchName})* 的温馨预约提醒。\n\n您在我们药剂行已预订了健康咨询/续药服务：\n📅 *预约日期：* ${apt.date}\n⏰ *预约时间：* ${aptTime}\n👨‍⚕️ *主理药剂师：* ${dutyPharm}\n\n期待您的到来！如需更改时间或查看预约详情，也可使用您的专属链接：\n🔗 ${bookingUrl}\n\n祝您身体健康！\n*PMG Pharmacy*`;
   } else if (lang === 'Malay') {
-    msg = `Salam sejahtera *${p.name}*, ini adalah peringatan mesra temujanji daripada *PMG Pharmacy (${branchName})*.\n\nAnda mempunyai temujanji rundingan kesihatan/ulangan ubat yang telah disahkan:\n📅 *Tarikh:* ${apt.date}\n⏰ *Masa:* ${apt.time || '10:00'}\n👨‍⚕️ *Ahli Farmasi Bertugas:* ${dutyPharm}\n\nKami menantikan kedatangan anda. Jika perlu membuat sebarang penukaran, anda juga boleh menggunakan pautan peribadi anda di sini:\n🔗 ${bookingUrl}\n\nSemoga sihat sejahtera,\n*PMG Pharmacy*`;
+    msg = `Salam sejahtera *${p.name}*, ini adalah peringatan mesra temujanji daripada *PMG Pharmacy (${branchName})*.\n\nAnda mempunyai temujanji rundingan kesihatan/ulangan ubat yang telah disahkan:\n📅 *Tarikh:* ${apt.date}\n⏰ *Masa:* ${aptTime}\n👨‍⚕️ *Ahli Farmasi Bertugas:* ${dutyPharm}\n\nKami menantikan kedatangan anda. Jika perlu membuat sebarang penukaran, anda juga boleh menggunakan pautan peribadi anda di sini:\n🔗 ${bookingUrl}\n\nSemoga sihat sejahtera,\n*PMG Pharmacy*`;
   } else {
-    msg = `Hello *${p.name}*, this is a friendly appointment reminder from *PMG Pharmacy (${branchName})*.\n\nYou have a confirmed consultation/refill appointment scheduled:\n📅 *Date:* ${apt.date}\n⏰ *Time:* ${apt.time || '10:00'}\n👨‍⚕️ *Duty Pharmacist:* ${dutyPharm}\n\nWe look forward to seeing you! If you need to make changes, you can also access your personal booking portal here:\n🔗 ${bookingUrl}\n\nBest regards,\n*PMG Pharmacy*`;
+    msg = `Hello *${p.name}*, this is a friendly appointment reminder from *PMG Pharmacy (${branchName})*.\n\nYou have a confirmed consultation/refill appointment scheduled:\n📅 *Date:* ${apt.date}\n⏰ *Time:* ${aptTime}\n👨‍⚕️ *Duty Pharmacist:* ${dutyPharm}\n\nWe look forward to seeing you! If you need to make changes, you can also access your personal booking portal here:\n🔗 ${bookingUrl}\n\nBest regards,\n*PMG Pharmacy*`;
   }
 
   const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
@@ -6615,7 +6580,7 @@ function renderProfileApts(p) {
 
     return `
       <tr class="border-b border-gray-100 hover:bg-gray-50 text-sm">
-        <td class="px-4 py-3.5 font-bold text-gray-900">${apt.date} <span class="text-xs text-gray-500 font-normal">(${apt.time || '—'})</span></td>
+        <td class="px-4 py-3.5 font-bold text-gray-900">${apt.date} <span class="text-xs text-gray-500 font-normal">(${normalizeAppointmentTime(apt.time) || '—'})</span></td>
         <td class="px-4 py-3.5 font-semibold text-gray-900">
           ${escHtml(apt.purpose || 'Check-up')}
           ${apt.pharmacist ? `<span class="inline-flex items-center gap-1 bg-purple-50 border border-purple-200 text-purple-700 text-xs font-bold px-2 py-0.5 rounded-lg ml-1.5"><i class="fa-solid fa-user-doctor text-[10px]"></i> ${escHtml(apt.pharmacist)}</span>` : ''}
@@ -10148,6 +10113,7 @@ function importSingleBooking(booking, showNotification = false) {
     console.log(`[PMG Patient] Skipped booking for deleted patient: ${booking.patientName}`);
     return false;
   }
+  if (booking.time) booking.time = normalizeAppointmentTime(booking.time);
   const ref = booking.ref || booking.id || ('PMG-BK-' + Math.floor(100000 + Math.random() * 900000));
   booking.ref = ref;
   booking.id = ref;
@@ -10195,7 +10161,7 @@ function importSingleBooking(booking, showNotification = false) {
   const aptObj = {
     id: ref,
     date: booking.date,
-    time: booking.time,
+    time: normalizeAppointmentTime(booking.time),
     service: booking.service || booking.purpose || 'In-Person Consultation & Health Screening',
     purpose: booking.purpose || booking.service || 'In-Person Consultation & Health Screening',
     pharmacist: booking.pharmacist || 'William Chai (Pharmacist)',
@@ -10291,6 +10257,7 @@ async function syncOnlineBookingsFromCloud(showPrompt = false) {
             if (!a.id || String(a.id).trim() === '') return;
             if (a.status === 'DELETED' || String(a.status).toUpperCase() === 'DELETED') return;
             if (isPatientDeleted(a.patientId, a.patientIc, a.patientPhone, a.patientName || a.name)) return;
+            if (a.time) a.time = normalizeAppointmentTime(a.time);
             allBookingsMap.set(a.id, a);
           });
         }
@@ -10310,6 +10277,7 @@ async function syncOnlineBookingsFromCloud(showPrompt = false) {
             if (!key || String(key).trim() === '') return;
             if (b.status === 'DELETED' || String(b.status).toUpperCase() === 'DELETED') return;
             if (isPatientDeleted(b.patientId || b.id || b.ref, b.patientIc, b.patientPhone, b.patientName || b.name || b.customerName)) return;
+            if (b.time) b.time = normalizeAppointmentTime(b.time);
 
             if (!allBookingsMap.has(key)) {
               allBookingsMap.set(key, b);
