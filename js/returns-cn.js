@@ -1499,6 +1499,11 @@
     if (activeReturnForDo && activeReturnForDo.id === savedId) {
       openPrintDoModal(savedId);
     }
+    // If carton labels modal was viewing this return, refresh it
+    if (activeReturnForLabels && activeReturnForLabels.id === savedId) {
+      activeReturnForLabels = activeReturnForEdit;
+      renderCartonLabelsHtml(activeCartonTemplate);
+    }
 
     if (typeof showPmgToast === 'function') {
       showPmgToast(`✅ Return ${doNumber} updated successfully!`, 'success');
@@ -1571,8 +1576,8 @@
       detectedDoTemplate = 'VENDOR_STANDARD';
     }
     const doCfg = SSJ_TEMPLATES_CONFIG[detectedDoTemplate] || SSJ_TEMPLATES_CONFIG.SSJ_NORMAL;
-    const targetDoTo = doCfg.to || (detectedDoTemplate === 'INTERBRANCH' ? (ret.destCompany && !ret.destCompany.includes('SSJ') ? ret.destCompany : 'PMG PHARMACY (RECEIVING BRANCH)') : (ret.destCompany || 'SSJ PHARMA SDN BHD (SCD)'));
-    const targetDoAttn = doCfg.attn || (detectedDoTemplate === 'INTERBRANCH' ? (ret.destAttn || 'BRANCH PHARMACIST / PIC') : (ret.destAttn || 'MR DOUGLAS'));
+    const targetDoTo = (ret.destCompany && ret.destCompany.trim()) ? ret.destCompany.trim() : (detectedDoTemplate === 'INTERBRANCH' ? 'PMG PHARMACY (RECEIVING BRANCH)' : (doCfg.to || 'SSJ PHARMA SDN BHD (SCD)'));
+    const targetDoAttn = (ret.destAttn && ret.destAttn.trim()) ? ret.destAttn.trim() : (detectedDoTemplate === 'INTERBRANCH' ? 'BRANCH PHARMACIST / PIC' : (doCfg.attn || 'MR DOUGLAS'));
 
     container.innerHTML = `
       <div id="pmgOfficialDoPrintArea" style="font-family: Arial, sans-serif; color: #000; background: #fff; padding: 24px; max-width: 800px; margin: 0 auto; line-height: 1.35;">
@@ -2003,8 +2008,8 @@
       } else {
         // Official SSJ Templates: SSJ_NORMAL, SSJ_AGING, SSJ_RECALL, INTERBRANCH
         const cfg = SSJ_TEMPLATES_CONFIG[tpl] || SSJ_TEMPLATES_CONFIG.SSJ_NORMAL;
-        const targetTo = cfg.to || ret.destCompany || 'SSJ PHARMA SDN BHD (SCD)';
-        const targetAttn = cfg.attn || ret.destAttn || (tpl === 'INTERBRANCH' ? 'BRANCH PHARMACIST / PIC' : 'MR DOUGLAS');
+        const targetTo = (ret.destCompany && ret.destCompany.trim()) ? ret.destCompany.trim() : (tpl === 'INTERBRANCH' ? 'PMG PHARMACY (RECEIVING BRANCH)' : (cfg.to || 'SSJ PHARMA SDN BHD (SCD)'));
+        const targetAttn = (ret.destAttn && ret.destAttn.trim()) ? ret.destAttn.trim() : (tpl === 'INTERBRANCH' ? 'BRANCH PHARMACIST / PIC' : (cfg.attn || 'MR DOUGLAS'));
 
         labelsHtml += `
           <div class="carton-shipping-box" style="page-break-inside: avoid !important; break-inside: avoid !important; page-break-after: always; break-after: page; width: 100%; max-width: 610px; margin: 0 auto 16px auto; border: 3px solid #000; padding: 12px 14px; font-family: Arial, sans-serif; background: #fff; box-sizing: border-box; box-shadow: 0 3px 8px rgba(0,0,0,0.06);">
@@ -2333,8 +2338,8 @@
 
     const tpl = templateKey || activeCartonTemplate || defaultTpl;
     const cfg = SSJ_TEMPLATES_CONFIG[tpl] || SSJ_TEMPLATES_CONFIG.SSJ_NORMAL;
-    const targetTo = cfg.to || (tpl === 'INTERBRANCH' ? (ret.destCompany && !ret.destCompany.includes('SSJ') ? ret.destCompany : 'PMG PHARMACY (RECEIVING BRANCH)') : (ret.destCompany || 'SSJ PHARMA SDN BHD (SCD)'));
-    const targetAttn = cfg.attn || (tpl === 'INTERBRANCH' ? (ret.destAttn || 'BRANCH PHARMACIST / PIC') : (ret.destAttn || 'MR DOUGLAS'));
+    const targetTo = (ret.destCompany && ret.destCompany.trim()) ? ret.destCompany.trim() : (tpl === 'INTERBRANCH' ? 'PMG PHARMACY (RECEIVING BRANCH)' : (cfg.to || 'SSJ PHARMA SDN BHD (SCD)'));
+    const targetAttn = (ret.destAttn && ret.destAttn.trim()) ? ret.destAttn.trim() : (tpl === 'INTERBRANCH' ? 'BRANCH PHARMACIST / PIC' : (cfg.attn || 'MR DOUGLAS'));
     const senderFrom = ret.companyName || ('PMG PHARMACY (' + (ret.branch || 'BRANCH') + ')');
 
     const wb = new ExcelJS.Workbook();
