@@ -2502,15 +2502,15 @@ function renderPharmacistScheduleTab(patientsList) {
   if (kpiToEl) kpiToEl.textContent = kpiToday;
   if (kpiPeEl) kpiPeEl.textContent = kpiPending;
   if (kpiCoEl) kpiCoEl.textContent = kpiCompleted;
-  if (badgeCountEl) badgeCountEl.textContent = kpiUpcoming;
-  if (countBookedBadge) countBookedBadge.textContent = kpiUpcoming;
+  if (badgeCountEl) badgeCountEl.textContent = allBookings.length > 0 ? (kpiUpcoming > 0 ? `${allBookings.length} (${kpiUpcoming})` : allBookings.length) : 0;
+  if (countBookedBadge) countBookedBadge.textContent = allBookings.length > 0 ? (kpiUpcoming > 0 ? `${allBookings.length} (${kpiUpcoming} act)` : allBookings.length) : 0;
 
   // Filter Booked Appointments
   if (tbodyBooked) {
     const isPharmFilterVisible = pharmFilterEl && !pharmFilterEl.parentElement?.classList.contains('hidden') && !pharmFilterEl.classList.contains('hidden');
     const selPharm = (isPharmFilterVisible && pharmFilterEl.value) ? pharmFilterEl.value.trim().toLowerCase() : '';
-    const selTimeframe = document.getElementById('schedFilterTimeframe')?.value || 'upcoming';
-    const selStatus = document.getElementById('schedFilterStatus')?.value || 'active';
+    const selTimeframe = document.getElementById('schedFilterTimeframe')?.value || 'all';
+    const selStatus = document.getElementById('schedFilterStatus')?.value || 'all';
     const query = (document.getElementById('schedSearchInput')?.value || '').toLowerCase().trim();
 
     const filteredBookings = allBookings.filter(({ patient: p, appointment: apt }) => {
@@ -2546,9 +2546,13 @@ function renderPharmacistScheduleTab(patientsList) {
     });
 
     filteredBookings.sort((a, b) => {
-      const cmpDate = (a.appointment.date || '').localeCompare(b.appointment.date || '');
+      const aIsUpcoming = (a.appointment.status === 'Scheduled' || a.appointment.status === 'Pending Approval') && a.appointment.date >= todayStr;
+      const bIsUpcoming = (b.appointment.status === 'Scheduled' || b.appointment.status === 'Pending Approval') && b.appointment.date >= todayStr;
+      if (aIsUpcoming && !bIsUpcoming) return -1;
+      if (!aIsUpcoming && bIsUpcoming) return 1;
+      const cmpDate = (b.appointment.date || '').localeCompare(a.appointment.date || '');
       if (cmpDate !== 0) return cmpDate;
-      return (a.appointment.time || '').localeCompare(b.appointment.time || '');
+      return (b.appointment.time || '').localeCompare(a.appointment.time || '');
     });
 
     if (!filteredBookings.length) {
@@ -2760,8 +2764,8 @@ function renderPharmacistScheduleTab(patientsList) {
 
   // Render Reminders Table
   if (tbodyRemind) {
-    const selRTimeframe = document.getElementById('remindFilterTimeframe')?.value || 'upcoming';
-    const selRBooking = document.getElementById('remindFilterBookingStatus')?.value || 'unbooked';
+    const selRTimeframe = document.getElementById('remindFilterTimeframe')?.value || 'all';
+    const selRBooking = document.getElementById('remindFilterBookingStatus')?.value || 'all';
     const rQuery = (document.getElementById('remindSearchInput')?.value || '').toLowerCase().trim();
 
     const filteredReminders = reminderItems.filter(item => {
@@ -2793,7 +2797,13 @@ function renderPharmacistScheduleTab(patientsList) {
       return true;
     });
 
-    filteredReminders.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    filteredReminders.sort((a, b) => {
+      const aOverdue = a.date < todayStr;
+      const bOverdue = b.date < todayStr;
+      if (aOverdue && !bOverdue) return -1;
+      if (!aOverdue && bOverdue) return 1;
+      return (b.date || '').localeCompare(a.date || '');
+    });
 
     if (!filteredReminders.length) {
       tbodyRemind.innerHTML = `

@@ -417,17 +417,17 @@
               <div class="flex items-center gap-1.5">
                 <label class="font-bold text-gray-700 whitespace-nowrap"><i class="fa-regular fa-calendar text-indigo-600 mr-1"></i> Timeframe:</label>
                 <select id="schedFilterTimeframe" onchange="renderPharmacistScheduleTab()" class="border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-medium outline-none text-xs">
-                  <option value="upcoming" selected>Upcoming (From Today)</option>
+                  <option value="all" selected>All Dates (Upcoming & Past)</option>
+                  <option value="upcoming">Upcoming (From Today)</option>
                   <option value="today">Today Only</option>
                   <option value="next7">Next 7 Days</option>
-                  <option value="all">All Dates (Including Past)</option>
                 </select>
               </div>
               <div class="flex items-center gap-1.5">
                 <label class="font-bold text-gray-700 whitespace-nowrap"><i class="fa-solid fa-list-check text-indigo-600 mr-1"></i> Status:</label>
                 <select id="schedFilterStatus" onchange="renderPharmacistScheduleTab()" class="border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-medium outline-none text-xs">
-                  <option value="active" selected>Active (Scheduled & Pending)</option>
-                  <option value="all">All Statuses</option>
+                  <option value="all" selected>All Statuses</option>
+                  <option value="active">Active (Scheduled & Pending Only)</option>
                   <option value="Scheduled">Scheduled Only</option>
                   <option value="Pending Approval">Pending Approval Only</option>
                   <option value="Completed">Completed Only</option>
@@ -504,18 +504,18 @@
               <div class="flex items-center gap-1.5">
                 <label class="font-bold text-gray-700 whitespace-nowrap"><i class="fa-regular fa-calendar text-amber-600 mr-1"></i> Timeframe:</label>
                 <select id="remindFilterTimeframe" onchange="renderPharmacistScheduleTab()" class="border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-medium outline-none text-xs">
-                  <option value="upcoming" selected>Upcoming Reminders (From Today)</option>
+                  <option value="all" selected>All Reminder Dates (Active & Overdue)</option>
+                  <option value="overdue">Overdue Reminders Only</option>
+                  <option value="upcoming">Upcoming Reminders (From Today)</option>
                   <option value="today">Due Today Only</option>
                   <option value="next7">Due in Next 7 Days</option>
-                  <option value="overdue">Overdue Reminders Only</option>
-                  <option value="all">All Reminder Dates</option>
                 </select>
               </div>
               <div class="flex items-center gap-1.5">
                 <label class="font-bold text-gray-700 whitespace-nowrap"><i class="fa-solid fa-filter text-amber-600 mr-1"></i> Booking Status:</label>
                 <select id="remindFilterBookingStatus" onchange="renderPharmacistScheduleTab()" class="border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-medium outline-none text-xs">
-                  <option value="unbooked" selected>Needs Booking (No Slot Yet)</option>
-                  <option value="all">All Reminder Records</option>
+                  <option value="all" selected>All Reminder Records (Booked & Needs Booking)</option>
+                  <option value="unbooked">Needs Booking (No Slot Yet)</option>
                   <option value="booked">Already Booked Slot</option>
                 </select>
               </div>
