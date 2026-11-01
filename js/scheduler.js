@@ -981,7 +981,9 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
   });
 
   if (isNov2026OrLater && branchCode === 'KS01') {
-    currentTeammates = currentTeammates.filter(t => t.empNo !== 'PMG04324' && (t.nickname || '').toUpperCase() !== 'MEYLINA');
+    const departedEmpNos = new Set(['PMG00723', 'PMG02963', 'PMG04324', 'PMG03062']);
+    const departedNicks = new Set(['TING', 'KENIX', 'MEYLINA', 'JANET']);
+    currentTeammates = currentTeammates.filter(t => !departedEmpNos.has(t.empNo) && !departedNicks.has((t.nickname || '').toUpperCase()));
   }
   saveLocalPreferences(branchCode, currentTeammates);
   renderTeammatesTable();
@@ -1002,7 +1004,9 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
           if (applyCloudPreferences(bCode, { data: cloudPrefs, lastUpdated: cloudUpdated })) {
             currentTeammates = cloudPrefs;
             if (isNov2026OrLater && bCode === 'KS01') {
-              currentTeammates = currentTeammates.filter(t => t.empNo !== 'PMG04324' && (t.nickname || '').toUpperCase() !== 'MEYLINA');
+              const departedEmpNos = new Set(['PMG00723', 'PMG02963', 'PMG04324', 'PMG03062']);
+              const departedNicks = new Set(['TING', 'KENIX', 'MEYLINA', 'JANET']);
+              currentTeammates = currentTeammates.filter(t => !departedEmpNos.has(t.empNo) && !departedNicks.has((t.nickname || '').toUpperCase()));
             }
             renderTeammatesTable();
             appliedCloud = true;
@@ -1027,7 +1031,9 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
             if (applyCloudPreferences(bCode, { data: cloudPrefs, lastUpdated: cloudUpdated })) {
               currentTeammates = cloudPrefs;
               if (isNov2026OrLater && bCode === 'KS01') {
-                currentTeammates = currentTeammates.filter(t => t.empNo !== 'PMG04324' && (t.nickname || '').toUpperCase() !== 'MEYLINA');
+                const departedEmpNos = new Set(['PMG00723', 'PMG02963', 'PMG04324', 'PMG03062']);
+                const departedNicks = new Set(['TING', 'KENIX', 'MEYLINA', 'JANET']);
+                currentTeammates = currentTeammates.filter(t => !departedEmpNos.has(t.empNo) && !departedNicks.has((t.nickname || '').toUpperCase()));
               }
               renderTeammatesTable();
               console.log(`[PMG Scheduler] Loaded preferences from Google Apps Script for ${bCode}`);
@@ -1057,7 +1063,7 @@ function applyCloudPreferences(branchCode, cloudPayload) {
   const bCode = (branchCode || 'KS01').toUpperCase();
   const localTs = localStorage.getItem(`pmg_staff_preferences_v2_${bCode}_updatedAt`);
   const cloudTs = cloudPayload.lastUpdated;
-  const data = cloudPayload.data || cloudPayload.preferences;
+  let data = cloudPayload.data || cloudPayload.preferences;
 
   if (localTs && (!cloudTs || new Date(cloudTs) <= new Date(localTs))) {
     console.log(`[Sync] Local preferences are newer or identical. Skipping cloud overwrite.`);
@@ -1065,6 +1071,12 @@ function applyCloudPreferences(branchCode, cloudPayload) {
   }
 
   if (!data || !Array.isArray(data) || data.length === 0) return false;
+
+  if (bCode === 'KS01') {
+    const departedEmpNos = new Set(['PMG00723', 'PMG02963', 'PMG04324', 'PMG03062']);
+    const departedNicks = new Set(['TING', 'KENIX', 'MEYLINA', 'JANET']);
+    data = data.filter(t => !departedEmpNos.has(t.empNo) && !departedNicks.has((t.nickname || '').toUpperCase()));
+  }
 
   localStorage.setItem(`pmg_staff_preferences_v2_${bCode}`, JSON.stringify(data));
   localStorage.setItem(`pmg_staff_preferences_v2_${bCode}_updatedAt`, cloudTs || new Date().toISOString());
@@ -1756,6 +1768,7 @@ function matchesTeammatePresets(pattern, dayPrefs, weekDays) {
 // ─── POST-PROCESS SCHEDULE CONSTRAINTS ────────────────────────────────────────
 function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks) {
   if (!schedule) return;
+  purgeResignedStaffFromTimetable(schedule);
   const isNov2026OrLater = (year > 2026) || (year === 2026 && month >= 11);
   if (!currentTeammates || currentTeammates.length === 0) {
     loadTeammates(branchVal, `${year}-${String(month).padStart(2, '0')}`, true);
@@ -3809,7 +3822,7 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
       // Gazetted Public Holiday handling:
       // William is PH (official rest day).
       // Rotating staff apply replacement leave to maintain floor >= 3.
-      // Provisional Registered Pharmacists (Kenix & Christina) assume rest day (PH) too, unless needed to maintain floor >= 3.
+      // Provisional Registered Pharmacist (Christina Lee) assumes rest day (PH) too, unless needed to maintain floor >= 3.
       if (HOLIDAYS_2026_SARAWAK[d.date]) {
         const prpEmpNos = currentTeammates
           .filter(t => t.position && t.position.toLowerCase().includes('provisional'))

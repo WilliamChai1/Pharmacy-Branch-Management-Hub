@@ -49,12 +49,10 @@ let USERS = [
   { username: 'am',          password: '9999',   branch: 'ALL',          role: 'AM',         displayName: 'Area Manager',                         empNo: 'PMG00831' },
 
   // ── Branch Managers & Assistant Branch Managers (Inventory + Roster only) ──
-  { username: 'Ting',        password: '920429', branch: 'Kota Sentosa', role: 'BM',         displayName: 'Ting Kwang Yu (BM)',           empNo: 'PMG00723' },
   { username: 'Louna',       password: '100711', branch: 'Kota Sentosa', role: 'ABM',        displayName: 'Haniesha Louna (ABM)',         empNo: 'PMG01294' },
 
   // ── Pharmacists (Inventory + Roster only; Patient Care remains AM-only for now) ──
   { username: 'Aylwinchai',  password: '446688', branch: 'Kota Sentosa', role: 'Pharmacist', displayName: 'William Chai Yee Sian (Pharmacist)',  empNo: 'PMG00831' },
-  { username: 'Kenix',       password: '335577', branch: 'Kota Sentosa', role: 'Pharmacist', displayName: 'Kenix Ling (Pharmacist)',     empNo: 'PMG02963' },
   { username: 'amychai',     password: '123456', branch: 'Matang Jaya',  role: 'Pharmacist', displayName: 'Amy Chai (Pharmacist)',        empNo: ''         },
 
   // ── Generic Branch Accounts ──
@@ -81,14 +79,12 @@ let USERS = [
 // Meylina Elvy Anak Joswai (PMG04324) has resigned — removed 01 Nov 2026.
 // Vanessa Anak Blaise (PMG04331) joined PMG Kota Sentosa on 1 Nov 2026.
 let STAFF_MAP = [
-  // ── Kota Sentosa (KS01) — active staff only ──
-  { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'TING',       empNo: 'PMG00723', empName: 'TING KWANG YU'                   },
+  // ── Kota Sentosa (KS01) — active staff only (Ting, Kenix, Meylina, Janet departed) ──
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'WILLIAM',    empNo: 'PMG00831', empName: 'CHAI YEE SIAN'                   },
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'LOUNA',      empNo: 'PMG01294', empName: 'HANIESHA LOUNA ANAK DAGENG'       },
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'FIONA',      empNo: 'PMG01780', empName: 'FIONA FIENA ANAK JAMES'           },
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'NURHAFIZAH', empNo: 'PMG02070', empName: 'NURHAFIZAH BINTI PAULI'           },
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'PENNY',      empNo: 'PMG02694', empName: 'JONG PEI CHOO'                   },
-  { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'KENIX',      empNo: 'PMG02963', empName: 'KENIX LING WANG YIING'            },
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'FARIZIN',    empNo: 'PMG03375', empName: 'MUHAMMAD NUR FARIZIN BIN ABDULLAH'},
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'CHRISTINA',  empNo: 'PMG03033', empName: 'CHRISTINA LEE YING YING'          },
   { branch: 'Kota Sentosa', branchCode: 'KS01', nickname: 'VANESSA',    empNo: 'PMG04331', empName: 'VANESSA ANAK BLAISE'              },
@@ -139,8 +135,16 @@ async function loadLiveSheetData() {
       if (resp.ok) {
         const text   = await resp.text();
         const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+        const departedEmpNos = new Set(['PMG00723', 'PMG02963', 'PMG04324', 'PMG03062', 'PMG03631', 'PMG03532']);
+        const departedNicks = new Set(['TING', 'KENIX', 'MEYLINA', 'JANET', 'ROSELIN', 'JAMIE']);
         const liveStaff = parsed.data
-          .filter(row => row.Nickname && row.EmpNo)
+          .filter(row => {
+            if (!row.Nickname || !row.EmpNo) return false;
+            const empNo = String(row.EmpNo).trim();
+            const nick = String(row.Nickname).trim().toUpperCase();
+            if (departedEmpNos.has(empNo) || departedNicks.has(nick)) return false;
+            return true;
+          })
           .map(row => {
             const branchName = String(row.BranchName || '').trim();
             const bObj       = BRANCHES.find(b => b.name === branchName || b.code === branchName);
