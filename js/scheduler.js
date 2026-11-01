@@ -73,6 +73,95 @@ function getSavedTimetableKey(branchCode, monthStr) {
   return `pmg_saved_timetable_${branchCode || 'KS01'}_${monthStr}`;
 }
 
+// ─── RESIGNED STAFF SANITIZATION FOR SCHEDULES (NOV 2026 ONWARDS) ────────────
+function purgeResignedStaffFromTimetable(scheduleData) {
+  if (!scheduleData || !scheduleData.days || !scheduleData.days.length) return false;
+  const isNov2026OrLater = !scheduleData.month || scheduleData.month >= '2026-11';
+  if (!isNov2026OrLater) return false;
+
+  const resignedEmpNos = new Set(['PMG03062', 'PMG00723', 'PMG02963', 'PMG04324']);
+  const resignedNicks = new Set(['JANET', 'TING', 'KENIX', 'MEYLINA']);
+
+  let modified = false;
+
+  if (Array.isArray(scheduleData.teammates)) {
+    const beforeLen = scheduleData.teammates.length;
+    scheduleData.teammates = scheduleData.teammates.filter(t => !resignedEmpNos.has(t.empNo) && !resignedNicks.has((t.nickname || '').toUpperCase()));
+    if (scheduleData.teammates.length !== beforeLen) modified = true;
+  }
+
+  scheduleData.days.forEach(d => {
+    if (d.shifts) {
+      resignedEmpNos.forEach(empNo => {
+        if (empNo in d.shifts) {
+          delete d.shifts[empNo];
+          modified = true;
+        }
+      });
+      resignedNicks.forEach(nick => {
+        if (nick in d.shifts) {
+          delete d.shifts[nick];
+          modified = true;
+        }
+      });
+    }
+
+    if (d.cleaningDuty && (resignedEmpNos.has(d.cleaningDuty.empNo) || resignedNicks.has((d.cleaningDuty.nickname || '').toUpperCase()))) {
+      d.cleaningDuty = null;
+      modified = true;
+    }
+
+    if (d.stockDuty && (resignedEmpNos.has(d.stockDuty.empNo) || resignedNicks.has((d.stockDuty.nickname || '').toUpperCase()))) {
+      d.stockDuty = null;
+      modified = true;
+    }
+
+    if (Array.isArray(d.learningSlots)) {
+      const bLen = d.learningSlots.length;
+      d.learningSlots = d.learningSlots.filter(l => !resignedEmpNos.has(l.empNo) && !resignedNicks.has((l.nickname || '').toUpperCase()));
+      if (d.learningSlots.length !== bLen) modified = true;
+    }
+
+    // Recompute shift counts for this day
+    let amCount = 0;
+    let pmCount = 0;
+    let fullAm = 0;
+    let halfAm = 0;
+    let seniorAm = 0;
+    let traineeAm = 0;
+    let seniorPm = 0;
+    let traineePm = 0;
+
+    if (d.shifts) {
+      Object.entries(d.shifts).forEach(([eNo, s]) => {
+        if (isAnyMorningShift(s)) {
+          amCount++;
+          if (isFullMorningShift(s)) fullAm++;
+          else halfAm++;
+          if (eNo === 'PMG04331' || eNo === 'PMG03801') traineeAm++;
+          else seniorAm++;
+        } else if (isNightShift(s)) {
+          pmCount++;
+          if (eNo === 'PMG04331' || eNo === 'PMG03801') traineePm++;
+          else seniorPm++;
+        }
+      });
+    }
+    d.amCount = amCount;
+    d.pmCount = pmCount;
+    d.fullAmCount = fullAm;
+    d.halfAmCount = halfAm;
+    d.seniorAmCount = seniorAm;
+    d.traineeAmCount = traineeAm;
+    d.seniorPmCount = seniorPm;
+    d.traineePmCount = traineePm;
+    d.workingTotal = amCount + pmCount;
+    d.isRatioViolation = (traineeAm > 0 && seniorAm < traineeAm) || (traineePm > 0 && seniorPm < traineePm);
+  });
+
+  return modified;
+}
+
 async function saveGeneratedTimetable(showToast = true) {
   if (!generatedScheduleData || !generatedScheduleData.days || !generatedScheduleData.days.length) {
     if (showToast) showSchedulerToast('No timetable to save. Please generate or import a timetable first.', 'warn');
@@ -81,6 +170,7 @@ async function saveGeneratedTimetable(showToast = true) {
 
   const branchVal = generatedScheduleData.branch || document.getElementById('schedulerBranchSelect')?.value || 'KS01';
   const monthVal = generatedScheduleData.month || document.getElementById('schedulerMonth')?.value || '2026-11';
+  purgeResignedStaffFromTimetable(generatedScheduleData);
   const nowIso = new Date().toISOString();
 
   generatedScheduleData.lastSaved = nowIso;
@@ -191,6 +281,15 @@ async function checkAndLoadSavedTimetable(branchCode, monthStr) {
   }
 
   if (savedData && savedData.days && savedData.days.length) {
+    const wasPurged = purgeResignedStaffFromTimetable(savedData);
+    if (wasPurged) {
+      try {
+        localStorage.setItem(getSavedTimetableKey(branchCode, monthStr), JSON.stringify(savedData));
+      } catch (_) {}
+      if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveMonthlyTimetableToOneDrive === 'function') {
+        window.pmgOneDriveSync.saveMonthlyTimetableToOneDrive(branchCode, monthStr, savedData).catch(() => {});
+      }
+    }
     if (!savedData.days[0].stockDuty && !savedData.days[0].learningSlots) {
       assignTraineeLearningAndStockDuties(savedData.days, currentTeammates);
     }
@@ -514,27 +613,6 @@ const DEFAULT_KS01_TEAMMATES = [
     }
   },
   {
-    empNo: 'PMG04324',
-    nickname: 'MEYLINA',
-    empName: 'MEYLINA ELVY ANAK JOSWAI',
-    position: 'Staff',
-    isPharmacist: false,
-    scheduleMode: 'Rotating',
-    race: 'Iban / Bidayuh',
-    shiftPref: 'Flexible',
-    restDayPref: 'Wednesday',
-    halfDayPref: 'Friday Morning (5H)',
-    dayPrefs: {
-      Monday: 'Flexible',
-      Tuesday: 'Flexible',
-      Wednesday: 'RD',
-      Thursday: 'Flexible',
-      Friday: 'Morning Half (5H)',
-      Saturday: 'Flexible',
-      Sunday: 'Flexible'
-    }
-  },
-  {
     empNo: 'PMG04331',
     nickname: 'VANESSA',
     empName: 'VANESSA ANAK BLAISE',
@@ -592,6 +670,22 @@ const HISTORICAL_KS01_PRE_NOV26 = [
     dayPrefs: {
       Monday: 'RD', Tuesday: 'Flexible', Wednesday: 'Flexible',
       Thursday: 'Flexible', Friday: 'Flexible', Saturday: 'Flexible', Sunday: 'Morning Half (4H)'
+    }
+  },
+  {
+    empNo: 'PMG04324',
+    nickname: 'MEYLINA',
+    empName: 'MEYLINA ELVY ANAK JOSWAI',
+    position: 'Staff',
+    isPharmacist: false,
+    scheduleMode: 'Rotating',
+    race: 'Iban / Bidayuh',
+    shiftPref: 'Flexible',
+    restDayPref: 'Wednesday',
+    halfDayPref: 'Friday Morning (5H)',
+    dayPrefs: {
+      Monday: 'Flexible', Tuesday: 'Flexible', Wednesday: 'RD',
+      Thursday: 'Flexible', Friday: 'Morning Half (5H)', Saturday: 'Flexible', Sunday: 'Flexible'
     }
   }
 ];
@@ -767,9 +861,14 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
     // 1. Purge Daniela Janet (Resigned)
     currentTeammates = currentTeammates.filter(t => t.empNo !== 'PMG03062' && t.nickname !== 'JANET');
 
-    // 2. November 2026 Staff Realignment: Ting & Kenix departure; Vanessa arrival & Meylina
+    // 2. November 2026 Staff Realignment: Ting & Kenix departure; Meylina resignation; Vanessa arrival
     if (isNov2026OrLater) {
-      currentTeammates = currentTeammates.filter(t => t.empNo !== 'PMG00723' && t.nickname !== 'TING' && t.empNo !== 'PMG02963' && t.nickname !== 'KENIX');
+      // Purge Ting, Kenix, and Meylina (resigned effective 1 Nov 2026)
+      currentTeammates = currentTeammates.filter(t => 
+        t.empNo !== 'PMG00723' && t.nickname !== 'TING' && 
+        t.empNo !== 'PMG02963' && t.nickname !== 'KENIX' &&
+        t.empNo !== 'PMG04324' && (t.nickname || '').toUpperCase() !== 'MEYLINA'
+      );
       const vanessa = currentTeammates.find(t => t.empNo === 'PMG04331' || t.empNo === 'PMG03801' || t.nickname === 'VANESSA');
       if (!vanessa) {
         const defVanessa = DEFAULT_KS01_TEAMMATES.find(t => t.nickname === 'VANESSA');
@@ -783,16 +882,8 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
         }
         vanessa.isTrainee = true;
       }
-      // Ensure Meylina is present for KS01
-      const meylina = currentTeammates.find(t => t.empNo === 'PMG04324' || (t.nickname && t.nickname.toUpperCase() === 'MEYLINA'));
-      if (!meylina) {
-        const defMeylina = DEFAULT_KS01_TEAMMATES.find(t => t.nickname === 'MEYLINA');
-        if (defMeylina) {
-          currentTeammates.push(JSON.parse(JSON.stringify(defMeylina)));
-        }
-      }
     } else {
-      // Historical schedule prior to Nov 2026: restore Ting and Kenix, omit Vanessa
+      // Historical schedule prior to Nov 2026: restore Ting, Kenix, and Meylina, omit Vanessa
       currentTeammates = currentTeammates.filter(t => t.empNo !== 'PMG04331' && t.empNo !== 'PMG03801' && t.nickname !== 'VANESSA');
       HISTORICAL_KS01_PRE_NOV26.forEach(histTm => {
         if (!currentTeammates.some(t => t.empNo === histTm.empNo || t.nickname === histTm.nickname)) {
@@ -889,6 +980,10 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
     }
   });
 
+  if (isNov2026OrLater && branchCode === 'KS01') {
+    currentTeammates = currentTeammates.filter(t => t.empNo !== 'PMG04324' && (t.nickname || '').toUpperCase() !== 'MEYLINA');
+  }
+  saveLocalPreferences(branchCode, currentTeammates);
   renderTeammatesTable();
 
   // Cross-PC Cloud Synchronization for Teammate Preferences (OneDrive & Google Apps Script)
@@ -906,6 +1001,9 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
           const cloudUpdated = localStorage.getItem(`pmg_schedule_prefs_cloud_updatedAt_${bCode}`) || localStorage.getItem(localUpdatedKey) || '';
           if (applyCloudPreferences(bCode, { data: cloudPrefs, lastUpdated: cloudUpdated })) {
             currentTeammates = cloudPrefs;
+            if (isNov2026OrLater && bCode === 'KS01') {
+              currentTeammates = currentTeammates.filter(t => t.empNo !== 'PMG04324' && (t.nickname || '').toUpperCase() !== 'MEYLINA');
+            }
             renderTeammatesTable();
             appliedCloud = true;
             console.log(`[PMG Scheduler] Loaded preferences from OneDrive for ${bCode}`);
@@ -928,6 +1026,9 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
             const cloudUpdated = json.lastUpdated || '';
             if (applyCloudPreferences(bCode, { data: cloudPrefs, lastUpdated: cloudUpdated })) {
               currentTeammates = cloudPrefs;
+              if (isNov2026OrLater && bCode === 'KS01') {
+                currentTeammates = currentTeammates.filter(t => t.empNo !== 'PMG04324' && (t.nickname || '').toUpperCase() !== 'MEYLINA');
+              }
               renderTeammatesTable();
               console.log(`[PMG Scheduler] Loaded preferences from Google Apps Script for ${bCode}`);
             }
@@ -3860,6 +3961,7 @@ function runHeuristicScheduleGenerator(branchVal, year, month, totalDays) {
 // ─── RENDER SCHEDULE MATRIX ───────────────────────────────────────────────────
 function renderScheduleMatrix(schedule) {
   if (!schedule || !schedule.days) return;
+  purgeResignedStaffFromTimetable(schedule);
 
   const resultsPanel = document.getElementById('schedulerResultsPanel');
   if (resultsPanel) resultsPanel.classList.remove('hidden');
