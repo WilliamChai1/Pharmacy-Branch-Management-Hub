@@ -7,12 +7,14 @@ const EXPIRY_STORAGE_KEY = 'pmg_stock_expiry_data';
 const MONTH_NAMES = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
 // ─── MULTI-TIER GEMINI AI CONFIGURATION ───────────────────────────────────────
-// Primary: gemini-3.5-flash-lite (15 RPM / 500 RPD — fast invoice OCR)
-// Secondary: gemini-3.1-flash-lite (15 RPM / 500 RPD — high quota fallback)
-// Tertiary: gemini-3.5-flash (5 RPM / 20 RPD — complex multi-column invoice reasoning)
-const EXPIRY_OCR_PRIMARY_MODEL   = 'gemini-3.5-flash-lite';
-const EXPIRY_OCR_SECONDARY_MODEL = 'gemini-3.1-flash-lite';
-const EXPIRY_OCR_TERTIARY_MODEL  = 'gemini-3.5-flash';
+// Primary: gemini-3.8-flash (Superior multimodal reasoning & multi-page PDF understanding)
+// Secondary: gemini-3.5-flash (High accuracy multi-column invoice reasoning)
+// Tertiary: gemini-3.5-flash-lite (Fast invoice OCR fallback)
+// Fallback: gemini-3.1-flash-lite (High quota fallback)
+const EXPIRY_OCR_PRIMARY_MODEL   = 'gemini-3.8-flash';
+const EXPIRY_OCR_SECONDARY_MODEL = 'gemini-3.5-flash';
+const EXPIRY_OCR_TERTIARY_MODEL  = 'gemini-3.5-flash-lite';
+const EXPIRY_OCR_FALLBACK_MODEL  = 'gemini-3.1-flash-lite';
 const PMG_GLOBAL_FALLBACK_KEY    = ''; // Revoked/leaked fallback key neutralized
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
@@ -2098,64 +2100,83 @@ async function extractInvoiceItemsFromPdf(file, branch, onStatus) {
 
   const prompt = `
 You are an expert pharmaceutical invoice parser for Malaysian pharmacy chains (e.g. PMG Pharmacy).
-Analyze this Malaysian pharmaceutical invoice document carefully.
+Analyze this Malaysian pharmaceutical invoice document carefully across ALL pages.
 
 CRITICAL INVOICE LAYOUT & LINE ASSOCIATION RULES:
-Malaysian pharmaceutical invoices (e.g. Apex Pharmacy, DKSH, Zuellig Pharma, Hovid, Xepa, Novugen, CCM, Inova, Sung Hoe, etc.) format line items across TWO (or more) horizontal lines:
+Malaysian pharmaceutical distributor invoices (e.g. SSJ Pharma Sdn Bhd, Apex Pharmacy, DKSH, Zuellig Pharma, Hovid, Xepa, Novugen, CCM, Inova, Sung Hoe, etc.) format line items across TWO horizontal lines:
 - LINE 1 (Product Line): [Line #]  [Item Code]  [Product Description / Medicine Name]  ...  [Billed / Delivered Quantity]
 - LINE 2 (Sub-Line):     Lot No. : [Batch Number]   Expiration Date :[DD-MM-YY]
 
-1. THE LOT NUMBER AND EXPIRATION DATE ARE ALWAYS PRINTED ON THE LINE IMMEDIATELY *BELOW* (UNDERNEATH) THE PRODUCT DESCRIPTION:
-   - They belong strictly to the product printed DIRECTLY ABOVE them.
-   - **NEVER** pair a product with the Lot No. / Expiration Date printed above it!
-   - Example 1 (DO NOT SHIFT ROWS):
-     113229  VICIDE 5% CREAM 10GM
-     Lot No. : 2510018 Expiration Date :31-10-28
-     131741  VOZAN 20MG TAB 10'S - NOVUGEN
-     Lot No. : 26126A1 Expiration Date :29-02-28
-     -> Correct pairing for VICIDE (113229): Batch "2510018", Expiry "31/10/2028".
-     -> Correct pairing for VOZAN (131741): Batch "26126A1", Expiry "29/02/2028".
-     (DO NOT assign the 31-10-28 from the line above Vozan to Vozan! Vozan's expiry is 29-02-28 printed on the line BELOW it).
+1. LINE NUMBER & NORMAL WITHIN-PAGE PAIRING:
+   - Each product line starts with an explicit sequential line number (e.g. 14, 15, 16, 17, 18...).
+   - Normally, on the same page, the Lot Number and Expiration Date are printed on the sub-line IMMEDIATELY BELOW the product description.
+   - Example 1 (Within same page):
+     16  100831  CAP TAI CHI CIN CAO GAO 20G BOT                                1
+         Lot No. : BBE0126 Expiration Date :31-01-29
+     -> Correct pairing for CAP TAI CHI (100831): Batch "BBE0126", Expiry "31/01/2029", Quantity: 1.
 
-   - Example 2 (ROSUVID & QUANTITY MATCHING):
-     77  101426  HOVID HOVASC 5MG TAB 10'SX10                                  17
-         Lot No. : CF12600 Expiration Date :30-11-28
-     78  143036  HOVID ROSUVID 20MG TAB 10'SX3                                  4
-         Lot No. : CG03515 Expiration Date :28-02-29
-     79  103310  HYDRINATE 50MG TAB 10'S                                       15
-         Lot No. : 2510353 Expiration Date :30-09-28
-     -> Correct pairing for HOVID ROSUVID (Item Code 143036):
-        * Description: "HOVID ROSUVID 20MG TAB 10'SX3"
-        * Quantity: 4 (from the same horizontal line on the right column).
-        * Batch / Lot: "CG03515" (from the line directly BELOW it).
-        * Expiry Date: "28/02/2029" (from "28-02-29" printed directly BELOW it. "28" is Day 28, "02" is Feb, "29" is Year 2029).
-     (DO NOT assign the batch/expiry or quantity from line 77 or line 76 to Rosuvid!).
+2. CRITICAL: PAGE BREAKS & ORPHAN LOT NUMBERS AT THE TOP OF NEXT PAGE (SSJ PHARMA INVOICES):
+   - In Malaysian invoices (especially SSJ Pharma Sdn Bhd), when a product line is printed near the bottom margin of Page 1 (or Page N), there is no vertical space left on that page to print its "Lot No. : ... Expiration Date : ..." sub-line.
+   - The printer prints the product line on Page 1, but pushes its "Lot No. : ... Expiration Date : ..." sub-line across the page boundary to the VERY TOP OF PAGE 2 (Page N+1), directly under the table column header, BEFORE the first numbered item of Page 2!
+   - LOOK AT THIS EXACT REAL-WORLD EXAMPLE FROM SSJ PHARMA (DO NOT MAKE THIS ERROR):
+     Page 1 (bottom):
+       16  100831  CAP TAI CHI CIN CAO GAO 20G BOT                              1  BOT    4.40
+           Lot No. : BBE0126 Expiration Date :31-01-29
+       17  101594  CASPRIN VEGE CAP                                             2  BOX60  22.50
+       [End of Page 1 — Casprin's Lot No. could not fit here!]
+     Page 2 (top):
+           Lot No. : JK005 Expiration Date :30-11-27     <-- ORPHAN LOT LINE AT TOP OF PAGE 2!
+       18  103569  CCM GLYPRIN TABLET 30'S                                      3  BOX    6.87
+           Lot No. : 2509169 Expiration Date :31-08-27
+       19  106227  CNI FIRESENS METHOLATED RUB 25G                              3  BOX6   64.20
+           Lot No. : 5100001 Expiration Date :31-10-27
+       20  102719  CREOBIC GOLD CREAM 20G                                       1  TUBE   32.50
+           Lot No. : 82512040 Expiration Date :31-12-29
+       21  111147  DERMATIX ADVANCE SCAR FORMULA 9G                             1  UNIT   52.82
+           Lot No. : 082501 Expiration Date :31-08-28
+       22  120372  DIFFLAM AB SORE THROAT LOZENGES                              1  BOX12  6.43
 
-2. QUANTITY ASSOCIATION:
+   - MANDATORY ASSOCIATION FOR ORPHAN LOT LINE AT TOP OF PAGE:
+     * The orphan "Lot No. : JK005 Expiration Date :30-11-27" at the top of Page 2 BELONGS 100% STRICTLY TO Line 17 CASPRIN VEGE CAP (the last item of Page 1)!
+       -> CASPRIN VEGE CAP (101594) MUST get: Batch "JK005", Expiry "30/11/2027", Quantity 2.
+       (NEVER leave Casprin with Batch "N/A"!).
+     * Line 18 CCM GLYPRIN TABLET 30'S (103569) MUST get its OWN lot line printed underneath it: Batch "2509169", Expiry "31/08/2027", Quantity 3.
+     * Line 19 CNI FIRESENS (106227) MUST get its OWN lot line printed underneath it: Batch "5100001", Expiry "31/10/2027", Quantity 3.
+     * Line 20 CREOBIC GOLD (102719) MUST get its OWN lot line printed underneath it: Batch "82512040", Expiry "31/12/2029", Quantity 1.
+     * Line 21 DERMATIX ADVANCE (111147) MUST get its OWN lot line printed underneath it: Batch "082501", Expiry "31/08/2028", Quantity 1.
+
+   - CATASTROPHIC OFF-BY-ONE PREVENTION:
+     * If you mistakenly assign the top orphan lot (JK005) to Line 18 (CCM Glyprin), then EVERY SINGLE ITEM on the rest of the page will be shifted off-by-one and all expiry dates will be wrong!
+     * NEVER assign an orphan top-of-page lot line to the next numbered item.
+     * Trace the line numbers: every numbered item on Page 2 (18, 19, 20, 21, 22...) has its OWN lot line printed directly beneath it. Match each item to its own lot line!
+
+3. QUANTITY ASSOCIATION:
    - The billed/delivered quantity is printed on the SAME HORIZONTAL LINE as the Item Code and Product Description, usually in the rightmost column (e.g. Qty, Billed Qty, Invoice Qty).
-   - In Example 2 above, HOVID ROSUVID on Line 78 has Quantity 4. Do NOT take quantity from another row (like 11, 13, 17, or 15).
+   - In the example above, CASPRIN on Line 17 has Quantity 2. CCM GLYPRIN on Line 18 has Quantity 3.
 
-3. EXPIRATION DATE CONVERSION (DD-MM-YY to DD/MM/YYYY):
+4. EXPIRATION DATE CONVERSION (DD-MM-YY to DD/MM/YYYY):
    - Malaysian invoices write dates as DD-MM-YY (Day-Month-Year):
+     * "30-11-27" -> Day 30, Month 11 (November), Year 2027 -> "30/11/2027".
+     * "31-08-27" -> Day 31, Month 08 (August), Year 2027 -> "31/08/2027".
+     * "31-10-27" -> Day 31, Month 10 (October), Year 2027 -> "31/10/2027".
+     * "31-12-29" -> Day 31, Month 12 (December), Year 2029 -> "31/12/2029".
+     * "31-08-28" -> Day 31, Month 08 (August), Year 2028 -> "31/08/2028".
      * "28-02-29" -> Day 28, Month 02 (February), Year 2029 -> "28/02/2029".
-     * "30-11-28" -> Day 30, Month 11 (November), Year 2028 -> "30/11/2028".
-     * "29-02-28" -> Day 29, Month 02 (February), Year 2028 -> "29/02/2028".
-     * "30-07-27" -> Day 30, Month 07 (July), Year 2027 -> "30/07/2027".
-     * "31-01-28" -> Day 31, Month 01 (January), Year 2028 -> "31/01/2028".
-     * "31-12-28" -> Day 31, Month 12 (December), Year 2028 -> "31/12/2028".
-     * "09-05-27" -> Day 09, Month 05 (May), Year 2027 -> "09/05/2027".
+     * "31-01-29" -> Day 31, Month 01 (January), Year 2029 -> "31/01/2029".
    - If Month/Year format (e.g. "10/28" or "OCT-28"), output last day of month -> "31/10/2028".
    - Always output 4-digit year (YYYY) between 2026 and 2035.
 
-4. MULTI-LINE DESCRIPTIONS:
-   - If a product description wraps across 2 lines before the Lot No. line (e.g. "VENTOLIN EVOHALER 100 MG 200" on line 1, "DOSES BOT" on line 2, followed by "Lot No. : J42R Expiration Date :09-05-27"), concatenate the description lines into "VENTOLIN EVOHALER 100 MG 200 DOSES BOT". The Lot No. directly below it belongs to that item.
+5. MULTI-LINE DESCRIPTIONS:
+   - If a product description wraps across 2 lines before the Lot No. line (e.g. "VENTOLIN EVOHALER 100 MG 200" on line 1, "DOSES BOT" on line 2, followed by "Lot No. : J42R Expiration Date :09-05-27"), concatenate the description lines into "VENTOLIN EVOHALER 100 MG 200 DOSES BOT".
 
 FIELDS TO OUTPUT FOR EACH ITEM:
-- "itemCode": Internal product code or SKU (typically 4-8 digits like "143036", "131741" or alphanumeric). If not found, output "N/A".
-- "itemDescription": Full product or medicine name with strength/form if shown (e.g., "HOVID ROSUVID 20MG TAB 10'SX3", "VOZAN 20MG TAB 10'S - NOVUGEN").
-- "batchNumber": Look for Batch / Lot / Lot No. printed on the sub-line BELOW the product name. If none, output "N/A".
-- "expiryDate": The product's shelf-life expiration date, strictly formatted as "DD/MM/YYYY" (e.g., "28/02/2029").
-- "quantity": Billed or delivered quantity as a positive number (e.g., 4).
+- "invoiceLineNo": The printed sequential line number on the invoice (e.g. 14, 15, 16, 17, 18, 19...).
+- "pageNo": The page number on which the product description was printed (1, 2, etc.).
+- "itemCode": Internal product code or SKU (typically 4-8 digits like "101594", "103569" or alphanumeric). If not found, output "N/A".
+- "itemDescription": Full product or medicine name with strength/form if shown (e.g. "CASPRIN VEGE CAP", "CCM GLYPRIN TABLET 30'S").
+- "batchNumber": The verified Batch / Lot / Lot No. belonging to this item. NEVER output "N/A" if the lot was pushed to the top of the next page!
+- "expiryDate": The product's shelf-life expiration date, strictly formatted as "DD/MM/YYYY" (e.g., "30/11/2027").
+- "quantity": Billed or delivered quantity as a positive number (e.g., 2).
 
 Return ONLY a valid JSON array of objects. No markdown formatting, no explanations.
 `;
@@ -2164,6 +2185,7 @@ Return ONLY a valid JSON array of objects. No markdown formatting, no explanatio
     EXPIRY_OCR_PRIMARY_MODEL,
     EXPIRY_OCR_SECONDARY_MODEL,
     EXPIRY_OCR_TERTIARY_MODEL,
+    EXPIRY_OCR_FALLBACK_MODEL,
     'gemini-2.5-flash',
     'gemini-1.5-flash'
   ];
@@ -2206,8 +2228,9 @@ Return ONLY a valid JSON array of objects. No markdown formatting, no explanatio
       const rawText = resData.candidates[0].content.parts[0].text;
       const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleanJson);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        items = parsed;
+      let list = Array.isArray(parsed) ? parsed : (parsed.items || parsed.invoiceItems || parsed.data || null);
+      if (Array.isArray(list) && list.length > 0) {
+        items = autoRepairPageBreakShiftsOnRawItems(list);
         successfulModel = model;
         break;
       }
@@ -2409,9 +2432,134 @@ function closeOcrReviewModal() {
   pendingOcrItems = [];
 }
 
+// ─── PAGE-BREAK BATCH REALIGNMENT ENGINE (SSJ / MALAYSIAN INVOICES) ───────────
+/**
+ * Automatically inspects raw JSON items from Gemini.
+ * If an item right before a page break or line step had its lot pushed to the top of the next page,
+ * shifts subsequent batches and expiries up by 1 row to re-align.
+ */
+function autoRepairPageBreakShiftsOnRawItems(rawItems) {
+  if (!Array.isArray(rawItems) || rawItems.length <= 1) return rawItems;
+
+  for (let i = 0; i < rawItems.length - 1; i++) {
+    const cur = rawItems[i];
+    const nxt = rawItems[i + 1];
+    const curHasNoBatch = !cur.batchNumber || cur.batchNumber === 'N/A' || cur.batchNumber === 'NA';
+    const nxtHasBatch = nxt.batchNumber && nxt.batchNumber !== 'N/A' && nxt.batchNumber !== 'NA';
+
+    const isPageBreak = (cur.pageNo && nxt.pageNo && Number(cur.pageNo) < Number(nxt.pageNo));
+    const isLineStep = (cur.invoiceLineNo && nxt.invoiceLineNo && Number(cur.invoiceLineNo) + 1 === Number(nxt.invoiceLineNo));
+
+    if (curHasNoBatch && nxtHasBatch && (isPageBreak || isLineStep)) {
+      console.warn(`[PMG Expiry] Detected page-split batch shift at row ${i + 1} (${cur.itemDescription}). Auto-aligning raw items...`);
+      for (let j = i; j < rawItems.length - 1; j++) {
+        rawItems[j].batchNumber = rawItems[j + 1].batchNumber;
+        rawItems[j].expiryDate = rawItems[j + 1].expiryDate;
+      }
+      rawItems[rawItems.length - 1].batchNumber = 'N/A';
+      rawItems[rawItems.length - 1].expiryDate = '';
+      break;
+    }
+  }
+  return rawItems;
+}
+
+/**
+ * Shifts batch number and expiry date UP by 1 row starting from targetIndex into targetIndex - 1.
+ */
+function shiftBatchesUpFromIndex(targetIndex) {
+  if (targetIndex <= 0 || targetIndex >= pendingOcrItems.length) return;
+  const destIndex = targetIndex - 1;
+  for (let i = destIndex; i < pendingOcrItems.length - 1; i++) {
+    pendingOcrItems[i].batchNumber = pendingOcrItems[i + 1].batchNumber;
+    pendingOcrItems[i].expiryDate = pendingOcrItems[i + 1].expiryDate;
+    pendingOcrItems[i].autoCorrected = pendingOcrItems[i + 1].autoCorrected;
+    pendingOcrItems[i].isShortDated = pendingOcrItems[i + 1].isShortDated;
+    pendingOcrItems[i].isAmbiguous = pendingOcrItems[i + 1].isAmbiguous;
+  }
+  const last = pendingOcrItems[pendingOcrItems.length - 1];
+  last.batchNumber = 'N/A';
+  last.expiryDate = '';
+  renderOcrReviewRows();
+  showExpiryToast(`Shifted batches UP into row ${destIndex + 1} (${pendingOcrItems[destIndex].itemDescription}).`);
+}
+
+/**
+ * Shifts batch number and expiry date DOWN by 1 row starting from targetIndex.
+ */
+function shiftBatchesDownFromIndex(targetIndex) {
+  if (targetIndex < 0 || targetIndex >= pendingOcrItems.length - 1) return;
+  for (let i = pendingOcrItems.length - 1; i > targetIndex; i--) {
+    pendingOcrItems[i].batchNumber = pendingOcrItems[i - 1].batchNumber;
+    pendingOcrItems[i].expiryDate = pendingOcrItems[i - 1].expiryDate;
+    pendingOcrItems[i].autoCorrected = pendingOcrItems[i - 1].autoCorrected;
+    pendingOcrItems[i].isShortDated = pendingOcrItems[i - 1].isShortDated;
+    pendingOcrItems[i].isAmbiguous = pendingOcrItems[i - 1].isAmbiguous;
+  }
+  pendingOcrItems[targetIndex].batchNumber = 'N/A';
+  pendingOcrItems[targetIndex].expiryDate = '';
+  renderOcrReviewRows();
+  showExpiryToast(`Shifted batches DOWN from row ${targetIndex + 1} (${pendingOcrItems[targetIndex].itemDescription}).`);
+}
+
+/**
+ * One-click automatic repair for page-split shifted batches in the review table.
+ */
+function autoRepairPageBreakShifts() {
+  if (!pendingOcrItems || pendingOcrItems.length <= 1) {
+    showExpiryToast('No items to align.');
+    return;
+  }
+  const naIdx = pendingOcrItems.findIndex((it, idx) => {
+    const isBlank = !it.batchNumber || it.batchNumber === 'N/A' || it.batchNumber === 'NA';
+    const nextHasBatch = idx < pendingOcrItems.length - 1 && pendingOcrItems[idx + 1].batchNumber && pendingOcrItems[idx + 1].batchNumber !== 'N/A' && pendingOcrItems[idx + 1].batchNumber !== 'NA';
+    return isBlank && nextHasBatch;
+  });
+
+  if (naIdx !== -1) {
+    shiftBatchesUpFromIndex(naIdx + 1);
+    showExpiryToast(`Auto-aligned batches! Row ${naIdx + 1} (${pendingOcrItems[naIdx].itemDescription}) received batch from row ${naIdx + 2}.`);
+  } else {
+    showExpiryToast('All items have batches. No unaligned N/A batch detected.');
+  }
+}
+
+window.shiftBatchesUpFromIndex = shiftBatchesUpFromIndex;
+window.shiftBatchesDownFromIndex = shiftBatchesDownFromIndex;
+window.autoRepairPageBreakShifts = autoRepairPageBreakShifts;
+
 function renderOcrReviewRows() {
   const tbody = document.getElementById('expiryOcrTbody');
   if (!tbody) return;
+
+  const bannerContainer = document.getElementById('expiryOcrBannerContainer');
+  const unalignedIdx = pendingOcrItems.findIndex((it, idx) => {
+    const isBlank = !it.batchNumber || it.batchNumber === 'N/A' || it.batchNumber === 'NA';
+    const nextHasBatch = idx < pendingOcrItems.length - 1 && pendingOcrItems[idx + 1].batchNumber && pendingOcrItems[idx + 1].batchNumber !== 'N/A' && pendingOcrItems[idx + 1].batchNumber !== 'NA';
+    return isBlank && nextHasBatch;
+  });
+
+  if (bannerContainer) {
+    if (unalignedIdx !== -1) {
+      const itName = escHtml(pendingOcrItems[unalignedIdx].itemDescription);
+      bannerContainer.innerHTML = `
+        <div class="mb-3 p-3 bg-amber-50 border border-amber-300 rounded-xl flex items-center justify-between text-xs text-amber-900 shadow-xs">
+          <div class="flex items-center gap-2.5">
+            <i class="fa-solid fa-triangle-exclamation text-amber-600 text-base"></i>
+            <div>
+              <span class="font-bold">Page-Break / Missing Batch Detected on Row ${unalignedIdx + 1} (${itName}):</span>
+              <div class="text-[11px] text-amber-800">If its batch was printed at the top of the next invoice page, click <b>Auto-Align Batches</b> to shift subsequent batches up by 1 row.</div>
+            </div>
+          </div>
+          <button type="button" onclick="autoRepairPageBreakShifts()" class="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold shadow-xs transition flex items-center gap-1.5 whitespace-nowrap">
+            <i class="fa-solid fa-arrows-up-down"></i> Auto-Align Batches
+          </button>
+        </div>
+      `;
+    } else {
+      bannerContainer.innerHTML = '';
+    }
+  }
 
   if (pendingOcrItems.length === 0) {
     tbody.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-gray-400">No items available.</td></tr>`;
@@ -2419,7 +2567,7 @@ function renderOcrReviewRows() {
   }
 
   tbody.innerHTML = pendingOcrItems.map((it, idx) => `
-    <tr class="border-b hover:bg-blue-50/40 text-xs sm:text-sm">
+    <tr class="border-b hover:bg-blue-50/40 text-xs sm:text-sm ${(!it.batchNumber || it.batchNumber === 'N/A' || it.batchNumber === 'NA') ? 'bg-amber-50/40' : ''}">
       <td class="p-2.5 text-center">
         <input type="checkbox" ${it.selected ? 'checked' : ''} onchange="togglePendingItemSelect(${idx}, this.checked)" class="rounded text-blue-600">
       </td>
@@ -2430,7 +2578,7 @@ function renderOcrReviewRows() {
         <input type="text" value="${escHtml(it.itemDescription)}" onchange="updatePendingItemField(${idx}, 'itemDescription', this.value)" class="w-full px-2 py-1 border rounded">
       </td>
       <td class="p-2.5 font-mono">
-        <input type="text" value="${escHtml(it.batchNumber)}" onchange="updatePendingItemField(${idx}, 'batchNumber', this.value)" class="w-24 px-1.5 py-1 border rounded font-mono">
+        <input type="text" value="${escHtml(it.batchNumber)}" onchange="updatePendingItemField(${idx}, 'batchNumber', this.value)" class="w-24 px-1.5 py-1 border rounded font-mono ${(!it.batchNumber || it.batchNumber === 'N/A' || it.batchNumber === 'NA') ? 'border-amber-400 bg-amber-50 font-bold text-amber-700' : ''}">
       </td>
       <td class="p-2.5 text-center">
         <input type="text" value="${escHtml(it.expiryDate)}" onchange="updatePendingItemField(${idx}, 'expiryDate', this.value)" class="w-28 px-1.5 py-1 border ${it.isShortDated || it.isAmbiguous ? 'border-amber-400 bg-amber-50/60' : 'border-blue-200'} rounded text-center font-bold text-blue-700 font-mono text-xs">
@@ -2453,10 +2601,18 @@ function renderOcrReviewRows() {
       <td class="p-2.5 text-center">
         <input type="number" min="1" value="${it.quantity}" onchange="updatePendingItemField(${idx}, 'quantity', this.value)" class="w-16 px-1.5 py-1 border rounded text-center font-bold">
       </td>
-      <td class="p-2.5 text-center">
-        <button onclick="removePendingOcrItem(${idx})" class="text-rose-500 hover:text-rose-700 p-1" title="Remove item">
-          <i class="fa-solid fa-trash-can"></i>
-        </button>
+      <td class="p-2.5 text-center whitespace-nowrap">
+        <div class="flex items-center justify-center gap-1">
+          <button type="button" onclick="shiftBatchesUpFromIndex(${idx})" class="p-1 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 rounded" title="Shift batch & expiry UP into row above">
+            <i class="fa-solid fa-arrow-up text-xs"></i>
+          </button>
+          <button type="button" onclick="shiftBatchesDownFromIndex(${idx})" class="p-1 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 rounded" title="Shift this batch & expiry DOWN by 1 row">
+            <i class="fa-solid fa-arrow-down text-xs"></i>
+          </button>
+          <button type="button" onclick="removePendingOcrItem(${idx})" class="text-rose-500 hover:text-rose-700 p-1 rounded hover:bg-rose-50" title="Remove item">
+            <i class="fa-solid fa-trash-can text-xs"></i>
+          </button>
+        </div>
       </td>
     </tr>
   `).join('');

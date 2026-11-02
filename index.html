@@ -2109,13 +2109,17 @@
           <span class="text-xs font-bold text-blue-900 bg-white px-2.5 py-1 rounded border border-blue-200">
             <i class="fa-solid fa-shop text-blue-600 mr-1"></i> PMG Kota Sentosa
           </span>
+          <button type="button" onclick="autoRepairPageBreakShifts()" class="text-xs px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-lg font-semibold flex items-center gap-1.5 transition shadow-xs" title="Auto-align batches if an item was split across an invoice page break (e.g. Casprin in SSJ invoices)">
+            <i class="fa-solid fa-arrows-up-down text-amber-700"></i> Auto-Align Page Split
+          </button>
         </div>
         <p class="text-xs text-gray-500">
-          Verify item details and dates before committing. Click fields to edit if needed.
+          Verify item details and dates before committing. Click fields to edit, or use <span class="font-bold text-indigo-700">▲</span> / <span class="font-bold text-indigo-700">▼</span> to shift batches across page breaks.
         </p>
       </div>
 
       <div class="flex-1 overflow-y-auto p-4">
+        <div id="expiryOcrBannerContainer"></div>
         <table class="w-full text-left border-collapse">
           <thead>
             <tr class="bg-gray-100 text-gray-600 text-xs font-bold uppercase">
@@ -2125,7 +2129,7 @@
               <th class="p-2 w-28">Batch #</th>
               <th class="p-2 w-28 text-center">Expiry (DD/MM/YYYY)</th>
               <th class="p-2 w-20 text-center">Qty</th>
-              <th class="p-2 text-center w-12">Del</th>
+              <th class="p-2 text-center w-20" title="Shift batch up/down across rows, or delete row">Actions</th>
             </tr>
           </thead>
           <tbody id="expiryOcrTbody"></tbody>
