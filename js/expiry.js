@@ -98,6 +98,111 @@ function removeClearedExpiryKey(key) {
   }
 }
 
+// ─── PERSISTENT USER DELTA EDITS (Action Plans, Expiry Dates & Quantities) ──
+// Keeps user adjustments safely in localStorage delta cache so they survive page refreshes,
+// restarts, IndexedDB re-hydration, and remote cloud sheet sync without ever being wiped.
+const EXPIRY_USER_EDITS_KEY = 'pmg_expiry_user_edits';
+
+function getUserEdits() {
+  try {
+    const raw = localStorage.getItem(EXPIRY_USER_EDITS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function recordUserEdit(item, patch) {
+  if (!item) return;
+  const b = String(item.branch || 'Kota Sentosa').trim().toUpperCase();
+  const c = typeof normalizeProductCode === 'function' ? normalizeProductCode(item.itemCode) : String(item.itemCode || '').trim().toUpperCase();
+  const bt = typeof normalizeBatchNumber === 'function' ? normalizeBatchNumber(item.batchNumber) : String(item.batchNumber || '').trim().toUpperCase();
+  const d = typeof normalizeProductDesc === 'function' ? normalizeProductDesc(item.itemDescription) : String(item.itemDescription || '').trim().toUpperCase().slice(0, 30);
+  const rowId = (item.rowId !== undefined && item.rowId !== null && String(item.rowId) !== 'undefined') ? String(item.rowId).trim() : '';
+
+  const itemKey = `${b}|${c ? 'C_' + c : 'D_' + d.slice(0, 30)}|${bt || 'NO_BATCH'}`;
+
+  const edits = getUserEdits();
+  const editData = {
+    ...patch,
+    branch: b,
+    itemCode: item.itemCode,
+    batchNumber: item.batchNumber,
+    itemDescription: item.itemDescription,
+    lastUpdated: new Date().toISOString()
+  };
+
+  edits[itemKey] = {
+    ...edits[itemKey],
+    ...editData
+  };
+
+  if (rowId) {
+    edits['ROW_' + rowId] = {
+      ...edits['ROW_' + rowId],
+      ...editData
+    };
+  }
+
+  try {
+    localStorage.setItem(EXPIRY_USER_EDITS_KEY, JSON.stringify(edits));
+  } catch (e) {
+    console.warn('[PMG Expiry] Error saving user delta edit:', e);
+  }
+}
+
+function applyUserEdits(items) {
+  if (!Array.isArray(items) || items.length === 0) return items;
+  const edits = getUserEdits();
+  const keys = Object.keys(edits);
+  if (keys.length === 0) return items;
+
+  const clearedSet = typeof getClearedExpiryKeys === 'function' ? getClearedExpiryKeys() : null;
+
+  items.forEach(it => {
+    if (!it) return;
+    const b = String(it.branch || 'Kota Sentosa').trim().toUpperCase();
+    const c = typeof normalizeProductCode === 'function' ? normalizeProductCode(it.itemCode) : String(it.itemCode || '').trim().toUpperCase();
+    const bt = typeof normalizeBatchNumber === 'function' ? normalizeBatchNumber(it.batchNumber) : String(it.batchNumber || '').trim().toUpperCase();
+    const d = typeof normalizeProductDesc === 'function' ? normalizeProductDesc(it.itemDescription) : String(it.itemDescription || '').trim().toUpperCase().slice(0, 30);
+    const rowId = (it.rowId !== undefined && it.rowId !== null && String(it.rowId) !== 'undefined') ? String(it.rowId).trim() : '';
+
+    const itemKey = `${b}|${c ? 'C_' + c : 'D_' + d.slice(0, 30)}|${bt || 'NO_BATCH'}`;
+    const descKey = `${b}|D_${d.slice(0, 30)}|${bt || 'NO_BATCH'}`;
+    const rowKey = rowId ? 'ROW_' + rowId : null;
+
+    const e = (rowKey && edits[rowKey]) || edits[itemKey] || edits[descKey];
+    if (e) {
+      if (e.actionPlan !== undefined && String(e.actionPlan).trim() !== '') {
+        it.actionPlan = e.actionPlan;
+      }
+      if (e.expiryDate !== undefined && String(e.expiryDate).trim() !== '') {
+        it.expiryDate = e.expiryDate;
+      }
+      if (typeof isItemMarkedDoneOrCleared !== 'function' || !isItemMarkedDoneOrCleared(it, clearedSet)) {
+        if (e.quantity !== undefined && e.quantity !== null && !isNaN(e.quantity)) {
+          it.quantity = e.quantity;
+        }
+      }
+      if (e.offeredPrice !== undefined && e.offeredPrice !== null) {
+        it.offeredPrice = e.offeredPrice;
+        if (it.clearancePrice === undefined) it.clearancePrice = e.offeredPrice;
+      }
+      if (e.clearancePrice !== undefined && e.clearancePrice !== null) {
+        it.clearancePrice = e.clearancePrice;
+      }
+      if (e.tagTheme) it.tagTheme = e.tagTheme;
+      if (e.tagSize) it.tagSize = e.tagSize;
+      if (e.promoBanner) it.promoBanner = e.promoBanner;
+      if (e.promoRemark) it.promoRemark = e.promoRemark;
+      if (e.lastUpdated && (!it.lastUpdated || e.lastUpdated > it.lastUpdated)) {
+        it.lastUpdated = e.lastUpdated;
+      }
+    }
+  });
+  return items;
+}
+
 // Discontinued / fully obsolete SKUs barred from active inventory
 const OBSOLETE_DISCONTINUED_SKUS = new Set(['119253', '232903', '102787']);
 
@@ -500,15 +605,17 @@ function initExpiryModule() {
   if (typeof safeStorageGet === 'function') {
     safeStorageGet(EXPIRY_STORAGE_KEY).then(idbItems => {
       if (Array.isArray(idbItems) && idbItems.length > 0) {
-        // IDB items hold the user's latest edits! Merge with master seed dataset so user edits win!
-        expiryItems = mergeExpiryDatasets(idbItems, window.PMG_SEED_EXPIRY_DATA || []);
+        // Authoritative user dataset from IndexedDB! Apply any persistent user delta edits (action plans / dates)
+        expiryItems = ensureUniqueExpiryRowIds(idbItems);
+        applyUserEdits(expiryItems);
         loadAccumulatedWriteOffItems();
         if (expiryTabContent && !expiryTabContent.classList.contains('hidden')) {
           renderExpiryUI();
         }
       } else if (Array.isArray(window.PMG_SEED_EXPIRY_DATA) && window.PMG_SEED_EXPIRY_DATA.length > 0) {
-        // First boot: seed into IndexedDB
+        // First boot only: seed into IndexedDB
         expiryItems = ensureUniqueExpiryRowIds(window.PMG_SEED_EXPIRY_DATA);
+        applyUserEdits(expiryItems);
         saveLocalExpiryData();
       }
     }).catch(console.warn);
@@ -568,6 +675,7 @@ function loadLocalExpiryData() {
     }
 
     expiryItems = ensureUniqueExpiryRowIds(expiryItems);
+    applyUserEdits(expiryItems);
 
     // Strictly enforce DONE / Cleared status on any items in tombstone set
     const clearedSet = getClearedExpiryKeys();
@@ -579,7 +687,10 @@ function loadLocalExpiryData() {
         }
       });
     }
-    saveLocalExpiryData();
+    // CRITICAL: DO NOT call saveLocalExpiryData() here!
+    // In db.js, safeStorageSet offloads large payloads (>1.2MB) from localStorage to IndexedDB.
+    // If localStorage was empty because it was offloaded, calling saveLocalExpiryData() here with
+    // seed data would OVERWRITE the user's edits in IndexedDB before safeStorageGet could even read them!
   } catch (e) {
     console.warn('[PMG Expiry] Error reading local expiry data:', e);
     if (Array.isArray(window.PMG_SEED_EXPIRY_DATA)) {
@@ -1520,7 +1631,7 @@ function mergeExpiryDatasets(localList, remoteList) {
         winOfferedPrice = rem.offeredPrice !== undefined ? rem.offeredPrice : rem.clearancePrice;
         winClearancePrice = rem.clearancePrice !== undefined ? rem.clearancePrice : rem.offeredPrice;
         winNormalPrice = rem.normalPrice !== undefined ? rem.normalPrice : loc.normalPrice;
-        winActionPlan = rem.actionPlan || loc.actionPlan;
+        winActionPlan = (rem.actionPlan && String(rem.actionPlan).trim() !== '') ? rem.actionPlan : loc.actionPlan;
         winTheme = rem.tagTheme || loc.tagTheme;
         winSize = rem.tagSize || loc.tagSize;
         winBanner = rem.promoBanner || loc.promoBanner;
@@ -1531,6 +1642,7 @@ function mergeExpiryDatasets(localList, remoteList) {
         if (winClearancePrice === undefined && rem.clearancePrice !== undefined) winClearancePrice = rem.clearancePrice;
         if (winNormalPrice === undefined && rem.normalPrice !== undefined) winNormalPrice = rem.normalPrice;
         if (!winActionPlan && rem.actionPlan) winActionPlan = rem.actionPlan;
+        if (!winActionPlan && loc.actionPlan) winActionPlan = loc.actionPlan;
         if (!winTheme && rem.tagTheme) winTheme = rem.tagTheme;
         if (!winSize && rem.tagSize) winSize = rem.tagSize;
         if (!winBanner && rem.promoBanner) winBanner = rem.promoBanner;
@@ -1624,7 +1736,9 @@ function mergeExpiryDatasets(localList, remoteList) {
     }
   });
 
-  return ensureUniqueExpiryRowIds(Array.from(map.values()));
+  const mergedList = Array.from(map.values());
+  applyUserEdits(mergedList);
+  return ensureUniqueExpiryRowIds(mergedList);
 }
 window.mergeExpiryDatasets = mergeExpiryDatasets;
 
@@ -1842,6 +1956,7 @@ async function syncExpiryFromSheets(showPrompt = true) {
         const data = await res.json();
         if (data && data.success && Array.isArray(data.items) && data.items.length > 0) {
           expiryItems = mergeExpiryDatasets(expiryItems, data.items);
+          applyUserEdits(expiryItems);
           saveLocalExpiryData();
           window._lastExpirySheetsSyncTime = Date.now();
           if (!document.getElementById('content-expiry')?.classList.contains('hidden')) {
@@ -1881,12 +1996,12 @@ async function pushExpiryUpdateToSheets(rowId, quantity, status, expiryDate = nu
     const nowIso = new Date().toISOString();
 
     const isDoneOrCleared = status === 'DONE' || status === 'COMPLETED' || status === 'Cleared';
-    const primaryAction = isDoneOrCleared ? 'mark_cleared' : (expiryDate ? 'update_item' : 'update_qty');
+    const primaryAction = isDoneOrCleared ? 'mark_cleared' : (extraFields.actionPlan !== undefined ? 'update_action_plan' : (expiryDate ? 'update_item' : 'update_qty'));
 
     const rawIdStr = String(rowId || '').trim();
     const numRowId = /^\d+$/.test(rawIdStr) ? parseInt(rawIdStr, 10) : NaN;
-    // If rowId is non-numeric, invalid, or beyond Google Sheet rows (> 2100), insert/append via batch_insert
-    if (isNaN(numRowId) || numRowId <= 1 || numRowId > 2100) {
+    // If rowId is non-numeric, invalid, or beyond Google Sheet rows (> 100000), insert/append via batch_insert
+    if (isNaN(numRowId) || numRowId <= 1 || numRowId > 100000) {
       if (isDoneOrCleared || quantity !== null) {
         return await pushBatchExpiryToSheets([{
           rowId: item?.rowId || rowId,
@@ -2816,6 +2931,7 @@ function updateExpiryItemDate(rowId, newDateStr, inputEl) {
   item.lastUpdated = nowIso;
   item.updatedBy = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
 
+  recordUserEdit(item, { expiryDate: formattedDate });
   saveLocalExpiryData();
   delete expiryItems._productBatchMap;
   delete expiryItems._skuBatchMap;
@@ -2850,6 +2966,10 @@ function updateExpiryItemQuantity(rowId, newQty) {
   item.lastUpdated = nowIso;
   item.updatedBy = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
 
+  recordUserEdit(item, {
+    quantity: item.quantity,
+    status: item.status
+  });
   saveLocalExpiryData();
   delete expiryItems._productBatchMap;
   delete expiryItems._skuBatchMap;
@@ -2921,6 +3041,12 @@ function updateExpiryActionPlan(rowId, val) {
     saveAccumulatedWriteOffItems();
     updateWriteOffSelectedCounter();
   }
+
+  recordUserEdit(item, {
+    actionPlan: item.actionPlan,
+    offeredPrice: item.offeredPrice,
+    clearancePrice: item.clearancePrice
+  });
 
   saveLocalExpiryData();
   delete expiryItems._productBatchMap;
@@ -3106,6 +3232,10 @@ async function reactivateExpiryItem(rowId) {
   item.lastUpdated = nowIso;
   item.updatedBy = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
 
+  recordUserEdit(item, {
+    quantity: qty,
+    status: 'Active'
+  });
   saveLocalExpiryData();
   delete expiryItems._productBatchMap;
   delete expiryItems._skuBatchMap;
@@ -3232,6 +3362,14 @@ async function handleEditExpiryItemSubmit(e) {
   item.lastUpdated = nowIso;
   item.updatedBy = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
 
+  recordUserEdit(item, {
+    actionPlan: item.actionPlan,
+    expiryDate: item.expiryDate,
+    quantity: item.quantity,
+    status: item.status,
+    offeredPrice: item.offeredPrice,
+    clearancePrice: item.clearancePrice
+  });
   saveLocalExpiryData();
   delete expiryItems._productBatchMap;
   delete expiryItems._skuBatchMap;
@@ -3696,6 +3834,17 @@ function saveClearancePriceTag(silent = false) {
   activePriceTagItem.lastUpdated = nowIso;
   activePriceTagItem.updatedBy = updatedBy;
 
+  recordUserEdit(activePriceTagItem, {
+    actionPlan: formattedPlan,
+    offeredPrice: offeredPrice,
+    clearancePrice: offeredPrice,
+    normalPrice: normalPrice,
+    tagTheme: theme,
+    tagSize: size,
+    promoBanner: banner,
+    promoRemark: footerNote
+  });
+
   // Also update any exact matching row (same unique rowId OR same exact branch + itemCode + batch + expiryDate)
   if (Array.isArray(expiryItems)) {
     expiryItems.forEach(it => {
@@ -3718,6 +3867,16 @@ function saveClearancePriceTag(silent = false) {
         it.pricingUpdatedAt = nowIso;
         it.lastUpdated = nowIso;
         it.updatedBy = updatedBy;
+        recordUserEdit(it, {
+          actionPlan: formattedPlan,
+          offeredPrice: offeredPrice,
+          clearancePrice: offeredPrice,
+          normalPrice: normalPrice,
+          tagTheme: theme,
+          tagSize: size,
+          promoBanner: banner,
+          promoRemark: footerNote
+        });
       }
     });
   }
@@ -3976,6 +4135,11 @@ function updateExpiryOfferedPrice(rowId, val) {
         it.pricingUpdatedAt = nowIso;
         it.lastUpdated = nowIso;
         it.updatedBy = updatedBy;
+        recordUserEdit(it, {
+          actionPlan: formattedPlan,
+          offeredPrice: !isNaN(num) && num > 0 ? num : undefined,
+          clearancePrice: !isNaN(num) && num > 0 ? num : undefined
+        });
       }
     });
   }
@@ -5446,6 +5610,7 @@ function bulkAddSelectedToWriteOff() {
     const it = findExpiryItemById(id);
     if (it && (!it.actionPlan || it.actionPlan === '')) {
       it.actionPlan = 'Write-off / Dispose';
+      recordUserEdit(it, { actionPlan: 'Write-off / Dispose' });
     }
   });
 
@@ -5475,6 +5640,7 @@ function bulkSetSelectedActionPlan(planValue) {
       if (finalPlan === 'Write-off / Dispose') {
         selectedWriteOffRowIds.add(id);
       }
+      recordUserEdit(it, { actionPlan: finalPlan });
     }
   });
 
@@ -5504,6 +5670,7 @@ function toggleSelectWriteOffItem(rowId, isChecked) {
     selectedWriteOffRowIds.add(safeId);
     if (item && (!item.actionPlan || item.actionPlan === '')) {
       item.actionPlan = 'Write-off / Dispose';
+      recordUserEdit(item, { actionPlan: 'Write-off / Dispose' });
       saveLocalExpiryData();
     }
     saveAccumulatedWriteOffItems();
@@ -5512,6 +5679,7 @@ function toggleSelectWriteOffItem(rowId, isChecked) {
     selectedWriteOffRowIds.delete(safeId);
     if (item && isWriteOffActionPlan(item.actionPlan)) {
       item.actionPlan = '';
+      recordUserEdit(item, { actionPlan: '' });
       saveLocalExpiryData();
     }
     saveAccumulatedWriteOffItems();
@@ -5865,6 +6033,7 @@ function addSingleItemToWriteOff(rowId) {
 
   selectedWriteOffRowIds.add(safeId);
   item.actionPlan = 'Write-off / Dispose';
+  recordUserEdit(item, { actionPlan: 'Write-off / Dispose' });
   saveLocalExpiryData();
   saveAccumulatedWriteOffItems();
   updateWriteOffSelectedCounter();
@@ -5918,6 +6087,7 @@ function removeWriteOffRow(rowId) {
   const item = findExpiryItemById(safeId);
   if (item && isWriteOffActionPlan(item.actionPlan)) {
     item.actionPlan = '';
+    recordUserEdit(item, { actionPlan: '' });
     saveLocalExpiryData();
   }
   saveAccumulatedWriteOffItems();
