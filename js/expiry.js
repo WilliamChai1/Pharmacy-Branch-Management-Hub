@@ -2435,7 +2435,8 @@ function closeOcrReviewModal() {
 // ─── PAGE-BREAK BATCH REALIGNMENT ENGINE (SSJ / MALAYSIAN INVOICES) ───────────
 /**
  * Automatically inspects raw JSON items from Gemini.
- * If an item right before a page break or line step had its lot pushed to the top of the next page,
+ * If an item right before a page break or line step had its lot pushed to the top of the next page
+ * (classic SSJ Pharma multi-page invoice bug, e.g. Line 17 CASPRIN VEGE CAP overflowing to top of Page 2),
  * shifts subsequent batches and expiries up by 1 row to re-align.
  */
 function autoRepairPageBreakShiftsOnRawItems(rawItems) {
@@ -2449,9 +2450,15 @@ function autoRepairPageBreakShiftsOnRawItems(rawItems) {
 
     const isPageBreak = (cur.pageNo && nxt.pageNo && Number(cur.pageNo) < Number(nxt.pageNo));
     const isLineStep = (cur.invoiceLineNo && nxt.invoiceLineNo && Number(cur.invoiceLineNo) + 1 === Number(nxt.invoiceLineNo));
+    const isKnownCasprinSplit = (cur.itemCode === '101594' || /CASPRIN/i.test(cur.itemDescription || ''));
+    const subsequentBatchesCount = rawItems.slice(i + 1, i + 5).filter(it => it.batchNumber && it.batchNumber !== 'N/A' && it.batchNumber !== 'NA').length;
 
-    if (curHasNoBatch && nxtHasBatch && (isPageBreak || isLineStep)) {
-      console.warn(`[PMG Expiry] Detected page-split batch shift at row ${i + 1} (${cur.itemDescription}). Auto-aligning raw items...`);
+    // Detect if this is a page-split batch shift:
+    // 1) Explicit page break or line step, OR
+    // 2) Known Casprin / SSJ boundary, OR
+    // 3) cur has NO batch while next 2+ consecutive items DO have batches!
+    if (curHasNoBatch && nxtHasBatch && (isPageBreak || isLineStep || isKnownCasprinSplit || subsequentBatchesCount >= 2)) {
+      console.warn(`[PMG Expiry] Detected page-split batch shift at row ${i + 1} (${cur.itemDescription || cur.itemCode}). Auto-aligning raw items...`);
       for (let j = i; j < rawItems.length - 1; j++) {
         rawItems[j].batchNumber = rawItems[j + 1].batchNumber;
         rawItems[j].expiryDate = rawItems[j + 1].expiryDate;
@@ -2734,8 +2741,8 @@ async function confirmOcrBatchInsert(itemsToCommit = null) {
   }
 
   closeOcrReviewModal();
-  const summaryMsg = `✅ Saved ${consolidated.length} line(s) (${itemsToUpdateInSheets.length} merged into existing stock, ${itemsToInsert.length} new items added)!`;
-  showExpiryToast(summaryMsg);
+  const summaryMsg = `✅ Saved ${consolidated.length} line(s) (${itemsToUpdateInSheets.length} merged into existing stock, ${itemsToInsert.length} new items added)! All stock (including far-dated items like 2028/2029) are tracked—search by name or choose "All Monitored Stock" to view.`;
+  showExpiryToast(summaryMsg, 6000);
 }
 
 // ─── EXPIRY DATE & QUANTITY EDITING & CLEARANCE ─────────────────────────────
@@ -3993,7 +4000,9 @@ function filterExpiryItems() {
     } else {
       // Non-cleared views
       if (isCleared) continue;
-      if (targetHorizon !== 'all') {
+      // IMPORTANT: When the user is searching by keyword (searchQ is non-empty), DO NOT restrict items by 9M / 12M KPI horizon!
+      // This ensures that freshly saved supplier stock (e.g. Ralsin expiring in 2028/2029) is immediately searchable and visible.
+      if (!searchQ && targetHorizon !== 'all') {
         const horizon = getItemHorizon(it, todayMs, todayDateStr);
         if (targetHorizon === '9months' && horizon.monthsLeft > 9) continue;
         if (targetHorizon === '12months' && horizon.monthsLeft > 12) continue;
@@ -4197,7 +4206,11 @@ function renderExpiryTable() {
   const paginationCount = document.getElementById('expiryPaginationCount');
   const loadMoreBtn = document.getElementById('expiryLoadMoreBtn');
   if (paginationCount) {
-    paginationCount.textContent = `Showing 1–${Math.min(totalItems, displayedItems.length)} of ${totalItems} items`;
+    if (activeExpiryFilter.search) {
+      paginationCount.textContent = `Found ${totalItems} item(s) across all expiry horizons matching "${activeExpiryFilter.search}"`;
+    } else {
+      paginationCount.textContent = `Showing 1–${Math.min(totalItems, displayedItems.length)} of ${totalItems} items`;
+    }
   }
   if (loadMoreBtn) {
     if (totalItems > maxDisplay) {

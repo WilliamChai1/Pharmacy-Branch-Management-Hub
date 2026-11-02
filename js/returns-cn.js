@@ -1066,9 +1066,29 @@
   // ─── GOOGLE SHEETS LIVE CLOUD SYNC (FOR MOBILE, LAPTOP & COUNTER PCS) ──────────
   const PMG_SCHEDULE_API_URL = (typeof window !== 'undefined' && window.PMG_SCHEDULE_API_URL) || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
 
+  function normalizeBranchForSheets(branch) {
+    if (!branch) return 'Kota Sentosa';
+    const s = String(branch).trim();
+    const up = s.toUpperCase();
+    if (up === 'KS01' || up === 'KS' || up.includes('SENTOSA')) return 'Kota Sentosa';
+    if (typeof BRANCHES !== 'undefined' && Array.isArray(BRANCHES)) {
+      const match = BRANCHES.find(b => b.code.toUpperCase() === up || b.name.toUpperCase() === up);
+      if (match) return match.name;
+    }
+    return s;
+  }
+
+  function doesReturnBranchMatch(itemBranch, filterBranch) {
+    if (!filterBranch || filterBranch === 'ALL') return true;
+    const fNorm = normalizeBranchForSheets(filterBranch).toUpperCase();
+    const bNorm = normalizeBranchForSheets(itemBranch).toUpperCase();
+    return fNorm === bNorm;
+  }
+
   async function syncReturnsWithGoogleSheets(targetBranch) {
     if (!PMG_SCHEDULE_API_URL) return;
-    const branchName = targetBranch || getActiveBranchName() || 'Kota Sentosa';
+    const rawBranch = targetBranch || getActiveBranchName() || 'Kota Sentosa';
+    const branchName = normalizeBranchForSheets(rawBranch);
     try {
       const res = await fetch(`${PMG_SCHEDULE_API_URL}?branch=${encodeURIComponent(branchName)}`);
       if (!res.ok) return;
@@ -1256,7 +1276,7 @@
   function renderReturnsSummaryCards() {
     const branchFilter = document.getElementById('returnsBranchFilter')?.value || '';
     const filtered = branchFilter 
-      ? returnsData.filter(r => (r.branch || '').toUpperCase() === branchFilter.toUpperCase())
+      ? returnsData.filter(r => doesReturnBranchMatch(r.branch, branchFilter))
       : returnsData;
 
     const totalActive = filtered.length;
@@ -1279,12 +1299,12 @@
     const tbody = document.getElementById('returnsTableBody');
     if (!tbody) return;
 
-    const branchFilter = (document.getElementById('returnsBranchFilter')?.value || '').trim().toUpperCase();
+    const branchFilter = (document.getElementById('returnsBranchFilter')?.value || '').trim();
     const query = (currentSearchQuery || '').trim().toLowerCase();
 
     const filtered = returnsData.filter(r => {
       // 1. Branch filter
-      if (branchFilter && (r.branch || '').toUpperCase() !== branchFilter) {
+      if (branchFilter && !doesReturnBranchMatch(r.branch, branchFilter)) {
         return false;
       }
       // 2. Status tab filter

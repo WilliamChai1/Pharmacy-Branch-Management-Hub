@@ -10312,15 +10312,26 @@ async function syncOnlineBookingsFromCloud(showPrompt = false) {
       if (imported) newImportCount++;
     });
 
-    if (newImportCount > 0) {
-      savePatientsData();
-      renderPatientModule();
-      if (showPrompt) {
+    // Always persist & re-render on sync so mobile and secondary PCs reflect all live appointments
+    savePatientsData();
+    renderPatientModule();
+    if (typeof renderPharmacistScheduleTab === 'function') {
+      renderPharmacistScheduleTab();
+    }
+
+    // Update workstation badge to show live cloud sync on mobile
+    const modeBadge = document.getElementById('patientWorkstationModeBadge');
+    if (modeBadge) {
+      modeBadge.innerHTML = `<i class="fa-solid fa-cloud mr-1"></i> Google Cloud Synced`;
+      modeBadge.className = 'text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded-full border border-emerald-200 ml-1.5';
+    }
+
+    if (showPrompt) {
+      if (newImportCount > 0) {
         alert(`✅ Successfully synchronized ${newImportCount} appointment(s) from Google Sheets!`);
+      } else {
+        alert(`All appointments for ${branch} are synchronized (${allBookingsMap.size} total).`);
       }
-    } else if (showPrompt) {
-      renderPatientModule();
-      alert(`All appointments for ${branch} are already synchronized (${allBookingsMap.size} total).`);
     }
   } catch (err) {
     console.warn('[PMG Cloud Sync] Sync failed:', err);
