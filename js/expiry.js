@@ -147,7 +147,10 @@ function recordUserEdit(item, patch) {
   try {
     localStorage.setItem(EXPIRY_USER_EDITS_KEY, JSON.stringify(edits));
   } catch (e) {
-    console.warn('[PMG Expiry] Error saving user delta edit:', e);
+    console.warn('[PMG Expiry] Error saving user delta edit to localStorage:', e);
+  }
+  if (typeof setIdbItem === 'function') {
+    setIdbItem(EXPIRY_USER_EDITS_KEY, edits).catch(() => {});
   }
 }
 
@@ -617,6 +620,21 @@ function initExpiryModule() {
         expiryItems = ensureUniqueExpiryRowIds(window.PMG_SEED_EXPIRY_DATA);
         applyUserEdits(expiryItems);
         saveLocalExpiryData();
+      }
+    }).catch(console.warn);
+  }
+
+  // Double-redundancy: Recover user edits from IndexedDB backup if localStorage was ever cleared
+  if (typeof getIdbItem === 'function') {
+    getIdbItem(EXPIRY_USER_EDITS_KEY).then(idbEdits => {
+      if (idbEdits && typeof idbEdits === 'object' && Object.keys(idbEdits).length > 0) {
+        const localEdits = getUserEdits();
+        const mergedEdits = { ...idbEdits, ...localEdits };
+        try { localStorage.setItem(EXPIRY_USER_EDITS_KEY, JSON.stringify(mergedEdits)); } catch (_) {}
+        applyUserEdits(expiryItems);
+        if (expiryTabContent && !expiryTabContent.classList.contains('hidden')) {
+          renderExpiryUI();
+        }
       }
     }).catch(console.warn);
   }
