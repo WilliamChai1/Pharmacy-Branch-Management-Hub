@@ -2028,6 +2028,11 @@
       </div>
 
       <div class="flex items-center gap-2">
+        <button type="button" onclick="syncExpiryFromSheets(true)"
+          class="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+          title="Refresh and sync stock expiry list live with Google Sheets">
+          <i class="fa-solid fa-arrows-rotate text-xs"></i> Sync Sheets
+        </button>
         <button id="btnOpenWriteOffModal" type="button" onclick="openStockWriteOffModal()"
           class="hidden px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer">
           <i class="fa-solid fa-file-invoice"></i> HQ Write-Off (<span id="writeOffSelectedCount">0</span>)

@@ -98,6 +98,9 @@ function removeClearedExpiryKey(key) {
   }
 }
 
+// Discontinued / fully obsolete SKUs barred from active inventory
+const OBSOLETE_DISCONTINUED_SKUS = new Set(['119253', '232903', '102787']);
+
 function isItemMarkedDoneOrCleared(item, clearedKeysSet = null) {
   if (!item) return false;
   const statusUpper = String(item.status || '').trim().toUpperCase();
@@ -114,12 +117,16 @@ function isItemMarkedDoneOrCleared(item, clearedKeysSet = null) {
   }
   const set = clearedKeysSet || getClearedExpiryKeys();
   if (!set || set.size === 0) return false;
+
+  // IMPORTANT: Do NOT treat bare itemCode as cleared! Expiry tracking is strictly per BATCH.
+  // Only explicitly obsolete discontinued SKUs are barred across all batches.
   const codeUpper = String(item.itemCode || '').trim().toUpperCase();
-  if (codeUpper && codeUpper !== 'N/A' && set.has(codeUpper)) return true;
+  if (OBSOLETE_DISCONTINUED_SKUS.has(codeUpper)) return true;
+
   const rId = item.rowId !== undefined && item.rowId !== null ? String(item.rowId).trim() : '';
   if (rId && rId !== 'undefined' && rId !== 'null') {
     const rUpper = rId.toUpperCase();
-    if (set.has(rUpper) || set.has(`ROW_${rUpper}`)) return true;
+    if (set.has(`ROW_${rUpper}`)) return true;
   }
   const itemKey = typeof getExpiryItemKey === 'function' ? getExpiryItemKey(item) : '';
   if (itemKey && set.has(itemKey.toUpperCase())) return true;
@@ -137,9 +144,9 @@ function isItemMarkedDoneOrCleared(item, clearedKeysSet = null) {
   const poolKey = typeof getExpiryProductPoolingKey === 'function' ? getExpiryProductPoolingKey(item) : '';
   if (poolKey && set.has(`${poolKey}|${bt || 'NO_BATCH'}|${expCanon}`.toUpperCase())) return true;
 
-  // Also check legacy 3-part key (BRANCH|CODE|BATCH)
-  if (codeUpper && codeUpper !== 'N/A') {
-    const legacyBatchKey = (bt && bt !== 'N/A') ? bt : 'NO_BATCH';
+  // Also check legacy 3-part key (BRANCH|CODE|BATCH) only if batch is non-generic
+  if (codeUpper && codeUpper !== 'N/A' && bt && bt !== 'NO_BATCH') {
+    const legacyBatchKey = bt;
     if (set.has(`${b}|${codeUpper}|${legacyBatchKey}`)) return true;
   }
   return false;
@@ -179,7 +186,7 @@ function getCanonicalExpiryDate(dateVal) {
   return formatExpiryDateDisplay(parsed);
 }
 
-function areExpiryItemsSameProductAndBatch(a, b) {
+function areExpiryItemsSameProduct(a, b) {
   if (!a || !b) return false;
   const bA = (a.branch || 'Kota Sentosa').trim().toUpperCase();
   const bB = (b.branch || 'Kota Sentosa').trim().toUpperCase();
@@ -190,13 +197,17 @@ function areExpiryItemsSameProductAndBatch(a, b) {
   const dA = normalizeProductDesc(a.itemDescription);
   const dB = normalizeProductDesc(b.itemDescription);
 
-  let productMatches = false;
-  if (cA && cB) {
-    productMatches = (cA === cB);
-  } else if (dA && dB) {
-    productMatches = (dA === dB || (dA.length >= 8 && dB.length >= 8 && (dA.startsWith(dB) || dB.startsWith(dA))));
+  if (cA && cB && cA !== 'N/A' && cB !== 'N/A') {
+    return (cA === cB);
   }
-  if (!productMatches) return false;
+  if (dA && dB) {
+    return (dA === dB || (dA.length >= 8 && dB.length >= 8 && (dA.startsWith(dB) || dB.startsWith(dA))));
+  }
+  return false;
+}
+
+function areExpiryItemsSameProductAndBatch(a, b) {
+  if (!areExpiryItemsSameProduct(a, b)) return false;
 
   const btA = normalizeBatchNumber(a.batchNumber);
   const btB = normalizeBatchNumber(b.batchNumber);
@@ -305,15 +316,15 @@ function healAndConsolidateExpiryItems(items) {
       const existingDone = isItemMarkedDoneOrCleared(existing, clearedSet) || existing.status === 'DONE' || Number(existing.quantity) === 0;
       const itDone = isDone;
 
-      if (existingDone || itDone) {
-        // If ANY copy of this batch was cleared/done, the consolidated item MUST BE PERMANENTLY DONE!
+      if (existingDone && itDone) {
+        // Both copies are done: preserve permanently DONE status
         existing.status = 'DONE';
         existing.quantity = 0;
         existing.remainingQty = 0;
         existing.clearedAt = existing.clearedAt || it.clearedAt || new Date().toISOString();
-        if (it.rowId) addClearedExpiryKey(String(it.rowId));
-        if (existing.rowId) addClearedExpiryKey(String(existing.rowId));
-      } else {
+        if (it.rowId) addClearedExpiryKey(`ROW_${it.rowId}`);
+        if (existing.rowId) addClearedExpiryKey(`ROW_${existing.rowId}`);
+      } else if (!existingDone && !itDone) {
         // Both copies are active: sum quantities!
         existing.quantity = (Number(existing.quantity) || 0) + (Number(it.quantity) || 0);
         existing.remainingQty = existing.quantity;
@@ -323,6 +334,23 @@ function healAndConsolidateExpiryItems(items) {
         if (it.lastUpdated && (!existing.lastUpdated || it.lastUpdated > existing.lastUpdated)) {
           existing.lastUpdated = it.lastUpdated;
           if (it.updatedBy) existing.updatedBy = it.updatedBy;
+        }
+      } else {
+        // One copy is done, but the other is active (e.g. newly received invoice stock):
+        // Active stock with positive quantity reactivates the batch!
+        const activeItem = !existingDone ? existing : it;
+        if (Number(activeItem.quantity) > 0) {
+          existing.status = 'Active';
+          existing.quantity = Number(activeItem.quantity);
+          existing.remainingQty = existing.quantity;
+          delete existing.clearedAt;
+          if (activeItem.sourceFile) existing.sourceFile = activeItem.sourceFile;
+          if (existing.rowId) removeClearedExpiryKey(`ROW_${existing.rowId}`);
+          removeClearedExpiryKey(batchGroupKey);
+        } else {
+          existing.status = 'DONE';
+          existing.quantity = 0;
+          existing.remainingQty = 0;
         }
       }
     }
@@ -503,7 +531,6 @@ function loadLocalExpiryData() {
   addClearedExpiryKey('ROW_7109');
   addClearedExpiryKey('KOTA SENTOSA|102787|5F01097');
   addClearedExpiryKey('KOTA SENTOSA|102787|5H04819');
-  addClearedExpiryKey('14');
   addClearedExpiryKey('ROW_14');
   addClearedExpiryKey('ROW_1815');
   addClearedExpiryKey('ROW_3675');
@@ -516,7 +543,13 @@ function loadLocalExpiryData() {
   addClearedExpiryKey('KOTA SENTOSA|145662|612125-A|30/11/2026');
   addClearedExpiryKey('KOTA SENTOSA|145662|612125A|30/11/2026');
 
-  // Remove accidental 'N/A' or 'ROW_UNDEFINED' tombstones if any were ever stored
+  // Purge any accidental bare number or product code tombstones if any were stored in client localStorage
+  removeClearedExpiryKey('112551');
+  removeClearedExpiryKey('3952');
+  removeClearedExpiryKey('ROW_3952');
+  removeClearedExpiryKey('1076');
+  removeClearedExpiryKey('ROW_1076');
+  removeClearedExpiryKey('14');
   removeClearedExpiryKey('N/A');
   removeClearedExpiryKey('ROW_UNDEFINED');
   removeClearedExpiryKey('ROW_NULL');
@@ -1432,8 +1465,16 @@ function mergeExpiryDatasets(localList, remoteList) {
     } else {
       const rId = String(rem.rowId || '').trim();
       if (rId && rowIdMap.has(rId)) {
-        targetKey = rowIdMap.get(rId);
-      } else {
+        const potentialTargetKey = rowIdMap.get(rId);
+        const locCandidate = map.get(potentialTargetKey);
+        // CRITICAL: Only match by rowId if both records actually refer to the SAME product!
+        // This prevents numeric rowId collisions (e.g. Google Sheet row numbers vs seed IDs)
+        // from merging completely different products together.
+        if (locCandidate && areExpiryItemsSameProduct(locCandidate, rem)) {
+          targetKey = potentialTargetKey;
+        }
+      }
+      if (!targetKey) {
         const b = (rem.branch || 'Kota Sentosa').trim().toUpperCase();
         const c = normalizeProductCode(rem.itemCode);
         const d = normalizeProductDesc(rem.itemDescription);
@@ -1781,12 +1822,6 @@ function calculateExpiryHorizon(dateVal, overrideTodayMs) {
  * Synchronizes stock expiry items bidirectionally across OneDrive folder and Google Sheets.
  */
 async function syncExpiryFromSheets(showPrompt = true) {
-  // 0. Auto-polling pause check
-  if (!showPrompt && typeof window.isPmgSyncPaused === 'function' && window.isPmgSyncPaused()) {
-    console.log('[PMG Expiry] Sheets background sync skipped: auto-polling is temporarily paused.');
-    return;
-  }
-
   const btn = document.getElementById('expirySyncBtn');
   if (btn) {
     btn.disabled = true;
@@ -1798,7 +1833,8 @@ async function syncExpiryFromSheets(showPrompt = true) {
     try {
       const url = `${PMG_EXPIRY_API_URL}?action=getExpiry&branch=all`;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000);
+      // 30-second timeout to accommodate cold starts and 1MB payloads over branch networks
+      const timeout = setTimeout(() => controller.abort(), 30000);
       const res = await fetch(url, { method: 'GET', signal: controller.signal });
       clearTimeout(timeout);
 
@@ -1807,6 +1843,7 @@ async function syncExpiryFromSheets(showPrompt = true) {
         if (data && data.success && Array.isArray(data.items) && data.items.length > 0) {
           expiryItems = mergeExpiryDatasets(expiryItems, data.items);
           saveLocalExpiryData();
+          window._lastExpirySheetsSyncTime = Date.now();
           if (!document.getElementById('content-expiry')?.classList.contains('hidden')) {
             renderExpiryUI();
           }
@@ -2743,6 +2780,9 @@ async function confirmOcrBatchInsert(itemsToCommit = null) {
   closeOcrReviewModal();
   const summaryMsg = `✅ Saved ${consolidated.length} line(s) (${itemsToUpdateInSheets.length} merged into existing stock, ${itemsToInsert.length} new items added)! All stock (including far-dated items like 2028/2029) are tracked—search by name or choose "All Monitored Stock" to view.`;
   showExpiryToast(summaryMsg, 6000);
+
+  // Trigger immediate background sync with Google Sheets to reconcile newly appended cloud row IDs
+  syncExpiryFromSheets(false).catch(console.warn);
 }
 
 // ─── EXPIRY DATE & QUANTITY EDITING & CLEARANCE ─────────────────────────────
@@ -4593,6 +4633,14 @@ function handleExpirySearchChange(val) {
     activeExpiryFilter.search = cleanVal;
     expiryCurrentPage = 1;
     renderExpiryUI();
+
+    // If search term is 3+ characters and returned 0 matches, or if sheets haven't synced recently,
+    // automatically trigger background sync from Google Sheets so freshly uploaded invoice rows appear
+    const matches = filterExpiryItems();
+    const timeSinceLastSync = Date.now() - (window._lastExpirySheetsSyncTime || 0);
+    if ((matches.length === 0 || timeSinceLastSync > 60000) && cleanVal.length >= 3) {
+      syncExpiryFromSheets(false).catch(console.warn);
+    }
   }, 100);
 }
 window.handleExpirySearchChange = handleExpirySearchChange;
