@@ -215,9 +215,9 @@ function isItemMarkedDoneOrCleared(item, clearedKeysSet = null) {
   const qtyNum = Number(item.quantity);
   const remQtyNum = Number(item.remainingQty);
 
-  // CRITICAL: If an item has positive quantity and status is explicitly Active (e.g. from new supplier invoice),
-  // it is active stock and MUST NOT be marked cleared by a stale tombstone!
-  if (statusUpper === 'ACTIVE' && (!isNaN(qtyNum) && qtyNum > 0)) {
+  // CRITICAL: Any item with positive quantity that has not been explicitly marked DONE/CLEARED/WRITTEN-OFF
+  // is active stock and MUST NOT be marked cleared by a stale tombstone!
+  if (!isNaN(qtyNum) && qtyNum > 0 && statusUpper !== 'DONE' && statusUpper !== 'COMPLETED' && statusUpper !== 'CLEARED' && statusUpper !== 'WRITTEN-OFF') {
     return false;
   }
 
@@ -1683,18 +1683,21 @@ function mergeExpiryDatasets(localList, remoteList) {
       }
 
       // RECONCILE CLEARANCE:
-      // A clearance should only win if it was cleared AFTER the last active stock update!
-      // If one copy has positive quantity and status === 'Active' with a newer timestamp (e.g. from new supplier invoice),
-      // that incoming stock MUST WIN and be preserved.
+      // A clearance should only win if it was explicitly cleared AFTER the last active stock update!
+      // If one copy has positive quantity and status !== 'DONE', that incoming stock MUST WIN and be preserved.
       let isClearedFinal = false;
       if (locIsCleared && remIsCleared) {
         isClearedFinal = true;
       } else if (locIsCleared && !remIsCleared) {
-        const locClearedTs = loc.clearedAt ? new Date(loc.clearedAt).getTime() : locTs;
-        isClearedFinal = locClearedTs >= remTs;
+        // Remote has active stock with positive quantity.
+        // Local clearance only wins if local was explicitly cleared AFTER remote stock was updated.
+        const locClearedTs = loc.clearedAt ? new Date(loc.clearedAt).getTime() : 0;
+        isClearedFinal = locClearedTs > 0 && locClearedTs > remTs;
       } else if (!locIsCleared && remIsCleared) {
-        const remClearedTs = rem.clearedAt ? new Date(rem.clearedAt).getTime() : remTs;
-        isClearedFinal = remClearedTs > locTs;
+        // Local has active stock with positive quantity.
+        // Remote clearance only wins if remote was explicitly cleared AFTER local stock was updated.
+        const remClearedTs = rem.clearedAt ? new Date(rem.clearedAt).getTime() : 0;
+        isClearedFinal = remClearedTs > 0 && remClearedTs > locTs;
       }
 
       if (isClearedFinal) {
@@ -2054,7 +2057,9 @@ async function pushExpiryUpdateToSheets(rowId, quantity, status, expiryDate = nu
     const nowIso = new Date().toISOString();
 
     const isDoneOrCleared = status === 'DONE' || status === 'COMPLETED' || status === 'Cleared';
-    const primaryAction = isDoneOrCleared ? 'mark_cleared' : (extraFields.actionPlan !== undefined ? 'update_action_plan' : (expiryDate ? 'update_item' : 'update_qty'));
+    // Google Apps Script backend exclusively accepts 'mark_cleared', 'update_qty', and 'batch_insert'.
+    // Do NOT send 'update_item' or 'update_action_plan' as GAS will reject them with "Unrecognized action".
+    const primaryAction = isDoneOrCleared ? 'mark_cleared' : 'update_qty';
 
     const rawIdStr = String(rowId || '').trim();
     const numRowId = /^\d+$/.test(rawIdStr) ? parseInt(rawIdStr, 10) : NaN;
