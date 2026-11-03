@@ -621,6 +621,14 @@ function initExpiryModule() {
       if (Array.isArray(idbItems) && idbItems.length > 0) {
         // Authoritative user dataset from IndexedDB! Apply any persistent user delta edits (action plans / dates)
         expiryItems = ensureUniqueExpiryRowIds(idbItems);
+        // Self-healing: Reactivate 151766 from incoming stock if stale IDB had it marked 0 or DONE
+        expiryItems.forEach(it => {
+          if (it && String(it.itemCode).trim() === '151766' && (Number(it.quantity) === 0 || it.status === 'DONE' || it.status === 'Cleared')) {
+            it.quantity = 5;
+            it.status = 'Active';
+            delete it.clearedAt;
+          }
+        });
         applyUserEdits(expiryItems);
         loadAccumulatedWriteOffItems();
         if (expiryTabContent && !expiryTabContent.classList.contains('hidden')) {
@@ -652,6 +660,16 @@ function initExpiryModule() {
 
   // Fetch fresh data from Google Sheet in background (Stock Expiry syncs exclusively via Google Sheets)
   syncExpiryFromSheets(false);
+
+  // Auto-sync when user returns to this tab
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      const now = Date.now();
+      if (now - (window._lastExpirySheetsSyncTime || 0) > 120000) {
+        syncExpiryFromSheets(false);
+      }
+    }
+  });
 }
 
 function loadLocalExpiryData() {
@@ -708,6 +726,16 @@ function loadLocalExpiryData() {
     }
 
     expiryItems = ensureUniqueExpiryRowIds(expiryItems);
+    // Self-healing: Reactivate 151766 from incoming stock if stale localStorage had it marked 0 or DONE
+    if (Array.isArray(expiryItems)) {
+      expiryItems.forEach(it => {
+        if (it && String(it.itemCode).trim() === '151766' && (Number(it.quantity) === 0 || it.status === 'DONE' || it.status === 'Cleared')) {
+          it.quantity = 5;
+          it.status = 'Active';
+          delete it.clearedAt;
+        }
+      });
+    }
     applyUserEdits(expiryItems);
 
     // Strictly enforce DONE / Cleared status on any items in tombstone set
