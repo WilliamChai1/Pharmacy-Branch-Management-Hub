@@ -214,6 +214,13 @@ function isItemMarkedDoneOrCleared(item, clearedKeysSet = null) {
   const statusUpper = String(item.status || '').trim().toUpperCase();
   const qtyNum = Number(item.quantity);
   const remQtyNum = Number(item.remainingQty);
+
+  // CRITICAL: If an item has positive quantity and status is explicitly Active (e.g. from new supplier invoice),
+  // it is active stock and MUST NOT be marked cleared by a stale tombstone!
+  if (statusUpper === 'ACTIVE' && (!isNaN(qtyNum) && qtyNum > 0)) {
+    return false;
+  }
+
   if (statusUpper === 'DONE' || statusUpper === 'COMPLETED' || statusUpper === 'CLEARED') {
     return true;
   }
@@ -375,6 +382,10 @@ function healAndConsolidateExpiryItems(items) {
   });
   removeClearedExpiryKey('17');
   removeClearedExpiryKey('ROW_17');
+  removeClearedExpiryKey('151766');
+  removeClearedExpiryKey('ROW_3526');
+  removeClearedExpiryKey('ROW_4086');
+  removeClearedExpiryKey('KOTA SENTOSA|151766|26001|15/04/2028');
 
   const resultMap = new Map();
 
@@ -680,6 +691,10 @@ function loadLocalExpiryData() {
   removeClearedExpiryKey('ROW_NULL');
   removeClearedExpiryKey('17');
   removeClearedExpiryKey('ROW_17');
+  removeClearedExpiryKey('151766');
+  removeClearedExpiryKey('ROW_3526');
+  removeClearedExpiryKey('ROW_4086');
+  removeClearedExpiryKey('KOTA SENTOSA|151766|26001|15/04/2028');
 
   try {
     const raw = localStorage.getItem(EXPIRY_STORAGE_KEY);
@@ -1667,12 +1682,22 @@ function mergeExpiryDatasets(localList, remoteList) {
         if (!winRemark && rem.promoRemark) winRemark = rem.promoRemark;
       }
 
-      // CRITICAL TOMBSTONE INVARIANT:
-      // If EITHER local or remote is marked DONE/cleared, CLEARANCE ALWAYS WINS!
-      // An active remote copy MUST NEVER resurrect a locally cleared item!
-      const isAnyCleared = locIsCleared || remIsCleared;
+      // RECONCILE CLEARANCE:
+      // A clearance should only win if it was cleared AFTER the last active stock update!
+      // If one copy has positive quantity and status === 'Active' with a newer timestamp (e.g. from new supplier invoice),
+      // that incoming stock MUST WIN and be preserved.
+      let isClearedFinal = false;
+      if (locIsCleared && remIsCleared) {
+        isClearedFinal = true;
+      } else if (locIsCleared && !remIsCleared) {
+        const locClearedTs = loc.clearedAt ? new Date(loc.clearedAt).getTime() : locTs;
+        isClearedFinal = locClearedTs >= remTs;
+      } else if (!locIsCleared && remIsCleared) {
+        const remClearedTs = rem.clearedAt ? new Date(rem.clearedAt).getTime() : remTs;
+        isClearedFinal = remClearedTs > locTs;
+      }
 
-      if (isAnyCleared) {
+      if (isClearedFinal) {
         const mergedDone = {
           ...rem,
           ...loc,
@@ -1701,10 +1726,15 @@ function mergeExpiryDatasets(localList, remoteList) {
         map.set(remKey, mergedDone);
       } else if (remTs > locTs) {
         // Both are active: Remote is strictly newer than local! Remote updates inventory attributes
+        removeClearedExpiryKey(rem.rowId);
+        removeClearedExpiryKey(loc.rowId);
+        removeClearedExpiryKey(targetKey);
+        removeClearedExpiryKey(remKey);
         const updatedItem = {
           ...loc,
           ...rem,
           rowId: loc.rowId || rem.rowId,
+          status: 'Active',
           offeredPrice: winOfferedPrice,
           clearancePrice: winClearancePrice,
           normalPrice: winNormalPrice,
@@ -1721,9 +1751,14 @@ function mergeExpiryDatasets(localList, remoteList) {
         map.set(remKey, updatedItem);
       } else if (locTs > remTs) {
         // Both are active: Local is strictly newer than remote!
+        removeClearedExpiryKey(rem.rowId);
+        removeClearedExpiryKey(loc.rowId);
+        removeClearedExpiryKey(targetKey);
+        removeClearedExpiryKey(remKey);
         const updatedItem = {
           ...rem,
           ...loc,
+          status: 'Active',
           offeredPrice: winOfferedPrice,
           clearancePrice: winClearancePrice,
           normalPrice: winNormalPrice,
@@ -1737,9 +1772,14 @@ function mergeExpiryDatasets(localList, remoteList) {
         map.set(targetKey, updatedItem);
       } else {
         // Both are active: Timestamps equal or absent
-        if (rem.quantity !== undefined && loc.quantity === undefined) loc.quantity = rem.quantity;
+        removeClearedExpiryKey(rem.rowId);
+        removeClearedExpiryKey(loc.rowId);
+        removeClearedExpiryKey(targetKey);
+        removeClearedExpiryKey(remKey);
+        if (rem.quantity !== undefined && (loc.quantity === undefined || loc.quantity === 0)) loc.quantity = rem.quantity;
         if (rem.expiryDate && !loc.expiryDate) loc.expiryDate = rem.expiryDate;
         if (rem.batchNumber && (!loc.batchNumber || loc.batchNumber === 'N/A')) loc.batchNumber = rem.batchNumber;
+        loc.status = (Number(loc.quantity) > 0 || Number(rem.quantity) > 0) ? 'Active' : loc.status;
         loc.offeredPrice = winOfferedPrice;
         loc.clearancePrice = winClearancePrice;
         loc.normalPrice = winNormalPrice;
@@ -2849,9 +2889,17 @@ async function confirmOcrBatchInsert(itemsToCommit = null) {
       existing.quantity = (Number(existing.quantity) || 0) + addedQty;
 
       // If it was previously Cleared or DONE, reactivate with the incoming stock
-      if (existing.quantity > 0 && (existing.status === 'Cleared' || existing.status === 'DONE')) {
+      if (existing.quantity > 0) {
         existing.status = 'Active';
         delete existing.clearedAt;
+
+        // CRITICAL: Purge cleared tombstones so new incoming stock is immediately visible!
+        removeClearedExpiryKey(existing.rowId);
+        removeClearedExpiryKey(`ROW_${existing.rowId}`);
+        const itKey = getExpiryItemKey(existing);
+        if (itKey) removeClearedExpiryKey(itKey);
+        const canonBatchKey = typeof getCanonicalBatchKey === 'function' ? getCanonicalBatchKey(existing) : '';
+        if (canonBatchKey) removeClearedExpiryKey(canonBatchKey);
       }
       existing.lastUpdated = nowIso;
       existing.updatedBy = userName;
@@ -2864,7 +2912,11 @@ async function confirmOcrBatchInsert(itemsToCommit = null) {
       if (!it.rowId || String(it.rowId) === 'undefined') {
         it.rowId = it.tempId || `ocr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}_${idx}`;
       }
-      it.status = it.status || 'Active';
+      it.status = 'Active';
+      removeClearedExpiryKey(it.rowId);
+      removeClearedExpiryKey(`ROW_${it.rowId}`);
+      const itKey = getExpiryItemKey(it);
+      if (itKey) removeClearedExpiryKey(itKey);
       itemsToInsert.push(it);
     }
   });
@@ -4409,18 +4461,6 @@ function renderExpiryTable() {
   const items = filterExpiryItems();
   if (countEl) countEl.textContent = `${items.length} items`;
 
-  if (items.length === 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="10" class="text-center py-12 text-gray-400">
-          <i class="fa-solid fa-box-open text-4xl mb-3 text-gray-300 block"></i>
-          No expiry stock records found matching your filters.
-          <p class="text-xs text-gray-400 mt-1">Upload a PDF invoice or click "+ Quick Add" to begin tracking.</p>
-        </td>
-      </tr>`;
-    return;
-  }
-
   const totalItems = items.length;
   const maxDisplay = expiryCurrentPage * EXPIRY_PAGE_SIZE;
   const displayedItems = items.slice(0, maxDisplay);
@@ -4431,7 +4471,7 @@ function renderExpiryTable() {
     if (activeExpiryFilter.search) {
       paginationCount.textContent = `Found ${totalItems} item(s) across all expiry horizons matching "${activeExpiryFilter.search}"`;
     } else {
-      paginationCount.textContent = `Showing 1–${Math.min(totalItems, displayedItems.length)} of ${totalItems} items`;
+      paginationCount.textContent = `Showing ${totalItems === 0 ? 0 : 1}–${Math.min(totalItems, displayedItems.length)} of ${totalItems} items`;
     }
   }
   if (loadMoreBtn) {
@@ -4441,6 +4481,18 @@ function renderExpiryTable() {
     } else {
       loadMoreBtn.classList.add('hidden');
     }
+  }
+
+  if (items.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="10" class="text-center py-12 text-gray-400">
+          <i class="fa-solid fa-box-open text-4xl mb-3 text-gray-300 block"></i>
+          No expiry stock records found matching your filters.
+          <p class="text-xs text-gray-400 mt-1">Upload a PDF invoice or click "+ Quick Add" to begin tracking.</p>
+        </td>
+      </tr>`;
+    return;
   }
 
   const productBatchMap = getProductBatchMap();
