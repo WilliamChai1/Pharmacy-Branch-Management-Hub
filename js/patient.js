@@ -2157,7 +2157,10 @@ function getPatientSupplySummary(patient, lang) {
  * Builds the personalized customer self-service booking portal URL with pre-filled query params.
  */
 function getPatientSelfBookingUrl(patient) {
-  const baseUrl = window.location.origin + window.location.pathname;
+  let baseUrl = window.location.origin + window.location.pathname;
+  if (!baseUrl.includes('/patient/')) {
+    baseUrl = baseUrl.replace(/\/index\.html$/, '').replace(/\/$/, '') + '/patient/index.html';
+  }
   const name = patient?.name || '';
   const phone = patient?.phone || '';
 
@@ -2179,6 +2182,11 @@ function getPatientSelfBookingUrl(patient) {
 
   if (name) params.set('name', name);
   if (phone) params.set('phone', phone);
+  if (patient?.ic) params.set('ic', patient.ic);
+
+  const rawBranch = patient?.branch || (typeof getSession === 'function' && getSession()?.branch) || 'Kota Sentosa';
+  const branchCode = typeof normalizeBranchCode === 'function' ? normalizeBranchCode(rawBranch) : 'Kota Sentosa';
+  if (branchCode) params.set('branch', branchCode);
 
   return `${baseUrl}?${params.toString()}`;
 }
@@ -10561,6 +10569,17 @@ function resetCustomerBookingForm() {
   document.getElementById('customerBookingFormCard').classList.remove('hidden');
   initCustomerBooking('Kota Sentosa');
 }
+
+// Window bindings for customer booking portal
+window.setBookingLanguage = setBookingLanguage;
+window.initCustomerBooking = initCustomerBooking;
+window.toggleBookingType = toggleBookingType;
+window.updateCustBookHours = updateCustBookHours;
+window.handleCustomerBookingSubmit = handleCustomerBookingSubmit;
+window.sendCustomerBookingWaConfirm = sendCustomerBookingWaConfirm;
+window.sendCustomerBookingWaToPharmacist = sendCustomerBookingWaToPharmacist;
+window.resetCustomerBookingForm = resetCustomerBookingForm;
+window.getPatientSelfBookingUrl = getPatientSelfBookingUrl;
 
 // ═════════════════════════════════════════════════════════════════════════════
 // ─── PHARMACIST OPERATING HOURS & SHIFT MODAL CONTROLLER ─────────────────────
