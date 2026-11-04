@@ -157,6 +157,7 @@
             await this.syncWithOneDriveFolder(true);
             // Stock expiry data syncs exclusively via Google Sheets as requested
             await this.syncReturnsWithOneDrive(true);
+            await this.syncRentalsWithOneDrive(true);
             return;
           } else {
             // Permission in 'prompt' state; wait for user click to request permission
@@ -740,6 +741,15 @@
           console.warn('[PMG OneDrive Sync] Universal sync: Returns warning:', returnsErr);
         }
 
+        // ─── STEP G2: UNIVERSAL SYNC — MEDICAL EQUIPMENT RENTALS ──────────────
+        let rentalsSyncedCount = 0;
+        try {
+          const syncedRentals = await this.syncRentalsWithOneDrive(true);
+          rentalsSyncedCount = Array.isArray(syncedRentals) ? syncedRentals.length : 0;
+        } catch (rentalErr) {
+          console.warn('[PMG OneDrive Sync] Universal sync: Rentals warning:', rentalErr);
+        }
+
         // ─── STEP H: UNIVERSAL SYNC — HR RECRUITMENT & JOB APPLICATIONS ────────
         let recruitmentSyncedCount = 0;
         try {
@@ -883,6 +893,7 @@
           time: timeStr,
           branches: syncedBranches,
           returnsCount: returnsSyncedCount,
+          rentalsCount: rentalsSyncedCount,
           recruitmentCount: recruitmentSyncedCount,
           pricingCount: pricingSyncedCount
         };
@@ -2196,6 +2207,167 @@
       }
     }
 
+    // ─── BIDIRECTIONAL SYNC & MERGE MEDICAL EQUIPMENT RENTALS WITH ONEDRIVE ────
+    async syncRentalsWithOneDrive(silent = false) {
+      if (!this.rootHandle || this.mode === 'DISCONNECTED') return false;
+      if (silent && typeof window.isPmgSyncPaused === 'function' && window.isPmgSyncPaused()) {
+        return false;
+      }
+
+      try {
+        const hasPerm = await this._verifyPermission(this.rootHandle, false, false);
+        if (!hasPerm) return false;
+
+        const targetBranch = this.activeBranchFolder || this._resolveCurrentBranchName() || 'KOTA SENTOSA';
+        const bFolder = BRANCH_FOLDER_MAP[targetBranch.toUpperCase()] || targetBranch;
+        const bCode = FOLDER_BRANCH_CODE_MAP[bFolder] || 'KS01';
+        const dirHandle = await this._getTargetBranchDirectoryHandle(bFolder);
+        if (!dirHandle) return false;
+
+        const storageKey = `pmg_medical_equipment_rentals_${bCode}`;
+
+        // 1. Get local rentals
+        let localRentals = [];
+        try {
+          const raw = localStorage.getItem(storageKey) || localStorage.getItem('pmg_medical_equipment_rentals_KS01');
+          if (raw) localRentals = JSON.parse(raw);
+        } catch (_) {}
+        if (!Array.isArray(localRentals)) localRentals = [];
+
+        // 2. Read deleted IDs tombstone
+        let deletedIds = [];
+        try {
+          deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_rentals') || '[]');
+        } catch (_) {}
+        const deletedSet = new Set(deletedIds);
+
+        // 3. Read cloud medical_equipment_rentals.json from OneDrive
+        let cloudRentals = [];
+        try {
+          const fh = await dirHandle.getFileHandle('medical_equipment_rentals.json', { create: false });
+          const file = await fh.getFile();
+          const text = await file.text();
+          if (text && text.trim()) {
+            const parsed = JSON.parse(text);
+            if (Array.isArray(parsed.rentals)) cloudRentals = parsed.rentals;
+            else if (Array.isArray(parsed)) cloudRentals = parsed;
+          }
+        } catch (_) {
+          // File does not exist yet on OneDrive
+        }
+
+        // 4. Bidirectional conflict-free merge
+        const rentalMap = new Map();
+
+        (cloudRentals || []).forEach(r => {
+          if (r && r.id && !deletedSet.has(r.id)) {
+            rentalMap.set(r.id, r);
+          }
+        });
+
+        let localChanged = false;
+
+        (localRentals || []).forEach(r => {
+          if (!r || !r.id || deletedSet.has(r.id)) return;
+          if (!rentalMap.has(r.id)) {
+            rentalMap.set(r.id, r);
+          } else {
+            const cloudRec = rentalMap.get(r.id);
+            const localTime = r.updatedAt || r.createdAt || '';
+            const cloudTime = cloudRec.updatedAt || cloudRec.createdAt || '';
+            if (localTime > cloudTime) {
+              rentalMap.set(r.id, { ...cloudRec, ...r });
+            } else if (cloudTime > localTime) {
+              localChanged = true;
+            }
+          }
+        });
+
+        const mergedRentals = Array.from(rentalMap.values());
+
+        // Update local storage if needed
+        if (mergedRentals.length !== localRentals.length || localChanged) {
+          localStorage.setItem(storageKey, JSON.stringify(mergedRentals));
+          if (storageKey !== 'pmg_medical_equipment_rentals_KS01') {
+            localStorage.setItem('pmg_medical_equipment_rentals_KS01', JSON.stringify(mergedRentals));
+          }
+          if (typeof renderEquipmentRentals === 'function') {
+            renderEquipmentRentals();
+          }
+          console.log(`[PMG OneDrive Sync] Pulled ${mergedRentals.length} rentals from OneDrive into local storage`);
+        }
+
+        // Check if OneDrive cloud file needs updating
+        const cloudNeedsWrite = (cloudRentals.length !== mergedRentals.length) ||
+          JSON.stringify(cloudRentals) !== JSON.stringify(mergedRentals);
+
+        if (cloudNeedsWrite && mergedRentals.length > 0) {
+          const session = typeof getSession === 'function' ? getSession() : null;
+          const nowIso = new Date().toISOString();
+          const payload = {
+            branch: bFolder,
+            branchCode: bCode,
+            lastSync: nowIso,
+            syncedBy: session?.displayName || 'Pharmacist',
+            count: mergedRentals.length,
+            rentals: mergedRentals
+          };
+          const writeHandle = await dirHandle.getFileHandle('medical_equipment_rentals.json', { create: true });
+          const writable = await writeHandle.createWritable();
+          await writable.write(JSON.stringify(payload, null, 2));
+          await writable.close();
+          console.log(`[PMG OneDrive Sync] Uploaded ${mergedRentals.length} rentals to OneDrive (${bFolder})`);
+        }
+
+        return mergedRentals;
+      } catch (err) {
+        console.warn('[PMG OneDrive Sync] syncRentalsWithOneDrive warning:', err);
+        return false;
+      }
+    }
+
+    // ─── SAVE RENTALS TO ONEDRIVE (IMMEDIATE WRITE) ───────────────────────────
+    async saveRentalsToOneDrive(branchCode, rentals) {
+      if (!this.rootHandle || this.mode === 'DISCONNECTED') return false;
+      const bFolder = BRANCH_FOLDER_MAP[(branchCode || '').toUpperCase()] || this.activeBranchFolder || 'KOTA SENTOSA';
+      const bCode = FOLDER_BRANCH_CODE_MAP[bFolder] || branchCode || 'KS01';
+      const dirHandle = await this._getTargetBranchDirectoryHandle(bFolder);
+      if (!dirHandle) return false;
+
+      try {
+        const hasPerm = await this._verifyPermission(this.rootHandle, true, false);
+        if (!hasPerm) return false;
+
+        const session = typeof getSession === 'function' ? getSession() : null;
+        const nowIso = new Date().toISOString();
+        const payload = {
+          branch: bFolder,
+          branchCode: bCode,
+          lastSync: nowIso,
+          syncedBy: session?.displayName || 'Pharmacist',
+          count: Array.isArray(rentals) ? rentals.length : 0,
+          rentals: Array.isArray(rentals) ? rentals : []
+        };
+
+        const fileHandle = await dirHandle.getFileHandle('medical_equipment_rentals.json', { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(JSON.stringify(payload, null, 2));
+        await writable.close();
+        console.log(`[PMG OneDrive Sync] Immediate write: ${payload.count} rentals saved to OneDrive (${bFolder})`);
+        return true;
+      } catch (err) {
+        console.warn('[PMG OneDrive Sync] saveRentalsToOneDrive error:', err);
+        return false;
+      }
+    }
+
+    async saveCustomKeyToOneDrive(key, data) {
+      if (key === 'medical_equipment_rentals') {
+        return this.saveRentalsToOneDrive('Kota Sentosa', data);
+      }
+      return false;
+    }
+
     _formatCurrentMonthString() {
       const d = new Date();
       const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -2319,6 +2491,11 @@
         // Also check and sync returns & credit notes in background
         try {
           await this.syncReturnsWithOneDrive(true);
+        } catch (_) {}
+
+        // Also check and sync medical equipment rentals in background
+        try {
+          await this.syncRentalsWithOneDrive(true);
         } catch (_) {}
 
         // If file modified timestamp is not newer and not forced, skip reading
@@ -2932,6 +3109,7 @@
             <div>• <b>Target:</b> ${escapeSyncHtml(res.branch)} &bull; <b>Time:</b> ${res.time}</div>
             <div class="grid grid-cols-2 gap-1.5 pt-1 text-[10px] text-emerald-900 font-medium">
               <div>✓ <b>Patient Care:</b> ${res.count} records</div>
+              <div>✓ <b>Equipment Rentals:</b> ${res.rentalsCount || 0} rentals</div>
               <div>✓ <b>Job Applications:</b> ${res.recruitmentCount || 0} applicants</div>
               <div>✓ <b>Credit Notes & DO:</b> ${res.returnsCount || 0} records</div>
               <div>✓ <b>Pricing SKUs:</b> ${res.pricingCount || 0} master items</div>

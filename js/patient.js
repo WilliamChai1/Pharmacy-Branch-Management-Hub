@@ -832,14 +832,22 @@ function initPatientModule() {
     }).catch(err => console.warn('[PMG Patient] IDB hydration warning:', err));
   }
 
-  // Auto-sync customer online bookings from cloud relay (silent background fetch + continuous polling every 60s)
+  // Auto-sync customer online bookings & medical equipment rentals from cloud relay (silent background fetch + continuous polling every 60s)
   if (typeof syncOnlineBookingsFromCloud === 'function') {
     syncOnlineBookingsFromCloud(false).catch(() => {});
-    if (!window._pmgCloudSyncInterval) {
-      window._pmgCloudSyncInterval = setInterval(() => {
+  }
+  if (typeof syncRentalsFromCloud === 'function') {
+    syncRentalsFromCloud().catch(() => {});
+  }
+  if (!window._pmgCloudSyncInterval) {
+    window._pmgCloudSyncInterval = setInterval(() => {
+      if (typeof syncOnlineBookingsFromCloud === 'function') {
         syncOnlineBookingsFromCloud(false).catch(() => {});
-      }, 60000);
-    }
+      }
+      if (typeof syncRentalsFromCloud === 'function') {
+        syncRentalsFromCloud().catch(() => {});
+      }
+    }, 60000);
   }
 }
 
@@ -1371,6 +1379,12 @@ function switchPatientSubTab(tab) {
       switchSchedViewMode(currentSchedViewMode || 'booked');
     }
   } else if (tab === 'rentals') {
+    if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.syncRentalsWithOneDrive === 'function') {
+      window.pmgOneDriveSync.syncRentalsWithOneDrive(true).catch(() => {});
+    }
+    if (typeof syncRentalsFromCloud === 'function') {
+      syncRentalsFromCloud().catch(() => {});
+    }
     if (typeof renderEquipmentRentals === 'function') {
       renderEquipmentRentals();
     }
@@ -12725,7 +12739,7 @@ const RENTALS_STORAGE_KEY = 'pmg_medical_equipment_rentals_KS01';
 
 function loadRentals() {
   try {
-    const raw = localStorage.getItem(RENTALS_STORAGE_KEY);
+    const raw = localStorage.getItem(RENTALS_STORAGE_KEY) || localStorage.getItem('pmg_medical_equipment_rentals_KS01');
     if (raw) return JSON.parse(raw);
   } catch (err) {
     console.warn('Failed to load rentals:', err);
@@ -12736,11 +12750,166 @@ function loadRentals() {
 function saveRentals(rentals) {
   try {
     localStorage.setItem(RENTALS_STORAGE_KEY, JSON.stringify(rentals));
-    if (window.pmgOneDriveSync?.saveCustomKeyToOneDrive) {
-      window.pmgOneDriveSync.saveCustomKeyToOneDrive('medical_equipment_rentals', rentals);
+    if (RENTALS_STORAGE_KEY !== 'pmg_medical_equipment_rentals_KS01') {
+      localStorage.setItem('pmg_medical_equipment_rentals_KS01', JSON.stringify(rentals));
+    }
+    // 1. Sync via OneDrive Folder Live Sync (Multi-PC)
+    if (window.pmgOneDriveSync) {
+      if (typeof window.pmgOneDriveSync.saveRentalsToOneDrive === 'function') {
+        window.pmgOneDriveSync.saveRentalsToOneDrive('Kota Sentosa', rentals);
+      } else if (typeof window.pmgOneDriveSync.saveCustomKeyToOneDrive === 'function') {
+        window.pmgOneDriveSync.saveCustomKeyToOneDrive('medical_equipment_rentals', rentals);
+      }
+    }
+    // 2. Sync via Google Sheets Cloud Relay (Cross-Computer & Mobile Fallback)
+    if (typeof pushRentalsToCloud === 'function') {
+      pushRentalsToCloud(rentals).catch(e => console.warn('[Rentals Sync] Cloud relay notice:', e));
     }
   } catch (err) {
     console.warn('Failed to save rentals:', err);
+  }
+}
+
+/**
+ * Pushes medical equipment rentals to Google Sheets Cloud Relay (PharmacistSchedule.rentals).
+ */
+async function pushRentalsToCloud(rentals) {
+  if (!PMG_SCHEDULE_API_URL || !Array.isArray(rentals)) return false;
+  try {
+    const session = typeof getSession === 'function' ? getSession() : null;
+    const branchCode = normalizeBranchCode((session && session.branch && session.branch !== 'ALL') ? session.branch : 'Kota Sentosa');
+
+    // Fetch existing schedule or create payload
+    let sched = (await fetchScheduleFromSheets(branchCode)) || getPharmacistSchedule(branchCode) || {};
+    sched.rentals = rentals;
+    sched.rentalsLastUpdated = new Date().toISOString();
+
+    const payload = {
+      branch: branchCode,
+      schedule: sched,
+      updatedBy: (session && session.displayName) || 'Pharmacist'
+    };
+
+    await fetch(PMG_SCHEDULE_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+      redirect: 'follow'
+    });
+    console.log(`[PMG Cloud Relay] ✅ Synced ${rentals.length} rentals to Google Sheets for ${branchCode}`);
+    return true;
+  } catch (err) {
+    console.warn('[PMG Cloud Relay] Could not push rentals to Google Sheets:', err);
+    return false;
+  }
+}
+
+/**
+ * Fetches medical equipment rentals from Google Sheets Cloud Relay and merges bidirectionally.
+ */
+async function syncRentalsFromCloud() {
+  if (!PMG_SCHEDULE_API_URL) return false;
+  try {
+    const session = typeof getSession === 'function' ? getSession() : null;
+    const branchCode = normalizeBranchCode((session && session.branch && session.branch !== 'ALL') ? session.branch : 'Kota Sentosa');
+
+    const res = await fetch(`${PMG_SCHEDULE_API_URL}?branch=${encodeURIComponent(branchCode)}`);
+    if (!res.ok) return false;
+    const data = await res.json();
+    if (!data || !data.success || !data.schedule || !Array.isArray(data.schedule.rentals)) {
+      return false;
+    }
+
+    const cloudRentals = data.schedule.rentals;
+    let deletedIds = [];
+    try {
+      deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_rentals') || '[]');
+    } catch (_) {}
+    const deletedSet = new Set(deletedIds);
+
+    const localRentals = loadRentals();
+    const map = new Map();
+
+    cloudRentals.forEach(r => {
+      if (r && r.id && !deletedSet.has(r.id)) {
+        map.set(r.id, r);
+      }
+    });
+
+    let localChanged = false;
+    localRentals.forEach(r => {
+      if (!r || !r.id || deletedSet.has(r.id)) return;
+      if (!map.has(r.id)) {
+        map.set(r.id, r);
+      } else {
+        const cRec = map.get(r.id);
+        const lTime = r.updatedAt || r.createdAt || '';
+        const cTime = cRec.updatedAt || cRec.createdAt || '';
+        if (lTime > cTime) {
+          map.set(r.id, { ...cRec, ...r });
+        } else if (cTime > lTime) {
+          localChanged = true;
+        }
+      }
+    });
+
+    const merged = Array.from(map.values());
+    if (merged.length !== localRentals.length || localChanged) {
+      localStorage.setItem(RENTALS_STORAGE_KEY, JSON.stringify(merged));
+      if (typeof renderEquipmentRentals === 'function') {
+        renderEquipmentRentals();
+      }
+      console.log(`[PMG Cloud Relay] ✅ Merged ${merged.length} rentals from Google Sheets into local storage`);
+    }
+    return merged;
+  } catch (err) {
+    console.warn('[PMG Cloud Relay] syncRentalsFromCloud warning:', err);
+    return false;
+  }
+}
+
+/**
+ * User-triggered 1-click cross-computer sync for Medical Equipment Rentals
+ */
+async function triggerRentalsSyncNow() {
+  const btn = document.getElementById('btnSyncRentalsNow');
+  const icon = btn?.querySelector('i');
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add('opacity-75', 'cursor-not-allowed');
+  }
+  if (icon) icon.className = 'fa-solid fa-spinner fa-spin text-emerald-600';
+
+  try {
+    let oneDriveCount = null;
+    let cloudCount = null;
+
+    if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.syncRentalsWithOneDrive === 'function') {
+      const res = await window.pmgOneDriveSync.syncRentalsWithOneDrive(false);
+      if (Array.isArray(res)) oneDriveCount = res.length;
+    }
+    if (typeof syncRentalsFromCloud === 'function') {
+      const res = await syncRentalsFromCloud();
+      if (Array.isArray(res)) cloudCount = res.length;
+    }
+
+    renderEquipmentRentals();
+
+    const count = oneDriveCount !== null ? oneDriveCount : (cloudCount !== null ? cloudCount : loadRentals().length);
+    if (typeof showExpiryToast === 'function') {
+      showExpiryToast(`✅ Medical equipment rentals synced across computers (${count} records)!`);
+    } else {
+      alert(`✅ Medical equipment rentals synced across computers (${count} records)!`);
+    }
+  } catch (err) {
+    console.warn('[Rentals Sync] Manual sync error:', err);
+    alert('Sync completed with warning: ' + (err.message || err));
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove('opacity-75', 'cursor-not-allowed');
+    }
+    if (icon) icon.className = 'fa-solid fa-arrows-rotate text-emerald-600';
   }
 }
 
@@ -13058,6 +13227,16 @@ function deleteRental(id) {
   const conf = confirm('Are you sure you want to delete this rental record?');
   if (!conf) return;
 
+  // Add to deleted tombstones so cross-computer sync doesn't resurrect it
+  let deletedIds = [];
+  try {
+    deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_rentals') || '[]');
+  } catch (_) {}
+  if (!deletedIds.includes(id)) {
+    deletedIds.push(id);
+    localStorage.setItem('pmg_deleted_rentals', JSON.stringify(deletedIds));
+  }
+
   let rentals = loadRentals();
   rentals = rentals.filter(x => x.id !== id);
   saveRentals(rentals);
@@ -13135,6 +13314,9 @@ window.markRentalReturned = markRentalReturned;
 window.deleteRental = deleteRental;
 window.sendRentalWhatsApp = sendRentalWhatsApp;
 window.renderEquipmentRentals = renderEquipmentRentals;
+window.triggerRentalsSyncNow = triggerRentalsSyncNow;
+window.syncRentalsFromCloud = syncRentalsFromCloud;
+window.pushRentalsToCloud = pushRentalsToCloud;
 window.deduplicatePatientProfiles = deduplicatePatientProfiles;
 window.consolidatePatientList = consolidatePatientList;
 window.findPatientById = findPatientById;
