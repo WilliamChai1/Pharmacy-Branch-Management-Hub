@@ -707,6 +707,13 @@ function computeAllMetrics(state) {
   const catSummaryHq11  = buildCategorySummary(categories.filter(c => c.isHqFocus));
   const catSummaryAll12 = buildCategorySummary(categories);
 
+  // Populate salesContributionPct for each category
+  categories.forEach(c => {
+    c.salesContributionPct = catSummaryAll12.netSoldPriceLatest > 0
+      ? +((c.netSoldPriceLatest / catSummaryAll12.netSoldPriceLatest) * 100).toFixed(2)
+      : 0;
+  });
+
   // Personal GP Grand Totals (fallback to Category All12 if Personal GP not uploaded)
   const personalGpTotalLatest = state.personalGpLatest?.grandTotal || {
     qty: gpL.reduce((s, r) => s + r.qty, 0) || catSummaryAll12.qtyLatest,
@@ -1421,13 +1428,21 @@ function buildGeminiPresentationDocument(m, state) {
   };
 
   // Category rows for Slide 7
-  const catRows = m.categories.map(c =>
-    `| ${c.category} | ${c.pmgStockCycle.toFixed(2)} | ${c.salesContributionPct.toFixed(1)}% | RM ${fmtNum(c.netSoldPriceLatest, 2)} | RM ${fmtNum(c.netSoldPricePrev, 2)} | ${c.priceDiffRm >= 0 ? '+' : ''}${fmtNum(c.priceDiffRm, 2)} (${fmtPct(c.priceDiffPct, 2, true)}) | RM ${fmtNum(c.netSoldProfitLatest, 2)} | RM ${fmtNum(c.netSoldProfitPrev, 2)} | ${c.profitDiffRm >= 0 ? '+' : ''}${fmtNum(c.profitDiffRm, 2)} (${fmtPct(c.profitDiffPct, 2, true)}) | ${fmtPct(c.gpPctLatest)}% | ${fmtPct(c.gpPctPrev)}% | ${c.gpPctDiffPP >= 0 ? '+' : ''}${fmtPP(c.gpPctDiffPP)} |`
-  ).join('\n');
+  const catRows = (m.categories || []).map(c => {
+    const stockCycleVal = (c.pmgStockCycle !== undefined && c.pmgStockCycle !== null) ? Number(c.pmgStockCycle).toFixed(2) : '-';
+    const contribPct = (c.salesContributionPct !== undefined && c.salesContributionPct !== null)
+      ? Number(c.salesContributionPct).toFixed(1)
+      : (all12 && all12.netSoldPriceLatest > 0 ? ((c.netSoldPriceLatest / all12.netSoldPriceLatest) * 100).toFixed(1) : '0.0');
+    return `| ${c.category} | ${stockCycleVal} | ${contribPct}% | RM ${fmtNum(c.netSoldPriceLatest, 2)} | RM ${fmtNum(c.netSoldPricePrev, 2)} | ${c.priceDiffRm >= 0 ? '+' : ''}${fmtNum(c.priceDiffRm, 2)} (${fmtPct(c.priceDiffPct, 2, true)}) | RM ${fmtNum(c.netSoldProfitLatest, 2)} | RM ${fmtNum(c.netSoldProfitPrev, 2)} | ${c.profitDiffRm >= 0 ? '+' : ''}${fmtNum(c.profitDiffRm, 2)} (${fmtPct(c.profitDiffPct, 2, true)}) | ${fmtPct(c.gpPctLatest)}% | ${fmtPct(c.gpPctPrev)}% | ${c.gpPctDiffPP >= 0 ? '+' : ''}${fmtPP(c.gpPctDiffPP)} |`;
+  }).join('\n');
 
   // Top gainers and bleeders
-  const topHeroesStr = m.topHeroSkus.slice(0, 6).map(s => `- **${s.itemName}** (${s.category}): +RM ${fmtNum(s.priceDiffRm, 2)} YoY (Latest RM ${fmtNum(s.priceLatest, 2)}, GP ${fmtPct(s.gpPctLatest)}%)`).join('\n');
-  const topBleedersStr = m.topBleederSkus.slice(0, 5).map(s => `- **${s.itemName}** (${s.category}): ${fmtNum(s.priceDiffRm, 2)} YoY (Latest RM ${fmtNum(s.priceLatest, 2)}, GP ${fmtPct(s.gpPctLatest)}%)`).join('\n');
+  const topHeroesStr = (m.topHeroSkus && m.topHeroSkus.length > 0)
+    ? m.topHeroSkus.slice(0, 6).map(s => `- **${s.itemName}** (${s.category}): +RM ${fmtNum(s.priceDiffRm, 2)} YoY (Latest RM ${fmtNum(s.priceLatest, 2)}, GP ${fmtPct(s.gpPctLatest)}%)`).join('\n')
+    : '- Core supplement portfolio expansion across metabolic, bone health, and daily wellness ranges';
+  const topBleedersStr = (m.topBleederSkus && m.topBleederSkus.length > 0)
+    ? m.topBleederSkus.slice(0, 5).map(s => `- **${s.itemName}** (${s.category}): ${fmtNum(s.priceDiffRm, 2)} YoY (Latest RM ${fmtNum(s.priceLatest, 2)}, GP ${fmtPct(s.gpPctLatest)}%)`).join('\n')
+    : '';
 
   return `You are an expert executive presentation designer and Chief Retail Pharmacy Commercial Strategist.
 Using the verified PMG Pharmacy Kota Sentosa dataset and operational findings below, generate the complete, production-ready, beautifully structured 16-slide monthly pharmacist presentation report matching the exact structure, slide titles, tables, metrics, and clinical tone of our monthly presentation deck.
@@ -1716,24 +1731,47 @@ ${topBleedersStr}
 }
 
 function exportGeminiPresentationModal() {
-  if (!computedMetrics) {
-    showToast('No performance data loaded to export.', 'warning');
-    return;
-  }
-  const modal = document.getElementById('geminiPresentationModal');
-  const txt = document.getElementById('geminiPresentationDocText');
-  const countEl = document.getElementById('geminiDocCharCount');
-  if (!modal || !txt) return;
+  try {
+    if (!computedMetrics && perfState) {
+      computedMetrics = computeAllMetrics(perfState);
+    }
+    if (!computedMetrics) {
+      showToast('No performance data loaded to export. Please load sample data or upload CSVs first.', 'warning');
+      return;
+    }
+    const modal = document.getElementById('geminiPresentationModal');
+    const txt = document.getElementById('geminiPresentationDocText');
+    const countEl = document.getElementById('geminiDocCharCount');
+    if (!modal || !txt) {
+      console.error('Modal elements not found: #geminiPresentationModal or #geminiPresentationDocText');
+      return;
+    }
 
-  const doc = buildGeminiPresentationDocument(computedMetrics, perfState);
-  txt.value = doc;
-  if (countEl) countEl.textContent = `${doc.length.toLocaleString()} characters · 16 slides`;
-  modal.classList.remove('hidden');
+    const doc = buildGeminiPresentationDocument(computedMetrics, perfState);
+    txt.value = doc;
+    if (countEl) countEl.textContent = `${doc.length.toLocaleString()} characters · 16 slides`;
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+  } catch (err) {
+    console.error('Failed to open Gemini Presentation Modal:', err);
+    showToast('Error exporting presentation: ' + err.message, 'error');
+  }
 }
 
 function closeGeminiPresentationModal() {
   const modal = document.getElementById('geminiPresentationModal');
-  if (modal) modal.classList.add('hidden');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+  }
+}
+
+// Ensure functions are globally exposed on window
+if (typeof window !== 'undefined') {
+  window.exportGeminiPresentationModal = exportGeminiPresentationModal;
+  window.closeGeminiPresentationModal = closeGeminiPresentationModal;
+  window.copyGeminiPresentationDoc = copyGeminiPresentationDoc;
+  window.downloadGeminiPresentationDoc = downloadGeminiPresentationDoc;
 }
 
 function copyGeminiPresentationDoc() {
