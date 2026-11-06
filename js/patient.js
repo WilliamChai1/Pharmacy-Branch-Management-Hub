@@ -1360,6 +1360,29 @@ function setupPatientEventListeners() {
         } else {
           document.getElementById('encTcaPurpose').value = 'Chronic Medication Refill & Health Review';
         }
+
+        // Auto-load patient body height (static across encounters)
+        const prevHeight = p.height || (p.encounters || []).slice().reverse().find(e => e.vitals?.height)?.vitals?.height || '';
+        const encHtEl = document.getElementById('encHeight');
+        if (encHtEl) {
+          encHtEl.value = prevHeight || '';
+          const wtVal = parseFloat(document.getElementById('encWeight')?.value);
+          const htVal = parseFloat(prevHeight);
+          if (wtVal > 0 && htVal > 0) {
+            const hm = htVal / 100;
+            const bmiEl = document.getElementById('encBmi');
+            if (bmiEl) bmiEl.value = (wtVal / (hm * hm)).toFixed(1);
+          }
+        }
+
+        // Update preferred WhatsApp language
+        const waLangEl = document.getElementById('encWaLanguage');
+        if (waLangEl) {
+          waLangEl.value = normalizeLanguage(p.language || getPatientLanguageByRace(p));
+        }
+
+        // Refresh past records overview & multi-visit table for selected patient
+        renderEncounterPastRecords(pId);
       }
     });
   }
@@ -3815,10 +3838,12 @@ function renderEncounterPastRecords(patientId) {
   const ua = latest.kidneyPanel?.ua || '';
   const cr = latest.kidneyPanel?.creatinine || '';
   const egfr = latest.kidneyPanel?.egfr || '';
+  const urea = latest.kidneyPanel?.urea || '';
   const renalItems = [];
   if (ua) renalItems.push(`UA: <b class="font-mono text-purple-700">${ua}</b> µmol/L`);
   if (cr) renalItems.push(`Cr: <b class="font-mono text-blue-700">${cr}</b> µmol/L`);
-  if (egfr) renalItems.push(`eGFR: <b class="font-mono">${egfr}</b>`);
+  if (urea) renalItems.push(`Urea: <b class="font-mono text-gray-800">${urea}</b> mmol/L`);
+  if (egfr) renalItems.push(`eGFR: <b class="font-mono text-emerald-700">${egfr}</b>`);
   const renalHtml = renalItems.length > 0
     ? renalItems.join(' · ')
     : '<span class="text-gray-400 font-normal">—</span>';
@@ -3878,8 +3903,30 @@ function renderEncounterPastRecords(patientId) {
       `;
     }
 
-    const eUa = enc.kidneyPanel?.ua ? `${enc.kidneyPanel.ua} µmol/L` : (enc.kidneyPanel?.creatinine ? `Cr ${enc.kidneyPanel.creatinine}` : '—');
-    const eWeight = enc.vitals?.weight ? `${enc.vitals.weight} kg` : '—';
+    // Full Kidney Panel & UA
+    const kList = [];
+    if (enc.kidneyPanel?.ua) kList.push(`UA: <b class="font-mono text-purple-700">${enc.kidneyPanel.ua}</b>`);
+    if (enc.kidneyPanel?.creatinine) kList.push(`Cr: <b class="font-mono text-blue-700">${enc.kidneyPanel.creatinine}</b>`);
+    if (enc.kidneyPanel?.urea) kList.push(`Urea: <b class="font-mono text-gray-800">${enc.kidneyPanel.urea}</b>`);
+    if (enc.kidneyPanel?.egfr) kList.push(`eGFR: <b class="font-mono text-emerald-700">${enc.kidneyPanel.egfr}</b>`);
+    const eUa = kList.length > 0 ? `<div class="space-y-0.5 text-[11px] leading-tight font-mono">${kList.join('<br>')}</div>` : '<span class="text-gray-400 font-normal">—</span>';
+
+    // Weight, Height, BMI & Body Fat
+    const wtVal = enc.vitals?.weight;
+    const htVal = enc.vitals?.height || p.height;
+    let bmiVal = enc.vitals?.bmi;
+    if (!bmiVal && wtVal && htVal) bmiVal = (wtVal / Math.pow(htVal / 100, 2)).toFixed(1);
+    const bfVal = enc.bodyComposition?.bodyFat;
+    let eWeight = '<span class="text-gray-400 font-normal">—</span>';
+    if (wtVal || bmiVal) {
+      eWeight = `
+        <div class="space-y-0.5 text-[11px] leading-tight font-mono">
+          ${wtVal ? `<div class="font-bold text-gray-900">${wtVal} kg${htVal ? ` <span class="text-[10px] text-gray-500 font-normal">(${htVal}cm)</span>` : ''}</div>` : ''}
+          ${bmiVal ? `<div class="text-indigo-700 font-bold text-[10px]">BMI ${bmiVal}</div>` : ''}
+          ${bfVal ? `<div class="text-gray-500 text-[9px]">Fat ${bfVal}%</div>` : ''}
+        </div>
+      `;
+    }
     const eMeds = (enc.planMedications || '').trim();
     const encodedMeds = encodeURIComponent(eMeds);
 
@@ -4049,8 +4096,8 @@ function renderEncounterPastRecords(patientId) {
                 <th class="py-2 px-3">BP &amp; Pulse</th>
                 <th class="py-2 px-3">Glucose / HbA1c</th>
                 <th class="py-2 px-3">Lipids</th>
-                <th class="py-2 px-3">UA / Cr</th>
-                <th class="py-2 px-3">Weight</th>
+                <th class="py-2 px-3">Renal &amp; UA</th>
+                <th class="py-2 px-3">Weight &amp; BMI</th>
                 <th class="py-2 px-3">TEDA / Airdoc / Reports</th>
                 <th class="py-2 px-3">Prescribed Regimen</th>
                 <th class="py-2 px-3 text-right">Action</th>
@@ -4113,7 +4160,8 @@ function showNewEncounterModal(patientId) {
   document.getElementById('encPulse').value = '';
   document.getElementById('encSpo2').value = '';
   document.getElementById('encWeight').value = '';
-  document.getElementById('encHeight').value = '';
+  const prevHt = curPt?.height || (curPt?.encounters || []).slice().reverse().find(e => e.vitals?.height)?.vitals?.height || '';
+  document.getElementById('encHeight').value = prevHt || '';
   document.getElementById('encBmi').value = '';
 
   // Lipid
@@ -5324,6 +5372,11 @@ async function saveNewEncounter() {
     bmi: formatClinicalInputValue(document.getElementById('encBmi')?.value)
   };
 
+  // Persist height permanently to patient profile
+  if (vitalsObj.height) {
+    p.height = vitalsObj.height;
+  }
+
   const bcaObj = {
     bodyFat: formatClinicalInputValue(document.getElementById('encBodyFat')?.value),
     visceralFat: formatClinicalInputValue(document.getElementById('encVisceralFat')?.value),
@@ -6367,10 +6420,21 @@ function renderProfileTrends(p) {
 
   tbody.innerHTML = p.encounters.map(enc => {
     const v = enc.vitals || {};
+    const b = enc.bodyComposition || {};
     const l = enc.lipidPanel || {};
     const k = enc.kidneyPanel || {};
     const g = enc.glycemicHeme || {};
     const bpCls = (v.bpSys && v.bpDia) ? getBpClassification(v.bpSys, v.bpDia) : { badge: 'bg-gray-100 text-gray-500' };
+
+    // Weight, Height, BMI & Body Fat
+    const wt = v.weight;
+    const ht = v.height || p.height;
+    let bmiVal = v.bmi;
+    if (!bmiVal && wt && ht) {
+      bmiVal = (wt / Math.pow(ht / 100, 2)).toFixed(1);
+    }
+    const bmiCls = (wt && ht) ? getBmiClassification(wt, ht) : (bmiVal ? { bmi: bmiVal, label: '', badge: 'bg-gray-100 text-gray-700' } : null);
+    const bf = b.bodyFat;
 
     const tc = extractNumericVal(l.tc);
     const tg = extractNumericVal(l.tg);
@@ -6409,6 +6473,11 @@ function renderProfileTrends(p) {
           <span class="inline-block px-2.5 py-1 rounded-lg text-xs font-bold ${bpCls.badge}">${v.bpSys || '—'}/${v.bpDia || '—'}</span>
           <span class="text-xs text-gray-500 font-medium ml-1">${v.pulse ? escHtml(String(v.pulse)) + ' bpm' : ''}</span>
         </td>
+        <td class="px-4 py-3 whitespace-nowrap">
+          ${wt ? `<div class="font-bold text-gray-900">${escHtml(String(wt))} kg${ht ? ` <span class="text-xs text-gray-500 font-normal">(${escHtml(String(ht))} cm)</span>` : ''}</div>` : '<span class="text-gray-400 font-normal">—</span>'}
+          ${bmiVal ? `<div class="mt-0.5"><span class="inline-block px-2 py-0.5 rounded text-[11px] font-bold ${bmiCls ? bmiCls.badge : 'bg-gray-100 text-gray-700'}">BMI ${bmiVal}${bmiCls?.label && bmiCls.label !== '—' ? ' · ' + bmiCls.label : ''}</span></div>` : ''}
+          ${bf ? `<div class="text-[10px] text-gray-500 font-medium mt-0.5">Fat: ${escHtml(String(bf))}%</div>` : ''}
+        </td>
         <td class="px-4 py-3 font-semibold ${isGluHigh ? 'text-amber-700 font-bold' : 'text-gray-800'}">
           ${dispGlu ? `${dispGlu} (${escHtml(g.glucoseType || 'Random')})` : '—'}
         </td>
@@ -6437,8 +6506,15 @@ function renderProfileTrends(p) {
             </div>
           ` : '—'}
         </td>
-        <td class="px-4 py-3 font-bold ${uaNum != null && uaNum > 420 ? 'text-rose-700' : 'text-gray-800'}">${dispUa ? `${dispUa} umol/L` : '—'}</td>
-        <td class="px-4 py-3 text-indigo-700 font-semibold">${k.creatinine ? `${escHtml(String(k.creatinine))} (eGFR: ${k.egfr ? escHtml(String(k.egfr)) : '—'})` : '—'}</td>
+        <td class="px-4 py-3">
+          <div class="space-y-0.5 text-xs font-mono">
+            ${dispUa ? `<div><span class="${uaNum != null && uaNum > 420 ? 'text-rose-700 font-bold' : 'text-purple-700 font-semibold'}">UA: ${dispUa} µmol/L</span></div>` : ''}
+            ${k.creatinine ? `<div><span class="text-blue-700 font-semibold">Cr: ${escHtml(String(k.creatinine))} µmol/L</span></div>` : ''}
+            ${k.urea ? `<div><span class="text-gray-600">Urea: ${escHtml(String(k.urea))} mmol/L</span></div>` : ''}
+            ${k.egfr ? `<div><span class="text-emerald-700 font-bold">eGFR: ${escHtml(String(k.egfr))}</span></div>` : ''}
+            ${(!dispUa && !k.creatinine && !k.urea && !k.egfr) ? '<span class="text-gray-400 font-normal">—</span>' : ''}
+          </div>
+        </td>
       </tr>
     `;
   }).join('');
@@ -6712,9 +6788,13 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
   const date = enc.date;
 
   const v = enc.vitals || {};
+  const b = enc.bodyComposition || {};
   const g = enc.glycemicHeme || {};
   const l = enc.lipidPanel || {};
   const k = enc.kidneyPanel || {};
+  const s = enc.specialtyScans || {};
+
+  const tedaUrl = s.tedaLink || (typeof s.teda === 'string' && s.teda.startsWith('http') ? s.teda : null);
 
   const googleReviewLink = 'https://g.page/r/CUU3ygRE9IC6EBM/review';
   const waCommunityLink = 'https://chat.whatsapp.com/D1d7scuEzrQ15rwFndmSHr';
@@ -6734,6 +6814,28 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
     }
     if (v.pulse) msg += `- 脉搏 (Pulse)：${v.pulse} bpm\n`;
     if (v.spo2) msg += `- 血氧 (SpO2)：${v.spo2}%\n`;
+
+    // Body Weight & Body Composition in Chinese
+    if (v.weight || v.height || v.bmi || b.bodyFat || b.visceralFat) {
+      let bwParts = [];
+      if (v.weight) bwParts.push(`体重: ${v.weight} kg`);
+      if (v.height) bwParts.push(`身高: ${v.height} cm`);
+      let bmiVal = v.bmi || (v.weight && v.height ? (v.weight / Math.pow(v.height / 100, 2)).toFixed(1) : null);
+      if (bmiVal) {
+        const num = parseFloat(bmiVal);
+        let bmiLabel = '正常';
+        if (num >= 27.5) bmiLabel = '肥胖 (Obese)';
+        else if (num >= 23.0) bmiLabel = '偏重 (Overweight)';
+        else if (num < 18.5) bmiLabel = '偏轻 (Underweight)';
+        bwParts.push(`BMI: ${bmiVal} [${bmiLabel}]`);
+      }
+      if (b.bodyFat) bwParts.push(`体脂率: ${b.bodyFat}%`);
+      if (b.visceralFat) bwParts.push(`内脏脂肪: ${b.visceralFat}`);
+      if (bwParts.length > 0) {
+        msg += `- 体重与体成分 (Weight & Composition)：${bwParts.join(' | ')}\n`;
+      }
+    }
+
     if (g.glucose) {
       const gluNum = extractNumericVal(g.glucose);
       const isFasting = (g.glucoseType || '').toLowerCase().includes('fasting');
@@ -6742,11 +6844,32 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
     }
     if (g.hba1c) msg += `- 糖化血红蛋白 HbA1c：${g.hba1c}%\n`;
 
-    // Uric Acid in Chinese
-    if (k.ua) {
-      const uaNum = extractNumericVal(k.ua);
-      const isUaHigh = uaNum != null ? uaNum > 420 : false;
-      msg += `- 尿酸 (Uric Acid)：${k.ua} umol/L ${isUaHigh ? '[偏高，参考 120-420]' : '[正常]'}\n`;
+    // Full Kidney Function Panel & Uric Acid in Chinese
+    if (k.ua || k.creatinine || k.urea || k.egfr) {
+      msg += `- 肾功能与尿酸指标 (Kidney & Uric Acid)：\n`;
+      if (k.ua) {
+        const uaNum = extractNumericVal(k.ua);
+        msg += `  * 尿酸 (Uric Acid): ${k.ua} µmol/L ${uaNum != null && uaNum > 420 ? '[偏高，参考 120-420]' : '[正常]'}\n`;
+      }
+      if (k.creatinine) {
+        const crNum = extractNumericVal(k.creatinine);
+        msg += `  * 肌酐 (Creatinine): ${k.creatinine} µmol/L ${crNum != null && crNum > 106 ? '[偏高]' : '[正常]'}\n`;
+      }
+      if (k.urea) {
+        const ureaNum = extractNumericVal(k.urea);
+        msg += `  * 尿素 (Blood Urea): ${k.urea} mmol/L ${ureaNum != null && (ureaNum < 2.5 || ureaNum > 7.1) ? '[异常，参考 2.5-7.1]' : '[正常]'}\n`;
+      }
+      if (k.egfr) {
+        const egfrNum = extractNumericVal(k.egfr);
+        let egfrLabel = '正常';
+        if (egfrNum != null) {
+          if (egfrNum >= 90) egfrLabel = '正常 (≥90)';
+          else if (egfrNum >= 60) egfrLabel = '轻度下降 (60-89)';
+          else if (egfrNum >= 30) egfrLabel = '中度下降 (30-59)';
+          else egfrLabel = '明显下降 (<30)';
+        }
+        msg += `  * 肾小球滤过率 (eGFR): ${k.egfr} mL/min [${egfrLabel}]\n`;
+      }
     }
 
     // Full Lipid Panel in Chinese
@@ -6769,6 +6892,11 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
 
     if (enc.planCounselling) msg += `\n*饮食与生活注意：*\n${enc.planCounselling}\n`;
 
+    // TEDA Report Link in Chinese
+    if (tedaUrl) {
+      msg += `\n*🔍 TEDA 智慧健康分析报告 (TEDA Report Link)：*\n- 查看完整健康评估报告：\n👉 ${tedaUrl}\n`;
+    }
+
     // Customer Self-Booking Link
     msg += `\n*📅 预约下一次健康咨询 / 检查（随时自助预约）：*\n`;
     if (nextTca) {
@@ -6790,6 +6918,28 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
     }
     if (v.pulse) msg += `- Nadi: ${v.pulse} bpm\n`;
     if (v.spo2) msg += `- Oksigen SpO2: ${v.spo2}%\n`;
+
+    // Body Weight & Body Composition in Malay
+    if (v.weight || v.height || v.bmi || b.bodyFat || b.visceralFat) {
+      let bwParts = [];
+      if (v.weight) bwParts.push(`Berat: ${v.weight} kg`);
+      if (v.height) bwParts.push(`Tinggi: ${v.height} cm`);
+      let bmiVal = v.bmi || (v.weight && v.height ? (v.weight / Math.pow(v.height / 100, 2)).toFixed(1) : null);
+      if (bmiVal) {
+        const num = parseFloat(bmiVal);
+        let bmiLabel = 'Normal';
+        if (num >= 27.5) bmiLabel = 'Obes (Obese)';
+        else if (num >= 23.0) bmiLabel = 'Lebih Berat (Overweight)';
+        else if (num < 18.5) bmiLabel = 'Kurang Berat (Underweight)';
+        bwParts.push(`BMI: ${bmiVal} [${bmiLabel}]`);
+      }
+      if (b.bodyFat) bwParts.push(`Lemak Badan: ${b.bodyFat}%`);
+      if (b.visceralFat) bwParts.push(`Lemak Viseral: ${b.visceralFat}`);
+      if (bwParts.length > 0) {
+        msg += `- Berat Badan & Komposisi (Weight & Composition): ${bwParts.join(' | ')}\n`;
+      }
+    }
+
     if (g.glucose) {
       const gluNum = extractNumericVal(g.glucose);
       const isFasting = (g.glucoseType || '').toLowerCase().includes('fasting');
@@ -6798,11 +6948,32 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
     }
     if (g.hba1c) msg += `- HbA1c: ${g.hba1c}%\n`;
 
-    // Uric Acid in Malay
-    if (k.ua) {
-      const uaNum = extractNumericVal(k.ua);
-      const isUaHigh = uaNum != null ? uaNum > 420 : false;
-      msg += `- Asid Urik (Uric Acid): ${k.ua} umol/L ${isUaHigh ? '[Tinggi, rujukan 120-420]' : '[Normal]'}\n`;
+    // Full Kidney Function Panel & Uric Acid in Malay
+    if (k.ua || k.creatinine || k.urea || k.egfr) {
+      msg += `- Fungsi Buah Pinggang & Asid Urik (Kidney & Uric Acid):\n`;
+      if (k.ua) {
+        const uaNum = extractNumericVal(k.ua);
+        msg += `  * Asid Urik (Uric Acid): ${k.ua} µmol/L ${uaNum != null && uaNum > 420 ? '[Tinggi, rujukan 120-420]' : '[Normal]'}\n`;
+      }
+      if (k.creatinine) {
+        const crNum = extractNumericVal(k.creatinine);
+        msg += `  * Kreatinin (Creatinine): ${k.creatinine} µmol/L ${crNum != null && crNum > 106 ? '[Tinggi]' : '[Normal]'}\n`;
+      }
+      if (k.urea) {
+        const ureaNum = extractNumericVal(k.urea);
+        msg += `  * Urea Darah (Blood Urea): ${k.urea} mmol/L ${ureaNum != null && (ureaNum < 2.5 || ureaNum > 7.1) ? '[Luar Julat, rujukan 2.5-7.1]' : '[Normal]'}\n`;
+      }
+      if (k.egfr) {
+        const egfrNum = extractNumericVal(k.egfr);
+        let egfrLabel = 'Normal';
+        if (egfrNum != null) {
+          if (egfrNum >= 90) egfrLabel = 'Normal (≥90)';
+          else if (egfrNum >= 60) egfrLabel = 'Penurunan Ringan (60-89)';
+          else if (egfrNum >= 30) egfrLabel = 'Penurunan Sederhana (30-59)';
+          else egfrLabel = 'Penurunan Ketara (<30)';
+        }
+        msg += `  * Fungsi Buah Pinggang (eGFR): ${k.egfr} mL/min [${egfrLabel}]\n`;
+      }
     }
 
     // Full Lipid Panel in Malay
@@ -6825,6 +6996,11 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
 
     if (enc.planCounselling) msg += `\n*Nasihat Gaya Hidup:*\n${enc.planCounselling}\n`;
 
+    // TEDA Report Link in Malay
+    if (tedaUrl) {
+      msg += `\n*🔍 Pautan Laporan Kesihatan TEDA (TEDA Report Link):*\n- Pautan laporan analisis kesihatan pintar anda:\n👉 ${tedaUrl}\n`;
+    }
+
     // Customer Self-Booking Link
     msg += `\n*📅 Tempah Temujanji Konsultasi / Pemeriksaan Seterusnya (Bila-bila masa):*\n`;
     if (nextTca) {
@@ -6846,6 +7022,28 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
     }
     if (v.pulse) msg += `- Pulse: ${v.pulse} bpm\n`;
     if (v.spo2) msg += `- Oxygen SpO2: ${v.spo2}%\n`;
+
+    // Body Weight & Body Composition in English
+    if (v.weight || v.height || v.bmi || b.bodyFat || b.visceralFat) {
+      let bwParts = [];
+      if (v.weight) bwParts.push(`Weight: ${v.weight} kg`);
+      if (v.height) bwParts.push(`Height: ${v.height} cm`);
+      let bmiVal = v.bmi || (v.weight && v.height ? (v.weight / Math.pow(v.height / 100, 2)).toFixed(1) : null);
+      if (bmiVal) {
+        const num = parseFloat(bmiVal);
+        let bmiLabel = 'Normal';
+        if (num >= 27.5) bmiLabel = 'Obese';
+        else if (num >= 23.0) bmiLabel = 'Overweight';
+        else if (num < 18.5) bmiLabel = 'Underweight';
+        bwParts.push(`BMI: ${bmiVal} [${bmiLabel}]`);
+      }
+      if (b.bodyFat) bwParts.push(`Body Fat: ${b.bodyFat}%`);
+      if (b.visceralFat) bwParts.push(`Visceral Fat Level: ${b.visceralFat}`);
+      if (bwParts.length > 0) {
+        msg += `- Body Weight & Composition: ${bwParts.join(' | ')}\n`;
+      }
+    }
+
     if (g.glucose) {
       const gluNum = extractNumericVal(g.glucose);
       const isFasting = (g.glucoseType || '').toLowerCase().includes('fasting');
@@ -6854,11 +7052,32 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
     }
     if (g.hba1c) msg += `- HbA1c: ${g.hba1c}%\n`;
 
-    // Uric Acid in English
-    if (k.ua) {
-      const uaNum = extractNumericVal(k.ua);
-      const isUaHigh = uaNum != null ? uaNum > 420 : false;
-      msg += `- Uric Acid: ${k.ua} umol/L ${isUaHigh ? '[High, ref 120-420]' : '[Normal]'}\n`;
+    // Full Kidney Function Panel & Uric Acid in English
+    if (k.ua || k.creatinine || k.urea || k.egfr) {
+      msg += `- Kidney Function & Uric Acid:\n`;
+      if (k.ua) {
+        const uaNum = extractNumericVal(k.ua);
+        msg += `  * Uric Acid: ${k.ua} µmol/L ${uaNum != null && uaNum > 420 ? '[High, ref 120-420]' : '[Normal]'}\n`;
+      }
+      if (k.creatinine) {
+        const crNum = extractNumericVal(k.creatinine);
+        msg += `  * Creatinine: ${k.creatinine} µmol/L ${crNum != null && crNum > 106 ? '[High]' : '[Normal]'}\n`;
+      }
+      if (k.urea) {
+        const ureaNum = extractNumericVal(k.urea);
+        msg += `  * Blood Urea: ${k.urea} mmol/L ${ureaNum != null && (ureaNum < 2.5 || ureaNum > 7.1) ? '[Abnormal, ref 2.5-7.1]' : '[Normal]'}\n`;
+      }
+      if (k.egfr) {
+        const egfrNum = extractNumericVal(k.egfr);
+        let egfrLabel = 'Normal';
+        if (egfrNum != null) {
+          if (egfrNum >= 90) egfrLabel = 'Normal (≥90)';
+          else if (egfrNum >= 60) egfrLabel = 'Mild Reduction (60-89)';
+          else if (egfrNum >= 30) egfrLabel = 'Moderate Reduction (30-59)';
+          else egfrLabel = 'Significant Reduction (<30)';
+        }
+        msg += `  * eGFR: ${k.egfr} mL/min [${egfrLabel}]\n`;
+      }
     }
 
     // Full Lipid Panel in English
@@ -6880,6 +7099,11 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
     }
 
     if (enc.planCounselling) msg += `\n*Lifestyle & Dietary Advice:*\n${enc.planCounselling}\n`;
+
+    // TEDA Report Link in English
+    if (tedaUrl) {
+      msg += `\n*🔍 TEDA Health Assessment Report Link:*\n- View your personalized wellness analysis online:\n👉 ${tedaUrl}\n`;
+    }
 
     // Customer Self-Booking Link
     msg += `\n*📅 Book Your Next Health Consultation / Checkup (Anytime self-booking):*\n`;

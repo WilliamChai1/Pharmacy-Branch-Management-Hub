@@ -55,6 +55,9 @@
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
+        <button onclick="exportGeminiPresentationModal()" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 hover:from-violet-700 hover:to-indigo-700 text-white text-xs font-extrabold shadow-xs transition cursor-pointer flex items-center gap-1.5" title="Export monthly presentation prompt for Google Gemini">
+          <span>📄</span> Export Gemini Monthly Presentation Doc
+        </button>
         <button onclick="switchPerfTab('tab5')" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-xs transition cursor-pointer">
           ✨ AI Strategy & SWOT
         </button>
@@ -132,9 +135,74 @@
     PMG Pharmacy Kota Sentosa • Standalone Monthly Performance & AI Strategic Analytics Suite (Primary: Gemini 3.5 Flash-Lite | Secondary: Gemini 3.1 Flash-Lite)
   </footer>
 
+  <!-- Modal: Gemini Monthly Presentation Document Export -->
+  <div id="geminiPresentationModal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 hidden flex items-center justify-center p-3 sm:p-4 no-print">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col border border-slate-200 overflow-hidden">
+      <!-- Header -->
+      <div class="p-4 sm:p-5 border-b border-slate-200 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-indigo-500/30 border border-indigo-400/40 text-indigo-300 flex items-center justify-center text-xl font-bold">
+            📄
+          </div>
+          <div>
+            <h3 class="text-base font-extrabold text-white">Gemini AI Monthly Presentation Export Document</h3>
+            <p class="text-xs text-indigo-200 mt-0.5">Ready to paste directly into Google Gemini to generate the 16-slide monthly presentation deck</p>
+          </div>
+        </div>
+        <button onclick="closeGeminiPresentationModal()" class="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-lg transition cursor-pointer">
+          ✕
+        </button>
+      </div>
+
+      <!-- Control / Action Strip -->
+      <div class="bg-indigo-50 border-b border-indigo-100 px-4 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-indigo-950">
+        <div class="flex items-center gap-2">
+          <span class="px-2 py-0.5 rounded bg-indigo-600 text-white font-extrabold text-[10px] uppercase">16-Slide Structure</span>
+          <span class="text-xs text-slate-700">Latest month data vs LY, 3-month personal sales, categories, SWOT &amp; KISS findings. <strong>Role-Specific Action Plans excluded</strong>.</span>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 shrink-0">
+          <button id="btnCopyGeminiPresDoc" onclick="copyGeminiPresentationDoc()" class="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs shadow-xs transition cursor-pointer flex items-center gap-1.5">
+            📋 Copy Entire Prompt
+          </button>
+          <button onclick="downloadGeminiPresentationDoc('md')" class="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs transition cursor-pointer flex items-center gap-1">
+            💾 Download .md
+          </button>
+          <button onclick="downloadGeminiPresentationDoc('txt')" class="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs transition cursor-pointer flex items-center gap-1">
+            💾 Download .txt
+          </button>
+        </div>
+      </div>
+
+      <!-- Textbox Area / Preview -->
+      <div class="p-4 sm:p-5 flex-1 overflow-hidden flex flex-col bg-slate-900">
+        <div class="text-[11px] text-slate-400 mb-2 flex items-center justify-between">
+          <span>Prompt Content Preview (Click "Copy Entire Prompt" then paste into Gemini):</span>
+          <span id="geminiDocCharCount" class="font-mono text-slate-500">0 chars</span>
+        </div>
+        <textarea id="geminiPresentationDocText" readonly class="w-full flex-1 min-h-[380px] bg-slate-950 text-slate-200 p-4 rounded-xl border border-slate-800 outline-none resize-none font-mono text-xs leading-relaxed selection:bg-indigo-600 selection:text-white" spellcheck="false"></textarea>
+      </div>
+
+      <!-- Footer -->
+      <div class="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+        <div class="flex items-center gap-2">
+          <span class="text-emerald-700 font-bold">✓ Ready for Gemini 3.5 / 3.1 Flash / Advanced:</span>
+          <span>Paste this complete document into Gemini to generate the slides or slide outline.</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <a href="https://gemini.google.com/" target="_blank" rel="noopener noreferrer" class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold transition flex items-center gap-1">
+            <span>Open Gemini Web</span> ↗
+          </a>
+          <button onclick="closeGeminiPresentationModal()" class="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold transition cursor-pointer">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Scripts -->
   <script src="../js/exceljs.min.js"></script>
   <script src="sample-data.js"></script>
-  <script src="performance.js"></script>
+  <script src="performance.js?v=49"></script>
 </body>
 </html>

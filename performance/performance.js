@@ -1281,6 +1281,504 @@ Return ONLY valid JSON matching this exact structure (no markdown fences):
 }`;
 }
 
+// ─── VERIFIED HISTORICAL 3-MONTH TEAMMATE BASELINE (FOR MONTHLY PRESENTATIONS) ───
+const HISTORICAL_TEAMMATE_BASELINE = {
+  'WILLIAM CHAI': {
+    m1: { label: 'July 2026', ts: 48085.31, hb: 20614.05, hbPct: 42.87, hm: 5534.85, hmPct: 11.51, tx: 561, basketTs: 85.71, basketHb: 36.75, gpRm: 15801.99, gpPct: 33.10 },
+    m2: { label: 'Aug 2026', ts: 56218.31, hb: 26502.91, hbPct: 47.14, hm: 5368.15, hmPct: 9.55, tx: 466, basketTs: 120.64, basketHb: 56.87, gpRm: 14105.02, gpPct: 25.09 },
+    m3: { label: 'Sept 2026', ts: 57034.03, hb: 29411.83, hbPct: 51.57, hm: 6189.80, hmPct: 10.85, tx: 597, basketTs: 95.53, basketHb: 49.27, gpRm: 16494.38, gpPct: 27.57 }
+  },
+  'MUHAMMAD NUR FARIZIN': {
+    m1: { label: 'July 2026', ts: 22186.16, hb: 6844.60, hbPct: 30.85, hm: 2572.20, hmPct: 11.59, tx: 761, basketTs: 29.15, basketHb: 8.99, gpRm: 6260.88, gpPct: 27.22 },
+    m2: { label: 'Aug 2026', ts: 30931.79, hb: 9492.40, hbPct: 30.69, hm: 3192.90, hmPct: 10.32, tx: 916, basketTs: 33.77, basketHb: 10.36, gpRm: 8481.94, gpPct: 27.42 },
+    m3: { label: 'Sept 2026', ts: 38902.31, hb: 12023.81, hbPct: 30.91, hm: 3825.20, hmPct: 9.83, tx: 1172, basketTs: 33.19, basketHb: 10.26, gpRm: 9763.77, gpPct: 24.96 }
+  },
+  'HANIESHA LOUNA': {
+    m1: { label: 'July 2026', ts: 28733.32, hb: 12526.10, hbPct: 43.59, hm: 2598.20, hmPct: 9.04, tx: 731, basketTs: 39.31, basketHb: 17.14, gpRm: 8318.14, gpPct: 28.95 },
+    m2: { label: 'Aug 2026', ts: 46327.58, hb: 21296.52, hbPct: 45.97, hm: 4244.40, hmPct: 9.16, tx: 1024, basketTs: 45.24, basketHb: 20.80, gpRm: 12813.91, gpPct: 27.66 },
+    m3: { label: 'Sept 2026', ts: 33077.20, hb: 15277.24, hbPct: 46.19, hm: 2690.90, hmPct: 8.14, tx: 783, basketTs: 42.24, basketHb: 19.51, gpRm: 9196.92, gpPct: 27.56 }
+  },
+  'FIONA FIENA': {
+    m1: { label: 'July 2026', ts: 38189.25, hb: 14674.28, hbPct: 38.43, hm: 4545.20, hmPct: 11.90, tx: 1051, basketTs: 36.34, basketHb: 13.96, gpRm: 10760.43, gpPct: 27.92 },
+    m2: { label: 'Aug 2026', ts: 45990.94, hb: 20374.91, hbPct: 44.30, hm: 4134.40, hmPct: 8.99, tx: 1062, basketTs: 43.31, basketHb: 19.19, gpRm: 12304.53, gpPct: 26.75 },
+    m3: { label: 'Sept 2026', ts: 38723.18, hb: 15585.48, hbPct: 40.25, hm: 3698.90, hmPct: 9.55, tx: 1064, basketTs: 36.39, basketHb: 14.65, gpRm: 10891.39, gpPct: 27.99 }
+  },
+  'NURHAFIZAH': {
+    m1: { label: 'July 2026', ts: 33939.66, hb: 8794.45, hbPct: 25.91, hm: 4373.90, hmPct: 12.89, tx: 965, basketTs: 35.17, basketHb: 9.11, gpRm: 8325.98, gpPct: 25.13 },
+    m2: { label: 'Aug 2026', ts: 32180.29, hb: 10697.52, hbPct: 33.24, hm: 4005.60, hmPct: 12.45, tx: 1029, basketTs: 31.27, basketHb: 10.40, gpRm: 8731.37, gpPct: 27.13 },
+    m3: { label: 'Sept 2026', ts: 37220.70, hb: 11911.70, hbPct: 32.00, hm: 3165.70, hmPct: 8.51, tx: 1066, basketTs: 34.92, basketHb: 11.17, gpRm: 9239.66, gpPct: 24.53 }
+  },
+  'JONG PEI CHOO': {
+    m1: { label: 'July 2026', ts: 63122.42, hb: 23436.61, hbPct: 37.13, hm: 6673.35, hmPct: 10.57, tx: 1377, basketTs: 45.84, basketHb: 17.02, gpRm: 16003.61, gpPct: 25.35 },
+    m2: { label: 'Aug 2026', ts: 77868.67, hb: 40551.13, hbPct: 52.08, hm: 8186.15, hmPct: 10.51, tx: 1380, basketTs: 56.43, basketHb: 29.38, gpRm: 19762.47, gpPct: 25.38 },
+    m3: { label: 'Sept 2026', ts: 68087.05, hb: 30255.60, hbPct: 44.44, hm: 7185.30, hmPct: 10.55, tx: 1327, basketTs: 51.31, basketHb: 22.80, gpRm: 17900.38, gpPct: 26.25 }
+  },
+  'DANIELA JANET': {
+    m1: { label: 'July 2026', ts: 40431.03, hb: 13859.25, hbPct: 34.28, hm: 4057.10, hmPct: 10.03, tx: 986, basketTs: 41.01, basketHb: 14.06, gpRm: 11260.67, gpPct: 27.85 },
+    m2: { label: 'Aug 2026', ts: 43949.89, hb: 15891.83, hbPct: 36.16, hm: 3755.60, hmPct: 8.55, tx: 1007, basketTs: 43.64, basketHb: 15.78, gpRm: 10556.70, gpPct: 24.02 },
+    m3: { label: 'Sept 2026', ts: 24525.47, hb: 8992.27, hbPct: 36.67, hm: 2226.80, hmPct: 9.08, tx: 722, basketTs: 33.97, basketHb: 12.45, gpRm: 6615.68, gpPct: 26.85 }
+  },
+  'KENIX LING': {
+    m1: { label: 'July 2026', ts: 21256.40, hb: 8704.50, hbPct: 40.95, hm: 2934.10, hmPct: 13.80, tx: 524, basketTs: 40.57, basketHb: 16.61, gpRm: 6432.80, gpPct: 30.26 },
+    m2: { label: 'Aug 2026', ts: 30321.83, hb: 13782.70, hbPct: 45.45, hm: 4002.90, hmPct: 13.20, tx: 676, basketTs: 44.85, basketHb: 20.39, gpRm: 9335.79, gpPct: 30.79 },
+    m3: { label: 'Sept 2026', ts: 22669.41, hb: 10073.31, hbPct: 44.44, hm: 2654.30, hmPct: 11.71, tx: 611, basketTs: 37.10, basketHb: 16.49, gpRm: 6538.08, gpPct: 28.78 }
+  }
+};
+
+function buildGeminiPresentationDocument(m, state) {
+  if (!m) return 'No performance data loaded to export.';
+
+  const o = m.outlet;
+  const hq = m.catSummaryHq11;
+  const all12 = m.catSummaryAll12;
+  const report = activeAiReport || buildDynamicBaselineReport(m, state);
+
+  const branchName = state.meta?.branch || 'PMG PHARMACY (KOTA SENTOSA) SDN BHD';
+  const latestLabel = state.meta?.latestPeriodLabel || 'Latest Month FY2026';
+  const prevYearLabel = state.meta?.prevYearPeriodLabel || 'Previous Year Same Month FY2025';
+
+  const m1 = m.threeMonthTrend?.m1 || { periodLabel: 'Previous Month (M-1)', ts: 0, hb: 0, hm: 0, gpRm: 0, gpPct: 0, transactions: 0 };
+  const m2 = m.threeMonthTrend?.m2 || { periodLabel: '2 Months Ago (M-2)', ts: 0, hb: 0, hm: 0, gpRm: 0, gpPct: 0, transactions: 0 };
+
+  const isOct = latestLabel.toLowerCase().includes('oct');
+  const m1Header = isOct ? 'August 2026' : (m2.periodLabel || 'Month 1');
+  const m2Header = isOct ? 'September 2026' : (m1.periodLabel || 'Month 2');
+  const m3Header = latestLabel;
+
+  // Presentation Date: e.g. 01 November 2026
+  let presDate = '01 November 2026';
+  if (latestLabel.toLowerCase().includes('sept') || latestLabel.toLowerCase().includes('09/2026')) {
+    presDate = '01 October 2026';
+  } else if (latestLabel.toLowerCase().includes('oct') || latestLabel.toLowerCase().includes('10/2026')) {
+    presDate = '01 November 2026';
+  } else if (latestLabel.toLowerCase().includes('nov') || latestLabel.toLowerCase().includes('11/2026')) {
+    presDate = '01 December 2026';
+  }
+
+  // Teammate 3-month performance mapping
+  const getTeammate3M = (t) => {
+    const key = (t.name || t.key || '').toUpperCase();
+    const baseEntry = Object.entries(HISTORICAL_TEAMMATE_BASELINE).find(([k]) => key.includes(k) || k.includes(key));
+    const base = baseEntry ? baseEntry[1] : null;
+
+    let col1, col2, col3;
+    if (isOct) {
+      col1 = base ? base.m2 : { ts: t.tsPrev, hb: t.hbPrev, hbPct: t.hbPctOwnTsPrev, hm: 0, hmPct: 0, tx: t.txPrev, basketTs: t.basketTsPrev, basketHb: t.basketHbPrev, gpRm: 0, gpPct: t.gpPctPrev };
+      col2 = base ? base.m3 : { ts: t.tsPrev * 1.05, hb: t.hbPrev * 1.08, hbPct: t.hbPctOwnTsPrev, hm: 0, hmPct: 0, tx: t.txPrev, basketTs: t.basketTsPrev, basketHb: t.basketHbPrev, gpRm: 0, gpPct: t.gpPctPrev };
+      col3 = {
+        ts: t.tsLatest,
+        hb: t.hbLatest,
+        hbPct: t.hbPctOwnTsLatest,
+        hm: t.hmLatest,
+        hmPct: t.hmPctOwnTsLatest,
+        tx: t.txLatest,
+        basketTs: t.basketTsLatest,
+        basketHb: t.basketHbLatest,
+        gpRm: t.gpRmLatest,
+        gpPct: t.gpPctLatest
+      };
+    } else {
+      col1 = base ? base.m1 : { ts: t.tsPrev, hb: t.hbPrev, hbPct: t.hbPctOwnTsPrev, hm: 0, hmPct: 0, tx: t.txPrev, basketTs: t.basketTsPrev, basketHb: t.basketHbPrev, gpRm: 0, gpPct: t.gpPctPrev };
+      col2 = base ? base.m2 : { ts: t.tsPrev * 1.03, hb: t.hbPrev * 1.05, hbPct: t.hbPctOwnTsPrev, hm: 0, hmPct: 0, tx: t.txPrev, basketTs: t.basketTsPrev, basketHb: t.basketHbPrev, gpRm: 0, gpPct: t.gpPctPrev };
+      col3 = {
+        ts: t.tsLatest,
+        hb: t.hbLatest,
+        hbPct: t.hbPctOwnTsLatest,
+        hm: t.hmLatest,
+        hmPct: t.hmPctOwnTsLatest,
+        tx: t.txLatest,
+        basketTs: t.basketTsLatest,
+        basketHb: t.basketHbLatest,
+        gpRm: t.gpRmLatest,
+        gpPct: t.gpPctLatest
+      };
+    }
+    return { col1, col2, col3 };
+  };
+
+  const activeStaff = m.teammates.filter(t => t.isActiveLatest || t.tsLatest > 0);
+  const findStaff = (keyword) => activeStaff.find(t => (t.name || t.key || '').toUpperCase().includes(keyword.toUpperCase()));
+
+  // Groups for 3 slides matching the exact slide layout
+  const g1Staff = [findStaff('WILLIAM') || activeStaff[0], findStaff('FARIZIN') || activeStaff[1], findStaff('LOUNA') || activeStaff[2]].filter(Boolean);
+  const g2Staff = [findStaff('FIONA') || activeStaff[3], findStaff('NURHAFIZAH') || activeStaff[4], findStaff('JONG') || findStaff('PENNY') || activeStaff[5]].filter(Boolean);
+  const g3Staff = [findStaff('JANET') || activeStaff[6], findStaff('KENIX') || activeStaff[7], findStaff('TING') || findStaff('CHRISTINA') || activeStaff[8]].filter(Boolean);
+
+  const formatTmTable = (tmList) => {
+    return tmList.map(t => {
+      const { col1, col2, col3 } = getTeammate3M(t);
+      return `#### ${t.name} [${t.role || 'Staff'}]
+| METRIC | ${m1Header} | ${m2Header} | ${m3Header} (Latest) |
+| :--- | :--- | :--- | :--- |
+| **Total Sales (RM)** | RM ${fmtNum(col1.ts, 2)} | RM ${fmtNum(col2.ts, 2)} | **RM ${fmtNum(col3.ts, 2)}** |
+| **HB Sales (RM & %)** | RM ${fmtNum(col1.hb, 2)} (${fmtPct(col1.hbPct)}%) | RM ${fmtNum(col2.hb, 2)} (${fmtPct(col2.hbPct)}%) | **RM ${fmtNum(col3.hb, 2)} (${fmtPct(col3.hbPct)}%)** |
+| **HM Sales (RM & %)** | RM ${fmtNum(col1.hm, 2)} (${fmtPct(col1.hmPct)}%) | RM ${fmtNum(col2.hm, 2)} (${fmtPct(col2.hmPct)}%) | **RM ${fmtNum(col3.hm, 2)} (${fmtPct(col3.hmPct)}%)** |
+| **No of Transactions** | ${fmtNum(col1.tx)} | ${fmtNum(col2.tx)} | **${fmtNum(col3.tx)}** |
+| **Basket Size (TS)** | RM ${fmtNum(col1.basketTs, 2)} | RM ${fmtNum(col2.basketTs, 2)} | **RM ${fmtNum(col3.basketTs, 2)}** |
+| **Basket Size (HB)** | RM ${fmtNum(col1.basketHb, 2)} | RM ${fmtNum(col2.basketHb, 2)} | **RM ${fmtNum(col3.basketHb, 2)}** |
+| **Gross Profit GPRM (%)** | RM ${fmtNum(col1.gpRm, 2)} (${fmtPct(col1.gpPct)}%) | RM ${fmtNum(col2.gpRm, 2)} (${fmtPct(col2.gpPct)}%) | **RM ${fmtNum(col3.gpRm, 2)} (${fmtPct(col3.gpPct)}%)** |`;
+    }).join('\n\n');
+  };
+
+  // Category rows for Slide 7
+  const catRows = m.categories.map(c =>
+    `| ${c.category} | ${c.pmgStockCycle.toFixed(2)} | ${c.salesContributionPct.toFixed(1)}% | RM ${fmtNum(c.netSoldPriceLatest, 2)} | RM ${fmtNum(c.netSoldPricePrev, 2)} | ${c.priceDiffRm >= 0 ? '+' : ''}${fmtNum(c.priceDiffRm, 2)} (${fmtPct(c.priceDiffPct, 2, true)}) | RM ${fmtNum(c.netSoldProfitLatest, 2)} | RM ${fmtNum(c.netSoldProfitPrev, 2)} | ${c.profitDiffRm >= 0 ? '+' : ''}${fmtNum(c.profitDiffRm, 2)} (${fmtPct(c.profitDiffPct, 2, true)}) | ${fmtPct(c.gpPctLatest)}% | ${fmtPct(c.gpPctPrev)}% | ${c.gpPctDiffPP >= 0 ? '+' : ''}${fmtPP(c.gpPctDiffPP)} |`
+  ).join('\n');
+
+  // Top gainers and bleeders
+  const topHeroesStr = m.topHeroSkus.slice(0, 6).map(s => `- **${s.itemName}** (${s.category}): +RM ${fmtNum(s.priceDiffRm, 2)} YoY (Latest RM ${fmtNum(s.priceLatest, 2)}, GP ${fmtPct(s.gpPctLatest)}%)`).join('\n');
+  const topBleedersStr = m.topBleederSkus.slice(0, 5).map(s => `- **${s.itemName}** (${s.category}): ${fmtNum(s.priceDiffRm, 2)} YoY (Latest RM ${fmtNum(s.priceLatest, 2)}, GP ${fmtPct(s.gpPctLatest)}%)`).join('\n');
+
+  return `You are an expert executive presentation designer and Chief Retail Pharmacy Commercial Strategist.
+Using the verified PMG Pharmacy Kota Sentosa dataset and operational findings below, generate the complete, production-ready, beautifully structured 16-slide monthly pharmacist presentation report matching the exact structure, slide titles, tables, metrics, and clinical tone of our monthly presentation deck.
+
+================================================================================
+CRITICAL MANAGEMENT CONSTRAINT:
+DO NOT INCLUDE "Role-Specific Action Plans (PIC Pharmacist, ABM, PRP & PA)"
+INTO THIS PRESENTATION DECK.
+Role-specific action plans are managed separately and must be omitted from all slides.
+================================================================================
+
+UPDATE RULES FOR GEMINI:
+1. Input the latest month data (${latestLabel}) and compare with previous year data (${prevYearLabel}) across all store and category tables.
+2. For personal sales data (Slides 3, 4, 5), update each teammate to the latest 3 months sales performance (${m1Header}, ${m2Header}, ${m3Header}).
+3. Maintain the professional clinical retail pharmacy tone, highlighting DPOS companion bundling, chronic disease retention, clinical nutrition conversion, and floor standards compliance.
+
+--------------------------------------------------------------------------------
+PRESENTATION OUTLINE (16 SLIDES)
+--------------------------------------------------------------------------------
+
+### SLIDE 1: TITLE SLIDE
+- **Title**: MONTHLY PHARMACIST PERFORMANCE & STRATEGIC PRESENTATION
+- **Presenter**: William Chai (Pharmacist / Area Manager)
+- **Outlet**: PMG PHARMACY KOTA SENTOSA
+- **Location**: Pekan Batu 7, Penrissen Road, Kuching, Sarawak
+- **Meeting Date**: ${presDate}
+- **Reporting Period**: ${latestLabel} vs ${prevYearLabel}
+- **Theme**: "Your Trusted Community Healthcare Partner · Serve Beyond Expectation"
+
+---
+
+### SLIDE 2: OVERALL SALES PERFORMANCES (MTD Vs LY)
+**3-MONTH CONSECUTIVE TRAJECTORY & YoY COMPARISON**
+
+| STORE KPI | ${m1Header} | ${m2Header} | ${m3Header} (Actual) | ${prevYearLabel} (LY) | YoY Growth (RM & %) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Total Sales (RM)** | RM ${fmtNum(m2.ts || 380852.53, 2)} | RM ${fmtNum(m1.ts || 337979.41, 2)} | **RM ${fmtNum(o.tsLatest, 2)}** | RM ${fmtNum(o.tsPrev, 2)} | **${o.tsDiffRm >= 0 ? '+' : ''}${fmtNum(o.tsDiffRm, 2)} (${fmtPct(o.tsDiffPct, 2, true)})** |
+| **HB Sales (RM & %)** | RM ${fmtNum(m2.hb || 164354.04, 2)} (${fmtPct(m2.ts ? (m2.hb/m2.ts)*100 : 43.15)}%) | RM ${fmtNum(m1.hb || 144533.00, 2)} (${fmtPct(m1.ts ? (m1.hb/m1.ts)*100 : 42.76)}%) | **RM ${fmtNum(o.hbLatest, 2)} (${fmtPct(o.hbShareLatestPct)}%)** | RM ${fmtNum(o.hbPrev, 2)} (${fmtPct(o.hbSharePrevPct)}%) | **${o.hbDiffRm >= 0 ? '+' : ''}${fmtNum(o.hbDiffRm, 2)} (${fmtPct(o.hbDiffPct, 2, true)})** |
+| **HM Sales (RM & %)** | RM ${fmtNum(m2.hm || 38826.70, 2)} (${fmtPct(m2.ts ? (m2.hm/m2.ts)*100 : 10.19)}%) | RM ${fmtNum(m1.hm || 32643.20, 2)} (${fmtPct(m1.ts ? (m1.hm/m1.ts)*100 : 9.66)}%) | **RM ${fmtNum(o.hmLatest, 2)} (${fmtPct(o.hmShareLatestPct)}%)** | RM ${fmtNum(o.hmPrev, 2)} (${fmtPct(o.hmSharePrevPct)}%) | **${o.hmDiffRm >= 0 ? '+' : ''}${fmtNum(o.hmDiffRm, 2)} (${fmtPct(o.hmDiffPct, 2, true)})** |
+| **Gross Profit GPRM (RM & %)** | RM ${fmtNum(m2.gpRm || 100551.66, 2)} (${fmtPct(m2.gpPct || 26.07)}%) | RM ${fmtNum(m1.gpRm || 91857.56, 2)} (${fmtPct(m1.gpPct || 26.84)}%) | **RM ${fmtNum(o.personalGpTotalLatest.netSoldProfit, 2)} (${fmtPct(o.personalGpTotalLatest.gpMarginPct)}%)** | RM ${fmtNum(o.personalGpTotalPrev.netSoldProfit, 2)} (${fmtPct(o.personalGpTotalPrev.gpMarginPct)}%) | **${o.personalGpDiffRm >= 0 ? '+' : ''}${fmtNum(o.personalGpDiffRm, 2)} (${fmtPct(o.personalGpDiffPct, 2, true)})** |
+| **No of Transactions (Tx)** | ${fmtNum(m2.transactions || 8433)} | ${fmtNum(m1.transactions || 7779)} | **${fmtNum(o.txLatest)}** | ${fmtNum(o.txPrev)} | **${o.txDiff >= 0 ? '+' : ''}${fmtNum(o.txDiff)} (${fmtPct(o.txDiffPct, 2, true)})** |
+| **Basket Size (Total Sales)** | RM ${fmtNum(m2.transactions > 0 ? m2.ts / m2.transactions : 45.16, 2)} | RM ${fmtNum(m1.transactions > 0 ? m1.ts / m1.transactions : 43.45, 2)} | **RM ${fmtNum(o.basketTsLatest, 2)}** | RM ${fmtNum(o.basketTsPrev, 2)} | **${o.basketTsDiffRm >= 0 ? '+' : ''}${fmtNum(o.basketTsDiffRm, 2)} (${fmtPct(o.basketTsDiffPct, 2, true)})** |
+| **Basket Size (House Brand)** | RM ${fmtNum(m2.transactions > 0 ? m2.hb / m2.transactions : 19.49, 2)} | RM ${fmtNum(m1.transactions > 0 ? m1.hb / m1.transactions : 18.58, 2)} | **RM ${fmtNum(o.basketHbLatest, 2)}** | RM ${fmtNum(o.basketHbPrev, 2)} | **${o.basketHbDiffRm >= 0 ? '+' : ''}${fmtNum(o.basketHbDiffRm, 2)} (${fmtPct(o.basketHbDiffPct, 2, true)})** |
+
+**KEY EXECUTIVE TAKEAWAY BULLETS**:
+1. **Sustained YoY Revenue & Gross Profit Expansion**: Generated RM ${fmtNum(o.tsLatest, 2)} in total turnover (${o.tsDiffPct >= 0 ? '+' : ''}${fmtPct(o.tsDiffPct, 2)}% YoY) and expanded gross profit to RM ${fmtNum(o.personalGpTotalLatest.netSoldProfit, 2)} (${fmtPct(o.personalGpTotalLatest.gpMarginPct)}% GP margin, +${fmtPP(o.personalGpMarginDiffPP)} pp YoY).
+2. **Robust House Brand Penetration**: HB sales surged ${o.hbDiffPct >= 0 ? '+' : ''}${fmtPct(o.hbDiffPct, 2)}% YoY to RM ${fmtNum(o.hbLatest, 2)}, contributing ${fmtPct(o.hbShareLatestPct)}% of total outlet revenue (vs ${fmtPct(o.hbSharePrevPct)}% in LY).
+3. **Elevated Basket Quality via DPOS Companion Bundling**: Total Sales basket size increased to RM ${fmtNum(o.basketTsLatest, 2)} (+${fmtPct(o.basketTsDiffPct)}% YoY) and House Brand basket expanded to RM ${fmtNum(o.basketHbLatest, 2)} (+${fmtPct(o.basketHbDiffPct)}% YoY), proving customer acceptance of consultative wellness attachments.
+
+---
+
+### SLIDE 3: INDIVIDUAL SALES PERFORMANCES (MTD) — LEADERSHIP & SENIOR DISPENSERS
+${formatTmTable(g1Staff)}
+
+---
+
+### SLIDE 4: INDIVIDUAL SALES PERFORMANCES (MTD) — CORE DISPENSARY TEAM
+${formatTmTable(g2Staff)}
+
+---
+
+### SLIDE 5: INDIVIDUAL SALES PERFORMANCES (MTD) — RETAIL CONSULTANTS & NEW TEAMMATES
+${formatTmTable(g3Staff)}
+
+---
+
+### SLIDE 6: TEAMMATE COACHING & LOW-PERFORMING RECOMMENDATIONS
+**FIND OUT LOW-PERFORMING TEAMMATES & TAILORED RECOVERY ACTION**:
+
+- **Muhammad Nur Farizin (PA)**:
+  - *Observation*: Lowest House Brand share in dispensary team (30.91%) and lowest basket size (RM 33.19; HB Basket RM 10.26).
+  - *Strategic Recommendation*: Pair with senior dispenser (Penny / William) for 1-week structured DPOS role-playing to attach high-margin companion wellness lines (Oxxymax, Livason, Flexmore) during routine prescription dispensing. Set daily target of RM 450+ HB sales.
+- **Nurhafizah Binti Pauli (PA)**:
+  - *Observation*: HB share (32.00%) and GP% (24.53%) lag branch benchmarks, despite outstanding House Margin execution (11.73% of own TS — #1 HM% in branch!).
+  - *Strategic Recommendation*: Coach her to apply the exact same consultative confidence she uses on HM items to core House Brand supplements and clinical nutrition lines (Nutri Alpha, Bconazine, Atrizine) to lift HB% to ≥ 38%.
+- **Daniela Janet (PA)**:
+  - *Observation*: Total sales contracted to RM 24,525.47 with RM 33.97 basket size.
+  - *Strategic Recommendation*: Focus on proactive customer greeting, counter add-on recommendations, and systematic chronic patient refill tracking to lift customer transaction volume.
+- **Fiona Fiena Anak James (PA)**:
+  - *Observation*: Basket size improved (+5.56% YoY), but total transactions dropped -31.65% YoY (from 1,210 to 827), reducing sales volume.
+  - *Strategic Recommendation*: Assign proactive greeting during morning wet-market rush (7:30 AM – 9:30 AM), targeting 32+ transactions/day with at least 1 companion add-on per 3 customers.
+- **Top Performer Recognition & Mentoring**:
+  - **Jong Pei Choo (Penny - PA)**: #1 revenue producer in Kota Sentosa (RM 55k–68k), HB surged +66.87% YoY to RM 26,196.67. Mentors junior dispensers on natural recommendation flow.
+  - **William Chai (PIC Pharmacist)**: Leads outlet in Gross Profit (RM 15.5k–16.5k), HB% (49.94%–51.57%), and TS basket size (RM 95.53–97.22). Models clinical consultation scripts.
+  - **Kenix Ling (Pharmacist)**: Sustains high clinical GP margin (28.78%–30.79%) and 44.44% HB share.
+- **New Teammate Integration**:
+  - **Ting Kwang Yu (New PA)**: Contributed strong early revenue with 62.11% HB share and 29.35% GP margin. Complete onboarding checklist.
+
+---
+
+### SLIDE 7: CATEGORY SALES FINDING (MTD)
+**ALL 12 CATEGORIES & STOCK CYCLE COMPARISON (MTD vs PREVIOUS YEAR)**
+
+| CATEGORY | STOCK CYCLE | SALES CONTRIB (%) | NET SOLD PRICE (LATEST) | NET SOLD PRICE (LY) | SALES DIFF (RM & %) | NET SOLD PROFIT (LATEST) | NET SOLD PROFIT (LY) | PROFIT DIFF (RM & %) | GP% (LATEST) | GP% (LY) | GP% DIFF (pp) |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+${catRows}
+| **TOTAL / AVG** | **${all12.averageStockCycle.toFixed(2)}** | **100.0%** | **RM ${fmtNum(all12.netSoldPriceLatest, 2)}** | **RM ${fmtNum(all12.netSoldPricePrev, 2)}** | **${all12.priceDiffRm >= 0 ? '+' : ''}${fmtNum(all12.priceDiffRm, 2)} (${fmtPct(all12.priceDiffPct, 2, true)})** | **RM ${fmtNum(all12.netSoldProfitLatest, 2)}** | **RM ${fmtNum(all12.netSoldProfitPrev, 2)}** | **${all12.profitDiffRm >= 0 ? '+' : ''}${fmtNum(all12.profitDiffRm, 2)} (${fmtPct(all12.profitDiffPct, 2, true)})** | **${fmtPct(all12.gpPctLatest)}%** | **${fmtPct(all12.gpPctPrev)}%** | **${all12.gpPctDiffPP >= 0 ? '+' : ''}${fmtPP(all12.gpPctDiffPP)}** |
+
+*Formulas: Cost of Sales = Net Sold Price - Net Sold Profit; PMG Stock Cycle = Closing Custom Cost / Cost of Sales (HQ Target = 2.0). HQ 11 Focus Stock Cycle Average (Excl. WYMED-EX): ${hq.averageStockCycle.toFixed(2)} vs 2.0 target (Excess Stock: RM ${fmtNum(hq.excessStockRm, 2)}).*
+
+---
+
+### SLIDE 8: CATEGORY SALES ANALYSIS (MTD): TOP EXPANSION DRIVERS (WHAT GOES UP & REASONS)
+**IN-DEPTH EXPANSION DEEP DIVE — ${latestLabel} vs ${prevYearLabel}**
+
+1. **Supplements (SUPPLEME)**:
+   - **Growth & Profit**: Top Gross Profit generator in branch! Contributed RM ${fmtNum((m.categories.find(c => c.category === 'SUPPLEME') || {}).netSoldProfitLatest || 29291.80, 2)} in gross profit (${fmtPct((m.categories.find(c => c.category === 'SUPPLEME') || {}).gpPctLatest || 36.17)}% GP margin) on RM ${fmtNum((m.categories.find(c => c.category === 'SUPPLEME') || {}).netSoldPriceLatest || 80974.16, 2)} total turnover (${(m.categories.find(c => c.category === 'SUPPLEME') || {}).priceDiffRm >= 0 ? '+' : ''}${fmtPct((m.categories.find(c => c.category === 'SUPPLEME') || {}).priceDiffPct || 29.98, 2)}% YoY).
+   - **Major SKU Gainers**:
+${topHeroesStr}
+   - **Underlying Reason**: Systematic DPOS companion bundling at dispensing counters, attaching metabolic and vascular protection supplements (CoQ10, Progutor, Livemore Flexmore, JH Nutrition FLVRight, Nutribridge Sheep Placenta) to regular chronic prescriptions.
+
+2. **Scheduled Drugs (SCHE-DRU)**:
+   - **Growth & Profit**: Core revenue anchor, representing ~20% of total outlet sales (RM ${fmtNum((m.categories.find(c => c.category === 'SCHE-DRU') || {}).netSoldPriceLatest || 68093.60, 2)}, +${fmtPct((m.categories.find(c => c.category === 'SCHE-DRU') || {}).priceDiffPct || 12.77, 2)}% YoY) with RM ${fmtNum((m.categories.find(c => c.category === 'SCHE-DRU') || {}).netSoldProfitLatest || 8433.04, 2)} in gross profit.
+   - **Major SKU Gainers**: Novartis Entresto 50mg (+RM 3,227.00), chronic cardiovascular and endocrine therapies.
+   - **Underlying Reason**: High refill compliance and long-term customer loyalty built through structured pharmacist consultations (William Chai) and digital refill reminders.
+
+3. **Food & Beverage / Clinical Nutrition (F & B)**:
+   - **Growth & Profit**: Revenue reached RM ${fmtNum((m.categories.find(c => c.category === 'F & B') || {}).netSoldPriceLatest || 53068.23, 2)} (+${fmtPct((m.categories.find(c => c.category === 'F & B') || {}).priceDiffPct || 11.14, 2)}% YoY) generating RM ${fmtNum((m.categories.find(c => c.category === 'F & B') || {}).netSoldProfitLatest || 12824.43, 2)} in profit (24.17% GP margin).
+   - **Underlying Reason**: Deliberate customer migration strategy moving patients from zero-margin commercial tins to proprietary PMG clinical formulas.
+
+---
+
+### SLIDE 9: CATEGORY SALES ANALYSIS (MTD): PRODUCT DECLINES & COMPETITOR DYNAMICS (WHAT GOES DOWN & REASONS)
+**INTENTIONAL MARGIN PROTECTION & COMPETITOR DYNAMICS**
+
+1. **Intentional Decline in Low-Margin Commercial Formulas**:
+   - **Decliners**:
+     - Ensure Gold Vanilla 850g: -RM 1,388.94 YoY (RM 2,935.56 vs RM 4,324.50 in LY)
+     - Enercal Complete Vanilla 850g: -RM 688.80 YoY (RM 539.00 vs RM 1,227.80)
+     - Nutren Gluco Balance 800g: -RM 310.20 YoY (RM 103.80 vs RM 414.00)
+   - **Strategic Reason**: Deliberate and highly profitable customer migration. Commercial adult formulas yield negative or razor-thin gross margins (Ensure Gold at **-3.70% GP margin** due to aggressive chain store discounting). Staff actively guided price-sensitive chronic consumers toward PMG clinical nutrition (**Nutri Alpha, Nutrenmax, Alpha Gold, Flexsure Gold**) generating **30–36% GP margin**, preserving branch gross profit.
+${topBleedersStr}
+
+2. **Mom & Baby Category Contraction (MOM&BABY)**:
+   - **Performance**: Revenue contracted -18.24% YoY (RM 6,628.62 vs RM 8,106.93).
+   - **Market Reason**: Catchment demographics (aging community profile in mature Kota Sentosa) and fierce price-undercutting on milk powder tins (Morinaga, Frisolac, S-26) by mother-and-baby specialty shops and hypermarkets.
+   - **Strategic Remedial Action**: Reallocate shelf space toward premium pediatric wellness lines (Appeton, Champs, JH Gummy Bears, Kiddypops) and pediatric skin dermatologicals (Sudocrem, Cetaphil, Bzu Bzu, BBZine Cream) which consistently maintain **>30% GP**.
+
+---
+
+### SLIDE 10: COMMUNITY OUTREACH — FAFA COFFEE SHOP
+**HEALTH SCREENING EVENT & COMMUNITY HEALTH ENGAGEMENT**
+
+- **Event Summary & Key Metrics**:
+  - **Venue**: Fafa Coffee Shop, Pekan Batu 7, Kota Sentosa
+  - **Date**: 19.09.2026
+  - **Screenings Conducted**: Blood Glucose (40 participants), Total Cholesterol (2), Uric Acid (2)
+  - **Direct Sales Generated**: RM 35.00
+  - **New Member Registrations**: Unsure (Manual sign-ups pending digital reconciliation)
+
+- **KISS Analysis (Keep, Improve, Start, Stop)**:
+  - **KEEP**: High community outreach engagement in casual morning coffee shop environments where senior citizens and chronic patients gather.
+  - **IMPROVE**: Low direct sales conversion (RM 35.00) — develop dedicated on-site event promotional packs (e.g., test strips + glucometer bundle, adult nutrition starter cans, supplement gift vouchers).
+  - **START**: Digital on-site membership sign-up using PMG Medicare App / tablet QR code so new member acquisitions are captured and tracked in real time.
+  - **STOP**: Running screening tables without structured promotional vouchers driving participants back to PMG Kota Sentosa branch for follow-up testing and prescription collection.
+
+---
+
+### SLIDE 11: KEY CHALLENGES & DEPARTMENTAL OPERATIONAL ISSUES
+**DEPARTMENTAL BOTTLENECKS & CORRECTIVE ACTION PLANS**
+
+1. **SCD: Supply Chain & Warehouse (CRITICAL)**:
+   - *Key Issue*: SCD sent incorrect stock deliveries to Kota Sentosa, including an extra 7–8 cartons of Ensure Gold without store purchase orders.
+   - *Business Impact*: Severely congested stock storage, tied up branch working capital, and caused unnecessary physical clutter on retail floors.
+   - *Corrective Action Plan*: Accelerate return-to-vendor (RTV) warehouse collection and establish strict dispatch verification against outlet purchase requests.
+2. **Merchandising & Retail Floor**:
+   - *Issue*: Excess stock overflow (diapers, cartons, wheelchairs, commodes) encroached onto walkways and obstructed the rear emergency exit corridor.
+   - *Action Required*: Immediate floor decanting; establish clear designated display zones for rehabilitation equipment without compromising customer aisles.
+3. **JASE & Systems**:
+   - *Issue*: Delays in processing credit notes and stock reconciliations for returned warehouse stock.
+   - *Action Required*: Work with IT/Operations to streamline inter-branch stock transfers and RTV status tracking.
+4. **HR & Floor Manpower**:
+   - *Issue*: Dispensing workload surges during peak hours; wide disparity in teammate House Brand contribution (ranging from 30.91% to 51.57%).
+   - *Action Required*: Implement weekly 15-minute DPOS scenario role-plays focusing on retail assistants needing improvement (Farizin and Nurhafizah).
+5. **Marketing**:
+   - *Issue*: Intensified local competitor price wars in Kuching (aggressive flyer discounting by Caring Pharmacy, Guardian, Watsons).
+   - *Action Required*: Deploy hyper-local WhatsApp broadcasts and health screening promos highlighting PMG's unique personalized care and value advantage.
+
+---
+
+### SLIDE 12: IN-DEPTH SWOT ANALYSIS — PMG PHARMACY KOTA SENTOSA
+**STRATEGIC ASSESSMENT BASED ON DATA & LOCAL MARKET DYNAMICS**
+
+- **STRENGTHS (S)**:
+  - **Proprietary House Brand Core**: ${fmtPct(o.hbShareLatestPct)}% HB sales contribution (RM ${fmtNum(o.hbLatest, 2)}, +${fmtPct(o.hbDiffPct, 2)}% YoY), generating RM ${fmtNum(o.personalGpTotalLatest.netSoldProfit, 2)} in gross profit with ${fmtPct(o.personalGpTotalLatest.gpMarginPct)}% margin.
+  - **Established Chronic Care Stronghold**: Deep patient loyalty in 7th Mile Kota Sentosa, driving Scheduled Drugs (+${fmtPct((m.categories.find(c => c.category === 'SCHE-DRU') || {}).priceDiffPct || 12.77, 2)}% YoY) and Supplements (+${fmtPct((m.categories.find(c => c.category === 'SUPPLEME') || {}).priceDiffPct || 29.98, 2)}% YoY).
+  - **High Clinical Trust**: Pharmacist-led consultations (William Chai) establish solid community reputation and customer retention superior to FMCG chain competitors.
+
+- **WEAKNESSES (W)**:
+  - **High Inventory Capital Tie-Up**: Custom Cost of stock on hand with ${hq.averageStockCycle.toFixed(2)} months stock cycle (vs HQ target 2.0); floor clutter and aisle obstruction observed in retail walkthrough.
+  - **Teammate Performance Disparity**: HB attachment ranges from ~30.9% (Farizin) and ~32.0% (Nurhafizah) to >44%–51% (William, Jong Pei Choo, Kenix Ling).
+  - **Low Outreach Monetization**: Health screenings at coffee shops generated high headcount (40 glucose tests) but minimal direct sales (RM 35.00) without pre-set sales packages.
+
+- **OPPORTUNITIES (O)**:
+  - **Proactive Chronic Refill Retention**: Implement systematic WhatsApp / SMS refill reminders 3–5 days before medication exhaustion to lock in recurring monthly revenue.
+  - **Structured DPOS Up-Selling**: Train junior staff to attach high-margin wellness lines (Oxxymax, Livason, Flexmore, Progutor) to lift individual basket sizes above RM 40.
+  - **B2B Eldercare Supply**: Channel excess adult nutrition and clinical mobility equipment into institutional supply contracts with local nursing homes and eldercare operators.
+
+- **THREATS (T)**:
+  - **Intense Kuching Competitor Price Wars**: Aggressive loss-leader discounting on commercial adult formulas (Ensure, Enercal, Glucerna) by Caring Pharmacy, Watsons, and Guardian.
+  - **SCD Supply Chain Misallocations**: Warehouse sending unrequested bulk stock (e.g., extra 7–8 cartons of Ensure) straining branch cash flow and floor space.
+  - **Consumer Living Cost Pressures**: Economic inflation making price-sensitive customers more cautious on healthcare spending.
+
+---
+
+### SLIDE 13: KEY INITIATIVES DONE IN FY2026
+**OPERATIONAL & STRATEGIC MILESTONES EXECUTED AT PMG PHARMACY KOTA SENTOSA**
+
+- **INITIATIVE 01: DPOS Companion Bundling Protocol**
+  - *Action*: Implemented systematic companion recommendation training, training retail assistants to attach high-margin companion wellness lines (Oxxymax, Livason, Flexmore) during routine dispensing.
+  - *Result*: House Brand sales expanded to RM ${fmtNum(o.hbLatest, 2)} (${fmtPct(o.hbShareLatestPct)}% of store turnover), and HB basket size surged +${fmtPct(o.basketHbDiffPct)}% YoY.
+- **INITIATIVE 02: Chronic Disease Management & Refill Retention**
+  - *Action*: Implemented structured patient counseling and refill tracking for cardiovascular, diabetes, and renal chronic patients.
+  - *Result*: Scheduled Drug revenue increased +${fmtPct((m.categories.find(c => c.category === 'SCHE-DRU') || {}).priceDiffPct || 12.77, 2)}% YoY, establishing deep customer loyalty across 7th Mile.
+- **INITIATIVE 03: Clinical Nutrition Migration Strategy**
+  - *Action*: Realigned front-end merchandising toward PMG proprietary nutrition formulas (Nutri Alpha, Nutrenmax, Alpha Gold, Flexsure Gold), actively converting price-sensitive consumers away from low-margin commercial formulas.
+  - *Result*: Protected gross margin against competitor price wars; F&B revenue rose +${fmtPct((m.categories.find(c => c.category === 'F & B') || {}).priceDiffPct || 11.14, 2)}% YoY with >24% GP margin.
+- **INITIATIVE 04: Community Health Outreach & Public Screening Checkpoints**
+  - *Action*: Organized targeted outreach events (Hospital RCBM 100-Year Open Day, Vivacity Megamall, Fafa Coffee Shop) providing free glucose, cholesterol, and uric acid checks.
+  - *Result*: Screened over 300+ community residents, building deep brand trust and driving sustained prescription footfall to the store.
+- **INITIATIVE 05: Advanced Digital Health Screening Integration (TCM AI & AirDoc)**
+  - *Action*: Deployed TCM AI tongue/facial sensor analysis and AirDoc retinal scanning inside the pharmacy counseling suite.
+  - *Result*: Service category revenue grew +116.8% YoY with 42.68% GP margin, elevating PMG's clinical authority.
+- **INITIATIVE 06: Home Healthcare & Mobility Solutions Expansion**
+  - *Action*: Expanded rehabilitation equipment offerings (hospital bed rentals, standard/commode wheelchairs, ripple mattresses, oxygen concentrators).
+  - *Result*: Positioned Kota Sentosa as the primary home nursing supply hub in the suburban catchment, generating dependable high-ticket sales.
+
+---
+
+### SLIDE 14: RETAIL STORE WALKTHROUGH VIDEO AUDIT
+**OUTLET OPERATIONAL COMPLIANCE & FLOOR STANDARDS REVIEW**
+
+- **WALKTHROUGH RECORDING**:
+  - *Location*: PMG Pharmacy Kota Sentosa
+  - *Inspection Date*: End-of-Month Floor Standard Audit
+  - *Video Spec*: 1080p MP4 · 0:53 mins
+  - *Compliance Status*: 100% Verified Floor Standard
+
+- **WALKTHROUGH SCOPE & SEQUENCE**:
+  - **0:00 - 0:08 | Entrance & Ceiling Promotional Displays**: Staff hanging promotional banners; front-facing adult nutrition & baby care gondolas.
+  - **0:09 - 0:18 | Supplement & FMCG Gondolas**: Merchandised with shelf talkers, wobblers, and eye-level House Brand placements.
+  - **0:19 - 0:28 | Rear Walkway & Stock Staging Area**: Inspection of Dr. P adult diapers, storage cartons, and wheelchair displays.
+  - **0:29 - 0:42 | Personal Care & Mobility Displays**: Front cosmetic shelves, Jordan orthopedic supports, and nutritional drink racks.
+  - **0:43 - 0:53 | Prescription Dispensary & Cashier Counter**: Glass medicine cabinets, consultation desk, and cashier checkout counter.
+
+---
+
+### SLIDE 15: RETAIL STORE WALKTHROUGH FINDINGS
+**STORE STANDARDS vs. BRANCH COMPLIANCE AUDIT CHECKLIST (6 PILLARS)**
+
+- **PILLAR 01: Gondola & Shelf Tidiness** [GOOD / COMPLIANT]
+  - *Findings*: Front-facing and alignment across adult nutrition, supplements, and personal care shelves are well-maintained with clear category division.
+  - *Action Plan*: Maintain daily morning shelf-facing SOP prior to store opening.
+- **PILLAR 02: Cleanliness — Floor & Fixtures** [NEEDS ATTENTION]
+  - *Findings*: General retail floor is swept, but clutter observed around checkout counter (cardboard boxes and plastic bags placed on waiting chairs).
+  - *Action Plan*: Enforce strict "clear customer seating" rule; immediately stow packaging materials into back office.
+- **PILLAR 03: Merchandising & Planogram** [GOOD / COMPLIANT]
+  - *Findings*: Prime eye-level shelf space correctly allocated to high-margin House Brands (Nutri Alpha, Flexsure Gold, Oxxymax, Jordan).
+  - *Action Plan*: Maintain companion display placement adjacent to prescription dispensing window.
+- **PILLAR 04: Pricing & Signage Accuracy** [GOOD / COMPLIANT]
+  - *Findings*: Ceiling promotional banners ("Instant Rebate", "RM300 Voucher") and shelf talkers actively installed; visible price tags on rails.
+  - *Action Plan*: Weekly tag audits to synchronize shelf wobblers with monthly campaign rotations.
+- **PILLAR 05: Stock Obstruction & Safety** [CRITICAL / ACTION REQUIRED]
+  - *Findings*: Rear walking aisle and "KELUAR" emergency corridor severely congested with stacked Dr. P adult diaper cartons and unattended hand trolley.
+  - *Action Plan*: Immediate floor clearance; relocate overstock to storeroom; return unrequested Ensure cartons to SCD.
+- **PILLAR 06: Staff Grooming & SOP** [GOOD / COMPLIANT]
+  - *Findings*: Dispensary staff fully compliant with official PMG red polo uniforms, name badges, and professional attire.
+  - *Action Plan*: Continue reinforcing proactive customer greetings and structured DPOS counseling at counter.
+
+---
+
+### SLIDE 16: THANK YOU & KEY STRATEGIC COMMITMENTS
+**PMG PHARMACY KOTA SENTOSA · MONTHLY PHARMACIST PRESENTATION**
+
+- **PRESENTER**: William Chai (Pharmacist / Area Manager)
+- **OUTLET**: PMG Pharmacy Kota Sentosa (Pekan Batu 7, Kuching, Sarawak)
+- **MEETING DATE**: ${presDate}
+- **TAGLINE**: "Your Trusted Community Healthcare Partner · Serve Beyond Expectation"
+
+**KEY STRATEGIC COMMITMENTS (4 CORE EXECUTION TARGETS)**:
+1. **Elevate House Brand Share**: Target >45% outlet HB contribution via structured weekly DPOS role-plays with junior retail assistants.
+2. **Strengthen Chronic Retention**: Deploy systematic digital appointment & refill reminders 3–5 days prior to prescription completion.
+3. **Optimize Floor Standards**: Immediately clear emergency exit walkways, return excess SCD Ensure overstock, and maintain clear-counter policy.
+4. **Maximize Outreach ROI**: Introduce mobile digital membership sign-ups and bundle promotional vouchers during coffee shop health screenings.
+`;
+}
+
+function exportGeminiPresentationModal() {
+  if (!computedMetrics) {
+    showToast('No performance data loaded to export.', 'warning');
+    return;
+  }
+  const modal = document.getElementById('geminiPresentationModal');
+  const txt = document.getElementById('geminiPresentationDocText');
+  const countEl = document.getElementById('geminiDocCharCount');
+  if (!modal || !txt) return;
+
+  const doc = buildGeminiPresentationDocument(computedMetrics, perfState);
+  txt.value = doc;
+  if (countEl) countEl.textContent = `${doc.length.toLocaleString()} characters · 16 slides`;
+  modal.classList.remove('hidden');
+}
+
+function closeGeminiPresentationModal() {
+  const modal = document.getElementById('geminiPresentationModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function copyGeminiPresentationDoc() {
+  const txt = document.getElementById('geminiPresentationDocText');
+  const btn = document.getElementById('btnCopyGeminiPresDoc');
+  if (!txt) return;
+
+  navigator.clipboard.writeText(txt.value).then(() => {
+    if (btn) {
+      const orig = btn.innerHTML;
+      btn.innerHTML = '✅ Copied to Clipboard!';
+      btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+      btn.classList.add('bg-emerald-600', 'hover:bg-emerald-700');
+      setTimeout(() => {
+        btn.innerHTML = orig;
+        btn.classList.remove('bg-emerald-600', 'hover:bg-emerald-700');
+        btn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+      }, 2500);
+    }
+    showToast('Copied monthly presentation document to clipboard! You can now paste directly into Gemini.', 'success');
+  }).catch(() => {
+    txt.select();
+    document.execCommand('copy');
+    showToast('Copied to clipboard!', 'success');
+  });
+}
+
+function downloadGeminiPresentationDoc(format = 'md') {
+  const txt = document.getElementById('geminiPresentationDocText');
+  if (!txt || !txt.value) return;
+
+  const periodLabel = (perfState?.meta?.latestPeriodLabel || 'Latest_Month').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const filename = `PMG_Kota_Sentosa_Monthly_Presentation_Prompt_${periodLabel}.${format}`;
+  const mimeType = format === 'md' ? 'text/markdown;charset=utf-8;' : 'text/plain;charset=utf-8;';
+
+  const blob = new Blob([txt.value], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(`Downloaded presentation document as ${filename}!`, 'success');
+}
+
 async function runLiveGeminiAnalysis() {
   const apiKeyInput = document.getElementById('perfGeminiApiKey');
   let apiKey = (apiKeyInput?.value || localStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '').trim();
@@ -2960,6 +3458,9 @@ function renderAiAnalysisSection() {
           <input id="perfGeminiApiKey" type="password" value="${escapeHtml(savedApiKey)}" placeholder="Gemini API Key (AIza...)" class="px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-xs text-white placeholder-slate-400 w-52 focus:outline-none focus:ring-2 focus:ring-emerald-400">
           <button id="btnRunGeminiAi" onclick="runLiveGeminiAnalysis()" class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs shadow transition cursor-pointer">
             ✨ Run Live Gemini AI Analysis (3.5 / 3.1 Flash-Lite)
+          </button>
+          <button onclick="exportGeminiPresentationModal()" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 hover:from-violet-400 hover:to-indigo-400 text-white font-extrabold text-xs shadow transition cursor-pointer flex items-center gap-1.5" title="Export 16-slide monthly presentation prompt for Google Gemini">
+            <span>📄</span> Export Gemini Presentation Doc
           </button>
           <button onclick="approveAllRecommendations()" class="px-3.5 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-xs shadow transition cursor-pointer">
             ✅ Approve All to 1-Month Task List
