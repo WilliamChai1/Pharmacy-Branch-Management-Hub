@@ -1267,6 +1267,8 @@ function loadPatientsData() {
   }
 }
 
+let _pmgSaveToOneDriveDebounce = null;
+
 function savePatientsData() {
   if (typeof safeStorageSet === 'function') {
     safeStorageSet(PATIENTS_STORAGE_KEY, patientsData);
@@ -1278,9 +1280,12 @@ function savePatientsData() {
     }
   }
   if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveToOneDrive === 'function') {
-    window.pmgOneDriveSync.saveToOneDrive(patientsData).catch(err => {
-      console.warn('[PMG OneDrive Sync] Auto-save error:', err);
-    });
+    if (_pmgSaveToOneDriveDebounce) clearTimeout(_pmgSaveToOneDriveDebounce);
+    _pmgSaveToOneDriveDebounce = setTimeout(() => {
+      window.pmgOneDriveSync.saveToOneDrive(patientsData).catch(err => {
+        console.warn('[PMG OneDrive Sync] Auto-save error:', err);
+      });
+    }, 1500);
   }
 }
 
@@ -1301,8 +1306,16 @@ function setupPatientEventListeners() {
     });
   }
 
+  let searchDebounceTimer = null;
   const searchInput = document.getElementById('patientSearchInput');
-  if (searchInput) searchInput.addEventListener('input', () => renderPatientModule());
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        renderPatientModule();
+      }, 250);
+    });
+  }
 
   const newPatientBtn = document.getElementById('patientNewBtn');
   if (newPatientBtn) newPatientBtn.addEventListener('click', () => showNewPatientModal());
@@ -4448,6 +4461,14 @@ function closeEncounterModal() {
     pastRecPanel.innerHTML = '';
   }
 
+  // Release large binary files and temporary buffers from memory
+  selectedAirdocFile = null;
+  selectedCgmFile = null;
+  selectedZentalogFile = null;
+  tempAttachedFiles = [];
+  window._cachedTedaReport = null;
+  currentAiReviewResult = null;
+
   // Seamlessly restore profile modal if user came from profile view
   if (returnToProfilePatientId) {
     const pid = returnToProfilePatientId;
@@ -6561,7 +6582,12 @@ async function previewDoc(docId) {
       return;
     }
 
-    const url = URL.createObjectURL(doc.blob);
+    if (_activeDocPreviewBlobUrl) {
+      try { URL.revokeObjectURL(_activeDocPreviewBlobUrl); } catch (_) {}
+      _activeDocPreviewBlobUrl = null;
+    }
+
+    _activeDocPreviewBlobUrl = URL.createObjectURL(doc.blob);
     const modal = document.getElementById('patientDocPreviewModal');
     const container = document.getElementById('docPreviewContainer');
     const titleEl = document.getElementById('docPreviewTitle');
@@ -6569,9 +6595,9 @@ async function previewDoc(docId) {
     if (titleEl) titleEl.textContent = doc.name;
 
     if (doc.type && doc.type.includes('pdf')) {
-      container.innerHTML = `<iframe src="${url}" class="w-full h-[75vh] rounded-lg border"></iframe>`;
+      container.innerHTML = `<iframe src="${_activeDocPreviewBlobUrl}" class="w-full h-[75vh] rounded-lg border"></iframe>`;
     } else {
-      container.innerHTML = `<img src="${url}" alt="Lab Report" class="max-w-full max-h-[75vh] mx-auto rounded-lg shadow">`;
+      container.innerHTML = `<img src="${_activeDocPreviewBlobUrl}" alt="Lab Report" class="max-w-full max-h-[75vh] mx-auto rounded-lg shadow">`;
     }
 
     if (modal) modal.classList.remove('hidden');
@@ -6580,8 +6606,16 @@ async function previewDoc(docId) {
   }
 }
 
+let _activeDocPreviewBlobUrl = null;
+
 function closeDocPreviewModal() {
   const modal = document.getElementById('patientDocPreviewModal');
+  const container = document.getElementById('docPreviewContainer');
+  if (container) container.innerHTML = ''; // Unload iframe and PDF renderer
+  if (_activeDocPreviewBlobUrl) {
+    try { URL.revokeObjectURL(_activeDocPreviewBlobUrl); } catch (_) {}
+    _activeDocPreviewBlobUrl = null;
+  }
   if (modal) modal.classList.add('hidden');
 }
 
@@ -7009,14 +7043,16 @@ async function createPatientBackupBundle(type = 'DAILY_ONEDRIVE_BACKUP') {
   const branch = normalizeBranchCode(rawBranch);
   const dateStr = getTodayDateString(0);
 
-  // 1. Gather all documents from IndexedDB
+  // 1. Gather all documents from IndexedDB (use metadata for daily OneDrive backups to avoid Base64 memory bloat)
   let documents = [];
-  if (typeof exportAllDocuments === 'function') {
-    try {
+  try {
+    if (type === 'DAILY_ONEDRIVE_BACKUP' && typeof exportAllDocumentsMetadata === 'function') {
+      documents = await exportAllDocumentsMetadata();
+    } else if (typeof exportAllDocuments === 'function') {
       documents = await exportAllDocuments();
-    } catch (err) {
-      console.warn('Error exporting documents from IndexedDB:', err);
     }
+  } catch (err) {
+    console.warn('Error exporting documents from IndexedDB:', err);
   }
 
   // 2. Gather pharmacist working hour schedules & customer bookings from localStorage
@@ -10334,11 +10370,13 @@ async function syncOnlineBookingsFromCloud(showPrompt = false) {
       if (imported) newImportCount++;
     });
 
-    // Always persist & re-render on sync so mobile and secondary PCs reflect all live appointments
-    savePatientsData();
-    renderPatientModule();
-    if (typeof renderPharmacistScheduleTab === 'function') {
-      renderPharmacistScheduleTab();
+    // Only persist & re-render if actual new appointments or updates were imported
+    if (newImportCount > 0) {
+      savePatientsData();
+      renderPatientModule();
+      if (typeof renderPharmacistScheduleTab === 'function') {
+        renderPharmacistScheduleTab();
+      }
     }
 
     // Update workstation badge to show live cloud sync on mobile

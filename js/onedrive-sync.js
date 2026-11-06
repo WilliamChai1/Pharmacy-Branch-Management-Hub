@@ -686,14 +686,19 @@
 
             // 6. Write standalone report files into Patient_Reports folder for easy opening in Windows File Explorer
             try {
+              this._syncedReportFilenames = this._syncedReportFilenames || new Set();
               const reportsFolder = await dirHandle.getDirectoryHandle('Patient_Reports', { create: true });
               for (const doc of finalMergedDocs) {
                 try {
                   const safeName = `${doc.patientId}_${(doc.name || 'report.pdf').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+                  if (this._syncedReportFilenames.has(safeName)) {
+                    continue; // Skip already verified or written report files
+                  }
                   let fileExists = false;
                   try {
                     await reportsFolder.getFileHandle(safeName, { create: false });
                     fileExists = true;
+                    this._syncedReportFilenames.add(safeName);
                   } catch (_) { fileExists = false; }
 
                   if (!fileExists) {
@@ -712,6 +717,7 @@
                       const rw = await reportFileHandle.createWritable();
                       await rw.write(blobToWrite);
                       await rw.close();
+                      this._syncedReportFilenames.add(safeName);
                     }
                   }
                 } catch (fErr) {
@@ -909,7 +915,10 @@
     // ─── SAVE PATIENTS DATA TO ONEDRIVE (AUTO-SAVE HOOK) ──────────────────────
     async saveToOneDrive(patientsArray) {
       if (!this.rootHandle || this.mode === 'DISCONNECTED') return false;
-      if (this.isSyncing) return false;
+      if (this.isSyncing || this._isSavingToOneDrive) {
+        this._pendingSaveToOneDrive = true;
+        return false;
+      }
 
       // Check permission without prompting if called silently in background
       const hasPerm = await this._verifyPermission(this.rootHandle, true, false);
@@ -920,6 +929,7 @@
       if (!dirHandle) return false;
 
       this.isSyncing = true;
+      this._isSavingToOneDrive = true;
       this._updateBadge('SYNCING', 'OneDrive: Syncing…');
 
       try {
@@ -948,13 +958,11 @@
         // Step 2: Merge local and cloud patients bidirectionally
         const mergedBranchPatients = this._mergePatientArrays(localBranchPatients, cloudPatients);
 
-        // Step 3: Update global in-memory patientsData and localStorage
+        // Step 3: Update global in-memory patientsData and localStorage directly (avoid infinite re-entrant save loops)
         if (typeof patientsData !== 'undefined' && Array.isArray(patientsData)) {
           const otherPatients = patientsData.filter(p => !this._patientMatchesBranch(p, targetBranch));
           patientsData = [...otherPatients, ...mergedBranchPatients];
-          if (typeof savePatientsData === 'function') {
-            savePatientsData();
-          } else if (typeof safeStorageSet === 'function') {
+          if (typeof safeStorageSet === 'function') {
             safeStorageSet(PATIENTS_STORAGE_KEY, patientsData);
           } else {
             try {
@@ -1013,6 +1021,15 @@
         return false;
       } finally {
         this.isSyncing = false;
+        this._isSavingToOneDrive = false;
+        if (this._pendingSaveToOneDrive) {
+          this._pendingSaveToOneDrive = false;
+          setTimeout(() => {
+            if (typeof patientsData !== 'undefined' && Array.isArray(patientsData)) {
+              this.saveToOneDrive(patientsData);
+            }
+          }, 600);
+        }
       }
     }
 
@@ -2745,35 +2762,42 @@
       }
       if (mapB.size !== arrA.length) return false;
 
-      // Recursive helper to normalize object key order so property permutation doesn't cause false negatives
-      const normalize = (obj) => {
-        if (obj === null || typeof obj !== 'object') return obj;
-        if (Array.isArray(obj)) return obj.map(normalize);
-        const sorted = {};
-        Object.keys(obj).sort().forEach(k => {
-          sorted[k] = normalize(obj[k]);
-        });
-        return sorted;
-      };
-
       for (const a of arrA) {
         if (!a || !a.id) return false;
         const b = mapB.get(a.id);
         if (!b) return false;
 
-        // Fast field checks
+        // Fast field checks (scalars)
         if (a.name !== b.name || a.phone !== b.phone || a.ic !== b.ic || a.gender !== b.gender) return false;
+        if (a.age !== b.age || a.branch !== b.branch || a.race !== b.race || a.language !== b.language) return false;
         if (a.nextTcaDate !== b.nextTcaDate || a.nextTcaPurpose !== b.nextTcaPurpose) return false;
         if (a.allergies !== b.allergies || a.notes !== b.notes) return false;
+        if ((a.updatedAt || '') !== (b.updatedAt || '')) return false;
 
         // Sub-array lengths
         if ((a.encounters?.length || 0) !== (b.encounters?.length || 0)) return false;
         if ((a.appointments?.length || 0) !== (b.appointments?.length || 0)) return false;
         if ((a.medications?.length || 0) !== (b.medications?.length || 0)) return false;
 
-        // Deep normalized JSON comparison
-        if (JSON.stringify(normalize(a)) !== JSON.stringify(normalize(b))) {
-          return false;
+        // Fast appointment checks
+        if (a.appointments && b.appointments) {
+          for (let i = 0; i < a.appointments.length; i++) {
+            const aptA = a.appointments[i];
+            const aptB = b.appointments[i];
+            if (!aptA || !aptB) return false;
+            if (aptA.id !== aptB.id || aptA.date !== aptB.date || aptA.time !== aptB.time || aptA.status !== aptB.status) return false;
+          }
+        }
+
+        // Fast medication checks
+        if (a.medications && b.medications) {
+          for (let i = 0; i < a.medications.length; i++) {
+            const medA = a.medications[i];
+            const medB = b.medications[i];
+            if (!medA || !medB) return false;
+            if ((medA.name || '') !== (medB.name || '') || (medA.nextRefillDate || '') !== (medB.nextRefillDate || '')) return false;
+            if (!!medA.cleared !== !!medB.cleared || !!medA.overdueDismissed !== !!medB.overdueDismissed) return false;
+          }
         }
       }
       return true;
@@ -2893,16 +2917,19 @@
       }, this.autoSyncSeconds * 1000);
 
       // Check when user switches back to browser tab (debounced: at least 20s between checks)
-      let lastTabSyncTime = 0;
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-          const now = Date.now();
-          if (now - lastTabSyncTime >= 20000) {
-            lastTabSyncTime = now;
-            this.syncWithOneDriveFolder(false);
+      if (!this._visibilityListenerAttached) {
+        this._visibilityListenerAttached = true;
+        let lastTabSyncTime = 0;
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') {
+            const now = Date.now();
+            if (now - lastTabSyncTime >= 20000) {
+              lastTabSyncTime = now;
+              this.syncWithOneDriveFolder(false);
+            }
           }
-        }
-      });
+        });
+      }
     }
 
     // ─── UI STATUS BADGE UPDATER ─────────────────────────────────────────────

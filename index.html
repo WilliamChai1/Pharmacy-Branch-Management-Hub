@@ -2765,10 +2765,10 @@
   <!-- ─── FLOATING HQ WRITE-OFF ACCUMULATION DOCK ────────────────────────── -->
   <div id="writeOffAccumulationDock" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-gradient-to-r from-rose-950 via-slate-900 to-rose-900 text-white px-5 py-3 rounded-2xl shadow-2xl border-2 border-rose-500/60 flex items-center gap-4 transition-all duration-300 hidden max-w-lg w-[94%] sm:w-auto">
     <div class="flex items-center gap-3">
-      <div class="w-9 h-9 rounded-xl bg-rose-600 flex items-center justify-center text-sm shadow-md flex-shrink-0 animate-pulse">
+      <button type="button" onclick="clearAllWriteOffSelection()" class="w-9 h-9 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-95 flex items-center justify-center text-sm shadow-md flex-shrink-0 transition cursor-pointer" title="Remove item(s) from Write-Off Form queue">
         <i class="fa-solid fa-trash-can text-white"></i>
-      </div>
-      <div>
+      </button>
+      <div onclick="openStockWriteOffModal()" class="cursor-pointer select-none hover:opacity-90 transition" title="Click to open HQ Write-Off Form">
         <div class="font-extrabold text-xs flex items-center gap-2">
           <span>HQ Write-Off Form Queue</span>
           <span id="dockWriteOffCountBadge" class="bg-rose-500 text-white text-[10px] px-2 py-0.5 rounded-full font-mono font-extrabold">0 Items</span>
@@ -2780,7 +2780,7 @@
       <button type="button" onclick="openStockWriteOffModal()" class="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer">
         <i class="fa-solid fa-file-invoice"></i> Open Form
       </button>
-      <button type="button" onclick="clearAllWriteOffSelection()" class="p-1.5 text-slate-400 hover:text-white transition cursor-pointer" title="Clear selection">
+      <button type="button" onclick="clearAllWriteOffSelection()" class="p-1.5 text-slate-400 hover:text-white transition cursor-pointer" title="Remove item(s) from Write-Off queue">
         <i class="fa-solid fa-xmark text-sm"></i>
       </button>
     </div>

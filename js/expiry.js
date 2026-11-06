@@ -5828,14 +5828,34 @@ function updateWriteOffSelectedCounter() {
 
 function clearAllWriteOffSelection() {
   if (selectedWriteOffRowIds.size === 0) return;
-  if (!confirm(`Remove all ${selectedWriteOffRowIds.size} accumulated item(s) from the Write-Off queue? (Items remain in your expiry tracking list)`)) {
+  const count = selectedWriteOffRowIds.size;
+  const confirmMsg = count === 1
+    ? 'Remove this item from the HQ Write-Off queue? (It will remain in your expiry list)'
+    : `Remove all ${count} accumulated item(s) from the Write-Off queue? (They will remain in your expiry list)`;
+  if (!confirm(confirmMsg)) {
     return;
+  }
+  let modified = false;
+  selectedWriteOffRowIds.forEach(id => {
+    const item = findExpiryItemById(id);
+    if (item && isWriteOffActionPlan(item.actionPlan)) {
+      item.actionPlan = '';
+      recordUserEdit(item, { actionPlan: '' });
+      modified = true;
+    }
+  });
+  if (modified) {
+    saveLocalExpiryData();
   }
   selectedWriteOffRowIds.clear();
   saveAccumulatedWriteOffItems();
   updateWriteOffSelectedCounter();
   renderExpiryUI();
-  showExpiryToast('Cleared Write-Off queue.');
+  if (typeof renderWriteOffModalItems === 'function') {
+    renderWriteOffModalItems();
+  }
+  closeStockWriteOffModal();
+  showExpiryToast(count === 1 ? 'Removed item from Write-Off queue.' : `Removed ${count} item(s) from Write-Off queue.`);
 }
 
 function showWriteOffActionPrompt(item) {
