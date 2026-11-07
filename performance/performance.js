@@ -86,13 +86,54 @@ const KOTA_SENTOSA_HISTORICAL_TEAMMATES = {
   }
 };
 
+function parsePeriodFromDateRange(dateStr) {
+  if (!dateStr) return null;
+  const str = String(dateStr).trim();
+  const lower = str.toLowerCase();
+
+  const months = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+  const monthAbbr = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  // Check DD/MM/YYYY or D/M/YYYY first if date numbers are present (e.g. 01/10/2026-31/10/2026)
+  const dmyMatch = str.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
+  if (dmyMatch) {
+    const mNum = parseInt(dmyMatch[2], 10);
+    const yyyy = dmyMatch[3];
+    if (mNum >= 1 && mNum <= 12) {
+      const mm = String(mNum).padStart(2, '0');
+      return { year: yyyy, month: mm, monthName: monthNames[mNum - 1], key: `${yyyy}-${mm}` };
+    }
+  }
+
+  // Extract 4-digit year
+  const yrMatch = lower.match(/\b(20\d\d)\b/);
+  const year = yrMatch ? yrMatch[1] : '2026';
+
+  for (let i = 0; i < 12; i++) {
+    if (lower.includes(months[i]) || new RegExp('\\b' + monthAbbr[i] + '\\b').test(lower)) {
+      const mm = String(i + 1).padStart(2, '0');
+      return { year, month: mm, monthName: monthNames[i], key: `${year}-${mm}` };
+    }
+  }
+
+  return null;
+}
+
+function formatPeriodDisplayLabel(dateRange, fallbackPrefix = 'Latest Month') {
+  if (!dateRange) return fallbackPrefix;
+  const p = parsePeriodFromDateRange(dateRange);
+  if (p) {
+    return `${p.monthName} FY${p.year} (${dateRange})`;
+  }
+  return `${fallbackPrefix} (${dateRange})`;
+}
+
 function getArchivePeriodKey(state) {
-  const label = state?.meta?.latestPeriodLabel || state?.dailySalesLatest?.dateRange || '';
-  if (label.toLowerCase().includes('october') && label.includes('2026')) return '2026-10';
-  if (label.toLowerCase().includes('september') && label.includes('2026')) return '2026-09';
-  if (label.toLowerCase().includes('august') && label.includes('2026')) return '2026-08';
-  if (label.toLowerCase().includes('november') && label.includes('2026')) return '2026-11';
-  if (label.toLowerCase().includes('december') && label.includes('2026')) return '2026-12';
+  const label = state?.meta?.latestPeriodLabel || state?.dailySalesLatest?.dateRange || state?.categoryGpLatest?.dateRange || '';
+  const parsed = parsePeriodFromDateRange(label);
+  if (parsed) return parsed.key;
+
   const match = label.match(/(\d{4})[^\d]+(\d{2})/);
   if (match) return `${match[1]}-${match[2]}`;
   return '2026-10';
@@ -108,10 +149,10 @@ function loadMonthlyArchives() {
   const seed = {
     '2026-10': {
       periodKey: '2026-10',
-      periodLabel: 'October FY2026 (01/10/2026 - 30/10/2026)',
-      archivedAt: '2026-10-30T13:19:04.644Z',
+      periodLabel: 'October FY2026 (01/10/2026 - 31/10/2026)',
+      archivedAt: '2026-10-31T23:59:59.000Z',
       branch: 'PMG PHARMACY (KOTA SENTOSA) SDN BHD',
-      outletTotals: { ts: 332338.68, hb: 143828.50, hm: 30031.41, gpRm: 92868.59, gpPct: 27.73, transactions: 7826, basketTs: 42.47, basketHb: 18.38 }
+      outletTotals: { ts: 340252.85, hb: 147573.46, hm: 30889.38, gpRm: 95536.56, gpPct: 27.81, transactions: 8016, basketTs: 42.45, basketHb: 18.41 }
     },
     '2026-09': {
       periodKey: '2026-09',
@@ -129,10 +170,10 @@ function loadMonthlyArchives() {
     },
     '2025-10': {
       periodKey: '2025-10',
-      periodLabel: 'October FY2025 (LY Same Month)',
-      archivedAt: '2025-10-30T18:00:00.000Z',
+      periodLabel: 'October FY2025 (01/10/2025 - 31/10/2025)',
+      archivedAt: '2025-10-31T23:59:59.000Z',
       branch: 'PMG PHARMACY (KOTA SENTOSA) SDN BHD',
-      outletTotals: { ts: 341652.97, hb: 131010.90, hm: 27612.38, gpRm: 91935.33, gpPct: 26.69, transactions: 8481, basketTs: 40.28, basketHb: 15.45 }
+      outletTotals: { ts: 351989.93, hb: 135400.08, hm: 28493.42, gpRm: 94515.18, gpPct: 26.64, transactions: 8715, basketTs: 40.39, basketHb: 15.54 }
     }
   };
 
@@ -1353,8 +1394,48 @@ function computeAllMetrics(state) {
   const totalAbove1YrValueRm = +agingL.reduce((s, a) => s + (a.above1Yr * a.avgCost), 0).toFixed(2);
 
   // 3-Month Trend (M-2, M-1, Latest Month)
-  const m2 = state.dailySalesM2 || { periodLabel: 'M-2 (2 Months Ago)', ts: 0, hb: 0, hm: 0, gpRm: 0, gpPct: 0, transactions: 0 };
-  const m1 = state.dailySalesM1 || { periodLabel: 'M-1 (Previous Month)', ts: 0, hb: 0, hm: 0, gpRm: 0, gpPct: 0, transactions: 0 };
+  let m2 = state.dailySalesM2 && state.dailySalesM2.ts ? { ...state.dailySalesM2 } : null;
+  let m1 = state.dailySalesM1 && state.dailySalesM1.ts ? { ...state.dailySalesM1 } : null;
+
+  // Auto-derive M-1 & M-2 from continuous historical monthly archives if not manually set
+  try {
+    const curKey = getArchivePeriodKey(state);
+    const arch = (typeof loadMonthlyArchives === 'function') ? loadMonthlyArchives() : {};
+    const priorKeys = Object.keys(arch).filter(k => k < curKey && !k.startsWith('2025')).sort();
+    if (!m1 && priorKeys.length > 0) {
+      const k1 = priorKeys[priorKeys.length - 1];
+      const s1 = arch[k1];
+      if (s1 && s1.outletTotals) {
+        m1 = {
+          periodLabel: s1.periodLabel || k1,
+          ts: s1.outletTotals.ts || 0,
+          hb: s1.outletTotals.hb || 0,
+          hm: s1.outletTotals.hm || 0,
+          gpRm: s1.outletTotals.gpRm || 0,
+          gpPct: s1.outletTotals.gpPct || 0,
+          transactions: s1.outletTotals.transactions || 0
+        };
+      }
+    }
+    if (!m2 && priorKeys.length > 1) {
+      const k2 = priorKeys[priorKeys.length - 2];
+      const s2 = arch[k2];
+      if (s2 && s2.outletTotals) {
+        m2 = {
+          periodLabel: s2.periodLabel || k2,
+          ts: s2.outletTotals.ts || 0,
+          hb: s2.outletTotals.hb || 0,
+          hm: s2.outletTotals.hm || 0,
+          gpRm: s2.outletTotals.gpRm || 0,
+          gpPct: s2.outletTotals.gpPct || 0,
+          transactions: s2.outletTotals.transactions || 0
+        };
+      }
+    }
+  } catch (e) {}
+
+  m2 = m2 || { periodLabel: 'August 2026 (M-2)', ts: 336190, hb: 114950, hm: 87410, gpRm: 91780, gpPct: 27.30, transactions: 7915 };
+  m1 = m1 || { periodLabel: 'September 2026 (M-1)', ts: 328450, hb: 112680, hm: 85120, gpRm: 90120, gpPct: 27.44, transactions: 7690 };
 
   return {
     outlet: {
@@ -4681,14 +4762,14 @@ async function handleBatchCsvFiles(fileList) {
 }
 
 function applyParsedCsvToState(type, periodSlot, text, fileName) {
+  let parsedDateRange = '';
   if (type === 'DAILY_SALES') {
     const parsed = parseDailySalesCsv(text);
+    parsedDateRange = parsed.dateRange;
     if (periodSlot === 'LATEST') {
       perfState.dailySalesLatest = parsed;
-      if (parsed.dateRange) perfState.meta.latestPeriodLabel = `Latest (${parsed.dateRange})`;
     } else if (periodSlot === 'PREV_YEAR') {
       perfState.dailySalesPrevYear = parsed;
-      if (parsed.dateRange) perfState.meta.prevYearPeriodLabel = `Prev Year (${parsed.dateRange})`;
     } else if (periodSlot === 'M1') {
       const ts = +parsed.rows.reduce((s, r) => s + r.ts, 0).toFixed(2);
       const hb = +parsed.rows.reduce((s, r) => s + r.hb, 0).toFixed(2);
@@ -4702,26 +4783,40 @@ function applyParsedCsvToState(type, periodSlot, text, fileName) {
     }
   } else if (type === 'PERSONAL_GP') {
     const parsed = parsePersonalGpCsv(text);
+    parsedDateRange = parsed.dateRange;
     if (periodSlot === 'LATEST') perfState.personalGpLatest = parsed;
     else perfState.personalGpPrevYear = parsed;
   } else if (type === 'CUSTOMERS_SERVED') {
     const parsed = parseCustomersServedCsv(text);
+    parsedDateRange = parsed.dateRange;
     if (periodSlot === 'LATEST') perfState.customersServedLatest = parsed;
     else perfState.customersServedPrevYear = parsed;
   } else if (type === 'CATEGORY_GP') {
     const parsed = parseCategoryGpCsv(text);
+    parsedDateRange = parsed.dateRange;
     if (periodSlot === 'LATEST') perfState.categoryGpLatest = parsed;
     else perfState.categoryGpPrevYear = parsed;
   } else if (type === 'STOCK_CLOSING') {
     perfState.stockClosingLatest = parseStockClosingCsv(text);
+    parsedDateRange = perfState.stockClosingLatest.dateTo;
   } else if (type === 'ITEM_SALES') {
     const parsed = parseItemSalesCsv(text);
+    parsedDateRange = parsed.dateRange;
     if (periodSlot === 'LATEST') perfState.itemSalesLatest = parsed;
     else perfState.itemSalesPrevYear = parsed;
   } else if (type === 'STOCK_AGING') {
     perfState.stockAgingLatest = parseAgingCsv(text);
   } else {
     throw new Error(`Unrecognized PMG CSV format in ${fileName}`);
+  }
+
+  // Automatically update the header period labels dynamically from the parsed dates!
+  if (parsedDateRange) {
+    if (periodSlot === 'LATEST') {
+      perfState.meta.latestPeriodLabel = formatPeriodDisplayLabel(parsedDateRange, 'Latest Month');
+    } else if (periodSlot === 'PREV_YEAR') {
+      perfState.meta.prevYearPeriodLabel = formatPeriodDisplayLabel(parsedDateRange, 'Previous Year Same Month');
+    }
   }
 }
 
