@@ -3351,6 +3351,31 @@ function renderHeaderBanner() {
     const p = perfState?.meta?.prevYearPeriodLabel || 'No Data';
     periodBadge.innerHTML = `<span class="font-bold text-indigo-950">${escapeHtml(l)}</span> <span class="text-slate-400 mx-1">vs</span> <span class="font-semibold text-slate-700">${escapeHtml(p)}</span>`;
   }
+
+  // Check 5S Walkthrough Video Audit Status
+  const walkthroughAlert = document.getElementById('walkthroughStatusAlert');
+  const walkthroughBadge = document.getElementById('walkthroughAlertBadge');
+  const walkthroughMsg = document.getElementById('walkthroughAlertMsg');
+  if (walkthroughAlert && walkthroughBadge && walkthroughMsg) {
+    const latestLabel = perfState?.meta?.latestPeriodLabel || '';
+    const curMonthName = latestLabel.includes('(') ? latestLabel.split('(')[0].trim() : (latestLabel || 'this month');
+    let savedAudit = null;
+    try {
+      savedAudit = JSON.parse(localStorage.getItem('pmg_latest_walkthrough_audit') || 'null');
+    } catch(e) {}
+
+    if (savedAudit && savedAudit.overall_score) {
+      walkthroughAlert.className = 'mb-5 p-4 rounded-2xl border border-emerald-300/80 bg-emerald-50/90 flex flex-wrap items-center justify-between gap-3 text-xs text-emerald-950 shadow-xs no-print';
+      walkthroughBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-200 text-emerald-900 border border-emerald-300';
+      walkthroughBadge.textContent = `Audit Completed (${savedAudit.overall_score}/200 pts)`;
+      walkthroughMsg.innerHTML = `<span class="text-emerald-900 font-semibold">5S Walkthrough audit verified for ${escapeHtml(curMonthName)} across all 6 Area Manager pillars.</span>`;
+    } else {
+      walkthroughAlert.className = 'mb-5 p-4 rounded-2xl border border-amber-300/80 bg-amber-50/90 flex flex-wrap items-center justify-between gap-3 text-xs text-amber-950 shadow-xs no-print';
+      walkthroughBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-900 border border-amber-300';
+      walkthroughBadge.textContent = 'Action Required';
+      walkthroughMsg.innerHTML = `Walkthrough video not yet conducted for <strong>${escapeHtml(curMonthName)}</strong>. Please record your 60–90 second store walkthrough video and run the 5S AI Walkthrough Auditor.`;
+    }
+  }
 }
 
 // ── TAB 1: EXECUTIVE KPIs (KPIs 1–5 + 3-MONTH HORIZON) ──────────────────────

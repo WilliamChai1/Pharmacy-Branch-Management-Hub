@@ -84,8 +84,11 @@
 
       <!-- Action Strip (De-duplicated & Calm Executive Style) -->
       <div class="flex flex-wrap items-center gap-2">
+        <a id="btnDownloadOfficialPptx" href="Kota_Sentosa_October_2026_Official.pptx" download="Kota_Sentosa_October_2026_Official.pptx" class="px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-xs transition cursor-pointer flex items-center gap-1.5" title="Download official 16-slide presentation (Area Manager template)">
+          <span>📊</span> Download Official Presentation (.pptx)
+        </a>
         <button onclick="exportGeminiPresentationModal()" class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs transition cursor-pointer flex items-center gap-1.5" title="Export monthly presentation prompt for Google Gemini">
-          <span>📄</span> Export Gemini Monthly Presentation Doc
+          <span>📄</span> Export Gemini Prompt (Optional)
         </button>
         <button onclick="restorePreloadedSampleData()" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer" title="Restore October 2026 vs 2025 Sample">
           🔄 Restore Sample
@@ -125,6 +128,27 @@
 
   <!-- Main Content Panels -->
   <main class="max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-6 flex-1">
+    <!-- 5S Walkthrough Video Status Alert Banner -->
+    <div id="walkthroughStatusAlert" class="mb-5 p-4 rounded-2xl border border-amber-300/80 bg-amber-50/90 flex flex-wrap items-center justify-between gap-3 text-xs text-amber-950 shadow-xs no-print">
+      <div class="flex items-center gap-3">
+        <span class="text-2xl">📹</span>
+        <div>
+          <div class="font-extrabold flex items-center gap-2">
+            <span>5S Walkthrough Video Audit:</span>
+            <span id="walkthroughAlertBadge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-900 border border-amber-300">Action Pending</span>
+          </div>
+          <div id="walkthroughAlertMsg" class="text-amber-800 mt-0.5">
+            Walkthrough video not yet conducted for this month. The official presentation includes clean pending placeholders for Slides 13 & 14.
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <a href="../index.html#audit" class="px-3.5 py-2 rounded-xl bg-amber-700 hover:bg-amber-800 text-white font-bold transition shadow-xs flex items-center gap-1.5">
+          <span>🎥</span> Open 5S AI Walkthrough Auditor
+        </a>
+      </div>
+    </div>
+
     <section id="panel-tab1">
       <div id="tab1ExecutiveContainer"></div>
     </section>
@@ -225,7 +249,7 @@
 
   <!-- Scripts -->
   <script src="../js/exceljs.min.js"></script>
-  <script src="sample-data.js?v=57"></script>
-  <script src="performance.js?v=57"></script>
+  <script src="sample-data.js?v=58"></script>
+  <script src="performance.js?v=58"></script>
 </body>
 </html>

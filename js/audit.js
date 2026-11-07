@@ -958,6 +958,12 @@ function renderAuditReport(report) {
   if (!container) return;
   container.classList.remove('hidden');
 
+  try {
+    localStorage.setItem('pmg_latest_walkthrough_audit', JSON.stringify(report));
+  } catch(e) {
+    console.warn('Could not persist walkthrough audit to localStorage', e);
+  }
+
   // Overall score gauge (out of 200)
   const score    = Math.max(0, Math.min(200, report.overall_score || 0));
   const maxScore = report.max_score || 200;
