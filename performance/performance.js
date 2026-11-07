@@ -62,29 +62,42 @@ const DEFAULT_ROLE_MAP = {
 
 // ─── HISTORICAL BENCHMARKS & 3-MONTH CONTINUOUS ARCHIVE ENGINE ──────────────
 const KOTA_SENTOSA_HISTORICAL_TEAMMATES = {
-  'M1': { // September 2026 (Verified POS Daily Sales)
-    'CHAI YEE SIAN':                     { ts: 56349.67, hb: 28793.67, hbPct: 51.10, gpPct: 29.22, tx: 542, hm: 5724.59 },
-    'JONG PEI CHOO':                     { ts: 67867.91, hb: 30047.07, hbPct: 44.27, gpPct: 26.35, tx: 1188, hm: 6468.84 },
-    'MUHAMMAD NUR FARIZIN BIN ABDULLAH': { ts: 38902.31, hb: 12023.81, hbPct: 30.91, gpPct: 26.31, tx: 1007, hm: 3483.10 },
-    'FIONA FIENA ANAK JAMES':            { ts: 38603.18, hb: 15465.76, hbPct: 40.06, gpPct: 27.11, tx: 870, hm: 3391.10 },
-    'NURHAFIZAH BINTI PAULI':            { ts: 37220.70, hb: 11911.70, hbPct: 32.00, gpPct: 27.44, tx: 1083, hm: 2699.60 },
-    'HANIESHA LOUNA ANAK DAGENG':        { ts: 33017.20, hb: 15217.94, hbPct: 46.09, gpPct: 25.46, tx: 866, hm: 2408.70 },
-    'DANIELA JANET ANAK MUSTAPHA':       { ts: 24525.47, hb: 8992.27,  hbPct: 36.67, gpPct: 25.50, tx: 590, hm: 1749.90 },
-    'KENIX LING WANG YING':              { ts: 22639.41, hb: 10043.31, hbPct: 44.36, gpPct: 31.48, tx: 801, hm: 2476.30 },
-    'TING KWANG YU':                     { ts: 17412.06, hb: 10703.22, hbPct: 61.47, gpPct: 28.90, tx: 627, hm: 872.67 }
+  '2026-09': { // September 2026 (Verified Audited POS Presentation Deck)
+    'JONG PEI CHOO':                     { ts: 68087.05, hb: 30255.60, hm: 7185.30, hbPct: 44.44, hmPct: 10.55, tx: 1327, basketTs: 51.31, basketHb: 22.80, gpRm: 17900.38, gpPct: 26.25 },
+    'CHAI YEE SIAN':                     { ts: 57034.03, hb: 29411.83, hm: 6189.80, hbPct: 51.57, hmPct: 10.85, tx: 597, basketTs: 95.53, basketHb: 49.27, gpRm: 16494.38, gpPct: 27.57 },
+    'MUHAMMAD NUR FARIZIN BIN ABDULLAH': { ts: 38902.31, hb: 12023.81, hm: 3825.20, hbPct: 30.91, hmPct: 9.83, tx: 1172, basketTs: 33.19, basketHb: 10.26, gpRm: 9763.77, gpPct: 24.96 },
+    'FIONA FIENA ANAK JAMES':            { ts: 38723.18, hb: 15585.48, hm: 3698.90, hbPct: 40.25, hmPct: 9.55, tx: 1064, basketTs: 36.39, basketHb: 14.65, gpRm: 10891.39, gpPct: 27.99 },
+    'NURHAFIZAH BINTI PAULI':            { ts: 37220.70, hb: 11911.70, hm: 3165.70, hbPct: 32.00, hmPct: 8.51, tx: 1066, basketTs: 34.92, basketHb: 11.17, gpRm: 9239.66, gpPct: 24.53 },
+    'HANIESHA LOUNA ANAK DAGENG':        { ts: 33077.20, hb: 15277.24, hm: 2690.90, hbPct: 46.19, hmPct: 8.14, tx: 783, basketTs: 42.24, basketHb: 19.51, gpRm: 9196.92, gpPct: 27.56 },
+    'DANIELA JANET ANAK MUSTAPHA':       { ts: 24525.47, hb: 8992.27, hm: 2226.80, hbPct: 36.67, hmPct: 9.08, tx: 722, basketTs: 33.97, basketHb: 12.45, gpRm: 6615.68, gpPct: 26.85 },
+    'KENIX LING WANG YING':              { ts: 22669.41, hb: 10073.31, hm: 2654.30, hbPct: 44.44, hmPct: 11.71, tx: 611, basketTs: 37.10, basketHb: 16.49, gpRm: 6538.08, gpPct: 28.78 },
+    'TING KWANG YU':                     { ts: 17712.06, hb: 11000.96, hm: 872.67, hbPct: 62.11, hmPct: 4.93, tx: 627, basketTs: 28.25, basketHb: 17.55, gpRm: 5124.77, gpPct: 29.35 }
   },
-  'M2': { // August 2026 (Verified POS Daily Sales)
-    'JONG PEI CHOO':                     { ts: 77868.67, hb: 40551.13, hbPct: 52.08, gpPct: 26.35, tx: 1258, hm: 7182.75 },
-    'CHAI YEE SIAN':                     { ts: 56216.31, hb: 26502.91, hbPct: 47.14, gpPct: 29.22, tx: 567, hm: 5067.85 },
-    'HANIESHA LOUNA ANAK DAGENG':        { ts: 46327.58, hb: 21296.52, hbPct: 45.97, gpPct: 25.46, tx: 892, hm: 3866.90 },
-    'FIONA FIENA ANAK JAMES':            { ts: 45947.34, hb: 20374.91, hbPct: 44.34, gpPct: 27.11, tx: 870, hm: 3748.80 },
-    'DANIELA JANET ANAK MUSTAPHA':       { ts: 43949.89, hb: 15891.83, hbPct: 36.16, gpPct: 25.80, tx: 940, hm: 3288.10 },
-    'NURHAFIZAH BINTI PAULI':            { ts: 32119.29, hb: 10697.52, hbPct: 33.31, gpPct: 27.44, tx: 1112, hm: 3448.30 },
-    'MUHAMMAD NUR FARIZIN BIN ABDULLAH': { ts: 30931.79, hb: 9492.40,  hbPct: 30.69, gpPct: 26.31, tx: 1007, hm: 2862.20 },
-    'KENIX LING WANG YING':              { ts: 30321.83, hb: 13782.70, hbPct: 45.45, gpPct: 31.48, tx: 801, hm: 3651.60 },
-    'DIANA LAI PEI YING':                { ts: 16762.59, hb: 6036.98,  hbPct: 36.01, gpPct: 25.50, tx: 450, hm: 1695.60 }
+  '2026-08': { // August 2026 (Verified Audited POS Presentation Deck)
+    'JONG PEI CHOO':                     { ts: 77868.67, hb: 40551.13, hm: 8186.15, hbPct: 52.08, hmPct: 10.51, tx: 1380, basketTs: 56.43, basketHb: 29.38, gpRm: 19762.47, gpPct: 25.38 },
+    'CHAI YEE SIAN':                     { ts: 56218.31, hb: 26502.91, hm: 5368.15, hbPct: 47.14, hmPct: 9.55, tx: 466, basketTs: 120.64, basketHb: 56.87, gpRm: 14105.02, gpPct: 25.09 },
+    'HANIESHA LOUNA ANAK DAGENG':        { ts: 46327.58, hb: 21296.52, hm: 4244.40, hbPct: 45.97, hmPct: 9.16, tx: 1024, basketTs: 45.24, basketHb: 20.80, gpRm: 12813.91, gpPct: 27.66 },
+    'FIONA FIENA ANAK JAMES':            { ts: 45990.94, hb: 20374.91, hm: 4134.40, hbPct: 44.30, hmPct: 8.99, tx: 1062, basketTs: 43.31, basketHb: 19.19, gpRm: 12304.53, gpPct: 26.75 },
+    'DANIELA JANET ANAK MUSTAPHA':       { ts: 43949.89, hb: 15891.83, hm: 3755.60, hbPct: 36.16, hmPct: 8.55, tx: 1007, basketTs: 43.64, basketHb: 15.78, gpRm: 10556.70, gpPct: 24.02 },
+    'NURHAFIZAH BINTI PAULI':            { ts: 32180.29, hb: 10697.52, hm: 4005.60, hbPct: 33.24, hmPct: 12.45, tx: 1029, basketTs: 31.27, basketHb: 10.40, gpRm: 8731.37, gpPct: 27.13 },
+    'MUHAMMAD NUR FARIZIN BIN ABDULLAH': { ts: 30931.79, hb: 9492.40, hm: 3192.90, hbPct: 30.69, hmPct: 10.32, tx: 916, basketTs: 33.77, basketHb: 10.36, gpRm: 8481.94, gpPct: 27.42 },
+    'KENIX LING WANG YING':              { ts: 30321.83, hb: 13782.70, hm: 4002.90, hbPct: 45.45, hmPct: 13.20, tx: 676, basketTs: 44.85, basketHb: 20.39, gpRm: 9335.79, gpPct: 30.79 },
+    'DIANA LAI PEI YING':                { ts: 16762.59, hb: 6036.98, hm: 1695.60, hbPct: 36.01, hmPct: 10.12, tx: 450, basketTs: 37.25, basketHb: 13.42, gpRm: 4274.46, gpPct: 25.50 }
+  },
+  '2026-07': { // July 2026 (Verified Audited POS Presentation Deck)
+    'JONG PEI CHOO':                     { ts: 63122.42, hb: 23436.61, hm: 6673.35, hbPct: 37.13, hmPct: 10.57, tx: 1377, basketTs: 45.84, basketHb: 17.02, gpRm: 16003.61, gpPct: 25.35 },
+    'CHAI YEE SIAN':                     { ts: 48085.31, hb: 20614.05, hm: 5534.85, hbPct: 42.87, hmPct: 11.51, tx: 561, basketTs: 85.71, basketHb: 36.75, gpRm: 15801.99, gpPct: 33.10 },
+    'DANIELA JANET ANAK MUSTAPHA':       { ts: 40431.03, hb: 13859.25, hm: 4057.10, hbPct: 34.28, hmPct: 10.03, tx: 986, basketTs: 41.01, basketHb: 14.06, gpRm: 11260.67, gpPct: 27.85 },
+    'FIONA FIENA ANAK JAMES':            { ts: 38189.25, hb: 14674.28, hm: 4545.20, hbPct: 38.43, hmPct: 11.90, tx: 1051, basketTs: 36.34, basketHb: 13.96, gpRm: 10760.43, gpPct: 27.92 },
+    'NURHAFIZAH BINTI PAULI':            { ts: 33939.66, hb: 8794.45, hm: 4373.90, hbPct: 25.91, hmPct: 12.89, tx: 965, basketTs: 35.17, basketHb: 9.11, gpRm: 8325.98, gpPct: 25.13 },
+    'HANIESHA LOUNA ANAK DAGENG':        { ts: 28733.32, hb: 12526.10, hm: 2598.20, hbPct: 43.59, hmPct: 9.04, tx: 731, basketTs: 39.31, basketHb: 17.14, gpRm: 8318.14, gpPct: 28.95 },
+    'MUHAMMAD NUR FARIZIN BIN ABDULLAH': { ts: 22186.16, hb: 6844.60, hm: 2572.20, hbPct: 30.85, hmPct: 11.59, tx: 761, basketTs: 29.15, basketHb: 8.99, gpRm: 6260.88, gpPct: 27.22 },
+    'KENIX LING WANG YING':              { ts: 21256.40, hb: 8704.50, hm: 2934.10, hbPct: 40.95, hmPct: 13.80, tx: 524, basketTs: 40.57, basketHb: 16.61, gpRm: 6432.80, gpPct: 30.26 }
   }
 };
+// Aliases for M1 and M2
+KOTA_SENTOSA_HISTORICAL_TEAMMATES['M1'] = KOTA_SENTOSA_HISTORICAL_TEAMMATES['2026-09'];
+KOTA_SENTOSA_HISTORICAL_TEAMMATES['M2'] = KOTA_SENTOSA_HISTORICAL_TEAMMATES['2026-08'];
 
 function parsePeriodFromDateRange(dateStr) {
   if (!dateStr) return null;
@@ -120,6 +133,40 @@ function parsePeriodFromDateRange(dateStr) {
   return null;
 }
 
+function getPriorMonthKey(periodKey, offset = 1) {
+  const [yStr, mStr] = String(periodKey || '2026-10').split('-');
+  let y = parseInt(yStr, 10) || 2026;
+  let m = parseInt(mStr, 10) || 10;
+  m -= offset;
+  while (m < 1) {
+    m += 12;
+    y -= 1;
+  }
+  return `${y}-${String(m).padStart(2, '0')}`;
+}
+
+function getNextMonthKey(periodKey, offset = 1) {
+  const [yStr, mStr] = String(periodKey || '2026-10').split('-');
+  let y = parseInt(yStr, 10) || 2026;
+  let m = parseInt(mStr, 10) || 10;
+  m += offset;
+  while (m > 12) {
+    m -= 12;
+    y += 1;
+  }
+  return `${y}-${String(m).padStart(2, '0')}`;
+}
+
+function getPeriodMonthName(periodKey) {
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const [yStr, mStr] = String(periodKey || '').split('-');
+  const m = parseInt(mStr, 10);
+  if (m >= 1 && m <= 12) {
+    return `${monthNames[m - 1]} ${yStr}`;
+  }
+  return periodKey || 'Current Month';
+}
+
 function formatPeriodDisplayLabel(dateRange, fallbackPrefix = 'Latest Month') {
   if (!dateRange) return fallbackPrefix;
   const p = parsePeriodFromDateRange(dateRange);
@@ -149,14 +196,14 @@ function loadMonthlyArchives() {
       branch: 'PMG PHARMACY (KOTA SENTOSA) SDN BHD',
       outletTotals: { ts: 340252.85, hb: 147573.46, hm: 30889.38, gpRm: 95536.56, gpPct: 27.81, transactions: 8016, basketTs: 42.45, basketHb: 18.41 },
       teammates: [
-        { person: 'JONG PEI CHOO', role: 'PA', ts: 57607.00, hb: 27181.97, hm: 5033.49, hbPct: 47.19, hmPct: 8.74, gpRm: 15473.48, gpPct: 26.74, tx: 1258, basketTs: 45.79, basketHb: 21.61 },
+        { person: 'JONG PEI CHOO', role: 'PA', ts: 57607.00, hb: 27181.97, hm: 5033.49, hbPct: 47.19, hmPct: 8.74, gpRm: 15473.48, gpPct: 26.86, tx: 1258, basketTs: 45.79, basketHb: 21.61 },
         { person: 'CHAI YEE SIAN', role: 'Pharmacist (PIC)', ts: 54282.56, hb: 26918.05, hm: 5112.48, hbPct: 49.59, hmPct: 9.42, gpRm: 15997.08, gpPct: 29.01, tx: 567, basketTs: 95.74, basketHb: 47.47 },
         { person: 'NURHAFIZAH BINTI PAULI', role: 'PA', ts: 36325.44, hb: 11342.34, hm: 4212.50, hbPct: 31.22, hmPct: 11.60, gpRm: 9953.55, gpPct: 27.35, tx: 1112, basketTs: 32.67, basketHb: 10.20 },
         { person: 'CHRISTINA LEE YING YING', role: 'PRP', ts: 34887.97, hb: 15084.64, hm: 2744.90, hbPct: 43.24, hmPct: 7.87, gpRm: 9980.79, gpPct: 28.42, tx: 918, basketTs: 38.00, basketHb: 16.43 },
         { person: 'KENIX LING WANG YING', role: 'Pharmacist', ts: 33851.04, hb: 18132.18, hm: 3658.70, hbPct: 53.56, hmPct: 10.81, gpRm: 10722.56, gpPct: 31.65, tx: 801, basketTs: 42.26, basketHb: 22.64 },
         { person: 'HANIESHA LOUNA ANAK DAGENG', role: 'ABM', ts: 33343.42, hb: 13348.87, hm: 2517.60, hbPct: 40.03, hmPct: 7.55, gpRm: 8621.07, gpPct: 25.55, tx: 892, basketTs: 37.38, basketHb: 14.97 },
         { person: 'FIONA FIENA ANAK JAMES', role: 'PA', ts: 32814.51, hb: 13098.35, hm: 2519.96, hbPct: 39.92, hmPct: 7.68, gpRm: 8921.83, gpPct: 27.11, tx: 870, basketTs: 37.72, basketHb: 15.06 },
-        { person: 'MUHAMMAD NUR FARIZIN BIN ABDULLAH', role: 'PA', ts: 32317.74, hb: 9153.55, hm: 2911.40, hbPct: 28.32, hmPct: 9.01, gpRm: 8468.15, gpPct: 26.17, tx: 1007, basketTs: 32.09, basketHb: 9.09 },
+        { person: 'MUHAMMAD NUR FARIZIN BIN ABDULLAH', role: 'PA', ts: 32317.74, hb: 9153.55, hm: 2911.40, hbPct: 28.32, hmPct: 9.01, gpRm: 8027.60, gpPct: 24.84, tx: 977, basketTs: 33.08, basketHb: 9.37 },
         { person: 'TING KWANG YU', role: 'BM / Lead', ts: 24704.57, hb: 12956.53, hm: 2098.78, hbPct: 52.45, hmPct: 8.50, gpRm: 7179.39, gpPct: 28.90, tx: 627, basketTs: 39.40, basketHb: 20.66 }
       ]
     },
@@ -165,17 +212,17 @@ function loadMonthlyArchives() {
       periodLabel: 'September FY2026 (01/09/2026 - 30/09/2026)',
       archivedAt: '2026-09-30T23:59:59.000Z',
       branch: 'PMG PHARMACY (KOTA SENTOSA) SDN BHD',
-      outletTotals: { ts: 336565.91, hb: 143198.75, hm: 29274.80, gpRm: 93560.00, gpPct: 27.80, transactions: 7690, basketTs: 43.77, basketHb: 18.62 },
+      outletTotals: { ts: 337979.41, hb: 144533.00, hm: 32643.20, gpRm: 91857.56, gpPct: 26.84, transactions: 7779, basketTs: 43.45, basketHb: 18.58 },
       teammates: [
-        { person: 'JONG PEI CHOO', role: 'PA', ts: 67867.91, hb: 30047.07, hm: 6468.84, hbPct: 44.27, hmPct: 9.53, gpPct: 26.35, tx: 1188 },
-        { person: 'CHAI YEE SIAN', role: 'Pharmacist (PIC)', ts: 56349.67, hb: 28793.67, hm: 5724.59, hbPct: 51.10, hmPct: 10.16, gpPct: 29.22, tx: 542 },
-        { person: 'MUHAMMAD NUR FARIZIN BIN ABDULLAH', role: 'PA', ts: 38902.31, hb: 12023.81, hm: 3483.10, hbPct: 30.91, hmPct: 8.95, gpPct: 26.31, tx: 1007 },
-        { person: 'FIONA FIENA ANAK JAMES', role: 'PA', ts: 38603.18, hb: 15465.76, hm: 3391.10, hbPct: 40.06, hmPct: 8.78, gpPct: 27.11, tx: 870 },
-        { person: 'NURHAFIZAH BINTI PAULI', role: 'PA', ts: 37220.70, hb: 11911.70, hm: 2699.60, hbPct: 32.00, hmPct: 7.25, gpPct: 27.44, tx: 1083 },
-        { person: 'HANIESHA LOUNA ANAK DAGENG', role: 'ABM', ts: 33017.20, hb: 15217.94, hm: 2408.70, hbPct: 46.09, hmPct: 7.30, gpPct: 25.46, tx: 866 },
-        { person: 'DANIELA JANET ANAK MUSTAPHA', role: 'Former Staff', ts: 24525.47, hb: 8992.27, hm: 1749.90, hbPct: 36.67, hmPct: 7.14, gpPct: 25.50, tx: 590 },
-        { person: 'KENIX LING WANG YING', role: 'Pharmacist', ts: 22639.41, hb: 10043.31, hm: 2476.30, hbPct: 44.36, hmPct: 10.94, gpPct: 31.48, tx: 801 },
-        { person: 'TING KWANG YU', role: 'BM / Lead', ts: 17412.06, hb: 10703.22, hm: 872.67, hbPct: 61.47, hmPct: 5.01, gpPct: 28.90, tx: 627 }
+        { person: 'JONG PEI CHOO', role: 'PA', ts: 68087.05, hb: 30255.60, hm: 7185.30, hbPct: 44.44, hmPct: 10.55, tx: 1327, basketTs: 51.31, basketHb: 22.80, gpRm: 17900.38, gpPct: 26.25 },
+        { person: 'CHAI YEE SIAN', role: 'Pharmacist (PIC)', ts: 57034.03, hb: 29411.83, hm: 6189.80, hbPct: 51.57, hmPct: 10.85, tx: 597, basketTs: 95.53, basketHb: 49.27, gpRm: 16494.38, gpPct: 27.57 },
+        { person: 'MUHAMMAD NUR FARIZIN BIN ABDULLAH', role: 'PA', ts: 38902.31, hb: 12023.81, hm: 3825.20, hbPct: 30.91, hmPct: 9.83, tx: 1172, basketTs: 33.19, basketHb: 10.26, gpRm: 9763.77, gpPct: 24.96 },
+        { person: 'FIONA FIENA ANAK JAMES', role: 'PA', ts: 38723.18, hb: 15585.48, hm: 3698.90, hbPct: 40.25, hmPct: 9.55, tx: 1064, basketTs: 36.39, basketHb: 14.65, gpRm: 10891.39, gpPct: 27.99 },
+        { person: 'NURHAFIZAH BINTI PAULI', role: 'PA', ts: 37220.70, hb: 11911.70, hm: 3165.70, hbPct: 32.00, hmPct: 8.51, tx: 1066, basketTs: 34.92, basketHb: 11.17, gpRm: 9239.66, gpPct: 24.53 },
+        { person: 'HANIESHA LOUNA ANAK DAGENG', role: 'ABM', ts: 33077.20, hb: 15277.24, hm: 2690.90, hbPct: 46.19, hmPct: 8.14, tx: 783, basketTs: 42.24, basketHb: 19.51, gpRm: 9196.92, gpPct: 27.56 },
+        { person: 'DANIELA JANET ANAK MUSTAPHA', role: 'Former Staff', ts: 24525.47, hb: 8992.27, hm: 2226.80, hbPct: 36.67, hmPct: 9.08, tx: 722, basketTs: 33.97, basketHb: 12.45, gpRm: 6615.68, gpPct: 26.85 },
+        { person: 'KENIX LING WANG YING', role: 'Pharmacist', ts: 22669.41, hb: 10073.31, hm: 2654.30, hbPct: 44.44, hmPct: 11.71, tx: 611, basketTs: 37.10, basketHb: 16.49, gpRm: 6538.08, gpPct: 28.78 },
+        { person: 'TING KWANG YU', role: 'BM / Lead', ts: 17712.06, hb: 11000.96, hm: 872.67, hbPct: 62.11, hmPct: 4.93, tx: 627, basketTs: 28.25, basketHb: 17.55, gpRm: 5124.77, gpPct: 29.35 }
       ]
     },
     '2026-08': {
@@ -183,17 +230,34 @@ function loadMonthlyArchives() {
       periodLabel: 'August FY2026 (01/08/2026 - 31/08/2026)',
       archivedAt: '2026-08-31T23:59:59.000Z',
       branch: 'PMG PHARMACY (KOTA SENTOSA) SDN BHD',
-      outletTotals: { ts: 380745.93, hb: 164354.04, hm: 34812.10, gpRm: 105847.00, gpPct: 27.80, transactions: 7915, basketTs: 48.10, basketHb: 20.76 },
+      outletTotals: { ts: 380852.53, hb: 164354.04, hm: 38826.70, gpRm: 100551.66, gpPct: 26.07, transactions: 8433, basketTs: 45.16, basketHb: 19.49 },
       teammates: [
-        { person: 'JONG PEI CHOO', role: 'PA', ts: 77868.67, hb: 40551.13, hm: 7182.75, hbPct: 52.08, hmPct: 9.22, gpPct: 26.35, tx: 1258 },
-        { person: 'CHAI YEE SIAN', role: 'Pharmacist (PIC)', ts: 56216.31, hb: 26502.91, hm: 5067.85, hbPct: 47.14, hmPct: 9.01, gpPct: 29.22, tx: 567 },
-        { person: 'HANIESHA LOUNA ANAK DAGENG', role: 'ABM', ts: 46327.58, hb: 21296.52, hm: 3866.90, hbPct: 45.97, hmPct: 8.35, gpPct: 25.46, tx: 892 },
-        { person: 'FIONA FIENA ANAK JAMES', role: 'PA', ts: 45947.34, hb: 20374.91, hm: 3748.80, hbPct: 44.34, hmPct: 8.16, gpPct: 27.11, tx: 870 },
-        { person: 'DANIELA JANET ANAK MUSTAPHA', role: 'Former Staff', ts: 43949.89, hb: 15891.83, hm: 3288.10, hbPct: 36.16, hmPct: 7.48, gpPct: 25.80, tx: 940 },
-        { person: 'NURHAFIZAH BINTI PAULI', role: 'PA', ts: 32119.29, hb: 10697.52, hm: 3448.30, hbPct: 33.31, hmPct: 10.74, gpPct: 27.44, tx: 1112 },
-        { person: 'MUHAMMAD NUR FARIZIN BIN ABDULLAH', role: 'PA', ts: 30931.79, hb: 9492.40, hm: 2862.20, hbPct: 30.69, hmPct: 9.25, gpPct: 26.31, tx: 1007 },
-        { person: 'KENIX LING WANG YING', role: 'Pharmacist', ts: 30321.83, hb: 13782.70, hbPct: 45.45, hmPct: 12.04, gpPct: 31.48, tx: 801 },
-        { person: 'DIANA LAI PEI YING', role: 'Former Staff', ts: 16762.59, hb: 6036.98, hm: 1695.60, hbPct: 36.01, hmPct: 10.12, gpPct: 25.50, tx: 450 }
+        { person: 'JONG PEI CHOO', role: 'PA', ts: 77868.67, hb: 40551.13, hm: 8186.15, hbPct: 52.08, hmPct: 10.51, tx: 1380, basketTs: 56.43, basketHb: 29.38, gpRm: 19762.47, gpPct: 25.38 },
+        { person: 'CHAI YEE SIAN', role: 'Pharmacist (PIC)', ts: 56218.31, hb: 26502.91, hm: 5368.15, hbPct: 47.14, hmPct: 9.55, tx: 466, basketTs: 120.64, basketHb: 56.87, gpRm: 14105.02, gpPct: 25.09 },
+        { person: 'HANIESHA LOUNA ANAK DAGENG', role: 'ABM', ts: 46327.58, hb: 21296.52, hm: 4244.40, hbPct: 45.97, hmPct: 9.16, tx: 1024, basketTs: 45.24, basketHb: 20.80, gpRm: 12813.91, gpPct: 27.66 },
+        { person: 'FIONA FIENA ANAK JAMES', role: 'PA', ts: 45990.94, hb: 20374.91, hm: 4134.40, hbPct: 44.30, hmPct: 8.99, tx: 1062, basketTs: 43.31, basketHb: 19.19, gpRm: 12304.53, gpPct: 26.75 },
+        { person: 'DANIELA JANET ANAK MUSTAPHA', role: 'Former Staff', ts: 43949.89, hb: 15891.83, hm: 3755.60, hbPct: 36.16, hmPct: 8.55, tx: 1007, basketTs: 43.64, basketHb: 15.78, gpRm: 10556.70, gpPct: 24.02 },
+        { person: 'NURHAFIZAH BINTI PAULI', role: 'PA', ts: 32180.29, hb: 10697.52, hm: 4005.60, hbPct: 33.24, hmPct: 12.45, tx: 1029, basketTs: 31.27, basketHb: 10.40, gpRm: 8731.37, gpPct: 27.13 },
+        { person: 'MUHAMMAD NUR FARIZIN BIN ABDULLAH', role: 'PA', ts: 30931.79, hb: 9492.40, hm: 3192.90, hbPct: 30.69, hmPct: 10.32, tx: 916, basketTs: 33.77, basketHb: 10.36, gpRm: 8481.94, gpPct: 27.42 },
+        { person: 'KENIX LING WANG YING', role: 'Pharmacist', ts: 30321.83, hb: 13782.70, hm: 4002.90, hbPct: 45.45, hmPct: 13.20, tx: 676, basketTs: 44.85, basketHb: 20.39, gpRm: 9335.79, gpPct: 30.79 },
+        { person: 'DIANA LAI PEI YING', role: 'Former Staff', ts: 16762.59, hb: 6036.98, hm: 1695.60, hbPct: 36.01, hmPct: 10.12, tx: 450, basketTs: 37.25, basketHb: 13.42, gpRm: 4274.46, gpPct: 25.50 }
+      ]
+    },
+    '2026-07': {
+      periodKey: '2026-07',
+      periodLabel: 'July FY2026 (01/07/2026 - 31/07/2026)',
+      archivedAt: '2026-07-31T23:59:59.000Z',
+      branch: 'PMG PHARMACY (KOTA SENTOSA) SDN BHD',
+      outletTotals: { ts: 350124.18, hb: 140211.50, hm: 33150.20, gpRm: 92430.80, gpPct: 26.40, transactions: 8120, basketTs: 43.12, basketHb: 17.27 },
+      teammates: [
+        { person: 'JONG PEI CHOO', role: 'PA', ts: 63122.42, hb: 23436.61, hm: 6673.35, hbPct: 37.13, hmPct: 10.57, tx: 1377, basketTs: 45.84, basketHb: 17.02, gpRm: 16003.61, gpPct: 25.35 },
+        { person: 'CHAI YEE SIAN', role: 'Pharmacist (PIC)', ts: 48085.31, hb: 20614.05, hm: 5534.85, hbPct: 42.87, hmPct: 11.51, tx: 561, basketTs: 85.71, basketHb: 36.75, gpRm: 15801.99, gpPct: 33.10 },
+        { person: 'DANIELA JANET ANAK MUSTAPHA', role: 'Former Staff', ts: 40431.03, hb: 13859.25, hm: 4057.10, hbPct: 34.28, hmPct: 10.03, tx: 986, basketTs: 41.01, basketHb: 14.06, gpRm: 11260.67, gpPct: 27.85 },
+        { person: 'FIONA FIENA ANAK JAMES', role: 'PA', ts: 38189.25, hb: 14674.28, hm: 4545.20, hbPct: 38.43, hmPct: 11.90, tx: 1051, basketTs: 36.34, basketHb: 13.96, gpRm: 10760.43, gpPct: 27.92 },
+        { person: 'NURHAFIZAH BINTI PAULI', role: 'PA', ts: 33939.66, hb: 8794.45, hm: 4373.90, hbPct: 25.91, hmPct: 12.89, tx: 965, basketTs: 35.17, basketHb: 9.11, gpRm: 8325.98, gpPct: 25.13 },
+        { person: 'HANIESHA LOUNA ANAK DAGENG', role: 'ABM', ts: 28733.32, hb: 12526.10, hm: 2598.20, hbPct: 43.59, hmPct: 9.04, tx: 731, basketTs: 39.31, basketHb: 17.14, gpRm: 8318.14, gpPct: 28.95 },
+        { person: 'MUHAMMAD NUR FARIZIN BIN ABDULLAH', role: 'PA', ts: 22186.16, hb: 6844.60, hm: 2572.20, hbPct: 30.85, hmPct: 11.59, tx: 761, basketTs: 29.15, basketHb: 8.99, gpRm: 6260.88, gpPct: 27.22 },
+        { person: 'KENIX LING WANG YING', role: 'Pharmacist', ts: 21256.40, hb: 8704.50, hm: 2934.10, hbPct: 40.95, hmPct: 13.80, tx: 524, basketTs: 40.57, basketHb: 16.61, gpRm: 6432.80, gpPct: 30.26 }
       ]
     },
     '2025-10': {
@@ -211,17 +275,22 @@ function loadMonthlyArchives() {
       const data = JSON.parse(raw);
       let updated = false;
       // Auto-heal / upgrade 2026-09 if old estimated value or missing teammates
-      if (!data['2026-09'] || data['2026-09'].outletTotals?.ts !== 336565.91 || !data['2026-09'].teammates?.length) {
+      if (!data['2026-09'] || data['2026-09'].outletTotals?.ts !== 337979.41 || !data['2026-09'].teammates?.length || !data['2026-09'].teammates[0].gpRm) {
         data['2026-09'] = seed['2026-09'];
         updated = true;
       }
       // Auto-heal / upgrade 2026-08 if old estimated value or missing teammates
-      if (!data['2026-08'] || data['2026-08'].outletTotals?.ts !== 380745.93 || !data['2026-08'].teammates?.length) {
+      if (!data['2026-08'] || data['2026-08'].outletTotals?.ts !== 380852.53 || !data['2026-08'].teammates?.length || !data['2026-08'].teammates[0].gpRm) {
         data['2026-08'] = seed['2026-08'];
         updated = true;
       }
+      // Auto-heal 2026-07 if missing
+      if (!data['2026-07'] || !data['2026-07'].teammates?.length) {
+        data['2026-07'] = seed['2026-07'];
+        updated = true;
+      }
       // Auto-heal 2026-10 if ts === 0 or missing
-      if (!data['2026-10'] || data['2026-10'].outletTotals?.ts === 0) {
+      if (!data['2026-10'] || data['2026-10'].outletTotals?.ts === 0 || !data['2026-10'].teammates?.length) {
         data['2026-10'] = seed['2026-10'];
         updated = true;
       }
@@ -334,44 +403,83 @@ function importMonthlyArchiveJson(fileInput) {
 function getTeammateHistoricalMonth(personKey, periodSlot, state) {
   const normKey = String(personKey || '').toUpperCase().trim();
 
-  // 1. Check if state has explicit rows for dailySalesM1 or dailySalesM2
-  const slotObj = periodSlot === 'M1' ? state?.dailySalesM1 : state?.dailySalesM2;
-  if (slotObj?.rows && slotObj.rows.length) {
-    const found = slotObj.rows.find(r => String(r.person || '').toUpperCase().trim() === normKey);
-    if (found) {
-      const ts = found.ts || 0;
-      const hb = found.hb || 0;
-      const hm = found.hm || 0;
-      const hbPct = ts > 0 ? +((hb / ts) * 100).toFixed(2) : 0;
-      return { ts, hb, hm, hbPct, gpPct: slotObj.gpPct || 27.0, tx: found.tx || 0 };
-    }
-  }
-
-  // 2. Check Monthly Archives in localStorage
+  // 1. Check Monthly Archives dynamically first
+  // Monthly archives store the complete, verified snapshot with all 10 audited metrics:
+  // ts, hb, hm, hbPct, hmPct, tx, basketTs, basketHb, gpRm, gpPct
   try {
-    const archives = loadMonthlyArchives();
-    const periodKey = periodSlot === 'M1' ? '2026-09' : '2026-08';
-    const archivedMonth = archives[periodKey];
+    const archives = (typeof loadMonthlyArchives === 'function') ? loadMonthlyArchives() : {};
+    const curKey = getArchivePeriodKey(state); // e.g. '2026-10'
+    const targetPeriodKey = periodSlot === 'M1' ? getPriorMonthKey(curKey, 1) : getPriorMonthKey(curKey, 2);
+    const archivedMonth = archives[targetPeriodKey];
     if (archivedMonth?.teammates && archivedMonth.teammates.length) {
-      const found = archivedMonth.teammates.find(t => String(t.person || '').toUpperCase().trim() === normKey);
+      const found = archivedMonth.teammates.find(t => {
+        const tn = String(t.person || t.name || '').toUpperCase().trim();
+        return tn === normKey || tn.includes(normKey) || normKey.includes(tn);
+      });
       if (found) {
-        return {
-          ts: found.ts || 0,
-          hb: found.hb || 0,
-          hm: found.hm || 0,
-          hbPct: found.hbPct || (found.ts > 0 ? +((found.hb / found.ts) * 100).toFixed(2) : 0),
-          gpPct: found.gpPct || 27.0,
-          tx: found.tx || 0
-        };
+        const ts = found.ts || 0;
+        const hb = found.hb || 0;
+        const hm = found.hm || 0;
+        const tx = found.tx || 0;
+        const hbPct = found.hbPct !== undefined ? found.hbPct : (ts > 0 ? +((hb / ts) * 100).toFixed(2) : 0);
+        const hmPct = found.hmPct !== undefined ? found.hmPct : (ts > 0 ? +((hm / ts) * 100).toFixed(2) : 0);
+        const gpPct = found.gpPct || 27.0;
+        const basketTs = found.basketTs || (tx > 0 ? +(ts / tx).toFixed(2) : 0);
+        const basketHb = found.basketHb || (tx > 0 ? +(hb / tx).toFixed(2) : 0);
+        const gpRm = found.gpRm || (ts > 0 ? +((ts * gpPct) / 100).toFixed(2) : 0);
+        return { ts, hb, hm, hbPct, hmPct, tx, basketTs, basketHb, gpRm, gpPct };
       }
     }
   } catch (e) {}
 
-  // 3. Fallback to Kota Sentosa baseline seed
-  const fallback = KOTA_SENTOSA_HISTORICAL_TEAMMATES[periodSlot]?.[normKey];
-  if (fallback) return fallback;
+  // 2. Check if state has explicit rows for dailySalesM1 or dailySalesM2
+  const slotObj = periodSlot === 'M1' ? state?.dailySalesM1 : state?.dailySalesM2;
+  if (slotObj?.rows && slotObj.rows.length) {
+    const found = slotObj.rows.find(r => {
+      const rn = String(r.person || '').toUpperCase().trim();
+      return rn === normKey || rn.includes(normKey) || normKey.includes(rn);
+    });
+    if (found) {
+      const ts = found.ts || 0;
+      const hb = found.hb || 0;
+      const hm = found.hm || 0;
+      const tx = found.tx || 0;
+      const hbPct = ts > 0 ? +((hb / ts) * 100).toFixed(2) : 0;
+      const hmPct = ts > 0 ? +((hm / ts) * 100).toFixed(2) : 0;
+      const basketTs = tx > 0 ? +(ts / tx).toFixed(2) : 0;
+      const basketHb = tx > 0 ? +(hb / tx).toFixed(2) : 0;
+      const gpPct = slotObj.gpPct || found.gpPct || 27.0;
+      const gpRm = found.gpRm || (ts > 0 ? +((ts * gpPct) / 100).toFixed(2) : 0);
+      return { ts, hb, hm, hbPct, hmPct, tx, basketTs, basketHb, gpRm, gpPct };
+    }
+  }
 
-  return { ts: 0, hb: 0, hm: 0, hbPct: 0, gpPct: 0, tx: 0 };
+  // 3. Fallback to Kota Sentosa baseline seed
+  try {
+    const curKey = getArchivePeriodKey(state);
+    const targetPeriodKey = periodSlot === 'M1' ? getPriorMonthKey(curKey, 1) : getPriorMonthKey(curKey, 2);
+    const fallbackSlot = KOTA_SENTOSA_HISTORICAL_TEAMMATES[targetPeriodKey] || KOTA_SENTOSA_HISTORICAL_TEAMMATES[periodSlot] || {};
+    let fallback = fallbackSlot[normKey];
+    if (!fallback) {
+      const entry = Object.entries(fallbackSlot).find(([k]) => normKey.includes(k) || k.includes(normKey));
+      if (entry) fallback = entry[1];
+    }
+    if (fallback) {
+      const ts = fallback.ts || 0;
+      const hb = fallback.hb || 0;
+      const hm = fallback.hm || 0;
+      const tx = fallback.tx || 0;
+      const hbPct = fallback.hbPct !== undefined ? fallback.hbPct : (ts > 0 ? +((hb / ts) * 100).toFixed(2) : 0);
+      const hmPct = fallback.hmPct !== undefined ? fallback.hmPct : (ts > 0 ? +((hm / ts) * 100).toFixed(2) : 0);
+      const gpPct = fallback.gpPct || 27.0;
+      const basketTs = fallback.basketTs || (tx > 0 ? +(ts / tx).toFixed(2) : 0);
+      const basketHb = fallback.basketHb || (tx > 0 ? +(hb / tx).toFixed(2) : 0);
+      const gpRm = fallback.gpRm || (ts > 0 ? +((ts * gpPct) / 100).toFixed(2) : 0);
+      return { ts, hb, hm, hbPct, hmPct, tx, basketTs, basketHb, gpRm, gpPct };
+    }
+  } catch (e) {}
+
+  return { ts: 0, hb: 0, hm: 0, hbPct: 0, hmPct: 0, tx: 0, basketTs: 0, basketHb: 0, gpRm: 0, gpPct: 0 };
 }
 
 // ─── RUNTIME STATE ──────────────────────────────────────────────────────────
@@ -1500,8 +1608,8 @@ function computeAllMetrics(state) {
     }
   } catch (e) {}
 
-  m2 = m2 || { periodLabel: 'August FY2026 (M-2)', ts: 380745.93, hb: 164354.04, hm: 34812.10, gpRm: 105847.00, gpPct: 27.80, transactions: 7915 };
-  m1 = m1 || { periodLabel: 'September FY2026 (M-1)', ts: 336565.91, hb: 143198.75, hm: 29274.80, gpRm: 93560.00, gpPct: 27.80, transactions: 7690 };
+  m2 = m2 || { periodLabel: 'August FY2026 (M-2)', ts: 380852.53, hb: 164354.04, hm: 38826.70, gpRm: 100551.66, gpPct: 26.07, transactions: 8433 };
+  m1 = m1 || { periodLabel: 'September FY2026 (M-1)', ts: 337979.41, hb: 144533.00, hm: 32643.20, gpRm: 91857.56, gpPct: 26.84, transactions: 7779 };
 
   return {
     outlet: {
@@ -1917,92 +2025,166 @@ function buildGeminiPresentationDocument(m, state) {
   const all12 = m.catSummaryAll12;
   const report = activeAiReport || buildDynamicBaselineReport(m, state);
 
-  const branchName = state.meta?.branch || 'PMG PHARMACY (KOTA SENTOSA) SDN BHD';
-  const latestLabel = state.meta?.latestPeriodLabel || 'Latest Month FY2026';
-  const prevYearLabel = state.meta?.prevYearPeriodLabel || 'Previous Year Same Month FY2025';
+  const branchName = state?.meta?.branch || 'PMG PHARMACY (KOTA SENTOSA) SDN BHD';
+  const latestLabel = state?.meta?.latestPeriodLabel || 'Latest Month FY2026';
+  const prevYearLabel = state?.meta?.prevYearPeriodLabel || 'Previous Year Same Month FY2025';
 
-  const m1 = m.threeMonthTrend?.m1 || { periodLabel: 'Previous Month (M-1)', ts: 0, hb: 0, hm: 0, gpRm: 0, gpPct: 0, transactions: 0 };
-  const m2 = m.threeMonthTrend?.m2 || { periodLabel: '2 Months Ago (M-2)', ts: 0, hb: 0, hm: 0, gpRm: 0, gpPct: 0, transactions: 0 };
+  const curPeriodKey = getArchivePeriodKey(state); // e.g. '2026-10'
+  const m1Key = getPriorMonthKey(curPeriodKey, 1); // '2026-09'
+  const m2Key = getPriorMonthKey(curPeriodKey, 2); // '2026-08'
+  const nextKey = getNextMonthKey(curPeriodKey, 1); // '2026-11'
 
-  const isOct = latestLabel.toLowerCase().includes('oct');
-  const m1Header = isOct ? 'August 2026' : (m2.periodLabel || 'Month 1');
-  const m2Header = isOct ? 'September 2026' : (m1.periodLabel || 'Month 2');
-  const m3Header = latestLabel;
+  const col1Header = `${getPeriodMonthName(m2Key)} (M-2)`;
+  const col2Header = `${getPeriodMonthName(m1Key)} (M-1)`;
+  const col3Header = `${getPeriodMonthName(curPeriodKey)} (Latest)`;
+  const presDate = `01 ${getPeriodMonthName(nextKey)}`;
 
-  // Presentation Date: e.g. 01 November 2026
-  let presDate = '01 November 2026';
-  if (latestLabel.toLowerCase().includes('sept') || latestLabel.toLowerCase().includes('09/2026')) {
-    presDate = '01 October 2026';
-  } else if (latestLabel.toLowerCase().includes('oct') || latestLabel.toLowerCase().includes('10/2026')) {
-    presDate = '01 November 2026';
-  } else if (latestLabel.toLowerCase().includes('nov') || latestLabel.toLowerCase().includes('11/2026')) {
-    presDate = '01 December 2026';
-  }
+  // Store 3M trend outlet totals
+  const archives = (typeof loadMonthlyArchives === 'function') ? loadMonthlyArchives() : {};
+  const s2 = archives[m2Key]?.outletTotals;
+  const s1 = archives[m1Key]?.outletTotals;
 
-  // Teammate 3-month performance mapping
+  const m2Outlet = {
+    ts: m.threeMonthTrend?.m2?.ts || s2?.ts || 380852.53,
+    hb: m.threeMonthTrend?.m2?.hb || s2?.hb || 164354.04,
+    hm: m.threeMonthTrend?.m2?.hm || s2?.hm || 38826.70,
+    gpRm: m.threeMonthTrend?.m2?.gpRm || s2?.gpRm || 100551.66,
+    gpPct: m.threeMonthTrend?.m2?.gpPct || s2?.gpPct || 26.07,
+    transactions: m.threeMonthTrend?.m2?.transactions || s2?.transactions || 8433
+  };
+
+  const m1Outlet = {
+    ts: m.threeMonthTrend?.m1?.ts || s1?.ts || 337979.41,
+    hb: m.threeMonthTrend?.m1?.hb || s1?.hb || 144533.00,
+    hm: m.threeMonthTrend?.m1?.hm || s1?.hm || 32643.20,
+    gpRm: m.threeMonthTrend?.m1?.gpRm || s1?.gpRm || 91857.56,
+    gpPct: m.threeMonthTrend?.m1?.gpPct || s1?.gpPct || 26.84,
+    transactions: m.threeMonthTrend?.m1?.transactions || s1?.transactions || 7779
+  };
+
+  const m2BasketTs = m2Outlet.transactions > 0 ? m2Outlet.ts / m2Outlet.transactions : 45.16;
+  const m2BasketHb = m2Outlet.transactions > 0 ? m2Outlet.hb / m2Outlet.transactions : 19.49;
+  const m1BasketTs = m1Outlet.transactions > 0 ? m1Outlet.ts / m1Outlet.transactions : 43.45;
+  const m1BasketHb = m1Outlet.transactions > 0 ? m1Outlet.hb / m1Outlet.transactions : 18.58;
+
+  // Active staff mapping
+  const activeStaff = (m.teammates || []).filter(t => t.isActiveLatest || t.tsLatest > 0);
+
   const getTeammate3M = (t) => {
-    const key = (t.name || t.key || '').toUpperCase();
-    const baseEntry = Object.entries(HISTORICAL_TEAMMATE_BASELINE).find(([k]) => key.includes(k) || k.includes(key));
-    const base = baseEntry ? baseEntry[1] : null;
-
-    let col1, col2, col3;
-    if (isOct) {
-      col1 = base ? base.m2 : { ts: t.tsPrev, hb: t.hbPrev, hbPct: t.hbPctOwnTsPrev, hm: 0, hmPct: 0, tx: t.txPrev, basketTs: t.basketTsPrev, basketHb: t.basketHbPrev, gpRm: 0, gpPct: t.gpPctPrev };
-      col2 = base ? base.m3 : { ts: t.tsPrev * 1.05, hb: t.hbPrev * 1.08, hbPct: t.hbPctOwnTsPrev, hm: 0, hmPct: 0, tx: t.txPrev, basketTs: t.basketTsPrev, basketHb: t.basketHbPrev, gpRm: 0, gpPct: t.gpPctPrev };
-      col3 = {
-        ts: t.tsLatest,
-        hb: t.hbLatest,
-        hbPct: t.hbPctOwnTsLatest,
-        hm: t.hmLatest,
-        hmPct: t.hmPctOwnTsLatest,
-        tx: t.txLatest,
-        basketTs: t.basketTsLatest,
-        basketHb: t.basketHbLatest,
-        gpRm: t.gpRmLatest,
-        gpPct: t.gpPctLatest
-      };
-    } else {
-      col1 = base ? base.m1 : { ts: t.tsPrev, hb: t.hbPrev, hbPct: t.hbPctOwnTsPrev, hm: 0, hmPct: 0, tx: t.txPrev, basketTs: t.basketTsPrev, basketHb: t.basketHbPrev, gpRm: 0, gpPct: t.gpPctPrev };
-      col2 = base ? base.m2 : { ts: t.tsPrev * 1.03, hb: t.hbPrev * 1.05, hbPct: t.hbPctOwnTsPrev, hm: 0, hmPct: 0, tx: t.txPrev, basketTs: t.basketTsPrev, basketHb: t.basketHbPrev, gpRm: 0, gpPct: t.gpPctPrev };
-      col3 = {
-        ts: t.tsLatest,
-        hb: t.hbLatest,
-        hbPct: t.hbPctOwnTsLatest,
-        hm: t.hmLatest,
-        hmPct: t.hmPctOwnTsLatest,
-        tx: t.txLatest,
-        basketTs: t.basketTsLatest,
-        basketHb: t.basketHbLatest,
-        gpRm: t.gpRmLatest,
-        gpPct: t.gpPctLatest
-      };
-    }
+    const key = t.key || t.name || '';
+    const col1 = getTeammateHistoricalMonth(key, 'M2', state);
+    const col2 = getTeammateHistoricalMonth(key, 'M1', state);
+    const col3 = {
+      ts: t.tsLatest,
+      hb: t.hbLatest,
+      hbPct: t.hbPctOwnTsLatest !== undefined ? t.hbPctOwnTsLatest : (t.tsLatest > 0 ? +((t.hbLatest / t.tsLatest) * 100).toFixed(2) : 0),
+      hm: t.hmLatest,
+      hmPct: t.hmPctOwnTsLatest !== undefined ? t.hmPctOwnTsLatest : (t.tsLatest > 0 ? +((t.hmLatest / t.tsLatest) * 100).toFixed(2) : 0),
+      tx: t.txLatest,
+      basketTs: t.basketTsLatest,
+      basketHb: t.basketHbLatest,
+      gpRm: t.gpRmLatest,
+      gpPct: t.gpPctLatest
+    };
     return { col1, col2, col3 };
   };
 
-  const activeStaff = m.teammates.filter(t => t.isActiveLatest || t.tsLatest > 0);
-  const findStaff = (keyword) => activeStaff.find(t => (t.name || t.key || '').toUpperCase().includes(keyword.toUpperCase()));
+  // Group staff into 3 slides cleanly & dynamically
+  const assigned = new Set();
+  const pickStaff = (keywords) => {
+    for (const kw of keywords) {
+      const found = activeStaff.find(t => {
+        if (assigned.has(t.key || t.name)) return false;
+        const s = `${t.name || ''} ${t.key || ''} ${t.nickname || ''} ${t.role || ''}`.toUpperCase();
+        return s.includes(kw.toUpperCase());
+      });
+      if (found) {
+        assigned.add(found.key || found.name);
+        return found;
+      }
+    }
+    return null;
+  };
 
-  // Groups for 3 slides matching the exact slide layout
-  const g1Staff = [findStaff('WILLIAM') || activeStaff[0], findStaff('FARIZIN') || activeStaff[1], findStaff('LOUNA') || activeStaff[2]].filter(Boolean);
-  const g2Staff = [findStaff('FIONA') || activeStaff[3], findStaff('NURHAFIZAH') || activeStaff[4], findStaff('JONG') || findStaff('PENNY') || activeStaff[5]].filter(Boolean);
-  const g3Staff = [findStaff('JANET') || activeStaff[6], findStaff('KENIX') || activeStaff[7], findStaff('TING') || findStaff('CHRISTINA') || activeStaff[8]].filter(Boolean);
+  const g1Staff = [
+    pickStaff(['WILLIAM', 'CHAI YEE SIAN']),
+    pickStaff(['LOUNA', 'HANIESHA']),
+    pickStaff(['JONG', 'PENNY', 'PEI CHOO'])
+  ].filter(Boolean);
+
+  const g2Staff = [
+    pickStaff(['FARIZIN']),
+    pickStaff(['NURHAFIZAH']),
+    pickStaff(['FIONA'])
+  ].filter(Boolean);
+
+  const g3Staff = [
+    pickStaff(['KENIX']),
+    pickStaff(['CHRISTINA']),
+    pickStaff(['TING', 'KWANG YU']),
+    pickStaff(['JANET', 'DANIELA'])
+  ].filter(Boolean);
+
+  const remaining = activeStaff.filter(t => !assigned.has(t.key || t.name));
+  g3Staff.push(...remaining);
 
   const formatTmTable = (tmList) => {
     return tmList.map(t => {
       const { col1, col2, col3 } = getTeammate3M(t);
+      const isNewCol1 = !col1.ts || col1.ts === 0;
+      const isNewCol2 = !col2.ts || col2.ts === 0;
+
+      const col1TsStr = isNewCol1 ? '— (New)' : `RM ${fmtNum(col1.ts, 2)}`;
+      const col2TsStr = isNewCol2 ? '— (New)' : `RM ${fmtNum(col2.ts, 2)}`;
+      const col3TsStr = `**RM ${fmtNum(col3.ts, 2)}**`;
+
+      const col1HbStr = isNewCol1 ? '—' : `RM ${fmtNum(col1.hb, 2)} (${fmtPct(col1.hbPct)})`;
+      const col2HbStr = isNewCol2 ? '—' : `RM ${fmtNum(col2.hb, 2)} (${fmtPct(col2.hbPct)})`;
+      const col3HbStr = `**RM ${fmtNum(col3.hb, 2)} (${fmtPct(col3.hbPct)})**`;
+
+      const col1HmStr = isNewCol1 ? '—' : `RM ${fmtNum(col1.hm, 2)} (${fmtPct(col1.hmPct)})`;
+      const col2HmStr = isNewCol2 ? '—' : `RM ${fmtNum(col2.hm, 2)} (${fmtPct(col2.hmPct)})`;
+      const col3HmStr = `**RM ${fmtNum(col3.hm, 2)} (${fmtPct(col3.hmPct)})**`;
+
+      const col1TxStr = isNewCol1 ? '—' : `${fmtNum(col1.tx)}`;
+      const col2TxStr = isNewCol2 ? '—' : `${fmtNum(col2.tx)}`;
+      const col3TxStr = `**${fmtNum(col3.tx)}**`;
+
+      const col1BtsStr = isNewCol1 ? '—' : `RM ${fmtNum(col1.basketTs, 2)}`;
+      const col2BtsStr = isNewCol2 ? '—' : `RM ${fmtNum(col2.basketTs, 2)}`;
+      const col3BtsStr = `**RM ${fmtNum(col3.basketTs, 2)}**`;
+
+      const col1BhbStr = isNewCol1 ? '—' : `RM ${fmtNum(col1.basketHb, 2)}`;
+      const col2BhbStr = isNewCol2 ? '—' : `RM ${fmtNum(col2.basketHb, 2)}`;
+      const col3BhbStr = `**RM ${fmtNum(col3.basketHb, 2)}**`;
+
+      const col1GpStr = isNewCol1 ? '—' : `RM ${fmtNum(col1.gpRm, 2)} (${fmtPct(col1.gpPct)})`;
+      const col2GpStr = isNewCol2 ? '—' : `RM ${fmtNum(col2.gpRm, 2)} (${fmtPct(col2.gpPct)})`;
+      const col3GpStr = `**RM ${fmtNum(col3.gpRm, 2)} (${fmtPct(col3.gpPct)})**`;
+
       return `#### ${t.name} [${t.role || 'Staff'}]
-| METRIC | ${m1Header} | ${m2Header} | ${m3Header} (Latest) |
+| METRIC | ${col1Header} | ${col2Header} | ${col3Header} |
 | :--- | :--- | :--- | :--- |
-| **Total Sales (RM)** | RM ${fmtNum(col1.ts, 2)} | RM ${fmtNum(col2.ts, 2)} | **RM ${fmtNum(col3.ts, 2)}** |
-| **HB Sales (RM & %)** | RM ${fmtNum(col1.hb, 2)} (${fmtPct(col1.hbPct)}%) | RM ${fmtNum(col2.hb, 2)} (${fmtPct(col2.hbPct)}%) | **RM ${fmtNum(col3.hb, 2)} (${fmtPct(col3.hbPct)}%)** |
-| **HM Sales (RM & %)** | RM ${fmtNum(col1.hm, 2)} (${fmtPct(col1.hmPct)}%) | RM ${fmtNum(col2.hm, 2)} (${fmtPct(col2.hmPct)}%) | **RM ${fmtNum(col3.hm, 2)} (${fmtPct(col3.hmPct)}%)** |
-| **No of Transactions** | ${fmtNum(col1.tx)} | ${fmtNum(col2.tx)} | **${fmtNum(col3.tx)}** |
-| **Basket Size (TS)** | RM ${fmtNum(col1.basketTs, 2)} | RM ${fmtNum(col2.basketTs, 2)} | **RM ${fmtNum(col3.basketTs, 2)}** |
-| **Basket Size (HB)** | RM ${fmtNum(col1.basketHb, 2)} | RM ${fmtNum(col2.basketHb, 2)} | **RM ${fmtNum(col3.basketHb, 2)}** |
-| **Gross Profit GPRM (%)** | RM ${fmtNum(col1.gpRm, 2)} (${fmtPct(col1.gpPct)}%) | RM ${fmtNum(col2.gpRm, 2)} (${fmtPct(col2.gpPct)}%) | **RM ${fmtNum(col3.gpRm, 2)} (${fmtPct(col3.gpPct)}%)** |`;
+| **Total Sales (RM)** | ${col1TsStr} | ${col2TsStr} | ${col3TsStr} |
+| **HB Sales (RM & %)** | ${col1HbStr} | ${col2HbStr} | ${col3HbStr} |
+| **HM Sales (RM & %)** | ${col1HmStr} | ${col2HmStr} | ${col3HmStr} |
+| **No of Transactions** | ${col1TxStr} | ${col2TxStr} | ${col3TxStr} |
+| **Basket Size (TS)** | ${col1BtsStr} | ${col2BtsStr} | ${col3BtsStr} |
+| **Basket Size (HB)** | ${col1BhbStr} | ${col2BhbStr} | ${col3BhbStr} |
+| **Gross Profit GPRM (%)** | ${col1GpStr} | ${col2GpStr} | ${col3GpStr} |`;
     }).join('\n\n');
   };
+
+  // Dynamic Slide 6 Coaching Content
+  const coachingList = report.teammateCoaching || m.teammateCoaching || [];
+  const coachingSection = (coachingList.length > 0)
+    ? coachingList.map(t => {
+        return `- **${t.person || t.name}** [${t.role}]:
+  - *Status*: ${t.statusBadge || 'Active Teammate'}
+  - *Performance Trajectory*: ${t.metricsSummary || ''}
+  - *Strategic Recommendation & Coaching*: ${t.commentAndAction || ''}`;
+      }).join('\n\n')
+    : `- **Dispensary Floor Alignment**: Maintain weekly structured DPOS role-play and review attachment benchmarks.`;
 
   // Category rows for Slide 7
   const catRows = (m.categories || []).map(c => {
@@ -2010,15 +2192,15 @@ function buildGeminiPresentationDocument(m, state) {
     const contribPct = (c.salesContributionPct !== undefined && c.salesContributionPct !== null)
       ? Number(c.salesContributionPct).toFixed(1)
       : (all12 && all12.netSoldPriceLatest > 0 ? ((c.netSoldPriceLatest / all12.netSoldPriceLatest) * 100).toFixed(1) : '0.0');
-    return `| ${c.category} | ${stockCycleVal} | ${contribPct}% | RM ${fmtNum(c.netSoldPriceLatest, 2)} | RM ${fmtNum(c.netSoldPricePrev, 2)} | ${c.priceDiffRm >= 0 ? '+' : ''}${fmtNum(c.priceDiffRm, 2)} (${fmtPct(c.priceDiffPct, 2, true)}) | RM ${fmtNum(c.netSoldProfitLatest, 2)} | RM ${fmtNum(c.netSoldProfitPrev, 2)} | ${c.profitDiffRm >= 0 ? '+' : ''}${fmtNum(c.profitDiffRm, 2)} (${fmtPct(c.profitDiffPct, 2, true)}) | ${fmtPct(c.gpPctLatest)}% | ${fmtPct(c.gpPctPrev)}% | ${c.gpPctDiffPP >= 0 ? '+' : ''}${fmtPP(c.gpPctDiffPP)} |`;
+    return `| ${c.category} | ${stockCycleVal} | ${contribPct}% | RM ${fmtNum(c.netSoldPriceLatest, 2)} | RM ${fmtNum(c.netSoldPricePrev, 2)} | ${c.priceDiffRm >= 0 ? '+' : ''}${fmtNum(c.priceDiffRm, 2)} (${fmtPct(c.priceDiffPct, 2, true)}) | RM ${fmtNum(c.netSoldProfitLatest, 2)} | RM ${fmtNum(c.netSoldProfitPrev, 2)} | ${c.profitDiffRm >= 0 ? '+' : ''}${fmtNum(c.profitDiffRm, 2)} (${fmtPct(c.profitDiffPct, 2, true)}) | ${fmtPct(c.gpPctLatest)} | ${fmtPct(c.gpPctPrev)} | ${c.gpPctDiffPP >= 0 ? '+' : ''}${fmtPP(c.gpPctDiffPP)} |`;
   }).join('\n');
 
   // Top gainers and bleeders
   const topHeroesStr = (m.topHeroSkus && m.topHeroSkus.length > 0)
-    ? m.topHeroSkus.slice(0, 6).map(s => `- **${s.itemName}** (${s.category}): +RM ${fmtNum(s.priceDiffRm, 2)} YoY (Latest RM ${fmtNum(s.priceLatest, 2)}, GP ${fmtPct(s.gpPctLatest)}%)`).join('\n')
+    ? m.topHeroSkus.slice(0, 6).map(s => `- **${s.itemName}** (${s.category}): +RM ${fmtNum(s.priceDiffRm, 2)} YoY (Latest RM ${fmtNum(s.priceLatest, 2)}, GP ${fmtPct(s.gpPctLatest)})`).join('\n')
     : '- Core supplement portfolio expansion across metabolic, bone health, and daily wellness ranges';
   const topBleedersStr = (m.topBleederSkus && m.topBleederSkus.length > 0)
-    ? m.topBleederSkus.slice(0, 5).map(s => `- **${s.itemName}** (${s.category}): ${fmtNum(s.priceDiffRm, 2)} YoY (Latest RM ${fmtNum(s.priceLatest, 2)}, GP ${fmtPct(s.gpPctLatest)}%)`).join('\n')
+    ? m.topBleederSkus.slice(0, 5).map(s => `- **${s.itemName}** (${s.category}): ${fmtNum(s.priceDiffRm, 2)} YoY (Latest RM ${fmtNum(s.priceLatest, 2)}, GP ${fmtPct(s.gpPctLatest)})`).join('\n')
     : '';
 
   return `You are an expert executive presentation designer and Chief Retail Pharmacy Commercial Strategist.
@@ -2032,8 +2214,8 @@ Role-specific action plans are managed separately and must be omitted from all s
 ================================================================================
 
 UPDATE RULES FOR GEMINI:
-1. Input the latest month data (${latestLabel}) and compare with previous year data (${prevYearLabel}) across all store and category tables.
-2. For personal sales data (Slides 3, 4, 5), update each teammate to the latest 3 months sales performance (${m1Header}, ${m2Header}, ${m3Header}).
+1. Input the latest month data (${col3Header}) and compare with previous year data (${prevYearLabel}) across all store and category tables.
+2. For personal sales data (Slides 3, 4, 5), update each teammate to the latest 3 months sales performance (${col1Header}, ${col2Header}, ${col3Header}).
 3. Maintain the professional clinical retail pharmacy tone, highlighting DPOS companion bundling, chronic disease retention, clinical nutrition conversion, and floor standards compliance.
 
 --------------------------------------------------------------------------------
@@ -2046,7 +2228,7 @@ PRESENTATION OUTLINE (16 SLIDES)
 - **Outlet**: PMG PHARMACY KOTA SENTOSA
 - **Location**: Pekan Batu 7, Penrissen Road, Kuching, Sarawak
 - **Meeting Date**: ${presDate}
-- **Reporting Period**: ${latestLabel} vs ${prevYearLabel}
+- **Reporting Period**: ${col3Header} vs ${prevYearLabel}
 - **Theme**: "Your Trusted Community Healthcare Partner · Serve Beyond Expectation"
 
 ---
@@ -2054,20 +2236,20 @@ PRESENTATION OUTLINE (16 SLIDES)
 ### SLIDE 2: OVERALL SALES PERFORMANCES (MTD Vs LY)
 **3-MONTH CONSECUTIVE TRAJECTORY & YoY COMPARISON**
 
-| STORE KPI | ${m1Header} | ${m2Header} | ${m3Header} (Actual) | ${prevYearLabel} (LY) | YoY Growth (RM & %) |
+| STORE KPI | ${col1Header} | ${col2Header} | ${col3Header} (Actual) | ${prevYearLabel} (LY) | YoY Growth (RM & %) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Total Sales (RM)** | RM ${fmtNum(m2.ts || 380852.53, 2)} | RM ${fmtNum(m1.ts || 337979.41, 2)} | **RM ${fmtNum(o.tsLatest, 2)}** | RM ${fmtNum(o.tsPrev, 2)} | **${o.tsDiffRm >= 0 ? '+' : ''}${fmtNum(o.tsDiffRm, 2)} (${fmtPct(o.tsDiffPct, 2, true)})** |
-| **HB Sales (RM & %)** | RM ${fmtNum(m2.hb || 164354.04, 2)} (${fmtPct(m2.ts ? (m2.hb/m2.ts)*100 : 43.15)}%) | RM ${fmtNum(m1.hb || 144533.00, 2)} (${fmtPct(m1.ts ? (m1.hb/m1.ts)*100 : 42.76)}%) | **RM ${fmtNum(o.hbLatest, 2)} (${fmtPct(o.hbShareLatestPct)}%)** | RM ${fmtNum(o.hbPrev, 2)} (${fmtPct(o.hbSharePrevPct)}%) | **${o.hbDiffRm >= 0 ? '+' : ''}${fmtNum(o.hbDiffRm, 2)} (${fmtPct(o.hbDiffPct, 2, true)})** |
-| **HM Sales (RM & %)** | RM ${fmtNum(m2.hm || 38826.70, 2)} (${fmtPct(m2.ts ? (m2.hm/m2.ts)*100 : 10.19)}%) | RM ${fmtNum(m1.hm || 32643.20, 2)} (${fmtPct(m1.ts ? (m1.hm/m1.ts)*100 : 9.66)}%) | **RM ${fmtNum(o.hmLatest, 2)} (${fmtPct(o.hmShareLatestPct)}%)** | RM ${fmtNum(o.hmPrev, 2)} (${fmtPct(o.hmSharePrevPct)}%) | **${o.hmDiffRm >= 0 ? '+' : ''}${fmtNum(o.hmDiffRm, 2)} (${fmtPct(o.hmDiffPct, 2, true)})** |
-| **Gross Profit GPRM (RM & %)** | RM ${fmtNum(m2.gpRm || 100551.66, 2)} (${fmtPct(m2.gpPct || 26.07)}%) | RM ${fmtNum(m1.gpRm || 91857.56, 2)} (${fmtPct(m1.gpPct || 26.84)}%) | **RM ${fmtNum(o.personalGpTotalLatest.netSoldProfit, 2)} (${fmtPct(o.personalGpTotalLatest.gpMarginPct)}%)** | RM ${fmtNum(o.personalGpTotalPrev.netSoldProfit, 2)} (${fmtPct(o.personalGpTotalPrev.gpMarginPct)}%) | **${o.personalGpDiffRm >= 0 ? '+' : ''}${fmtNum(o.personalGpDiffRm, 2)} (${fmtPct(o.personalGpDiffPct, 2, true)})** |
-| **No of Transactions (Tx)** | ${fmtNum(m2.transactions || 8433)} | ${fmtNum(m1.transactions || 7779)} | **${fmtNum(o.txLatest)}** | ${fmtNum(o.txPrev)} | **${o.txDiff >= 0 ? '+' : ''}${fmtNum(o.txDiff)} (${fmtPct(o.txDiffPct, 2, true)})** |
-| **Basket Size (Total Sales)** | RM ${fmtNum(m2.transactions > 0 ? m2.ts / m2.transactions : 45.16, 2)} | RM ${fmtNum(m1.transactions > 0 ? m1.ts / m1.transactions : 43.45, 2)} | **RM ${fmtNum(o.basketTsLatest, 2)}** | RM ${fmtNum(o.basketTsPrev, 2)} | **${o.basketTsDiffRm >= 0 ? '+' : ''}${fmtNum(o.basketTsDiffRm, 2)} (${fmtPct(o.basketTsDiffPct, 2, true)})** |
-| **Basket Size (House Brand)** | RM ${fmtNum(m2.transactions > 0 ? m2.hb / m2.transactions : 19.49, 2)} | RM ${fmtNum(m1.transactions > 0 ? m1.hb / m1.transactions : 18.58, 2)} | **RM ${fmtNum(o.basketHbLatest, 2)}** | RM ${fmtNum(o.basketHbPrev, 2)} | **${o.basketHbDiffRm >= 0 ? '+' : ''}${fmtNum(o.basketHbDiffRm, 2)} (${fmtPct(o.basketHbDiffPct, 2, true)})** |
+| **Total Sales (RM)** | RM ${fmtNum(m2Outlet.ts, 2)} | RM ${fmtNum(m1Outlet.ts, 2)} | **RM ${fmtNum(o.tsLatest, 2)}** | RM ${fmtNum(o.tsPrev, 2)} | **${o.tsDiffRm >= 0 ? '+' : ''}${fmtNum(o.tsDiffRm, 2)} (${fmtPct(o.tsDiffPct, 2, true)})** |
+| **HB Sales (RM & %)** | RM ${fmtNum(m2Outlet.hb, 2)} (${fmtPct(m2Outlet.ts > 0 ? (m2Outlet.hb / m2Outlet.ts) * 100 : 43.15)}) | RM ${fmtNum(m1Outlet.hb, 2)} (${fmtPct(m1Outlet.ts > 0 ? (m1Outlet.hb / m1Outlet.ts) * 100 : 42.76)}) | **RM ${fmtNum(o.hbLatest, 2)} (${fmtPct(o.hbShareLatestPct)})** | RM ${fmtNum(o.hbPrev, 2)} (${fmtPct(o.hbSharePrevPct)}) | **${o.hbDiffRm >= 0 ? '+' : ''}${fmtNum(o.hbDiffRm, 2)} (${fmtPct(o.hbDiffPct, 2, true)})** |
+| **HM Sales (RM & %)** | RM ${fmtNum(m2Outlet.hm, 2)} (${fmtPct(m2Outlet.ts > 0 ? (m2Outlet.hm / m2Outlet.ts) * 100 : 10.19)}) | RM ${fmtNum(m1Outlet.hm, 2)} (${fmtPct(m1Outlet.ts > 0 ? (m1Outlet.hm / m1Outlet.ts) * 100 : 9.66)}) | **RM ${fmtNum(o.hmLatest, 2)} (${fmtPct(o.hmShareLatestPct)})** | RM ${fmtNum(o.hmPrev, 2)} (${fmtPct(o.hmSharePrevPct)}) | **${o.hmDiffRm >= 0 ? '+' : ''}${fmtNum(o.hmDiffRm, 2)} (${fmtPct(o.hmDiffPct, 2, true)})** |
+| **Gross Profit GPRM (RM & %)** | RM ${fmtNum(m2Outlet.gpRm, 2)} (${fmtPct(m2Outlet.gpPct || 26.07)}) | RM ${fmtNum(m1Outlet.gpRm, 2)} (${fmtPct(m1Outlet.gpPct || 26.84)}) | **RM ${fmtNum(o.personalGpTotalLatest.netSoldProfit, 2)} (${fmtPct(o.personalGpTotalLatest.gpMarginPct)})** | RM ${fmtNum(o.personalGpTotalPrev.netSoldProfit, 2)} (${fmtPct(o.personalGpTotalPrev.gpMarginPct)}) | **${o.personalGpDiffRm >= 0 ? '+' : ''}${fmtNum(o.personalGpDiffRm, 2)} (${fmtPct(o.personalGpDiffPct, 2, true)})** |
+| **No of Transactions (Tx)** | ${fmtNum(m2Outlet.transactions)} | ${fmtNum(m1Outlet.transactions)} | **${fmtNum(o.txLatest)}** | ${fmtNum(o.txPrev)} | **${o.txDiff >= 0 ? '+' : ''}${fmtNum(o.txDiff)} (${fmtPct(o.txDiffPct, 2, true)})** |
+| **Basket Size (Total Sales)** | RM ${fmtNum(m2BasketTs, 2)} | RM ${fmtNum(m1BasketTs, 2)} | **RM ${fmtNum(o.basketTsLatest, 2)}** | RM ${fmtNum(o.basketTsPrev, 2)} | **${o.basketTsDiffRm >= 0 ? '+' : ''}${fmtNum(o.basketTsDiffRm, 2)} (${fmtPct(o.basketTsDiffPct, 2, true)})** |
+| **Basket Size (House Brand)** | RM ${fmtNum(m2BasketHb, 2)} | RM ${fmtNum(m1BasketHb, 2)} | **RM ${fmtNum(o.basketHbLatest, 2)}** | RM ${fmtNum(o.basketHbPrev, 2)} | **${o.basketHbDiffRm >= 0 ? '+' : ''}${fmtNum(o.basketHbDiffRm, 2)} (${fmtPct(o.basketHbDiffPct, 2, true)})** |
 
 **KEY EXECUTIVE TAKEAWAY BULLETS**:
-1. **Sustained YoY Revenue & Gross Profit Expansion**: Generated RM ${fmtNum(o.tsLatest, 2)} in total turnover (${o.tsDiffPct >= 0 ? '+' : ''}${fmtPct(o.tsDiffPct, 2)}% YoY) and expanded gross profit to RM ${fmtNum(o.personalGpTotalLatest.netSoldProfit, 2)} (${fmtPct(o.personalGpTotalLatest.gpMarginPct)}% GP margin, +${fmtPP(o.personalGpMarginDiffPP)} pp YoY).
-2. **Robust House Brand Penetration**: HB sales surged ${o.hbDiffPct >= 0 ? '+' : ''}${fmtPct(o.hbDiffPct, 2)}% YoY to RM ${fmtNum(o.hbLatest, 2)}, contributing ${fmtPct(o.hbShareLatestPct)}% of total outlet revenue (vs ${fmtPct(o.hbSharePrevPct)}% in LY).
-3. **Elevated Basket Quality via DPOS Companion Bundling**: Total Sales basket size increased to RM ${fmtNum(o.basketTsLatest, 2)} (+${fmtPct(o.basketTsDiffPct)}% YoY) and House Brand basket expanded to RM ${fmtNum(o.basketHbLatest, 2)} (+${fmtPct(o.basketHbDiffPct)}% YoY), proving customer acceptance of consultative wellness attachments.
+1. **Sustained YoY Revenue & Gross Profit Expansion**: Generated RM ${fmtNum(o.tsLatest, 2)} in total turnover (${o.tsDiffPct >= 0 ? '+' : ''}${fmtPct(o.tsDiffPct, 2)} YoY) and expanded gross profit to RM ${fmtNum(o.personalGpTotalLatest.netSoldProfit, 2)} (${fmtPct(o.personalGpTotalLatest.gpMarginPct)} GP margin, +${fmtPP(o.personalGpMarginDiffPP)} YoY).
+2. **Robust House Brand Penetration**: HB sales surged ${o.hbDiffPct >= 0 ? '+' : ''}${fmtPct(o.hbDiffPct, 2)} YoY to RM ${fmtNum(o.hbLatest, 2)}, contributing ${fmtPct(o.hbShareLatestPct)} of total outlet revenue (vs ${fmtPct(o.hbSharePrevPct)} in LY).
+3. **Elevated Basket Quality via DPOS Companion Bundling**: Total Sales basket size increased to RM ${fmtNum(o.basketTsLatest, 2)} (+${fmtPct(o.basketTsDiffPct)} YoY) and House Brand basket expanded to RM ${fmtNum(o.basketHbLatest, 2)} (+${fmtPct(o.basketHbDiffPct)} YoY), proving customer acceptance of consultative wellness attachments.
 
 ---
 
@@ -2081,7 +2263,7 @@ ${formatTmTable(g2Staff)}
 
 ---
 
-### SLIDE 5: INDIVIDUAL SALES PERFORMANCES (MTD) — RETAIL CONSULTANTS & NEW TEAMMATES
+### SLIDE 5: INDIVIDUAL SALES PERFORMANCES (MTD) — RETAIL CONSULTANTS, PRP & PHARMACISTS
 ${formatTmTable(g3Staff)}
 
 ---
@@ -2089,24 +2271,7 @@ ${formatTmTable(g3Staff)}
 ### SLIDE 6: TEAMMATE COACHING & LOW-PERFORMING RECOMMENDATIONS
 **FIND OUT LOW-PERFORMING TEAMMATES & TAILORED RECOVERY ACTION**:
 
-- **Muhammad Nur Farizin (PA)**:
-  - *Observation*: Lowest House Brand share in dispensary team (30.91%) and lowest basket size (RM 33.19; HB Basket RM 10.26).
-  - *Strategic Recommendation*: Pair with senior dispenser (Penny / William) for 1-week structured DPOS role-playing to attach high-margin companion wellness lines (Oxxymax, Livason, Flexmore) during routine prescription dispensing. Set daily target of RM 450+ HB sales.
-- **Nurhafizah Binti Pauli (PA)**:
-  - *Observation*: HB share (32.00%) and GP% (24.53%) lag branch benchmarks, despite outstanding House Margin execution (11.73% of own TS — #1 HM% in branch!).
-  - *Strategic Recommendation*: Coach her to apply the exact same consultative confidence she uses on HM items to core House Brand supplements and clinical nutrition lines (Nutri Alpha, Bconazine, Atrizine) to lift HB% to ≥ 38%.
-- **Daniela Janet (PA)**:
-  - *Observation*: Total sales contracted to RM 24,525.47 with RM 33.97 basket size.
-  - *Strategic Recommendation*: Focus on proactive customer greeting, counter add-on recommendations, and systematic chronic patient refill tracking to lift customer transaction volume.
-- **Fiona Fiena Anak James (PA)**:
-  - *Observation*: Basket size improved (+5.56% YoY), but total transactions dropped -31.65% YoY (from 1,210 to 827), reducing sales volume.
-  - *Strategic Recommendation*: Assign proactive greeting during morning wet-market rush (7:30 AM – 9:30 AM), targeting 32+ transactions/day with at least 1 companion add-on per 3 customers.
-- **Top Performer Recognition & Mentoring**:
-  - **Jong Pei Choo (Penny - PA)**: #1 revenue producer in Kota Sentosa (RM 55k–68k), HB surged +66.87% YoY to RM 26,196.67. Mentors junior dispensers on natural recommendation flow.
-  - **William Chai (PIC Pharmacist)**: Leads outlet in Gross Profit (RM 15.5k–16.5k), HB% (49.94%–51.57%), and TS basket size (RM 95.53–97.22). Models clinical consultation scripts.
-  - **Kenix Ling (Pharmacist)**: Sustains high clinical GP margin (28.78%–30.79%) and 44.44% HB share.
-- **New Teammate Integration**:
-  - **Ting Kwang Yu (New PA)**: Contributed strong early revenue with 62.11% HB share and 29.35% GP margin. Complete onboarding checklist.
+${coachingSection}
 
 ---
 
@@ -2116,28 +2281,28 @@ ${formatTmTable(g3Staff)}
 | CATEGORY | STOCK CYCLE | SALES CONTRIB (%) | NET SOLD PRICE (LATEST) | NET SOLD PRICE (LY) | SALES DIFF (RM & %) | NET SOLD PROFIT (LATEST) | NET SOLD PROFIT (LY) | PROFIT DIFF (RM & %) | GP% (LATEST) | GP% (LY) | GP% DIFF (pp) |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 ${catRows}
-| **TOTAL / AVG** | **${all12.averageStockCycle.toFixed(2)}** | **100.0%** | **RM ${fmtNum(all12.netSoldPriceLatest, 2)}** | **RM ${fmtNum(all12.netSoldPricePrev, 2)}** | **${all12.priceDiffRm >= 0 ? '+' : ''}${fmtNum(all12.priceDiffRm, 2)} (${fmtPct(all12.priceDiffPct, 2, true)})** | **RM ${fmtNum(all12.netSoldProfitLatest, 2)}** | **RM ${fmtNum(all12.netSoldProfitPrev, 2)}** | **${all12.profitDiffRm >= 0 ? '+' : ''}${fmtNum(all12.profitDiffRm, 2)} (${fmtPct(all12.profitDiffPct, 2, true)})** | **${fmtPct(all12.gpPctLatest)}%** | **${fmtPct(all12.gpPctPrev)}%** | **${all12.gpPctDiffPP >= 0 ? '+' : ''}${fmtPP(all12.gpPctDiffPP)}** |
+| **TOTAL / AVG** | **${all12.averageStockCycle.toFixed(2)}** | **100.0%** | **RM ${fmtNum(all12.netSoldPriceLatest, 2)}** | **RM ${fmtNum(all12.netSoldPricePrev, 2)}** | **${all12.priceDiffRm >= 0 ? '+' : ''}${fmtNum(all12.priceDiffRm, 2)} (${fmtPct(all12.priceDiffPct, 2, true)})** | **RM ${fmtNum(all12.netSoldProfitLatest, 2)}** | **RM ${fmtNum(all12.netSoldProfitPrev, 2)}** | **${all12.profitDiffRm >= 0 ? '+' : ''}${fmtNum(all12.profitDiffRm, 2)} (${fmtPct(all12.profitDiffPct, 2, true)})** | ${fmtPct(all12.gpPctLatest)} | ${fmtPct(all12.gpPctPrev)} | **${all12.gpPctDiffPP >= 0 ? '+' : ''}${fmtPP(all12.gpPctDiffPP)}** |
 
 *Formulas: Cost of Sales = Net Sold Price - Net Sold Profit; PMG Stock Cycle = Closing Custom Cost / Cost of Sales (HQ Target = 2.0). HQ 11 Focus Stock Cycle Average (Excl. WYMED-EX): ${hq.averageStockCycle.toFixed(2)} vs 2.0 target (Excess Stock: RM ${fmtNum(hq.excessStockRm, 2)}).*
 
 ---
 
 ### SLIDE 8: CATEGORY SALES ANALYSIS (MTD): TOP EXPANSION DRIVERS (WHAT GOES UP & REASONS)
-**IN-DEPTH EXPANSION DEEP DIVE — ${latestLabel} vs ${prevYearLabel}**
+**IN-DEPTH EXPANSION DEEP DIVE — ${col3Header} vs ${prevYearLabel}**
 
 1. **Supplements (SUPPLEME)**:
-   - **Growth & Profit**: Top Gross Profit generator in branch! Contributed RM ${fmtNum((m.categories.find(c => c.category === 'SUPPLEME') || {}).netSoldProfitLatest || 29291.80, 2)} in gross profit (${fmtPct((m.categories.find(c => c.category === 'SUPPLEME') || {}).gpPctLatest || 36.17)}% GP margin) on RM ${fmtNum((m.categories.find(c => c.category === 'SUPPLEME') || {}).netSoldPriceLatest || 80974.16, 2)} total turnover (${(m.categories.find(c => c.category === 'SUPPLEME') || {}).priceDiffRm >= 0 ? '+' : ''}${fmtPct((m.categories.find(c => c.category === 'SUPPLEME') || {}).priceDiffPct || 29.98, 2)}% YoY).
+   - **Growth & Profit**: Top Gross Profit generator in branch! Contributed RM ${fmtNum((m.categories.find(c => c.category === 'SUPPLEME') || {}).netSoldProfitLatest || 29291.80, 2)} in gross profit (${fmtPct((m.categories.find(c => c.category === 'SUPPLEME') || {}).gpPctLatest || 36.17)} GP margin) on RM ${fmtNum((m.categories.find(c => c.category === 'SUPPLEME') || {}).netSoldPriceLatest || 80974.16, 2)} total turnover (${(m.categories.find(c => c.category === 'SUPPLEME') || {}).priceDiffRm >= 0 ? '+' : ''}${fmtPct((m.categories.find(c => c.category === 'SUPPLEME') || {}).priceDiffPct || 29.98, 2)} YoY).
    - **Major SKU Gainers**:
 ${topHeroesStr}
    - **Underlying Reason**: Systematic DPOS companion bundling at dispensing counters, attaching metabolic and vascular protection supplements (CoQ10, Progutor, Livemore Flexmore, JH Nutrition FLVRight, Nutribridge Sheep Placenta) to regular chronic prescriptions.
 
 2. **Scheduled Drugs (SCHE-DRU)**:
-   - **Growth & Profit**: Core revenue anchor, representing ~20% of total outlet sales (RM ${fmtNum((m.categories.find(c => c.category === 'SCHE-DRU') || {}).netSoldPriceLatest || 68093.60, 2)}, +${fmtPct((m.categories.find(c => c.category === 'SCHE-DRU') || {}).priceDiffPct || 12.77, 2)}% YoY) with RM ${fmtNum((m.categories.find(c => c.category === 'SCHE-DRU') || {}).netSoldProfitLatest || 8433.04, 2)} in gross profit.
+   - **Growth & Profit**: Core revenue anchor, representing ~20% of total outlet sales (RM ${fmtNum((m.categories.find(c => c.category === 'SCHE-DRU') || {}).netSoldPriceLatest || 68093.60, 2)}, +${fmtPct((m.categories.find(c => c.category === 'SCHE-DRU') || {}).priceDiffPct || 12.77, 2)} YoY) with RM ${fmtNum((m.categories.find(c => c.category === 'SCHE-DRU') || {}).netSoldProfitLatest || 8433.04, 2)} in gross profit.
    - **Major SKU Gainers**: Novartis Entresto 50mg (+RM 3,227.00), chronic cardiovascular and endocrine therapies.
    - **Underlying Reason**: High refill compliance and long-term customer loyalty built through structured pharmacist consultations (William Chai) and digital refill reminders.
 
 3. **Food & Beverage / Clinical Nutrition (F & B)**:
-   - **Growth & Profit**: Revenue reached RM ${fmtNum((m.categories.find(c => c.category === 'F & B') || {}).netSoldPriceLatest || 53068.23, 2)} (+${fmtPct((m.categories.find(c => c.category === 'F & B') || {}).priceDiffPct || 11.14, 2)}% YoY) generating RM ${fmtNum((m.categories.find(c => c.category === 'F & B') || {}).netSoldProfitLatest || 12824.43, 2)} in profit (24.17% GP margin).
+   - **Growth & Profit**: Revenue reached RM ${fmtNum((m.categories.find(c => c.category === 'F & B') || {}).netSoldPriceLatest || 53068.23, 2)} (+${fmtPct((m.categories.find(c => c.category === 'F & B') || {}).priceDiffPct || 11.14, 2)} YoY) generating RM ${fmtNum((m.categories.find(c => c.category === 'F & B') || {}).netSoldProfitLatest || 12824.43, 2)} in profit (${fmtPct((m.categories.find(c => c.category === 'F & B') || {}).gpPctLatest || 24.17)} GP margin).
    - **Underlying Reason**: Deliberate customer migration strategy moving patients from zero-margin commercial tins to proprietary PMG clinical formulas.
 
 ---
@@ -2192,7 +2357,7 @@ ${topBleedersStr}
    - *Issue*: Delays in processing credit notes and stock reconciliations for returned warehouse stock.
    - *Action Required*: Work with IT/Operations to streamline inter-branch stock transfers and RTV status tracking.
 4. **HR & Floor Manpower**:
-   - *Issue*: Dispensing workload surges during peak hours; wide disparity in teammate House Brand contribution (ranging from 30.91% to 51.57%).
+   - *Issue*: Dispensing workload surges during peak hours; wide disparity in teammate House Brand contribution (ranging from 28.32% to 53.56%).
    - *Action Required*: Implement weekly 15-minute DPOS scenario role-plays focusing on retail assistants needing improvement (Farizin and Nurhafizah).
 5. **Marketing**:
    - *Issue*: Intensified local competitor price wars in Kuching (aggressive flyer discounting by Caring Pharmacy, Guardian, Watsons).
@@ -2204,13 +2369,13 @@ ${topBleedersStr}
 **STRATEGIC ASSESSMENT BASED ON DATA & LOCAL MARKET DYNAMICS**
 
 - **STRENGTHS (S)**:
-  - **Proprietary House Brand Core**: ${fmtPct(o.hbShareLatestPct)}% HB sales contribution (RM ${fmtNum(o.hbLatest, 2)}, +${fmtPct(o.hbDiffPct, 2)}% YoY), generating RM ${fmtNum(o.personalGpTotalLatest.netSoldProfit, 2)} in gross profit with ${fmtPct(o.personalGpTotalLatest.gpMarginPct)}% margin.
-  - **Established Chronic Care Stronghold**: Deep patient loyalty in 7th Mile Kota Sentosa, driving Scheduled Drugs (+${fmtPct((m.categories.find(c => c.category === 'SCHE-DRU') || {}).priceDiffPct || 12.77, 2)}% YoY) and Supplements (+${fmtPct((m.categories.find(c => c.category === 'SUPPLEME') || {}).priceDiffPct || 29.98, 2)}% YoY).
+  - **Proprietary House Brand Core**: ${fmtPct(o.hbShareLatestPct)} HB sales contribution (RM ${fmtNum(o.hbLatest, 2)}, +${fmtPct(o.hbDiffPct, 2)} YoY), generating RM ${fmtNum(o.personalGpTotalLatest.netSoldProfit, 2)} in gross profit with ${fmtPct(o.personalGpTotalLatest.gpMarginPct)} margin.
+  - **Established Chronic Care Stronghold**: Deep patient loyalty in 7th Mile Kota Sentosa, driving Scheduled Drugs (+${fmtPct((m.categories.find(c => c.category === 'SCHE-DRU') || {}).priceDiffPct || 12.77, 2)} YoY) and Supplements (+${fmtPct((m.categories.find(c => c.category === 'SUPPLEME') || {}).priceDiffPct || 29.98, 2)} YoY).
   - **High Clinical Trust**: Pharmacist-led consultations (William Chai) establish solid community reputation and customer retention superior to FMCG chain competitors.
 
 - **WEAKNESSES (W)**:
   - **High Inventory Capital Tie-Up**: Custom Cost of stock on hand with ${hq.averageStockCycle.toFixed(2)} months stock cycle (vs HQ target 2.0); floor clutter and aisle obstruction observed in retail walkthrough.
-  - **Teammate Performance Disparity**: HB attachment ranges from ~30.9% (Farizin) and ~32.0% (Nurhafizah) to >44%–51% (William, Jong Pei Choo, Kenix Ling).
+  - **Teammate Performance Disparity**: HB attachment ranges from ~28.3% (Farizin) and ~31.2% (Nurhafizah) to >43%–53% (William, Jong Pei Choo, Kenix Ling, Christina Lee).
   - **Low Outreach Monetization**: Health screenings at coffee shops generated high headcount (40 glucose tests) but minimal direct sales (RM 35.00) without pre-set sales packages.
 
 - **OPPORTUNITIES (O)**:
@@ -2230,13 +2395,13 @@ ${topBleedersStr}
 
 - **INITIATIVE 01: DPOS Companion Bundling Protocol**
   - *Action*: Implemented systematic companion recommendation training, training retail assistants to attach high-margin companion wellness lines (Oxxymax, Livason, Flexmore) during routine dispensing.
-  - *Result*: House Brand sales expanded to RM ${fmtNum(o.hbLatest, 2)} (${fmtPct(o.hbShareLatestPct)}% of store turnover), and HB basket size surged +${fmtPct(o.basketHbDiffPct)}% YoY.
+  - *Result*: House Brand sales expanded to RM ${fmtNum(o.hbLatest, 2)} (${fmtPct(o.hbShareLatestPct)} of store turnover), and HB basket size surged +${fmtPct(o.basketHbDiffPct)} YoY.
 - **INITIATIVE 02: Chronic Disease Management & Refill Retention**
   - *Action*: Implemented structured patient counseling and refill tracking for cardiovascular, diabetes, and renal chronic patients.
-  - *Result*: Scheduled Drug revenue increased +${fmtPct((m.categories.find(c => c.category === 'SCHE-DRU') || {}).priceDiffPct || 12.77, 2)}% YoY, establishing deep customer loyalty across 7th Mile.
+  - *Result*: Scheduled Drug revenue increased +${fmtPct((m.categories.find(c => c.category === 'SCHE-DRU') || {}).priceDiffPct || 12.77, 2)} YoY, establishing deep customer loyalty across 7th Mile.
 - **INITIATIVE 03: Clinical Nutrition Migration Strategy**
   - *Action*: Realigned front-end merchandising toward PMG proprietary nutrition formulas (Nutri Alpha, Nutrenmax, Alpha Gold, Flexsure Gold), actively converting price-sensitive consumers away from low-margin commercial formulas.
-  - *Result*: Protected gross margin against competitor price wars; F&B revenue rose +${fmtPct((m.categories.find(c => c.category === 'F & B') || {}).priceDiffPct || 11.14, 2)}% YoY with >24% GP margin.
+  - *Result*: Protected gross margin against competitor price wars; F&B revenue rose +${fmtPct((m.categories.find(c => c.category === 'F & B') || {}).priceDiffPct || 11.14, 2)} YoY with >24% GP margin.
 - **INITIATIVE 04: Community Health Outreach & Public Screening Checkpoints**
   - *Action*: Organized targeted outreach events (Hospital RCBM 100-Year Open Day, Vivacity Megamall, Fafa Coffee Shop) providing free glucose, cholesterol, and uric acid checks.
   - *Result*: Screened over 300+ community residents, building deep brand trust and driving sustained prescription footfall to the store.
@@ -2299,7 +2464,7 @@ ${topBleedersStr}
 - **MEETING DATE**: ${presDate}
 - **TAGLINE**: "Your Trusted Community Healthcare Partner · Serve Beyond Expectation"
 
-**KEY STRATEGIC COMMITMENTS (4 CORE EXECUTION TARGETS)**:
+**KEY MONTHLY FOCUS (CORE EXECUTION TARGETS)**:
 1. **Elevate House Brand Share**: Target >45% outlet HB contribution via structured weekly DPOS role-plays with junior retail assistants.
 2. **Strengthen Chronic Retention**: Deploy systematic digital appointment & refill reminders 3–5 days prior to prescription completion.
 3. **Optimize Floor Standards**: Immediately clear emergency exit walkways, return excess SCD Ensure overstock, and maintain clear-counter policy.
