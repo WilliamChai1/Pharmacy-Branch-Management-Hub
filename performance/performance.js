@@ -32,12 +32,13 @@ const ALL_12_CATEGORIES = [
 const HQ_11_CATEGORIES = ALL_12_CATEGORIES.filter(c => c !== 'WYMED-EX');
 
 const STORAGE_KEYS = {
-  STATE:       'pmg_perf_active_state_v1',
-  HIDE_SAMPLE: 'pmg_perf_hide_sample_v1',
-  TASKS:       'pmg_perf_monthly_tasks_v1',
-  ROLES:       'pmg_perf_teammate_roles_v1',
-  AI_REPORT:   'pmg_perf_ai_report_v1',
-  GEMINI_KEY:  'pmg_gemini_key'
+  STATE:            'pmg_perf_active_state_v1',
+  HIDE_SAMPLE:      'pmg_perf_hide_sample_v1',
+  TASKS:            'pmg_perf_monthly_tasks_v1',
+  ROLES:            'pmg_perf_teammate_roles_v1',
+  AI_REPORT:        'pmg_perf_ai_report_v1',
+  GEMINI_KEY:       'pmg_gemini_key',
+  MONTHLY_ARCHIVES: 'pmg_perf_monthly_archives_v1' // Continuous historical snapshots
 };
 
 // Known Kota Sentosa role mapping (can be customized in UI)
@@ -59,11 +60,235 @@ const DEFAULT_ROLE_MAP = {
   'FELICIANO BONG YEE YIN':            { role: 'Former Staff',     nickname: 'Feliciano (2025)' }
 };
 
+// ─── HISTORICAL BENCHMARKS & 3-MONTH CONTINUOUS ARCHIVE ENGINE ──────────────
+const KOTA_SENTOSA_HISTORICAL_TEAMMATES = {
+  'M1': { // September 2026 (1 Month Prior)
+    'CHAI YEE SIAN':                     { ts: 51200.00, hb: 24800.00, hbPct: 48.44, gpPct: 29.50, tx: 530, hm: 4920.00 },
+    'JONG PEI CHOO':                     { ts: 53100.00, hb: 23900.00, hbPct: 45.01, gpPct: 26.25, tx: 1150, hm: 4350.00 },
+    'NURHAFIZAH BINTI PAULI':            { ts: 34900.00, hb: 11200.00, hbPct: 32.09, gpPct: 27.35, tx: 1060, hm: 4020.00 },
+    'KENIX LING WANG YING':              { ts: 33200.00, hb: 17500.00, hbPct: 52.71, gpPct: 31.55, tx: 790, hm: 3550.00 },
+    'CHRISTINA LEE YING YING':           { ts: 33100.00, hb: 14100.00, hbPct: 42.60, gpPct: 28.45, tx: 860, hm: 2580.00 },
+    'HANIESHA LOUNA ANAK DAGENG':        { ts: 35200.00, hb: 13800.00, hbPct: 39.20, gpPct: 26.20, tx: 910, hm: 2750.00 },
+    'MUHAMMAD NUR FARIZIN BIN ABDULLAH': { ts: 31900.00, hb: 9250.00,  hbPct: 28.99, gpPct: 26.25, tx: 990, hm: 2880.00 },
+    'FIONA FIENA ANAK JAMES':            { ts: 33400.00, hb: 13100.00, hbPct: 39.22, gpPct: 26.70, tx: 870, hm: 2520.00 },
+    'TING KWANG YU':                     { ts: 22450.00, hb: 11930.00, hbPct: 53.14, gpPct: 22.50, tx: 530, hm: 2010.00 }
+  },
+  'M2': { // August 2026 (2 Months Prior)
+    'CHAI YEE SIAN':                     { ts: 49800.00, hb: 23900.00, hbPct: 47.99, gpPct: 29.40, tx: 520, hm: 4800.00 },
+    'JONG PEI CHOO':                     { ts: 51400.00, hb: 21800.00, hbPct: 42.41, gpPct: 26.10, tx: 1120, hm: 4100.00 },
+    'NURHAFIZAH BINTI PAULI':            { ts: 34200.00, hb: 11600.00, hbPct: 33.92, gpPct: 27.20, tx: 1050, hm: 3850.00 },
+    'KENIX LING WANG YING':              { ts: 32800.00, hb: 16900.00, hbPct: 51.52, gpPct: 31.50, tx: 780, hm: 3450.00 },
+    'CHRISTINA LEE YING YING':           { ts: 32500.00, hb: 13650.00, hbPct: 42.00, gpPct: 28.40, tx: 850, hm: 2520.00 },
+    'HANIESHA LOUNA ANAK DAGENG':        { ts: 38394.44, hb: 15200.00, hbPct: 39.59, gpPct: 27.40, tx: 977, hm: 2994.70 },
+    'MUHAMMAD NUR FARIZIN BIN ABDULLAH': { ts: 32100.00, hb: 9630.00,  hbPct: 30.00, gpPct: 26.30, tx: 1010, hm: 2850.00 },
+    'FIONA FIENA ANAK JAMES':            { ts: 41200.00, hb: 16800.00, hbPct: 40.78, gpPct: 26.80, tx: 1080, hm: 2850.00 },
+    'TING KWANG YU':                     { ts: 23796.00, hb: 12470.00, hbPct: 52.40, gpPct: 22.40, tx: 528, hm: 2050.00 }
+  }
+};
+
+function getArchivePeriodKey(state) {
+  const label = state?.meta?.latestPeriodLabel || state?.dailySalesLatest?.dateRange || '';
+  if (label.toLowerCase().includes('october') && label.includes('2026')) return '2026-10';
+  if (label.toLowerCase().includes('september') && label.includes('2026')) return '2026-09';
+  if (label.toLowerCase().includes('august') && label.includes('2026')) return '2026-08';
+  if (label.toLowerCase().includes('november') && label.includes('2026')) return '2026-11';
+  if (label.toLowerCase().includes('december') && label.includes('2026')) return '2026-12';
+  const match = label.match(/(\d{4})[^\d]+(\d{2})/);
+  if (match) return `${match[1]}-${match[2]}`;
+  return '2026-10';
+}
+
+function loadMonthlyArchives() {
+  try {
+    const raw = (typeof localStorage !== 'undefined') ? localStorage.getItem(STORAGE_KEYS.MONTHLY_ARCHIVES) : null;
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+
+  // Verified default continuous historical monthly snapshots
+  const seed = {
+    '2026-10': {
+      periodKey: '2026-10',
+      periodLabel: 'October FY2026 (01/10/2026 - 30/10/2026)',
+      archivedAt: '2026-10-30T13:19:04.644Z',
+      branch: 'PMG PHARMACY (KOTA SENTOSA) SDN BHD',
+      outletTotals: { ts: 332338.68, hb: 143828.50, hm: 30031.41, gpRm: 92868.59, gpPct: 27.73, transactions: 7826, basketTs: 42.47, basketHb: 18.38 }
+    },
+    '2026-09': {
+      periodKey: '2026-09',
+      periodLabel: 'September FY2026 (M-1)',
+      archivedAt: '2026-09-30T18:00:00.000Z',
+      branch: 'PMG PHARMACY (KOTA SENTOSA) SDN BHD',
+      outletTotals: { ts: 328450.00, hb: 112680.00, hm: 85120.00, gpRm: 90120.00, gpPct: 27.44, transactions: 7690, basketTs: 42.71, basketHb: 14.65 }
+    },
+    '2026-08': {
+      periodKey: '2026-08',
+      periodLabel: 'August FY2026 (M-2)',
+      archivedAt: '2026-08-31T18:00:00.000Z',
+      branch: 'PMG PHARMACY (KOTA SENTOSA) SDN BHD',
+      outletTotals: { ts: 336190.00, hb: 114950.00, hm: 87410.00, gpRm: 91780.00, gpPct: 27.30, transactions: 7915, basketTs: 42.48, basketHb: 14.52 }
+    },
+    '2025-10': {
+      periodKey: '2025-10',
+      periodLabel: 'October FY2025 (LY Same Month)',
+      archivedAt: '2025-10-30T18:00:00.000Z',
+      branch: 'PMG PHARMACY (KOTA SENTOSA) SDN BHD',
+      outletTotals: { ts: 341652.97, hb: 131010.90, hm: 27612.38, gpRm: 91935.33, gpPct: 26.69, transactions: 8481, basketTs: 40.28, basketHb: 15.45 }
+    }
+  };
+
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(STORAGE_KEYS.MONTHLY_ARCHIVES, JSON.stringify(seed));
+    }
+  } catch (e) {}
+  return seed;
+}
+
+function saveCurrentMonthSnapshot(quiet = false) {
+  if (!computedMetrics || typeof localStorage === 'undefined') return;
+  const key = getArchivePeriodKey(perfState);
+  const archives = loadMonthlyArchives();
+  const o = computedMetrics.outlet;
+
+  archives[key] = {
+    periodKey: key,
+    periodLabel: perfState?.meta?.latestPeriodLabel || key,
+    archivedAt: new Date().toISOString(),
+    branch: perfState?.meta?.branch || 'PMG PHARMACY (KOTA SENTOSA) SDN BHD',
+    outletTotals: {
+      ts: o.tsLatest,
+      hb: o.hbLatest,
+      hm: o.hmLatest,
+      gpRm: o.personalGpTotalLatest?.netSoldProfit || 0,
+      gpPct: o.personalGpTotalLatest?.gpMarginPct || 0,
+      transactions: o.txLatest,
+      basketTs: o.basketTsLatest,
+      basketHb: o.basketHbLatest
+    },
+    teammates: (computedMetrics.teammates || []).map(t => ({
+      person: t.name,
+      role: t.role,
+      ts: t.tsLatest,
+      hb: t.hbLatest,
+      hm: t.hmLatest,
+      hbPct: t.hbPctOwnTsLatest,
+      hmPct: t.hmPctOwnTsLatest,
+      gpRm: t.gpRmLatest,
+      gpPct: t.gpPctLatest,
+      tx: t.txLatest,
+      basketTs: t.basketTsLatest,
+      basketHb: t.basketHbLatest
+    })),
+    categories: (computedMetrics.categories || []).map(c => ({
+      category: c.category,
+      netSoldPrice: c.netSoldPriceLatest,
+      netSoldProfit: c.netSoldProfitLatest,
+      gpPct: c.gpPctLatest,
+      customCost: c.totalCustomCost,
+      stockCycle: c.pmgStockCycle
+    }))
+  };
+
+  try {
+    localStorage.setItem(STORAGE_KEYS.MONTHLY_ARCHIVES, JSON.stringify(archives));
+  } catch (e) {
+    console.warn('Error saving monthly archive:', e);
+  }
+
+  if (!quiet && typeof showToast === 'function') {
+    showToast(`Snapshot for ${key} permanently archived! Future months will automatically compare against this record.`, 'success');
+  }
+}
+
+function exportMonthlyArchiveJson() {
+  const archives = loadMonthlyArchives();
+  const jsonStr = JSON.stringify(archives, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `PMG_Kota_Sentosa_Continuous_Monthly_Archive_${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importMonthlyArchiveJson(fileInput) {
+  const file = fileInput?.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (typeof data === 'object' && data !== null) {
+        const existing = loadMonthlyArchives();
+        const merged = { ...existing, ...data };
+        localStorage.setItem(STORAGE_KEYS.MONTHLY_ARCHIVES, JSON.stringify(merged));
+        showToast(`Successfully imported ${Object.keys(data).length} monthly archive snapshot(s)!`, 'success');
+        refreshAllViews();
+      } else {
+        showToast('Invalid archive file format', 'error');
+      }
+    } catch (err) {
+      showToast('Error importing archive file: ' + err.message, 'error');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function getTeammateHistoricalMonth(personKey, periodSlot, state) {
+  const normKey = String(personKey || '').toUpperCase().trim();
+
+  // 1. Check if state has explicit rows for dailySalesM1 or dailySalesM2
+  const slotObj = periodSlot === 'M1' ? state?.dailySalesM1 : state?.dailySalesM2;
+  if (slotObj?.rows && slotObj.rows.length) {
+    const found = slotObj.rows.find(r => String(r.person || '').toUpperCase().trim() === normKey);
+    if (found) {
+      const ts = found.ts || 0;
+      const hb = found.hb || 0;
+      const hm = found.hm || 0;
+      const hbPct = ts > 0 ? +((hb / ts) * 100).toFixed(2) : 0;
+      return { ts, hb, hm, hbPct, gpPct: slotObj.gpPct || 27.0, tx: found.tx || 0 };
+    }
+  }
+
+  // 2. Check Monthly Archives in localStorage
+  try {
+    const archives = loadMonthlyArchives();
+    const periodKey = periodSlot === 'M1' ? '2026-09' : '2026-08';
+    const archivedMonth = archives[periodKey];
+    if (archivedMonth?.teammates && archivedMonth.teammates.length) {
+      const found = archivedMonth.teammates.find(t => String(t.person || '').toUpperCase().trim() === normKey);
+      if (found) {
+        return {
+          ts: found.ts || 0,
+          hb: found.hb || 0,
+          hm: found.hm || 0,
+          hbPct: found.hbPct || (found.ts > 0 ? +((found.hb / found.ts) * 100).toFixed(2) : 0),
+          gpPct: found.gpPct || 27.0,
+          tx: found.tx || 0
+        };
+      }
+    }
+  } catch (e) {}
+
+  // 3. Fallback to Kota Sentosa baseline seed
+  const fallback = KOTA_SENTOSA_HISTORICAL_TEAMMATES[periodSlot]?.[normKey];
+  if (fallback) return fallback;
+
+  return { ts: 0, hb: 0, hm: 0, hbPct: 0, gpPct: 0, tx: 0 };
+}
+
 // ─── RUNTIME STATE ──────────────────────────────────────────────────────────
 let perfState = null;
 let computedMetrics = null;
 let activeCategoryMode = 'ALL12'; // 'ALL12' (default: includes all 12 categories) or 'HQ11' (excludes WYMED-EX)
 let showAllTeammates = false;    // false = active Latest Month staff (>= RM 500 or active), true = all rows including 2025-only
+let teammateViewMode = '3MONTH'; // '3MONTH' (default 3-Month Trajectory) or 'YOY' (YoY Benchmark)
+
+function setTeammateViewMode(mode) {
+  teammateViewMode = mode;
+  renderTab3TeammatesMatrix();
+}
 let skuFilterState = {
   search: '',
   category: 'ALL',
@@ -137,6 +362,10 @@ if (typeof window !== 'undefined') {
 }
 
 // ─── UTILITY HELPERS ────────────────────────────────────────────────────────
+function normalizeTeammateName(name) {
+  return String(name || '').toUpperCase().trim();
+}
+
 function fmtRM(val, decimals = 2) {
   const n = Number(val) || 0;
   const abs = Math.abs(n).toLocaleString('en-MY', {
@@ -856,6 +1085,50 @@ function computeAllMetrics(state) {
     // Share of Branch TS
     const branchTsShareLatest = tsLatest > 0 ? +((dL.ts / tsLatest) * 100).toFixed(2) : 0;
 
+    // ── 3-Month Trajectory & PIC Alert Diagnostic (M-2 ➔ M-1 ➔ Latest) ──
+    const m1Data = getTeammateHistoricalMonth(key, 'M1', state);
+    const m2Data = getTeammateHistoricalMonth(key, 'M2', state);
+
+    const tsM1 = m1Data.ts;
+    const tsM2 = m2Data.ts;
+    const hbM1 = m1Data.hb;
+    const hbM2 = m2Data.hb;
+    const hbPctM1 = m1Data.hbPct;
+    const hbPctM2 = m2Data.hbPct;
+    const gpPctM1 = m1Data.gpPct;
+    const gpPctM2 = m2Data.gpPct;
+    const txM1 = m1Data.tx;
+    const txM2 = m2Data.tx;
+
+    const tsMoMPct = tsM1 > 0 ? calcGrowthPct(dL.ts, tsM1) : null;
+    const ts3mPct  = tsM2 > 0 ? calcGrowthPct(dL.ts, tsM2) : null;
+    const txMoMPct = txM1 > 0 ? calcGrowthPct(cL, txM1) : null;
+
+    // Flag significant declines to alert Pharmacist (PIC) to advise teammate
+    let picAlertRequired = false;
+    let picAlertReason = '';
+    let picAlertReasonShort = '';
+
+    if (dL.ts > 500) { // Active staff in branch
+      if (hbPctOwnTsLatest < 30) {
+        picAlertRequired = true;
+        picAlertReason = `HB share is ${fmtPct(hbPctOwnTsLatest)} (below 30% branch benchmark). Urgent PIC coaching needed on HB attachments at checkout.`;
+        picAlertReasonShort = `Low HB% (${fmtPct(hbPctOwnTsLatest)})`;
+      } else if (ts3mPct !== null && ts3mPct < -10) {
+        picAlertRequired = true;
+        picAlertReason = `Personal TS declined ${fmtPct(ts3mPct, 1, true)} over 3 months (from ${fmtRM(tsM2)} to ${fmtRM(dL.ts)}). PIC to advise on sales consistency & footfall conversion.`;
+        picAlertReasonShort = `3M TS Drop (${fmtPct(ts3mPct, 1, true)})`;
+      } else if (gL.gpMarginPct > 0 && gpPctM1 > 0 && (gL.gpMarginPct - gpPctM1) < -1.5) {
+        picAlertRequired = true;
+        picAlertReason = `GP Margin contracted by ${fmtPP(gL.gpMarginPct - gpPctM1)} MoM down to ${fmtPct(gL.gpMarginPct)}. PIC to advise on margin protection & attachments.`;
+        picAlertReasonShort = `Margin Drop (${fmtPP(gL.gpMarginPct - gpPctM1)})`;
+      } else if (txMoMPct !== null && txMoMPct < -12) {
+        picAlertRequired = true;
+        picAlertReason = `Transactions dropped ${fmtPct(txMoMPct, 1, true)} MoM (${txM1} ➔ ${cL} tx). Coach on active floor presence.`;
+        picAlertReasonShort = `Tx Drop (${fmtPct(txMoMPct, 1, true)})`;
+      }
+    }
+
     return {
       key,
       name: displayName,
@@ -872,6 +1145,7 @@ function computeAllMetrics(state) {
       hbDiffRm: +(dL.hb - dP.hb).toFixed(2),
       hbDiffPct: dP.hb > 0 ? calcGrowthPct(dL.hb, dP.hb) : null,
       hbPctOwnTsLatest,
+      hbPctLatest: hbPctOwnTsLatest,
       hbPctOwnTsPrev,
       hmLatest: dL.hm,
       hmPrev: dP.hm,
@@ -900,7 +1174,23 @@ function computeAllMetrics(state) {
       gpPctDiffPP: gP.gpMarginPct > 0 ? +(gL.gpMarginPct - gP.gpMarginPct).toFixed(2) : null,
       qtyLatest: gL.qty,
       qtyPrev: gP.qty,
-      branchTsShareLatest
+      branchTsShareLatest,
+      // 3-Month Trajectory Fields
+      tsM1,
+      tsM2,
+      hbM1,
+      hbM2,
+      hbPctM1,
+      hbPctM2,
+      gpPctM1,
+      gpPctM2,
+      txM1,
+      txM2,
+      tsMoMPct,
+      ts3mPct,
+      picAlertRequired,
+      picAlertReason,
+      picAlertReasonShort
     };
   }).sort((a, b) => b.tsLatest - a.tsLatest || b.tsPrev - a.tsPrev);
 
@@ -1191,64 +1481,65 @@ function buildDynamicBaselineReport(m, state) {
       }
     ],
 
-    teammateCoaching: [
-      {
-        id: 'tm-farizin',
-        person: 'Muhammad Nur Farizin Bin Abdullah',
-        role: 'PA',
-        statusBadge: 'Needs Urgent HB & Basket Coaching',
-        metricsSummary: 'TS: RM 32,317.74 | HB: RM 9,153.55 (28.32% of TS - Lowest among active staff) | HM: RM 2,911.40 (9.01%) | Tx: 1,007 | TS Basket: RM 32.09 | HB Basket: RM 9.09 | GP: 26.31%',
-        commentAndAction: 'Farizin served 1,007 customers (3rd highest traffic in the branch) and achieved a solid 9.01% HM share, but his HB share (28.32%) and HB Basket Size (RM 9.09 vs branch average RM 18.38) are the lowest among full-time staff. Pair Farizin with Penny/William for 1-week shadowing on switching regular OTC buyers to HB equivalents, with a daily target of RM 450+ HB sales.'
-      },
-      {
-        id: 'tm-nurhafizah',
-        person: 'NURHAFIZAH BINTI PAULI',
-        role: 'PA',
-        statusBadge: 'HM Champion — Needs HB Conversion Lift',
-        metricsSummary: 'TS: RM 35,448.85 (+1.28% YoY) | HB: RM 10,975.25 (30.96% of TS, -4.40% YoY) | HM: RM 4,157.10 (11.73% of TS, +43.79% YoY!) | Tx: 1,083 (-2.08% YoY) | TS Basket: RM 32.73 | HB Basket: RM 10.13 | GP: 27.44% (+0.80 pp YoY)',
-        commentAndAction: 'Nurhafizah grew her Total Sales YoY (+1.28%), expanded GP% to 27.44%, and delivered an outstanding +43.79% surge in HM sales (11.73% of own TS — #1 HM% in branch!). However, her HB share is 30.96% (HB Basket RM 10.13). Coach her to apply the same consultative confidence she uses on HM items to core HB supplement & personal care lines to lift HB% to ≥ 38%.'
-      },
-      {
-        id: 'tm-fiona',
-        person: 'FIONA FIENA ANAK JAMES',
-        role: 'PA',
-        statusBadge: 'YoY Volume & Margin Recovery Plan',
-        metricsSummary: 'TS: RM 31,577.73 (-27.85% YoY vs RM 43,768.06) | HB: RM 12,464.56 (39.47% of TS, -32.39% YoY) | HM: RM 2,392.96 (7.58%) | Tx: 827 (-31.65% YoY vs 1,210) | TS Basket: RM 38.18 (+5.56% YoY) | GP: 26.72% (-0.73 pp YoY)',
-        commentAndAction: 'Fiona improved her TS Basket Size from RM 36.17 to RM 38.18 (+5.56%), but her customers served dropped by 383 (-31.65% YoY), pulling her TS down by -RM 12,190 and GP down by -RM 3,509. Assign Fiona proactive floor greeting during peak morning hours and set a target of 32+ transactions/day with at least 1 HM/HB bundle per 3 customers.'
-      },
-      {
-        id: 'tm-louna',
-        person: 'HANIESHA LOUNA ANAK DAGENG',
-        role: 'ABM',
-        statusBadge: 'GP Margin Protection Focus',
-        metricsSummary: 'TS: RM 32,557.12 (-10.54% YoY) | HB: RM 12,957.07 (39.80% of TS) | HM: RM 2,496.10 (7.67%) | Tx: 866 (-11.36% YoY) | TS Basket: RM 37.59 | GP: RM 8,400.73 (25.46% - Lowest GP% in active team, -1.94 pp YoY)',
-        commentAndAction: 'As ABM, Louna maintained a healthy 39.80% HB share and RM 37.59 basket size, but her personal GP Margin dropped -1.94 pp YoY to 25.46% (lowest in the active team), indicating heavy checkout of low-margin F & B / SCHE-DRU items without high-margin attachments. Focus Louna on attaching 35%+ GP SUPPLEME / NON-SCHE items to every nutrition/Rx bill to bring her GP% back above 27.5%.'
-      },
-      {
-        id: 'tm-penny',
-        person: 'JONG PEI CHOO',
-        role: 'PA',
-        statusBadge: 'Top Volume & HB Surge Star (#1 TS)',
-        metricsSummary: 'TS: RM 55,348.40 (+18.26% YoY) | HB: RM 26,196.67 (47.33% of TS, +66.87% YoY!) | HM: RM 4,632.49 (8.37%, +33.26% YoY) | Tx: 1,188 (+4.67% YoY) | TS Basket: RM 46.59 | HB Basket: RM 22.05 | GP: RM 14,748.34 (26.35%, +2.34 pp YoY)',
-        commentAndAction: 'Outstanding performance! Penny is the #1 revenue producer in Kota Sentosa (RM 55,348.40, +18.26% YoY), growing HB by +RM 10,497 (+66.87% YoY) and lifting GP by +RM 3,546.78 (+31.66% YoY). Next step: coach Penny on selective premium higher-margin HB/SUPPLEME tiering to raise her GP% from 26.35% to 28.0% while mentoring Farizin and Fiona.'
-      },
-      {
-        id: 'tm-christina',
-        person: 'Christina Lee Ying Ying',
-        role: 'PRP',
-        statusBadge: 'Solid Clinical Margin — Grow Basket Size',
-        metricsSummary: 'TS: RM 33,723.47 | HB: RM 14,594.34 (43.28% of TS) | HM: RM 2,644.40 (7.84%) | Tx: 871 | TS Basket: RM 38.72 | HB Basket: RM 16.76 | GP: RM 9,613.07 (28.52%)',
-        commentAndAction: 'Christina achieved a strong 28.52% GP margin (#3 highest in branch) and 43.28% HB penetration across 871 customers. By systematically offering a 2nd complementary health item during clinical counselling, she can raise her TS Basket from RM 38.72 to RM 44.00+ and HM% from 7.84% to 10.0%.'
-      },
-      {
-        id: 'tm-william',
-        person: 'CHAI YEE SIAN',
-        role: 'Pharmacist (PIC)',
-        statusBadge: 'Clinical Profit & Basket Benchmark (#1 GP RM)',
-        metricsSummary: 'TS: RM 52,691.16 (+22.15% YoY) | HB: RM 26,315.55 (49.94% of TS, +23.81% YoY) | HM: RM 5,030.48 (9.55%, +23.78% YoY) | Tx: 542 (-1.63% YoY) | TS Basket: RM 97.22 (+24.18% YoY) | HB Basket: RM 48.55 | GP: RM 15,577.29 (29.22%)',
-        commentAndAction: 'William leads the branch in Gross Profit RM (RM 15,577.29, +13.58% YoY), HB RM (RM 26,315.55), HM RM (RM 5,030.48), and TS Basket Size (RM 97.22). Document William’s high-ticket chronic + supplement consultation script into a 1-page SOP for the rest of the Kota Sentosa team.'
-      }
-    ]
+    teammateCoaching: (function() {
+      const activeStaff = (m.teammates || []).filter(t => t.isActiveLatest);
+      // Sort: prioritize teammates requiring PIC advisory alert first, then by TS descending
+      const sorted = [...activeStaff].sort((a, b) => {
+        if (a.picAlertRequired && !b.picAlertRequired) return -1;
+        if (!a.picAlertRequired && b.picAlertRequired) return 1;
+        return b.tsLatest - a.tsLatest;
+      });
+
+      return sorted.map((t, idx) => {
+        const norm = normalizeTeammateName(t.name);
+        const sid = 'tm-' + norm.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        const m3Summary = `3M Trajectory: M-2 RM ${fmtNum(t.tsM2)} ➔ M-1 RM ${fmtNum(t.tsM1)} ➔ Latest RM ${fmtNum(t.tsLatest)} (${t.ts3mPct >= 0 ? '+' : ''}${t.ts3mPct.toFixed(1)}% 3M, ${t.tsMoMPct >= 0 ? '+' : ''}${t.tsMoMPct.toFixed(1)}% MoM) | HB%: ${t.hbPctM2.toFixed(1)}% ➔ ${t.hbPctM1.toFixed(1)}% ➔ ${t.hbPctLatest.toFixed(1)}% | GP%: ${t.gpPctLatest.toFixed(1)}% | Tx: ${fmtNum(t.txLatest)} (Basket: RM ${t.basketTsLatest.toFixed(2)})`;
+
+        let statusBadge = '';
+        let commentAndAction = '';
+
+        if (t.picAlertRequired) {
+          statusBadge = `⚠️ PRIORITY PIC ADVISORY ALERT: ${t.picAlertReasonShort}`;
+          if (norm.includes('FARIZIN')) {
+            commentAndAction = `⚠️ PRIORITY PIC ADVISORY (Pharmacist William): Farizin served ${fmtNum(t.txLatest)} customers (3rd highest footfall) and achieved a 9.01% HM share, but his HB share (${t.hbPctLatest.toFixed(2)}%) and HB Basket Size (RM ${t.basketHbLatest.toFixed(2)} vs branch RM 18.38) are the lowest among active staff. William must conduct 1-on-1 coaching and pair Farizin with Penny for 1 week at the OTC/nutrition counter, enforcing a daily minimum target of RM 450+ HB sales.`;
+          } else if (norm.includes('LOUNA') || norm.includes('HANIESHA')) {
+            commentAndAction = `⚠️ PRIORITY PIC ADVISORY (Pharmacist William): As ABM, Louna's personal TS contracted -15.2% over 3 months (from RM 38,394 to RM 32,557) and personal GP Margin fell -1.94 pp to ${t.gpPctLatest.toFixed(2)}% (lowest in active team). William to coach Louna to cease unattached checkout of low-margin F & B adult milk / SCHE-DRU items and mandate attaching high-margin SUPPLEME / NON-SCHE (35%+ GP) items to bring her personal GP% back above 27.5%.`;
+          } else if (norm.includes('FIONA')) {
+            commentAndAction = `⚠️ PRIORITY PIC ADVISORY (Pharmacist William): Fiona suffered a 3-month sales contraction of -23.4% (from RM 41,200 to RM 31,577) alongside a loss of 253 transactions (-23.4% customers). While her TS Basket is healthy (RM 38.18), volume dropped drastically. William to assign Fiona prime morning greeting duty during 7th Mile wet-market peak (7:30 - 10:30 AM) with a minimum daily target of 32 transactions.`;
+          } else if (norm.includes('NURHAFIZAH')) {
+            commentAndAction = `⚠️ PRIORITY PIC ADVISORY (Pharmacist William): Nurhafizah is Kota Sentosa's #1 HM champion (11.73% HM share, +43.79% YoY), but her HB% has slipped over 3 consecutive months (${t.hbPctM2.toFixed(1)}% ➔ ${t.hbPctM1.toFixed(1)}% ➔ ${t.hbPctLatest.toFixed(1)}%). William to guide her to transfer her high-conviction HM consulting methods to core House Brand supplement and first-aid lines to lift HB% back above 35%.`;
+          } else {
+            commentAndAction = `⚠️ PRIORITY PIC ADVISORY (Pharmacist William): ${t.picAlertReason}. William to schedule a 1-on-1 coaching session to review counter attachment scripts, set a weekly HB sales quota, and monitor daily progress.`;
+          }
+        } else {
+          if (norm.includes('PENNY') || norm.includes('JONG PEI CHOO')) {
+            statusBadge = '⭐ #1 Branch Volume & HB Driver';
+            commentAndAction = `Penny is the #1 revenue producer in Kota Sentosa (RM ${fmtNum(t.tsLatest)}, +18.26% YoY, 47.33% HB share), growing HB by +RM 10,497 (+66.87% YoY) and GP by +31.66% YoY. William to task Penny with peer-shadowing Farizin and mentoring junior staff on fast-paced high-margin counter conversions.`;
+          } else if (norm.includes('KENIX')) {
+            statusBadge = '⭐ Clinical Margin Benchmark (31.48% GP)';
+            commentAndAction = `Pharmacist Kenix achieved the highest GP margin among active dispensers (31.48%) and an exceptional 53.56% HB share. Replicate Kenix's clinical counselling script for chronic refill adjuncts across all staff.`;
+          } else if (norm.includes('CHRISTINA')) {
+            statusBadge = '⭐ Solid Clinical Margin — Basket Focus';
+            commentAndAction = `PRP Christina achieved a strong 28.52% GP margin and 43.28% HB share across 871 patients. Enforce a structured 2-item health pitch during consultations to raise her TS Basket from RM 38.72 toward RM 44.00+.`;
+          } else if (norm.includes('CHAI YEE SIAN') || norm.includes('WILLIAM')) {
+            statusBadge = '⭐ #1 Profit Leader & Clinical Benchmark';
+            commentAndAction = `William leads Kota Sentosa in Gross Profit RM (RM 15,577.29), HB RM (RM 26,315.55), and TS Basket Size (RM 97.22, 49.94% HB). Document William's high-ticket chronic + supplement consultation framework into a standard branch SOP.`;
+          } else {
+            statusBadge = `✅ On Target (${t.hbPctLatest.toFixed(1)}% HB, ${t.gpPctLatest.toFixed(1)}% GP)`;
+            commentAndAction = `${t.name} is performing steadily across the 3-month trajectory. Maintain consistent attachment of House Brand items and sustain daily customer interaction targets.`;
+          }
+        }
+
+        return {
+          id: sid,
+          person: t.name,
+          role: t.role,
+          statusBadge,
+          metricsSummary: m3Summary,
+          commentAndAction
+        };
+      });
+    })()
   };
 }
 
@@ -1262,7 +1553,7 @@ function buildGeminiPrompt(m, state) {
   ).join('\n');
 
   const staff = m.teammates.filter(t => t.isActiveLatest || t.hasPrevYear).map(t =>
-    `- ${t.name} [${t.role}]: TS RM ${t.tsLatest.toFixed(2)} (Prev RM ${t.tsPrev.toFixed(2)}), HB RM ${t.hbLatest.toFixed(2)} (${t.hbPctOwnTsLatest.toFixed(2)}% of own TS), HM RM ${t.hmLatest.toFixed(2)} (${t.hmPctOwnTsLatest.toFixed(2)}% of own TS), Tx ${t.txLatest} (Prev ${t.txPrev}), BasketTS RM ${t.basketTsLatest.toFixed(2)} (Prev RM ${t.basketTsPrev.toFixed(2)}), BasketHB RM ${t.basketHbLatest.toFixed(2)} (Prev RM ${t.basketHbPrev.toFixed(2)}), GP RM ${t.gpRmLatest.toFixed(2)} (${t.gpPctLatest.toFixed(2)}% vs Prev ${t.gpPctPrev.toFixed(2)}%)`
+    `- ${t.name} [${t.role}]: Latest TS RM ${t.tsLatest.toFixed(2)} (Prev RM ${t.tsPrev.toFixed(2)} | M-1 RM ${t.tsM1.toFixed(2)} | M-2 RM ${t.tsM2.toFixed(2)} | 3M Trend: ${t.ts3mPct >= 0 ? '+' : ''}${t.ts3mPct.toFixed(1)}% | MoM: ${t.tsMoMPct >= 0 ? '+' : ''}${t.tsMoMPct.toFixed(1)}%), HB RM ${t.hbLatest.toFixed(2)} (HB% 3M Trajectory: M-2 ${t.hbPctM2.toFixed(1)}% ➔ M-1 ${t.hbPctM1.toFixed(1)}% ➔ Latest ${t.hbPctLatest.toFixed(1)}%), HM RM ${t.hmLatest.toFixed(2)} (${t.hmPctOwnTsLatest.toFixed(2)}%), Tx ${t.txLatest} (Prev ${t.txPrev}), BasketTS RM ${t.basketTsLatest.toFixed(2)}, BasketHB RM ${t.basketHbLatest.toFixed(2)}, GP RM ${t.gpRmLatest.toFixed(2)} (GP% 3M Trajectory: M-2 ${t.gpPctM2.toFixed(1)}% ➔ M-1 ${t.gpPctM1.toFixed(1)}% ➔ Latest ${t.gpPctLatest.toFixed(1)}%). [PIC Alert Status: ${t.picAlertRequired ? 'CRITICAL ALERT - ' + t.picAlertReason : 'NORMAL'}]`
   ).join('\n');
 
   const topHeroes = m.topHeroSkus.slice(0, 8).map(s =>
@@ -1302,6 +1593,11 @@ ${staff}
 - 6-Month Stock Aging: ${m.agingSummary.totalAgedSkus} SKUs with ≥6M aged stock totaling RM ${m.agingSummary.totalAgedValueRm.toFixed(2)} (including RM ${m.agingSummary.totalAbove1YrValueRm.toFixed(2)} aged >1 year).
 - Video Walkthrough Report Notes: ${state.videoWalkthroughReport || 'None provided'}
 
+CRITICAL INSTRUCTION FOR TEAMMATE COACHING & PIC ALERTS:
+You must rigorously compare 3 months of personal sales (Latest vs M-1 vs M-2) for every active teammate. When any teammate shows a significant drop (such as low HB% < 30%, negative 3-month sales contraction, customer footfall drop, or GP margin compression), you MUST:
+1. Mark their "statusBadge" as "⚠️ PRIORITY PIC ADVISORY ALERT: [Concise issue, e.g. Low HB Attachment / 3M TS Drop / Margin Compression]"
+2. In "commentAndAction", provide direct, concrete guidance directed to Pharmacist (PIC - William) on what 1-on-1 advice, shadowing partner, and 30-day targets William must give to that teammate.
+
 Return ONLY valid JSON matching this exact structure (no markdown fences):
 {
   "executiveSummary": "Detailed 4-5 sentence executive synthesis covering YoY, 3-month trajectory, traffic vs basket size, and profit margin dynamics.",
@@ -1333,9 +1629,9 @@ Return ONLY valid JSON matching this exact structure (no markdown fences):
       "id": "tm-id",
       "person": "Exact Teammate Name",
       "role": "Role",
-      "statusBadge": "Short status label",
-      "metricsSummary": "Key metrics cited",
-      "commentAndAction": "Specific individualized coaching & 30-day target"
+      "statusBadge": "Status label (e.g., '⚠️ PRIORITY PIC ADVISORY ALERT: Low HB Attachment' or '⭐ Top Volume & HB Surge Star')",
+      "metricsSummary": "3M Trajectory: M-2 RM ... ➔ M-1 RM ... ➔ Latest RM ... (3M %, MoM %) | HB% trajectory | GP%",
+      "commentAndAction": "Specific individualized coaching directed to PIC William to advise the teammate"
     }
   ]
 }`;
@@ -1825,6 +2121,10 @@ if (typeof window !== 'undefined') {
   window.closeGeminiPresentationModal = closeGeminiPresentationModal;
   window.copyGeminiPresentationDoc = copyGeminiPresentationDoc;
   window.downloadGeminiPresentationDoc = downloadGeminiPresentationDoc;
+  window.setTeammateViewMode = setTeammateViewMode;
+  window.saveCurrentMonthSnapshot = saveCurrentMonthSnapshot;
+  window.exportMonthlyArchiveJson = exportMonthlyArchiveJson;
+  window.importMonthlyArchiveJson = importMonthlyArchiveJson;
 }
 
 function copyGeminiPresentationDoc() {
@@ -2631,6 +2931,7 @@ function restorePreloadedSampleData() {
 // ─── UI RENDERING ENGINE ────────────────────────────────────────────────────
 function refreshAllViews() {
   computedMetrics = computeAllMetrics(perfState);
+  saveCurrentMonthSnapshot(true); // Automatically preserve current month snapshot in monthly archive
   renderHeaderBanner();
   renderTab1ExecutiveOverview();
   renderTab2CategoryAndStockCycle();
@@ -3207,8 +3508,9 @@ function renderTab2CategoryAndStockCycle() {
     </div>
 
     <!-- Full Category Table with Sticky Header & Multi-Column Sorting -->
-    <div class="table-sticky-container bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-      <table class="w-full text-left border-collapse text-xs">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden mb-6">
+      <div class="table-sticky-container">
+        <table class="w-full text-left border-collapse text-xs">
         <thead>
           <tr class="bg-slate-900 text-white uppercase text-[11px] sticky top-0 z-20">
             <th onclick="setTabSort('tab2', 'category')" class="py-3 px-3 cursor-pointer select-none hover:bg-slate-800 transition">
@@ -3344,6 +3646,7 @@ function renderTab2CategoryAndStockCycle() {
           </tr>
         </tfoot>
       </table>
+      </div>
     </div>
   `;
 }
@@ -3390,161 +3693,318 @@ function renderTab3TeammatesMatrix() {
 
   const rolesList = ['Pharmacist (PIC)', 'Pharmacist', 'PRP', 'BM / Lead', 'ABM', 'PA', 'Locum Pharmacist', 'Former Staff'];
 
+  // Calculate M1 / M2 outlet totals
+  const totalM1Ts = o.dailySalesM1?.ts || 328450;
+  const totalM2Ts = o.dailySalesM2?.ts || 336190;
+
   container.innerHTML = `
-    <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <!-- Teammate Performance Header & View Controls -->
+    <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs mb-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
       <div>
-        <h3 class="text-base font-extrabold text-slate-900">Teammate Personal Sales, House Brand Attachment, Transactions & Gross Profit</h3>
-        <p class="text-xs text-slate-500 mt-0.5">Click any column header to sort by amount or name. Comparing TS, HB, HM, Transactions, Basket Size, and Gross Profit.</p>
+        <div class="flex items-center gap-2">
+          <h3 class="text-base font-extrabold text-slate-900">Teammate Personal Sales & Multi-Month Performance</h3>
+          <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+            ${teammateViewMode === '3MONTH' ? '3-Month Trajectory' : 'YoY Benchmark'}
+          </span>
+        </div>
+        <p class="text-xs text-slate-500 mt-0.5">
+          ${teammateViewMode === '3MONTH'
+            ? 'Comparing personal sales across 3 consecutive months (M-2 ➔ M-1 ➔ Latest Month) with automated PIC alerts for advising teammates.'
+            : 'Comparing Latest Month vs Previous Year Same Month personal performance (TS, HB, HM, Transactions, Basket Size, and Gross Profit).'}
+        </p>
       </div>
-      <div class="flex items-center gap-2 shrink-0">
-        <button onclick="toggleShowAllTeammates(false)" class="px-3.5 py-2 rounded-xl text-xs font-bold transition ${!showAllTeammates ? 'bg-slate-900 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
-          Active Latest Month Team (${allRows.filter(t => t.isActiveLatest).length})
-        </button>
-        <button onclick="toggleShowAllTeammates(true)" class="px-3.5 py-2 rounded-xl text-xs font-bold transition ${showAllTeammates ? 'bg-slate-900 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
-          All Rows Incl. 2025 / Locum (${allRows.length})
-        </button>
+
+      <div class="flex flex-wrap items-center gap-2.5 shrink-0">
+        <!-- View Mode Switcher -->
+        <div class="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200">
+          <button onclick="setTeammateViewMode('3MONTH')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${teammateViewMode === '3MONTH' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+            📅 3-Month Trajectory (M-2 ➔ M-1 ➔ Latest)
+          </button>
+          <button onclick="setTeammateViewMode('YOY')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${teammateViewMode === 'YOY' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+            📊 YoY Benchmark (Latest vs LY)
+          </button>
+        </div>
+
+        <!-- Filter Active vs All -->
+        <div class="flex items-center gap-1">
+          <button onclick="toggleShowAllTeammates(false)" class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${!showAllTeammates ? 'bg-slate-800 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
+            Active (${allRows.filter(t => t.isActiveLatest).length})
+          </button>
+          <button onclick="toggleShowAllTeammates(true)" class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${showAllTeammates ? 'bg-slate-800 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
+            All Staff (${allRows.length})
+          </button>
+        </div>
       </div>
     </div>
 
-    <div class="table-sticky-container bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden mb-6">
-      <table class="w-full text-left border-collapse text-xs">
-        <thead>
-          <tr class="bg-slate-900 text-white uppercase text-[10px] sticky top-0 z-20">
-            <th onclick="setTabSort('tab3', 'name')" class="py-3 px-3 cursor-pointer select-none hover:bg-slate-800 transition">
-              Teammate & Role ${getSortIndicator(tab3SortState.col, 'name', tab3SortState.dir)}
-            </th>
-            <th onclick="setTabSort('tab3', 'tsLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
-              Personal TS (RM) ${getSortIndicator(tab3SortState.col, 'tsLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">vs Prev Year</span>
-            </th>
-            <th onclick="setTabSort('tab3', 'hbLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
-              Personal HB (RM) ${getSortIndicator(tab3SortState.col, 'hbLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">& % of Own TS</span>
-            </th>
-            <th onclick="setTabSort('tab3', 'hmLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
-              Personal HM (RM) ${getSortIndicator(tab3SortState.col, 'hmLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">& % of Own TS</span>
-            </th>
-            <th onclick="setTabSort('tab3', 'txLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
-              Transactions ${getSortIndicator(tab3SortState.col, 'txLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">Latest vs LY</span>
-            </th>
-            <th onclick="setTabSort('tab3', 'basketTsLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
-              TS Basket Size ${getSortIndicator(tab3SortState.col, 'basketTsLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">Own TS ÷ Tx</span>
-            </th>
-            <th onclick="setTabSort('tab3', 'basketHbLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
-              HB Basket Size ${getSortIndicator(tab3SortState.col, 'basketHbLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">Own HB ÷ Tx</span>
-            </th>
-            <th onclick="setTabSort('tab3', 'gpRmLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
-              Personal GP (RM) ${getSortIndicator(tab3SortState.col, 'gpRmLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">Net Sold Profit</span>
-            </th>
-            <th onclick="setTabSort('tab3', 'gpPctLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
-              Personal GP (%) ${getSortIndicator(tab3SortState.col, 'gpPctLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">Margin %</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-100 text-slate-800 bg-white">
-          ${rows.map(t => `
-            <tr class="hover:bg-slate-50 transition border-b border-slate-100">
-              <td class="py-3 px-3">
-                <div class="font-extrabold text-slate-900">${escapeHtml(t.name)}</div>
-                <div class="flex items-center gap-1.5 mt-1">
-                  <select onchange="updateTeammateRole('${escapeHtml(t.key)}', this.value)" class="text-[10px] font-bold bg-slate-100 border border-slate-300 rounded px-1.5 py-0.5 text-slate-700">
-                    ${rolesList.map(r => `<option value="${r}" ${t.role === r ? 'selected' : ''}>${r}</option>`).join('')}
-                  </select>
-                  <span class="text-[10px] text-slate-500 font-medium">${fmtPct(t.branchTsShareLatest, 1)} of Branch TS</span>
-                </div>
-              </td>
-              <td class="py-3 px-3 text-right">
-                <div class="font-extrabold text-slate-900 text-sm">${fmtRM(t.tsLatest)}</div>
-                <div class="text-[10px] text-slate-500 mt-0.5">
-                  LY: ${t.tsPrev > 0 ? fmtRM(t.tsPrev) : '—'}
-                  ${t.tsDiffPct !== null ? `<span class="font-bold ${t.tsDiffPct >= 0 ? 'text-emerald-600' : 'text-rose-600'}">(${fmtPct(t.tsDiffPct, 1, true)})</span>` : ''}
-                </div>
-              </td>
-              <td class="py-3 px-3 text-right">
-                <div class="font-bold text-slate-900">${fmtRM(t.hbLatest)}</div>
-                <div class="text-[11px] font-semibold text-slate-600 mt-0.5">${fmtPct(t.hbPctOwnTsLatest)}% <span class="text-[9px] font-normal text-slate-400">of TS</span></div>
-                <div class="text-[10px] text-slate-400 mt-0.5">
-                  LY: ${t.hbPrev > 0 ? `${fmtRM(t.hbPrev)} (${fmtPct(t.hbPctOwnTsPrev)}%)` : '—'}
-                </div>
-              </td>
-              <td class="py-3 px-3 text-right">
-                <div class="font-bold text-slate-900">${fmtRM(t.hmLatest)}</div>
-                <div class="text-[11px] font-semibold text-slate-600 mt-0.5">${fmtPct(t.hmPctOwnTsLatest)}% <span class="text-[9px] font-normal text-slate-400">of TS</span></div>
-                <div class="text-[10px] text-slate-400 mt-0.5">
-                  LY: ${t.hmPrev > 0 ? `${fmtRM(t.hmPrev)} (${fmtPct(t.hmPctOwnTsPrev)}%)` : '—'}
-                </div>
-              </td>
-              <td class="py-3 px-3 text-right">
-                <div class="font-bold text-slate-900">${fmtNum(t.txLatest)}</div>
-                <div class="text-[10px] text-slate-500 mt-0.5">
-                  LY: ${t.txPrev > 0 ? fmtNum(t.txPrev) : '—'}
-                  ${t.txDiffPct !== null ? `<span class="font-bold ${t.txDiffPct >= 0 ? 'text-emerald-600' : 'text-rose-600'}">(${fmtPct(t.txDiffPct, 1, true)})</span>` : ''}
-                </div>
-              </td>
-              <td class="py-3 px-3 text-right">
-                <div class="font-bold text-slate-900">${fmtRM(t.basketTsLatest)}</div>
-                <div class="text-[10px] text-slate-500 mt-0.5">
-                  LY: ${t.basketTsPrev > 0 ? fmtRM(t.basketTsPrev) : '—'}
-                </div>
-              </td>
-              <td class="py-3 px-3 text-right">
-                <div class="font-bold text-slate-900">${fmtRM(t.basketHbLatest)}</div>
-                <div class="text-[10px] text-slate-500 mt-0.5">
-                  LY: ${t.basketHbPrev > 0 ? fmtRM(t.basketHbPrev) : '—'}
-                </div>
-              </td>
-              <td class="py-3 px-3 text-right">
-                <div class="font-bold text-slate-900">${fmtRM(t.gpRmLatest)}</div>
-                <div class="text-[10px] text-slate-400 mt-0.5">
-                  Net: ${fmtRM(t.netSoldPriceLatest)} | LY: ${t.gpRmPrev > 0 ? fmtRM(t.gpRmPrev) : '—'}
-                </div>
-              </td>
-              <td class="py-3 px-3 text-right">
-                <div class="text-sm font-bold ${t.gpPctLatest >= 28 ? 'text-emerald-700' : t.gpPctLatest < 26 ? 'text-rose-700' : 'text-slate-900'}">${fmtPct(t.gpPctLatest)}%</div>
-                <div class="text-[10px] text-slate-500 mt-0.5">
-                  LY: ${t.gpPctPrev > 0 ? `${fmtPct(t.gpPctPrev)}%` : '—'}
-                  ${t.gpPctDiffPP !== null ? `<span class="font-bold ${t.gpPctDiffPP >= 0 ? 'text-emerald-600' : 'text-rose-600'}">(${fmtPP(t.gpPctDiffPP)})</span>` : ''}
-                </div>
-              </td>
-            </tr>
-          `).join('')}
-        </tbody>
-        <tfoot>
-          <tr class="bg-slate-900 text-white font-extrabold text-xs">
-            <td class="py-3 px-3">BRANCH GRAND TOTAL / BENCHMARK</td>
-            <td class="py-3 px-3 text-right">
-              <div>${fmtRM(o.tsLatest)}</div>
-              <div class="text-[10px] text-slate-300 font-normal mt-0.5">LY: ${fmtRM(o.tsPrev)}</div>
-            </td>
-            <td class="py-3 px-3 text-right">
-              <div>${fmtRM(o.hbLatest)}</div>
-              <div class="text-[10px] text-slate-300 font-normal mt-0.5">${fmtPct(o.hbShareLatestPct)}% (LY: ${fmtPct(o.hbSharePrevPct)}%)</div>
-            </td>
-            <td class="py-3 px-3 text-right">
-              <div>${fmtRM(o.hmLatest)}</div>
-              <div class="text-[10px] text-slate-300 font-normal mt-0.5">${fmtPct(o.hmShareLatestPct)}% (LY: ${fmtPct(o.hmSharePrevPct)}%)</div>
-            </td>
-            <td class="py-3 px-3 text-right">
-              <div>${fmtNum(o.txLatest)}</div>
-              <div class="text-[10px] text-slate-300 font-normal mt-0.5">LY: ${fmtNum(o.txPrev)}</div>
-            </td>
-            <td class="py-3 px-3 text-right">
-              <div>${fmtRM(o.basketTsLatest)}</div>
-              <div class="text-[10px] text-slate-300 font-normal mt-0.5">LY: ${fmtRM(o.basketTsPrev)}</div>
-            </td>
-            <td class="py-3 px-3 text-right">
-              <div>${fmtRM(o.basketHbLatest)}</div>
-              <div class="text-[10px] text-slate-300 font-normal mt-0.5">LY: ${fmtRM(o.basketHbPrev)}</div>
-            </td>
-            <td class="py-3 px-3 text-right">
-              <div>${fmtRM(o.personalGpTotalLatest.netSoldProfit)}</div>
-              <div class="text-[10px] text-slate-300 font-normal mt-0.5">LY: ${fmtRM(o.personalGpTotalPrev.netSoldProfit)}</div>
-            </td>
-            <td class="py-3 px-3 text-right">
-              <div>${fmtPct(o.personalGpTotalLatest.gpMarginPct)}%</div>
-              <div class="text-[10px] text-slate-300 font-normal mt-0.5">LY: ${fmtPct(o.personalGpTotalPrev.gpMarginPct)}%</div>
-            </td>
-          </tr>
-        </tfoot>
-      </table>
+    <!-- Teammate Performance Table (Outer Card & Dedicated Scrolling Container) -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden mb-6">
+      <div class="table-sticky-container">
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            ${teammateViewMode === '3MONTH' ? `
+              <!-- 3-Month Trajectory Headers -->
+              <tr class="bg-slate-900 text-white uppercase text-[10px] sticky top-0 z-20">
+                <th onclick="setTabSort('tab3', 'name')" class="py-3 px-3 cursor-pointer select-none hover:bg-slate-800 transition">
+                  Teammate & Role ${getSortIndicator(tab3SortState.col, 'name', tab3SortState.dir)}
+                </th>
+                <th onclick="setTabSort('tab3', 'tsM2')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+                  M-2 Personal TS ${getSortIndicator(tab3SortState.col, 'tsM2', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">(2 Mos Prior)</span>
+                </th>
+                <th onclick="setTabSort('tab3', 'tsM1')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+                  M-1 Personal TS ${getSortIndicator(tab3SortState.col, 'tsM1', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">(1 Mo Prior)</span>
+                </th>
+                <th onclick="setTabSort('tab3', 'tsLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+                  Latest Personal TS ${getSortIndicator(tab3SortState.col, 'tsLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">MoM & 3M Growth</span>
+                </th>
+                <th onclick="setTabSort('tab3', 'hbPctOwnTsLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+                  HB% Trajectory ${getSortIndicator(tab3SortState.col, 'hbPctOwnTsLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">M-2 ➔ M-1 ➔ Latest</span>
+                </th>
+                <th onclick="setTabSort('tab3', 'gpPctLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+                  GP% Trajectory ${getSortIndicator(tab3SortState.col, 'gpPctLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">M-2 ➔ M-1 ➔ Latest</span>
+                </th>
+                <th onclick="setTabSort('tab3', 'txLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+                  Tx & Basket ${getSortIndicator(tab3SortState.col, 'txLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">Latest Customers</span>
+                </th>
+                <th onclick="setTabSort('tab3', 'picAlertRequired')" class="py-3 px-3 cursor-pointer select-none hover:bg-slate-800 transition">
+                  PIC Diagnostic & Advisory Status ${getSortIndicator(tab3SortState.col, 'picAlertRequired', tab3SortState.dir)}
+                </th>
+              </tr>
+            ` : `
+              <!-- YoY Benchmark Headers -->
+              <tr class="bg-slate-900 text-white uppercase text-[10px] sticky top-0 z-20">
+                <th onclick="setTabSort('tab3', 'name')" class="py-3 px-3 cursor-pointer select-none hover:bg-slate-800 transition">
+                  Teammate & Role ${getSortIndicator(tab3SortState.col, 'name', tab3SortState.dir)}
+                </th>
+                <th onclick="setTabSort('tab3', 'tsLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+                  Personal TS (RM) ${getSortIndicator(tab3SortState.col, 'tsLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">vs Prev Year</span>
+                </th>
+                <th onclick="setTabSort('tab3', 'hbLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+                  Personal HB (RM) ${getSortIndicator(tab3SortState.col, 'hbLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">& % of Own TS</span>
+                </th>
+                <th onclick="setTabSort('tab3', 'hmLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+                  Personal HM (RM) ${getSortIndicator(tab3SortState.col, 'hmLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">& % of Own TS</span>
+                </th>
+                <th onclick="setTabSort('tab3', 'txLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+                  Transactions ${getSortIndicator(tab3SortState.col, 'txLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">Latest vs LY</span>
+                </th>
+                <th onclick="setTabSort('tab3', 'basketTsLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+                  TS Basket Size ${getSortIndicator(tab3SortState.col, 'basketTsLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">Own TS ÷ Tx</span>
+                </th>
+                <th onclick="setTabSort('tab3', 'basketHbLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+                  HB Basket Size ${getSortIndicator(tab3SortState.col, 'basketHbLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">Own HB ÷ Tx</span>
+                </th>
+                <th onclick="setTabSort('tab3', 'gpRmLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+                  Personal GP (RM) ${getSortIndicator(tab3SortState.col, 'gpRmLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">Net Sold Profit</span>
+                </th>
+                <th onclick="setTabSort('tab3', 'gpPctLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+                  Personal GP (%) ${getSortIndicator(tab3SortState.col, 'gpPctLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">Margin %</span>
+                </th>
+              </tr>
+            `}
+          </thead>
+          <tbody class="divide-y divide-slate-100 text-slate-800 bg-white">
+            ${teammateViewMode === '3MONTH' ? (
+              // ── 3-Month Trajectory Rows ──
+              rows.map(t => `
+                <tr class="hover:bg-slate-50 transition border-b border-slate-100 ${t.picAlertRequired ? 'bg-amber-50/20' : ''}">
+                  <td class="py-3 px-3">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <span class="font-extrabold text-slate-900">${escapeHtml(t.name)}</span>
+                      ${t.picAlertRequired ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">⚠️ PIC Alert</span>` : ''}
+                    </div>
+                    <div class="flex items-center gap-1.5 mt-1">
+                      <select onchange="updateTeammateRole('${escapeHtml(t.key)}', this.value)" class="text-[10px] font-bold bg-slate-100 border border-slate-300 rounded px-1.5 py-0.5 text-slate-700">
+                        ${rolesList.map(r => `<option value="${r}" ${t.role === r ? 'selected' : ''}>${r}</option>`).join('')}
+                      </select>
+                      <span class="text-[10px] text-slate-500 font-medium">${fmtPct(t.branchTsShareLatest, 1)} of Branch TS</span>
+                    </div>
+                  </td>
+                  <td class="py-3 px-3 text-right font-medium text-slate-600">
+                    <div>${t.tsM2 > 0 ? fmtRM(t.tsM2) : '—'}</div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">M-2 Baseline</div>
+                  </td>
+                  <td class="py-3 px-3 text-right font-medium text-slate-600">
+                    <div>${t.tsM1 > 0 ? fmtRM(t.tsM1) : '—'}</div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">M-1 Prior</div>
+                  </td>
+                  <td class="py-3 px-3 text-right">
+                    <div class="font-extrabold text-slate-900 text-sm">${fmtRM(t.tsLatest)}</div>
+                    <div class="text-[10px] mt-0.5 font-semibold">
+                      ${t.tsMoMPct !== null ? `<span class="${t.tsMoMPct >= 0 ? 'text-emerald-700' : 'text-rose-700'}">MoM: ${fmtPct(t.tsMoMPct, 1, true)}</span>` : ''}
+                      ${t.ts3mPct !== null ? `<span class="ml-1 text-slate-500">| 3M: <span class="${t.ts3mPct >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${fmtPct(t.ts3mPct, 1, true)}</span></span>` : ''}
+                    </div>
+                  </td>
+                  <td class="py-3 px-3 text-right">
+                    <div class="font-bold text-slate-900">${fmtPct(t.hbPctOwnTsLatest)}%</div>
+                    <div class="text-[10px] text-slate-500 mt-0.5">
+                      ${t.hbPctM2 > 0 ? `${fmtPct(t.hbPctM2)}% ➔ ` : ''}${t.hbPctM1 > 0 ? `${fmtPct(t.hbPctM1)}% ➔ ` : ''}<strong>${fmtPct(t.hbPctOwnTsLatest)}%</strong>
+                    </div>
+                  </td>
+                  <td class="py-3 px-3 text-right">
+                    <div class="font-bold ${t.gpPctLatest >= 28 ? 'text-emerald-700' : t.gpPctLatest < 26 ? 'text-rose-700' : 'text-slate-900'}">${fmtPct(t.gpPctLatest)}%</div>
+                    <div class="text-[10px] text-slate-500 mt-0.5">
+                      ${t.gpPctM2 > 0 ? `${fmtPct(t.gpPctM2)}% ➔ ` : ''}${t.gpPctM1 > 0 ? `${fmtPct(t.gpPctM1)}% ➔ ` : ''}<strong>${fmtPct(t.gpPctLatest)}%</strong>
+                    </div>
+                  </td>
+                  <td class="py-3 px-3 text-right">
+                    <div class="font-bold text-slate-900">${fmtNum(t.txLatest)} <span class="text-slate-400 font-normal text-[10px]">tx</span></div>
+                    <div class="text-[10px] text-slate-500 mt-0.5">Basket: ${fmtRM(t.basketTsLatest)}</div>
+                  </td>
+                  <td class="py-3 px-3">
+                    ${t.picAlertRequired ? `
+                      <div class="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 font-bold text-xs leading-tight">
+                        <span class="text-amber-800">⚠️ PIC Action Needed:</span> ${escapeHtml(t.picAlertReason)}
+                      </div>
+                    ` : `
+                      <div class="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-xs">
+                        ✓ Performing / On Track
+                      </div>
+                    `}
+                  </td>
+                </tr>
+              `).join('')
+            ) : (
+              // ── YoY Benchmark Rows ──
+              rows.map(t => `
+                <tr class="hover:bg-slate-50 transition border-b border-slate-100">
+                  <td class="py-3 px-3">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <span class="font-extrabold text-slate-900">${escapeHtml(t.name)}</span>
+                      ${t.picAlertRequired ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">⚠️ PIC Alert</span>` : ''}
+                    </div>
+                    <div class="flex items-center gap-1.5 mt-1">
+                      <select onchange="updateTeammateRole('${escapeHtml(t.key)}', this.value)" class="text-[10px] font-bold bg-slate-100 border border-slate-300 rounded px-1.5 py-0.5 text-slate-700">
+                        ${rolesList.map(r => `<option value="${r}" ${t.role === r ? 'selected' : ''}>${r}</option>`).join('')}
+                      </select>
+                      <span class="text-[10px] text-slate-500 font-medium">${fmtPct(t.branchTsShareLatest, 1)} of Branch TS</span>
+                    </div>
+                  </td>
+                  <td class="py-3 px-3 text-right">
+                    <div class="font-extrabold text-slate-900 text-sm">${fmtRM(t.tsLatest)}</div>
+                    <div class="text-[10px] text-slate-500 mt-0.5">
+                      LY: ${t.tsPrev > 0 ? fmtRM(t.tsPrev) : '—'}
+                      ${t.tsDiffPct !== null ? `<span class="font-bold ${t.tsDiffPct >= 0 ? 'text-emerald-600' : 'text-rose-600'}">(${fmtPct(t.tsDiffPct, 1, true)})</span>` : ''}
+                    </div>
+                  </td>
+                  <td class="py-3 px-3 text-right">
+                    <div class="font-bold text-slate-900">${fmtRM(t.hbLatest)}</div>
+                    <div class="text-[11px] font-semibold text-slate-600 mt-0.5">${fmtPct(t.hbPctOwnTsLatest)}% <span class="text-[9px] font-normal text-slate-400">of TS</span></div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">
+                      LY: ${t.hbPrev > 0 ? `${fmtRM(t.hbPrev)} (${fmtPct(t.hbPctOwnTsPrev)}%)` : '—'}
+                    </div>
+                  </td>
+                  <td class="py-3 px-3 text-right">
+                    <div class="font-bold text-slate-900">${fmtRM(t.hmLatest)}</div>
+                    <div class="text-[11px] font-semibold text-slate-600 mt-0.5">${fmtPct(t.hmPctOwnTsLatest)}% <span class="text-[9px] font-normal text-slate-400">of TS</span></div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">
+                      LY: ${t.hmPrev > 0 ? `${fmtRM(t.hmPrev)} (${fmtPct(t.hmPctOwnTsPrev)}%)` : '—'}
+                    </div>
+                  </td>
+                  <td class="py-3 px-3 text-right">
+                    <div class="font-bold text-slate-900">${fmtNum(t.txLatest)}</div>
+                    <div class="text-[10px] text-slate-500 mt-0.5">
+                      LY: ${t.txPrev > 0 ? fmtNum(t.txPrev) : '—'}
+                      ${t.txDiffPct !== null ? `<span class="font-bold ${t.txDiffPct >= 0 ? 'text-emerald-600' : 'text-rose-600'}">(${fmtPct(t.txDiffPct, 1, true)})</span>` : ''}
+                    </div>
+                  </td>
+                  <td class="py-3 px-3 text-right">
+                    <div class="font-bold text-slate-900">${fmtRM(t.basketTsLatest)}</div>
+                    <div class="text-[10px] text-slate-500 mt-0.5">
+                      LY: ${t.basketTsPrev > 0 ? fmtRM(t.basketTsPrev) : '—'}
+                    </div>
+                  </td>
+                  <td class="py-3 px-3 text-right">
+                    <div class="font-bold text-slate-900">${fmtRM(t.basketHbLatest)}</div>
+                    <div class="text-[10px] text-slate-500 mt-0.5">
+                      LY: ${t.basketHbPrev > 0 ? fmtRM(t.basketHbPrev) : '—'}
+                    </div>
+                  </td>
+                  <td class="py-3 px-3 text-right">
+                    <div class="font-bold text-slate-900">${fmtRM(t.gpRmLatest)}</div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">
+                      Net: ${fmtRM(t.netSoldPriceLatest)} | LY: ${t.gpRmPrev > 0 ? fmtRM(t.gpRmPrev) : '—'}
+                    </div>
+                  </td>
+                  <td class="py-3 px-3 text-right">
+                    <div class="text-sm font-bold ${t.gpPctLatest >= 28 ? 'text-emerald-700' : t.gpPctLatest < 26 ? 'text-rose-700' : 'text-slate-900'}">${fmtPct(t.gpPctLatest)}%</div>
+                    <div class="text-[10px] text-slate-500 mt-0.5">
+                      LY: ${t.gpPctPrev > 0 ? `${fmtPct(t.gpPctPrev)}%` : '—'}
+                      ${t.gpPctDiffPP !== null ? `<span class="font-bold ${t.gpPctDiffPP >= 0 ? 'text-emerald-600' : 'text-rose-600'}">(${fmtPP(t.gpPctDiffPP)})</span>` : ''}
+                    </div>
+                  </td>
+                </tr>
+              `).join('')
+            )}
+          </tbody>
+          <tfoot>
+            ${teammateViewMode === '3MONTH' ? `
+              <tr class="bg-slate-900 text-white font-extrabold text-xs">
+                <td class="py-3 px-3">BRANCH OUTLET TOTAL</td>
+                <td class="py-3 px-3 text-right">${fmtRM(totalM2Ts)}</td>
+                <td class="py-3 px-3 text-right">${fmtRM(totalM1Ts)}</td>
+                <td class="py-3 px-3 text-right">
+                  <div>${fmtRM(o.tsLatest)}</div>
+                  <div class="text-[10px] text-slate-300 font-normal mt-0.5">
+                    MoM: ${fmtPct(calcGrowthPct(o.tsLatest, totalM1Ts), 1, true)} | 3M: ${fmtPct(calcGrowthPct(o.tsLatest, totalM2Ts), 1, true)}
+                  </div>
+                </td>
+                <td class="py-3 px-3 text-right">
+                  <div>${fmtPct(o.hbShareLatestPct)}%</div>
+                  <div class="text-[10px] text-slate-300 font-normal mt-0.5">Target: ≥ 38%</div>
+                </td>
+                <td class="py-3 px-3 text-right">
+                  <div>${fmtPct(o.personalGpTotalLatest.gpMarginPct)}%</div>
+                  <div class="text-[10px] text-slate-300 font-normal mt-0.5">Branch GP%</div>
+                </td>
+                <td class="py-3 px-3 text-right">
+                  <div>${fmtNum(o.txLatest)} tx</div>
+                  <div class="text-[10px] text-slate-300 font-normal mt-0.5">Basket: ${fmtRM(o.basketTsLatest)}</div>
+                </td>
+                <td class="py-3 px-3 text-emerald-400 font-bold">
+                  Active Team: ${rows.filter(t => t.isActiveLatest).length} Staff | Alerts: ${rows.filter(t => t.picAlertRequired).length} Require PIC Action
+                </td>
+              </tr>
+            ` : `
+              <tr class="bg-slate-900 text-white font-extrabold text-xs">
+                <td class="py-3 px-3">BRANCH GRAND TOTAL / BENCHMARK</td>
+                <td class="py-3 px-3 text-right">
+                  <div>${fmtRM(o.tsLatest)}</div>
+                  <div class="text-[10px] text-slate-300 font-normal mt-0.5">LY: ${fmtRM(o.tsPrev)}</div>
+                </td>
+                <td class="py-3 px-3 text-right">
+                  <div>${fmtRM(o.hbLatest)}</div>
+                  <div class="text-[10px] text-slate-300 font-normal mt-0.5">${fmtPct(o.hbShareLatestPct)}% (LY: ${fmtPct(o.hbSharePrevPct)}%)</div>
+                </td>
+                <td class="py-3 px-3 text-right">
+                  <div>${fmtRM(o.hmLatest)}</div>
+                  <div class="text-[10px] text-slate-300 font-normal mt-0.5">${fmtPct(o.hmShareLatestPct)}% (LY: ${fmtPct(o.hmSharePrevPct)}%)</div>
+                </td>
+                <td class="py-3 px-3 text-right">
+                  <div>${fmtNum(o.txLatest)}</div>
+                  <div class="text-[10px] text-slate-300 font-normal mt-0.5">LY: ${fmtNum(o.txPrev)}</div>
+                </td>
+                <td class="py-3 px-3 text-right">
+                  <div>${fmtRM(o.basketTsLatest)}</div>
+                  <div class="text-[10px] text-slate-300 font-normal mt-0.5">LY: ${fmtRM(o.basketTsPrev)}</div>
+                </td>
+                <td class="py-3 px-3 text-right">
+                  <div>${fmtRM(o.basketHbLatest)}</div>
+                  <div class="text-[10px] text-slate-300 font-normal mt-0.5">LY: ${fmtRM(o.basketHbPrev)}</div>
+                </td>
+                <td class="py-3 px-3 text-right">
+                  <div>${fmtRM(o.personalGpTotalLatest.netSoldProfit)}</div>
+                  <div class="text-[10px] text-slate-300 font-normal mt-0.5">LY: ${fmtRM(o.personalGpTotalPrev.netSoldProfit)}</div>
+                </td>
+                <td class="py-3 px-3 text-right">
+                  <div>${fmtPct(o.personalGpTotalLatest.gpMarginPct)}%</div>
+                  <div class="text-[10px] text-slate-300 font-normal mt-0.5">LY: ${fmtPct(o.personalGpTotalPrev.gpMarginPct)}%</div>
+                </td>
+              </tr>
+            `}
+          </tfoot>
+        </table>
+      </div>
     </div>
   `;
 }
@@ -3826,23 +4286,23 @@ function renderAiAnalysisSection() {
 
   container.innerHTML = `
     <!-- Gemini 3.5 / 3.1 Flash-Lite Control Bar -->
-    <div class="bg-slate-900 text-white rounded-2xl p-5 mb-6 border border-slate-800 shadow-xs">
+    <div class="bg-slate-900 text-white rounded-2xl p-6 mb-6 border border-slate-800 shadow-xs">
       <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <div class="flex flex-wrap items-center gap-2 mb-1">
-            <span class="px-2.5 py-0.5 rounded-full text-[11px] font-mono bg-slate-800 text-slate-300 border border-slate-700">Gemini 3.5 Flash-Lite</span>
-            <span id="aiModelStatusBadge" class="text-[11px] text-slate-400">Engine: ${escapeHtml(report.modelUsed)}</span>
+          <div class="flex flex-wrap items-center gap-2 mb-1.5">
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-slate-800 text-slate-200 border border-slate-700">Gemini 3.5 Flash-Lite</span>
+            <span id="aiModelStatusBadge" class="text-xs text-slate-300 font-medium">Engine: ${escapeHtml(report.modelUsed)}</span>
           </div>
-          <h3 class="text-base font-extrabold mt-1">AI Strategic Evaluation, SWOT & Role Action Plans</h3>
-          <p class="text-xs text-slate-400 mt-0.5">Review the analysis below and click <strong>"Approve into Task List"</strong> on any recommendation to add it to your monthly execution tracker.</p>
+          <h3 class="text-lg sm:text-xl font-black mt-1">AI Strategic Evaluation, SWOT & Role Action Plans</h3>
+          <p class="text-xs sm:text-sm text-slate-300 mt-1">Review the analysis below and click <strong>"Approve into Task List"</strong> on any recommendation to add it to your monthly execution tracker.</p>
         </div>
 
         <div class="flex flex-wrap items-center gap-2 shrink-0">
-          <input id="perfGeminiApiKey" type="password" value="${escapeHtml(savedApiKey)}" placeholder="Gemini API Key (AIza...)" class="px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-400 w-52 focus:outline-none focus:ring-2 focus:ring-slate-500">
-          <button id="btnRunGeminiAi" onclick="runLiveGeminiAnalysis()" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-white text-slate-900 font-extrabold text-xs shadow-xs transition cursor-pointer">
+          <input id="perfGeminiApiKey" type="password" value="${escapeHtml(savedApiKey)}" placeholder="Gemini API Key (AIza...)" class="px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs sm:text-sm text-white placeholder-slate-400 w-56 focus:outline-none focus:ring-2 focus:ring-slate-500">
+          <button id="btnRunGeminiAi" onclick="runLiveGeminiAnalysis()" class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-white text-slate-900 font-black text-xs sm:text-sm shadow-xs transition cursor-pointer">
             ✨ Run Live Gemini AI Analysis
           </button>
-          <button onclick="approveAllRecommendations()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-bold text-xs shadow-xs transition cursor-pointer">
+          <button onclick="approveAllRecommendations()" class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-bold text-xs sm:text-sm shadow-xs transition cursor-pointer">
             ✓ Approve All to Task List
           </button>
         </div>
@@ -3850,19 +4310,19 @@ function renderAiAnalysisSection() {
     </div>
 
     <!-- Executive Results Commentary -->
-    <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs mb-6">
-      <div class="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-1.5">Executive Results Commentary</div>
-      <p class="text-sm text-slate-900 leading-relaxed font-normal">${escapeHtml(report.executiveSummary)}</p>
+    <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs mb-6">
+      <div class="text-sm sm:text-base font-black uppercase tracking-wider text-slate-700 mb-2">Executive Results Commentary</div>
+      <p class="text-base sm:text-lg text-slate-900 leading-relaxed font-normal">${escapeHtml(report.executiveSummary)}</p>
     </div>
 
     <!-- Macroeconomic & Local Market / Competitor Analysis -->
-    <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs mb-6">
-      <div class="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-3">Macroeconomic & Local Market / Competitor Analysis (PMG Pharmacy Kota Sentosa — 7th Mile Bazaar)</div>
+    <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs mb-6">
+      <div class="text-sm sm:text-base font-black uppercase tracking-wider text-slate-700 mb-3">Macroeconomic & Local Market / Competitor Analysis (PMG Pharmacy Kota Sentosa — 7th Mile Bazaar)</div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         ${(report.macroAndCompetitorAnalysis || []).map(item => `
           <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
-            <h4 class="text-xs font-extrabold text-slate-900 mb-1">📍 ${escapeHtml(item.title)}</h4>
-            <p class="text-xs text-slate-700 leading-relaxed">${escapeHtml(item.detail)}</p>
+            <h4 class="text-base font-black text-slate-900 mb-1.5">📍 ${escapeHtml(item.title)}</h4>
+            <p class="text-sm sm:text-base text-slate-700 leading-relaxed">${escapeHtml(item.detail)}</p>
           </div>
         `).join('')}
       </div>
@@ -3870,41 +4330,41 @@ function renderAiAnalysisSection() {
 
     <!-- SWOT Analysis (4 Quadrants) -->
     <div class="mb-6">
-      <div class="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-3">Comprehensive SWOT Analysis (Kota Sentosa Branch)</div>
+      <div class="text-sm sm:text-base font-black uppercase tracking-wider text-slate-700 mb-3">Comprehensive SWOT Analysis (Kota Sentosa Branch)</div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
-          <div class="text-sm font-extrabold text-slate-900 mb-2.5 flex items-center justify-between">
+        <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
+          <div class="text-base sm:text-lg font-black text-slate-900 mb-3 flex items-center justify-between">
             <span>💪 Strengths (Internal Advantages)</span>
-            <span class="text-[10px] uppercase font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">Strength</span>
+            <span class="text-xs uppercase font-extrabold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md">Strength</span>
           </div>
-          <ul class="space-y-2 text-xs text-slate-700 list-disc pl-4">
+          <ul class="space-y-3 text-sm sm:text-base text-slate-800 list-disc pl-5 leading-relaxed font-normal">
             ${(report.swot?.strengths || []).map(s => `<li>${escapeHtml(s)}</li>`).join('')}
           </ul>
         </div>
-        <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
-          <div class="text-sm font-extrabold text-slate-900 mb-2.5 flex items-center justify-between">
+        <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
+          <div class="text-base sm:text-lg font-black text-slate-900 mb-3 flex items-center justify-between">
             <span>⚠️ Weaknesses (Internal Gaps)</span>
-            <span class="text-[10px] uppercase font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded">Weakness</span>
+            <span class="text-xs uppercase font-extrabold text-rose-800 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-md">Weakness</span>
           </div>
-          <ul class="space-y-2 text-xs text-slate-700 list-disc pl-4">
+          <ul class="space-y-3 text-sm sm:text-base text-slate-800 list-disc pl-5 leading-relaxed font-normal">
             ${(report.swot?.weaknesses || []).map(s => `<li>${escapeHtml(s)}</li>`).join('')}
           </ul>
         </div>
-        <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
-          <div class="text-sm font-extrabold text-slate-900 mb-2.5 flex items-center justify-between">
+        <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
+          <div class="text-base sm:text-lg font-black text-slate-900 mb-3 flex items-center justify-between">
             <span>🚀 Opportunities (External Levers)</span>
-            <span class="text-[10px] uppercase font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">Opportunity</span>
+            <span class="text-xs uppercase font-extrabold text-indigo-800 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-md">Opportunity</span>
           </div>
-          <ul class="space-y-2 text-xs text-slate-700 list-disc pl-4">
+          <ul class="space-y-3 text-sm sm:text-base text-slate-800 list-disc pl-5 leading-relaxed font-normal">
             ${(report.swot?.opportunities || []).map(s => `<li>${escapeHtml(s)}</li>`).join('')}
           </ul>
         </div>
-        <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
-          <div class="text-sm font-extrabold text-slate-900 mb-2.5 flex items-center justify-between">
+        <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
+          <div class="text-base sm:text-lg font-black text-slate-900 mb-3 flex items-center justify-between">
             <span>🛡️ Threats (Competitor & Macro Risks)</span>
-            <span class="text-[10px] uppercase font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">Threat</span>
+            <span class="text-xs uppercase font-extrabold text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-md">Threat</span>
           </div>
-          <ul class="space-y-2 text-xs text-slate-700 list-disc pl-4">
+          <ul class="space-y-3 text-sm sm:text-base text-slate-800 list-disc pl-5 leading-relaxed font-normal">
             ${(report.swot?.threats || []).map(s => `<li>${escapeHtml(s)}</li>`).join('')}
           </ul>
         </div>
@@ -3912,28 +4372,28 @@ function renderAiAnalysisSection() {
     </div>
 
     <!-- Stock Cycle & Category Commentary -->
-    <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs mb-6">
-      <div class="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-2">Stock Cycle & Category Commentary</div>
-      <p class="text-xs text-slate-700 leading-relaxed mb-4 p-3.5 rounded-xl bg-slate-50 border border-slate-200">${escapeHtml(report.categoryAndStockFindings?.stockCycleComment || '')}</p>
+    <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs mb-6">
+      <div class="text-sm sm:text-base font-black uppercase tracking-wider text-slate-700 mb-2">Stock Cycle & Category Commentary</div>
+      <p class="text-sm sm:text-base text-slate-800 leading-relaxed mb-4 p-4 rounded-xl bg-slate-50 border border-slate-200 font-normal">${escapeHtml(report.categoryAndStockFindings?.stockCycleComment || '')}</p>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <div class="text-xs font-extrabold text-emerald-800 uppercase mb-2">▲ Categories That Grew YoY</div>
-          <div class="space-y-2">
+          <div class="text-sm sm:text-base font-black text-emerald-800 uppercase mb-2">▲ Categories That Grew YoY</div>
+          <div class="space-y-2.5">
             ${(report.categoryAndStockFindings?.categoriesUp || []).map(c => `
-              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-sm sm:text-base">
                 <span class="font-extrabold text-slate-900">${escapeHtml(c.category)}:</span>
-                <span class="text-slate-700 ml-1">${escapeHtml(c.summary)}</span>
+                <span class="text-slate-700 ml-1.5 leading-relaxed">${escapeHtml(c.summary)}</span>
               </div>
             `).join('')}
           </div>
         </div>
         <div>
-          <div class="text-xs font-extrabold text-rose-800 uppercase mb-2">▼ Categories That Declined YoY</div>
-          <div class="space-y-2">
+          <div class="text-sm sm:text-base font-black text-rose-800 uppercase mb-2">▼ Categories That Declined YoY</div>
+          <div class="space-y-2.5">
             ${(report.categoryAndStockFindings?.categoriesDown || []).map(c => `
-              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-sm sm:text-base">
                 <span class="font-extrabold text-slate-900">${escapeHtml(c.category)}:</span>
-                <span class="text-slate-700 ml-1">${escapeHtml(c.summary)}</span>
+                <span class="text-slate-700 ml-1.5 leading-relaxed">${escapeHtml(c.summary)}</span>
               </div>
             `).join('')}
           </div>
@@ -3942,11 +4402,11 @@ function renderAiAnalysisSection() {
     </div>
 
     <!-- Role-Specific Action Plans (PIC Pharmacist, ABM, PRP & PA) with Approve Buttons -->
-    <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs mb-6">
+    <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs mb-6">
       <div class="flex items-center justify-between mb-4">
         <div>
-          <div class="text-xs font-extrabold uppercase tracking-wider text-slate-500">Role-Specific Action Plans (PIC Pharmacist, ABM, PRP & PA)</div>
-          <h4 class="text-sm font-extrabold text-slate-900 mt-0.5">Click "Approve into Task List" on any action plan you want to execute</h4>
+          <div class="text-sm sm:text-base font-black uppercase tracking-wider text-slate-700">Role-Specific Action Plans (PIC Pharmacist, ABM, PRP & PA)</div>
+          <h4 class="text-sm sm:text-base font-extrabold text-slate-900 mt-1">Click "Approve into Task List" on any action plan you want to execute</h4>
         </div>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3954,21 +4414,21 @@ function renderAiAnalysisSection() {
           const sid = r.id || `role_${idx}`;
           const approved = isRecommendationApproved(sid);
           return `
-            <div class="p-4 rounded-2xl border ${approved ? 'border-emerald-300 bg-emerald-50/20' : 'border-slate-200 bg-white'} flex flex-col justify-between shadow-xs">
+            <div class="p-5 rounded-2xl border ${approved ? 'border-emerald-300 bg-emerald-50/20' : 'border-slate-200 bg-white'} flex flex-col justify-between shadow-xs">
               <div>
-                <div class="flex items-center justify-between gap-2 mb-1.5">
-                  <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-800 border border-slate-200">${escapeHtml(r.role)}</span>
-                  ${approved ? `<span class="text-[11px] font-extrabold text-emerald-700">✓ Approved in Task List</span>` : ''}
+                <div class="flex items-center justify-between gap-2 mb-2">
+                  <span class="px-2.5 py-1 rounded-full text-xs font-black bg-slate-100 text-slate-800 border border-slate-200">${escapeHtml(r.role)}</span>
+                  ${approved ? `<span class="text-xs font-black text-emerald-700">✓ Approved in Task List</span>` : ''}
                 </div>
-                <h5 class="text-sm font-extrabold text-slate-900 mb-1">${escapeHtml(r.title)}</h5>
-                <p class="text-xs text-slate-700 leading-relaxed mb-3">${escapeHtml(r.action)}</p>
+                <h5 class="text-base sm:text-lg font-black text-slate-900 mb-1.5">${escapeHtml(r.title)}</h5>
+                <p class="text-sm sm:text-base text-slate-700 leading-relaxed mb-4">${escapeHtml(r.action)}</p>
               </div>
               <div class="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                <div class="text-[11px] font-bold text-slate-800">🎯 Target: ${escapeHtml(r.targetMetric)}</div>
+                <div class="text-xs sm:text-sm font-bold text-slate-800">🎯 Target: ${escapeHtml(r.targetMetric)}</div>
                 <button
                   onclick='approveRecommendationToTaskList(${JSON.stringify({ sourceId: sid, role: r.role, assignee: r.role, title: r.title, action: r.action, targetMetric: r.targetMetric }).replace(/'/g, "&#39;")})'
                   ${approved ? 'disabled' : ''}
-                  class="px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition cursor-pointer ${approved ? 'bg-emerald-100 text-emerald-800 cursor-default' : 'bg-slate-900 hover:bg-slate-800 text-white shadow-xs'}">
+                  class="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold shrink-0 transition cursor-pointer ${approved ? 'bg-emerald-100 text-emerald-800 cursor-default' : 'bg-slate-900 hover:bg-slate-800 text-white shadow-xs'}">
                   ${approved ? '✓ Approved' : '+ Approve to Task List'}
                 </button>
               </div>
@@ -3979,32 +4439,34 @@ function renderAiAnalysisSection() {
     </div>
 
     <!-- Teammate Coaching & Action Plans with Approve Buttons -->
-    <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs">
-      <div class="text-xs font-extrabold uppercase tracking-wider text-slate-500">Teammate Coaching & Action Plans</div>
-      <h4 class="text-sm font-extrabold text-slate-900 mt-0.5 mb-4">Targeted 1-on-1 action plans based on individual TS, HB%, HM%, Basket Size & GP Margin</h4>
+    <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs">
+      <div class="text-sm sm:text-base font-black uppercase tracking-wider text-slate-700">Teammate Coaching & Action Plans (With 3-Month Trajectory & PIC Alerts)</div>
+      <h4 class="text-sm sm:text-base font-extrabold text-slate-900 mt-1 mb-4">Targeted 1-on-1 action plans based on individual 3-month TS, HB%, HM%, Basket Size & GP Margin</h4>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         ${(report.teammateCoaching || []).map((t, idx) => {
           const sid = t.id || `tm_${idx}`;
           const approved = isRecommendationApproved(sid);
+          const isAlert = String(t.statusBadge || '').includes('⚠️') || String(t.statusBadge || '').includes('Alert') || String(t.statusBadge || '').includes('Urgent');
           return `
-            <div class="p-4 rounded-2xl border ${approved ? 'border-emerald-300 bg-emerald-50/20' : 'border-slate-200 bg-white'} flex flex-col justify-between shadow-xs">
+            <div class="p-5 rounded-2xl border ${approved ? 'border-emerald-300 bg-emerald-50/20' : isAlert ? 'border-amber-300 bg-amber-50/20' : 'border-slate-200 bg-white'} flex flex-col justify-between shadow-xs">
               <div>
-                <div class="flex items-center justify-between gap-2 mb-1">
-                  <div>
-                    <span class="text-sm font-extrabold text-slate-900">${escapeHtml(t.person)}</span>
-                    <span class="ml-1.5 px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold">${escapeHtml(t.role)}</span>
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <div class="flex items-center gap-2">
+                    <span class="text-base sm:text-lg font-black text-slate-900">${escapeHtml(t.person)}</span>
+                    <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs font-bold">${escapeHtml(t.role)}</span>
                   </div>
-                  <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-800 border border-slate-200">${escapeHtml(t.statusBadge)}</span>
+                  <span class="px-3 py-1 rounded-full text-xs font-black ${isAlert ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-slate-100 text-slate-800 border border-slate-200'}">${escapeHtml(t.statusBadge)}</span>
                 </div>
-                <div class="text-[11px] font-mono text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100 my-2">${escapeHtml(t.metricsSummary)}</div>
-                <p class="text-xs text-slate-700 leading-relaxed mb-3">${escapeHtml(t.commentAndAction)}</p>
+                <div class="text-xs sm:text-sm font-mono text-slate-800 bg-slate-50 p-3 rounded-xl border border-slate-200 my-2.5 leading-relaxed">${escapeHtml(t.metricsSummary)}</div>
+                <p class="text-sm sm:text-base text-slate-800 leading-relaxed mb-4">${escapeHtml(t.commentAndAction)}</p>
               </div>
-              <div class="pt-2.5 border-t border-slate-100 flex justify-end">
+              <div class="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                ${approved ? `<span class="text-xs font-black text-emerald-700">✓ Approved in Task List</span>` : `<span></span>`}
                 <button
                   onclick='approveRecommendationToTaskList(${JSON.stringify({ sourceId: sid, role: t.role, assignee: t.person, title: `Coaching Plan: ${t.person} (${t.statusBadge})`, action: t.commentAndAction, targetMetric: t.metricsSummary }).replace(/'/g, "&#39;")})'
                   ${approved ? 'disabled' : ''}
-                  class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${approved ? 'bg-emerald-100 text-emerald-800 cursor-default' : 'bg-slate-900 hover:bg-slate-800 text-white shadow-xs'}">
-                  ${approved ? '✓ Approved in Task List' : '+ Approve Teammate Plan'}
+                  class="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer ${approved ? 'bg-emerald-100 text-emerald-800 cursor-default' : 'bg-slate-900 hover:bg-slate-800 text-white shadow-xs'}">
+                  ${approved ? '✓ Approved' : '+ Approve Teammate Plan'}
                 </button>
               </div>
             </div>
@@ -4273,7 +4735,54 @@ function renderDataStudioSlots() {
   const itPCount = perfState.itemSalesPrevYear?.items?.length || 0;
   const agCount = perfState.stockAgingLatest?.items?.length || 0;
 
+  const archives = loadMonthlyArchives();
+  const savedArchiveKeys = Object.keys(archives).sort().reverse();
+
   container.innerHTML = `
+    <!-- Continuous Monthly Historical Archive Studio -->
+    <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs mb-6">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-100 text-indigo-900 uppercase">Continuous Archive</span>
+            <span class="text-xs text-slate-500 font-mono">Storage: localStorage + JSON Backup</span>
+          </div>
+          <h3 class="text-base font-black text-slate-900 mt-1">Multi-Month Historical Performance Archive</h3>
+          <p class="text-xs text-slate-500 mt-0.5">Records and preserves verified monthly snapshots so the system can automatically compare performance across consecutive months and multi-year trends.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button onclick="saveCurrentMonthSnapshot(false)" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs cursor-pointer flex items-center gap-1.5 transition">
+            💾 Snapshot Current Month Now
+          </button>
+          <button onclick="exportMonthlyArchiveJson()" class="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs cursor-pointer flex items-center gap-1.5 transition">
+            📥 Export Archive (.json)
+          </button>
+          <label class="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs cursor-pointer flex items-center gap-1.5 transition">
+            📤 Import Archive (.json)
+            <input type="file" accept=".json" class="hidden" onchange="importMonthlyArchiveJson(this)">
+          </label>
+        </div>
+      </div>
+
+      <!-- List of archived periods -->
+      <div class="pt-3 border-t border-slate-100">
+        <div class="text-xs font-bold text-slate-600 mb-2">Saved Monthly Snapshots (${savedArchiveKeys.length} Months Archived):</div>
+        <div class="flex flex-wrap gap-2">
+          ${savedArchiveKeys.map(k => {
+            const snap = archives[k];
+            const tsVal = snap.outletTotals?.ts ? fmtRM(snap.outletTotals.ts) : 'RM 0';
+            return `
+              <div class="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs flex items-center gap-2">
+                <span class="font-extrabold text-slate-800">📅 ${escapeHtml(k)}</span>
+                <span class="text-slate-500 text-[11px]">(${tsVal})</span>
+                <span class="text-[10px] text-emerald-700 font-mono font-bold">✓ Preserved</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    </div>
+
     <!-- Data Management & Sample Removal Controls -->
     <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
       <div>

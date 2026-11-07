@@ -11,15 +11,32 @@
   <style>
     body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
     .table-sticky-container {
-      max-height: 72vh;
-      overflow-y: auto;
-      overflow-x: auto;
+      max-height: 75vh !important;
+      overflow-y: auto !important;
+      overflow-x: auto !important;
+      position: relative;
+      -webkit-overflow-scrolling: touch;
     }
     .table-sticky-container thead th {
-      position: sticky;
-      top: 0;
-      z-index: 20;
+      position: sticky !important;
+      top: 0 !important;
+      z-index: 20 !important;
       background-color: #0f172a !important; /* solid slate-900 */
+    }
+    .table-sticky-container::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    .table-sticky-container::-webkit-scrollbar-track {
+      background: #f1f5f9;
+      border-radius: 4px;
+    }
+    .table-sticky-container::-webkit-scrollbar-thumb {
+      background: #94a3b8;
+      border-radius: 4px;
+    }
+    .table-sticky-container::-webkit-scrollbar-thumb:hover {
+      background: #64748b;
     }
     @media print {
       .no-print { display: none !important; }
@@ -209,6 +226,6 @@
   <!-- Scripts -->
   <script src="../js/exceljs.min.js"></script>
   <script src="sample-data.js"></script>
-  <script src="performance.js?v=51"></script>
+  <script src="performance.js?v=52"></script>
 </body>
 </html>
