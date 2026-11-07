@@ -1492,6 +1492,20 @@ function setupEncounterAutoCalculations() {
     }
   };
   if (creatEl) creatEl.addEventListener('input', calcEgfr);
+
+  // Live CVD Risk auto-recalculation when relevant clinical metrics change
+  const bpSysEl = document.getElementById('encBpSys');
+  if (bpSysEl) bpSysEl.addEventListener('input', () => recalculateCvdRisk(false));
+  if (tcEl) tcEl.addEventListener('input', () => recalculateCvdRisk(false));
+  if (hdlEl) hdlEl.addEventListener('input', () => recalculateCvdRisk(false));
+  if (wtEl) wtEl.addEventListener('input', () => recalculateCvdRisk(false));
+  if (htEl) htEl.addEventListener('input', () => recalculateCvdRisk(false));
+  if (egfrEl) egfrEl.addEventListener('input', () => recalculateCvdRisk(false));
+
+  ['cvdSmoker', 'cvdHtnMeds', 'cvdLipidMeds', 'cvdDiabetes'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => recalculateCvdRisk(false));
+  });
 }
 
 // ─── CLINICAL CLASSIFICATION HELPERS ─────────────────────────────────────────
@@ -1562,6 +1576,369 @@ function getBmiClassification(weight, height) {
   if (bmi >= 23.0) return { bmi, label: 'Overweight', badge: 'bg-amber-100 text-amber-700 font-semibold' };
   if (bmi < 18.5) return { bmi, label: 'Underweight', badge: 'bg-yellow-100 text-yellow-800 font-semibold' };
   return { bmi, label: 'Normal', badge: 'bg-green-100 text-green-700 font-semibold' };
+}
+
+// ─── CARDIOVASCULAR RISK SUITE (MALAYSIAN CPG FRS & 2024 AHA PREVENT™) ──────
+
+/**
+ * Malaysian CPG 10-Year General CVD Risk (Framingham Risk Score - D'Agostino et al. 2008 Circulation)
+ * Standards: CPG Management of Dyslipidemia (5th Ed 2017) & Primary Prevention of CVD (2017)
+ */
+function calculateFraminghamGeneralCvd(params) {
+  if (!params) return null;
+  const sex = (params.sex || 'Male').toLowerCase();
+  const isMale = (sex === 'male');
+  const age = Math.max(30, Math.min(79, Number(params.age) || 50));
+
+  let tcMmol = Number(params.tcMmol || params.tc) || 0;
+  let hdlMmol = Number(params.hdlMmol || params.hdl) || 0;
+  if (!tcMmol || !hdlMmol) return null;
+
+  // Convert mmol/L to mg/dL (1 mmol/L = 38.67 mg/dL)
+  const tcMg = tcMmol * 38.67;
+  const hdlMg = hdlMmol * 38.67;
+
+  const sbp = Math.max(90, Math.min(200, Number(params.sbp) || 120));
+  const treatedBp = Boolean(params.treatedBp || params.onHtnMeds);
+  const smoker = Boolean(params.smoker);
+  const diabetes = Boolean(params.diabetes || params.hasDiabetes);
+
+  let b_age, b_tc, b_hdl, b_sbp, b_smoke, b_dm, mean_sum, s0;
+  if (isMale) {
+    b_age = 3.06117;
+    b_tc = 1.12370;
+    b_hdl = -0.93263;
+    b_sbp = treatedBp ? 1.99881 : 1.93303;
+    b_smoke = 0.65451;
+    b_dm = 0.57367;
+    mean_sum = 23.9802;
+    s0 = 0.88936;
+  } else {
+    b_age = 2.32888;
+    b_tc = 1.20904;
+    b_hdl = -0.70833;
+    b_sbp = treatedBp ? 2.82260 : 2.76157;
+    b_smoke = 0.52873;
+    b_dm = 0.69154;
+    mean_sum = 26.1931;
+    s0 = 0.95012;
+  }
+
+  const sum_bx = (
+    b_age * Math.log(age) +
+    b_tc * Math.log(tcMg) +
+    b_hdl * Math.log(hdlMg) +
+    b_sbp * Math.log(sbp) +
+    (smoker ? b_smoke : 0.0) +
+    (diabetes ? b_dm : 0.0)
+  );
+
+  const lp = sum_bx - mean_sum;
+  const riskScore = (1.0 - Math.pow(s0, Math.exp(lp))) * 100.0;
+  const riskPercent = Math.max(0.1, Math.min(99.9, Number(riskScore.toFixed(1))));
+
+  // Malaysian CPG Categories & Targets
+  let category = 'Low';
+  let categoryLabelZh = '低风险 (Low Risk)';
+  let categoryLabelMs = 'Risiko Rendah (Low Risk)';
+  let categoryLabelEn = 'Low Risk (<10%)';
+  let badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-300';
+  let ldlTarget = '< 3.0 mmol/L';
+
+  if (riskPercent > 20.0) {
+    category = 'High';
+    categoryLabelZh = '高风险 (High Risk)';
+    categoryLabelMs = 'Risiko Tinggi (High Risk)';
+    categoryLabelEn = 'High Risk (>20%)';
+    badgeColor = 'bg-rose-100 text-rose-800 border-rose-300';
+    ldlTarget = '< 1.8 mmol/L (or ≥50% reduction)';
+  } else if (riskPercent >= 10.0) {
+    category = 'Moderate';
+    categoryLabelZh = '中度风险 (Moderate Risk)';
+    categoryLabelMs = 'Risiko Sederhana (Moderate Risk)';
+    categoryLabelEn = 'Moderate Risk (10-20%)';
+    badgeColor = 'bg-amber-100 text-amber-800 border-amber-300';
+    ldlTarget = '< 2.6 mmol/L';
+  }
+
+  return {
+    riskPercent,
+    category,
+    categoryLabelZh,
+    categoryLabelMs,
+    categoryLabelEn,
+    badgeColor,
+    ldlTarget,
+    tcMmol,
+    hdlMmol,
+    tcMg: Math.round(tcMg),
+    hdlMg: Math.round(hdlMg),
+    calculatedAt: new Date().toISOString()
+  };
+}
+
+/**
+ * 2024 American Heart Association (AHA) PREVENT™ Risk Equations
+ * Reference: Khan SS, et al. Circulation. 2024;149:430–449
+ */
+function calculateAhaPreventRisk(params) {
+  if (!params) return null;
+  const sex = (params.sex || 'Male').toLowerCase();
+  const isMale = (sex === 'male');
+  const age = Math.max(30, Math.min(79, Number(params.age) || 50));
+
+  let tcMmol = Number(params.tcMmol || params.tc) || 0;
+  let hdlMmol = Number(params.hdlMmol || params.hdl) || 0;
+  if (!tcMmol || !hdlMmol) return null;
+
+  const tcMg = tcMmol * 38.67;
+  const hdlMg = hdlMmol * 38.67;
+  const sbp = Math.max(90, Math.min(200, Number(params.sbp) || 120));
+  const bmi = Math.max(18.5, Math.min(39.9, Number(params.bmi) || 24.5));
+  const egfr = Math.max(15, Math.min(140, Number(params.egfr) || 90.0));
+
+  const diabetes = Boolean(params.diabetes || params.hasDiabetes);
+  const smoker = Boolean(params.smoker);
+  const onHtnMeds = Boolean(params.treatedBp || params.onHtnMeds);
+  const onStatin = Boolean(params.onLipidMeds || params.onCholesterolMeds);
+
+  const covs = {
+    female_10_yr_ascvd: { c: -3.819975, dm: 0.8348585, smk: 0.4831078, htn: 0.2265309, stat: -0.0592374, age: 0.719883, chol_mult: 0.02586, tc_diff: 0.1176967, hdl_diff: -0.151185, sbp_min: -0.0835358, sbp_max: 0.3592852, egfr_min: 0.4864619, egfr_max: 0.0397779, htn_sbp_max: -0.0395762, stat_tc_diff: 0.0844423, age_tc_diff: -0.0567839, age_hdl_diff: 0.0325692, age_sbp_max: -0.1035985, dm_age: -0.2417542, smk_age: -0.0791142, age_min_egfr: -0.1671492, age2: 0, bmi_min: 0, bmi_max: 0, age_bmi_max: 0 },
+    male_10_yr_ascvd: { c: -3.500655, dm: 0.7189597, smk: 0.3956973, htn: 0.2036522, stat: -0.0865581, age: 0.7099847, chol_mult: 0.02586, tc_diff: 0.1658663, hdl_diff: -0.1144285, sbp_min: -0.2837212, sbp_max: 0.3239977, egfr_min: 0.3690075, egfr_max: 0.0203619, htn_sbp_max: -0.0322916, stat_tc_diff: 0.114563, age_tc_diff: -0.0300005, age_hdl_diff: 0.0232747, age_sbp_max: -0.0927024, dm_age: -0.2018525, smk_age: -0.0970527, age_min_egfr: -0.1217081, age2: 0, bmi_min: 0, bmi_max: 0, age_bmi_max: 0 },
+    female_30_yr_ascvd: { c: -1.974074, dm: 0.6296707, smk: 0.268292, htn: 0.1875292, stat: 0.0152476, age: 0.4669202, age2: -0.0893118, chol_mult: 0.02586, tc_diff: 0.1256901, hdl_diff: -0.1542255, sbp_min: -0.0018093, sbp_max: 0.322949, egfr_min: 0.100106, egfr_max: 0.0499663, htn_sbp_max: -0.0276123, stat_tc_diff: 0.0736147, age_tc_diff: -0.0521962, age_hdl_diff: 0.0316918, age_sbp_max: -0.1046101, dm_age: -0.2727793, smk_age: -0.1530907, age_min_egfr: -0.1299149, bmi_min: 0, bmi_max: 0, age_bmi_max: 0 },
+    male_30_yr_ascvd: { c: -1.736444, dm: 0.4790257, smk: 0.1782635, htn: 0.1421182, stat: 0.0135996, age: 0.3994099, age2: -0.0937484, chol_mult: 0.02586, tc_diff: 0.1744643, hdl_diff: -0.120203, sbp_min: -0.0665117, sbp_max: 0.2753037, egfr_min: -0.0218789, egfr_max: 0.0602553, htn_sbp_max: -0.0218265, stat_tc_diff: 0.1013148, age_tc_diff: -0.0312619, age_hdl_diff: 0.020673, age_sbp_max: -0.0920935, dm_age: -0.2159947, smk_age: -0.1548811, age_min_egfr: -0.0712547, bmi_min: 0, bmi_max: 0, age_bmi_max: 0 },
+    female_10_yr_hf: { c: -4.310409, dm: 1.038346, smk: 0.583916, htn: 0.3534442, stat: 0, age: 0.8998235, age2: 0, chol_mult: 0.02586, tc_diff: 0, hdl_diff: 0, sbp_min: -0.4559771, sbp_max: 0.3576505, egfr_min: 0.7451638, egfr_max: 0.0557087, htn_sbp_max: -0.0981511, stat_tc_diff: 0, age_tc_diff: 0, age_hdl_diff: 0, age_sbp_max: -0.0946663, dm_age: -0.3581041, smk_age: -0.1159453, age_min_egfr: -0.1884289, bmi_min: -0.0072294, bmi_max: 0.2997706, age_bmi_max: -0.003878 },
+    male_10_yr_hf: { c: -3.946391, dm: 0.923776, smk: 0.5023736, htn: 0.2980922, stat: 0, age: 0.8972642, age2: 0, chol_mult: 0, tc_diff: 0, hdl_diff: 0, sbp_min: -0.6811466, sbp_max: 0.3634461, egfr_min: 0.6926917, egfr_max: 0.0251827, htn_sbp_max: -0.0497731, stat_tc_diff: 0, age_tc_diff: 0, age_hdl_diff: 0, age_sbp_max: -0.1289201, dm_age: -0.3040924, smk_age: -0.1401688, age_min_egfr: -0.1797778, bmi_min: -0.0485841, bmi_max: 0.3726929, age_bmi_max: 0.0068126 },
+    female_30_yr_hf: { c: -2.205379, dm: 0.8330787, smk: 0.3438651, htn: 0.333921, stat: 0, age: 0.6254374, age2: -0.0983038, chol_mult: 0, tc_diff: 0, hdl_diff: 0, sbp_min: -0.3919241, sbp_max: 0.3142295, egfr_min: 0.2981642, egfr_max: 0.0667159, htn_sbp_max: -0.0893177, stat_tc_diff: 0, age_tc_diff: 0, age_hdl_diff: 0, age_sbp_max: -0.0974299, dm_age: -0.404855, smk_age: -0.1982991, age_min_egfr: -0.1564215, bmi_min: 0.0594874, bmi_max: 0.2525536, age_bmi_max: -0.0035619 },
+    male_30_yr_hf: { c: -1.95751, dm: 0.6840338, smk: 0.2656273, htn: 0.2583631, stat: 0, age: 0.5681541, age2: -0.1048388, chol_mult: 0, tc_diff: 0, hdl_diff: 0, sbp_min: -0.4761564, sbp_max: 0.30324, egfr_min: 0.2541805, egfr_max: 0.0638923, htn_sbp_max: -0.0391938, stat_tc_diff: 0, age_tc_diff: 0, age_hdl_diff: 0, age_sbp_max: -0.1269124, dm_age: -0.3273572, smk_age: -0.2043019, age_min_egfr: -0.1342618, bmi_min: 0.0833107, bmi_max: 0.26999, age_bmi_max: -0.0182831 },
+    female_10_yr_cvd: { c: -3.307728, dm: 0.8667604, smk: 0.5360739, htn: 0.3151672, stat: -0.1477655, age: 0.7939329, age2: 0, chol_mult: 0.02586, tc_diff: 0.0305239, hdl_diff: -0.1606857, sbp_min: -0.2394003, sbp_max: 0.3600781, egfr_min: 0.6045917, egfr_max: 0.0433769, htn_sbp_max: -0.0663612, stat_tc_diff: 0.1197879, age_tc_diff: -0.0819715, age_hdl_diff: 0.0306769, age_sbp_max: -0.0946348, dm_age: -0.27057, smk_age: -0.078715, age_min_egfr: -0.1637806, bmi_min: 0, bmi_max: 0, age_bmi_max: 0 },
+    male_10_yr_cvd: { c: -3.031168, dm: 0.7692857, smk: 0.4386871, htn: 0.288879, stat: -0.1337349, age: 0.7688528, age2: 0, chol_mult: 0.02586, tc_diff: 0.0736174, hdl_diff: -0.0954431, sbp_min: -0.4347345, sbp_max: 0.3362658, egfr_min: 0.5378979, egfr_max: 0.0164827, htn_sbp_max: -0.0475924, stat_tc_diff: 0.150273, age_tc_diff: -0.0517874, age_hdl_diff: 0.0191169, age_sbp_max: -0.1049477, dm_age: -0.2251948, smk_age: -0.0895067, age_min_egfr: -0.1543702, bmi_min: 0, bmi_max: 0, age_bmi_max: 0 },
+    female_30_yr_cvd: { c: -1.318827, dm: 0.6793894, smk: 0.3196112, htn: 0.2894, stat: -0.075688, age: 0.5503079, age2: -0.0928369, chol_mult: 0.02586, tc_diff: 0.0409794, hdl_diff: -0.1663306, sbp_min: -0.1628654, sbp_max: 0.3299505, egfr_min: 0.1857101, egfr_max: 0.0553528, htn_sbp_max: -0.056367, stat_tc_diff: 0.1071019, age_tc_diff: -0.0751438, age_hdl_diff: 0.0301786, age_sbp_max: -0.0998776, dm_age: -0.3206166, smk_age: -0.1607862, age_min_egfr: -0.1450788, bmi_min: 0, bmi_max: 0, age_bmi_max: 0 },
+    male_30_yr_cvd: { c: -1.148204, dm: 0.5331276, smk: 0.2141914, htn: 0.232714, stat: -0.0272112, age: 0.4627309, age2: -0.0984281, chol_mult: 0.02586, tc_diff: 0.0836088, hdl_diff: -0.1029824, sbp_min: -0.2140352, sbp_max: 0.2904325, egfr_min: 0.1155556, egfr_max: 0.0603775, htn_sbp_max: -0.0384488, stat_tc_diff: 0.134192, age_tc_diff: -0.0511759, age_hdl_diff: 0.0165865, age_sbp_max: -0.1101437, dm_age: -0.2585943, smk_age: -0.1566406, age_min_egfr: -0.1166776, bmi_min: 0, bmi_max: 0, age_bmi_max: 0 }
+  };
+
+  function calcOne(key, bmiVal) {
+    const cov = covs[key];
+    const adjAge = (age - 55.0) / 10.0;
+    const adjAge2 = adjAge * adjAge;
+    const sbpMax = (Math.max(sbp, 110.0) - 130.0) / 20.0;
+    const sbpMin = (Math.min(sbp, 110.0) - 110.0) / 20.0;
+    const cholDiff = tcMg - hdlMg;
+    const cholDiffFactor = cov.chol_mult * cholDiff - 3.5;
+    const hdlDiffFactor = (cov.chol_mult * hdlMg - 1.3) / 0.3;
+    const dmFactor = diabetes ? cov.dm : 0;
+    const smkFactor = smoker ? cov.smk : 0;
+    const htnFactor = onHtnMeds ? cov.htn : 0;
+    const statFactor = onStatin ? cov.stat : 0;
+    const dmAgeFactor = diabetes ? (cov.dm_age * adjAge) : 0;
+    const smkAgeFactor = smoker ? (cov.smk_age * adjAge) : 0;
+    const egfrMin = (Math.min(egfr, 60.0) - 60.0) / -15.0;
+    const egfrMax = (Math.max(egfr, 60.0) - 90.0) / -15.0;
+    const bMin = (Math.min(bmiVal, 30.0) - 25.0) / 5.0;
+    const bMax = (Math.max(bmiVal, 30.0) - 30.0) / 5.0;
+
+    const terms = [
+      cov.age * adjAge,
+      cov.age2 * adjAge2,
+      cov.c,
+      cov.tc_diff * cholDiffFactor,
+      cov.hdl_diff * hdlDiffFactor,
+      cov.sbp_min * sbpMin,
+      cov.sbp_max * sbpMax,
+      dmFactor,
+      smkFactor,
+      cov.egfr_min * egfrMin,
+      cov.egfr_max * egfrMax,
+      htnFactor,
+      statFactor,
+      onHtnMeds ? (cov.htn_sbp_max * sbpMax) : 0,
+      onStatin ? (cov.stat_tc_diff * cholDiffFactor) : 0,
+      cov.age_tc_diff * adjAge * cholDiffFactor,
+      cov.age_hdl_diff * adjAge * hdlDiffFactor,
+      cov.age_sbp_max * adjAge * sbpMax,
+      dmAgeFactor,
+      smkAgeFactor,
+      cov.age_min_egfr * adjAge * egfrMin,
+      cov.bmi_min * bMin,
+      cov.bmi_max * bMax,
+      cov.age_bmi_max * adjAge * bMax
+    ];
+    const s = terms.reduce((acc, v) => acc + v, 0);
+    const expS = Math.exp(s);
+    const risk = (expS / (1.0 + expS)) * 100.0;
+    return Math.max(0.1, Math.min(99.9, Number(risk.toFixed(1))));
+  }
+
+  const prefix = isMale ? 'male' : 'female';
+  const ascvd10 = calcOne(`${prefix}_10_yr_ascvd`, bmi);
+  const hf10 = calcOne(`${prefix}_10_yr_hf`, bmi);
+  const totalCvd10 = calcOne(`${prefix}_10_yr_cvd`, 0.0);
+
+  let ascvd30 = null;
+  let hf30 = null;
+  let totalCvd30 = null;
+  if (age <= 59) {
+    ascvd30 = calcOne(`${prefix}_30_yr_ascvd`, bmi);
+    hf30 = calcOne(`${prefix}_30_yr_hf`, bmi);
+    totalCvd30 = calcOne(`${prefix}_30_yr_cvd`, 0.0);
+  }
+
+  let ascvdCat = 'Low';
+  let ascvdCatLabel = 'Low (<5%)';
+  let badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-300';
+  if (ascvd10 >= 20.0) {
+    ascvdCat = 'High';
+    ascvdCatLabel = 'High (≥20%)';
+    badgeColor = 'bg-rose-100 text-rose-800 border-rose-300';
+  } else if (ascvd10 >= 7.5) {
+    ascvdCat = 'Intermediate';
+    ascvdCatLabel = 'Intermediate (7.5-19.9%)';
+    badgeColor = 'bg-amber-100 text-amber-800 border-amber-300';
+  } else if (ascvd10 >= 5.0) {
+    ascvdCat = 'Borderline';
+    ascvdCatLabel = 'Borderline (5-7.4%)';
+    badgeColor = 'bg-yellow-100 text-yellow-800 border-yellow-300';
+  }
+
+  return {
+    ascvd10,
+    ascvd30,
+    ascvdCat,
+    ascvdCatLabel,
+    badgeColor,
+    hf10,
+    hf30,
+    totalCvd10,
+    totalCvd30,
+    is30YrApplicable: (age <= 59)
+  };
+}
+
+/**
+ * Recalculate and update the CVD risk panel UI
+ */
+function recalculateCvdRisk(forceAlert = false) {
+  const patientSelect = document.getElementById('encounterPatientSelect');
+  const pId = patientSelect ? patientSelect.value : null;
+  const p = pId ? findPatientById(pId) : null;
+
+  const sex = p ? (p.gender || 'Male') : 'Male';
+  const age = p ? (Number(p.age) || 50) : 50;
+
+  const sbp = Number(document.getElementById('encBpSys')?.value) || 0;
+  const tcMmol = Number(document.getElementById('encTc')?.value) || 0;
+  const hdlMmol = Number(document.getElementById('encHdl')?.value) || 0;
+
+  const wt = Number(document.getElementById('encWeight')?.value) || (p?.weight ? Number(p.weight) : 0);
+  const ht = Number(document.getElementById('encHeight')?.value) || (p?.height ? Number(p.height) : 0);
+  let bmi = Number(document.getElementById('encBmi')?.value) || 0;
+  if (!bmi && wt && ht) {
+    bmi = Number((wt / Math.pow(ht / 100, 2)).toFixed(1));
+  }
+  if (!bmi) bmi = 24.5;
+
+  const egfr = Number(document.getElementById('encEgfr')?.value) || 90.0;
+
+  const smoker = document.getElementById('cvdSmoker')?.value === '1';
+  const onHtnMeds = document.getElementById('cvdHtnMeds')?.value === '1';
+  const onLipidMeds = document.getElementById('cvdLipidMeds')?.value === '1';
+  const diabetes = document.getElementById('cvdDiabetes')?.value === '1';
+
+  const quickBadge = document.getElementById('cvdRiskQuickBadge');
+
+  if (!tcMmol || !hdlMmol || !sbp) {
+    if (quickBadge) {
+      quickBadge.textContent = 'Awaiting BP & Lipid';
+      quickBadge.className = 'text-xs px-2.5 py-0.5 rounded-full font-bold bg-white text-gray-500 border border-gray-200';
+    }
+    const frsEl = document.getElementById('frsRiskPercent');
+    if (frsEl) frsEl.textContent = '--%';
+    const frsCatEl = document.getElementById('frsRiskCategory');
+    if (frsCatEl) {
+      frsCatEl.textContent = 'Awaiting Data';
+      frsCatEl.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-gray-100 text-gray-500';
+    }
+    const targetEl = document.getElementById('frsClinicalTarget');
+    if (targetEl) targetEl.textContent = 'Enter Systolic BP, Total Cholesterol, and HDL-C to calculate 10-year risk and Malaysian CPG LDL-C target.';
+
+    ['preventAscvd10', 'preventHf10', 'preventCvd10'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = '--%';
+    });
+    const p30El = document.getElementById('prevent30YrSummary');
+    if (p30El) p30El.textContent = '--';
+    const ascvdCat = document.getElementById('preventAscvdCat');
+    if (ascvdCat) {
+      ascvdCat.textContent = '-';
+      ascvdCat.className = 'block text-[9px] font-bold text-gray-500 mt-0.5';
+    }
+
+    if (forceAlert && typeof showPmgToast === 'function') {
+      showPmgToast('⚠️ Please enter Systolic BP, Total Cholesterol, and HDL-C to calculate risk.', 'warning');
+    }
+    return null;
+  }
+
+  const frsResult = calculateFraminghamGeneralCvd({
+    sex, age, tcMmol, hdlMmol, sbp, treatedBp: onHtnMeds, smoker, diabetes
+  });
+
+  const preventResult = calculateAhaPreventRisk({
+    sex, age, tcMmol, hdlMmol, sbp, bmi, egfr, hasDiabetes: diabetes, isSmoker: smoker, onHtnMeds, onCholesterolMeds: onLipidMeds
+  });
+
+  if (frsResult) {
+    const frsEl = document.getElementById('frsRiskPercent');
+    if (frsEl) frsEl.textContent = `${frsResult.riskPercent}%`;
+    const frsCatEl = document.getElementById('frsRiskCategory');
+    if (frsCatEl) {
+      frsCatEl.textContent = `${frsResult.categoryLabelEn}`;
+      frsCatEl.className = `px-2.5 py-1 rounded-lg text-xs font-bold border ${frsResult.badgeColor}`;
+    }
+    const targetEl = document.getElementById('frsClinicalTarget');
+    if (targetEl) {
+      targetEl.innerHTML = `🎯 <b>Malaysian CPG Target:</b> LDL-C <b>${frsResult.ldlTarget}</b> · FRS Category: <b>${frsResult.categoryLabelZh}</b>`;
+    }
+    if (quickBadge) {
+      quickBadge.textContent = `FRS: ${frsResult.riskPercent}% (${frsResult.category})`;
+      quickBadge.className = `text-xs px-2.5 py-0.5 rounded-full font-bold border ${frsResult.badgeColor} shadow-2xs`;
+    }
+  }
+
+  if (preventResult) {
+    const ascvdEl = document.getElementById('preventAscvd10');
+    if (ascvdEl) ascvdEl.textContent = `${preventResult.ascvd10}%`;
+    const ascvdCatEl = document.getElementById('preventAscvdCat');
+    if (ascvdCatEl) {
+      ascvdCatEl.textContent = preventResult.ascvdCatLabel;
+      ascvdCatEl.className = `block text-[9px] font-bold px-1 py-0.5 rounded ${preventResult.badgeColor} mt-0.5`;
+    }
+    const hfEl = document.getElementById('preventHf10');
+    if (hfEl) hfEl.textContent = `${preventResult.hf10}%`;
+    const cvdEl = document.getElementById('preventCvd10');
+    if (cvdEl) cvdEl.textContent = `${preventResult.totalCvd10}%`;
+
+    const p30El = document.getElementById('prevent30YrSummary');
+    if (p30El) {
+      if (preventResult.is30YrApplicable) {
+        p30El.textContent = `Total CVD: ${preventResult.totalCvd30}% (ASCVD: ${preventResult.ascvd30}%, HF: ${preventResult.hf30}%)`;
+      } else {
+        p30El.textContent = 'Not applicable (Age ≥ 60)';
+      }
+    }
+  }
+
+  if (forceAlert && typeof showPmgToast === 'function') {
+    showPmgToast(`✅ FRS & PREVENT CVD Risk calculated successfully!`, 'success');
+  }
+
+  return {
+    framingham: frsResult,
+    prevent: preventResult,
+    params: {
+      sex, age, sbp, tcMmol, hdlMmol, bmi, egfr, smoker, onHtnMeds, onLipidMeds, diabetes
+    }
+  };
 }
 
 // ─── RENDER MAIN MODULE ──────────────────────────────────────────────────────
@@ -3436,6 +3813,9 @@ function showNewPatientModal() {
   document.getElementById('newPatientLanguage').value = 'Chinese';
   document.getElementById('newPatientAllergies').value = '';
   document.getElementById('newPatientNotes').value = '';
+  if (document.getElementById('newPatientSmoking')) document.getElementById('newPatientSmoking').value = 'Non-Smoker';
+  if (document.getElementById('newPatientHtnMeds')) document.getElementById('newPatientHtnMeds').value = 'No';
+  if (document.getElementById('newPatientLipidMeds')) document.getElementById('newPatientLipidMeds').value = 'No';
 
   const branchSel = document.getElementById('newPatientBranch');
   const session = getSession();
@@ -3487,6 +3867,16 @@ function editPatientProfile(patientId) {
     cb.checked = pConds.includes(cb.value);
   });
 
+  if (document.getElementById('newPatientSmoking')) {
+    document.getElementById('newPatientSmoking').value = p.smoking || 'Non-Smoker';
+  }
+  if (document.getElementById('newPatientHtnMeds')) {
+    document.getElementById('newPatientHtnMeds').value = (p.onHtnMeds || pConds.includes('Hypertension')) ? 'Yes' : 'No';
+  }
+  if (document.getElementById('newPatientLipidMeds')) {
+    document.getElementById('newPatientLipidMeds').value = (p.onLipidMeds || pConds.includes('Dyslipidemia')) ? 'Yes' : 'No';
+  }
+
   modal.classList.remove('hidden');
 }
 
@@ -3533,6 +3923,10 @@ function saveNewPatient() {
   const branch = normalizeBranchCode(document.getElementById('newPatientBranch').value || 'Kota Sentosa');
   const allergies = document.getElementById('newPatientAllergies').value.trim();
   const notes = document.getElementById('newPatientNotes').value.trim();
+  const smoking = document.getElementById('newPatientSmoking')?.value || 'Non-Smoker';
+  const onHtnMeds = document.getElementById('newPatientHtnMeds')?.value === 'Yes';
+  const onLipidMeds = document.getElementById('newPatientLipidMeds')?.value === 'Yes';
+  const hasDiabetes = conditions.some(c => c.toLowerCase().includes('diabetes'));
 
   if (editingPatientId) {
     const p = findPatientById(editingPatientId) || patientsData.find(pt => pt.id === editingPatientId);
@@ -3550,6 +3944,10 @@ function saveNewPatient() {
       p.chronicConditions = conditions;
       p.allergies = allergies;
       p.notes = notes;
+      p.smoking = smoking;
+      p.onHtnMeds = onHtnMeds;
+      p.onLipidMeds = onLipidMeds;
+      p.hasDiabetes = hasDiabetes;
       p.updatedAt = new Date().toISOString();
 
       // If phone was updated, synchronize pmg_customer_bookings in localStorage so background cloud sync doesn't revert it
@@ -3604,6 +4002,10 @@ function saveNewPatient() {
     conditions,
     allergies,
     notes,
+    smoking,
+    onHtnMeds,
+    onLipidMeds,
+    hasDiabetes,
     createdAt: getTodayDateString(0),
     updatedAt: new Date().toISOString(),
     encounters: [],
@@ -3911,6 +4313,23 @@ function renderEncounterPastRecords(patientId) {
     if (enc.kidneyPanel?.egfr) kList.push(`eGFR: <b class="font-mono text-emerald-700">${enc.kidneyPanel.egfr}</b>`);
     const eUa = kList.length > 0 ? `<div class="space-y-0.5 text-[11px] leading-tight font-mono">${kList.join('<br>')}</div>` : '<span class="text-gray-400 font-normal">—</span>';
 
+    // CVD Risk (FRS & PREVENT)
+    let eCvd = '<span class="text-gray-400 font-normal">—</span>';
+    if (enc.cvdRisk) {
+      const f = enc.cvdRisk.framingham;
+      const p = enc.cvdRisk.prevent;
+      const fStr = f && f.riskPercent != null ? `FRS: <b class="font-mono">${f.riskPercent}%</b> <span class="text-[9px] font-sans">(${f.category})</span>` : '';
+      const pStr = p && p.ascvd10 != null ? `PREVENT: <b class="font-mono">${p.ascvd10}%</b>` : '';
+      if (fStr || pStr) {
+        eCvd = `
+          <div class="space-y-0.5 text-[11px] leading-tight font-mono">
+            ${fStr ? `<div class="text-rose-700 font-bold">${fStr}</div>` : ''}
+            ${pStr ? `<div class="text-indigo-700 font-semibold">${pStr}</div>` : ''}
+          </div>
+        `;
+      }
+    }
+
     // Weight, Height, BMI & Body Fat
     const wtVal = enc.vitals?.weight;
     const htVal = enc.vitals?.height || p.height;
@@ -3974,6 +4393,7 @@ function renderEncounterPastRecords(patientId) {
         <td class="py-2.5 px-3 whitespace-nowrap">${eBp}</td>
         <td class="py-2.5 px-3 font-mono text-gray-800 whitespace-nowrap">${eGluc}</td>
         <td class="py-2.5 px-3 whitespace-nowrap">${eLipid}</td>
+        <td class="py-2.5 px-3 whitespace-nowrap">${eCvd}</td>
         <td class="py-2.5 px-3 font-mono text-gray-700 whitespace-nowrap">${eUa}</td>
         <td class="py-2.5 px-3 font-mono text-gray-700 whitespace-nowrap">${eWeight}</td>
         <td class="py-2.5 px-3 whitespace-nowrap">${scansDisplay}</td>
@@ -3988,6 +4408,19 @@ function renderEncounterPastRecords(patientId) {
       </tr>
     `;
   }).join('');
+
+  const latestCvd = latest.cvdRisk;
+  let cvdSummaryHtml = '';
+  if (latestCvd) {
+    const frs = latestCvd.framingham;
+    const prev = latestCvd.prevent;
+    const parts = [];
+    if (frs && frs.riskPercent != null) parts.push(`FRS: <b class="font-mono text-rose-700">${frs.riskPercent}%</b> (${frs.category})`);
+    if (prev && prev.ascvd10 != null) parts.push(`PREVENT: <b class="font-mono text-indigo-700">${prev.ascvd10}%</b>`);
+    if (parts.length > 0) {
+      cvdSummaryHtml = `<div class="text-[10px] text-gray-700 font-semibold mt-1 flex items-center gap-1"><i class="fa-solid fa-heart-pulse text-[9px] text-rose-500"></i> ${parts.join(' · ')}</div>`;
+    }
+  }
 
   container.innerHTML = `
     <div class="border border-indigo-200/80 bg-gradient-to-br from-indigo-50/60 via-white to-blue-50/30 rounded-2xl p-4 space-y-3.5 shadow-xs">
@@ -4047,9 +4480,10 @@ function renderEncounterPastRecords(patientId) {
 
         <div class="p-2.5 bg-white rounded-xl border border-indigo-100/90 shadow-2xs">
           <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 flex items-center gap-1">
-            <i class="fa-solid fa-vial text-amber-500"></i> Full Lipid Profile
+            <i class="fa-solid fa-vial text-amber-500"></i> Full Lipid &amp; CVD Risk
           </div>
           <div class="text-xs text-gray-800 leading-tight">${lipidHtml}</div>
+          ${cvdSummaryHtml}
           ${liverHtml ? `<div class="text-[10px] text-gray-600 mt-1">${liverHtml}</div>` : ''}
         </div>
 
@@ -4096,6 +4530,7 @@ function renderEncounterPastRecords(patientId) {
                 <th class="py-2 px-3">BP &amp; Pulse</th>
                 <th class="py-2 px-3">Glucose / HbA1c</th>
                 <th class="py-2 px-3">Lipids</th>
+                <th class="py-2 px-3">CVD Risk (FRS / PREVENT)</th>
                 <th class="py-2 px-3">Renal &amp; UA</th>
                 <th class="py-2 px-3">Weight &amp; BMI</th>
                 <th class="py-2 px-3">TEDA / Airdoc / Reports</th>
@@ -4261,6 +4696,30 @@ function showNewEncounterModal(patientId) {
     }
   }
 
+  // Pre-fill CVD clinical risk parameters from patient profile
+  const curPtRecord = pTarget || (curPId ? findPatientById(curPId) : null);
+  if (curPtRecord) {
+    const pConds = Array.isArray(curPtRecord.conditions) ? curPtRecord.conditions : (Array.isArray(curPtRecord.chronicConditions) ? curPtRecord.chronicConditions : []);
+    if (document.getElementById('cvdSmoker')) {
+      document.getElementById('cvdSmoker').value = (curPtRecord.smoking === 'Current Smoker') ? '1' : '0';
+    }
+    if (document.getElementById('cvdHtnMeds')) {
+      document.getElementById('cvdHtnMeds').value = (curPtRecord.onHtnMeds || pConds.includes('Hypertension')) ? '1' : '0';
+    }
+    if (document.getElementById('cvdLipidMeds')) {
+      document.getElementById('cvdLipidMeds').value = (curPtRecord.onLipidMeds || pConds.includes('Dyslipidemia')) ? '1' : '0';
+    }
+    if (document.getElementById('cvdDiabetes')) {
+      document.getElementById('cvdDiabetes').value = (curPtRecord.hasDiabetes || pConds.some(c => c.toLowerCase().includes('diabetes'))) ? '1' : '0';
+    }
+  } else {
+    if (document.getElementById('cvdSmoker')) document.getElementById('cvdSmoker').value = '0';
+    if (document.getElementById('cvdHtnMeds')) document.getElementById('cvdHtnMeds').value = '0';
+    if (document.getElementById('cvdLipidMeds')) document.getElementById('cvdLipidMeds').value = '0';
+    if (document.getElementById('cvdDiabetes')) document.getElementById('cvdDiabetes').value = '0';
+  }
+  recalculateCvdRisk();
+
   // Reset other POCT notes & files
   const otherNotesEl = document.getElementById('encOtherTestsNotes');
   if (otherNotesEl) otherNotesEl.value = '';
@@ -4319,6 +4778,20 @@ function onEncounterPatientChange() {
   if (waLangEl) {
     waLangEl.value = normalizeLanguage(p.language || getPatientLanguageByRace(p));
   }
+  const pConds = Array.isArray(p.conditions) ? p.conditions : (Array.isArray(p.chronicConditions) ? p.chronicConditions : []);
+  if (document.getElementById('cvdSmoker')) {
+    document.getElementById('cvdSmoker').value = (p.smoking === 'Current Smoker') ? '1' : '0';
+  }
+  if (document.getElementById('cvdHtnMeds')) {
+    document.getElementById('cvdHtnMeds').value = (p.onHtnMeds || pConds.includes('Hypertension')) ? '1' : '0';
+  }
+  if (document.getElementById('cvdLipidMeds')) {
+    document.getElementById('cvdLipidMeds').value = (p.onLipidMeds || pConds.includes('Dyslipidemia')) ? '1' : '0';
+  }
+  if (document.getElementById('cvdDiabetes')) {
+    document.getElementById('cvdDiabetes').value = (p.hasDiabetes || pConds.some(c => c.toLowerCase().includes('diabetes'))) ? '1' : '0';
+  }
+  recalculateCvdRisk();
   renderEncounterPastRecords(pId);
 }
 
@@ -4490,6 +4963,25 @@ function editEncounterRecord(patientId, encounterId) {
 
   tempAttachedFiles = [];
   renderTempAttachedFiles();
+
+  // Pre-fill CVD clinical risk parameters from encounter or patient profile
+  const cvdRisk = enc.cvdRisk || {};
+  const cvdParams = cvdRisk.params || {};
+  const pConds = Array.isArray(p.conditions) ? p.conditions : (Array.isArray(p.chronicConditions) ? p.chronicConditions : []);
+  
+  if (document.getElementById('cvdSmoker')) {
+    document.getElementById('cvdSmoker').value = cvdParams.smoker != null ? (cvdParams.smoker ? '1' : '0') : (p.smoking === 'Current Smoker' ? '1' : '0');
+  }
+  if (document.getElementById('cvdHtnMeds')) {
+    document.getElementById('cvdHtnMeds').value = cvdParams.onHtnMeds != null ? (cvdParams.onHtnMeds ? '1' : '0') : ((p.onHtnMeds || pConds.includes('Hypertension')) ? '1' : '0');
+  }
+  if (document.getElementById('cvdLipidMeds')) {
+    document.getElementById('cvdLipidMeds').value = cvdParams.onLipidMeds != null ? (cvdParams.onLipidMeds ? '1' : '0') : ((p.onLipidMeds || pConds.includes('Dyslipidemia')) ? '1' : '0');
+  }
+  if (document.getElementById('cvdDiabetes')) {
+    document.getElementById('cvdDiabetes').value = cvdParams.diabetes != null ? (cvdParams.diabetes ? '1' : '0') : ((p.hasDiabetes || pConds.some(c => c.toLowerCase().includes('diabetes'))) ? '1' : '0');
+  }
+  recalculateCvdRisk();
 
   renderEncounterPastRecords(patientId);
 
@@ -5463,6 +5955,18 @@ async function saveNewEncounter() {
       targetEnc.planSupplements = planSuppsVal;
       targetEnc.planCounselling = planCounsellingVal;
       targetEnc.referral = referralVal;
+      targetEnc.cvdRisk = recalculateCvdRisk();
+
+      // Persist updated clinical parameters to patient profile
+      const cvdSmk = document.getElementById('cvdSmoker')?.value === '1';
+      const cvdHtn = document.getElementById('cvdHtnMeds')?.value === '1';
+      const cvdLip = document.getElementById('cvdLipidMeds')?.value === '1';
+      const cvdDm = document.getElementById('cvdDiabetes')?.value === '1';
+      p.smoking = cvdSmk ? 'Current Smoker' : 'Non-Smoker';
+      p.onHtnMeds = cvdHtn;
+      p.onLipidMeds = cvdLip;
+      p.hasDiabetes = cvdDm;
+
       if (attachedDocIds.length) {
         targetEnc.attachedDocs = (targetEnc.attachedDocs || []).concat(attachedDocIds);
       }
@@ -5532,8 +6036,19 @@ async function saveNewEncounter() {
     planSupplements: planSuppsVal,
     planCounselling: planCounsellingVal,
     referral: referralVal,
-    attachedDocs: attachedDocIds
+    attachedDocs: attachedDocIds,
+    cvdRisk: recalculateCvdRisk()
   };
+
+  // Persist updated clinical parameters to patient profile
+  const cvdSmk = document.getElementById('cvdSmoker')?.value === '1';
+  const cvdHtn = document.getElementById('cvdHtnMeds')?.value === '1';
+  const cvdLip = document.getElementById('cvdLipidMeds')?.value === '1';
+  const cvdDm = document.getElementById('cvdDiabetes')?.value === '1';
+  p.smoking = cvdSmk ? 'Current Smoker' : 'Non-Smoker';
+  p.onHtnMeds = cvdHtn;
+  p.onLipidMeds = cvdLip;
+  p.hasDiabetes = cvdDm;
 
   if (!p.encounters) p.encounters = [];
   p.encounters.unshift(newEnc);
@@ -5678,6 +6193,28 @@ function viewPatientProfile(patientId) {
 
   document.getElementById('profAllergies').textContent = p.allergies || 'None known';
   document.getElementById('profNotes').textContent = p.notes || 'None';
+
+  // Populate CVD Risk in Profile Header if recorded in encounters
+  const latestEncWithCvd = (p.encounters || []).find(e => e.cvdRisk && (e.cvdRisk.framingham || e.cvdRisk.prevent));
+  const cvdContainer = document.getElementById('profCvdRiskContainer');
+  const cvdEl = document.getElementById('profCvdRisk');
+  if (cvdContainer && cvdEl) {
+    if (latestEncWithCvd && latestEncWithCvd.cvdRisk) {
+      const frs = latestEncWithCvd.cvdRisk.framingham;
+      const prev = latestEncWithCvd.cvdRisk.prevent;
+      let labelParts = [];
+      if (frs && frs.riskPercent != null) {
+        labelParts.push(`FRS 10Y: ${frs.riskPercent}% (${frs.category})`);
+      }
+      if (prev && prev.ascvd10 != null) {
+        labelParts.push(`PREVENT: ${prev.ascvd10}%`);
+      }
+      cvdEl.textContent = labelParts.join(' · ') || 'Assessed';
+      cvdContainer.classList.remove('hidden');
+    } else {
+      cvdContainer.classList.add('hidden');
+    }
+  }
 
   switchProfileTab('encounters');
   modal.classList.remove('hidden');
@@ -6157,6 +6694,30 @@ function renderEncounterVitalsPoctBadges(enc, p) {
     `);
   }
 
+  // 9. CVD Risk Suite Badges (FRS & AHA PREVENT)
+  if (enc.cvdRisk) {
+    const frs = enc.cvdRisk.framingham;
+    const prev = enc.cvdRisk.prevent;
+    if (frs && frs.riskPercent != null) {
+      pills.push(`
+        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold border ${frs.badgeColor || 'bg-rose-50 text-rose-900 border-rose-200'} shadow-xs" title="Malaysian CPG Framingham General CVD 10-Year Risk: ${frs.riskPercent}% (${frs.categoryLabelEn}) · Target LDL-C: ${frs.ldlTarget}">
+          <span class="font-extrabold flex items-center gap-1"><i class="fa-solid fa-heart-pulse text-rose-600"></i> FRS 10-Yr:</span>
+          <b class="font-black text-sm">${frs.riskPercent}%</b>
+          <span class="text-[10px] px-1.5 py-0.5 rounded font-black bg-white/80">${frs.category}</span>
+        </span>
+      `);
+    }
+    if (prev && prev.ascvd10 != null) {
+      pills.push(`
+        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold border ${prev.badgeColor || 'bg-indigo-50 text-indigo-900 border-indigo-200'} shadow-xs" title="2024 AHA PREVENT 10-Yr ASCVD Risk: ${prev.ascvd10}% · HF: ${prev.hf10}% · Total CVD: ${prev.totalCvd10}%">
+          <span class="font-extrabold flex items-center gap-1"><i class="fa-solid fa-shield-heart text-indigo-600"></i> PREVENT ASCVD:</span>
+          <b class="font-black text-sm">${prev.ascvd10}%</b>
+          <span class="text-[10px] px-1.5 py-0.5 rounded font-black bg-white/80">${prev.ascvdCat}</span>
+        </span>
+      `);
+    }
+  }
+
   return pills.join('');
 }
 
@@ -6414,7 +6975,7 @@ function renderProfileTrends(p) {
   if (!tbody) return;
 
   if (!p.encounters || !p.encounters.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-gray-400 text-sm">No POCT records recorded yet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="text-center py-8 text-gray-400 text-sm">No POCT records recorded yet.</td></tr>`;
     return;
   }
 
@@ -6514,6 +7075,17 @@ function renderProfileTrends(p) {
             ${k.egfr ? `<div><span class="text-emerald-700 font-bold">eGFR: ${escHtml(String(k.egfr))}</span></div>` : ''}
             ${(!dispUa && !k.creatinine && !k.urea && !k.egfr) ? '<span class="text-gray-400 font-normal">—</span>' : ''}
           </div>
+        </td>
+        <td class="px-4 py-3 whitespace-nowrap">
+          ${(() => {
+            const cvd = enc.cvdRisk;
+            if (!cvd) return '<span class="text-gray-400 font-normal">—</span>';
+            const f = cvd.framingham;
+            const pr = cvd.prevent;
+            const fStr = f && f.riskPercent != null ? `<div class="font-bold text-rose-700">FRS: ${f.riskPercent}% <span class="text-[10px] font-normal">(${f.category})</span></div>` : '';
+            const pStr = pr && pr.ascvd10 != null ? `<div class="text-indigo-700 font-semibold text-xs">PREVENT: ${pr.ascvd10}%</div>` : '';
+            return (fStr || pStr) ? `<div class="space-y-0.5">${fStr}${pStr}</div>` : '<span class="text-gray-400 font-normal">—</span>';
+          })()}
         </td>
       </tr>
     `;
@@ -6890,6 +7462,26 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
       if (rchdVal != null) msg += `  * 冠心病风险比率 (R-CHD): ${l.rChd || l.rchd} ${rchdVal >= 5.0 ? '[偏高]' : '[良好]'}\n`;
     }
 
+    // Qualitative CVD Health Assessment (Strictly NO % symbols to avoid anxiety)
+    if (enc.cvdRisk && (enc.cvdRisk.framingham || enc.cvdRisk.prevent)) {
+      const frsCat = enc.cvdRisk.framingham?.category;
+      const prevCat = enc.cvdRisk.prevent?.ascvdCat;
+      const isHigh = frsCat === 'High' || prevCat === 'High';
+      const isMod = !isHigh && (frsCat === 'Moderate' || prevCat === 'Intermediate');
+
+      msg += `\n*心血管健康状况与关怀评估 (Cardiovascular Health Status)：*\n`;
+      if (isHigh) {
+        msg += `- 整体心血管健康评定：【重点关怀与管理 (Higher Risk Focus)】\n`;
+        msg += `- 药剂师温馨建议：建议按时服药，配合低盐低脂饮食与规律作息，并定期回访药房监测血压与血脂。\n`;
+      } else if (isMod) {
+        msg += `- 整体心血管健康评定：【中度风险关注 (Moderate Risk)】\n`;
+        msg += `- 药剂师温馨建议：注意饮食清淡、保持日常适量运动，定期监测血脂与血压以保持良好血管弹性。\n`;
+      } else {
+        msg += `- 整体心血管健康评定：【良好 / 低风险 (Low Risk)】\n`;
+        msg += `- 药剂师温馨建议：心血管健康状况良好！请继续保持积极的生活方式与均衡饮食，定期进行健康复查。\n`;
+      }
+    }
+
     if (enc.planCounselling) msg += `\n*饮食与生活注意：*\n${enc.planCounselling}\n`;
 
     // TEDA Report Link in Chinese
@@ -6994,6 +7586,26 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
       if (rchdVal != null) msg += `  * Nisbah Risiko Jantung (R-CHD): ${l.rChd || l.rchd}\n`;
     }
 
+    // Qualitative CVD Health Assessment (Strictly NO % symbols to avoid anxiety)
+    if (enc.cvdRisk && (enc.cvdRisk.framingham || enc.cvdRisk.prevent)) {
+      const frsCat = enc.cvdRisk.framingham?.category;
+      const prevCat = enc.cvdRisk.prevent?.ascvdCat;
+      const isHigh = frsCat === 'High' || prevCat === 'High';
+      const isMod = !isHigh && (frsCat === 'Moderate' || prevCat === 'Intermediate');
+
+      msg += `\n*Penilaian Kesihatan Jantung & Kardiovaskular:*\n`;
+      if (isHigh) {
+        msg += `- Status Kesihatan Jantung: 【Pemantauan Rapi & Pengurusan Kesihatan (Higher Risk Focus)】\n`;
+        msg += `- Nasihat Ahli Farmasi: Disarankan mengambil ubat mengikut jadual, amalkan pemakanan sihat kurang garam dan lemak, serta hadir pemantauan berkala di farmasi.\n`;
+      } else if (isMod) {
+        msg += `- Status Kesihatan Jantung: 【Perhatian Sederhana (Moderate Risk)】\n`;
+        msg += `- Nasihat Ahli Farmasi: Amalkan diet seimbang, tingkatkan aktiviti fizikal harian, serta periksa tahap kolesterol dan tekanan darah secara berkala.\n`;
+      } else {
+        msg += `- Status Kesihatan Jantung: 【Baik / Risiko Rendah (Low Risk)】\n`;
+        msg += `- Nasihat Ahli Farmasi: Tahap kesihatan jantung yang baik! Kekalkan gaya hidup aktif dan pemakanan seimbang serta lakukan pemeriksaan berkala.\n`;
+      }
+    }
+
     if (enc.planCounselling) msg += `\n*Nasihat Gaya Hidup:*\n${enc.planCounselling}\n`;
 
     // TEDA Report Link in Malay
@@ -7096,6 +7708,26 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
       if (ldlVal != null) msg += `  * LDL "Bad" Cholesterol: ${l.ldl} mmol/L ${ldlVal >= 2.6 ? '[High, target < 2.6]' : '[Optimal]'}\n`;
       if (aiVal != null) msg += `  * Atherogenic Index (AI): ${l.ai} ${aiVal >= 4.0 ? '[Elevated Risk]' : '[Low Risk]'}\n`;
       if (rchdVal != null) msg += `  * CHD Risk Ratio (R-CHD): ${l.rChd || l.rchd} ${rchdVal >= 5.0 ? '[Elevated Risk]' : '[Low Risk]'}\n`;
+    }
+
+    // Qualitative CVD Health Assessment (Strictly NO % symbols to avoid anxiety)
+    if (enc.cvdRisk && (enc.cvdRisk.framingham || enc.cvdRisk.prevent)) {
+      const frsCat = enc.cvdRisk.framingham?.category;
+      const prevCat = enc.cvdRisk.prevent?.ascvdCat;
+      const isHigh = frsCat === 'High' || prevCat === 'High';
+      const isMod = !isHigh && (frsCat === 'Moderate' || prevCat === 'Intermediate');
+
+      msg += `\n*Cardiovascular Health & Wellness Assessment:*\n`;
+      if (isHigh) {
+        msg += `- Heart Health Status: 【Targeted Health Focus & Monitoring】\n`;
+        msg += `- Pharmacist Guidance: Adhere strictly to medication regimen, maintain a low-sodium and low-saturated-fat diet, and schedule regular BP and lipid follow-ups.\n`;
+      } else if (isMod) {
+        msg += `- Heart Health Status: 【Moderate Risk Attention】\n`;
+        msg += `- Pharmacist Guidance: Emphasize a balanced heart-healthy diet, moderate weekly exercise, and routine cholesterol and BP monitoring to support vascular wellness.\n`;
+      } else {
+        msg += `- Heart Health Status: 【Good / Low Risk】\n`;
+        msg += `- Pharmacist Guidance: Your cardiovascular profile is in a good, healthy range! Keep up the active lifestyle, wholesome nutrition, and periodic wellness checks.\n`;
+      }
     }
 
     if (enc.planCounselling) msg += `\n*Lifestyle & Dietary Advice:*\n${enc.planCounselling}\n`;
