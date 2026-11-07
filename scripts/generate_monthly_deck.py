@@ -167,79 +167,107 @@ def create_coaching_slide(prs):
     cards_data = [
         (col1_l, row1_t, "⚠️ Jong Pei Choo [PA] — 3M Turnover Contraction (-26.0%)",
          "Trajectory: Aug RM 77.9k ➔ Sep RM 68.1k ➔ Oct RM 57.6k (HB 47.19% | GP 26.86% | 1,258 Tx)",
-         "Key Bottleneck: Steady footfall decline (-122 Tx MoM) and reduced companion supplement bundling at counter.",
-         "Action Plan: 1-on-1 session with PIC William Chai to review counter companion scripts; set weekly RM 7,000 House Brand quota and enforce adherence counseling."),
+         "Key Bottleneck: Steady footfall decline (-122 Tx MoM) and reduced companion supplement bundling.",
+         [
+             "1-on-1 session with PIC William Chai to review counter companion scripts.",
+             "Establish weekly RM 7,000 House Brand sales target at dispensary.",
+             "Proactively counsel chronic patients during morning 7th Mile wet market footfall."
+         ]),
         
         (col2_l, row1_t, "⚠️ Muhammad Nur Farizin [PA] — Low House Brand Attachment (28.32%)",
          "Trajectory: Aug RM 30.9k ➔ Sep RM 38.9k ➔ Oct RM 32.3k (HB Basket: RM 9.09 | GP 26.17%)",
-         "Key Bottleneck: Lowest House Brand basket size (RM 9.09) in branch; default dispensing without companion supplements.",
-         "Action Plan: Pair with senior dispenser for weekly 15-minute DPOS role-playing; enforce daily minimum RM 450+ House Brand attachment at dispensing counter."),
+         "Key Bottleneck: Lowest House Brand basket size (RM 9.09) in branch; default dispensing without add-ons.",
+         [
+             "Pair with senior dispenser for weekly 15-minute DPOS companion role-playing.",
+             "Enforce daily minimum RM 450+ House Brand attachment at dispensing counter.",
+             "Proactively bundle metabolic wellness lines with every regular Rx refill."
+         ]),
         
         (col1_l, row2_t, "⚠️ Haniesha Louna [ABM] — 3M Sales Contraction (-28.0%)",
          "Trajectory: Aug RM 46.3k ➔ Sep RM 33.1k ➔ Oct RM 33.3k (HB 40.03% | GP 25.59% | 799 Tx)",
-         "Key Bottleneck: Margin dilution caused by unattached low-margin commercial milk checkouts; lowest GP% in branch (25.59%).",
-         "Action Plan: Cease unattached commercial formula sales; cross-sell high-margin wellness supplements (35%+ GP) to lift individual GP margin above 27.5%."),
+         "Key Bottleneck: Margin dilution from unattached commercial milk checkouts; lowest GP% (25.59%).",
+         [
+             "Cease unattached low-margin commercial formula sales at checkout.",
+             "Cross-sell high-margin wellness supplements (35%+ GP) to lift individual GP ≥27.5%.",
+             "Actively guide price-sensitive shoppers to PMG clinical nutrition lines."
+         ]),
         
         (col2_l, row2_t, "⚠️ Fiona Fiena [PA] — 3M Sales Drop (-28.7%) & Tx Contraction",
          "Trajectory: Aug RM 46.0k ➔ Sep RM 38.7k ➔ Oct RM 32.8k (Tx: 870 | HB 39.92% | GP 27.19%)",
-         "Key Bottleneck: Sharp decline in transaction volume (-194 transactions MoM, down to 870 Tx vs 1,064 in Sept).",
-         "Action Plan: Assign front greeting and customer triage duty during 7th Mile morning market peak (7:30–10:30 AM); target ≥32 transactions/day.")
+         "Key Bottleneck: Sharp decline in transaction volume (-194 transactions MoM, down to 870 Tx).",
+         [
+             "Assign front greeting duty during 7th Mile morning peak (7:30–10:30 AM).",
+             "Proactively triage walk-ins to lift daily transaction volume to ≥32 Tx/day.",
+             "Bundle fast-moving House Brand essentials at cashier checkout counter."
+         ])
     ]
 
-    for cl, ct, title, traj, bneck, act in cards_data:
+    for cl, ct, title, traj, bneck, act_list in cards_data:
         c_bg = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, cl, ct, card_w, card_h)
         c_bg.fill.solid()
         c_bg.fill.fore_color.rgb = RGBColor(255, 255, 255)
         c_bg.line.color.rgb = RGBColor(226, 232, 240)
         c_bg.line.width = Pt(1)
 
-        tb = s.shapes.add_textbox(cl + Pt(12), ct + Pt(10), card_w - Pt(24), card_h - Pt(20))
+        tb = s.shapes.add_textbox(cl + Pt(12), ct + Pt(8), card_w - Pt(24), card_h - Pt(16))
         tf = tb.text_frame
         tf.word_wrap = True
         tf.text = ''
 
         # P0: Title
         p0 = tf.paragraphs[0]
-        p0.space_after = Pt(4)
+        p0.space_after = Pt(2)
         r0 = p0.add_run()
         r0.text = title
         r0.font.name = 'Arial'
-        r0.font.size = Pt(11)
+        r0.font.size = Pt(10.5)
         r0.font.bold = True
         r0.font.color.rgb = COLOR_DARK_TEXT
 
         # P1: Trajectory
         p1 = tf.add_paragraph()
-        p1.space_after = Pt(3)
+        p1.space_after = Pt(2)
         r1 = p1.add_run()
         r1.text = traj
         r1.font.name = 'Arial'
-        r1.font.size = Pt(9.5)
+        r1.font.size = Pt(9)
         r1.font.color.rgb = COLOR_SLATE
 
         # P2: Bottleneck
         p2 = tf.add_paragraph()
-        p2.space_after = Pt(3)
+        p2.space_after = Pt(2)
         r2 = p2.add_run()
         r2.text = bneck
         r2.font.name = 'Arial'
-        r2.font.size = Pt(9.5)
+        r2.font.size = Pt(9)
         r2.font.color.rgb = COLOR_SLATE
 
-        # P3: Action Plan
+        # P3: Action Plan Header
         p3 = tf.add_paragraph()
+        p3.space_after = Pt(1.5)
         r3_lbl = p3.add_run()
-        r3_lbl.text = "Action Plan: "
+        r3_lbl.text = "Action Plan (Straightforward Steps):"
         r3_lbl.font.name = 'Arial'
-        r3_lbl.font.size = Pt(9.5)
+        r3_lbl.font.size = Pt(9)
         r3_lbl.font.bold = True
         r3_lbl.font.color.rgb = COLOR_GREEN
 
-        r3_val = p3.add_run()
-        r3_val.text = act.replace("Action Plan: ", "")
-        r3_val.font.name = 'Arial'
-        r3_val.font.size = Pt(9.5)
-        r3_val.font.color.rgb = COLOR_MUTED_TEXT
+        # Bullets
+        for act_item in act_list:
+            p_act = tf.add_paragraph()
+            p_act.space_after = Pt(1)
+            r_dot = p_act.add_run()
+            r_dot.text = "• "
+            r_dot.font.name = 'Arial'
+            r_dot.font.size = Pt(8.5)
+            r_dot.font.bold = True
+            r_dot.font.color.rgb = COLOR_GREEN
+
+            r_act = p_act.add_run()
+            r_act.text = act_item
+            r_act.font.name = 'Arial'
+            r_act.font.size = Pt(8.5)
+            r_act.font.color.rgb = COLOR_MUTED_TEXT
 
     # 3. Bottom Banner: Star Benchmark Highlights (Clearance from bottom-right master arrow)
     b_bg = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Pt(38), Pt(460), Pt(780), Pt(48))
@@ -1026,8 +1054,9 @@ def update_presentation(template_path, data, output_path):
         ([("SCD sent incorrect stock deliveries to Kota Sentosa, including unrequested bulk cartons of Ensure Gold without store purchase orders.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
         ([("Business Impact", Pt(10), True, COLOR_DARK_TEXT)], Pt(1)),
         ([("Severely congested stock storage, tied up branch working capital, and caused physical clutter on retail floors.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
-        ([("Corrective Action Plan", Pt(10), True, COLOR_PMG_RED)], Pt(1)),
-        ([("Accelerate return-to-vendor (RTV) warehouse collection and establish strict dispatch verification against outlet purchase requests.", Pt(9.5), False, COLOR_SLATE)], None)
+        ([("Corrective Action Plan (Straightforward Steps)", Pt(10), True, COLOR_PMG_RED)], Pt(2)),
+        ([("• Expedite RTV warehouse collection for unrequested Ensure Gold cartons.", Pt(9), False, COLOR_SLATE)], Pt(1.5)),
+        ([("• Enforce strict dispatch verification against outlet purchase requests.", Pt(9), False, COLOR_SLATE)], None)
     ]
     set_card_content(s10.shapes[2], scd_spec)
 
@@ -1036,8 +1065,9 @@ def update_presentation(template_path, data, output_path):
         ([("MERCHANDISING & RETAIL FLOOR", Pt(11.5), True, COLOR_ORANGE)], Pt(3)),
         ([("Issue", Pt(10), True, COLOR_DARK_TEXT)], Pt(1)),
         ([("Excess stock overflow (diapers, cartons, wheelchairs, commodes) encroached onto walkways and rear emergency exit corridor.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
-        ([("Action Required", Pt(10), True, COLOR_ORANGE)], Pt(1)),
-        ([("Immediate floor decanting; establish clear designated display zones for rehabilitation equipment without compromising customer aisles.", Pt(9.5), False, COLOR_SLATE)], None)
+        ([("Action Required (Straightforward Steps)", Pt(10), True, COLOR_ORANGE)], Pt(2)),
+        ([("• Decant excess floor stock and restore 1-meter aisle clearance.", Pt(9), False, COLOR_SLATE)], Pt(1.5)),
+        ([("• Reorganize bulky mobility equipment into designated display zones.", Pt(9), False, COLOR_SLATE)], None)
     ]
     set_card_content(s10.shapes[3], merch_spec)
 
@@ -1046,8 +1076,9 @@ def update_presentation(template_path, data, output_path):
         ([("JASE & SYSTEMS", Pt(11.5), True, COLOR_BLUE)], Pt(3)),
         ([("Issue", Pt(10), True, COLOR_DARK_TEXT)], Pt(1)),
         ([("Delays in processing credit notes and stock reconciliations for returned warehouse stock.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
-        ([("Action Required", Pt(10), True, COLOR_BLUE)], Pt(1)),
-        ([("Work with IT/Operations to streamline inter-branch stock transfers and RTV status tracking.", Pt(9.5), False, COLOR_SLATE)], None)
+        ([("Action Required (Straightforward Steps)", Pt(10), True, COLOR_BLUE)], Pt(2)),
+        ([("• Log urgent IT/Ops ticket to accelerate credit note turnaround.", Pt(9), False, COLOR_SLATE)], Pt(1.5)),
+        ([("• Standardize inter-branch stock transfer logging on terminal POS.", Pt(9), False, COLOR_SLATE)], None)
     ]
     set_card_content(s10.shapes[4], jase_spec)
 
@@ -1056,8 +1087,9 @@ def update_presentation(template_path, data, output_path):
         ([("HR & FLOOR MANPOWER", Pt(11.5), True, COLOR_GREEN)], Pt(3)),
         ([("Issue", Pt(10), True, COLOR_DARK_TEXT)], Pt(1)),
         ([("Dispensing workload surges during peaks; disparity in teammate House Brand contribution (ranging from 28.32% to 53.56%).", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
-        ([("Action Required", Pt(10), True, COLOR_GREEN)], Pt(1)),
-        ([("Implement weekly 15-minute DPOS scenario role-plays focusing on retail assistants needing improvement (Farizin and Nurhafizah).", Pt(9.5), False, COLOR_SLATE)], None)
+        ([("Action Required (Straightforward Steps)", Pt(10), True, COLOR_GREEN)], Pt(2)),
+        ([("• Pair junior dispenser Farizin with senior PA in peak hours.", Pt(9), False, COLOR_SLATE)], Pt(1.5)),
+        ([("• Conduct 15-minute daily role-play on House Brand companion scripts.", Pt(9), False, COLOR_SLATE)], None)
     ]
     set_card_content(s10.shapes[5], hr_spec)
 
@@ -1066,8 +1098,9 @@ def update_presentation(template_path, data, output_path):
         ([("MARKETING", Pt(11.5), True, COLOR_PURPLE)], Pt(3)),
         ([("Issue", Pt(10), True, COLOR_DARK_TEXT)], Pt(1)),
         ([("Intensified local competitor price wars in Kuching (aggressive flyer discounting by Caring Pharmacy, Guardian, Watsons).", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
-        ([("Action Required", Pt(10), True, COLOR_PURPLE)], Pt(1)),
-        ([("Deploy hyper-local WhatsApp broadcasts and health screening promos highlighting PMG's unique personalized care and value advantage.", Pt(9.5), False, COLOR_SLATE)], None)
+        ([("Action Required (Straightforward Steps)", Pt(10), True, COLOR_PURPLE)], Pt(2)),
+        ([("• Blast WhatsApp promos for chronic refills and free health checks.", Pt(9), False, COLOR_SLATE)], Pt(1.5)),
+        ([("• Mount storefront signage highlighting PMG price & value advantage.", Pt(9), False, COLOR_SLATE)], None)
     ]
     set_card_content(s10.shapes[6], mkt_spec)
 

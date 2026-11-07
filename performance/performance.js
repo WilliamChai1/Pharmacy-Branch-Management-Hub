@@ -1718,27 +1718,28 @@ function buildDynamicBaselineReport(m, state) {
 
     swot: {
       strengths: [
-        `Strong Gross Profit Margin expansion (+${fmtPP(o.personalGpMarginDiffPP)} YoY to ${fmtPct(o.personalGpTotalLatest.gpMarginPct)}) generating +${fmtRM(o.personalGpDiffRm)} higher gross profit despite lower customer count.`,
-        `High House Brand (HB) & House Margin (HM) execution: HB grew +${fmtPct(o.hbDiffPct)} to ${fmtRM(o.hbLatest)} (${fmtPct(o.hbShareLatestPct)} of TS), and HM grew +${fmtPct(o.hmDiffPct)} to ${fmtRM(o.hmLatest)} (${fmtPct(o.hmShareLatestPct)} of TS).`,
-        `Powerhouse core categories: SUPPLEME (${fmtRM(74446.17)}, 36.92% GP, 2.13 Stock Cycle) and F & B (${fmtRM(56267.50)}, +21.97% profit growth) anchor branch profitability.`,
-        `Clinical leadership by PIC William (${fmtPct(49.94)} HB% of own TS, ${fmtRM(97.22)} TS basket size) and Pharmacist Kenix (31.48% GP margin, 53.56% HB share).`
+        `• Gross Profit Margin Expansion: Expanded GP% to ${fmtPct(o.personalGpTotalLatest.gpMarginPct)} (+${fmtPP(o.personalGpMarginDiffPP)} YoY) delivering +${fmtRM(o.personalGpDiffRm)} higher gross profit.`,
+        `• House Brand Core: HB sales reached ${fmtRM(o.hbLatest)} (${fmtPct(o.hbShareLatestPct)} of TS, +${fmtPct(o.hbDiffPct)} YoY) driven by high counter attachment.`,
+        `• Profit Anchors: Supplements (${fmtRM(74446.17)}, 36.92% GP) and F&B (${fmtRM(56267.50)}, +21.97% profit growth) safeguard bottom line.`,
+        `• Clinical Dispensary Leadership: PIC William (RM 97.22 basket, 49.9% HB) and Pharmacist Kenix (53.56% HB, 31.48% GP) lead high conversions.`
       ],
       weaknesses: [
-        `Customer transaction count dropped by ${fmtNum(Math.abs(o.txDiff))} (-7.72% YoY, from ${fmtNum(o.txPrev)} to ${fmtNum(o.txLatest)}), showing erosion in high-frequency walk-in footfall.`,
-        `SCHE-DRU margin erosion: GP% fell from 14.13% to 11.91% (-2.22 pp), losing RM 1,208.67 in profit even though sales rose +RM 1,138.11 (Stock Cycle is healthy at 1.90).`,
-        `Average Stock Cycle is ${hq.averageStockCycle.toFixed(2)} vs HQ Target of 2.0 (+${hq.stockCycleVarVsTarget.toFixed(2)} above target, or ${fmtRM(hq.excessStockRm)} excess Custom Cost), with ${fmtNum(m.agingSummary.totalAgedSkus)} SKUs (${fmtRM(m.agingSummary.totalAgedValueRm)}) stuck in 6-month+ aging.`,
-        `Wide gap in HB/HM conversion across PAs: HB% of own TS ranges from 47.33% (Penny) down to 28.32% (Farizin) and 30.96% (Nurhafizah).`
+        `• Customer Footfall Decline: Monthly transactions dropped by ${fmtNum(Math.abs(o.txDiff))} (-7.72% YoY), reflecting walk-in footfall erosion.`,
+        `• Scheduled Drug Margin Compression: SCHE-DRU GP% fell to 11.91% (-2.22 pp), losing RM 1,208 profit from brand price-matching.`,
+        `• Working Capital Stock Lockup: Stock cycle at ${hq.averageStockCycle.toFixed(2)} (vs 2.0 HQ target) with ${fmtNum(m.agingSummary.totalAgedSkus)} SKUs (${fmtRM(m.agingSummary.totalAgedValueRm)}) aged ≥6 months.`,
+        `• Staff Attachment Variance: PA House Brand contribution ranges widely from 47.33% (Penny) down to 28.32% (Farizin).`
       ],
       opportunities: [
-        `Capture Klinik Kesihatan Kota Sentosa & Sarawak Heart Centre chronic patients via the Patient Care Refill & Medication Review suite to rebuild monthly transaction count (+650 tx/month target).`,
-        `Cross-sell high-margin ELDERLY (29.25% GP) and SUPPLEME (36.92% GP) HB bundles alongside low-margin F & B nutritional milk tins (Ensure/Glucerna/Appeton) and SCHE-DRU chronic prescriptions.`,
-        `Convert 6-month aged stock (${fmtRM(m.agingSummary.totalAgedValueRm)}) into cash via 7th Mile Morning Market "Clearance & Bundle Gondola" and inter-branch stock balancing.`,
-        `Elevate PA and PRP basket sizes by pairing every OTC/NON-SCHE walk-in with a targeted RM 10–RM 25 HM/HB add-on.`
+        `• WhatsApp Chronic Refill Retention: Contact chronic patients 3–5 days prior to prescription completion to secure +650 monthly refills.`,
+        `• High-Margin Regimen Bundling: Pair metabolic wellness supplements (CoQ10, Omega-3) with all chronic scheduled drug refills.`,
+        `• Aged Stock Cash Recovery: Convert 6-month aged stock (${fmtRM(m.agingSummary.totalAgedValueRm)}) via weekend morning market promotion tables.`,
+        `• Dispensary Basket Sizing: Mandate RM 10–RM 25 House Brand add-ons on all walk-in OTC and adult milk powder checkouts.`
       ],
       threats: [
-        `Aggressive loss-leader pricing on adult nutrition, baby milk (MOM&BABY -32.10% YoY), and household OTC by Farley Supermarket 6th Mile and Watsons 7th Mile.`,
-        `Rising cost of living in Kuching causing suburban families in Kota Sentosa / Penrissen to stretch medication refill intervals or down-trade on discretionary personal care.`,
-        `Supplier price hikes on branded prescription drugs (SCHE-DRU) squeezing retail pharmacy margins when customers demand price-matching.`
+        `• Supermarket & Chain Price Wars: Aggressive loss-leader discounting on commercial adult formulas by Farley 6th Mile and Watsons 7th Mile.`,
+        `• Suburban Living Cost Squeeze: Inflation causing suburban families in Kota Sentosa to delay refills or cut discretionary wellness items.`,
+        `• Supply Chain Bulk Dumps: Central warehouse dispatching unrequested bulk stock, tying up store floor space and working capital.`,
+        `• Competitive Countermeasure: Win on clinical authority, personalized consultations, free health checks, and superior House Brand value.`
       ]
     },
 
@@ -1747,57 +1748,89 @@ function buildDynamicBaselineReport(m, state) {
         id: 'role-pic-1',
         role: 'Pharmacist (PIC - William & Pharmacist Team)',
         title: 'Reverse SCHE-DRU Margin Compression (11.91% → 14.50% Target)',
-        action: 'Audit the top 30 SCHE-DRU SKUs where GP% dropped in Oct 2026. Establish a mandatory "Branded Rx + HB/HM Therapeutic Adjunct" protocol at the dispensary counter (e.g., pairing statins/antihypertensives with CoQ10/Omega-3 HB or switching price-sensitive chronic refills to higher-margin generic/HM equivalents).',
+        action: [
+          'Audit top 30 scheduled drugs with margin compression to identify profit leakage.',
+          'Mandate counter companion protocol: pair statins and BP meds with CoQ10 or Omega-3 House Brand.',
+          'Actively switch price-conscious chronic patients to high-margin generic/House Margin equivalents.'
+        ],
         targetMetric: 'Lift SCHE-DRU GP% from 11.91% to ≥ 14.0% (+RM 1,300/month profit)'
       },
       {
         id: 'role-pic-2',
         role: 'Pharmacist (PIC - William & Pharmacist Team)',
         title: 'Chronic Refill & Screening Drive to Recover +650 Monthly Transactions',
-        action: 'Deploy the Patient Care Refill Reminder & WhatsApp follow-up workflow for Kota Sentosa chronic patients 5 days before medication run-out, and run a 7:30 AM – 10:30 AM "Morning Bazaar Blood Pressure/Glucose/Cholesterol Screening Package" every weekend to convert wet-market footfall into pharmacy transactions.',
+        action: [
+          'Send proactive WhatsApp refill reminders to Kota Sentosa chronic patients 5 days before medication exhaustion.',
+          'Conduct weekend morning bazaar blood pressure/glucose screenings (7:30–10:30 AM) at 7th Mile wet market.',
+          'Issue RM 5–10 welcome vouchers to convert screening participants into repeat dispensary customers.'
+        ],
         targetMetric: 'Restore monthly transactions from 7,826 back above 8,300+'
       },
       {
         id: 'role-abm-1',
         role: 'Assistant Branch Manager (ABM - Haniesha Louna & Lead)',
         title: 'Drive HQ 11 Stock Cycle from 2.53 Down Toward 2.0 Target',
-        action: 'Reduce HQ 11 Closing Custom Cost (RM 604,903) by RM 35,000+ within 30 days focusing on categories above the 2.0 Stock Cycle target — HOME&LIV (6.61), MOM&BABY (5.94), FIR-AID (4.59), PERSONAL (4.34), ELDERLY (3.65), and F & B (2.63): (1) Cap reorder quantities on slow-moving SKUs; (2) Set up a dedicated "Value Bundle / PWP Bay" for the top 100 6-month aged SKUs; (3) Coordinate supplier return/CN or inter-branch transfer.',
-        targetMetric: 'Improve Branch Stock Cycle from 2.53 toward ≤ 2.20 (Target: 2.0) & cut 6M aged stock by 15%'
+        action: [
+          'Cap reorders on slow-moving SKUs across overstocked categories (HOME&LIV 6.61, MOM&BABY 5.94, FIR-AID 4.59).',
+          'Set up a high-traffic "Clearance & Value Bundle Bay" at store entrance for top 6-month aged inventory.',
+          'Expedite supplier return-to-vendor (RTV) and warehouse credit note processing to cut excess stock by RM 35k+.'
+        ],
+        targetMetric: 'Improve Branch Stock Cycle from 2.53 toward ≤ 2.20 & cut 6M aged stock by 15%'
       },
       {
         id: 'role-abm-2',
         role: 'Assistant Branch Manager (ABM - Haniesha Louna & Lead)',
-        title: 'Revamp Front-of-Store OTC, FIR-AID & NON-SCHE Merchandising (Walkthrough Fix)',
-        action: 'Address the YoY drop in OTC (-RM 3,295), NON-SCHE (-RM 4,014), and FIR-AID (-RM 5,226) by installing high-visibility price talkers, family first-aid bundle kits, and HB vs Branded comparison tags on eye-level gondola shelves.',
-        targetMetric: 'Recover +RM 6,000/month across OTC, NON-SCHE & FIR-AID'
+        title: 'Revamp Front-of-Store Merchandising & Floor Standards (Walkthrough Fix)',
+        action: [
+          'Immediately clear rear emergency walkways and remove storage boxes from customer waiting chairs.',
+          'Install high-visibility House Brand comparison shelf-talkers across OTC, FIR-AID, and NON-SCHE gondolas.',
+          'Conduct weekly price tag audits to synchronize shelf wobblers with monthly campaign rotations.'
+        ],
+        targetMetric: 'Recover +RM 6,000/month across OTC, NON-SCHE & FIR-AID; 100% floor compliance'
       },
       {
         id: 'role-prp-1',
         role: 'Provisional Registered Pharmacist (PRP - Christina Lee)',
         title: 'Clinical Cross-Selling on SUPPLEME & ELDERLY Rehabilitation Aids',
-        action: 'Leverage Christina’s strong 28.52% GP margin and 871 customer interactions to champion ELDERLY (29.25% GP) and SUPPLEME (36.92% GP) consultations. Require a structured 2-item health regimen pitch (Core Supplement + HB/HM Complementary Item) for every walk-in consultation.',
+        action: [
+          'Pitch a structured 2-item health regimen (Core Supplement + House Brand companion) on every consultation.',
+          'Focus proactive recommendations on high-margin ELDERLY (29.25% GP) and SUPPLEME (36.92% GP) product lines.',
+          'Cross-sell relevant nutritional and wound care adjuncts to customers purchasing clinical mobility aids.'
+        ],
         targetMetric: 'Lift PRP TS Basket Size from RM 38.72 to RM 43.00+ & HB% from 43.28% to 47%'
       },
       {
         id: 'role-prp-2',
         role: 'Provisional Registered Pharmacist (PRP - Christina Lee)',
         title: 'New Product & High-Margin HM Clinical Detailing',
-        action: 'Lead weekly 10-minute morning huddles with PAs on 5 focus HM/HB SKUs (covering mechanism, customer benefits, and objection handling) so floor staff can confidently switch customers from low-margin branded OTCs.',
+        action: [
+          'Lead weekly 10-minute morning huddle with PAs detailing 5 focus House Brand/House Margin SKUs.',
+          'Train floor staff on customer objection handling and clinical benefits of switching from branded OTCs.',
+          'Verify dispensary team can confidently explain indications for PMG proprietary health formulations.'
+        ],
         targetMetric: 'Boost outlet HM share of TS from 9.04% to 10.50%'
       },
       {
         id: 'role-pa-1',
         role: 'Pharmacist Assistant (PA Team - Penny, Nurhafizah, Farizin, Fiona)',
         title: 'Adult Nutrition (F & B) & Household Basket Margin Upgrade',
-        action: 'Every customer purchasing F & B milk powder (Ensure, Glucerna, Appeton) or regular promotional items must be offered an HB/HM add-on (e.g., HB Vitamin C, Joint Gel, Diabetic Socks, or Strips) at checkout or on the floor to lift overall transaction GP%.',
+        action: [
+          'Attach a House Brand companion (Vitamin C, Joint Gel, or Diabetic Strips) to every commercial milk powder sale.',
+          'Actively guide customers toward PMG clinical nutrition (Nutri Alpha, Flexsure Gold) as higher-value options.',
+          'Avoid single-item low-margin checkouts by offering checkout counter companion add-ons.'
+        ],
         targetMetric: 'Maintain F & B GP% ≥ 24.5% and raise PA average HB Basket Size above RM 16.50'
       },
       {
         id: 'role-pa-2',
         role: 'Pharmacist Assistant (PA Team - Penny, Nurhafizah, Farizin, Fiona)',
         title: 'Daily Gondola Facing, Expiry FEFO & Zero-Out-of-Stock on Top 50 Hero SKUs',
-        action: 'Assign each PA 3 specific HQ categories to own daily: check shelf talkers, pull 6-month aging items to eye-level forward display, and ensure top-selling OTC/NON-SCHE fast movers are never out-of-stock on weekend mornings.',
-        targetMetric: '100% category ownership & +5% rebound in OTC/NON-SCHE unit volume'
+        action: [
+          'Execute daily morning shelf-facing SOP across assigned category gondolas before 8:00 AM opening.',
+          'Rotate inventory using First-Expiry-First-Out (FEFO); pull 6-month aging items to eye-level forward display.',
+          'Check top 50 fast-moving OTC/NON-SCHE items daily to guarantee zero out-of-stock during peak morning hours.'
+        ],
+        targetMetric: '100% daily shelf compliance & +5% rebound in OTC/NON-SCHE unit volume'
       }
     ],
 
@@ -1828,37 +1861,91 @@ function buildDynamicBaselineReport(m, state) {
         const m3Summary = `3M Trajectory: M-2 RM ${fmtNum(t.tsM2)} ➔ M-1 RM ${fmtNum(t.tsM1)} ➔ Latest RM ${fmtNum(t.tsLatest)} (${m3PctText}, ${momPctText}) | HB%: ${hbM2Text} ➔ ${hbM1Text} ➔ ${hbLatestText} | GP%: ${gpLatestText} | Tx: ${fmtNum(t.txLatest)} (Basket: RM ${basketTsVal})`;
 
         let statusBadge = '';
-        let commentAndAction = '';
+        let commentAndAction = [];
 
         if (t.picAlertRequired) {
           statusBadge = `⚠️ PRIORITY PIC ADVISORY ALERT: ${t.picAlertReasonShort || 'Action Required'}`;
           if (norm.includes('FARIZIN')) {
-            commentAndAction = `⚠️ PRIORITY PIC ADVISORY (Pharmacist William): Farizin served ${fmtNum(t.txLatest)} customers (3rd highest footfall) and achieved a 9.01% HM share, but his HB share (${hbLatestVal}%) and HB Basket Size (RM ${basketHbVal} vs branch RM 18.38) are the lowest among active staff. William must conduct 1-on-1 coaching and pair Farizin with Penny for 1 week at the OTC/nutrition counter, enforcing a daily minimum target of RM 450+ HB sales.`;
+            commentAndAction = [
+              `Key Issue: Low House Brand share (${hbLatestVal}%) and lowest HB Basket (RM ${basketHbVal}) in branch.`,
+              'Action Plan (Straightforward Steps):',
+              '• Pair Farizin with senior dispenser (Penny) for 1 week at OTC/dispensary counter.',
+              '• Conduct 1-on-1 coaching on DPOS counter companion attachment scripts.',
+              '• Enforce daily minimum target of RM 450+ House Brand sales at dispensing.'
+            ];
           } else if (norm.includes('LOUNA') || norm.includes('HANIESHA')) {
-            commentAndAction = `⚠️ PRIORITY PIC ADVISORY (Pharmacist William): As ABM, Louna's personal TS contracted -15.2% over 3 months (from RM 38,394 to RM 32,557) and personal GP Margin fell -1.94 pp to ${gpLatestVal}% (lowest in active team). William to coach Louna to cease unattached checkout of low-margin F & B adult milk / SCHE-DRU items and mandate attaching high-margin SUPPLEME / NON-SCHE (35%+ GP) items to bring her personal GP% back above 27.5%.`;
+            commentAndAction = [
+              `Key Issue: 3M sales contraction (-15.2%) and branch-lowest GP margin (${gpLatestVal}%).`,
+              'Action Plan (Straightforward Steps):',
+              '• Cease unattached checkout of low-margin commercial adult milk and diapers.',
+              '• Mandate attaching high-margin wellness supplements (35%+ GP) during checkout.',
+              '• Lift personal gross profit margin back above 27.5% target.'
+            ];
           } else if (norm.includes('FIONA')) {
-            commentAndAction = `⚠️ PRIORITY PIC ADVISORY (Pharmacist William): Fiona suffered a 3-month sales contraction of -23.4% (from RM 41,200 to RM 31,577) alongside a loss of 253 transactions (-23.4% customers). While her TS Basket is healthy (RM 38.18), volume dropped drastically. William to assign Fiona prime morning greeting duty during 7th Mile wet-market peak (7:30 - 10:30 AM) with a minimum daily target of 32 transactions.`;
+            commentAndAction = [
+              'Key Issue: Sharp customer volume loss (-253 transactions MoM, down to 870 Tx).',
+              'Action Plan (Straightforward Steps):',
+              '• Assign prime greeting and triage duty during 7th Mile wet market peak (7:30–10:30 AM).',
+              '• Proactively offer free blood pressure and health checks to incoming market shoppers.',
+              '• Enforce daily minimum target of ≥32 completed transactions per day.'
+            ];
           } else if (norm.includes('NURHAFIZAH')) {
-            commentAndAction = `⚠️ PRIORITY PIC ADVISORY (Pharmacist William): Nurhafizah is Kota Sentosa's #1 HM champion (11.73% HM share, +43.79% YoY), but her HB% has slipped over 3 consecutive months (${hbM2Text} ➔ ${hbM1Text} ➔ ${hbLatestText}). William to guide her to transfer her high-conviction HM consulting methods to core House Brand supplement and first-aid lines to lift HB% back above 35%.`;
+            commentAndAction = [
+              `Key Issue: House Brand share slipped over 3 consecutive months (${hbM2Text} ➔ ${hbM1Text} ➔ ${hbLatestText}).`,
+              'Action Plan (Straightforward Steps):',
+              '• Transfer her high-conviction HM consulting methods to core House Brand supplement lines.',
+              '• Introduce House Brand companion bundles during dispensing counter consultations.',
+              '• Lift personal House Brand contribution back above 35% within 30 days.'
+            ];
           } else {
-            commentAndAction = `⚠️ PRIORITY PIC ADVISORY (Pharmacist William): ${t.picAlertReason}. William to schedule a 1-on-1 coaching session to review counter attachment scripts, set a weekly HB sales quota, and monitor daily progress.`;
+            commentAndAction = [
+              `Key Issue: ${t.picAlertReason}.`,
+              'Action Plan (Straightforward Steps):',
+              '• Schedule a 1-on-1 coaching session to review counter attachment scripts.',
+              '• Establish a weekly House Brand sales quota and review progress daily.'
+            ];
           }
         } else {
           if (norm.includes('PENNY') || norm.includes('JONG PEI CHOO')) {
             statusBadge = '⭐ #1 Branch Volume & HB Driver';
-            commentAndAction = `Penny is the #1 revenue producer in Kota Sentosa (RM ${fmtNum(t.tsLatest)}, +18.26% YoY, 47.33% HB share), growing HB by +RM 10,497 (+66.87% YoY) and GP by +31.66% YoY. William to task Penny with peer-shadowing Farizin and mentoring junior staff on fast-paced high-margin counter conversions.`;
+            commentAndAction = [
+              `Star Benchmark: RM ${fmtNum(t.tsLatest)} turnover (+18.26% YoY, 47.33% HB share, 1,258 Tx).`,
+              'Action Plan (Straightforward Steps):',
+              '• Task Penny with peer-shadowing Farizin on fast-paced counter conversion.',
+              '• Lead morning role-play demonstrations for junior staff on companion bundling.'
+            ];
           } else if (norm.includes('KENIX')) {
             statusBadge = '⭐ Clinical Margin Benchmark (31.48% GP)';
-            commentAndAction = `Pharmacist Kenix achieved the highest GP margin among active dispensers (31.48%) and an exceptional 53.56% HB share. Replicate Kenix's clinical counselling script for chronic refill adjuncts across all staff.`;
+            commentAndAction = [
+              'Star Benchmark: Branch-leading 53.56% House Brand share and 31.65% GP margin.',
+              'Action Plan (Straightforward Steps):',
+              '• Champion high-margin clinical nutrition and chronic companion protocols at dispensary.',
+              '• Share patient switching scripts with provisional pharmacist and junior staff.'
+            ];
           } else if (norm.includes('CHRISTINA')) {
             statusBadge = '⭐ Solid Clinical Margin — Basket Focus';
-            commentAndAction = `PRP Christina achieved a strong 28.52% GP margin and 43.28% HB share across 871 patients. Enforce a structured 2-item health pitch during consultations to raise her TS Basket from RM 38.72 toward RM 44.00+.`;
+            commentAndAction = [
+              'Star Benchmark: RM 34,887.97 sales in debut month with 43.24% HB share (918 Tx).',
+              'Action Plan (Straightforward Steps):',
+              '• Continue structured clinical consultations across ELDERLY and SUPPLEME categories.',
+              '• Lead weekly 10-minute product huddles with PAs on top focus House Brand formulations.'
+            ];
           } else if (norm.includes('CHAI YEE SIAN') || norm.includes('WILLIAM')) {
             statusBadge = '⭐ #1 Profit Leader & Clinical Benchmark';
-            commentAndAction = `William leads Kota Sentosa in Gross Profit RM (RM 15,577.29), HB RM (RM 26,315.55), and TS Basket Size (RM 97.22, 49.94% HB). Document William's high-ticket chronic + supplement consultation framework into a standard branch SOP.`;
+            commentAndAction = [
+              'Star Benchmark: Leads Kota Sentosa in Gross Profit RM, HB RM, and TS Basket Size (RM 97.22).',
+              'Action Plan (Straightforward Steps):',
+              '• Document high-ticket chronic + supplement consultation framework into branch SOP.',
+              '• Conduct weekly clinical audits on scheduled drug companion attachment rates.'
+            ];
           } else {
             statusBadge = `✅ On Target (${hbLatestText} HB, ${gpLatestText} GP)`;
-            commentAndAction = `${t.name} is performing steadily across the 3-month trajectory. Maintain consistent attachment of House Brand items and sustain daily customer interaction targets.`;
+            commentAndAction = [
+              `${t.name} is performing steadily across the 3-month trajectory.`,
+              'Action Plan (Straightforward Steps):',
+              '• Maintain consistent attachment of House Brand items at dispensing.',
+              '• Sustain daily customer interaction and adherence counseling targets.'
+            ];
           }
         }
 
@@ -1934,6 +2021,13 @@ You must rigorously compare 3 months of personal sales (Latest vs M-1 vs M-2) fo
 1. Mark their "statusBadge" as "⚠️ PRIORITY PIC ADVISORY ALERT: [Concise issue, e.g. Low HB Attachment / 3M TS Drop / Margin Compression]"
 2. In "commentAndAction", provide direct, concrete guidance directed to Pharmacist (PIC - William) on what 1-on-1 advice, shadowing partner, and 30-day targets William must give to that teammate.
 
+CRITICAL INSTRUCTION FOR ALL ACTION PLANS (MANDATORY POINT FORM & STRAIGHTFORWARD):
+The Area Manager / PIC mandates that ALL action plans MUST be straight-to-the-point, easily understood, and formatted strictly in POINT FORM.
+- NEVER output long, vague narrative paragraphs, generic essays, or convoluted corporate jargon.
+- In "roleActionPlans": "action" MUST be an array of 2 to 3 crisp, practical bullet points stating the exact physical actions to execute.
+- In "teammateCoaching": "commentAndAction" MUST be an array of point-form strings: "Key Issue: [one sentence]", "Action Plan (Straightforward Steps):", "• Step 1", "• Step 2", "• Step 3".
+- In "swot": every point MUST be a punchy bullet statement starting with a bold key theme.
+
 Return ONLY valid JSON matching this exact structure (no markdown fences):
 {
   "executiveSummary": "Detailed 4-5 sentence executive synthesis covering YoY, 3-month trajectory, traffic vs basket size, and profit margin dynamics.",
@@ -1946,17 +2040,21 @@ Return ONLY valid JSON matching this exact structure (no markdown fences):
     "stockCycleComment": "Deep commentary on PMG Stock Cycle formula results and 6-month aging cash lockup."
   },
   "swot": {
-    "strengths": ["point 1", "point 2", "point 3", "point 4"],
-    "weaknesses": ["point 1", "point 2", "point 3", "point 4"],
-    "opportunities": ["point 1", "point 2", "point 3", "point 4"],
-    "threats": ["point 1", "point 2", "point 3", "point 4"]
+    "strengths": ["• Point 1", "• Point 2", "• Point 3", "• Point 4"],
+    "weaknesses": ["• Point 1", "• Point 2", "• Point 3", "• Point 4"],
+    "opportunities": ["• Point 1", "• Point 2", "• Point 3", "• Point 4"],
+    "threats": ["• Point 1", "• Point 2", "• Point 3", "• Point 4"]
   },
   "roleActionPlans": [
     {
       "id": "unique-id",
       "role": "Pharmacist (PIC - William & Pharmacist Team) | Assistant Branch Manager (ABM) | Provisional Registered Pharmacist (PRP) | Pharmacist Assistant (PA)",
       "title": "Action title",
-      "action": "Concrete step-by-step action plan for the month",
+      "action": [
+        "Step 1: Concrete execution action in point form",
+        "Step 2: Concrete execution action in point form",
+        "Step 3: Concrete execution action in point form"
+      ],
       "targetMetric": "Measurable 30-day target"
     }
   ],
@@ -1967,7 +2065,13 @@ Return ONLY valid JSON matching this exact structure (no markdown fences):
       "role": "Role",
       "statusBadge": "Status label (e.g., '⚠️ PRIORITY PIC ADVISORY ALERT: Low HB Attachment' or '⭐ Top Volume & HB Surge Star')",
       "metricsSummary": "3M Trajectory: M-2 RM ... ➔ M-1 RM ... ➔ Latest RM ... (3M %, MoM %) | HB% trajectory | GP%",
-      "commentAndAction": "Specific individualized coaching directed to PIC William to advise the teammate"
+      "commentAndAction": [
+        "Key Issue: Concise one-sentence summary of bottleneck",
+        "Action Plan (Straightforward Steps):",
+        "• Specific coaching action 1",
+        "• Specific coaching action 2",
+        "• Specific daily/weekly target"
+      ]
     }
   ]
 }`;
@@ -2344,49 +2448,61 @@ ${topBleedersStr}
 ---
 
 ### SLIDE 11: KEY CHALLENGES & DEPARTMENTAL OPERATIONAL ISSUES
-**DEPARTMENTAL BOTTLENECKS & CORRECTIVE ACTION PLANS**
+**DEPARTMENTAL BOTTLENECKS & STRAIGHTFORWARD CORRECTIVE ACTION PLANS (POINT FORM)**
 
 1. **SCD: Supply Chain & Warehouse (CRITICAL)**:
-   - *Key Issue*: SCD sent incorrect stock deliveries to Kota Sentosa, including an extra 7–8 cartons of Ensure Gold without store purchase orders.
-   - *Business Impact*: Severely congested stock storage, tied up branch working capital, and caused unnecessary physical clutter on retail floors.
-   - *Corrective Action Plan*: Accelerate return-to-vendor (RTV) warehouse collection and establish strict dispatch verification against outlet purchase requests.
+   - *Key Issue*: SCD dispatched incorrect stock deliveries (extra 7–8 cartons of Ensure Gold) without store purchase orders.
+   - *Business Impact*: Severely congested stock storage, tied up branch working capital, and caused physical clutter on retail floors.
+   - *Action Plan*:
+     • Expedite immediate return-to-vendor (RTV) warehouse collection.
+     • Enforce zero-acceptance policy on shipments without signed outlet PO.
 2. **Merchandising & Retail Floor**:
-   - *Issue*: Excess stock overflow (diapers, cartons, wheelchairs, commodes) encroached onto walkways and obstructed the rear emergency exit corridor.
-   - *Action Required*: Immediate floor decanting; establish clear designated display zones for rehabilitation equipment without compromising customer aisles.
+   - *Issue*: Excess stock overflow (diapers, cartons, wheelchairs) encroaching on walkways and rear emergency exit.
+   - *Action Plan*:
+     • Immediate floor decanting; stow packaging and cartons into back storeroom.
+     • Designate clear display zones for mobility aids without blocking customer aisles.
 3. **JASE & Systems**:
    - *Issue*: Delays in processing credit notes and stock reconciliations for returned warehouse stock.
-   - *Action Required*: Work with IT/Operations to streamline inter-branch stock transfers and RTV status tracking.
+   - *Action Plan*:
+     • Work with IT/Operations to accelerate inter-branch stock transfers.
+     • Reconcile pending RTV credit notes weekly to protect cash flow.
 4. **HR & Floor Manpower**:
-   - *Issue*: Dispensing workload surges during peak hours; wide disparity in teammate House Brand contribution (ranging from 28.32% to 53.56%).
-   - *Action Required*: Implement weekly 15-minute DPOS scenario role-plays focusing on retail assistants needing improvement (Farizin and Nurhafizah).
+   - *Issue*: Dispensing workload surges; performance gap in teammate House Brand contribution (28.32% to 53.56%).
+   - *Action Plan*:
+     • Implement weekly 15-minute DPOS scenario role-plays for junior assistants.
+     • Enforce daily minimum RM 450+ House Brand attachment at dispensing.
 5. **Marketing**:
-   - *Issue*: Intensified local competitor price wars in Kuching (aggressive flyer discounting by Caring Pharmacy, Guardian, Watsons).
-   - *Action Required*: Deploy hyper-local WhatsApp broadcasts and health screening promos highlighting PMG's unique personalized care and value advantage.
+   - *Issue*: Aggressive competitor price-undercutting on FMCG and milk powder by Kuching retail chains.
+   - *Action Plan*:
+     • Broadcast weekly WhatsApp health education and promotional bundles.
+     • Offer free BP/glucose screening vouchers to convert footfall into loyal customers.
 
 ---
 
 ### SLIDE 12: IN-DEPTH SWOT ANALYSIS — PMG PHARMACY KOTA SENTOSA
-**STRATEGIC ASSESSMENT BASED ON DATA & LOCAL MARKET DYNAMICS**
+**STRATEGIC ASSESSMENT & ACTIONABLE NEXT STEPS (POINT FORM)**
 
 - **STRENGTHS (S)**:
-  - **Proprietary House Brand Core**: ${fmtPct(o.hbShareLatestPct)} HB sales contribution (RM ${fmtNum(o.hbLatest, 2)}, +${fmtPct(o.hbDiffPct, 2)} YoY), generating RM ${fmtNum(o.personalGpTotalLatest.netSoldProfit, 2)} in gross profit with ${fmtPct(o.personalGpTotalLatest.gpMarginPct)} margin.
-  - **Established Chronic Care Stronghold**: Deep patient loyalty in 7th Mile Kota Sentosa, driving Scheduled Drugs (+${fmtPct((m.categories.find(c => c.category === 'SCHE-DRU') || {}).priceDiffPct || 12.77, 2)} YoY) and Supplements (+${fmtPct((m.categories.find(c => c.category === 'SUPPLEME') || {}).priceDiffPct || 29.98, 2)} YoY).
-  - **High Clinical Trust**: Pharmacist-led consultations (William Chai) establish solid community reputation and customer retention superior to FMCG chain competitors.
+  • **House Brand Dominance**: ${fmtPct(o.hbShareLatestPct)} HB contribution (RM ${fmtNum(o.hbLatest, 2)}, +${fmtPct(o.hbDiffPct, 2)} YoY), generating RM ${fmtNum(o.personalGpTotalLatest.netSoldProfit, 2)} gross profit at ${fmtPct(o.personalGpTotalLatest.gpMarginPct)} margin.
+  • **Chronic Care Base**: Established patient loyalty in 7th Mile driving Scheduled Drugs and Supplements (+${fmtPct((m.categories.find(c => c.category === 'SUPPLEME') || {}).priceDiffPct || 29.98, 2)} YoY).
+  • **Clinical Authority**: Pharmacist consultations (William Chai & Kenix Ling) drive high customer retention and basket quality.
 
 - **WEAKNESSES (W)**:
-  - **High Inventory Capital Tie-Up**: Custom Cost of stock on hand with ${hq.averageStockCycle.toFixed(2)} months stock cycle (vs HQ target 2.0); floor clutter and aisle obstruction observed in retail walkthrough.
-  - **Teammate Performance Disparity**: HB attachment ranges from ~28.3% (Farizin) and ~31.2% (Nurhafizah) to >43%–53% (William, Jong Pei Choo, Kenix Ling, Christina Lee).
-  - **Low Outreach Monetization**: Health screenings at coffee shops generated high headcount (40 glucose tests) but minimal direct sales (RM 35.00) without pre-set sales packages.
+  • **Customer Footfall Drop**: Transactions dropped -7.45% YoY (${fmtNum(o.txLatest)} vs ${fmtNum(o.txPrev)}), showing walk-in footfall erosion.
+  • **Working Capital Tie-Up**: Stock cycle at ${hq.averageStockCycle.toFixed(2)} (vs 2.0 HQ target) with RM 30k+ in 6-month aged inventory.
+  • **Scheduled Drug Margin Drop**: SCHE-DRU GP% compressed to 11.94% due to branded drug price matching.
+  • **Staff Attachment Disparity**: PA House Brand contribution ranges from 28.32% (Farizin) to 53.56% (Kenix Ling).
 
-- **OPPORTUNITIES (O)**:
-  - **Proactive Chronic Refill Retention**: Implement systematic WhatsApp / SMS refill reminders 3–5 days before medication exhaustion to lock in recurring monthly revenue.
-  - **Structured DPOS Up-Selling**: Train junior staff to attach high-margin wellness lines (Oxxymax, Livason, Flexmore, Progutor) to lift individual basket sizes above RM 40.
-  - **B2B Eldercare Supply**: Channel excess adult nutrition and clinical mobility equipment into institutional supply contracts with local nursing homes and eldercare operators.
+- **OPPORTUNITIES & ACTION PLANS (O)**:
+  • **WhatsApp Chronic Refill**: Proactively message chronic patients 3–5 days prior to prescription completion to lock in +650 monthly refills.
+  • **Standardized Companion Bundles**: Pair metabolic wellness supplements with all regular chronic prescriptions.
+  • **Aged Stock Clearance Bay**: Convert RM 30k+ aged stock via weekend morning market promotion tables.
+  • **Dispensary Basket Sizing**: Train PAs to attach a RM 10–RM 25 House Brand item to all OTC and adult milk powder checkouts.
 
-- **THREATS (T)**:
-  - **Intense Kuching Competitor Price Wars**: Aggressive loss-leader discounting on commercial adult formulas (Ensure, Enercal, Glucerna) by Caring Pharmacy, Watsons, and Guardian.
-  - **SCD Supply Chain Misallocations**: Warehouse sending unrequested bulk stock (e.g., extra 7–8 cartons of Ensure) straining branch cash flow and floor space.
-  - **Consumer Living Cost Pressures**: Economic inflation making price-sensitive customers more cautious on healthcare spending.
+- **THREATS & COUNTERMEASURES (T)**:
+  • **FMCG Price Wars**: Chains discounting milk powder as loss-leaders; counter by migrating patients to PMG clinical nutrition (>24% GP).
+  • **Warehouse Misallocations**: SCD sending unrequested bulk stock; counter with strict PO verification and rapid RTV.
+  • **Living Cost Inflation**: Price-conscious shoppers delaying refills; counter with affordable PMG House Brand healthcare regimens.
 
 ---
 
@@ -2837,7 +2953,7 @@ function approveRecommendationToTaskList(rec) {
     role: rec.role || 'Pharmacist (PIC)',
     assignee: rec.assignee || rec.person || 'Kota Sentosa Team',
     title: rec.title || 'Action Plan Item',
-    action: rec.action || '',
+    action: Array.isArray(rec.action) ? rec.action.join('\n') : (rec.action || ''),
     targetMetric: rec.targetMetric || '',
     dueDate: dueStr,
     status: 'TODO', // 'TODO' | 'IN_PROGRESS' | 'COMPLETED'
@@ -2902,7 +3018,7 @@ function approveRecommendationSilent(rec) {
     role: rec.role || 'Branch Team',
     assignee: rec.assignee || 'Kota Sentosa Team',
     title: rec.title,
-    action: rec.action,
+    action: Array.isArray(rec.action) ? rec.action.join('\n') : (rec.action || ''),
     targetMetric: rec.targetMetric || '',
     dueDate: due.toISOString().slice(0, 10),
     status: 'TODO',
@@ -4692,6 +4808,61 @@ function renderTab4SkusAndAging() {
   `;
 }
 
+// ── HELPER: FORMAT ACTION PLANS AS STRAIGHTFORWARD POINT FORM ─────────────
+function formatActionPointsHtml(actionData) {
+  if (!actionData) return '';
+
+  let items = [];
+  if (Array.isArray(actionData)) {
+    items = actionData.map(item => String(item).trim()).filter(Boolean);
+  } else {
+    const rawLines = String(actionData).split('\n').map(l => l.trim()).filter(Boolean);
+    if (rawLines.length > 1 || rawLines.some(l => l.startsWith('•') || l.startsWith('-') || /^\d+\./.test(l))) {
+      items = rawLines;
+    } else {
+      const sentenceMatches = String(actionData).match(/[^.!?]+[.!?]+(?:\s|$)/g);
+      if (sentenceMatches && sentenceMatches.length > 1) {
+        items = sentenceMatches.map(s => s.trim()).filter(Boolean);
+      } else {
+        items = [String(actionData).trim()];
+      }
+    }
+  }
+
+  let html = '<ul class="space-y-1.5 my-2">';
+  for (const item of items) {
+    const isHeader = (item.endsWith(':') || item.toLowerCase().startsWith('key issue:') || item.toLowerCase().startsWith('star benchmark:') || item.toLowerCase().startsWith('star performance:') || item.toLowerCase().startsWith('action plan:')) && !item.startsWith('•') && !item.startsWith('-');
+    if (isHeader) {
+      const isAction = item.toLowerCase().includes('action plan');
+      html += `<li class="font-extrabold text-xs sm:text-sm ${isAction ? 'text-emerald-800' : 'text-slate-900'} mt-2.5 mb-1 list-none flex items-center gap-1.5">
+        <span class="${isAction ? 'text-emerald-600' : 'text-slate-500'} font-black">${isAction ? '⚡' : '📌'}</span>
+        <span>${escapeHtml(item)}</span>
+      </li>`;
+    } else {
+      const cleanText = item.replace(/^[•\-\*]\s*/, '').replace(/^\d+\.\s*/, '');
+      html += `<li class="flex items-start text-xs sm:text-sm text-slate-800 leading-relaxed pl-1">
+        <span class="inline-block w-2 h-2 rounded-full bg-emerald-600 mt-1.5 mr-2 shrink-0"></span>
+        <span class="font-medium">${escapeHtml(cleanText)}</span>
+      </li>`;
+    }
+  }
+  html += '</ul>';
+  return html;
+}
+
+// ── HELPER: FORMAT SWOT ITEMS WITH BOLD THEMES ────────────────────────
+function formatSwotItemHtml(text) {
+  if (!text) return '';
+  const clean = String(text).replace(/^[•\-\*]\s*/, '').trim();
+  const colonIdx = clean.indexOf(':');
+  if (colonIdx > 0 && colonIdx < 50) {
+    const title = clean.slice(0, colonIdx).trim();
+    const desc = clean.slice(colonIdx + 1).trim();
+    return `<strong class="text-slate-900 font-extrabold">${escapeHtml(title)}:</strong> <span class="text-slate-700">${escapeHtml(desc)}</span>`;
+  }
+  return `<span class="text-slate-700">${escapeHtml(clean)}</span>`;
+}
+
 // ── TAB 5: GEMINI AI STRATEGIC ANALYSIS, SWOT & ROLE COACHING ───────────────
 function renderAiAnalysisSection() {
   const container = document.getElementById('tab5AiContainer');
@@ -4756,7 +4927,7 @@ function renderAiAnalysisSection() {
             <span class="text-xs uppercase font-extrabold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md">Strength</span>
           </div>
           <ul class="space-y-3 text-sm sm:text-base text-slate-800 list-disc pl-5 leading-relaxed font-normal">
-            ${(report.swot?.strengths || []).map(s => `<li>${escapeHtml(s)}</li>`).join('')}
+            ${(report.swot?.strengths || []).map(s => `<li class="leading-relaxed">${formatSwotItemHtml(s)}</li>`).join('')}
           </ul>
         </div>
         <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
@@ -4765,7 +4936,7 @@ function renderAiAnalysisSection() {
             <span class="text-xs uppercase font-extrabold text-rose-800 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-md">Weakness</span>
           </div>
           <ul class="space-y-3 text-sm sm:text-base text-slate-800 list-disc pl-5 leading-relaxed font-normal">
-            ${(report.swot?.weaknesses || []).map(s => `<li>${escapeHtml(s)}</li>`).join('')}
+            ${(report.swot?.weaknesses || []).map(s => `<li class="leading-relaxed">${formatSwotItemHtml(s)}</li>`).join('')}
           </ul>
         </div>
         <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
@@ -4774,7 +4945,7 @@ function renderAiAnalysisSection() {
             <span class="text-xs uppercase font-extrabold text-indigo-800 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-md">Opportunity</span>
           </div>
           <ul class="space-y-3 text-sm sm:text-base text-slate-800 list-disc pl-5 leading-relaxed font-normal">
-            ${(report.swot?.opportunities || []).map(s => `<li>${escapeHtml(s)}</li>`).join('')}
+            ${(report.swot?.opportunities || []).map(s => `<li class="leading-relaxed">${formatSwotItemHtml(s)}</li>`).join('')}
           </ul>
         </div>
         <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
@@ -4783,7 +4954,7 @@ function renderAiAnalysisSection() {
             <span class="text-xs uppercase font-extrabold text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-md">Threat</span>
           </div>
           <ul class="space-y-3 text-sm sm:text-base text-slate-800 list-disc pl-5 leading-relaxed font-normal">
-            ${(report.swot?.threats || []).map(s => `<li>${escapeHtml(s)}</li>`).join('')}
+            ${(report.swot?.threats || []).map(s => `<li class="leading-relaxed">${formatSwotItemHtml(s)}</li>`).join('')}
           </ul>
         </div>
       </div>
@@ -4839,7 +5010,7 @@ function renderAiAnalysisSection() {
                   ${approved ? `<span class="text-xs font-black text-emerald-700">✓ Approved in Task List</span>` : ''}
                 </div>
                 <h5 class="text-base sm:text-lg font-black text-slate-900 mb-1.5">${escapeHtml(r.title)}</h5>
-                <p class="text-sm sm:text-base text-slate-700 leading-relaxed mb-4">${escapeHtml(r.action)}</p>
+                <div class="mb-3">${formatActionPointsHtml(r.action)}</div>
               </div>
               <div class="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                 <div class="text-xs sm:text-sm font-bold text-slate-800">🎯 Target: ${escapeHtml(r.targetMetric)}</div>
@@ -4876,7 +5047,7 @@ function renderAiAnalysisSection() {
                   <span class="px-3 py-1 rounded-full text-xs font-black ${isAlert ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-slate-100 text-slate-800 border border-slate-200'}">${escapeHtml(t.statusBadge)}</span>
                 </div>
                 <div class="text-xs sm:text-sm font-mono text-slate-800 bg-slate-50 p-3 rounded-xl border border-slate-200 my-2.5 leading-relaxed">${escapeHtml(t.metricsSummary)}</div>
-                <p class="text-sm sm:text-base text-slate-800 leading-relaxed mb-4">${escapeHtml(t.commentAndAction)}</p>
+                <div class="mb-3">${formatActionPointsHtml(t.commentAndAction)}</div>
               </div>
               <div class="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                 ${approved ? `<span class="text-xs font-black text-emerald-700">✓ Approved in Task List</span>` : `<span></span>`}
@@ -4977,7 +5148,7 @@ function renderTaskListSection() {
                 <span class="text-[11px] text-slate-400">Due: ${escapeHtml(t.dueDate)}</span>
               </div>
               <h4 class="text-sm font-extrabold ${t.status === 'COMPLETED' ? 'line-through text-slate-400' : 'text-slate-900'}">${escapeHtml(t.title)}</h4>
-              <p class="text-xs text-slate-600 mt-1 leading-relaxed">${escapeHtml(t.action)}</p>
+              <div class="mt-2 text-xs text-slate-700">${formatActionPointsHtml(t.action)}</div>
               ${t.targetMetric ? `<div class="text-[11px] font-bold text-slate-800 mt-1.5">🎯 Target: ${escapeHtml(t.targetMetric)}</div>` : ''}
             </div>
             <div class="flex items-center gap-2 shrink-0">
