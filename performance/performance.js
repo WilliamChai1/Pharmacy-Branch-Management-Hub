@@ -484,28 +484,42 @@ function parseDailySalesCsv(text) {
     if (lines[i].startsWith('Date:')) {
       dateRange = parseCsvLine(lines[i])[0].replace('Date:', '').trim();
     }
-    if (lines[i].startsWith('Sales Item Person,')) {
+    if (lines[i].includes('Sales Item Person') && (lines[i].includes('EHM') || lines[i].includes('HB') || lines[i].includes('Grand Total') || lines[i].includes('HM'))) {
       headerIdx = i;
       break;
     }
   }
   if (headerIdx === -1) throw new Error('Header "Sales Item Person" not found in Daily Sales CSV');
   const headers = parseCsvLine(lines[headerIdx]);
+
+  const personIdx = headers.findIndex(h => h.trim().toLowerCase() === 'sales item person');
+  const ehmIdx = headers.findIndex(h => h.trim().toUpperCase() === 'EHM');
+  const hbIdx = headers.findIndex(h => h.trim().toUpperCase() === 'HB');
+  const hmIdx = headers.findIndex(h => h.trim().toUpperCase() === 'HM');
+  const pbIdx = headers.findIndex(h => h.trim().toUpperCase() === 'PB');
+  const pbAmpmIdx = headers.findIndex(h => h.trim().toUpperCase() === 'PB-AMPM');
+  const whmIdx = headers.findIndex(h => h.trim().toUpperCase() === 'WHM');
+  const tsIdx = headers.findIndex(h => {
+    const u = h.trim().toUpperCase();
+    return u.includes('GRAND TOTAL') || u.includes('TOTAL SALES') || u === 'TS';
+  });
+  const regularIdx = ehmIdx > 0 ? (ehmIdx - 1) : (personIdx + 1);
+
   const rows = [];
   for (let i = headerIdx + 1; i < lines.length; i++) {
     const cols = parseCsvLine(lines[i]);
-    const person = cols[0];
-    if (!person || person.toLowerCase() === 'grand total') continue;
+    const person = cols[personIdx !== -1 ? personIdx : 0];
+    if (!person || person.toLowerCase().includes('total')) continue;
     rows.push({
       person: person.trim(),
-      regular: parsePmgNumber(cols[1]),
-      ehm: parsePmgNumber(cols[2]),
-      hb: parsePmgNumber(cols[3]),
-      hm: parsePmgNumber(cols[4]),
-      pb: parsePmgNumber(cols[5]),
-      pbAmpm: parsePmgNumber(cols[6]),
-      whm: parsePmgNumber(cols[7]),
-      ts: parsePmgNumber(cols[8])
+      regular: parsePmgNumber(cols[regularIdx]),
+      ehm: ehmIdx !== -1 ? parsePmgNumber(cols[ehmIdx]) : 0,
+      hb: hbIdx !== -1 ? parsePmgNumber(cols[hbIdx]) : 0,
+      hm: hmIdx !== -1 ? parsePmgNumber(cols[hmIdx]) : 0,
+      pb: pbIdx !== -1 ? parsePmgNumber(cols[pbIdx]) : 0,
+      pbAmpm: pbAmpmIdx !== -1 ? parsePmgNumber(cols[pbAmpmIdx]) : 0,
+      whm: whmIdx !== -1 ? parsePmgNumber(cols[whmIdx]) : 0,
+      ts: tsIdx !== -1 ? parsePmgNumber(cols[tsIdx]) : parsePmgNumber(cols[cols.length - 1])
     });
   }
   return { dateRange, headers, rows };
@@ -519,26 +533,33 @@ function parsePersonalGpCsv(text) {
     if (lines[i].startsWith('Date:')) {
       dateRange = parseCsvLine(lines[i])[0].replace('Date:', '').trim();
     }
-    if (lines[i].startsWith('Sales Person,Qty,Net Sold Price')) {
+    if (lines[i].includes('Net Sold Price') && lines[i].includes('Net Sold Profit') && (lines[i].includes('Sales Person') || lines[i].includes('Sales Item Person'))) {
       headerIdx = i;
       break;
     }
   }
   if (headerIdx === -1) throw new Error('Header "Sales Person,Qty,Net Sold Price" not found in Personal GP CSV');
+  const headers = parseCsvLine(lines[headerIdx]);
+  const personIdx = headers.findIndex(h => h.trim().toLowerCase().includes('sales') && h.trim().toLowerCase().includes('person'));
+  const qtyIdx = headers.findIndex(h => h.trim().toLowerCase() === 'qty');
+  const priceIdx = headers.findIndex(h => h.trim().toLowerCase().includes('net sold price'));
+  const profitIdx = headers.findIndex(h => h.trim().toLowerCase().includes('net sold profit'));
+  const marginIdx = headers.findIndex(h => h.trim().toLowerCase().includes('gross profit margin') || h.trim().toLowerCase().includes('gp'));
+
   const rows = [];
   let grandTotal = null;
   for (let i = headerIdx + 1; i < lines.length; i++) {
     const cols = parseCsvLine(lines[i]);
-    const person = cols[0];
+    const person = cols[personIdx !== -1 ? personIdx : 0];
     if (!person) continue;
     const rec = {
       person: person.trim(),
-      qty: parsePmgNumber(cols[1]),
-      netSoldPrice: parsePmgNumber(cols[2]),
-      netSoldProfit: parsePmgNumber(cols[3]),
-      gpMarginPct: parsePmgNumber(cols[4])
+      qty: parsePmgNumber(cols[qtyIdx !== -1 ? qtyIdx : 1]),
+      netSoldPrice: parsePmgNumber(cols[priceIdx !== -1 ? priceIdx : 2]),
+      netSoldProfit: parsePmgNumber(cols[profitIdx !== -1 ? profitIdx : 3]),
+      gpMarginPct: parsePmgNumber(cols[marginIdx !== -1 ? marginIdx : 4])
     };
-    if (person.toLowerCase() === 'grand total') {
+    if (person.toLowerCase().includes('grand total')) {
       grandTotal = rec;
     } else {
       rows.push(rec);
@@ -555,20 +576,24 @@ function parseCustomersServedCsv(text) {
     if (lines[i].startsWith('Date:')) {
       dateRange = parseCsvLine(lines[i])[0].replace('Date:', '').trim();
     }
-    if (lines[i].startsWith('Sales Person,(Count)-Sales No Total')) {
+    if (lines[i].includes('Sales Person') && (lines[i].includes('Count') || lines[i].includes('Sales No'))) {
       headerIdx = i;
       break;
     }
   }
   if (headerIdx === -1) throw new Error('Header "Sales Person,(Count)-Sales No Total" not found in Customers Served CSV');
+  const headers = parseCsvLine(lines[headerIdx]);
+  const personIdx = headers.findIndex(h => h.trim().toLowerCase().includes('sales') && h.trim().toLowerCase().includes('person'));
+  const countIdx = headers.findIndex(h => h.trim().toLowerCase().includes('count') || h.trim().toLowerCase().includes('sales no'));
+
   const rows = [];
   let grandTotal = 0;
   for (let i = headerIdx + 1; i < lines.length; i++) {
     const cols = parseCsvLine(lines[i]);
-    const person = cols[0];
+    const person = cols[personIdx !== -1 ? personIdx : 0];
     if (!person) continue;
-    const count = parsePmgNumber(cols[1]);
-    if (person.toLowerCase() === 'grand total') {
+    const count = parsePmgNumber(cols[countIdx !== -1 ? countIdx : 1]);
+    if (person.toLowerCase().includes('grand total')) {
       grandTotal = count;
     } else {
       rows.push({ person: person.trim(), customersServed: count });
@@ -782,20 +807,60 @@ function autoDetectCsvTypeAndPeriod(fileName, text) {
   const fn = (fileName || '').toLowerCase();
   let type = 'UNKNOWN';
 
-  if (text.includes('Sales Item Person,') && text.includes('Grand Total')) {
-    type = 'DAILY_SALES';
-  } else if (text.includes('Sales Person,Qty,Net Sold Price,Net Sold Profit')) {
+  // 1. Personal GP (Sales Person, Net Sold Price, Net Sold Profit, Margin %)
+  if (
+    (text.includes('Net Sold Profit') && (text.includes('Sales Item Person') || text.includes('Sales Person'))) ||
+    fn.includes('personal')
+  ) {
     type = 'PERSONAL_GP';
-  } else if (text.includes('Sales Person,(Count)-Sales No Total')) {
-    type = 'CUSTOMERS_SERVED';
-  } else if (text.includes('Store,Category,Sales Count,Qty,Net Sold Price')) {
-    type = 'CATEGORY_GP';
-  } else if (text.includes('Category,(Count)-Item Name,Total OH Custom Cost')) {
+  }
+  // 2. Stock Closing Balance by Category
+  else if (
+    text.includes('STOCK CLOSING BALANCE') ||
+    fn.includes('stock closing') ||
+    text.includes('Category,(Count)-Item Name')
+  ) {
     type = 'STOCK_CLOSING';
-  } else if (text.includes('Category,Item Code,Item Name,Unit Custom Cost')) {
-    type = 'ITEM_SALES';
-  } else if (text.includes('Item Code,Item Name,Category,OH Qty,Average Cost,150-180 Days')) {
+  }
+  // 3. Category Gross Profit Margin
+  else if (
+    text.includes('Gross Profit Margin by Category') ||
+    (fn.includes('by category') && !fn.includes('stock closing') && !text.includes('STOCK CLOSING')) ||
+    text.includes('Store,Category,Sales Count')
+  ) {
+    type = 'CATEGORY_GP';
+  }
+  // 4. Daily Sales reporting (TS, HB, HM, Regular, EHM, PB, WHM)
+  else if (
+    text.includes('Sales - Daily Sales reporting') ||
+    fn.includes('daily sales') ||
+    (text.includes('Sales Item Person') && (text.includes('EHM') || text.includes('PB-AMPM') || text.includes('WHM') || text.includes('Item Type')))
+  ) {
+    type = 'DAILY_SALES';
+  }
+  // 5. Customers Served (Count of Transactions)
+  else if (
+    text.includes('TOTAL CUSTOMERS SERVED') ||
+    fn.includes('customers served') ||
+    (text.includes('Sales Person') && (text.includes('(Count)-Sales No Total') || text.includes('(Count)-Sales No')))
+  ) {
+    type = 'CUSTOMERS_SERVED';
+  }
+  // 6. Stock Aging Report (6 Months Non-Moving)
+  else if (
+    text.includes('150-180 Days') ||
+    fn.includes('aging') ||
+    (text.includes('Item Code') && text.includes('Average Cost') && text.includes('OH Qty'))
+  ) {
     type = 'STOCK_AGING';
+  }
+  // 7. Item SKU Sales Data (Item-level sales, Qty, Profit)
+  else if (
+    text.includes('Category,Item Code,Item Name') ||
+    (text.includes('Item Code') && text.includes('Unit Custom Cost')) ||
+    (fn.includes('per item') && !fn.includes('personal'))
+  ) {
+    type = 'ITEM_SALES';
   }
 
   // Extract date year from Date: header or filename
