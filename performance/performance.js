@@ -83,6 +83,59 @@ let monthlyTasks = [];
 let customRoles = {};
 let activeAiReport = null;
 
+// ─── TABLE SORT STATES (ALL PERFORMANCE TABLES) ─────────────────────────────
+let tab1SortState = { col: 'default', dir: 'asc' };
+let tab2SortState = { col: 'netSoldPriceLatest', dir: 'desc' };
+let tab3SortState = { col: 'tsLatest', dir: 'desc' };
+let tab4SortState = { col: 'priceLatest', dir: 'desc' };
+
+function setTabSort(tabName, col) {
+  if (tabName === 'tab1') {
+    if (tab1SortState.col === col) {
+      tab1SortState.dir = tab1SortState.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      tab1SortState.col = col;
+      tab1SortState.dir = col === 'metric' ? 'asc' : 'desc';
+    }
+    renderTab1ExecutiveOverview();
+  } else if (tabName === 'tab2') {
+    if (tab2SortState.col === col) {
+      tab2SortState.dir = tab2SortState.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      tab2SortState.col = col;
+      tab2SortState.dir = col === 'category' ? 'asc' : 'desc';
+    }
+    renderTab2CategoryAndStockCycle();
+  } else if (tabName === 'tab3') {
+    if (tab3SortState.col === col) {
+      tab3SortState.dir = tab3SortState.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      tab3SortState.col = col;
+      tab3SortState.dir = col === 'name' ? 'asc' : 'desc';
+    }
+    renderTab3TeammatesMatrix();
+  } else if (tabName === 'tab4') {
+    if (tab4SortState.col === col) {
+      tab4SortState.dir = tab4SortState.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      tab4SortState.col = col;
+      tab4SortState.dir = (col === 'itemName' || col === 'category') ? 'asc' : 'desc';
+    }
+    renderTab4SkusAndAging();
+  }
+}
+
+function getSortIndicator(activeCol, targetCol, activeDir) {
+  if (activeCol !== targetCol) return '<span class="text-slate-400 opacity-40 ml-1 text-[9px] font-mono">↕</span>';
+  return activeDir === 'asc'
+    ? '<span class="text-amber-400 ml-1 text-[9px] font-mono font-bold">▲</span>'
+    : '<span class="text-amber-400 ml-1 text-[9px] font-mono font-bold">▼</span>';
+}
+
+if (typeof window !== 'undefined') {
+  window.setTabSort = setTabSort;
+}
+
 // ─── UTILITY HELPERS ────────────────────────────────────────────────────────
 function fmtRM(val, decimals = 2) {
   const n = Number(val) || 0;
@@ -2622,19 +2675,203 @@ function renderTab1ExecutiveOverview() {
       <div class="bg-white rounded-2xl border-2 border-dashed border-slate-300 p-10 text-center">
         <div class="text-4xl mb-3">📂</div>
         <h3 class="text-lg font-bold text-slate-800">No Monthly Performance Data Loaded</h3>
-        <p class="text-sm text-slate-500 mt-1 max-w-xl mx-auto">Preloaded sample data has been cleared. Go to the <strong>"7. Upload CSV & Data Studio"</strong> tab to drop your monthly CSV files, or click <strong>"Restore Oct 2026 Sample"</strong> in the top bar to preview.</p>
-        <button onclick="switchPerfTab('tab7')" class="mt-4 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm shadow">Go to CSV Upload Studio →</button>
+        <p class="text-sm text-slate-500 mt-1 max-w-xl mx-auto">Preloaded sample data has been cleared. Go to the <strong>"Upload CSV & Data Studio"</strong> tab to drop your monthly CSV files, or click <strong>"Restore Sample"</strong> in the top bar to preview.</p>
+        <button onclick="switchPerfTab('tab7')" class="mt-4 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-sm shadow">Go to CSV Upload Studio →</button>
       </div>`;
     return;
   }
 
+  // Row objects for Tab 1 Comparison Table
+  const kpiRows = [
+    {
+      id: 'ts',
+      metric: 'Total Sales (TS)',
+      subtext: 'Daily Sales Report',
+      latestVal: o.tsLatest,
+      prevVal: o.tsPrev,
+      diffVal: o.tsDiffRm,
+      pctVal: o.tsDiffPct,
+      latestDisplay: `<div class="font-bold text-slate-900">${fmtRM(o.tsLatest)}</div>`,
+      prevDisplay: `<div class="font-medium text-slate-700">${fmtRM(o.tsPrev)}</div>`,
+      diffDisplay: `<div class="font-bold ${o.tsDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${o.tsDiffRm >= 0 ? '+' : ''}${fmtRM(o.tsDiffRm)}</div>`,
+      pctDisplay: badgeDelta(o.tsDiffPct, true)
+    },
+    {
+      id: 'hb',
+      metric: 'House Brand Sales (HB)',
+      subtext: '% of Total Sales',
+      latestVal: o.hbLatest,
+      prevVal: o.hbPrev,
+      diffVal: o.hbDiffRm,
+      pctVal: o.hbDiffPct,
+      latestDisplay: `
+        <div class="font-bold text-slate-900">${fmtRM(o.hbLatest)}</div>
+        <div class="text-[11px] font-semibold text-slate-500 mt-0.5">(${fmtPct(o.hbShareLatestPct)}%)</div>
+      `,
+      prevDisplay: `
+        <div class="font-medium text-slate-700">${fmtRM(o.hbPrev)}</div>
+        <div class="text-[11px] font-semibold text-slate-400 mt-0.5">(${fmtPct(o.hbSharePrevPct)}%)</div>
+      `,
+      diffDisplay: `
+        <div class="font-bold text-emerald-700">+${fmtRM(o.hbDiffRm)}</div>
+        <div class="text-[11px] font-semibold text-emerald-600 mt-0.5">(+${fmtPP(o.hbShareDiffPP)})</div>
+      `,
+      pctDisplay: badgeDelta(o.hbDiffPct, true)
+    },
+    {
+      id: 'hm',
+      metric: 'House Margin Sales (HM)',
+      subtext: '% of Total Sales',
+      latestVal: o.hmLatest,
+      prevVal: o.hmPrev,
+      diffVal: o.hmDiffRm,
+      pctVal: o.hmDiffPct,
+      latestDisplay: `
+        <div class="font-bold text-slate-900">${fmtRM(o.hmLatest)}</div>
+        <div class="text-[11px] font-semibold text-slate-500 mt-0.5">(${fmtPct(o.hmShareLatestPct)}%)</div>
+      `,
+      prevDisplay: `
+        <div class="font-medium text-slate-700">${fmtRM(o.hmPrev)}</div>
+        <div class="text-[11px] font-semibold text-slate-400 mt-0.5">(${fmtPct(o.hmSharePrevPct)}%)</div>
+      `,
+      diffDisplay: `
+        <div class="font-bold text-emerald-700">+${fmtRM(o.hmDiffRm)}</div>
+        <div class="text-[11px] font-semibold text-emerald-600 mt-0.5">(+${fmtPP(o.hmShareDiffPP)})</div>
+      `,
+      pctDisplay: badgeDelta(o.hmDiffPct, true)
+    },
+    {
+      id: 'gp',
+      metric: 'Personal Gross Profit & Margin',
+      subtext: 'Net Sold Profit & Margin %',
+      latestVal: o.personalGpTotalLatest.netSoldProfit,
+      prevVal: o.personalGpTotalPrev.netSoldProfit,
+      diffVal: o.personalGpDiffRm,
+      pctVal: o.personalGpDiffPct,
+      latestDisplay: `
+        <div class="font-bold text-slate-900">${fmtRM(o.personalGpTotalLatest.netSoldProfit)}</div>
+        <div class="text-[11px] font-semibold text-emerald-700 mt-0.5">(${fmtPct(o.personalGpTotalLatest.gpMarginPct)}%)</div>
+      `,
+      prevDisplay: `
+        <div class="font-medium text-slate-700">${fmtRM(o.personalGpTotalPrev.netSoldProfit)}</div>
+        <div class="text-[11px] font-semibold text-slate-400 mt-0.5">(${fmtPct(o.personalGpTotalPrev.gpMarginPct)}%)</div>
+      `,
+      diffDisplay: `
+        <div class="font-bold ${o.personalGpDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${o.personalGpDiffRm >= 0 ? '+' : ''}${fmtRM(o.personalGpDiffRm)}</div>
+        <div class="text-[11px] font-semibold ${o.personalGpMarginDiffPP >= 0 ? 'text-emerald-600' : 'text-rose-600'} mt-0.5">(${o.personalGpMarginDiffPP >= 0 ? '+' : ''}${fmtPP(o.personalGpMarginDiffPP)})</div>
+      `,
+      pctDisplay: badgeDelta(o.personalGpDiffPct, true)
+    },
+    {
+      id: 'tx',
+      metric: 'Number of Transactions',
+      subtext: 'Customers Served',
+      latestVal: o.txLatest,
+      prevVal: o.txPrev,
+      diffVal: o.txDiff,
+      pctVal: o.txDiffPct,
+      latestDisplay: `<div class="font-bold text-slate-900">${fmtNum(o.txLatest)}</div>`,
+      prevDisplay: `<div class="font-medium text-slate-700">${fmtNum(o.txPrev)}</div>`,
+      diffDisplay: `<div class="font-bold ${o.txDiff >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${o.txDiff >= 0 ? '+' : ''}${fmtNum(o.txDiff)} tx</div>`,
+      pctDisplay: badgeDelta(o.txDiffPct, true)
+    },
+    {
+      id: 'basketTs',
+      metric: 'Basket Size (Total Sales)',
+      subtext: 'Total Sales ÷ Transactions',
+      latestVal: o.basketTsLatest,
+      prevVal: o.basketTsPrev,
+      diffVal: o.basketTsDiffRm,
+      pctVal: o.basketTsDiffPct,
+      latestDisplay: `<div class="font-bold text-slate-900">${fmtRM(o.basketTsLatest)}</div>`,
+      prevDisplay: `<div class="font-medium text-slate-700">${fmtRM(o.basketTsPrev)}</div>`,
+      diffDisplay: `<div class="font-bold ${o.basketTsDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${o.basketTsDiffRm >= 0 ? '+' : ''}${fmtRM(o.basketTsDiffRm)}</div>`,
+      pctDisplay: badgeDelta(o.basketTsDiffPct, true)
+    },
+    {
+      id: 'basketHb',
+      metric: 'Basket Size (House Brand)',
+      subtext: 'House Brand ÷ Transactions',
+      latestVal: o.basketHbLatest,
+      prevVal: o.basketHbPrev,
+      diffVal: o.basketHbDiffRm,
+      pctVal: o.basketHbDiffPct,
+      latestDisplay: `<div class="font-bold text-slate-900">${fmtRM(o.basketHbLatest)}</div>`,
+      prevDisplay: `<div class="font-medium text-slate-700">${fmtRM(o.basketHbPrev)}</div>`,
+      diffDisplay: `<div class="font-bold ${o.basketHbDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${o.basketHbDiffRm >= 0 ? '+' : ''}${fmtRM(o.basketHbDiffRm)}</div>`,
+      pctDisplay: badgeDelta(o.basketHbDiffPct, true)
+    },
+    {
+      id: 'catPrice',
+      metric: 'Net Sold Price (All 12 Categories)',
+      subtext: `HQ 11 Focus: ${fmtRM(hq.netSoldPriceLatest)} vs LY ${fmtRM(hq.netSoldPricePrev)}`,
+      latestVal: all12.netSoldPriceLatest,
+      prevVal: all12.netSoldPricePrev,
+      diffVal: all12.priceDiffRm,
+      pctVal: all12.priceDiffPct,
+      latestDisplay: `<div class="font-bold text-slate-900">${fmtRM(all12.netSoldPriceLatest)}</div>`,
+      prevDisplay: `<div class="font-medium text-slate-700">${fmtRM(all12.netSoldPricePrev)}</div>`,
+      diffDisplay: `<div class="font-bold ${all12.priceDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${all12.priceDiffRm >= 0 ? '+' : ''}${fmtRM(all12.priceDiffRm)}</div>`,
+      pctDisplay: badgeDelta(all12.priceDiffPct, true)
+    },
+    {
+      id: 'catProfit',
+      metric: 'Net Sold Profit (All 12 Categories)',
+      subtext: `HQ 11 Focus: ${fmtRM(hq.netSoldProfitLatest)} vs LY ${fmtRM(hq.netSoldProfitPrev)}`,
+      latestVal: all12.netSoldProfitLatest,
+      prevVal: all12.netSoldProfitPrev,
+      diffVal: all12.profitDiffRm,
+      pctVal: all12.profitDiffPct,
+      latestDisplay: `<div class="font-bold text-emerald-800">${fmtRM(all12.netSoldProfitLatest)}</div>`,
+      prevDisplay: `<div class="font-medium text-slate-700">${fmtRM(all12.netSoldProfitPrev)}</div>`,
+      diffDisplay: `<div class="font-bold ${all12.profitDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${all12.profitDiffRm >= 0 ? '+' : ''}${fmtRM(all12.profitDiffRm)}</div>`,
+      pctDisplay: badgeDelta(all12.profitDiffPct, true)
+    },
+    {
+      id: 'catGp',
+      metric: 'Category Gross Profit Margin (%)',
+      subtext: `HQ 11 Focus GP%: ${fmtPct(hq.gpPctLatest)} vs LY ${fmtPct(hq.gpPctPrev)}`,
+      latestVal: all12.gpPctLatest,
+      prevVal: all12.gpPctPrev,
+      diffVal: all12.gpPctDiffPP,
+      pctVal: all12.gpPctDiffPP,
+      latestDisplay: `<div class="font-bold text-slate-900">${fmtPct(all12.gpPctLatest)}%</div>`,
+      prevDisplay: `<div class="font-medium text-slate-700">${fmtPct(all12.gpPctPrev)}%</div>`,
+      diffDisplay: `<div class="font-bold ${all12.gpPctDiffPP >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${all12.gpPctDiffPP >= 0 ? '+' : ''}${fmtPP(all12.gpPctDiffPP)}</div>`,
+      pctDisplay: badgeDelta(all12.gpPctDiffPP, true, 2, ' pp')
+    }
+  ];
+
+  // Apply sorting if active
+  let displayKpiRows = [...kpiRows];
+  if (tab1SortState.col !== 'default') {
+    const col = tab1SortState.col;
+    const isAsc = tab1SortState.dir === 'asc';
+    displayKpiRows.sort((a, b) => {
+      let vA, vB;
+      if (col === 'metric') {
+        vA = a.metric; vB = b.metric;
+        return isAsc ? vA.localeCompare(vB) : vB.localeCompare(vA);
+      } else if (col === 'latest') {
+        vA = a.latestVal || 0; vB = b.latestVal || 0;
+      } else if (col === 'prev') {
+        vA = a.prevVal || 0; vB = b.prevVal || 0;
+      } else if (col === 'diff') {
+        vA = a.diffVal || 0; vB = b.diffVal || 0;
+      } else if (col === 'pct') {
+        vA = a.pctVal || 0; vB = b.pctVal || 0;
+      }
+      return isAsc ? vA - vB : vB - vA;
+    });
+  }
+
   container.innerHTML = `
-    <!-- Top 5 Required Core Comparisons (KPIs 1 to 5) -->
+    <!-- Top 4 Core Summary Cards (Calm Executive Aesthetic) -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-      <!-- KPI 1A: Total Sales (TS) -->
+      <!-- Total Sales (TS) -->
       <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs">
         <div class="flex items-center justify-between mb-1">
-          <span class="text-xs font-bold uppercase tracking-wider text-slate-500">1A. Total Sales (TS)</span>
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Total Sales (TS)</span>
           ${badgeDelta(o.tsDiffPct, true)}
         </div>
         <div class="text-2xl font-extrabold text-slate-900 mt-1">${fmtRM(o.tsLatest)}</div>
@@ -2648,15 +2885,15 @@ function renderTab1ExecutiveOverview() {
         </div>
       </div>
 
-      <!-- KPI 1B: House Brand (HB) & HM -->
+      <!-- House Brand & House Margin -->
       <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs">
         <div class="flex items-center justify-between mb-1">
-          <span class="text-xs font-bold uppercase tracking-wider text-indigo-600">1B. HB & HM Performance</span>
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-700">House Brand & House Margin</span>
           ${badgeDelta(o.hbDiffPct, true)}
         </div>
         <div class="flex items-baseline justify-between mt-1">
           <div>
-            <div class="text-xl font-extrabold text-indigo-950">${fmtRM(o.hbLatest)} <span class="text-xs font-bold text-indigo-600">HB</span></div>
+            <div class="text-xl font-extrabold text-slate-900">${fmtRM(o.hbLatest)} <span class="text-xs font-bold text-slate-500">HB</span></div>
             <div class="text-[11px] text-slate-500">Prev HB: ${fmtRM(o.hbPrev)} (${o.hbDiffRm >= 0 ? '+' : ''}${fmtRM(o.hbDiffRm)})</div>
           </div>
           <div class="text-right">
@@ -2666,20 +2903,20 @@ function renderTab1ExecutiveOverview() {
         </div>
         <div class="mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
           <div>
-            <span class="font-bold text-violet-700">HM: ${fmtRM(o.hmLatest)}</span>
+            <span class="font-bold text-slate-700">HM: ${fmtRM(o.hmLatest)}</span>
             <span class="text-slate-500 text-[11px] ml-1">(LY: ${fmtRM(o.hmPrev)})</span>
           </div>
           <div class="text-right">
-            <span class="font-bold text-violet-800">${fmtPct(o.hmShareLatestPct)} of TS</span>
+            <span class="font-bold text-slate-800">${fmtPct(o.hmShareLatestPct)} of TS</span>
             <span class="ml-1 text-[11px] font-bold text-emerald-600">(${fmtPct(o.hmDiffPct, 1, true)})</span>
           </div>
         </div>
       </div>
 
-      <!-- KPI 2: Gross Profit (RM & %) -->
+      <!-- Gross Profit & Margin -->
       <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs">
         <div class="flex items-center justify-between mb-1">
-          <span class="text-xs font-bold uppercase tracking-wider text-emerald-700">2. Gross Profit (RM & %)</span>
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-700">Gross Profit & Margin</span>
           ${badgeDelta(o.personalGpDiffPct, true)}
         </div>
         <div class="flex items-baseline justify-between mt-1">
@@ -2696,10 +2933,10 @@ function renderTab1ExecutiveOverview() {
         </div>
       </div>
 
-      <!-- KPI 3, 4, 5: Transactions & Basket Sizes (TS & HB) -->
+      <!-- Traffic & Basket Size -->
       <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs">
         <div class="flex items-center justify-between mb-1">
-          <span class="text-xs font-bold uppercase tracking-wider text-amber-700">3–5. Traffic & Basket Size</span>
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-700">Traffic & Basket Size</span>
           ${badgeDelta(o.txDiffPct, true)}
         </div>
         <div class="flex items-baseline justify-between mt-1">
@@ -2708,14 +2945,14 @@ function renderTab1ExecutiveOverview() {
             <div class="text-[11px] text-slate-500">Prev Year: ${fmtNum(o.txPrev)} (${o.txDiff >= 0 ? '+' : ''}${fmtNum(o.txDiff)})</div>
           </div>
           <div class="text-right">
-            <div class="text-xs font-bold text-slate-700">TS Basket: <span class="text-indigo-700 font-extrabold">${fmtRM(o.basketTsLatest)}</span></div>
+            <div class="text-xs font-bold text-slate-700">TS Basket: <span class="text-slate-900 font-extrabold">${fmtRM(o.basketTsLatest)}</span></div>
             <div class="text-[11px] text-emerald-600 font-semibold">LY ${fmtRM(o.basketTsPrev)} (${fmtPct(o.basketTsDiffPct, 1, true)})</div>
           </div>
         </div>
         <div class="mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
-          <span class="font-semibold text-slate-600">5. HB Basket Size:</span>
+          <span class="font-semibold text-slate-600">HB Basket Size:</span>
           <span>
-            <strong class="text-indigo-700">${fmtRM(o.basketHbLatest)}</strong>
+            <strong class="text-slate-900">${fmtRM(o.basketHbLatest)}</strong>
             <span class="text-[11px] text-slate-500">vs LY ${fmtRM(o.basketHbPrev)}</span>
             <span class="text-[11px] font-bold text-emerald-600 ml-1">(${fmtPct(o.basketHbDiffPct, 1, true)})</span>
           </span>
@@ -2723,98 +2960,50 @@ function renderTab1ExecutiveOverview() {
       </div>
     </div>
 
-    <!-- Complete Quantitative Verification Table for Requirements 1–5 & 7–9 -->
+    <!-- Complete Quantitative Verification Table with Sticky Header & Sorting -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-      <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div class="px-5 py-4 bg-slate-900 text-white flex items-center justify-between">
+      <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex flex-col">
+        <div class="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between">
           <div>
-            <h3 class="text-sm font-bold tracking-wide uppercase">Core YoY Quantitative Comparison Matrix (KPIs 1–5 & 7–9)</h3>
-            <p class="text-xs text-slate-300 mt-0.5">Comparing Latest Month vs Previous Year Same Month in RM, % Share, and YoY Growth %</p>
+            <h3 class="text-sm font-bold tracking-wide uppercase">Core YoY Quantitative Comparison Matrix</h3>
+            <p class="text-xs text-slate-300 mt-0.5">Click any column header to sort by amount or name</p>
           </div>
-          <span class="px-2.5 py-1 rounded bg-indigo-500/30 border border-indigo-400/40 text-xs font-semibold">Kota Sentosa (PQ0147MI)</span>
+          <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-xs font-medium text-slate-300">Kota Sentosa</span>
         </div>
-        <div class="overflow-x-auto">
+        <div class="table-sticky-container overflow-x-auto overflow-y-auto max-h-[70vh]">
           <table class="w-full text-left border-collapse text-xs">
             <thead>
-              <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase">
-                <th class="py-3 px-4">Metric / Requirement</th>
-                <th class="py-3 px-4 text-right">Latest Month</th>
-                <th class="py-3 px-4 text-right">Prev Year (Same Month)</th>
-                <th class="py-3 px-4 text-right">Variance (RM / Qty)</th>
-                <th class="py-3 px-4 text-right">YoY Change (%)</th>
+              <tr class="bg-slate-900 text-white uppercase text-[11px] sticky top-0 z-20">
+                <th onclick="setTabSort('tab1', 'metric')" class="py-3 px-4 cursor-pointer select-none hover:bg-slate-800 transition">
+                  Metric / Requirement ${getSortIndicator(tab1SortState.col, 'metric', tab1SortState.dir)}
+                </th>
+                <th onclick="setTabSort('tab1', 'latest')" class="py-3 px-4 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+                  Latest Month ${getSortIndicator(tab1SortState.col, 'latest', tab1SortState.dir)}
+                </th>
+                <th onclick="setTabSort('tab1', 'prev')" class="py-3 px-4 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+                  Prev Year (Same Month) ${getSortIndicator(tab1SortState.col, 'prev', tab1SortState.dir)}
+                </th>
+                <th onclick="setTabSort('tab1', 'diff')" class="py-3 px-4 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+                  Variance (RM / Qty) ${getSortIndicator(tab1SortState.col, 'diff', tab1SortState.dir)}
+                </th>
+                <th onclick="setTabSort('tab1', 'pct')" class="py-3 px-4 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+                  YoY Change (%) ${getSortIndicator(tab1SortState.col, 'pct', tab1SortState.dir)}
+                </th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-100 text-slate-800">
-              <tr class="hover:bg-slate-50/80">
-                <td class="py-2.5 px-4 font-bold">1a. Total Sales (TS - Daily Sales Report)</td>
-                <td class="py-2.5 px-4 text-right font-bold">${fmtRM(o.tsLatest)}</td>
-                <td class="py-2.5 px-4 text-right">${fmtRM(o.tsPrev)}</td>
-                <td class="py-2.5 px-4 text-right font-semibold ${o.tsDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${o.tsDiffRm >= 0 ? '+' : ''}${fmtRM(o.tsDiffRm)}</td>
-                <td class="py-2.5 px-4 text-right">${badgeDelta(o.tsDiffPct, true)}</td>
-              </tr>
-              <tr class="hover:bg-slate-50/80 bg-indigo-50/30">
-                <td class="py-2.5 px-4 font-bold text-indigo-950">1b. House Brand Sales (HB in RM & % of TS)</td>
-                <td class="py-2.5 px-4 text-right font-bold text-indigo-900">${fmtRM(o.hbLatest)} <span class="text-[11px] text-indigo-600">(${fmtPct(o.hbShareLatestPct)})</span></td>
-                <td class="py-2.5 px-4 text-right">${fmtRM(o.hbPrev)} <span class="text-[11px] text-slate-500">(${fmtPct(o.hbSharePrevPct)})</span></td>
-                <td class="py-2.5 px-4 text-right font-semibold text-emerald-700">+${fmtRM(o.hbDiffRm)} <span class="text-[11px]">(${fmtPP(o.hbShareDiffPP)})</span></td>
-                <td class="py-2.5 px-4 text-right">${badgeDelta(o.hbDiffPct, true)}</td>
-              </tr>
-              <tr class="hover:bg-slate-50/80 bg-violet-50/30">
-                <td class="py-2.5 px-4 font-bold text-violet-950">1c. House Margin Sales (HM in RM & % of TS)</td>
-                <td class="py-2.5 px-4 text-right font-bold text-violet-900">${fmtRM(o.hmLatest)} <span class="text-[11px] text-violet-600">(${fmtPct(o.hmShareLatestPct)})</span></td>
-                <td class="py-2.5 px-4 text-right">${fmtRM(o.hmPrev)} <span class="text-[11px] text-slate-500">(${fmtPct(o.hmSharePrevPct)})</span></td>
-                <td class="py-2.5 px-4 text-right font-semibold text-emerald-700">+${fmtRM(o.hmDiffRm)} <span class="text-[11px]">(${fmtPP(o.hmShareDiffPP)})</span></td>
-                <td class="py-2.5 px-4 text-right">${badgeDelta(o.hmDiffPct, true)}</td>
-              </tr>
-              <tr class="hover:bg-slate-50/80">
-                <td class="py-2.5 px-4 font-bold">2a. Personal Gross Profit (RM) & Margin (%)</td>
-                <td class="py-2.5 px-4 text-right font-bold text-emerald-800">${fmtRM(o.personalGpTotalLatest.netSoldProfit)} <span class="text-[11px]">(${fmtPct(o.personalGpTotalLatest.gpMarginPct)})</span></td>
-                <td class="py-2.5 px-4 text-right">${fmtRM(o.personalGpTotalPrev.netSoldProfit)} <span class="text-[11px] text-slate-500">(${fmtPct(o.personalGpTotalPrev.gpMarginPct)})</span></td>
-                <td class="py-2.5 px-4 text-right font-semibold text-emerald-700">${o.personalGpDiffRm >= 0 ? '+' : ''}${fmtRM(o.personalGpDiffRm)} <span class="text-[11px]">(${fmtPP(o.personalGpMarginDiffPP)})</span></td>
-                <td class="py-2.5 px-4 text-right">${badgeDelta(o.personalGpDiffPct, true)}</td>
-              </tr>
-              <tr class="hover:bg-slate-50/80">
-                <td class="py-2.5 px-4 font-bold">3. Number of Transactions (Customers Served)</td>
-                <td class="py-2.5 px-4 text-right font-bold">${fmtNum(o.txLatest)}</td>
-                <td class="py-2.5 px-4 text-right">${fmtNum(o.txPrev)}</td>
-                <td class="py-2.5 px-4 text-right font-semibold ${o.txDiff >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${o.txDiff >= 0 ? '+' : ''}${fmtNum(o.txDiff)} tx</td>
-                <td class="py-2.5 px-4 text-right">${badgeDelta(o.txDiffPct, true)}</td>
-              </tr>
-              <tr class="hover:bg-slate-50/80">
-                <td class="py-2.5 px-4 font-bold">4. Basket Size for TS (TS ÷ Transactions)</td>
-                <td class="py-2.5 px-4 text-right font-bold text-indigo-900">${fmtRM(o.basketTsLatest)}</td>
-                <td class="py-2.5 px-4 text-right">${fmtRM(o.basketTsPrev)}</td>
-                <td class="py-2.5 px-4 text-right font-semibold ${o.basketTsDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${o.basketTsDiffRm >= 0 ? '+' : ''}${fmtRM(o.basketTsDiffRm)}</td>
-                <td class="py-2.5 px-4 text-right">${badgeDelta(o.basketTsDiffPct, true)}</td>
-              </tr>
-              <tr class="hover:bg-slate-50/80">
-                <td class="py-2.5 px-4 font-bold">5. Basket Size for HB (HB ÷ Transactions)</td>
-                <td class="py-2.5 px-4 text-right font-bold text-indigo-900">${fmtRM(o.basketHbLatest)}</td>
-                <td class="py-2.5 px-4 text-right">${fmtRM(o.basketHbPrev)}</td>
-                <td class="py-2.5 px-4 text-right font-semibold ${o.basketHbDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${o.basketHbDiffRm >= 0 ? '+' : ''}${fmtRM(o.basketHbDiffRm)}</td>
-                <td class="py-2.5 px-4 text-right">${badgeDelta(o.basketHbDiffPct, true)}</td>
-              </tr>
-              <tr class="hover:bg-slate-50/80 bg-emerald-50/30">
-                <td class="py-2.5 px-4 font-bold">7. Net Sold Price (All 12 Categories) <span class="text-[10px] font-normal text-slate-500 block">HQ 11 Focus (Excl. WYMED-EX): ${fmtRM(hq.netSoldPriceLatest)} vs LY ${fmtRM(hq.netSoldPricePrev)}</span></td>
-                <td class="py-2.5 px-4 text-right font-bold">${fmtRM(all12.netSoldPriceLatest)}</td>
-                <td class="py-2.5 px-4 text-right">${fmtRM(all12.netSoldPricePrev)}</td>
-                <td class="py-2.5 px-4 text-right font-semibold ${all12.priceDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${all12.priceDiffRm >= 0 ? '+' : ''}${fmtRM(all12.priceDiffRm)}</td>
-                <td class="py-2.5 px-4 text-right">${badgeDelta(all12.priceDiffPct, true)}</td>
-              </tr>
-              <tr class="hover:bg-slate-50/80 bg-emerald-50/30">
-                <td class="py-2.5 px-4 font-bold">8. Net Sold Profit (All 12 Categories) <span class="text-[10px] font-normal text-slate-500 block">HQ 11 Focus (Excl. WYMED-EX): ${fmtRM(hq.netSoldProfitLatest)} vs LY ${fmtRM(hq.netSoldProfitPrev)}</span></td>
-                <td class="py-2.5 px-4 text-right font-bold text-emerald-800">${fmtRM(all12.netSoldProfitLatest)}</td>
-                <td class="py-2.5 px-4 text-right">${fmtRM(all12.netSoldProfitPrev)}</td>
-                <td class="py-2.5 px-4 text-right font-semibold ${all12.profitDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${all12.profitDiffRm >= 0 ? '+' : ''}${fmtRM(all12.profitDiffRm)}</td>
-                <td class="py-2.5 px-4 text-right">${badgeDelta(all12.profitDiffPct, true)}</td>
-              </tr>
-              <tr class="hover:bg-slate-50/80 bg-emerald-50/30">
-                <td class="py-2.5 px-4 font-bold">9. Category Gross Profit Margin (%) (All 12 Categories) <span class="text-[10px] font-normal text-slate-500 block">HQ 11 Focus GP%: ${fmtPct(hq.gpPctLatest)} vs LY ${fmtPct(hq.gpPctPrev)}</span></td>
-                <td class="py-2.5 px-4 text-right font-bold text-emerald-800">${fmtPct(all12.gpPctLatest)}</td>
-                <td class="py-2.5 px-4 text-right">${fmtPct(all12.gpPctPrev)}</td>
-                <td class="py-2.5 px-4 text-right font-semibold text-emerald-700">${fmtPP(all12.gpPctDiffPP)}</td>
-                <td class="py-2.5 px-4 text-right">${badgeDelta(all12.gpPctDiffPP, true, 2, ' pp')}</td>
-              </tr>
+            <tbody class="divide-y divide-slate-100 text-slate-800 bg-white">
+              ${displayKpiRows.map(row => `
+                <tr class="hover:bg-slate-50 transition border-b border-slate-100">
+                  <td class="py-3 px-4">
+                    <div class="font-bold text-slate-900">${escapeHtml(row.metric)}</div>
+                    ${row.subtext ? `<div class="text-[10px] text-slate-400 mt-0.5">${escapeHtml(row.subtext)}</div>` : ''}
+                  </td>
+                  <td class="py-3 px-4 text-right">${row.latestDisplay}</td>
+                  <td class="py-3 px-4 text-right">${row.prevDisplay}</td>
+                  <td class="py-3 px-4 text-right">${row.diffDisplay}</td>
+                  <td class="py-3 px-4 text-right">${row.pctDisplay}</td>
+                </tr>
+              `).join('')}
             </tbody>
           </table>
         </div>
@@ -2825,9 +3014,9 @@ function renderTab1ExecutiveOverview() {
         <div>
           <div class="flex items-center justify-between mb-3">
             <h3 class="text-sm font-extrabold text-slate-900 uppercase tracking-wide">Latest 3-Month Trajectory</h3>
-            <button onclick="switchPerfTab('tab7')" class="text-[11px] font-bold text-indigo-600 hover:underline">Edit M-1 / M-2 →</button>
+            <button onclick="switchPerfTab('tab7')" class="text-[11px] font-bold text-slate-600 hover:text-slate-900 hover:underline">Edit M-1 / M-2 →</button>
           </div>
-          <p class="text-xs text-slate-500 mb-4">Comparing M-2, M-1, and Latest Month alongside Previous Year Same Month benchmark.</p>
+          <p class="text-xs text-slate-500 mb-4">Comparing M-2, M-1, and Latest Month alongside Previous Year benchmark.</p>
 
           <div class="space-y-3 text-xs">
             <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
@@ -2852,16 +3041,16 @@ function renderTab1ExecutiveOverview() {
               </div>
             </div>
 
-            <div class="p-3.5 rounded-xl bg-indigo-50 border-2 border-indigo-500/40">
-              <div class="flex justify-between font-extrabold text-indigo-950 mb-1">
+            <div class="p-3.5 rounded-xl bg-slate-100 border border-slate-300">
+              <div class="flex justify-between font-extrabold text-slate-900 mb-1">
                 <span>Latest (${escapeHtml(perfState?.meta?.latestPeriodLabel?.split('(')[0]?.trim() || 'Current')})</span>
                 <span>${fmtRM(o.tsLatest)}</span>
               </div>
-              <div class="flex justify-between text-[11px] text-indigo-800 font-medium">
+              <div class="flex justify-between text-[11px] text-slate-700 font-medium">
                 <span>HB: ${fmtRM(o.hbLatest)} | HM: ${fmtRM(o.hmLatest)}</span>
                 <span>GP: ${fmtPct(o.personalGpTotalLatest.gpMarginPct)} | ${fmtNum(o.txLatest)} tx</span>
               </div>
-              <div class="mt-2 pt-2 border-t border-indigo-200/70 flex justify-between text-[11px] font-bold">
+              <div class="mt-2 pt-2 border-t border-slate-200 flex justify-between text-[11px] font-bold">
                 <span>vs M-1 (MoM): <span class="${o.tsLatest >= m1.ts ? 'text-emerald-700' : 'text-rose-700'}">${m1.ts > 0 ? fmtPct(calcGrowthPct(o.tsLatest, m1.ts), 2, true) : 'N/A'}</span></span>
                 <span>vs Prev Year (YoY): <span class="${o.tsDiffPct >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${fmtPct(o.tsDiffPct, 2, true)}</span></span>
               </div>
@@ -2869,25 +3058,11 @@ function renderTab1ExecutiveOverview() {
           </div>
         </div>
 
-        <div class="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-500">
-          <div class="font-bold text-slate-700 mb-1">Other Incentive Tiers (Latest vs LY):</div>
-          <div class="grid grid-cols-3 gap-2">
-            <div class="bg-slate-50 p-2 rounded border border-slate-200">
-              <div class="text-slate-400">EHM</div>
-              <div class="font-bold text-slate-800">${fmtRM(o.ehmLatest)}</div>
-              <div class="text-[10px] text-slate-400">LY: ${fmtRM(o.ehmPrev)}</div>
-            </div>
-            <div class="bg-slate-50 p-2 rounded border border-slate-200">
-              <div class="text-slate-400">PB + AMPM</div>
-              <div class="font-bold text-slate-800">${fmtRM(o.pbLatest)}</div>
-              <div class="text-[10px] text-slate-400">LY: ${fmtRM(o.pbPrev)}</div>
-            </div>
-            <div class="bg-slate-50 p-2 rounded border border-slate-200">
-              <div class="text-slate-400">WHM</div>
-              <div class="font-bold text-slate-800">${fmtRM(o.whmLatest)}</div>
-              <div class="text-[10px] text-slate-400">LY: ${fmtRM(o.whmPrev)}</div>
-            </div>
-          </div>
+        <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+          <span class="text-slate-500">Need presentation format?</span>
+          <button onclick="exportGeminiPresentationModal()" class="font-bold text-slate-900 hover:underline cursor-pointer">
+            Export Gemini Presentation Doc →
+          </button>
         </div>
       </div>
     </div>
@@ -2907,55 +3082,66 @@ function renderTab2CategoryAndStockCycle() {
   const hq = computedMetrics.catSummaryHq11;
   const all12 = computedMetrics.catSummaryAll12;
   const activeSummary = activeCategoryMode === 'HQ11' ? hq : all12;
-  const rows = activeCategoryMode === 'HQ11'
+  const baseRows = activeCategoryMode === 'HQ11'
     ? computedMetrics.categories.filter(c => c.isHqFocus)
     : computedMetrics.categories;
+
+  // Multi-column sorting for Tab 2
+  let rows = [...baseRows];
+  const { col, dir } = tab2SortState;
+  const isAsc = dir === 'asc';
+  rows.sort((a, b) => {
+    if (col === 'category') {
+      return isAsc ? a.category.localeCompare(b.category) : b.category.localeCompare(a.category);
+    }
+    const vA = a[col] != null ? a[col] : 0;
+    const vB = b[col] != null ? b[col] : 0;
+    return isAsc ? vA - vB : vB - vA;
+  });
 
   const upCats = computedMetrics.categories.filter(c => c.priceDiffRm > 0);
   const downCats = computedMetrics.categories.filter(c => c.priceDiffRm < 0);
 
   container.innerHTML = `
-    <!-- Formula Banner & All 12 vs HQ 11 Toggle -->
-    <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-5 mb-6 shadow-md flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+    <!-- Formula Banner & Mode Toggle (Calm Executive Styling) -->
+    <div class="bg-slate-900 text-white rounded-2xl p-5 mb-6 border border-slate-800 shadow-sm flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
       <div>
         <div class="flex items-center gap-2">
-          <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">KPIs 7, 8, 9 & 10</span>
-          <h3 class="text-base font-extrabold tracking-wide">PMG Category Performance (All 12 Categories) & Stock Cycle Matrix</h3>
+          <h3 class="text-base font-extrabold tracking-wide">Category Sales Performance & Stock Cycle Matrix</h3>
         </div>
         <div class="text-xs text-slate-300 mt-1.5 space-y-0.5 font-mono">
-          <div>• <strong>KPIs 7, 8 & 9 (Net Sold Price, Profit & GP%)</strong> = Includes All 12 Categories</div>
-          <div>• <strong>COST OF SALES (MTD)</strong> = NET SOLD PRICE − NET SOLD PROFIT</div>
-          <div>• <strong>STOCK CYCLE</strong> = TOTAL CUSTOM COST ÷ COST OF SALES (MTD) &nbsp;<span class="text-emerald-300 font-bold">[HQ TARGET = 2.0]</span></div>
-          <div>• <strong>AVERAGE STOCK CYCLE</strong> = TOTAL CUSTOM COST ÷ TOTAL COST OF SALES &nbsp;|&nbsp; <span class="text-amber-300">HQ Focus = 11 Categories (Excludes WYMED-EX)</span></div>
+          <div>• <strong>Net Sold Price, Profit & GP%</strong>: Includes all active categories</div>
+          <div>• <strong>Cost of Sales (MTD)</strong>: Net Sold Price − Net Sold Profit</div>
+          <div>• <strong>Stock Cycle Formula</strong>: Total Custom Cost ÷ Cost of Sales (MTD) &nbsp;<span class="text-emerald-400 font-bold">[HQ Target = 2.0]</span></div>
         </div>
       </div>
       <div class="flex items-center gap-2 shrink-0">
-        <button onclick="setCategoryFocusMode('ALL12')" class="px-4 py-2 rounded-xl text-xs font-bold transition ${activeCategoryMode === 'ALL12' ? 'bg-emerald-500 text-slate-950 shadow-sm' : 'bg-white/10 text-white hover:bg-white/20'}">
+        <button onclick="setCategoryFocusMode('ALL12')" class="px-4 py-2 rounded-xl text-xs font-bold transition ${activeCategoryMode === 'ALL12' ? 'bg-white text-slate-900 shadow-sm' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}">
           All 12 Categories (Default)
         </button>
-        <button onclick="setCategoryFocusMode('HQ11')" class="px-4 py-2 rounded-xl text-xs font-bold transition ${activeCategoryMode === 'HQ11' ? 'bg-indigo-500 text-white shadow-sm' : 'bg-white/10 text-white hover:bg-white/20'}">
+        <button onclick="setCategoryFocusMode('HQ11')" class="px-4 py-2 rounded-xl text-xs font-bold transition ${activeCategoryMode === 'HQ11' ? 'bg-white text-slate-900 shadow-sm' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}">
           HQ 11 Focus Only (Excl. WYMED-EX)
         </button>
       </div>
     </div>
 
-    <!-- Top Stock Cycle & Category Summary Cards -->
+    <!-- Top Summary Cards (Clean Labels without artificial numbering) -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
       <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
-        <div class="text-xs font-bold text-slate-500 uppercase">7. Net Sold Price (All 12 Categories)</div>
+        <div class="text-xs font-bold text-slate-500 uppercase">Net Sold Price (All 12 Categories)</div>
         <div class="text-xl font-extrabold text-slate-900 mt-1">${fmtRM(all12.netSoldPriceLatest)}</div>
         <div class="text-xs text-slate-500 mt-1 flex justify-between items-center">
           <span>Prev Year: ${fmtRM(all12.netSoldPricePrev)} (${all12.priceDiffRm >= 0 ? '+' : ''}${fmtRM(all12.priceDiffRm)})</span>
           ${badgeDelta(all12.priceDiffPct, true)}
         </div>
-        <div class="text-[10px] text-slate-400 mt-1">HQ 11 (Excl. WYMED-EX): ${fmtRM(hq.netSoldPriceLatest)} vs LY ${fmtRM(hq.netSoldPricePrev)}</div>
+        <div class="text-[10px] text-slate-400 mt-1">HQ 11: ${fmtRM(hq.netSoldPriceLatest)} vs LY ${fmtRM(hq.netSoldPricePrev)}</div>
       </div>
 
       <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
-        <div class="text-xs font-bold text-emerald-700 uppercase">8 & 9. Net Sold Profit & GP% (All 12 Cats)</div>
+        <div class="text-xs font-bold text-slate-700 uppercase">Net Sold Profit & GP% (All 12 Categories)</div>
         <div class="flex items-baseline justify-between mt-1">
-          <span class="text-xl font-extrabold text-emerald-800">${fmtRM(all12.netSoldProfitLatest)}</span>
-          <span class="text-base font-extrabold text-indigo-700">${fmtPct(all12.gpPctLatest)}</span>
+          <span class="text-xl font-extrabold text-slate-900">${fmtRM(all12.netSoldProfitLatest)}</span>
+          <span class="text-base font-extrabold text-emerald-700">${fmtPct(all12.gpPctLatest)}%</span>
         </div>
         <div class="text-xs text-slate-500 mt-1 flex justify-between items-center">
           <span>LY: ${fmtRM(all12.netSoldProfitPrev)} (${fmtPct(all12.gpPctPrev)})</span>
@@ -2965,15 +3151,15 @@ function renderTab2CategoryAndStockCycle() {
       </div>
 
       <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
-        <div class="text-xs font-bold text-indigo-700 uppercase">10A. Custom Cost vs Cost of Sales</div>
-        <div class="text-sm font-extrabold text-slate-900 mt-1">Custom Cost: <span class="text-amber-700">${fmtRM(activeSummary.totalCustomCost)}</span></div>
-        <div class="text-sm font-extrabold text-slate-900 mt-0.5">COS (MTD): <span class="text-indigo-700">${fmtRM(activeSummary.costOfSalesLatest)}</span></div>
-        <div class="text-[11px] text-slate-500 mt-1">2.0x Target Cost: <strong>${fmtRM(activeSummary.targetCustomCost2x)}</strong> (${fmtNum(activeSummary.skuCountClosing)} SKUs)</div>
+        <div class="text-xs font-bold text-slate-700 uppercase">Custom Cost vs Cost of Sales</div>
+        <div class="text-sm font-extrabold text-slate-900 mt-1">Custom Cost: <span class="text-slate-800">${fmtRM(activeSummary.totalCustomCost)}</span></div>
+        <div class="text-sm font-extrabold text-slate-900 mt-0.5">COS (MTD): <span class="text-slate-800">${fmtRM(activeSummary.costOfSalesLatest)}</span></div>
+        <div class="text-[11px] text-slate-500 mt-1">2.0x Target: <strong>${fmtRM(activeSummary.targetCustomCost2x)}</strong> (${fmtNum(activeSummary.skuCountClosing)} SKUs)</div>
       </div>
 
-      <div class="bg-white rounded-2xl p-4 border-2 border-indigo-200 shadow-xs bg-indigo-50/30">
+      <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
         <div class="flex items-center justify-between">
-          <span class="text-xs font-bold text-indigo-950 uppercase">10B. Average Stock Cycle</span>
+          <span class="text-xs font-bold text-slate-700 uppercase">Average Stock Cycle</span>
           <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${activeSummary.averageStockCycle <= 2.0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">Target: 2.0</span>
         </div>
         <div class="flex items-baseline justify-between mt-1">
@@ -2985,7 +3171,7 @@ function renderTab2CategoryAndStockCycle() {
         <div class="text-[11px] text-slate-600 mt-1">
           Formula: Custom Cost (${fmtRM(activeSummary.totalCustomCost)}) ÷ COS (${fmtRM(activeSummary.costOfSalesLatest)})
         </div>
-        <div class="text-[11px] font-semibold text-indigo-800 mt-0.5">
+        <div class="text-[11px] font-semibold text-slate-700 mt-0.5">
           HQ 11 Cycle: <strong>${hq.averageStockCycle.toFixed(2)}</strong> | All 12 Cycle: <strong>${all12.averageStockCycle.toFixed(2)}</strong>
         </div>
       </div>
@@ -2993,11 +3179,11 @@ function renderTab2CategoryAndStockCycle() {
 
     <!-- Category Up vs Down Quick Summary Strip -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-      <div class="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4">
-        <div class="text-xs font-extrabold uppercase text-emerald-900 mb-2">📈 Categories UP YoY in Net Sold Price (${upCats.length} Categories)</div>
+      <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+        <div class="text-xs font-extrabold uppercase text-emerald-800 mb-2">📈 Categories UP YoY in Net Sold Price (${upCats.length} Categories)</div>
         <div class="flex flex-wrap gap-2">
           ${upCats.map(c => `
-            <div class="bg-white px-3 py-1.5 rounded-xl border border-emerald-200 text-xs shadow-2xs">
+            <div class="bg-white px-3 py-1.5 rounded-xl border border-slate-200 text-xs shadow-2xs">
               <span class="font-extrabold text-slate-900">${escapeHtml(c.category)}</span>:
               <span class="font-bold text-emerald-700">+${fmtRM(c.priceDiffRm)} (${fmtPct(c.priceDiffPct, 1, true)})</span>
               <span class="text-[11px] text-slate-500 ml-1">| GP: ${fmtPct(c.gpPctLatest)} (${fmtPP(c.gpPctDiffPP)})</span>
@@ -3006,11 +3192,11 @@ function renderTab2CategoryAndStockCycle() {
         </div>
       </div>
 
-      <div class="bg-rose-50/70 border border-rose-200 rounded-2xl p-4">
-        <div class="text-xs font-extrabold uppercase text-rose-900 mb-2">📉 Categories DOWN YoY in Net Sold Price (${downCats.length} Categories)</div>
+      <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+        <div class="text-xs font-extrabold uppercase text-rose-800 mb-2">📉 Categories DOWN YoY in Net Sold Price (${downCats.length} Categories)</div>
         <div class="flex flex-wrap gap-2">
           ${downCats.map(c => `
-            <div class="bg-white px-3 py-1.5 rounded-xl border border-rose-200 text-xs shadow-2xs">
+            <div class="bg-white px-3 py-1.5 rounded-xl border border-slate-200 text-xs shadow-2xs">
               <span class="font-extrabold text-slate-900">${escapeHtml(c.category)}</span>:
               <span class="font-bold text-rose-700">${fmtRM(c.priceDiffRm)} (${fmtPct(c.priceDiffPct, 1, true)})</span>
               <span class="text-[11px] text-slate-500 ml-1">| GP: ${fmtPct(c.gpPctLatest)} (${fmtPP(c.gpPctDiffPP)})</span>
@@ -3020,107 +3206,149 @@ function renderTab2CategoryAndStockCycle() {
       </div>
     </div>
 
-    <!-- Full Category Table -->
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-      <div class="overflow-x-auto">
-        <table class="w-full text-left border-collapse text-xs">
-          <thead>
-            <tr class="bg-slate-900 text-white uppercase text-[11px]">
-              <th class="py-3 px-3">Category</th>
-              <th class="py-3 px-3 text-right">Latest Net Sold Price</th>
-              <th class="py-3 px-3 text-right">Prev Year Price</th>
-              <th class="py-3 px-3 text-right">Price YoY</th>
-              <th class="py-3 px-3 text-right">Latest Net Profit</th>
-              <th class="py-3 px-3 text-right">Prev Year Profit</th>
-              <th class="py-3 px-3 text-right">Profit YoY</th>
-              <th class="py-3 px-3 text-right">Latest GP%</th>
-              <th class="py-3 px-3 text-right">Prev GP%</th>
-              <th class="py-3 px-3 text-right bg-indigo-950">Cost of Sales (MTD)</th>
-              <th class="py-3 px-3 text-right bg-indigo-950">Total Custom Cost</th>
-              <th class="py-3 px-3 text-right bg-indigo-900">Stock Cycle (Cost ÷ COS)<br><span class="text-emerald-300 font-normal">Target: 2.0</span></th>
-              <th class="py-3 px-3 text-right">6M Aged Stock</th>
+    <!-- Full Category Table with Sticky Header & Multi-Column Sorting -->
+    <div class="table-sticky-container bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+      <table class="w-full text-left border-collapse text-xs">
+        <thead>
+          <tr class="bg-slate-900 text-white uppercase text-[11px] sticky top-0 z-20">
+            <th onclick="setTabSort('tab2', 'category')" class="py-3 px-3 cursor-pointer select-none hover:bg-slate-800 transition">
+              Category ${getSortIndicator(tab2SortState.col, 'category', tab2SortState.dir)}
+            </th>
+            <th onclick="setTabSort('tab2', 'netSoldPriceLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+              Latest Net Price ${getSortIndicator(tab2SortState.col, 'netSoldPriceLatest', tab2SortState.dir)}
+            </th>
+            <th onclick="setTabSort('tab2', 'netSoldPricePrev')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+              Prev Year Price ${getSortIndicator(tab2SortState.col, 'netSoldPricePrev', tab2SortState.dir)}
+            </th>
+            <th onclick="setTabSort('tab2', 'priceDiffRm')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+              Price YoY ${getSortIndicator(tab2SortState.col, 'priceDiffRm', tab2SortState.dir)}
+            </th>
+            <th onclick="setTabSort('tab2', 'netSoldProfitLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+              Latest Profit ${getSortIndicator(tab2SortState.col, 'netSoldProfitLatest', tab2SortState.dir)}
+            </th>
+            <th onclick="setTabSort('tab2', 'netSoldProfitPrev')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+              Prev Profit ${getSortIndicator(tab2SortState.col, 'netSoldProfitPrev', tab2SortState.dir)}
+            </th>
+            <th onclick="setTabSort('tab2', 'profitDiffRm')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+              Profit YoY ${getSortIndicator(tab2SortState.col, 'profitDiffRm', tab2SortState.dir)}
+            </th>
+            <th onclick="setTabSort('tab2', 'gpPctLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+              Latest GP% ${getSortIndicator(tab2SortState.col, 'gpPctLatest', tab2SortState.dir)}
+            </th>
+            <th onclick="setTabSort('tab2', 'gpPctPrev')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+              Prev GP% ${getSortIndicator(tab2SortState.col, 'gpPctPrev', tab2SortState.dir)}
+            </th>
+            <th onclick="setTabSort('tab2', 'costOfSalesLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+              Cost of Sales (MTD) ${getSortIndicator(tab2SortState.col, 'costOfSalesLatest', tab2SortState.dir)}
+            </th>
+            <th onclick="setTabSort('tab2', 'totalCustomCost')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+              Total Custom Cost ${getSortIndicator(tab2SortState.col, 'totalCustomCost', tab2SortState.dir)}
+            </th>
+            <th onclick="setTabSort('tab2', 'pmgStockCycle')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+              Stock Cycle ${getSortIndicator(tab2SortState.col, 'pmgStockCycle', tab2SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">Target: 2.0</span>
+            </th>
+            <th onclick="setTabSort('tab2', 'agedValueRm')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+              6M Aged Stock ${getSortIndicator(tab2SortState.col, 'agedValueRm', tab2SortState.dir)}
+            </th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 text-slate-800 bg-white">
+          ${rows.map(c => `
+            <tr class="hover:bg-slate-50 transition border-b border-slate-100 ${!c.isHqFocus ? 'bg-amber-50/20' : ''}">
+              <td class="py-3 px-3 font-bold whitespace-nowrap">
+                <span class="inline-block w-2 h-2 rounded-full mr-1.5 ${c.priceDiffRm >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}"></span>
+                ${escapeHtml(c.category)}
+                ${!c.isHqFocus ? `<span class="ml-1 px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 text-[10px] font-bold">Excl. HQ11</span>` : ''}
+              </td>
+              <td class="py-3 px-3 text-right font-bold text-slate-900">${fmtRM(c.netSoldPriceLatest)}</td>
+              <td class="py-3 px-3 text-right text-slate-600">${fmtRM(c.netSoldPricePrev)}</td>
+              <td class="py-3 px-3 text-right">
+                <div class="font-bold ${c.priceDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${c.priceDiffRm >= 0 ? '+' : ''}${fmtRM(c.priceDiffRm)}</div>
+                <div class="text-[10px] font-semibold text-slate-500 mt-0.5">${fmtPct(c.priceDiffPct, 1, true)}</div>
+              </td>
+              <td class="py-3 px-3 text-right font-bold text-slate-900">${fmtRM(c.netSoldProfitLatest)}</td>
+              <td class="py-3 px-3 text-right text-slate-600">${fmtRM(c.netSoldProfitPrev)}</td>
+              <td class="py-3 px-3 text-right">
+                <div class="font-bold ${c.profitDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${c.profitDiffRm >= 0 ? '+' : ''}${fmtRM(c.profitDiffRm)}</div>
+                <div class="text-[10px] font-semibold text-slate-500 mt-0.5">${fmtPct(c.profitDiffPct, 1, true)}</div>
+              </td>
+              <td class="py-3 px-3 text-right font-extrabold text-slate-900">${fmtPct(c.gpPctLatest)}%</td>
+              <td class="py-3 px-3 text-right">
+                <div class="font-medium text-slate-700">${fmtPct(c.gpPctPrev)}%</div>
+                <div class="text-[10px] font-bold ${c.gpPctDiffPP >= 0 ? 'text-emerald-600' : 'text-rose-600'} mt-0.5">(${c.gpPctDiffPP >= 0 ? '+' : ''}${fmtPP(c.gpPctDiffPP)})</div>
+              </td>
+              <td class="py-3 px-3 text-right font-medium text-slate-700">${fmtRM(c.costOfSalesLatest)}</td>
+              <td class="py-3 px-3 text-right font-medium text-slate-700">
+                <div>${fmtRM(c.totalCustomCost)}</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">${fmtNum(c.skuCountClosing)} SKUs</div>
+              </td>
+              <td class="py-3 px-3 text-right font-bold ${c.pmgStockCycle <= 2.0 ? 'text-emerald-700' : c.pmgStockCycle <= 2.5 ? 'text-amber-700' : 'text-rose-700'}">
+                <div class="text-sm">${c.pmgStockCycle.toFixed(2)} <span class="text-[10px] font-bold">${c.pmgStockCycle <= 2.0 ? '✅ ≤2.0' : '⚠️ +' + c.stockCycleVarVsTarget.toFixed(2)}</span></div>
+                <div class="text-[10px] text-slate-500 font-normal mt-0.5">${c.excessStockRm > 0 ? 'Excess: ' + fmtRM(c.excessStockRm) : 'Within 2.0 Target'}</div>
+              </td>
+              <td class="py-3 px-3 text-right">
+                <div class="font-semibold text-slate-800">${fmtRM(c.agedValueRm)}</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">${fmtNum(c.agedSkuCount)} SKUs</div>
+              </td>
             </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-100 text-slate-800">
-            ${rows.map(c => `
-              <tr class="hover:bg-slate-50 ${!c.isHqFocus ? 'bg-amber-50/40' : ''}">
-                <td class="py-2.5 px-3 font-extrabold whitespace-nowrap">
-                  <span class="inline-block w-2 h-2 rounded-full mr-1.5 ${c.priceDiffRm >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}"></span>
-                  ${escapeHtml(c.category)}
-                  ${!c.isHqFocus ? `<span class="ml-1 px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 text-[10px] font-bold">Excl. HQ11</span>` : ''}
-                </td>
-                <td class="py-2.5 px-3 text-right font-bold">${fmtRM(c.netSoldPriceLatest)}</td>
-                <td class="py-2.5 px-3 text-right text-slate-500">${fmtRM(c.netSoldPricePrev)}</td>
-                <td class="py-2.5 px-3 text-right">
-                  <div class="font-bold ${c.priceDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${c.priceDiffRm >= 0 ? '+' : ''}${fmtRM(c.priceDiffRm)}</div>
-                  <div class="text-[10px] text-slate-500">${fmtPct(c.priceDiffPct, 1, true)}</div>
-                </td>
-                <td class="py-2.5 px-3 text-right font-bold text-emerald-800">${fmtRM(c.netSoldProfitLatest)}</td>
-                <td class="py-2.5 px-3 text-right text-slate-500">${fmtRM(c.netSoldProfitPrev)}</td>
-                <td class="py-2.5 px-3 text-right">
-                  <div class="font-bold ${c.profitDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${c.profitDiffRm >= 0 ? '+' : ''}${fmtRM(c.profitDiffRm)}</div>
-                  <div class="text-[10px] text-slate-500">${fmtPct(c.profitDiffPct, 1, true)}</div>
-                </td>
-                <td class="py-2.5 px-3 text-right font-extrabold text-indigo-800">${fmtPct(c.gpPctLatest)}</td>
-                <td class="py-2.5 px-3 text-right text-slate-500">
-                  <div>${fmtPct(c.gpPctPrev)}</div>
-                  <div class="text-[10px] font-bold ${c.gpPctDiffPP >= 0 ? 'text-emerald-600' : 'text-rose-600'}">${fmtPP(c.gpPctDiffPP)}</div>
-                </td>
-                <td class="py-2.5 px-3 text-right font-semibold bg-indigo-50/40">${fmtRM(c.costOfSalesLatest)}</td>
-                <td class="py-2.5 px-3 text-right font-semibold bg-indigo-50/40">
-                  <div>${fmtRM(c.totalCustomCost)}</div>
-                  <div class="text-[10px] text-slate-400">${fmtNum(c.skuCountClosing)} SKUs</div>
-                </td>
-                <td class="py-2.5 px-3 text-right font-extrabold bg-indigo-50/80 ${c.pmgStockCycle <= 2.0 ? 'text-emerald-700' : c.pmgStockCycle <= 2.5 ? 'text-amber-700' : 'text-rose-700'}">
-                  <div class="text-sm">${c.pmgStockCycle.toFixed(2)} <span class="text-[10px] font-bold">${c.pmgStockCycle <= 2.0 ? '✅ ≤2.0' : '⚠️ +' + c.stockCycleVarVsTarget.toFixed(2)}</span></div>
-                  <div class="text-[10px] text-slate-500 font-normal">${c.excessStockRm > 0 ? 'Excess: ' + fmtRM(c.excessStockRm) : 'Within 2.0 Target'}</div>
-                </td>
-                <td class="py-2.5 px-3 text-right">
-                  <div class="font-semibold text-amber-800">${fmtRM(c.agedValueRm)}</div>
-                  <div class="text-[10px] text-slate-400">${fmtNum(c.agedSkuCount)} SKUs</div>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-          <tfoot>
-            <tr class="bg-slate-900 text-white font-extrabold text-xs border-b border-slate-700">
-              <td class="py-3 px-3">TOTAL (ALL 12 CATEGORIES — PRICE, PROFIT & GP%)</td>
-              <td class="py-3 px-3 text-right">${fmtRM(all12.netSoldPriceLatest)}</td>
-              <td class="py-3 px-3 text-right text-slate-300">${fmtRM(all12.netSoldPricePrev)}</td>
-              <td class="py-3 px-3 text-right ${all12.priceDiffRm >= 0 ? 'text-emerald-300' : 'text-rose-300'}">${all12.priceDiffRm >= 0 ? '+' : ''}${fmtRM(all12.priceDiffRm)} (${fmtPct(all12.priceDiffPct, 2, true)})</td>
-              <td class="py-3 px-3 text-right text-emerald-300">${fmtRM(all12.netSoldProfitLatest)}</td>
-              <td class="py-3 px-3 text-right text-slate-300">${fmtRM(all12.netSoldProfitPrev)}</td>
-              <td class="py-3 px-3 text-right ${all12.profitDiffRm >= 0 ? 'text-emerald-300' : 'text-rose-300'}">${all12.profitDiffRm >= 0 ? '+' : ''}${fmtRM(all12.profitDiffRm)} (${fmtPct(all12.profitDiffPct, 2, true)})</td>
-              <td class="py-3 px-3 text-right text-amber-300">${fmtPct(all12.gpPctLatest)}</td>
-              <td class="py-3 px-3 text-right text-slate-300">${fmtPct(all12.gpPctPrev)} (${fmtPP(all12.gpPctDiffPP)})</td>
-              <td class="py-3 px-3 text-right bg-indigo-950">${fmtRM(all12.costOfSalesLatest)}</td>
-              <td class="py-3 px-3 text-right bg-indigo-950">${fmtRM(all12.totalCustomCost)}</td>
-              <td class="py-3 px-3 text-right bg-indigo-900 text-amber-300">${all12.averageStockCycle.toFixed(2)} (Target: 2.0)</td>
-              <td class="py-3 px-3 text-right text-amber-200">${fmtRM(all12.agedValueRm)}</td>
-            </tr>
-            <tr class="bg-slate-800 text-slate-200 font-bold text-[11px]">
-              <td class="py-2.5 px-3">HQ 11 FOCUS SUBTOTAL (EXCL. WYMED-EX)</td>
-              <td class="py-2.5 px-3 text-right">${fmtRM(hq.netSoldPriceLatest)}</td>
-              <td class="py-2.5 px-3 text-right text-slate-400">${fmtRM(hq.netSoldPricePrev)}</td>
-              <td class="py-2.5 px-3 text-right ${hq.priceDiffRm >= 0 ? 'text-emerald-300' : 'text-rose-300'}">${hq.priceDiffRm >= 0 ? '+' : ''}${fmtRM(hq.priceDiffRm)} (${fmtPct(hq.priceDiffPct, 2, true)})</td>
-              <td class="py-2.5 px-3 text-right text-emerald-300">${fmtRM(hq.netSoldProfitLatest)}</td>
-              <td class="py-2.5 px-3 text-right text-slate-400">${fmtRM(hq.netSoldProfitPrev)}</td>
-              <td class="py-2.5 px-3 text-right ${hq.profitDiffRm >= 0 ? 'text-emerald-300' : 'text-rose-300'}">${hq.profitDiffRm >= 0 ? '+' : ''}${fmtRM(hq.profitDiffRm)} (${fmtPct(hq.profitDiffPct, 2, true)})</td>
-              <td class="py-2.5 px-3 text-right text-amber-300">${fmtPct(hq.gpPctLatest)}</td>
-              <td class="py-2.5 px-3 text-right text-slate-400">${fmtPct(hq.gpPctPrev)} (${fmtPP(hq.gpPctDiffPP)})</td>
-              <td class="py-2.5 px-3 text-right bg-indigo-950/80">${fmtRM(hq.costOfSalesLatest)}</td>
-              <td class="py-2.5 px-3 text-right bg-indigo-950/80">${fmtRM(hq.totalCustomCost)}</td>
-              <td class="py-2.5 px-3 text-right bg-indigo-900/80 text-amber-300">${hq.averageStockCycle.toFixed(2)} (Target: 2.0)</td>
-              <td class="py-2.5 px-3 text-right text-amber-200">${fmtRM(hq.agedValueRm)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+          `).join('')}
+        </tbody>
+        <tfoot>
+          <tr class="bg-slate-900 text-white font-extrabold text-xs border-b border-slate-700">
+            <td class="py-3 px-3">TOTAL (ALL 12 CATEGORIES)</td>
+            <td class="py-3 px-3 text-right">${fmtRM(all12.netSoldPriceLatest)}</td>
+            <td class="py-3 px-3 text-right text-slate-300">${fmtRM(all12.netSoldPricePrev)}</td>
+            <td class="py-3 px-3 text-right ${all12.priceDiffRm >= 0 ? 'text-emerald-300' : 'text-rose-300'}">
+              <div>${all12.priceDiffRm >= 0 ? '+' : ''}${fmtRM(all12.priceDiffRm)}</div>
+              <div class="text-[10px] text-slate-300 mt-0.5">(${fmtPct(all12.priceDiffPct, 2, true)})</div>
+            </td>
+            <td class="py-3 px-3 text-right text-emerald-300">${fmtRM(all12.netSoldProfitLatest)}</td>
+            <td class="py-3 px-3 text-right text-slate-300">${fmtRM(all12.netSoldProfitPrev)}</td>
+            <td class="py-3 px-3 text-right ${all12.profitDiffRm >= 0 ? 'text-emerald-300' : 'text-rose-300'}">
+              <div>${all12.profitDiffRm >= 0 ? '+' : ''}${fmtRM(all12.profitDiffRm)}</div>
+              <div class="text-[10px] text-slate-300 mt-0.5">(${fmtPct(all12.profitDiffPct, 2, true)})</div>
+            </td>
+            <td class="py-3 px-3 text-right text-amber-300">${fmtPct(all12.gpPctLatest)}%</td>
+            <td class="py-3 px-3 text-right text-slate-300">
+              <div>${fmtPct(all12.gpPctPrev)}%</div>
+              <div class="text-[10px] text-slate-300 mt-0.5">(${fmtPP(all12.gpPctDiffPP)})</div>
+            </td>
+            <td class="py-3 px-3 text-right">${fmtRM(all12.costOfSalesLatest)}</td>
+            <td class="py-3 px-3 text-right">${fmtRM(all12.totalCustomCost)}</td>
+            <td class="py-3 px-3 text-right text-amber-300">${all12.averageStockCycle.toFixed(2)} (Target: 2.0)</td>
+            <td class="py-3 px-3 text-right text-amber-200">${fmtRM(all12.agedValueRm)}</td>
+          </tr>
+          <tr class="bg-slate-800 text-slate-200 font-bold text-[11px]">
+            <td class="py-2.5 px-3">HQ 11 FOCUS SUBTOTAL (EXCL. WYMED-EX)</td>
+            <td class="py-2.5 px-3 text-right">${fmtRM(hq.netSoldPriceLatest)}</td>
+            <td class="py-2.5 px-3 text-right text-slate-400">${fmtRM(hq.netSoldPricePrev)}</td>
+            <td class="py-2.5 px-3 text-right ${hq.priceDiffRm >= 0 ? 'text-emerald-300' : 'text-rose-300'}">
+              <div>${hq.priceDiffRm >= 0 ? '+' : ''}${fmtRM(hq.priceDiffRm)}</div>
+              <div class="text-[10px] text-slate-400 mt-0.5">(${fmtPct(hq.priceDiffPct, 2, true)})</div>
+            </td>
+            <td class="py-2.5 px-3 text-right text-emerald-300">${fmtRM(hq.netSoldProfitLatest)}</td>
+            <td class="py-2.5 px-3 text-right text-slate-400">${fmtRM(hq.netSoldProfitPrev)}</td>
+            <td class="py-2.5 px-3 text-right ${hq.profitDiffRm >= 0 ? 'text-emerald-300' : 'text-rose-300'}">
+              <div>${hq.profitDiffRm >= 0 ? '+' : ''}${fmtRM(hq.profitDiffRm)}</div>
+              <div class="text-[10px] text-slate-400 mt-0.5">(${fmtPct(hq.profitDiffPct, 2, true)})</div>
+            </td>
+            <td class="py-2.5 px-3 text-right text-amber-300">${fmtPct(hq.gpPctLatest)}%</td>
+            <td class="py-2.5 px-3 text-right text-slate-400">
+              <div>${fmtPct(hq.gpPctPrev)}%</div>
+              <div class="text-[10px] text-slate-400 mt-0.5">(${fmtPP(hq.gpPctDiffPP)})</div>
+            </td>
+            <td class="py-2.5 px-3 text-right">${fmtRM(hq.costOfSalesLatest)}</td>
+            <td class="py-2.5 px-3 text-right">${fmtRM(hq.totalCustomCost)}</td>
+            <td class="py-2.5 px-3 text-right text-amber-300">${hq.averageStockCycle.toFixed(2)} (Target: 2.0)</td>
+            <td class="py-2.5 px-3 text-right text-amber-200">${fmtRM(hq.agedValueRm)}</td>
+          </tr>
+        </tfoot>
+      </table>
     </div>
   `;
 }
 
-// ── TAB 3: TEAMMATE PERSONAL SALES & PRODUCTIVITY (KPI 6) ───────────────────
+// ── TAB 3: TEAMMATE PERSONAL SALES & PRODUCTIVITY ───────────────────────────
 function toggleShowAllTeammates(val) {
   showAllTeammates = val;
   renderTab3TeammatesMatrix();
@@ -3144,130 +3372,179 @@ function renderTab3TeammatesMatrix() {
   if (!container || !computedMetrics) return;
 
   const allRows = computedMetrics.teammates;
-  const rows = showAllTeammates ? allRows : allRows.filter(t => t.isActiveLatest);
+  const baseRows = showAllTeammates ? allRows : allRows.filter(t => t.isActiveLatest);
   const o = computedMetrics.outlet;
+
+  // Multi-column sorting for Tab 3
+  let rows = [...baseRows];
+  const { col, dir } = tab3SortState;
+  const isAsc = dir === 'asc';
+  rows.sort((a, b) => {
+    if (col === 'name') {
+      return isAsc ? (a.name || '').localeCompare(b.name || '') : (b.name || '').localeCompare(a.name || '');
+    }
+    const vA = a[col] != null ? a[col] : 0;
+    const vB = b[col] != null ? b[col] : 0;
+    return isAsc ? vA - vB : vB - vA;
+  });
 
   const rolesList = ['Pharmacist (PIC)', 'Pharmacist', 'PRP', 'BM / Lead', 'ABM', 'PA', 'Locum Pharmacist', 'Former Staff'];
 
   container.innerHTML = `
     <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
       <div>
-        <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-indigo-100 text-indigo-800">KPI 6 — Complete Personal Evaluation</span>
-        <h3 class="text-base font-extrabold text-slate-900 mt-1">Teammate Personal Sales, HB% / HM% of Own TS, Basket Size (TS & HB), Transactions & Gross Profit</h3>
-        <p class="text-xs text-slate-500 mt-0.5">Comparing each teammate's TS (RM), HB (RM & % with own TS), HM (RM & % with own TS), Customers Served (Latest vs LY), Basket Size TS & HB, and Gross Profit (RM & %).</p>
+        <h3 class="text-base font-extrabold text-slate-900">Teammate Personal Sales, House Brand Attachment, Transactions & Gross Profit</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Click any column header to sort by amount or name. Comparing TS, HB, HM, Transactions, Basket Size, and Gross Profit.</p>
       </div>
       <div class="flex items-center gap-2 shrink-0">
-        <button onclick="toggleShowAllTeammates(false)" class="px-3.5 py-2 rounded-xl text-xs font-bold transition ${!showAllTeammates ? 'bg-indigo-600 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
+        <button onclick="toggleShowAllTeammates(false)" class="px-3.5 py-2 rounded-xl text-xs font-bold transition ${!showAllTeammates ? 'bg-slate-900 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
           Active Latest Month Team (${allRows.filter(t => t.isActiveLatest).length})
         </button>
-        <button onclick="toggleShowAllTeammates(true)" class="px-3.5 py-2 rounded-xl text-xs font-bold transition ${showAllTeammates ? 'bg-indigo-600 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
+        <button onclick="toggleShowAllTeammates(true)" class="px-3.5 py-2 rounded-xl text-xs font-bold transition ${showAllTeammates ? 'bg-slate-900 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
           All Rows Incl. 2025 / Locum (${allRows.length})
         </button>
       </div>
     </div>
 
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden mb-6">
-      <div class="overflow-x-auto">
-        <table class="w-full text-left border-collapse text-xs">
-          <thead>
-            <tr class="bg-slate-900 text-white uppercase text-[10px]">
-              <th class="py-3 px-3">Teammate & Role</th>
-              <th class="py-3 px-3 text-right">Personal TS (RM)<br><span class="text-slate-400 font-normal">vs Prev Year</span></th>
-              <th class="py-3 px-3 text-right bg-indigo-950">Personal HB (RM)<br><span class="text-indigo-300 font-normal">& % of Own TS</span></th>
-              <th class="py-3 px-3 text-right bg-violet-950">Personal HM (RM)<br><span class="text-violet-300 font-normal">& % of Own TS</span></th>
-              <th class="py-3 px-3 text-right">Transactions<br><span class="text-slate-400 font-normal">Latest vs LY</span></th>
-              <th class="py-3 px-3 text-right">TS Basket Size<br><span class="text-slate-400 font-normal">Own TS ÷ Tx</span></th>
-              <th class="py-3 px-3 text-right">HB Basket Size<br><span class="text-slate-400 font-normal">Own HB ÷ Tx</span></th>
-              <th class="py-3 px-3 text-right bg-emerald-950">Personal GP (RM)<br><span class="text-emerald-300 font-normal">Net Sold Profit</span></th>
-              <th class="py-3 px-3 text-right bg-emerald-950">Personal GP (%)<br><span class="text-emerald-300 font-normal">Margin %</span></th>
+    <div class="table-sticky-container bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden mb-6">
+      <table class="w-full text-left border-collapse text-xs">
+        <thead>
+          <tr class="bg-slate-900 text-white uppercase text-[10px] sticky top-0 z-20">
+            <th onclick="setTabSort('tab3', 'name')" class="py-3 px-3 cursor-pointer select-none hover:bg-slate-800 transition">
+              Teammate & Role ${getSortIndicator(tab3SortState.col, 'name', tab3SortState.dir)}
+            </th>
+            <th onclick="setTabSort('tab3', 'tsLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+              Personal TS (RM) ${getSortIndicator(tab3SortState.col, 'tsLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">vs Prev Year</span>
+            </th>
+            <th onclick="setTabSort('tab3', 'hbLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+              Personal HB (RM) ${getSortIndicator(tab3SortState.col, 'hbLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">& % of Own TS</span>
+            </th>
+            <th onclick="setTabSort('tab3', 'hmLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+              Personal HM (RM) ${getSortIndicator(tab3SortState.col, 'hmLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">& % of Own TS</span>
+            </th>
+            <th onclick="setTabSort('tab3', 'txLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+              Transactions ${getSortIndicator(tab3SortState.col, 'txLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">Latest vs LY</span>
+            </th>
+            <th onclick="setTabSort('tab3', 'basketTsLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+              TS Basket Size ${getSortIndicator(tab3SortState.col, 'basketTsLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">Own TS ÷ Tx</span>
+            </th>
+            <th onclick="setTabSort('tab3', 'basketHbLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+              HB Basket Size ${getSortIndicator(tab3SortState.col, 'basketHbLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">Own HB ÷ Tx</span>
+            </th>
+            <th onclick="setTabSort('tab3', 'gpRmLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+              Personal GP (RM) ${getSortIndicator(tab3SortState.col, 'gpRmLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">Net Sold Profit</span>
+            </th>
+            <th onclick="setTabSort('tab3', 'gpPctLatest')" class="py-3 px-3 text-right cursor-pointer select-none hover:bg-slate-800 transition">
+              Personal GP (%) ${getSortIndicator(tab3SortState.col, 'gpPctLatest', tab3SortState.dir)}<br><span class="text-slate-400 font-normal text-[9px]">Margin %</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 text-slate-800 bg-white">
+          ${rows.map(t => `
+            <tr class="hover:bg-slate-50 transition border-b border-slate-100">
+              <td class="py-3 px-3">
+                <div class="font-extrabold text-slate-900">${escapeHtml(t.name)}</div>
+                <div class="flex items-center gap-1.5 mt-1">
+                  <select onchange="updateTeammateRole('${escapeHtml(t.key)}', this.value)" class="text-[10px] font-bold bg-slate-100 border border-slate-300 rounded px-1.5 py-0.5 text-slate-700">
+                    ${rolesList.map(r => `<option value="${r}" ${t.role === r ? 'selected' : ''}>${r}</option>`).join('')}
+                  </select>
+                  <span class="text-[10px] text-slate-500 font-medium">${fmtPct(t.branchTsShareLatest, 1)} of Branch TS</span>
+                </div>
+              </td>
+              <td class="py-3 px-3 text-right">
+                <div class="font-extrabold text-slate-900 text-sm">${fmtRM(t.tsLatest)}</div>
+                <div class="text-[10px] text-slate-500 mt-0.5">
+                  LY: ${t.tsPrev > 0 ? fmtRM(t.tsPrev) : '—'}
+                  ${t.tsDiffPct !== null ? `<span class="font-bold ${t.tsDiffPct >= 0 ? 'text-emerald-600' : 'text-rose-600'}">(${fmtPct(t.tsDiffPct, 1, true)})</span>` : ''}
+                </div>
+              </td>
+              <td class="py-3 px-3 text-right">
+                <div class="font-bold text-slate-900">${fmtRM(t.hbLatest)}</div>
+                <div class="text-[11px] font-semibold text-slate-600 mt-0.5">${fmtPct(t.hbPctOwnTsLatest)}% <span class="text-[9px] font-normal text-slate-400">of TS</span></div>
+                <div class="text-[10px] text-slate-400 mt-0.5">
+                  LY: ${t.hbPrev > 0 ? `${fmtRM(t.hbPrev)} (${fmtPct(t.hbPctOwnTsPrev)}%)` : '—'}
+                </div>
+              </td>
+              <td class="py-3 px-3 text-right">
+                <div class="font-bold text-slate-900">${fmtRM(t.hmLatest)}</div>
+                <div class="text-[11px] font-semibold text-slate-600 mt-0.5">${fmtPct(t.hmPctOwnTsLatest)}% <span class="text-[9px] font-normal text-slate-400">of TS</span></div>
+                <div class="text-[10px] text-slate-400 mt-0.5">
+                  LY: ${t.hmPrev > 0 ? `${fmtRM(t.hmPrev)} (${fmtPct(t.hmPctOwnTsPrev)}%)` : '—'}
+                </div>
+              </td>
+              <td class="py-3 px-3 text-right">
+                <div class="font-bold text-slate-900">${fmtNum(t.txLatest)}</div>
+                <div class="text-[10px] text-slate-500 mt-0.5">
+                  LY: ${t.txPrev > 0 ? fmtNum(t.txPrev) : '—'}
+                  ${t.txDiffPct !== null ? `<span class="font-bold ${t.txDiffPct >= 0 ? 'text-emerald-600' : 'text-rose-600'}">(${fmtPct(t.txDiffPct, 1, true)})</span>` : ''}
+                </div>
+              </td>
+              <td class="py-3 px-3 text-right">
+                <div class="font-bold text-slate-900">${fmtRM(t.basketTsLatest)}</div>
+                <div class="text-[10px] text-slate-500 mt-0.5">
+                  LY: ${t.basketTsPrev > 0 ? fmtRM(t.basketTsPrev) : '—'}
+                </div>
+              </td>
+              <td class="py-3 px-3 text-right">
+                <div class="font-bold text-slate-900">${fmtRM(t.basketHbLatest)}</div>
+                <div class="text-[10px] text-slate-500 mt-0.5">
+                  LY: ${t.basketHbPrev > 0 ? fmtRM(t.basketHbPrev) : '—'}
+                </div>
+              </td>
+              <td class="py-3 px-3 text-right">
+                <div class="font-bold text-slate-900">${fmtRM(t.gpRmLatest)}</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">
+                  Net: ${fmtRM(t.netSoldPriceLatest)} | LY: ${t.gpRmPrev > 0 ? fmtRM(t.gpRmPrev) : '—'}
+                </div>
+              </td>
+              <td class="py-3 px-3 text-right">
+                <div class="text-sm font-bold ${t.gpPctLatest >= 28 ? 'text-emerald-700' : t.gpPctLatest < 26 ? 'text-rose-700' : 'text-slate-900'}">${fmtPct(t.gpPctLatest)}%</div>
+                <div class="text-[10px] text-slate-500 mt-0.5">
+                  LY: ${t.gpPctPrev > 0 ? `${fmtPct(t.gpPctPrev)}%` : '—'}
+                  ${t.gpPctDiffPP !== null ? `<span class="font-bold ${t.gpPctDiffPP >= 0 ? 'text-emerald-600' : 'text-rose-600'}">(${fmtPP(t.gpPctDiffPP)})</span>` : ''}
+                </div>
+              </td>
             </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-100 text-slate-800">
-            ${rows.map(t => `
-              <tr class="hover:bg-slate-50">
-                <td class="py-3 px-3">
-                  <div class="font-extrabold text-slate-900">${escapeHtml(t.name)}</div>
-                  <div class="flex items-center gap-1.5 mt-1">
-                    <select onchange="updateTeammateRole('${escapeHtml(t.key)}', this.value)" class="text-[10px] font-bold bg-slate-100 border border-slate-300 rounded px-1.5 py-0.5 text-slate-700">
-                      ${rolesList.map(r => `<option value="${r}" ${t.role === r ? 'selected' : ''}>${r}</option>`).join('')}
-                    </select>
-                    <span class="text-[10px] text-slate-400">${fmtPct(t.branchTsShareLatest, 1)} of Branch TS</span>
-                  </div>
-                </td>
-                <td class="py-3 px-3 text-right">
-                  <div class="font-extrabold text-slate-900 text-sm">${fmtRM(t.tsLatest)}</div>
-                  <div class="text-[10px] text-slate-500">
-                    LY: ${t.tsPrev > 0 ? fmtRM(t.tsPrev) : '—'}
-                    ${t.tsDiffPct !== null ? `<span class="font-bold ${t.tsDiffPct >= 0 ? 'text-emerald-600' : 'text-rose-600'}">(${fmtPct(t.tsDiffPct, 1, true)})</span>` : ''}
-                  </div>
-                </td>
-                <td class="py-3 px-3 text-right bg-indigo-50/40">
-                  <div class="font-extrabold text-indigo-950">${fmtRM(t.hbLatest)}</div>
-                  <div class="text-xs font-extrabold text-indigo-600">${fmtPct(t.hbPctOwnTsLatest)} <span class="text-[10px] font-normal text-slate-500">of own TS</span></div>
-                  <div class="text-[10px] text-slate-500">
-                    LY: ${t.hbPrev > 0 ? `${fmtRM(t.hbPrev)} (${fmtPct(t.hbPctOwnTsPrev)})` : '—'}
-                  </div>
-                </td>
-                <td class="py-3 px-3 text-right bg-violet-50/40">
-                  <div class="font-extrabold text-violet-950">${fmtRM(t.hmLatest)}</div>
-                  <div class="text-xs font-extrabold text-violet-700">${fmtPct(t.hmPctOwnTsLatest)} <span class="text-[10px] font-normal text-slate-500">of own TS</span></div>
-                  <div class="text-[10px] text-slate-500">
-                    LY: ${t.hmPrev > 0 ? `${fmtRM(t.hmPrev)} (${fmtPct(t.hmPctOwnTsPrev)})` : '—'}
-                  </div>
-                </td>
-                <td class="py-3 px-3 text-right">
-                  <div class="font-extrabold text-slate-900">${fmtNum(t.txLatest)}</div>
-                  <div class="text-[10px] text-slate-500">
-                    LY: ${t.txPrev > 0 ? fmtNum(t.txPrev) : '—'}
-                    ${t.txDiffPct !== null ? `<span class="font-bold ${t.txDiffPct >= 0 ? 'text-emerald-600' : 'text-rose-600'}">(${fmtPct(t.txDiffPct, 1, true)})</span>` : ''}
-                  </div>
-                </td>
-                <td class="py-3 px-3 text-right">
-                  <div class="font-extrabold text-slate-900">${fmtRM(t.basketTsLatest)}</div>
-                  <div class="text-[10px] text-slate-500">
-                    LY: ${t.basketTsPrev > 0 ? fmtRM(t.basketTsPrev) : '—'}
-                  </div>
-                </td>
-                <td class="py-3 px-3 text-right">
-                  <div class="font-extrabold text-indigo-800">${fmtRM(t.basketHbLatest)}</div>
-                  <div class="text-[10px] text-slate-500">
-                    LY: ${t.basketHbPrev > 0 ? fmtRM(t.basketHbPrev) : '—'}
-                  </div>
-                </td>
-                <td class="py-3 px-3 text-right bg-emerald-50/40">
-                  <div class="font-extrabold text-emerald-900">${fmtRM(t.gpRmLatest)}</div>
-                  <div class="text-[10px] text-slate-500">
-                    Net Price: ${fmtRM(t.netSoldPriceLatest)}
-                  </div>
-                  <div class="text-[10px] text-slate-500">
-                    LY GP: ${t.gpRmPrev > 0 ? fmtRM(t.gpRmPrev) : '—'}
-                  </div>
-                </td>
-                <td class="py-3 px-3 text-right bg-emerald-50/40">
-                  <div class="text-sm font-extrabold ${t.gpPctLatest >= 28 ? 'text-emerald-700' : t.gpPctLatest < 26 ? 'text-rose-700' : 'text-slate-900'}">${fmtPct(t.gpPctLatest)}</div>
-                  <div class="text-[10px] text-slate-500">
-                    LY: ${t.gpPctPrev > 0 ? fmtPct(t.gpPctPrev) : '—'}
-                    ${t.gpPctDiffPP !== null ? `<span class="font-bold ${t.gpPctDiffPP >= 0 ? 'text-emerald-600' : 'text-rose-600'}">(${fmtPP(t.gpPctDiffPP)})</span>` : ''}
-                  </div>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-          <tfoot>
-            <tr class="bg-slate-900 text-white font-extrabold text-xs">
-              <td class="py-3 px-3">BRANCH GRAND TOTAL / BENCHMARK</td>
-              <td class="py-3 px-3 text-right">${fmtRM(o.tsLatest)}<br><span class="text-[10px] text-slate-300 font-normal">LY: ${fmtRM(o.tsPrev)}</span></td>
-              <td class="py-3 px-3 text-right bg-indigo-950 text-indigo-200">${fmtRM(o.hbLatest)} (${fmtPct(o.hbShareLatestPct)})<br><span class="text-[10px] text-slate-300 font-normal">LY: ${fmtRM(o.hbPrev)} (${fmtPct(o.hbSharePrevPct)})</span></td>
-              <td class="py-3 px-3 text-right bg-violet-950 text-violet-200">${fmtRM(o.hmLatest)} (${fmtPct(o.hmShareLatestPct)})<br><span class="text-[10px] text-slate-300 font-normal">LY: ${fmtRM(o.hmPrev)} (${fmtPct(o.hmSharePrevPct)})</span></td>
-              <td class="py-3 px-3 text-right">${fmtNum(o.txLatest)}<br><span class="text-[10px] text-slate-300 font-normal">LY: ${fmtNum(o.txPrev)}</span></td>
-              <td class="py-3 px-3 text-right">${fmtRM(o.basketTsLatest)}<br><span class="text-[10px] text-slate-300 font-normal">LY: ${fmtRM(o.basketTsPrev)}</span></td>
-              <td class="py-3 px-3 text-right">${fmtRM(o.basketHbLatest)}<br><span class="text-[10px] text-slate-300 font-normal">LY: ${fmtRM(o.basketHbPrev)}</span></td>
-              <td class="py-3 px-3 text-right bg-emerald-950 text-emerald-300">${fmtRM(o.personalGpTotalLatest.netSoldProfit)}<br><span class="text-[10px] text-slate-300 font-normal">LY: ${fmtRM(o.personalGpTotalPrev.netSoldProfit)}</span></td>
-              <td class="py-3 px-3 text-right bg-emerald-950 text-amber-300">${fmtPct(o.personalGpTotalLatest.gpMarginPct)}<br><span class="text-[10px] text-slate-300 font-normal">LY: ${fmtPct(o.personalGpTotalPrev.gpMarginPct)}</span></td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+          `).join('')}
+        </tbody>
+        <tfoot>
+          <tr class="bg-slate-900 text-white font-extrabold text-xs">
+            <td class="py-3 px-3">BRANCH GRAND TOTAL / BENCHMARK</td>
+            <td class="py-3 px-3 text-right">
+              <div>${fmtRM(o.tsLatest)}</div>
+              <div class="text-[10px] text-slate-300 font-normal mt-0.5">LY: ${fmtRM(o.tsPrev)}</div>
+            </td>
+            <td class="py-3 px-3 text-right">
+              <div>${fmtRM(o.hbLatest)}</div>
+              <div class="text-[10px] text-slate-300 font-normal mt-0.5">${fmtPct(o.hbShareLatestPct)}% (LY: ${fmtPct(o.hbSharePrevPct)}%)</div>
+            </td>
+            <td class="py-3 px-3 text-right">
+              <div>${fmtRM(o.hmLatest)}</div>
+              <div class="text-[10px] text-slate-300 font-normal mt-0.5">${fmtPct(o.hmShareLatestPct)}% (LY: ${fmtPct(o.hmSharePrevPct)}%)</div>
+            </td>
+            <td class="py-3 px-3 text-right">
+              <div>${fmtNum(o.txLatest)}</div>
+              <div class="text-[10px] text-slate-300 font-normal mt-0.5">LY: ${fmtNum(o.txPrev)}</div>
+            </td>
+            <td class="py-3 px-3 text-right">
+              <div>${fmtRM(o.basketTsLatest)}</div>
+              <div class="text-[10px] text-slate-300 font-normal mt-0.5">LY: ${fmtRM(o.basketTsPrev)}</div>
+            </td>
+            <td class="py-3 px-3 text-right">
+              <div>${fmtRM(o.basketHbLatest)}</div>
+              <div class="text-[10px] text-slate-300 font-normal mt-0.5">LY: ${fmtRM(o.basketHbPrev)}</div>
+            </td>
+            <td class="py-3 px-3 text-right">
+              <div>${fmtRM(o.personalGpTotalLatest.netSoldProfit)}</div>
+              <div class="text-[10px] text-slate-300 font-normal mt-0.5">LY: ${fmtRM(o.personalGpTotalPrev.netSoldProfit)}</div>
+            </td>
+            <td class="py-3 px-3 text-right">
+              <div>${fmtPct(o.personalGpTotalLatest.gpMarginPct)}%</div>
+              <div class="text-[10px] text-slate-300 font-normal mt-0.5">LY: ${fmtPct(o.personalGpTotalPrev.gpMarginPct)}%</div>
+            </td>
+          </tr>
+        </tfoot>
+      </table>
     </div>
   `;
 }
@@ -3275,6 +3552,13 @@ function renderTab3TeammatesMatrix() {
 // ── TAB 4: GRANULAR SKU SALES YOY & 6-MONTH STOCK AGING ─────────────────────
 function updateSkuFilter(field, val) {
   skuFilterState[field] = val;
+  if (field === 'mode') {
+    if (val === 'HEROES') tab4SortState = { col: 'priceDiffRm', dir: 'desc' };
+    else if (val === 'BLEEDERS') tab4SortState = { col: 'priceDiffRm', dir: 'asc' };
+    else if (val === 'MARGIN_DROP') tab4SortState = { col: 'gpDiffPP', dir: 'asc' };
+    else if (val === 'AGED_6M') tab4SortState = { col: 'agedValueRm', dir: 'desc' };
+    else tab4SortState = { col: 'priceLatest', dir: 'desc' };
+  }
   if (field !== 'page') skuFilterState.page = 1;
   renderTab4SkusAndAging();
 }
@@ -3300,17 +3584,28 @@ function renderTab4SkusAndAging() {
   }
 
   if (skuFilterState.mode === 'HEROES') {
-    filtered = filtered.filter(s => s.priceDiffRm > 0).sort((a, b) => b.priceDiffRm - a.priceDiffRm);
+    filtered = filtered.filter(s => s.priceDiffRm > 0);
   } else if (skuFilterState.mode === 'BLEEDERS') {
-    filtered = filtered.filter(s => s.priceDiffRm < 0).sort((a, b) => a.priceDiffRm - b.priceDiffRm);
+    filtered = filtered.filter(s => s.priceDiffRm < 0);
   } else if (skuFilterState.mode === 'MARGIN_DROP') {
-    filtered = filtered.filter(s => s.priceLatest >= 200 && s.pricePrev >= 200 && s.gpDiffPP !== null && s.gpDiffPP < -1.5).sort((a, b) => a.profitDiffRm - b.profitDiffRm);
+    filtered = filtered.filter(s => s.priceLatest >= 200 && s.pricePrev >= 200 && s.gpDiffPP !== null && s.gpDiffPP < -1.5);
   } else if (skuFilterState.mode === 'AGED_6M') {
-    filtered = filtered.filter(s => s.agedValueRm > 0).sort((a, b) => b.agedValueRm - a.agedValueRm);
-  } else {
-    // Default sort by latest revenue desc
-    filtered = [...filtered].sort((a, b) => b.priceLatest - a.priceLatest || b.pricePrev - a.pricePrev);
+    filtered = filtered.filter(s => s.agedValueRm > 0);
   }
+
+  // Multi-column sorting applied to filtered SKU list
+  const sortCol = tab4SortState.col || 'priceLatest';
+  const sortDir = tab4SortState.dir === 'asc' ? 1 : -1;
+  filtered = [...filtered].sort((a, b) => {
+    let va = a[sortCol];
+    let vb = b[sortCol];
+    if (typeof va === 'string') {
+      return sortDir * va.localeCompare(vb || '');
+    }
+    va = va ?? 0;
+    vb = vb ?? 0;
+    return sortDir * (va - vb);
+  });
 
   const totalMatches = filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalMatches / skuFilterState.pageSize));
@@ -3329,29 +3624,29 @@ function renderTab4SkusAndAging() {
         </div>
       </div>
 
-      <div class="bg-emerald-50/70 rounded-2xl p-4 border border-emerald-200 shadow-xs">
-        <div class="text-xs font-bold text-emerald-900 uppercase">Top SKU Growth Hero</div>
+      <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
+        <div class="text-xs font-bold text-emerald-800 uppercase">Top SKU Growth Hero</div>
         <div class="text-sm font-extrabold text-slate-900 mt-1 truncate">${escapeHtml(computedMetrics.topHeroSkus[0]?.itemName || '—')}</div>
-        <div class="text-xs text-emerald-800 font-bold mt-1">
+        <div class="text-xs text-emerald-700 font-bold mt-1">
           +${fmtRM(computedMetrics.topHeroSkus[0]?.priceDiffRm || 0)} YoY
-          <span class="font-normal text-slate-600">(GP: ${fmtPct(computedMetrics.topHeroSkus[0]?.gpPctLatest || 0)})</span>
+          <span class="font-normal text-slate-500">(GP: ${fmtPct(computedMetrics.topHeroSkus[0]?.gpPctLatest || 0)})</span>
         </div>
       </div>
 
-      <div class="bg-rose-50/70 rounded-2xl p-4 border border-rose-200 shadow-xs">
-        <div class="text-xs font-bold text-rose-900 uppercase">Largest SKU YoY Drop</div>
+      <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
+        <div class="text-xs font-bold text-rose-800 uppercase">Largest SKU YoY Drop</div>
         <div class="text-sm font-extrabold text-slate-900 mt-1 truncate">${escapeHtml(computedMetrics.topBleederSkus[0]?.itemName || '—')}</div>
-        <div class="text-xs text-rose-800 font-bold mt-1">
+        <div class="text-xs text-rose-700 font-bold mt-1">
           ${fmtRM(computedMetrics.topBleederSkus[0]?.priceDiffRm || 0)} YoY
-          <span class="font-normal text-slate-600">(LY: ${fmtRM(computedMetrics.topBleederSkus[0]?.pricePrev || 0)})</span>
+          <span class="font-normal text-slate-500">(LY: ${fmtRM(computedMetrics.topBleederSkus[0]?.pricePrev || 0)})</span>
         </div>
       </div>
 
-      <div class="bg-amber-50/80 rounded-2xl p-4 border border-amber-200 shadow-xs">
-        <div class="text-xs font-bold text-amber-900 uppercase">6-Month+ Stock Aging Alert</div>
-        <div class="text-xl font-extrabold text-amber-950 mt-1">${fmtRM(agSum.totalAgedValueRm)} <span class="text-xs font-semibold">(${fmtNum(agSum.totalAgedSkus)} SKUs)</span></div>
-        <div class="text-xs text-amber-800 mt-1">
-          Aged &gt;1 Year: <strong>${fmtRM(agSum.totalAbove1YrValueRm)}</strong> (${fmtNum(agSum.totalAbove1YrQty)} units)
+      <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
+        <div class="text-xs font-bold text-amber-800 uppercase">6-Month+ Stock Aging Alert</div>
+        <div class="text-xl font-extrabold text-slate-900 mt-1">${fmtRM(agSum.totalAgedValueRm)} <span class="text-xs font-normal text-slate-500">(${fmtNum(agSum.totalAgedSkus)} SKUs)</span></div>
+        <div class="text-xs text-slate-500 mt-1">
+          Aged &gt;1 Year: <strong class="text-slate-800">${fmtRM(agSum.totalAbove1YrValueRm)}</strong> (${fmtNum(agSum.totalAbove1YrQty)} units)
         </div>
       </div>
     </div>
@@ -3364,19 +3659,19 @@ function renderTab4SkusAndAging() {
           <p class="text-xs text-slate-500 mt-0.5">Click any category below to filter, or export a formatted Excel Stock Count Sheet for floor audit.</p>
         </div>
         <div class="flex items-center gap-2">
-          <button onclick="exportAgingStockCountExcel('${escapeHtml(skuFilterState.category)}')" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer">
+          <button onclick="exportAgingStockCountExcel('${escapeHtml(skuFilterState.category)}')" class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer">
             <span>📥 Export Stock Count Sheet (${escapeHtml(skuFilterState.category)})</span>
           </button>
         </div>
       </div>
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
         ${agSum.byCategory.map(c => `
-          <div onclick="updateSkuFilter('category', '${escapeHtml(c.category)}'); updateSkuFilter('mode', 'AGED_6M');" class="p-3 rounded-xl border border-slate-200 hover:border-indigo-400 bg-slate-50/70 cursor-pointer transition">
+          <div onclick="updateSkuFilter('category', '${escapeHtml(c.category)}'); updateSkuFilter('mode', 'AGED_6M');" class="p-3 rounded-xl border border-slate-200 hover:border-slate-400 bg-slate-50/70 cursor-pointer transition">
             <div class="text-xs font-extrabold text-slate-800 flex justify-between">
               <span>${escapeHtml(c.category)}</span>
-              <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-900">${fmtNum(c.skuCount)} SKUs</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-800 font-bold">${fmtNum(c.skuCount)} SKUs</span>
             </div>
-            <div class="text-sm font-extrabold text-amber-800 mt-1">${fmtRM(c.agedValue)}</div>
+            <div class="text-sm font-extrabold text-slate-900 mt-1">${fmtRM(c.agedValue)}</div>
             <div class="text-[10px] text-slate-500">Aged Qty: ${fmtNum(c.agedQty6MPlus)} units</div>
           </div>
         `).join('')}
@@ -3386,11 +3681,11 @@ function renderTab4SkusAndAging() {
     <!-- SKU Filter & Search Bar -->
     <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs mb-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
       <div class="flex flex-wrap items-center gap-2">
-        <button onclick="updateSkuFilter('mode', 'ALL')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition ${skuFilterState.mode === 'ALL' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">All SKUs (${fmtNum(allSkus.length)})</button>
-        <button onclick="updateSkuFilter('mode', 'HEROES')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition ${skuFilterState.mode === 'HEROES' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'}">🚀 Top Revenue Growth Heroes</button>
-        <button onclick="updateSkuFilter('mode', 'BLEEDERS')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition ${skuFilterState.mode === 'BLEEDERS' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-800 hover:bg-rose-100'}">📉 Top YoY Sales Drops</button>
-        <button onclick="updateSkuFilter('mode', 'MARGIN_DROP')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition ${skuFilterState.mode === 'MARGIN_DROP' ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-800 hover:bg-purple-100'}">⚠️ GP% Margin Eroded</button>
-        <button onclick="updateSkuFilter('mode', 'AGED_6M')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition ${skuFilterState.mode === 'AGED_6M' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-900 hover:bg-amber-100'}">📦 In 6-Month Aging Report</button>
+        <button onclick="updateSkuFilter('mode', 'ALL')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${skuFilterState.mode === 'ALL' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">All SKUs (${fmtNum(allSkus.length)})</button>
+        <button onclick="updateSkuFilter('mode', 'HEROES')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${skuFilterState.mode === 'HEROES' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">Top Revenue Growth Heroes</button>
+        <button onclick="updateSkuFilter('mode', 'BLEEDERS')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${skuFilterState.mode === 'BLEEDERS' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">Top YoY Sales Drops</button>
+        <button onclick="updateSkuFilter('mode', 'MARGIN_DROP')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${skuFilterState.mode === 'MARGIN_DROP' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">GP% Margin Eroded</button>
+        <button onclick="updateSkuFilter('mode', 'AGED_6M')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${skuFilterState.mode === 'AGED_6M' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">In 6-Month Aging Report</button>
       </div>
 
       <div class="flex items-center gap-2 flex-wrap">
@@ -3398,8 +3693,8 @@ function renderTab4SkusAndAging() {
           <option value="ALL" ${skuFilterState.category === 'ALL' ? 'selected' : ''}>All 12 Categories</option>
           ${ALL_12_CATEGORIES.map(c => `<option value="${c}" ${skuFilterState.category === c ? 'selected' : ''}>${c}</option>`).join('')}
         </select>
-        <input type="text" value="${escapeHtml(skuFilterState.search)}" oninput="updateSkuFilter('search', this.value)" placeholder="Search SKU code or item name..." class="px-3.5 py-1.5 rounded-xl border border-slate-300 text-xs w-52 sm:w-64 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-        <button onclick="exportAgingStockCountExcel(skuFilterState.category)" title="Export formatted Stock Count Excel for current category filter" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer">
+        <input type="text" value="${escapeHtml(skuFilterState.search)}" oninput="updateSkuFilter('search', this.value)" placeholder="Search SKU code or item name..." class="px-3.5 py-1.5 rounded-xl border border-slate-300 text-xs w-52 sm:w-64 focus:outline-none focus:ring-2 focus:ring-slate-500">
+        <button onclick="exportAgingStockCountExcel(skuFilterState.category)" title="Export formatted Stock Count Excel for current category filter" class="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer">
           <span>📊 Stock Count (.xlsx)</span>
         </button>
       </div>
@@ -3410,24 +3705,74 @@ function renderTab4SkusAndAging() {
       <div class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs text-slate-600">
         <span>Showing <strong>${fmtNum(pageItems.length)}</strong> of <strong>${fmtNum(totalMatches)}</strong> matching SKUs (Page ${skuFilterState.page} of ${totalPages})</span>
         <div class="flex items-center gap-2">
-          <button onclick="updateSkuFilter('page', Math.max(1, skuFilterState.page - 1))" ${skuFilterState.page <= 1 ? 'disabled' : ''} class="px-2.5 py-1 rounded border border-slate-300 bg-white disabled:opacity-40 font-bold">← Prev</button>
-          <button onclick="updateSkuFilter('page', Math.min(${totalPages}, skuFilterState.page + 1))" ${skuFilterState.page >= totalPages ? 'disabled' : ''} class="px-2.5 py-1 rounded border border-slate-300 bg-white disabled:opacity-40 font-bold">Next →</button>
+          <button onclick="updateSkuFilter('page', Math.max(1, skuFilterState.page - 1))" ${skuFilterState.page <= 1 ? 'disabled' : ''} class="px-2.5 py-1 rounded border border-slate-300 bg-white disabled:opacity-40 font-bold cursor-pointer">← Prev</button>
+          <button onclick="updateSkuFilter('page', Math.min(${totalPages}, skuFilterState.page + 1))" ${skuFilterState.page >= totalPages ? 'disabled' : ''} class="px-2.5 py-1 rounded border border-slate-300 bg-white disabled:opacity-40 font-bold cursor-pointer">Next →</button>
         </div>
       </div>
-      <div class="overflow-x-auto">
+      <div class="table-sticky-container">
         <table class="w-full text-left border-collapse text-xs">
-          <thead>
-            <tr class="bg-slate-900 text-white uppercase text-[10px]">
-              <th class="py-2.5 px-3">Code & Item Name</th>
-              <th class="py-2.5 px-3">Category</th>
-              <th class="py-2.5 px-3 text-right">Qty (Latest vs LY)</th>
-              <th class="py-2.5 px-3 text-right">Latest Net Price</th>
-              <th class="py-2.5 px-3 text-right">Prev Year Price</th>
-              <th class="py-2.5 px-3 text-right">Price Variance</th>
-              <th class="py-2.5 px-3 text-right">Latest Profit</th>
-              <th class="py-2.5 px-3 text-right">Prev Profit</th>
-              <th class="py-2.5 px-3 text-right">GP% (Latest vs LY)</th>
-              <th class="py-2.5 px-3 text-right bg-amber-950">6M Aged Stock</th>
+          <thead class="sticky top-0 z-20 bg-slate-900 text-white uppercase text-[10px]">
+            <tr>
+              <th onclick="setTabSort('tab4', 'itemName')" class="py-2.5 px-3 cursor-pointer hover:bg-slate-800 transition select-none">
+                <div class="flex items-center">
+                  <span>Code & Item Name</span>
+                  ${getSortIndicator(tab4SortState.col, 'itemName', tab4SortState.dir)}
+                </div>
+              </th>
+              <th onclick="setTabSort('tab4', 'category')" class="py-2.5 px-3 cursor-pointer hover:bg-slate-800 transition select-none">
+                <div class="flex items-center">
+                  <span>Category</span>
+                  ${getSortIndicator(tab4SortState.col, 'category', tab4SortState.dir)}
+                </div>
+              </th>
+              <th onclick="setTabSort('tab4', 'qtyLatest')" class="py-2.5 px-3 text-right cursor-pointer hover:bg-slate-800 transition select-none">
+                <div class="flex items-center justify-end">
+                  <span>Qty (Latest vs LY)</span>
+                  ${getSortIndicator(tab4SortState.col, 'qtyLatest', tab4SortState.dir)}
+                </div>
+              </th>
+              <th onclick="setTabSort('tab4', 'priceLatest')" class="py-2.5 px-3 text-right cursor-pointer hover:bg-slate-800 transition select-none">
+                <div class="flex items-center justify-end">
+                  <span>Latest Net Price</span>
+                  ${getSortIndicator(tab4SortState.col, 'priceLatest', tab4SortState.dir)}
+                </div>
+              </th>
+              <th onclick="setTabSort('tab4', 'pricePrev')" class="py-2.5 px-3 text-right cursor-pointer hover:bg-slate-800 transition select-none">
+                <div class="flex items-center justify-end">
+                  <span>Prev Year Price</span>
+                  ${getSortIndicator(tab4SortState.col, 'pricePrev', tab4SortState.dir)}
+                </div>
+              </th>
+              <th onclick="setTabSort('tab4', 'priceDiffRm')" class="py-2.5 px-3 text-right cursor-pointer hover:bg-slate-800 transition select-none">
+                <div class="flex items-center justify-end">
+                  <span>Price Variance</span>
+                  ${getSortIndicator(tab4SortState.col, 'priceDiffRm', tab4SortState.dir)}
+                </div>
+              </th>
+              <th onclick="setTabSort('tab4', 'profitLatest')" class="py-2.5 px-3 text-right cursor-pointer hover:bg-slate-800 transition select-none">
+                <div class="flex items-center justify-end">
+                  <span>Latest Profit</span>
+                  ${getSortIndicator(tab4SortState.col, 'profitLatest', tab4SortState.dir)}
+                </div>
+              </th>
+              <th onclick="setTabSort('tab4', 'profitPrev')" class="py-2.5 px-3 text-right cursor-pointer hover:bg-slate-800 transition select-none">
+                <div class="flex items-center justify-end">
+                  <span>Prev Profit</span>
+                  ${getSortIndicator(tab4SortState.col, 'profitPrev', tab4SortState.dir)}
+                </div>
+              </th>
+              <th onclick="setTabSort('tab4', 'gpPctLatest')" class="py-2.5 px-3 text-right cursor-pointer hover:bg-slate-800 transition select-none">
+                <div class="flex items-center justify-end">
+                  <span>GP%</span>
+                  ${getSortIndicator(tab4SortState.col, 'gpPctLatest', tab4SortState.dir)}
+                </div>
+              </th>
+              <th onclick="setTabSort('tab4', 'agedValueRm')" class="py-2.5 px-3 text-right cursor-pointer hover:bg-slate-800 transition select-none">
+                <div class="flex items-center justify-end">
+                  <span>6M Aged Stock</span>
+                  ${getSortIndicator(tab4SortState.col, 'agedValueRm', tab4SortState.dir)}
+                </div>
+              </th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 text-slate-800">
@@ -3437,26 +3782,27 @@ function renderTab4SkusAndAging() {
                   <div class="font-bold text-slate-900 max-w-xs truncate" title="${escapeHtml(s.itemName)}">${escapeHtml(s.itemName)}</div>
                   <div class="text-[10px] font-mono text-slate-500">${escapeHtml(s.itemCode)} | Unit Cost: ${fmtRM(s.unitCostLatest)}</div>
                 </td>
-                <td class="py-2 px-3 font-bold text-slate-700">${escapeHtml(s.category)}</td>
+                <td class="py-2 px-3 font-semibold text-slate-700">${escapeHtml(s.category)}</td>
                 <td class="py-2 px-3 text-right">
-                  <span class="font-bold">${fmtNum(s.qtyLatest)}</span> <span class="text-slate-400">vs ${fmtNum(s.qtyPrev)}</span>
-                  <div class="text-[10px] ${s.qtyDiff >= 0 ? 'text-emerald-600' : 'text-rose-600'} font-semibold">${s.qtyDiff >= 0 ? '+' : ''}${fmtNum(s.qtyDiff)}</div>
+                  <div class="font-bold text-slate-900">${fmtNum(s.qtyLatest)} <span class="text-slate-400 font-normal">vs ${fmtNum(s.qtyPrev)}</span></div>
+                  <div class="text-[11px] ${s.qtyDiff >= 0 ? 'text-emerald-700' : 'text-rose-700'} font-semibold mt-0.5">${s.qtyDiff >= 0 ? '+' : ''}${fmtNum(s.qtyDiff)}</div>
                 </td>
-                <td class="py-2 px-3 text-right font-bold">${fmtRM(s.priceLatest)}</td>
-                <td class="py-2 px-3 text-right text-slate-500">${fmtRM(s.pricePrev)}</td>
-                <td class="py-2 px-3 text-right font-extrabold ${s.priceDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">
-                  ${s.priceDiffRm >= 0 ? '+' : ''}${fmtRM(s.priceDiffRm)}
+                <td class="py-2 px-3 text-right font-bold text-slate-900">${fmtRM(s.priceLatest)}</td>
+                <td class="py-2 px-3 text-right text-slate-600 font-medium">${fmtRM(s.pricePrev)}</td>
+                <td class="py-2 px-3 text-right font-bold ${s.priceDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">
+                  <div>${s.priceDiffRm >= 0 ? '+' : ''}${fmtRM(s.priceDiffRm)}</div>
+                  ${s.priceDiffPct !== null ? `<div class="text-[11px] text-slate-500 font-semibold mt-0.5">(${s.priceDiffPct >= 0 ? '+' : ''}${fmtPct(s.priceDiffPct)})</div>` : ''}
                 </td>
-                <td class="py-2 px-3 text-right font-bold text-emerald-800">${fmtRM(s.profitLatest)}</td>
-                <td class="py-2 px-3 text-right text-slate-500">${fmtRM(s.profitPrev)}</td>
+                <td class="py-2 px-3 text-right font-bold text-slate-900">${fmtRM(s.profitLatest)}</td>
+                <td class="py-2 px-3 text-right text-slate-600 font-medium">${fmtRM(s.profitPrev)}</td>
                 <td class="py-2 px-3 text-right">
-                  <div class="font-extrabold text-indigo-800">${fmtPct(s.gpPctLatest)}</div>
-                  <div class="text-[10px] text-slate-400">LY: ${fmtPct(s.gpPctPrev)} ${s.gpDiffPP !== null ? `(${fmtPP(s.gpDiffPP)})` : ''}</div>
+                  <div class="font-bold text-slate-900">${fmtPct(s.gpPctLatest)}</div>
+                  <div class="text-[11px] text-slate-500 font-semibold mt-0.5">LY: ${fmtPct(s.gpPctPrev)}${s.gpDiffPP !== null ? ` (${fmtPP(s.gpDiffPP)})` : ''}</div>
                 </td>
-                <td class="py-2 px-3 text-right bg-amber-50/40">
+                <td class="py-2 px-3 text-right">
                   ${s.agedValueRm > 0 ? `
                     <div class="font-bold text-amber-900">${fmtRM(s.agedValueRm)}</div>
-                    <div class="text-[10px] text-amber-700">${fmtNum(s.agedQty6MPlus)} aged / ${fmtNum(s.ohQty)} OH</div>
+                    <div class="text-[10px] text-slate-500 font-semibold mt-0.5">${fmtNum(s.agedQty6MPlus)} aged / ${fmtNum(s.ohQty)} OH</div>
                   ` : `<span class="text-slate-300">—</span>`}
                 </td>
               </tr>
@@ -3480,45 +3826,41 @@ function renderAiAnalysisSection() {
 
   container.innerHTML = `
     <!-- Gemini 3.5 / 3.1 Flash-Lite Control Bar -->
-    <div class="bg-gradient-to-r from-indigo-950 via-slate-900 to-violet-950 text-white rounded-2xl p-5 mb-6 shadow-md">
+    <div class="bg-slate-900 text-white rounded-2xl p-5 mb-6 border border-slate-800 shadow-xs">
       <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">Primary: gemini-3.5-flash-lite</span>
-            <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-indigo-400/20 text-indigo-300 border border-indigo-400/30">Secondary: gemini-3.1-flash-lite</span>
-            <span id="aiModelStatusBadge" class="text-[11px] text-slate-300">Active Engine: ${escapeHtml(report.modelUsed)}</span>
+          <div class="flex flex-wrap items-center gap-2 mb-1">
+            <span class="px-2.5 py-0.5 rounded-full text-[11px] font-mono bg-slate-800 text-slate-300 border border-slate-700">Gemini 3.5 Flash-Lite</span>
+            <span id="aiModelStatusBadge" class="text-[11px] text-slate-400">Engine: ${escapeHtml(report.modelUsed)}</span>
           </div>
-          <h3 class="text-base font-extrabold mt-1.5">AI Strategic Evaluation, Kota Sentosa Competitor Intelligence, SWOT & Role Action Plans</h3>
-          <p class="text-xs text-slate-300 mt-0.5">Review the analysis below and click <strong>"Approve to 1-Month Task List"</strong> on any recommendation to add it to your monthly execution tracker.</p>
+          <h3 class="text-base font-extrabold mt-1">AI Strategic Evaluation, SWOT & Role Action Plans</h3>
+          <p class="text-xs text-slate-400 mt-0.5">Review the analysis below and click <strong>"Approve into Task List"</strong> on any recommendation to add it to your monthly execution tracker.</p>
         </div>
 
         <div class="flex flex-wrap items-center gap-2 shrink-0">
-          <input id="perfGeminiApiKey" type="password" value="${escapeHtml(savedApiKey)}" placeholder="Gemini API Key (AIza...)" class="px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-xs text-white placeholder-slate-400 w-52 focus:outline-none focus:ring-2 focus:ring-emerald-400">
-          <button id="btnRunGeminiAi" onclick="runLiveGeminiAnalysis()" class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs shadow transition cursor-pointer">
-            ✨ Run Live Gemini AI Analysis (3.5 / 3.1 Flash-Lite)
+          <input id="perfGeminiApiKey" type="password" value="${escapeHtml(savedApiKey)}" placeholder="Gemini API Key (AIza...)" class="px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-400 w-52 focus:outline-none focus:ring-2 focus:ring-slate-500">
+          <button id="btnRunGeminiAi" onclick="runLiveGeminiAnalysis()" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-white text-slate-900 font-extrabold text-xs shadow-xs transition cursor-pointer">
+            ✨ Run Live Gemini AI Analysis
           </button>
-          <button onclick="exportGeminiPresentationModal()" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 hover:from-violet-400 hover:to-indigo-400 text-white font-extrabold text-xs shadow transition cursor-pointer flex items-center gap-1.5" title="Export 16-slide monthly presentation prompt for Google Gemini">
-            <span>📄</span> Export Gemini Presentation Doc
-          </button>
-          <button onclick="approveAllRecommendations()" class="px-3.5 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-xs shadow transition cursor-pointer">
-            ✅ Approve All to 1-Month Task List
+          <button onclick="approveAllRecommendations()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-bold text-xs shadow-xs transition cursor-pointer">
+            ✓ Approve All to Task List
           </button>
         </div>
       </div>
     </div>
 
-    <!-- 1. Executive Synthesis -->
+    <!-- Executive Results Commentary -->
     <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs mb-6">
-      <div class="text-xs font-extrabold uppercase tracking-wider text-indigo-600 mb-1">1. Executive Results Commentary</div>
-      <p class="text-sm text-slate-800 leading-relaxed font-medium">${escapeHtml(report.executiveSummary)}</p>
+      <div class="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-1.5">Executive Results Commentary</div>
+      <p class="text-sm text-slate-900 leading-relaxed font-normal">${escapeHtml(report.executiveSummary)}</p>
     </div>
 
-    <!-- 2. Macroeconomic & Kota Sentosa Local Market / Competitor Analysis -->
+    <!-- Macroeconomic & Local Market / Competitor Analysis -->
     <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs mb-6">
-      <div class="text-xs font-extrabold uppercase tracking-wider text-amber-700 mb-3">2. Macroeconomic & Local Market / Competitor Analysis (PMG Pharmacy Kota Sentosa — 7th Mile Bazaar)</div>
+      <div class="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-3">Macroeconomic & Local Market / Competitor Analysis (PMG Pharmacy Kota Sentosa — 7th Mile Bazaar)</div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         ${(report.macroAndCompetitorAnalysis || []).map(item => `
-          <div class="p-4 rounded-xl bg-amber-50/50 border border-amber-200/80">
+          <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
             <h4 class="text-xs font-extrabold text-slate-900 mb-1">📍 ${escapeHtml(item.title)}</h4>
             <p class="text-xs text-slate-700 leading-relaxed">${escapeHtml(item.detail)}</p>
           </div>
@@ -3526,59 +3868,71 @@ function renderAiAnalysisSection() {
       </div>
     </div>
 
-    <!-- 3. SWOT Analysis (4 Quadrants) -->
+    <!-- SWOT Analysis (4 Quadrants) -->
     <div class="mb-6">
-      <div class="text-xs font-extrabold uppercase tracking-wider text-slate-600 mb-3">3. Comprehensive SWOT Analysis (Kota Sentosa Branch)</div>
+      <div class="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-3">Comprehensive SWOT Analysis (Kota Sentosa Branch)</div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-5">
-          <div class="text-sm font-extrabold text-emerald-950 mb-2.5 flex items-center gap-2">💪 Strengths (Internal Advantages)</div>
-          <ul class="space-y-2 text-xs text-slate-800 list-disc pl-4">
+        <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+          <div class="text-sm font-extrabold text-slate-900 mb-2.5 flex items-center justify-between">
+            <span>💪 Strengths (Internal Advantages)</span>
+            <span class="text-[10px] uppercase font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">Strength</span>
+          </div>
+          <ul class="space-y-2 text-xs text-slate-700 list-disc pl-4">
             ${(report.swot?.strengths || []).map(s => `<li>${escapeHtml(s)}</li>`).join('')}
           </ul>
         </div>
-        <div class="bg-rose-50/70 border border-rose-200 rounded-2xl p-5">
-          <div class="text-sm font-extrabold text-rose-950 mb-2.5 flex items-center gap-2">⚠️ Weaknesses (Internal Gaps)</div>
-          <ul class="space-y-2 text-xs text-slate-800 list-disc pl-4">
+        <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+          <div class="text-sm font-extrabold text-slate-900 mb-2.5 flex items-center justify-between">
+            <span>⚠️ Weaknesses (Internal Gaps)</span>
+            <span class="text-[10px] uppercase font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded">Weakness</span>
+          </div>
+          <ul class="space-y-2 text-xs text-slate-700 list-disc pl-4">
             ${(report.swot?.weaknesses || []).map(s => `<li>${escapeHtml(s)}</li>`).join('')}
           </ul>
         </div>
-        <div class="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-5">
-          <div class="text-sm font-extrabold text-indigo-950 mb-2.5 flex items-center gap-2">🚀 Opportunities (External Growth Levers)</div>
-          <ul class="space-y-2 text-xs text-slate-800 list-disc pl-4">
+        <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+          <div class="text-sm font-extrabold text-slate-900 mb-2.5 flex items-center justify-between">
+            <span>🚀 Opportunities (External Levers)</span>
+            <span class="text-[10px] uppercase font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">Opportunity</span>
+          </div>
+          <ul class="space-y-2 text-xs text-slate-700 list-disc pl-4">
             ${(report.swot?.opportunities || []).map(s => `<li>${escapeHtml(s)}</li>`).join('')}
           </ul>
         </div>
-        <div class="bg-amber-50/70 border border-amber-200 rounded-2xl p-5">
-          <div class="text-sm font-extrabold text-amber-950 mb-2.5 flex items-center gap-2">🛡️ Threats (Competitor & Macro Risks)</div>
-          <ul class="space-y-2 text-xs text-slate-800 list-disc pl-4">
+        <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+          <div class="text-sm font-extrabold text-slate-900 mb-2.5 flex items-center justify-between">
+            <span>🛡️ Threats (Competitor & Macro Risks)</span>
+            <span class="text-[10px] uppercase font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">Threat</span>
+          </div>
+          <ul class="space-y-2 text-xs text-slate-700 list-disc pl-4">
             ${(report.swot?.threats || []).map(s => `<li>${escapeHtml(s)}</li>`).join('')}
           </ul>
         </div>
       </div>
     </div>
 
-    <!-- 4. Category Up/Down & Stock Cycle Findings -->
+    <!-- Stock Cycle & Category Commentary -->
     <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs mb-6">
-      <div class="text-xs font-extrabold uppercase tracking-wider text-indigo-700 mb-2">4. Stock Cycle & Category Up / Down Commentary</div>
+      <div class="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-2">Stock Cycle & Category Commentary</div>
       <p class="text-xs text-slate-700 leading-relaxed mb-4 p-3.5 rounded-xl bg-slate-50 border border-slate-200">${escapeHtml(report.categoryAndStockFindings?.stockCycleComment || '')}</p>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <div class="text-xs font-extrabold text-emerald-800 uppercase mb-2">▲ Categories That Went UP YoY</div>
+          <div class="text-xs font-extrabold text-emerald-800 uppercase mb-2">▲ Categories That Grew YoY</div>
           <div class="space-y-2">
             ${(report.categoryAndStockFindings?.categoriesUp || []).map(c => `
-              <div class="p-3 rounded-xl bg-emerald-50/60 border border-emerald-200 text-xs">
-                <span class="font-extrabold text-emerald-950">${escapeHtml(c.category)}:</span>
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                <span class="font-extrabold text-slate-900">${escapeHtml(c.category)}:</span>
                 <span class="text-slate-700 ml-1">${escapeHtml(c.summary)}</span>
               </div>
             `).join('')}
           </div>
         </div>
         <div>
-          <div class="text-xs font-extrabold text-rose-800 uppercase mb-2">▼ Categories That Went DOWN YoY</div>
+          <div class="text-xs font-extrabold text-rose-800 uppercase mb-2">▼ Categories That Declined YoY</div>
           <div class="space-y-2">
             ${(report.categoryAndStockFindings?.categoriesDown || []).map(c => `
-              <div class="p-3 rounded-xl bg-rose-50/60 border border-rose-200 text-xs">
-                <span class="font-extrabold text-rose-950">${escapeHtml(c.category)}:</span>
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                <span class="font-extrabold text-slate-900">${escapeHtml(c.category)}:</span>
                 <span class="text-slate-700 ml-1">${escapeHtml(c.summary)}</span>
               </div>
             `).join('')}
@@ -3587,12 +3941,12 @@ function renderAiAnalysisSection() {
       </div>
     </div>
 
-    <!-- 5. Role-Specific Action Plans (Pharmacist PIC, ABM, PRP, PA) with Approve Buttons -->
+    <!-- Role-Specific Action Plans (PIC Pharmacist, ABM, PRP & PA) with Approve Buttons -->
     <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs mb-6">
       <div class="flex items-center justify-between mb-4">
         <div>
-          <div class="text-xs font-extrabold uppercase tracking-wider text-indigo-700">5. Role-Specific Action Plans (PIC Pharmacist, ABM, PRP & PA)</div>
-          <h4 class="text-sm font-extrabold text-slate-900 mt-0.5">Click "Approve into 1-Month Task List" on any action plan you want to execute</h4>
+          <div class="text-xs font-extrabold uppercase tracking-wider text-slate-500">Role-Specific Action Plans (PIC Pharmacist, ABM, PRP & PA)</div>
+          <h4 class="text-sm font-extrabold text-slate-900 mt-0.5">Click "Approve into Task List" on any action plan you want to execute</h4>
         </div>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3600,21 +3954,21 @@ function renderAiAnalysisSection() {
           const sid = r.id || `role_${idx}`;
           const approved = isRecommendationApproved(sid);
           return `
-            <div class="p-4 rounded-2xl border ${approved ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-200 bg-slate-50/50'} flex flex-col justify-between">
+            <div class="p-4 rounded-2xl border ${approved ? 'border-emerald-300 bg-emerald-50/20' : 'border-slate-200 bg-white'} flex flex-col justify-between shadow-xs">
               <div>
                 <div class="flex items-center justify-between gap-2 mb-1.5">
-                  <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-100 text-indigo-900">${escapeHtml(r.role)}</span>
+                  <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-800 border border-slate-200">${escapeHtml(r.role)}</span>
                   ${approved ? `<span class="text-[11px] font-extrabold text-emerald-700">✓ Approved in Task List</span>` : ''}
                 </div>
                 <h5 class="text-sm font-extrabold text-slate-900 mb-1">${escapeHtml(r.title)}</h5>
                 <p class="text-xs text-slate-700 leading-relaxed mb-3">${escapeHtml(r.action)}</p>
               </div>
-              <div class="pt-3 border-t border-slate-200/80 flex items-center justify-between gap-2">
-                <div class="text-[11px] font-bold text-indigo-800">🎯 Target: ${escapeHtml(r.targetMetric)}</div>
+              <div class="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                <div class="text-[11px] font-bold text-slate-800">🎯 Target: ${escapeHtml(r.targetMetric)}</div>
                 <button
                   onclick='approveRecommendationToTaskList(${JSON.stringify({ sourceId: sid, role: r.role, assignee: r.role, title: r.title, action: r.action, targetMetric: r.targetMetric }).replace(/'/g, "&#39;")})'
                   ${approved ? 'disabled' : ''}
-                  class="px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition cursor-pointer ${approved ? 'bg-emerald-200 text-emerald-900 cursor-default' : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs'}">
+                  class="px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition cursor-pointer ${approved ? 'bg-emerald-100 text-emerald-800 cursor-default' : 'bg-slate-900 hover:bg-slate-800 text-white shadow-xs'}">
                   ${approved ? '✓ Approved' : '+ Approve to Task List'}
                 </button>
               </div>
@@ -3624,32 +3978,32 @@ function renderAiAnalysisSection() {
       </div>
     </div>
 
-    <!-- 6. Individual Teammate Special Action Plans with Approve Buttons -->
+    <!-- Teammate Coaching & Action Plans with Approve Buttons -->
     <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs">
-      <div class="text-xs font-extrabold uppercase tracking-wider text-violet-700">6. Individual Teammate Special Coaching & Action Plans</div>
-      <h4 class="text-sm font-extrabold text-slate-900 mt-0.5 mb-4">Targeted 1-on-1 action plans based on each teammate's TS, HB%, HM%, Basket Size & GP Margin</h4>
+      <div class="text-xs font-extrabold uppercase tracking-wider text-slate-500">Teammate Coaching & Action Plans</div>
+      <h4 class="text-sm font-extrabold text-slate-900 mt-0.5 mb-4">Targeted 1-on-1 action plans based on individual TS, HB%, HM%, Basket Size & GP Margin</h4>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         ${(report.teammateCoaching || []).map((t, idx) => {
           const sid = t.id || `tm_${idx}`;
           const approved = isRecommendationApproved(sid);
           return `
-            <div class="p-4 rounded-2xl border ${approved ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-200 bg-white'} flex flex-col justify-between shadow-2xs">
+            <div class="p-4 rounded-2xl border ${approved ? 'border-emerald-300 bg-emerald-50/20' : 'border-slate-200 bg-white'} flex flex-col justify-between shadow-xs">
               <div>
                 <div class="flex items-center justify-between gap-2 mb-1">
                   <div>
                     <span class="text-sm font-extrabold text-slate-900">${escapeHtml(t.person)}</span>
                     <span class="ml-1.5 px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold">${escapeHtml(t.role)}</span>
                   </div>
-                  <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900">${escapeHtml(t.statusBadge)}</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-800 border border-slate-200">${escapeHtml(t.statusBadge)}</span>
                 </div>
-                <div class="text-[11px] font-mono text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-100 my-2">${escapeHtml(t.metricsSummary)}</div>
+                <div class="text-[11px] font-mono text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100 my-2">${escapeHtml(t.metricsSummary)}</div>
                 <p class="text-xs text-slate-700 leading-relaxed mb-3">${escapeHtml(t.commentAndAction)}</p>
               </div>
               <div class="pt-2.5 border-t border-slate-100 flex justify-end">
                 <button
                   onclick='approveRecommendationToTaskList(${JSON.stringify({ sourceId: sid, role: t.role, assignee: t.person, title: `Coaching Plan: ${t.person} (${t.statusBadge})`, action: t.commentAndAction, targetMetric: t.metricsSummary }).replace(/'/g, "&#39;")})'
                   ${approved ? 'disabled' : ''}
-                  class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${approved ? 'bg-emerald-200 text-emerald-900 cursor-default' : 'bg-violet-600 hover:bg-violet-700 text-white shadow-2xs'}">
+                  class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${approved ? 'bg-emerald-100 text-emerald-800 cursor-default' : 'bg-slate-900 hover:bg-slate-800 text-white shadow-xs'}">
                   ${approved ? '✓ Approved in Task List' : '+ Approve Teammate Plan'}
                 </button>
               </div>
@@ -3730,7 +4084,7 @@ function renderTaskListSection() {
       <div class="bg-white rounded-2xl border-2 border-dashed border-slate-300 p-10 text-center">
         <div class="text-3xl mb-2">📋</div>
         <h4 class="text-sm font-extrabold text-slate-800">No Approved Action Plans Yet</h4>
-        <p class="text-xs text-slate-500 mt-1">Go to <strong>"5. Gemini AI Strategy & SWOT"</strong> and click <strong>"+ Approve to Task List"</strong> on any recommendation, or click <strong>"+ Import All AI Recommendations"</strong> above.</p>
+        <p class="text-xs text-slate-500 mt-1">Go to <strong>"Gemini AI Strategy & SWOT"</strong> and click <strong>"+ Approve to Task List"</strong> on any recommendation, or click <strong>"+ Import All AI Recommendations"</strong> above.</p>
       </div>
     ` : `
       <div class="space-y-3">
@@ -3738,13 +4092,13 @@ function renderTaskListSection() {
           <div class="bg-white rounded-2xl p-4 border ${t.status === 'COMPLETED' ? 'border-emerald-300 bg-emerald-50/20' : t.status === 'IN_PROGRESS' ? 'border-amber-300 bg-amber-50/20' : 'border-slate-200'} shadow-2xs flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div class="flex-1">
               <div class="flex flex-wrap items-center gap-2 mb-1">
-                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-100 text-indigo-900">${escapeHtml(t.role)}</span>
+                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-800 border border-slate-200">${escapeHtml(t.role)}</span>
                 <span class="text-xs font-bold text-slate-700">👤 ${escapeHtml(t.assignee)}</span>
                 <span class="text-[11px] text-slate-400">Due: ${escapeHtml(t.dueDate)}</span>
               </div>
               <h4 class="text-sm font-extrabold ${t.status === 'COMPLETED' ? 'line-through text-slate-400' : 'text-slate-900'}">${escapeHtml(t.title)}</h4>
               <p class="text-xs text-slate-600 mt-1 leading-relaxed">${escapeHtml(t.action)}</p>
-              ${t.targetMetric ? `<div class="text-[11px] font-bold text-indigo-700 mt-1.5">🎯 Target KPI: ${escapeHtml(t.targetMetric)}</div>` : ''}
+              ${t.targetMetric ? `<div class="text-[11px] font-bold text-slate-800 mt-1.5">🎯 Target: ${escapeHtml(t.targetMetric)}</div>` : ''}
             </div>
             <div class="flex items-center gap-2 shrink-0">
               <select onchange="updateTaskStatus('${escapeHtml(t.id)}', this.value)" class="px-3 py-1.5 rounded-xl text-xs font-extrabold border ${t.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-900 border-emerald-300' : t.status === 'IN_PROGRESS' ? 'bg-amber-100 text-amber-900 border-amber-300' : 'bg-slate-100 text-slate-800 border-slate-300'}">
@@ -4022,7 +4376,7 @@ function switchPerfTab(tabId) {
     }
     if (btn) {
       if (id === tabId) {
-        btn.className = 'px-3.5 py-2 rounded-xl text-xs font-extrabold bg-indigo-600 text-white shadow-xs transition cursor-pointer whitespace-nowrap';
+        btn.className = 'px-3.5 py-2 rounded-xl text-xs font-extrabold bg-slate-900 text-white shadow-xs transition cursor-pointer whitespace-nowrap';
       } else {
         btn.className = 'px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer whitespace-nowrap';
       }
@@ -4050,11 +4404,13 @@ function showToast(msg, type = 'info') {
 }
 
 // ─── INITIALIZE ON DOM READY ────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-  loadInitialState();
-  refreshAllViews();
-  switchPerfTab('tab1');
-});
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', () => {
+    loadInitialState();
+    refreshAllViews();
+    switchPerfTab('tab1');
+  });
+}
 
 // Export for Node unit testing
 if (typeof module !== 'undefined' && module.exports) {
