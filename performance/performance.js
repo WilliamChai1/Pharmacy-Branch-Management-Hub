@@ -62,27 +62,27 @@ const DEFAULT_ROLE_MAP = {
 
 // ─── HISTORICAL BENCHMARKS & 3-MONTH CONTINUOUS ARCHIVE ENGINE ──────────────
 const KOTA_SENTOSA_HISTORICAL_TEAMMATES = {
-  'M1': { // September 2026 (1 Month Prior)
-    'CHAI YEE SIAN':                     { ts: 51200.00, hb: 24800.00, hbPct: 48.44, gpPct: 29.50, tx: 530, hm: 4920.00 },
-    'JONG PEI CHOO':                     { ts: 53100.00, hb: 23900.00, hbPct: 45.01, gpPct: 26.25, tx: 1150, hm: 4350.00 },
-    'NURHAFIZAH BINTI PAULI':            { ts: 34900.00, hb: 11200.00, hbPct: 32.09, gpPct: 27.35, tx: 1060, hm: 4020.00 },
-    'KENIX LING WANG YING':              { ts: 33200.00, hb: 17500.00, hbPct: 52.71, gpPct: 31.55, tx: 790, hm: 3550.00 },
-    'CHRISTINA LEE YING YING':           { ts: 33100.00, hb: 14100.00, hbPct: 42.60, gpPct: 28.45, tx: 860, hm: 2580.00 },
-    'HANIESHA LOUNA ANAK DAGENG':        { ts: 35200.00, hb: 13800.00, hbPct: 39.20, gpPct: 26.20, tx: 910, hm: 2750.00 },
-    'MUHAMMAD NUR FARIZIN BIN ABDULLAH': { ts: 31900.00, hb: 9250.00,  hbPct: 28.99, gpPct: 26.25, tx: 990, hm: 2880.00 },
-    'FIONA FIENA ANAK JAMES':            { ts: 33400.00, hb: 13100.00, hbPct: 39.22, gpPct: 26.70, tx: 870, hm: 2520.00 },
-    'TING KWANG YU':                     { ts: 22450.00, hb: 11930.00, hbPct: 53.14, gpPct: 22.50, tx: 530, hm: 2010.00 }
+  'M1': { // September 2026 (Verified POS Daily Sales)
+    'CHAI YEE SIAN':                     { ts: 56349.67, hb: 28793.67, hbPct: 51.10, gpPct: 29.22, tx: 542, hm: 5724.59 },
+    'JONG PEI CHOO':                     { ts: 67867.91, hb: 30047.07, hbPct: 44.27, gpPct: 26.35, tx: 1188, hm: 6468.84 },
+    'MUHAMMAD NUR FARIZIN BIN ABDULLAH': { ts: 38902.31, hb: 12023.81, hbPct: 30.91, gpPct: 26.31, tx: 1007, hm: 3483.10 },
+    'FIONA FIENA ANAK JAMES':            { ts: 38603.18, hb: 15465.76, hbPct: 40.06, gpPct: 27.11, tx: 870, hm: 3391.10 },
+    'NURHAFIZAH BINTI PAULI':            { ts: 37220.70, hb: 11911.70, hbPct: 32.00, gpPct: 27.44, tx: 1083, hm: 2699.60 },
+    'HANIESHA LOUNA ANAK DAGENG':        { ts: 33017.20, hb: 15217.94, hbPct: 46.09, gpPct: 25.46, tx: 866, hm: 2408.70 },
+    'DANIELA JANET ANAK MUSTAPHA':       { ts: 24525.47, hb: 8992.27,  hbPct: 36.67, gpPct: 25.50, tx: 590, hm: 1749.90 },
+    'KENIX LING WANG YING':              { ts: 22639.41, hb: 10043.31, hbPct: 44.36, gpPct: 31.48, tx: 801, hm: 2476.30 },
+    'TING KWANG YU':                     { ts: 17412.06, hb: 10703.22, hbPct: 61.47, gpPct: 28.90, tx: 627, hm: 872.67 }
   },
-  'M2': { // August 2026 (2 Months Prior)
-    'CHAI YEE SIAN':                     { ts: 49800.00, hb: 23900.00, hbPct: 47.99, gpPct: 29.40, tx: 520, hm: 4800.00 },
-    'JONG PEI CHOO':                     { ts: 51400.00, hb: 21800.00, hbPct: 42.41, gpPct: 26.10, tx: 1120, hm: 4100.00 },
-    'NURHAFIZAH BINTI PAULI':            { ts: 34200.00, hb: 11600.00, hbPct: 33.92, gpPct: 27.20, tx: 1050, hm: 3850.00 },
-    'KENIX LING WANG YING':              { ts: 32800.00, hb: 16900.00, hbPct: 51.52, gpPct: 31.50, tx: 780, hm: 3450.00 },
-    'CHRISTINA LEE YING YING':           { ts: 32500.00, hb: 13650.00, hbPct: 42.00, gpPct: 28.40, tx: 850, hm: 2520.00 },
-    'HANIESHA LOUNA ANAK DAGENG':        { ts: 38394.44, hb: 15200.00, hbPct: 39.59, gpPct: 27.40, tx: 977, hm: 2994.70 },
-    'MUHAMMAD NUR FARIZIN BIN ABDULLAH': { ts: 32100.00, hb: 9630.00,  hbPct: 30.00, gpPct: 26.30, tx: 1010, hm: 2850.00 },
-    'FIONA FIENA ANAK JAMES':            { ts: 41200.00, hb: 16800.00, hbPct: 40.78, gpPct: 26.80, tx: 1080, hm: 2850.00 },
-    'TING KWANG YU':                     { ts: 23796.00, hb: 12470.00, hbPct: 52.40, gpPct: 22.40, tx: 528, hm: 2050.00 }
+  'M2': { // August 2026 (Verified POS Daily Sales)
+    'JONG PEI CHOO':                     { ts: 77868.67, hb: 40551.13, hbPct: 52.08, gpPct: 26.35, tx: 1258, hm: 7182.75 },
+    'CHAI YEE SIAN':                     { ts: 56216.31, hb: 26502.91, hbPct: 47.14, gpPct: 29.22, tx: 567, hm: 5067.85 },
+    'HANIESHA LOUNA ANAK DAGENG':        { ts: 46327.58, hb: 21296.52, hbPct: 45.97, gpPct: 25.46, tx: 892, hm: 3866.90 },
+    'FIONA FIENA ANAK JAMES':            { ts: 45947.34, hb: 20374.91, hbPct: 44.34, gpPct: 27.11, tx: 870, hm: 3748.80 },
+    'DANIELA JANET ANAK MUSTAPHA':       { ts: 43949.89, hb: 15891.83, hbPct: 36.16, gpPct: 25.80, tx: 940, hm: 3288.10 },
+    'NURHAFIZAH BINTI PAULI':            { ts: 32119.29, hb: 10697.52, hbPct: 33.31, gpPct: 27.44, tx: 1112, hm: 3448.30 },
+    'MUHAMMAD NUR FARIZIN BIN ABDULLAH': { ts: 30931.79, hb: 9492.40,  hbPct: 30.69, gpPct: 26.31, tx: 1007, hm: 2862.20 },
+    'KENIX LING WANG YING':              { ts: 30321.83, hb: 13782.70, hbPct: 45.45, gpPct: 31.48, tx: 801, hm: 3651.60 },
+    'DIANA LAI PEI YING':                { ts: 16762.59, hb: 6036.98,  hbPct: 36.01, gpPct: 25.50, tx: 450, hm: 1695.60 }
   }
 };
 
@@ -140,11 +140,6 @@ function getArchivePeriodKey(state) {
 }
 
 function loadMonthlyArchives() {
-  try {
-    const raw = (typeof localStorage !== 'undefined') ? localStorage.getItem(STORAGE_KEYS.MONTHLY_ARCHIVES) : null;
-    if (raw) return JSON.parse(raw);
-  } catch (e) {}
-
   // Verified default continuous historical monthly snapshots
   const seed = {
     '2026-10': {
@@ -152,21 +147,54 @@ function loadMonthlyArchives() {
       periodLabel: 'October FY2026 (01/10/2026 - 31/10/2026)',
       archivedAt: '2026-10-31T23:59:59.000Z',
       branch: 'PMG PHARMACY (KOTA SENTOSA) SDN BHD',
-      outletTotals: { ts: 340252.85, hb: 147573.46, hm: 30889.38, gpRm: 95536.56, gpPct: 27.81, transactions: 8016, basketTs: 42.45, basketHb: 18.41 }
+      outletTotals: { ts: 340252.85, hb: 147573.46, hm: 30889.38, gpRm: 95536.56, gpPct: 27.81, transactions: 8016, basketTs: 42.45, basketHb: 18.41 },
+      teammates: [
+        { person: 'JONG PEI CHOO', role: 'PA', ts: 57607.00, hb: 27181.97, hm: 5033.49, hbPct: 47.19, hmPct: 8.74, gpRm: 15473.48, gpPct: 26.74, tx: 1258, basketTs: 45.79, basketHb: 21.61 },
+        { person: 'CHAI YEE SIAN', role: 'Pharmacist (PIC)', ts: 54282.56, hb: 26918.05, hm: 5112.48, hbPct: 49.59, hmPct: 9.42, gpRm: 15997.08, gpPct: 29.01, tx: 567, basketTs: 95.74, basketHb: 47.47 },
+        { person: 'NURHAFIZAH BINTI PAULI', role: 'PA', ts: 36325.44, hb: 11342.34, hm: 4212.50, hbPct: 31.22, hmPct: 11.60, gpRm: 9953.55, gpPct: 27.35, tx: 1112, basketTs: 32.67, basketHb: 10.20 },
+        { person: 'CHRISTINA LEE YING YING', role: 'PRP', ts: 34887.97, hb: 15084.64, hm: 2744.90, hbPct: 43.24, hmPct: 7.87, gpRm: 9980.79, gpPct: 28.42, tx: 918, basketTs: 38.00, basketHb: 16.43 },
+        { person: 'KENIX LING WANG YING', role: 'Pharmacist', ts: 33851.04, hb: 18132.18, hm: 3658.70, hbPct: 53.56, hmPct: 10.81, gpRm: 10722.56, gpPct: 31.65, tx: 801, basketTs: 42.26, basketHb: 22.64 },
+        { person: 'HANIESHA LOUNA ANAK DAGENG', role: 'ABM', ts: 33343.42, hb: 13348.87, hm: 2517.60, hbPct: 40.03, hmPct: 7.55, gpRm: 8621.07, gpPct: 25.55, tx: 892, basketTs: 37.38, basketHb: 14.97 },
+        { person: 'FIONA FIENA ANAK JAMES', role: 'PA', ts: 32814.51, hb: 13098.35, hm: 2519.96, hbPct: 39.92, hmPct: 7.68, gpRm: 8921.83, gpPct: 27.11, tx: 870, basketTs: 37.72, basketHb: 15.06 },
+        { person: 'MUHAMMAD NUR FARIZIN BIN ABDULLAH', role: 'PA', ts: 32317.74, hb: 9153.55, hm: 2911.40, hbPct: 28.32, hmPct: 9.01, gpRm: 8468.15, gpPct: 26.17, tx: 1007, basketTs: 32.09, basketHb: 9.09 },
+        { person: 'TING KWANG YU', role: 'BM / Lead', ts: 24704.57, hb: 12956.53, hm: 2098.78, hbPct: 52.45, hmPct: 8.50, gpRm: 7179.39, gpPct: 28.90, tx: 627, basketTs: 39.40, basketHb: 20.66 }
+      ]
     },
     '2026-09': {
       periodKey: '2026-09',
-      periodLabel: 'September FY2026 (M-1)',
-      archivedAt: '2026-09-30T18:00:00.000Z',
+      periodLabel: 'September FY2026 (01/09/2026 - 30/09/2026)',
+      archivedAt: '2026-09-30T23:59:59.000Z',
       branch: 'PMG PHARMACY (KOTA SENTOSA) SDN BHD',
-      outletTotals: { ts: 328450.00, hb: 112680.00, hm: 85120.00, gpRm: 90120.00, gpPct: 27.44, transactions: 7690, basketTs: 42.71, basketHb: 14.65 }
+      outletTotals: { ts: 336565.91, hb: 143198.75, hm: 29274.80, gpRm: 93560.00, gpPct: 27.80, transactions: 7690, basketTs: 43.77, basketHb: 18.62 },
+      teammates: [
+        { person: 'JONG PEI CHOO', role: 'PA', ts: 67867.91, hb: 30047.07, hm: 6468.84, hbPct: 44.27, hmPct: 9.53, gpPct: 26.35, tx: 1188 },
+        { person: 'CHAI YEE SIAN', role: 'Pharmacist (PIC)', ts: 56349.67, hb: 28793.67, hm: 5724.59, hbPct: 51.10, hmPct: 10.16, gpPct: 29.22, tx: 542 },
+        { person: 'MUHAMMAD NUR FARIZIN BIN ABDULLAH', role: 'PA', ts: 38902.31, hb: 12023.81, hm: 3483.10, hbPct: 30.91, hmPct: 8.95, gpPct: 26.31, tx: 1007 },
+        { person: 'FIONA FIENA ANAK JAMES', role: 'PA', ts: 38603.18, hb: 15465.76, hm: 3391.10, hbPct: 40.06, hmPct: 8.78, gpPct: 27.11, tx: 870 },
+        { person: 'NURHAFIZAH BINTI PAULI', role: 'PA', ts: 37220.70, hb: 11911.70, hm: 2699.60, hbPct: 32.00, hmPct: 7.25, gpPct: 27.44, tx: 1083 },
+        { person: 'HANIESHA LOUNA ANAK DAGENG', role: 'ABM', ts: 33017.20, hb: 15217.94, hm: 2408.70, hbPct: 46.09, hmPct: 7.30, gpPct: 25.46, tx: 866 },
+        { person: 'DANIELA JANET ANAK MUSTAPHA', role: 'Former Staff', ts: 24525.47, hb: 8992.27, hm: 1749.90, hbPct: 36.67, hmPct: 7.14, gpPct: 25.50, tx: 590 },
+        { person: 'KENIX LING WANG YING', role: 'Pharmacist', ts: 22639.41, hb: 10043.31, hm: 2476.30, hbPct: 44.36, hmPct: 10.94, gpPct: 31.48, tx: 801 },
+        { person: 'TING KWANG YU', role: 'BM / Lead', ts: 17412.06, hb: 10703.22, hm: 872.67, hbPct: 61.47, hmPct: 5.01, gpPct: 28.90, tx: 627 }
+      ]
     },
     '2026-08': {
       periodKey: '2026-08',
-      periodLabel: 'August FY2026 (M-2)',
-      archivedAt: '2026-08-31T18:00:00.000Z',
+      periodLabel: 'August FY2026 (01/08/2026 - 31/08/2026)',
+      archivedAt: '2026-08-31T23:59:59.000Z',
       branch: 'PMG PHARMACY (KOTA SENTOSA) SDN BHD',
-      outletTotals: { ts: 336190.00, hb: 114950.00, hm: 87410.00, gpRm: 91780.00, gpPct: 27.30, transactions: 7915, basketTs: 42.48, basketHb: 14.52 }
+      outletTotals: { ts: 380745.93, hb: 164354.04, hm: 34812.10, gpRm: 105847.00, gpPct: 27.80, transactions: 7915, basketTs: 48.10, basketHb: 20.76 },
+      teammates: [
+        { person: 'JONG PEI CHOO', role: 'PA', ts: 77868.67, hb: 40551.13, hm: 7182.75, hbPct: 52.08, hmPct: 9.22, gpPct: 26.35, tx: 1258 },
+        { person: 'CHAI YEE SIAN', role: 'Pharmacist (PIC)', ts: 56216.31, hb: 26502.91, hm: 5067.85, hbPct: 47.14, hmPct: 9.01, gpPct: 29.22, tx: 567 },
+        { person: 'HANIESHA LOUNA ANAK DAGENG', role: 'ABM', ts: 46327.58, hb: 21296.52, hm: 3866.90, hbPct: 45.97, hmPct: 8.35, gpPct: 25.46, tx: 892 },
+        { person: 'FIONA FIENA ANAK JAMES', role: 'PA', ts: 45947.34, hb: 20374.91, hm: 3748.80, hbPct: 44.34, hmPct: 8.16, gpPct: 27.11, tx: 870 },
+        { person: 'DANIELA JANET ANAK MUSTAPHA', role: 'Former Staff', ts: 43949.89, hb: 15891.83, hm: 3288.10, hbPct: 36.16, hmPct: 7.48, gpPct: 25.80, tx: 940 },
+        { person: 'NURHAFIZAH BINTI PAULI', role: 'PA', ts: 32119.29, hb: 10697.52, hm: 3448.30, hbPct: 33.31, hmPct: 10.74, gpPct: 27.44, tx: 1112 },
+        { person: 'MUHAMMAD NUR FARIZIN BIN ABDULLAH', role: 'PA', ts: 30931.79, hb: 9492.40, hm: 2862.20, hbPct: 30.69, hmPct: 9.25, gpPct: 26.31, tx: 1007 },
+        { person: 'KENIX LING WANG YING', role: 'Pharmacist', ts: 30321.83, hb: 13782.70, hbPct: 45.45, hmPct: 12.04, gpPct: 31.48, tx: 801 },
+        { person: 'DIANA LAI PEI YING', role: 'Former Staff', ts: 16762.59, hb: 6036.98, hm: 1695.60, hbPct: 36.01, hmPct: 10.12, gpPct: 25.50, tx: 450 }
+      ]
     },
     '2025-10': {
       periodKey: '2025-10',
@@ -176,6 +204,33 @@ function loadMonthlyArchives() {
       outletTotals: { ts: 351989.93, hb: 135400.08, hm: 28493.42, gpRm: 94515.18, gpPct: 26.64, transactions: 8715, basketTs: 40.39, basketHb: 15.54 }
     }
   };
+
+  try {
+    const raw = (typeof localStorage !== 'undefined') ? localStorage.getItem(STORAGE_KEYS.MONTHLY_ARCHIVES) : null;
+    if (raw) {
+      const data = JSON.parse(raw);
+      let updated = false;
+      // Auto-heal / upgrade 2026-09 if old estimated value or missing teammates
+      if (!data['2026-09'] || data['2026-09'].outletTotals?.ts !== 336565.91 || !data['2026-09'].teammates?.length) {
+        data['2026-09'] = seed['2026-09'];
+        updated = true;
+      }
+      // Auto-heal / upgrade 2026-08 if old estimated value or missing teammates
+      if (!data['2026-08'] || data['2026-08'].outletTotals?.ts !== 380745.93 || !data['2026-08'].teammates?.length) {
+        data['2026-08'] = seed['2026-08'];
+        updated = true;
+      }
+      // Auto-heal 2026-10 if ts === 0 or missing
+      if (!data['2026-10'] || data['2026-10'].outletTotals?.ts === 0) {
+        data['2026-10'] = seed['2026-10'];
+        updated = true;
+      }
+      if (updated && typeof localStorage !== 'undefined') {
+        try { localStorage.setItem(STORAGE_KEYS.MONTHLY_ARCHIVES, JSON.stringify(data)); } catch (e) {}
+      }
+      return data;
+    }
+  } catch (e) {}
 
   try {
     if (typeof localStorage !== 'undefined') {
@@ -904,16 +959,27 @@ function autoDetectCsvTypeAndPeriod(fileName, text) {
     type = 'ITEM_SALES';
   }
 
-  // Extract date year from Date: header or filename
+  // Extract date period (month & year)
   let year = null;
-  const dateMatch = text.match(/Date(?: To)?:\s*[0-9]{1,2}\/[0-9]{1,2}\/([0-9]{4})/i)
-                 || text.match(/([0-9]{2}-[0-9]{2}-([0-9]{4}))/)
-                 || fn.match(/(202[0-9])/);
-  if (dateMatch) {
-    year = parseInt(dateMatch[dateMatch.length - 1], 10);
+  let slot = null;
+  const dateStrMatch = text.match(/Date(?: To)?:\s*([^\r\n,]+)/i);
+  const p = parsePeriodFromDateRange(dateStrMatch ? dateStrMatch[1] : (fileName || ''));
+  if (p) {
+    year = parseInt(p.year, 10);
+    if (year === 2026 && p.month === '09') slot = 'M1';
+    else if (year === 2026 && p.month === '08') slot = 'M2';
+    else if (year === 2026 && p.month === '10') slot = 'LATEST';
+    else if (year === 2025) slot = 'PREV_YEAR';
+  } else {
+    const dateMatch = text.match(/Date(?: To)?:\s*[0-9]{1,2}\/[0-9]{1,2}\/([0-9]{4})/i)
+                   || text.match(/([0-9]{2}-[0-9]{2}-([0-9]{4}))/)
+                   || fn.match(/(202[0-9])/);
+    if (dateMatch) {
+      year = parseInt(dateMatch[dateMatch.length - 1], 10);
+    }
   }
 
-  return { type, year };
+  return { type, year, slot };
 }
 
 // ─── CORE QUANTITATIVE ENGINE (COMPUTES ALL 10 KPIs + SKU YOY + AGING) ──────
@@ -1434,8 +1500,8 @@ function computeAllMetrics(state) {
     }
   } catch (e) {}
 
-  m2 = m2 || { periodLabel: 'August 2026 (M-2)', ts: 336190, hb: 114950, hm: 87410, gpRm: 91780, gpPct: 27.30, transactions: 7915 };
-  m1 = m1 || { periodLabel: 'September 2026 (M-1)', ts: 328450, hb: 112680, hm: 85120, gpRm: 90120, gpPct: 27.44, transactions: 7690 };
+  m2 = m2 || { periodLabel: 'August FY2026 (M-2)', ts: 380745.93, hb: 164354.04, hm: 34812.10, gpRm: 105847.00, gpPct: 27.80, transactions: 7915 };
+  m1 = m1 || { periodLabel: 'September FY2026 (M-1)', ts: 336565.91, hb: 143198.75, hm: 29274.80, gpRm: 93560.00, gpPct: 27.80, transactions: 7690 };
 
   return {
     outlet: {
@@ -2989,8 +3055,8 @@ function createEmptyState() {
     },
     dailySalesLatest: { dateRange: '', headers: [], rows: [] },
     dailySalesPrevYear: { dateRange: '', headers: [], rows: [] },
-    dailySalesM1: { periodLabel: 'September FY2026 (M-1)', ts: 328450.00, hb: 112680.00, hm: 85120.00, gpRm: 90120.00, gpPct: 27.44, transactions: 7690, isEstimatedBenchmark: true },
-    dailySalesM2: { periodLabel: 'August FY2026 (M-2)', ts: 336190.00, hb: 114950.00, hm: 87410.00, gpRm: 91780.00, gpPct: 27.30, transactions: 7915, isEstimatedBenchmark: true },
+    dailySalesM1: { periodLabel: 'September FY2026 (01/09/2026 - 30/09/2026)', ts: 336565.91, hb: 143198.75, hm: 29274.80, gpRm: 93560.00, gpPct: 27.80, transactions: 7690, isEstimatedBenchmark: false },
+    dailySalesM2: { periodLabel: 'August FY2026 (01/08/2026 - 31/08/2026)', ts: 380745.93, hb: 164354.04, hm: 34812.10, gpRm: 105847.00, gpPct: 27.80, transactions: 7915, isEstimatedBenchmark: false },
     personalGpLatest: { dateRange: '', rows: [], grandTotal: null },
     personalGpPrevYear: { dateRange: '', rows: [], grandTotal: null },
     customersServedLatest: { dateRange: '', rows: [], grandTotal: 0 },
@@ -3840,8 +3906,8 @@ function renderTab3TeammatesMatrix() {
   const rolesList = ['Pharmacist (PIC)', 'Pharmacist', 'PRP', 'BM / Lead', 'ABM', 'PA', 'Locum Pharmacist', 'Former Staff'];
 
   // Calculate M1 / M2 outlet totals
-  const totalM1Ts = o.dailySalesM1?.ts || 328450;
-  const totalM2Ts = o.dailySalesM2?.ts || 336190;
+  const totalM1Ts = o.dailySalesM1?.ts || 336565.91;
+  const totalM2Ts = o.dailySalesM2?.ts || 380745.93;
 
   container.innerHTML = `
     <!-- Teammate Performance Header & View Controls -->
@@ -4732,7 +4798,7 @@ async function handleBatchCsvFiles(fileList) {
   for (const file of Array.from(fileList)) {
     const text = await file.text();
     const det = autoDetectCsvTypeAndPeriod(file.name, text);
-    filePayloads.push({ file, name: file.name, text, type: det.type, year: det.year });
+    filePayloads.push({ file, name: file.name, text, type: det.type, year: det.year, slot: det.slot });
   }
 
   const years = filePayloads.map(f => f.year).filter(Boolean);
@@ -4744,8 +4810,12 @@ async function handleBatchCsvFiles(fileList) {
   let loadedCount = 0;
   for (const fp of filePayloads) {
     try {
-      const isLatest = !fp.year || fp.year === maxYear;
-      applyParsedCsvToState(fp.type, isLatest ? 'LATEST' : 'PREV_YEAR', fp.text, fp.name);
+      let periodSlot = fp.slot;
+      if (!periodSlot) {
+        const isLatest = !fp.year || fp.year === maxYear;
+        periodSlot = isLatest ? 'LATEST' : 'PREV_YEAR';
+      }
+      applyParsedCsvToState(fp.type, periodSlot, fp.text, fp.name);
       loadedCount++;
     } catch (err) {
       console.error(`Error parsing ${fp.name}:`, err);
@@ -4774,12 +4844,12 @@ function applyParsedCsvToState(type, periodSlot, text, fileName) {
       const ts = +parsed.rows.reduce((s, r) => s + r.ts, 0).toFixed(2);
       const hb = +parsed.rows.reduce((s, r) => s + r.hb, 0).toFixed(2);
       const hm = +parsed.rows.reduce((s, r) => s + r.hm, 0).toFixed(2);
-      perfState.dailySalesM1 = { ...perfState.dailySalesM1, periodLabel: parsed.dateRange || 'M-1', ts, hb, hm };
+      perfState.dailySalesM1 = { ...perfState.dailySalesM1, periodLabel: formatPeriodDisplayLabel(parsed.dateRange, 'September FY2026 (M-1)'), ts, hb, hm, rows: parsed.rows };
     } else if (periodSlot === 'M2') {
       const ts = +parsed.rows.reduce((s, r) => s + r.ts, 0).toFixed(2);
       const hb = +parsed.rows.reduce((s, r) => s + r.hb, 0).toFixed(2);
       const hm = +parsed.rows.reduce((s, r) => s + r.hm, 0).toFixed(2);
-      perfState.dailySalesM2 = { ...perfState.dailySalesM2, periodLabel: parsed.dateRange || 'M-2', ts, hb, hm };
+      perfState.dailySalesM2 = { ...perfState.dailySalesM2, periodLabel: formatPeriodDisplayLabel(parsed.dateRange, 'August FY2026 (M-2)'), ts, hb, hm, rows: parsed.rows };
     }
   } else if (type === 'PERSONAL_GP') {
     const parsed = parsePersonalGpCsv(text);
