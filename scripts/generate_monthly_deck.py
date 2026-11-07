@@ -20,7 +20,7 @@ from pptx import Presentation
 from pptx.util import Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
-from pptx.enum.shapes import MSO_SHAPE_TYPE
+from pptx.enum.shapes import MSO_SHAPE, MSO_SHAPE_TYPE
 
 # Color Palette
 COLOR_GREEN       = RGBColor(19, 115, 51)   # #137333 - Positive growth / MoM improvement
@@ -43,7 +43,14 @@ def set_slide_header(shape, title_text, subtitle_text, title_size=Pt(15), subtit
     """
     Sets clean, professional slide headers with official PMG Red title and Slate Gray subtitle.
     Handles both direct TEXT_BOX shapes and GROUP shapes containing text frames.
+    Automatically ensures clearance from top-left PMG logo (left >= 2667000 EMU).
     """
+    if hasattr(shape, 'left') and shape.left < 2667000:
+        diff = 2667000 - shape.left
+        shape.left = 2667000
+        if hasattr(shape, 'width'):
+            shape.width = shape.width - diff
+
     tf = None
     if shape.has_text_frame:
         tf = shape.text_frame
@@ -123,6 +130,147 @@ def set_card_content(shape_or_grp, paragraphs_spec):
                 r.font.bold = bld
             if col is not None:
                 r.font.color.rgb = col
+
+def create_coaching_slide(prs):
+    """
+    Creates a dedicated, executive slide for Teammate Coaching & Actionable Recommendations.
+    Positioned immediately following Slide 5 (Teammate Personal Sales).
+    """
+    blank_layout = prs.slide_layouts[6] # Blank layout with master branding
+    s = prs.slides.add_slide(blank_layout)
+
+    # Move slide to index 5 (Slide 6 in presentation)
+    sldIdLst = prs.slides._sldIdLst
+    slide_elem = sldIdLst[-1]
+    sldIdLst.remove(slide_elem)
+    sldIdLst.insert(5, slide_elem)
+
+    # 1. Slide Header
+    hdr_bg = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Pt(210), Pt(22), Pt(708), Pt(56))
+    hdr_bg.fill.solid()
+    hdr_bg.fill.fore_color.rgb = RGBColor(248, 249, 250)
+    hdr_bg.line.color.rgb = RGBColor(226, 232, 240)
+    hdr_bg.line.width = Pt(1)
+
+    hdr_tb = s.shapes.add_textbox(Pt(220), Pt(24), Pt(690), Pt(50))
+    set_slide_header(hdr_tb, "COACHING & ACTIONABLE RECOMMENDATIONS",
+                     "Tailored Recovery Plans & Performance Upgrading for Core Dispensary Staff")
+
+    # 2. Four Staff Coaching Cards (2x2 Grid)
+    card_w = Pt(435)
+    card_h = Pt(176)
+    col1_l = Pt(38)
+    col2_l = Pt(487)
+    row1_t = Pt(88)
+    row2_t = Pt(274)
+
+    cards_data = [
+        (col1_l, row1_t, "⚠️ Jong Pei Choo [PA] — 3M Turnover Contraction (-26.0%)",
+         "Trajectory: Aug RM 77.9k ➔ Sep RM 68.1k ➔ Oct RM 57.6k (HB 47.19% | GP 26.86% | 1,258 Tx)",
+         "Key Bottleneck: Steady footfall decline (-122 Tx MoM) and reduced companion supplement bundling at counter.",
+         "Action Plan: 1-on-1 session with PIC William Chai to review counter companion scripts; set weekly RM 7,000 House Brand quota and enforce adherence counseling."),
+        
+        (col2_l, row1_t, "⚠️ Muhammad Nur Farizin [PA] — Low House Brand Attachment (28.32%)",
+         "Trajectory: Aug RM 30.9k ➔ Sep RM 38.9k ➔ Oct RM 32.3k (HB Basket: RM 9.09 | GP 26.17%)",
+         "Key Bottleneck: Lowest House Brand basket size (RM 9.09) in branch; default dispensing without companion supplements.",
+         "Action Plan: Pair with senior dispenser for weekly 15-minute DPOS role-playing; enforce daily minimum RM 450+ House Brand attachment at dispensing counter."),
+        
+        (col1_l, row2_t, "⚠️ Haniesha Louna [ABM] — 3M Sales Contraction (-28.0%)",
+         "Trajectory: Aug RM 46.3k ➔ Sep RM 33.1k ➔ Oct RM 33.3k (HB 40.03% | GP 25.59% | 799 Tx)",
+         "Key Bottleneck: Margin dilution caused by unattached low-margin commercial milk checkouts; lowest GP% in branch (25.59%).",
+         "Action Plan: Cease unattached commercial formula sales; cross-sell high-margin wellness supplements (35%+ GP) to lift individual GP margin above 27.5%."),
+        
+        (col2_l, row2_t, "⚠️ Fiona Fiena [PA] — 3M Sales Drop (-28.7%) & Tx Contraction",
+         "Trajectory: Aug RM 46.0k ➔ Sep RM 38.7k ➔ Oct RM 32.8k (Tx: 870 | HB 39.92% | GP 27.19%)",
+         "Key Bottleneck: Sharp decline in transaction volume (-194 transactions MoM, down to 870 Tx vs 1,064 in Sept).",
+         "Action Plan: Assign front greeting and customer triage duty during 7th Mile morning market peak (7:30–10:30 AM); target ≥32 transactions/day.")
+    ]
+
+    for cl, ct, title, traj, bneck, act in cards_data:
+        c_bg = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, cl, ct, card_w, card_h)
+        c_bg.fill.solid()
+        c_bg.fill.fore_color.rgb = RGBColor(255, 255, 255)
+        c_bg.line.color.rgb = RGBColor(226, 232, 240)
+        c_bg.line.width = Pt(1)
+
+        tb = s.shapes.add_textbox(cl + Pt(12), ct + Pt(10), card_w - Pt(24), card_h - Pt(20))
+        tf = tb.text_frame
+        tf.word_wrap = True
+        tf.text = ''
+
+        # P0: Title
+        p0 = tf.paragraphs[0]
+        p0.space_after = Pt(4)
+        r0 = p0.add_run()
+        r0.text = title
+        r0.font.name = 'Arial'
+        r0.font.size = Pt(11)
+        r0.font.bold = True
+        r0.font.color.rgb = COLOR_DARK_TEXT
+
+        # P1: Trajectory
+        p1 = tf.add_paragraph()
+        p1.space_after = Pt(3)
+        r1 = p1.add_run()
+        r1.text = traj
+        r1.font.name = 'Arial'
+        r1.font.size = Pt(9.5)
+        r1.font.color.rgb = COLOR_SLATE
+
+        # P2: Bottleneck
+        p2 = tf.add_paragraph()
+        p2.space_after = Pt(3)
+        r2 = p2.add_run()
+        r2.text = bneck
+        r2.font.name = 'Arial'
+        r2.font.size = Pt(9.5)
+        r2.font.color.rgb = COLOR_SLATE
+
+        # P3: Action Plan
+        p3 = tf.add_paragraph()
+        r3_lbl = p3.add_run()
+        r3_lbl.text = "Action Plan: "
+        r3_lbl.font.name = 'Arial'
+        r3_lbl.font.size = Pt(9.5)
+        r3_lbl.font.bold = True
+        r3_lbl.font.color.rgb = COLOR_GREEN
+
+        r3_val = p3.add_run()
+        r3_val.text = act.replace("Action Plan: ", "")
+        r3_val.font.name = 'Arial'
+        r3_val.font.size = Pt(9.5)
+        r3_val.font.color.rgb = COLOR_MUTED_TEXT
+
+    # 3. Bottom Banner: Star Benchmark Highlights (Clearance from bottom-right master arrow)
+    b_bg = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Pt(38), Pt(460), Pt(780), Pt(48))
+    b_bg.fill.solid()
+    b_bg.fill.fore_color.rgb = RGBColor(240, 253, 244) # Light green tint
+    b_bg.line.color.rgb = RGBColor(187, 247, 208)
+    b_bg.line.width = Pt(1)
+
+    b_tb = s.shapes.add_textbox(Pt(48), Pt(464), Pt(760), Pt(40))
+    b_tf = b_tb.text_frame
+    b_tf.word_wrap = True
+    b_tf.text = ''
+    bp = b_tf.paragraphs[0]
+    
+    br_lbl = bp.add_run()
+    br_lbl.text = "⭐ Star Benchmark Highlights: "
+    br_lbl.font.name = 'Arial'
+    br_lbl.font.size = Pt(10)
+    br_lbl.font.bold = True
+    br_lbl.font.color.rgb = RGBColor(22, 101, 52) # Dark green
+
+    br_txt = bp.add_run()
+    br_txt.text = (
+        "Christina Lee [PRP] delivered RM 34,887.97 in her debut month with 43.24% House Brand share (RM 15.1k HB) and 918 Tx. "
+        "Kenix Ling [Pharmacist] led the branch with 53.56% House Brand share (RM 18.1k HB) and 31.65% GP margin."
+    )
+    br_txt.font.name = 'Arial'
+    br_txt.font.size = Pt(9.5)
+    br_txt.font.color.rgb = RGBColor(22, 101, 52)
+
+    return s
 
 def fmt_rm(val):
     if val is None or val == 0:
@@ -552,118 +700,102 @@ def update_presentation(template_path, data, output_path):
     set_cell_formatted(t4.cell(8, 9), '15,473.48', '▲ 26.86%', val_size=Pt(11), val_bold=True, val_color=COLOR_GREEN, sub_size=Pt(9.5), sub_bold=True, sub_color=COLOR_GREEN)
 
     # =========================================================================
-    # SLIDE 5: TEAMMATES - STAFF & PHARMACISTS + COACHING
+    # SLIDE 5: TEAMMATES - STAFF & PHARMACISTS (FULL WIDTH TABLE EXPANSION)
     # =========================================================================
     s5 = prs.slides[4]
+
+    # 1. Remove separate coaching card from Slide 5 (moved to dedicated Slide 6)
+    if len(s5.shapes) > 2:
+        sp2 = s5.shapes[2]._element
+        sp2.getparent().remove(sp2)
+
+    # 2. Expand table to full slide width (matching Slide 3 and Slide 4)
+    s5.shapes[1].left = 220869
     t5 = s5.shapes[1].table
+    t5.columns[0].width = 2095500
+    for c in range(1, 7):
+        t5.columns[c].width = 1612900
 
     # Row 0: Headers
-    set_cell_header(t5.cell(0, 0), 'TEAMMATES', font_size=Pt(11))
-    set_cell_header(t5.cell(0, 1), 'Christina Lee [PRP]', font_size=Pt(11))
-    set_cell_header(t5.cell(0, 4), 'Kenix Ling [Pharmacist]', font_size=Pt(11))
+    set_cell_header(t5.cell(0, 0), 'TEAMMATES', font_size=Pt(11.5))
+    set_cell_header(t5.cell(0, 1), 'Christina Lee [PRP]', font_size=Pt(11.5))
+    set_cell_header(t5.cell(0, 4), 'Kenix Ling [Pharmacist]', font_size=Pt(11.5))
 
     # Row 1: Months
     subheaders_s5 = ['', 'Aug', 'Sept', 'Oct', 'Aug', 'Sept', 'Oct']
     for c_idx, sh in enumerate(subheaders_s5):
         if c_idx > 0:
-            set_cell_header(t5.cell(1, c_idx), sh, font_size=Pt(10.5))
+            set_cell_header(t5.cell(1, c_idx), sh, font_size=Pt(11))
 
     # Row 2: Total Sales
-    set_cell_formatted(t5.cell(2, 0), 'Total Sales', val_size=Pt(10.5), val_bold=True, align=PP_ALIGN.LEFT)
-    set_cell_formatted(t5.cell(2, 1), '— (New)', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(2, 2), '— (New)', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(2, 3), '34,887.97', '★ Strong Start', val_size=Pt(11), val_bold=True, val_color=COLOR_GREEN, sub_size=Pt(9), sub_bold=True, sub_color=COLOR_GREEN)
+    set_cell_formatted(t5.cell(2, 0), 'Total Sales', val_size=Pt(11), val_bold=True, align=PP_ALIGN.LEFT)
+    set_cell_formatted(t5.cell(2, 1), '— (New)', val_size=Pt(11))
+    set_cell_formatted(t5.cell(2, 2), '— (New)', val_size=Pt(11))
+    set_cell_formatted(t5.cell(2, 3), '34,887.97', '★ Strong Start', val_size=Pt(11.5), val_bold=True, val_color=COLOR_GREEN, sub_size=Pt(9.5), sub_bold=True, sub_color=COLOR_GREEN)
 
-    set_cell_formatted(t5.cell(2, 4), '30,321.83', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(2, 5), '22,669.41', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(2, 6), '33,851.04', '▲ +49.3%', val_size=Pt(11), val_bold=True, val_color=COLOR_GREEN, sub_size=Pt(9), sub_bold=True, sub_color=COLOR_GREEN)
+    set_cell_formatted(t5.cell(2, 4), '30,321.83', val_size=Pt(11))
+    set_cell_formatted(t5.cell(2, 5), '22,669.41', val_size=Pt(11))
+    set_cell_formatted(t5.cell(2, 6), '33,851.04', '▲ +49.3%', val_size=Pt(11.5), val_bold=True, val_color=COLOR_GREEN, sub_size=Pt(9.5), sub_bold=True, sub_color=COLOR_GREEN)
 
     # Row 3: HB Sales (%)
-    set_cell_formatted(t5.cell(3, 0), 'HB Sales (%)', val_size=Pt(10.5), val_bold=True, align=PP_ALIGN.LEFT)
-    set_cell_formatted(t5.cell(3, 1), '—', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(3, 2), '—', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(3, 3), '15,084.64', '▲ 43.24%', val_size=Pt(11), val_bold=True, val_color=COLOR_GREEN, sub_size=Pt(9.5), sub_bold=True, sub_color=COLOR_GREEN)
+    set_cell_formatted(t5.cell(3, 0), 'HB Sales (%)', val_size=Pt(11), val_bold=True, align=PP_ALIGN.LEFT)
+    set_cell_formatted(t5.cell(3, 1), '—', val_size=Pt(11))
+    set_cell_formatted(t5.cell(3, 2), '—', val_size=Pt(11))
+    set_cell_formatted(t5.cell(3, 3), '15,084.64', '▲ 43.24%', val_size=Pt(11.5), val_bold=True, val_color=COLOR_GREEN, sub_size=Pt(9.5), sub_bold=True, sub_color=COLOR_GREEN)
 
-    set_cell_formatted(t5.cell(3, 4), '13,782.70', '(45.45%)', val_size=Pt(10.5), sub_size=Pt(9))
-    set_cell_formatted(t5.cell(3, 5), '10,073.31', '(44.44%)', val_size=Pt(10.5), sub_size=Pt(9))
-    set_cell_formatted(t5.cell(3, 6), '18,132.18', '▲ 53.56%', val_size=Pt(11), val_bold=True, val_color=COLOR_GREEN, sub_size=Pt(9.5), sub_bold=True, sub_color=COLOR_GREEN)
+    set_cell_formatted(t5.cell(3, 4), '13,782.70', '(45.45%)', val_size=Pt(11), sub_size=Pt(9.5))
+    set_cell_formatted(t5.cell(3, 5), '10,073.31', '(44.44%)', val_size=Pt(11), sub_size=Pt(9.5))
+    set_cell_formatted(t5.cell(3, 6), '18,132.18', '▲ 53.56%', val_size=Pt(11.5), val_bold=True, val_color=COLOR_GREEN, sub_size=Pt(9.5), sub_bold=True, sub_color=COLOR_GREEN)
 
     # Row 4: HM sales (%)
-    set_cell_formatted(t5.cell(4, 0), 'HM sales (%)', val_size=Pt(10.5), val_bold=True, align=PP_ALIGN.LEFT)
-    set_cell_formatted(t5.cell(4, 1), '—', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(4, 2), '—', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(4, 3), '2,744.90', '(7.87%)', val_size=Pt(11), val_bold=True, sub_size=Pt(9.5), sub_bold=True)
+    set_cell_formatted(t5.cell(4, 0), 'HM sales (%)', val_size=Pt(11), val_bold=True, align=PP_ALIGN.LEFT)
+    set_cell_formatted(t5.cell(4, 1), '—', val_size=Pt(11))
+    set_cell_formatted(t5.cell(4, 2), '—', val_size=Pt(11))
+    set_cell_formatted(t5.cell(4, 3), '2,744.90', '(7.87%)', val_size=Pt(11.5), val_bold=True, sub_size=Pt(9.5), sub_bold=True)
 
-    set_cell_formatted(t5.cell(4, 4), '4,002.90', '(13.20%)', val_size=Pt(10.5), sub_size=Pt(9))
-    set_cell_formatted(t5.cell(4, 5), '2,654.30', '(11.71%)', val_size=Pt(10.5), sub_size=Pt(9))
-    set_cell_formatted(t5.cell(4, 6), '3,658.70', '(10.81%)', val_size=Pt(11), val_bold=True, sub_size=Pt(9.5), sub_bold=True)
+    set_cell_formatted(t5.cell(4, 4), '4,002.90', '(13.20%)', val_size=Pt(11), sub_size=Pt(9.5))
+    set_cell_formatted(t5.cell(4, 5), '2,654.30', '(11.71%)', val_size=Pt(11), sub_size=Pt(9.5))
+    set_cell_formatted(t5.cell(4, 6), '3,658.70', '(10.81%)', val_size=Pt(11.5), val_bold=True, sub_size=Pt(9.5), sub_bold=True)
 
     # Row 5: No of Transactions
-    set_cell_formatted(t5.cell(5, 0), 'No of Transactions', val_size=Pt(10.5), val_bold=True, align=PP_ALIGN.LEFT)
-    set_cell_formatted(t5.cell(5, 1), '—', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(5, 2), '—', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(5, 3), '918', val_size=Pt(11), val_bold=True)
+    set_cell_formatted(t5.cell(5, 0), 'No of Transactions', val_size=Pt(11), val_bold=True, align=PP_ALIGN.LEFT)
+    set_cell_formatted(t5.cell(5, 1), '—', val_size=Pt(11))
+    set_cell_formatted(t5.cell(5, 2), '—', val_size=Pt(11))
+    set_cell_formatted(t5.cell(5, 3), '918', val_size=Pt(11.5), val_bold=True)
 
-    set_cell_formatted(t5.cell(5, 4), '676', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(5, 5), '611', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(5, 6), '757', '▲ +146 Tx', val_size=Pt(11), val_bold=True, val_color=COLOR_GREEN, sub_size=Pt(9), sub_bold=True, sub_color=COLOR_GREEN)
+    set_cell_formatted(t5.cell(5, 4), '676', val_size=Pt(11))
+    set_cell_formatted(t5.cell(5, 5), '611', val_size=Pt(11))
+    set_cell_formatted(t5.cell(5, 6), '757', '▲ +146 Tx', val_size=Pt(11.5), val_bold=True, val_color=COLOR_GREEN, sub_size=Pt(9.5), sub_bold=True, sub_color=COLOR_GREEN)
 
     # Row 6: Basket Size (TS)
-    set_cell_formatted(t5.cell(6, 0), 'Basket Size (TS)', val_size=Pt(10.5), val_bold=True, align=PP_ALIGN.LEFT)
-    set_cell_formatted(t5.cell(6, 1), '—', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(6, 2), '—', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(6, 3), '38.00', val_size=Pt(11), val_bold=True)
+    set_cell_formatted(t5.cell(6, 0), 'Basket Size (TS)', val_size=Pt(11), val_bold=True, align=PP_ALIGN.LEFT)
+    set_cell_formatted(t5.cell(6, 1), '—', val_size=Pt(11))
+    set_cell_formatted(t5.cell(6, 2), '—', val_size=Pt(11))
+    set_cell_formatted(t5.cell(6, 3), '38.00', val_size=Pt(11.5), val_bold=True)
 
-    set_cell_formatted(t5.cell(6, 4), '44.85', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(6, 5), '37.10', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(6, 6), '44.72', '▲ +RM 7.62', val_size=Pt(11), val_bold=True, val_color=COLOR_GREEN, sub_size=Pt(9), sub_bold=True, sub_color=COLOR_GREEN)
+    set_cell_formatted(t5.cell(6, 4), '44.85', val_size=Pt(11))
+    set_cell_formatted(t5.cell(6, 5), '37.10', val_size=Pt(11))
+    set_cell_formatted(t5.cell(6, 6), '44.72', '▲ +RM 7.62', val_size=Pt(11.5), val_bold=True, val_color=COLOR_GREEN, sub_size=Pt(9.5), sub_bold=True, sub_color=COLOR_GREEN)
 
     # Row 7: Basket Size (HB)
-    set_cell_formatted(t5.cell(7, 0), 'Basket Size (HB)', val_size=Pt(10.5), val_bold=True, align=PP_ALIGN.LEFT)
-    set_cell_formatted(t5.cell(7, 1), '—', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(7, 2), '—', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(7, 3), '16.43', val_size=Pt(11), val_bold=True)
+    set_cell_formatted(t5.cell(7, 0), 'Basket Size (HB)', val_size=Pt(11), val_bold=True, align=PP_ALIGN.LEFT)
+    set_cell_formatted(t5.cell(7, 1), '—', val_size=Pt(11))
+    set_cell_formatted(t5.cell(7, 2), '—', val_size=Pt(11))
+    set_cell_formatted(t5.cell(7, 3), '16.43', val_size=Pt(11.5), val_bold=True)
 
-    set_cell_formatted(t5.cell(7, 4), '20.39', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(7, 5), '16.49', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(7, 6), '23.95', '▲ +RM 7.46', val_size=Pt(11), val_bold=True, val_color=COLOR_GREEN, sub_size=Pt(9), sub_bold=True, sub_color=COLOR_GREEN)
+    set_cell_formatted(t5.cell(7, 4), '20.39', val_size=Pt(11))
+    set_cell_formatted(t5.cell(7, 5), '16.49', val_size=Pt(11))
+    set_cell_formatted(t5.cell(7, 6), '23.95', '▲ +RM 7.46', val_size=Pt(11.5), val_bold=True, val_color=COLOR_GREEN, sub_size=Pt(9.5), sub_bold=True, sub_color=COLOR_GREEN)
 
     # Row 8: GPRM (%)
-    set_cell_formatted(t5.cell(8, 0), 'GPRM(%)', val_size=Pt(10.5), val_bold=True, align=PP_ALIGN.LEFT)
-    set_cell_formatted(t5.cell(8, 1), '—', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(8, 2), '—', val_size=Pt(10.5))
-    set_cell_formatted(t5.cell(8, 3), '9,980.79', '▲ 28.61%', val_size=Pt(11), val_bold=True, val_color=COLOR_GREEN, sub_size=Pt(9.5), sub_bold=True, sub_color=COLOR_GREEN)
+    set_cell_formatted(t5.cell(8, 0), 'GPRM(%)', val_size=Pt(11), val_bold=True, align=PP_ALIGN.LEFT)
+    set_cell_formatted(t5.cell(8, 1), '—', val_size=Pt(11))
+    set_cell_formatted(t5.cell(8, 2), '—', val_size=Pt(11))
+    set_cell_formatted(t5.cell(8, 3), '9,980.79', '▲ 28.61%', val_size=Pt(11.5), val_bold=True, val_color=COLOR_GREEN, sub_size=Pt(9.5), sub_bold=True, sub_color=COLOR_GREEN)
 
-    set_cell_formatted(t5.cell(8, 4), '9,335.79', '(30.79%)', val_size=Pt(10.5), sub_size=Pt(9))
-    set_cell_formatted(t5.cell(8, 5), '6,538.08', '(28.78%)', val_size=Pt(10.5), sub_size=Pt(9))
-    set_cell_formatted(t5.cell(8, 6), '10,713.88', '▲ 31.65%', val_size=Pt(11), val_bold=True, val_color=COLOR_GREEN, sub_size=Pt(9.5), sub_bold=True, sub_color=COLOR_GREEN)
-
-    # Slide 5: Coaching Group (Right side) — Enlarged Typography
-    grp5 = s5.shapes[2]
-    coaching_text = (
-        "COACHING & RECOMMENDATIONS\n"
-        "FIND OUT LOW-PERFORMING TEAMMATES & TAILORED RECOVERY ACTION\n\n"
-        "⚠️ Jong Pei Choo [PA] — 3M TS Drop (-26.0%)\n"
-        "Trajectory: Aug RM 77.9k ➔ Sep RM 68.1k ➔ Oct RM 57.6k (HB 47.2% | GP 26.9%).\n"
-        "Coaching: 1-on-1 session with PIC William to review counter companion scripts, set weekly RM 7k HB quota, and advise on footfall conversion.\n\n"
-        "⚠️ Muhammad Nur Farizin [PA] — Low HB Share (28.32%)\n"
-        "Trajectory: Aug RM 30.9k ➔ Sep RM 38.9k ➔ Oct RM 32.3k (HB Basket: RM 9.09).\n"
-        "Coaching: Pair with senior dispenser for structured DPOS role-playing; enforce daily minimum RM 450+ House Brand attachment at dispensing.\n\n"
-        "⚠️ Haniesha Louna [ABM] — 3M TS Contraction (-28.0%)\n"
-        "Trajectory: Aug RM 46.3k ➔ Sep RM 33.1k ➔ Oct RM 33.3k (HB 40.0% | GP 25.6%).\n"
-        "Coaching: Cease unattached low-margin milk checkout; cross-sell high-margin wellness supplements (35%+ GP) to lift GP margin >27.5%.\n\n"
-        "⚠️ Fiona Fiena [PA] — 3M TS Drop (-28.7%)\n"
-        "Trajectory: Aug RM 46.0k ➔ Sep RM 38.7k ➔ Oct RM 32.8k (Tx: 870).\n"
-        "Coaching: Assign front greeting duty during 7th Mile wet market morning peak (7:30–10:30 AM); target ≥32 transactions/day.\n\n"
-        "⭐ Christina Lee [PRP] & Ting Kwang Yu [Lead] — Benchmark Highlights\n"
-        "Christina delivered RM 34.9k TS (43.2% HB, 28.6% GP, 918 Tx). Ting achieved 52.5% HB share."
-    )
-    for gs in grp5.shapes:
-        if gs.has_text_frame and gs.text_frame.text.strip():
-            gs.text_frame.text = coaching_text
-            for p in gs.text_frame.paragraphs:
-                p.font.name = 'Arial'
-                p.font.size = Pt(9.5)
+    set_cell_formatted(t5.cell(8, 4), '9,335.79', '(30.79%)', val_size=Pt(11), sub_size=Pt(9.5))
+    set_cell_formatted(t5.cell(8, 5), '6,538.08', '(28.78%)', val_size=Pt(11), sub_size=Pt(9.5))
+    set_cell_formatted(t5.cell(8, 6), '10,713.88', '▲ 31.65%', val_size=Pt(11.5), val_bold=True, val_color=COLOR_GREEN, sub_size=Pt(9.5), sub_bold=True, sub_color=COLOR_GREEN)
 
     # =========================================================================
     # SLIDE 6: CATEGORY SALES FINDING (MTD) — ENLARGED (Pt 9) & ARROWS
@@ -943,6 +1075,10 @@ def update_presentation(template_path, data, output_path):
     # SLIDE 11: IN-DEPTH SWOT STRATEGIC ANALYSIS (Clean Statements — NO Repetition)
     # =========================================================================
     s11 = prs.slides[10]
+    if hasattr(s11.shapes[0], 'left') and s11.shapes[0].left < 2667000:
+        diff = 2667000 - s11.shapes[0].left
+        s11.shapes[0].left = 2667000
+        s11.shapes[0].width -= diff
     set_slide_header(s11.shapes[1], "IN-DEPTH SWOT STRATEGIC ANALYSIS — KOTA SENTOSA",
                      "Strategic Assessment Based on October 2026 Operations & Local Catchment Dynamics")
 
@@ -1087,26 +1223,97 @@ def update_presentation(template_path, data, output_path):
     set_slide_header(s13.shapes[0], "RETAIL STORE WALKTHROUGH VIDEO",
                      "Outlet Operational Compliance & Floor Standards Review — October 2026")
 
-    walkthrough_recording_spec = [
-        ([("WALKTHROUGH RECORDING", Pt(12), True, COLOR_DARK_TEXT)], Pt(3)),
-        ([("Status: ", Pt(10), True, COLOR_DARK_TEXT), ("Walkthrough Video Not Conducted for October 2026", Pt(10), False, COLOR_RED)], Pt(2)),
-        ([("Note: Monthly 5S walkthrough video audit was paused for October 2026.", Pt(9.5), False, COLOR_SLATE)], Pt(2)),
-        ([("Resuming next month per standard operational audit schedule.", Pt(9.5), False, COLOR_SLATE)], Pt(2)),
-        ([("Location: ", Pt(9.5), True, COLOR_DARK_TEXT), ("PMG Pharmacy Kota Sentosa", Pt(9.5), False, COLOR_SLATE)], Pt(2)),
-        ([("Compliance Status: ", Pt(9.5), True, COLOR_DARK_TEXT), ("[Pending Next Month Video Audit]", Pt(9.5), False, COLOR_AMBER)], None)
-    ]
-    set_card_content(s13.shapes[1], walkthrough_recording_spec)
+    # Slide 13: Left Card - Title Header Box (s13.shapes[1].shapes[2])
+    tf13_left_title = s13.shapes[1].shapes[2].text_frame
+    tf13_left_title.text = ''
+    p_lt0 = tf13_left_title.paragraphs[0]
+    p_lt0.space_after = Pt(2)
+    r_lt0 = p_lt0.add_run()
+    r_lt0.text = "WALKTHROUGH RECORDING"
+    r_lt0.font.name = 'Arial'
+    r_lt0.font.size = Pt(12)
+    r_lt0.font.bold = True
+    r_lt0.font.color.rgb = COLOR_DARK_TEXT
+    
+    p_lt1 = tf13_left_title.add_paragraph()
+    r_lt1 = p_lt1.add_run()
+    r_lt1.text = "Status: Video Audit Paused for October 2026 (Pending Monthly Upload)"
+    r_lt1.font.name = 'Arial'
+    r_lt1.font.size = Pt(9.5)
+    r_lt1.font.italic = True
+    r_lt1.font.color.rgb = COLOR_RED
 
-    walkthrough_seq_spec = [
-        ([("WALKTHROUGH SCOPE & SEQUENCE", Pt(12), True, COLOR_DARK_TEXT)], Pt(3)),
-        ([("0:00 - 0:08 Entrance & Ceiling Displays: ", Pt(9.5), True, COLOR_DARK_TEXT), ("[Pending Video Audit]", Pt(9.5), False, COLOR_SLATE)], Pt(2)),
-        ([("0:09 - 0:18 Supplement & FMCG Gondolas: ", Pt(9.5), True, COLOR_DARK_TEXT), ("[Pending Video Audit]", Pt(9.5), False, COLOR_SLATE)], Pt(2)),
-        ([("0:19 - 0:28 Rear Walkway & Stock Staging Area: ", Pt(9.5), True, COLOR_DARK_TEXT), ("[Pending Video Audit]", Pt(9.5), False, COLOR_SLATE)], Pt(2)),
-        ([("0:29 - 0:42 Personal Care & Mobility Displays: ", Pt(9.5), True, COLOR_DARK_TEXT), ("[Pending Video Audit]", Pt(9.5), False, COLOR_SLATE)], Pt(2)),
-        ([("0:43 - 0:53 Dispensary & Cashier Counter: ", Pt(9.5), True, COLOR_DARK_TEXT), ("[Pending Video Audit]", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
-        ([("(System will alert next month if video is pending upload)", Pt(8.5), False, COLOR_MUTED_LIGHT)], None)
+    # Slide 13: Left Card - Bottom Metadata Card (s13.shapes[1].shapes[4].shapes[1])
+    tf13_meta = s13.shapes[1].shapes[4].shapes[1].text_frame
+    tf13_meta.text = ''
+    meta_items = [
+        [("Location: ", Pt(9.5), True, COLOR_DARK_TEXT), ("PMG Pharmacy Kota Sentosa", Pt(9.5), False, COLOR_SLATE)],
+        [("Audit Cycle: ", Pt(9.5), True, COLOR_DARK_TEXT), ("October 2026 (Video Not Conducted)", Pt(9.5), False, COLOR_RED)],
+        [("Next Scheduled Audit: ", Pt(9.5), True, COLOR_DARK_TEXT), ("November 2026 Walkthrough", Pt(9.5), False, COLOR_SLATE)],
+        [("System Status: ", Pt(9.5), True, COLOR_DARK_TEXT), ("⚠️ Upload Pending — Alert Active for Next Cycle", Pt(9.5), True, COLOR_AMBER)]
     ]
-    set_card_content(s13.shapes[2], walkthrough_seq_spec)
+    for m_idx, m_runs in enumerate(meta_items):
+        mp = tf13_meta.paragraphs[0] if m_idx == 0 else tf13_meta.add_paragraph()
+        mp.space_after = Pt(1.5)
+        for m_txt, m_sz, m_bld, m_col in m_runs:
+            mr = mp.add_run()
+            mr.text = m_txt
+            mr.font.name = 'Arial'
+            mr.font.size = m_sz
+            mr.font.bold = m_bld
+            mr.font.color.rgb = m_col
+
+    # Slide 13: Right Card - Header Title Box (s13.shapes[2].shapes[2])
+    tf13_right_title = s13.shapes[2].shapes[2].text_frame
+    tf13_right_title.text = ''
+    p_rt0 = tf13_right_title.paragraphs[0]
+    p_rt0.space_after = Pt(2)
+    r_rt0 = p_rt0.add_run()
+    r_rt0.text = "WALKTHROUGH SCOPE & SEQUENCE"
+    r_rt0.font.name = 'Arial'
+    r_rt0.font.size = Pt(12)
+    r_rt0.font.bold = True
+    r_rt0.font.color.rgb = COLOR_DARK_TEXT
+
+    p_rt1 = tf13_right_title.add_paragraph()
+    r_rt1 = p_rt1.add_run()
+    r_rt1.text = "Standard 5-Zone Store Operational Audit Checklist"
+    r_rt1.font.name = 'Arial'
+    r_rt1.font.size = Pt(9.5)
+    r_rt1.font.color.rgb = COLOR_SLATE
+
+    # Slide 13: Right Card - 5 Timeline Milestone Text Boxes (s13.shapes[2].shapes[3].shapes[7..11])
+    timeline_grp = s13.shapes[2].shapes[3]
+    timeline_data = [
+        (7, "0:00 - 0:08 Entrance & Ceiling Displays",
+         "Promotional banners, ceiling signage, entrance gondola facing [Audit Pending]"),
+        (8, "0:09 - 0:18 Supplement & FMCG Gondolas",
+         "Shelf talkers, wobblers, eye-level House Brand placement [Audit Pending]"),
+        (9, "0:19 - 0:28 Rear Walkway & Stock Staging Area",
+         "Emergency walkway clearance, stock cart stowing, adult diapers [Audit Pending]"),
+        (10, "0:29 - 0:42 Personal Care & Mobility Displays",
+         "Cosmetic shelves, rehabilitation wheelchairs & walking aids [Audit Pending]"),
+        (11, "0:43 - 0:53 Prescription Dispensary & Cashier Counter",
+         "Glass medicine cabinets, consultation area, clean-counter SOP [Audit Pending]")
+    ]
+    for sh_idx, t_title, t_desc in timeline_data:
+        tb = timeline_grp.shapes[sh_idx].text_frame
+        tb.text = ''
+        p0 = tb.paragraphs[0]
+        p0.space_after = Pt(1.5)
+        r0 = p0.add_run()
+        r0.text = t_title
+        r0.font.name = 'Arial'
+        r0.font.size = Pt(9.5)
+        r0.font.bold = True
+        r0.font.color.rgb = COLOR_DARK_TEXT
+
+        p1 = tb.add_paragraph()
+        r1 = p1.add_run()
+        r1.text = t_desc
+        r1.font.name = 'Arial'
+        r1.font.size = Pt(9)
+        r1.font.color.rgb = COLOR_SLATE
 
     # =========================================================================
     # SLIDE 14: RETAIL STORE WALKTHROUGH FINDINGS (Pending Video Audit Placeholder)
@@ -1149,20 +1356,58 @@ def update_presentation(template_path, data, output_path):
             for p in gs.text_frame.paragraphs:
                 p.font.name = 'Arial'
 
-    # Commitments (Group 2)
-    commitments_spec = [
-        ([("KEY STRATEGIC COMMITMENTS", Pt(13), True, COLOR_PMG_RED)], Pt(2)),
-        ([("Focus Areas & Execution Targets for November 2026", Pt(10.5), True, COLOR_SLATE)], Pt(5)),
-        ([("01  Elevate House Brand Share: ", Pt(10), True, COLOR_DARK_TEXT),
-          ("Target >45% branch HB contribution through weekly 15-minute DPOS companion bundling role-plays with junior dispensary assistants (Farizin & Nurhafizah).", Pt(9.5), False, COLOR_MUTED_TEXT)], Pt(3.5)),
-        ([("02  Accelerate Stock Cycle Rationalization: ", Pt(10), True, COLOR_DARK_TEXT),
-          ("Reduce outlet stock cycle from 2.47 months toward the 2.0 HQ target by clearing excess inventory and expediting warehouse RTV on unrequested bulk stock.", Pt(9.5), False, COLOR_MUTED_TEXT)], Pt(3.5)),
-        ([("03  Strengthen Chronic Disease Refill Retention: ", Pt(10), True, COLOR_DARK_TEXT),
-          ("Implement semi-automated WhatsApp appointment & refill reminders 3–5 days prior to prescription completion to protect Scheduled Drug loyalty.", Pt(9.5), False, COLOR_MUTED_TEXT)], Pt(3.5)),
-        ([("04  Enforce Floor 5S Standards & Walkthrough Compliance: ", Pt(10), True, COLOR_DARK_TEXT),
-          ("Resume monthly video audit next month, enforce morning shelf-facing SOPs, and maintain completely clear emergency exit corridors.", Pt(9.5), False, COLOR_MUTED_TEXT)], None)
+    # Slide 15: Commitments Header Title Box (s15.shapes[2].shapes[2])
+    tf15_title = s15.shapes[2].shapes[2].text_frame
+    tf15_title.text = ''
+    p15_t0 = tf15_title.paragraphs[0]
+    p15_t0.space_after = Pt(2)
+    r15_t0 = p15_t0.add_run()
+    r15_t0.text = "KEY STRATEGIC COMMITMENTS"
+    r15_t0.font.name = 'Arial'
+    r15_t0.font.size = Pt(13)
+    r15_t0.font.bold = True
+    r15_t0.font.color.rgb = COLOR_PMG_RED
+
+    p15_t1 = tf15_title.add_paragraph()
+    r15_t1 = p15_t1.add_run()
+    r15_t1.text = "Focus Areas & Execution Targets for November 2026"
+    r15_t1.font.name = 'Arial'
+    r15_t1.font.size = Pt(10.5)
+    r15_t1.font.bold = True
+    r15_t1.font.color.rgb = COLOR_SLATE
+
+    # Slide 15: Four Individual Commitment Card Text Boxes (s15.shapes[2].shapes[3..6].shapes[2])
+    commitments_data = [
+        (3, "Elevate House Brand Share: ",
+         "Target >45% branch HB contribution through weekly 15-minute DPOS companion bundling role-plays with junior dispensary assistants (Farizin & Nurhafizah)."),
+        (4, "Accelerate Stock Cycle Rationalization: ",
+         "Reduce outlet stock cycle from 2.47 months toward the 2.0 HQ target by clearing excess inventory and expediting warehouse RTV on unrequested bulk stock."),
+        (5, "Strengthen Chronic Disease Refill Retention: ",
+         "Deploy proactive WhatsApp refill tracking and personalized counseling 3–5 days prior to prescription completion to safeguard Scheduled Drug loyalty."),
+        (6, "Enforce Floor 5S Standards & Walkthrough Compliance: ",
+         "Resume monthly 5S video audit next month, enforce morning shelf-facing SOPs, and maintain completely clear emergency exit corridors.")
     ]
-    set_card_content(s15.shapes[2], commitments_spec)
+    for grp_idx, c_title, c_desc in commitments_data:
+        tb = s15.shapes[2].shapes[grp_idx].shapes[2].text_frame
+        tb.text = ''
+        p = tb.paragraphs[0]
+        r_head = p.add_run()
+        r_head.text = c_title
+        r_head.font.name = 'Arial'
+        r_head.font.size = Pt(10)
+        r_head.font.bold = True
+        r_head.font.color.rgb = COLOR_DARK_TEXT
+
+        r_body = p.add_run()
+        r_body.text = c_desc
+        r_body.font.name = 'Arial'
+        r_body.font.size = Pt(9.5)
+        r_body.font.color.rgb = COLOR_MUTED_TEXT
+
+    # =========================================================================
+    # DEDICATED COACHING & RECOMMENDATIONS SLIDE (INSERT AT INDEX 5 -> SLIDE 6)
+    # =========================================================================
+    create_coaching_slide(prs)
 
     # Save presentation
     print(f"Saving updated presentation to: {output_path}")
