@@ -184,3 +184,17 @@ circle[stroke-dashoffset] {
   .inv-table-wrap { font-size: 11px; }
   #mainHeader h1  { font-size: 1rem; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   RECRUITMENT & DOCUMENT UPLOAD STYLES
+   ───────────────────────────────────────────────────────────────────────────── */
+.rec-label { display:block; font-size:0.72rem; font-weight:700; color:#374151; margin-bottom:.25rem; text-transform:uppercase; letter-spacing:.03em; }
+.rec-input { display:block; width:100%; border:1px solid #d1d5db; border-radius:.5rem; padding:.45rem .7rem; font-size:.8rem; color:#111827; background:#fff; outline:none; transition: border-color .15s, box-shadow .15s; }
+.rec-input:focus { border-color:#2563eb; box-shadow:0 0 0 2px rgba(37,99,235,.15); }
+.rec-file-input { display:block; width:100%; border:1px dashed #d1d5db; border-radius:.5rem; padding:.45rem .7rem; font-size:.75rem; color:#374151; background:#f9fafb; cursor:pointer; }
+.rec-doc-slot { transition: all 0.2s ease-in-out; }
+.rec-dropzone { transition: border-color 0.15s ease, background-color 0.15s ease; user-select: none; }
+.rec-dropzone:hover { border-color: #2563eb; background-color: rgba(239, 246, 255, 0.5); }
+.spm-subject-row input[type="text"] { display:block; width:auto; min-width:0; flex:1 1 0%; color:#111827 !important; }
+.spm-subject-row select { flex-shrink:0; width:7rem; }
+.spm-subject-row button { flex-shrink:0; }

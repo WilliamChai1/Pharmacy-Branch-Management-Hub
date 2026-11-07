@@ -100,7 +100,42 @@ function toast(msg, type='info') {
 // ─────────────────────────────────────────────────────────────────────────────
 function loadApps() { try { return JSON.parse(localStorage.getItem(REC_KEY)||'[]'); } catch { return []; } }
 function saveApps(apps) {
-  localStorage.setItem(REC_KEY, JSON.stringify(apps));
+  try {
+    localStorage.setItem(REC_KEY, JSON.stringify(apps));
+  } catch (quotaErr) {
+    console.warn('[Recruitment] localStorage quota exceeded, saving lightweight metadata:', quotaErr);
+    try {
+      const lightweightApps = (apps || []).map(a => {
+        const copy = Object.assign({}, a);
+        if (Array.isArray(copy.docs)) {
+          copy.docs = copy.docs.map(d => ({
+            field: d.field,
+            name: d.name,
+            size: d.size,
+            type: d.type,
+            url: d.url || null
+          }));
+        }
+        return copy;
+      });
+      localStorage.setItem(REC_KEY, JSON.stringify(lightweightApps));
+    } catch (innerErr) {
+      console.error('[Recruitment] Fatal localStorage error:', innerErr);
+    }
+  }
+
+  // Also persist full documents into IndexedDB so full offline files are never lost
+  try {
+    if (typeof openIndexedDB === 'function') {
+      openIndexedDB().then(db => {
+        if (db && db.objectStoreNames.contains('app_data')) {
+          const tx = db.transaction('app_data', 'readwrite');
+          tx.objectStore('app_data').put(apps, 'pmg_job_applications_full');
+        }
+      }).catch(idbErr => console.warn('[Recruitment] IndexedDB persist error:', idbErr));
+    }
+  } catch(e) {}
+
   // Auto-backup to OneDrive if connected
   try {
     if (window.pmgOneDrive && typeof window.pmgOneDrive.saveRecruitmentToOneDrive === 'function') {
@@ -180,6 +215,289 @@ function recDataUrlToBlob(dataUrl) {
   } catch (e) {
     return null;
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DOCUMENT OPTIMIZATION & INTERACTIVE UPLOAD MANAGEMENT
+// ─────────────────────────────────────────────────────────────────────────────
+const docUploadCache = {
+  filePhoto: [],
+  fileIC: [],
+  fileSPM: [],
+  fileDegree: [],
+  fileTranscript: [],
+  fileOther: []
+};
+
+/**
+ * Universal client-side document and image optimizer.
+ * Automatically resizes large phone camera photos (e.g. 10MB -> ~250KB)
+ * while maintaining 100% sharp text for SPM certificates and NRIC.
+ */
+async function compressAndOptimizeDocFile(file, maxDimension = 1800, quality = 0.82) {
+  if (!file) return null;
+
+  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  const isImage = file.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|heic|heif|bmp)$/i.test(file.name);
+
+  // 1. PDF Documents: Validate size limit and read as base64
+  if (isPdf) {
+    if (file.size > MAX_FILE_MB * 1024 * 1024) {
+      throw new Error(`Fail PDF "${file.name}" (${(file.size / (1024 * 1024)).toFixed(1)}MB) melebihi had ${MAX_FILE_MB}MB.`);
+    }
+    const b64 = await fileToBase64(file);
+    return {
+      name: file.name,
+      originalName: file.name,
+      originalSize: file.size,
+      size: file.size,
+      type: 'application/pdf',
+      data: b64,
+      isPdf: true,
+      previewUrl: null
+    };
+  }
+
+  // 2. Image Documents (Passport Photo, SPM Result, NRIC, Certificates): Compress & optimize via HTML5 Canvas
+  if (isImage) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onerror = () => {
+        resolve({
+          name: file.name,
+          originalName: file.name,
+          originalSize: file.size,
+          size: file.size,
+          type: file.type || 'image/jpeg',
+          data: null,
+          isPdf: false,
+          previewUrl: null
+        });
+      };
+      reader.onload = (e) => {
+        const rawDataUri = e.target.result;
+        const img = new Image();
+        img.onerror = () => {
+          // If browser cannot decode format directly (e.g. raw HEIC on older browser), retain original data URI
+          resolve({
+            name: file.name,
+            originalName: file.name,
+            originalSize: file.size,
+            size: file.size,
+            type: file.type || 'image/jpeg',
+            data: rawDataUri,
+            isPdf: false,
+            previewUrl: rawDataUri
+          });
+        };
+        img.onload = () => {
+          try {
+            let width = img.width;
+            let height = img.height;
+
+            if (width > maxDimension || height > maxDimension) {
+              if (width > height) {
+                height = Math.round((height * maxDimension) / width);
+                width = maxDimension;
+              } else {
+                width = Math.round((width * maxDimension) / height);
+                height = maxDimension;
+              }
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+
+            // Draw white background to avoid dark transparent PNG issues
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+
+            const compressedDataUri = canvas.toDataURL('image/jpeg', quality);
+            const approxBytes = Math.round((compressedDataUri.length * 3) / 4);
+
+            const cleanName = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+            resolve({
+              name: cleanName,
+              originalName: file.name,
+              originalSize: file.size,
+              size: approxBytes,
+              type: 'image/jpeg',
+              data: compressedDataUri,
+              isPdf: false,
+              previewUrl: compressedDataUri
+            });
+          } catch (canvasErr) {
+            console.warn('[Recruitment] Canvas optimization failed, using original:', canvasErr);
+            resolve({
+              name: file.name,
+              originalName: file.name,
+              originalSize: file.size,
+              size: file.size,
+              type: file.type || 'image/jpeg',
+              data: rawDataUri,
+              isPdf: false,
+              previewUrl: rawDataUri
+            });
+          }
+        };
+        img.src = rawDataUri;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // 3. Fallback for any other file types
+  const b64 = await fileToBase64(file);
+  return {
+    name: file.name,
+    originalName: file.name,
+    originalSize: file.size,
+    size: file.size,
+    type: file.type || 'application/octet-stream',
+    data: b64,
+    isPdf: false,
+    previewUrl: null
+  };
+}
+
+/**
+ * Handle document file selection from file input or dropzone
+ */
+async function handleDocFileSelect(event, fieldName) {
+  const target = event.target;
+  const files = Array.from(target.files || (event.dataTransfer ? event.dataTransfer.files : []));
+  if (!files || files.length === 0) return;
+
+  const isSingle = (fieldName === 'filePhoto');
+  const previewContainer = document.getElementById(`preview_${fieldName}`);
+  const placeholder = document.getElementById(`placeholder_${fieldName}`);
+  const slotEl = document.getElementById(`slot_${fieldName}`);
+
+  if (slotEl) {
+    slotEl.classList.remove('border-rose-400', 'bg-rose-50/40', 'ring-2', 'ring-rose-300');
+  }
+
+  if (previewContainer) {
+    previewContainer.classList.remove('hidden');
+    previewContainer.innerHTML = `
+      <div class="flex items-center gap-2 p-2.5 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-xs font-semibold">
+        <i class="fa-solid fa-spinner fa-spin text-sm"></i>
+        <span>Memproses &amp; mengoptimumkan ${files.length} fail... (Optimizing for fast upload)</span>
+      </div>`;
+  }
+  if (placeholder) placeholder.classList.add('hidden');
+
+  try {
+    const optimizedList = [];
+    for (const f of files) {
+      if (f.size > MAX_FILE_MB * 1024 * 1024) {
+        toast(`Fail "${f.name}" (${(f.size / 1048576).toFixed(1)}MB) melebihi had ${MAX_FILE_MB}MB`, 'error');
+        continue;
+      }
+      const opt = await compressAndOptimizeDocFile(f);
+      if (opt) {
+        optimizedList.push(opt);
+      }
+    }
+
+    if (isSingle) {
+      docUploadCache[fieldName] = optimizedList.slice(0, 1);
+    } else {
+      if (!Array.isArray(docUploadCache[fieldName])) docUploadCache[fieldName] = [];
+      docUploadCache[fieldName].push(...optimizedList);
+    }
+
+    updateDocUploadUI(fieldName);
+    toast(`${optimizedList.length} fail sedia dimuat naik! (Ready for upload)`, 'success');
+  } catch (err) {
+    console.error(`[Doc Upload] Error processing ${fieldName}:`, err);
+    toast('Ralat memproses fail: ' + err.message, 'error');
+    updateDocUploadUI(fieldName);
+  }
+}
+
+/**
+ * Remove an item from the upload cache
+ */
+function removeDocFile(fieldName, idx) {
+  if (Array.isArray(docUploadCache[fieldName])) {
+    docUploadCache[fieldName].splice(idx, 1);
+  }
+  const input = document.getElementById(`input_${fieldName}`);
+  if (input) input.value = '';
+  updateDocUploadUI(fieldName);
+}
+
+/**
+ * Render previews and status for an upload slot
+ */
+function updateDocUploadUI(fieldName) {
+  const items = docUploadCache[fieldName] || [];
+  const previewContainer = document.getElementById(`preview_${fieldName}`);
+  const placeholder = document.getElementById(`placeholder_${fieldName}`);
+  const countBadge = document.getElementById(`count_${fieldName}`);
+
+  if (countBadge) {
+    countBadge.textContent = items.length ? `(${items.length} fail)` : '';
+  }
+
+  if (!previewContainer) return;
+
+  if (items.length === 0) {
+    previewContainer.classList.add('hidden');
+    previewContainer.innerHTML = '';
+    if (placeholder) placeholder.classList.remove('hidden');
+    return;
+  }
+
+  if (placeholder) placeholder.classList.add('hidden');
+  previewContainer.classList.remove('hidden');
+
+  previewContainer.innerHTML = `
+    <div class="space-y-2">
+      ${items.map((doc, idx) => {
+        const kbSize = Math.round((doc.size || 0) / 1024);
+        const origKb = doc.originalSize ? Math.round(doc.originalSize / 1024) : kbSize;
+        const savedPct = (origKb > kbSize && origKb > 0) ? Math.round(((origKb - kbSize) / origKb) * 100) : 0;
+        const sizeBadge = savedPct > 15
+          ? `<span class="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded border border-emerald-300">✓ ${kbSize} KB (${savedPct}% Jimat/Compressed)</span>`
+          : `<span class="text-[10px] bg-blue-100 text-blue-800 font-semibold px-1.5 py-0.5 rounded">✓ ${kbSize} KB</span>`;
+
+        return `
+        <div class="flex items-center justify-between p-2 bg-white border border-slate-200 rounded-lg shadow-2xs hover:border-blue-300 transition text-xs">
+          <div class="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
+            ${doc.previewUrl ? `
+              <img src="${doc.previewUrl}" alt="Preview" class="w-10 h-10 object-cover rounded-md border border-slate-200 shrink-0 shadow-2xs">
+            ` : `
+              <div class="w-10 h-10 rounded-md bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
+                <i class="fa-solid fa-file-pdf text-lg"></i>
+              </div>
+            `}
+            <div class="min-w-0 flex-1">
+              <p class="font-bold text-slate-800 truncate text-[11px]">${sanitize(doc.name)}</p>
+              <div class="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                ${sizeBadge}
+                <span class="text-[10px] text-emerald-700 font-bold"><i class="fa-solid fa-check"></i> Sedia / Ready</span>
+              </div>
+            </div>
+          </div>
+          <button type="button" onclick="event.stopPropagation(); window.pmgRecruitment.removeDocFile('${fieldName}', ${idx})" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition shrink-0" title="Padam fail / Remove">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+        </div>`;
+      }).join('')}
+
+      <div class="pt-1 flex items-center justify-between text-[11px] text-slate-500">
+        <span>Tekan untuk tambah fail lagi / Tap to add another</span>
+        <button type="button" onclick="document.getElementById('input_${fieldName}').click()" class="text-blue-600 hover:underline font-bold">
+          + Tambah / Tukar
+        </button>
+      </div>
+    </div>
+  `;
 }
 
 // Save a single applicant's profile and real uploaded document files into OneDrive /RECRUITMENT/Applicants/
@@ -638,9 +956,12 @@ function getDriveDownloadUrl(fileId) {
 
 function getCandidateSpmDocument(app) {
   if (!app) return null;
-  // 1. Explicit fileSPM in docs
+  // 1. Explicit fileSPM in docs (case-insensitive)
   if (Array.isArray(app.docs)) {
-    const spmDoc = app.docs.find(d => d.field === 'fileSPM' || (d.name && d.name.toLowerCase().includes('spm')));
+    const spmDoc = app.docs.find(d => 
+      (d.field && d.field.toLowerCase() === 'filespm') ||
+      (d.name && d.name.toLowerCase().includes('spm'))
+    );
     if (spmDoc) return spmDoc;
   }
   // 2. Direct spm URL property
@@ -661,6 +982,17 @@ function getCandidateSpmDocument(app) {
   if (Array.isArray(app.docs) && app.docs.length > 0) {
     return app.docs[0];
   }
+  return null;
+}
+
+function getCandidatePassportPhoto(app) {
+  if (!app || !Array.isArray(app.docs)) return null;
+  const photoDoc = app.docs.find(d => 
+    (d.field && d.field.toLowerCase() === 'filephoto') ||
+    (d.name && /passport|photo|gambar/i.test(d.name))
+  );
+  if (photoDoc && photoDoc.data) return photoDoc.data;
+  if (photoDoc && photoDoc.url) return photoDoc.url;
   return null;
 }
 
@@ -847,18 +1179,19 @@ async function scanCandidateSpmVision(appId, customFile = null) {
     let previewUrl = null;
 
     if (customFile) {
-      const fileDataUri = await fileToBase64(customFile);
+      const opt = await compressAndOptimizeDocFile(customFile);
+      const fileDataUri = opt.data;
       const parts = fileDataUri.split('base64,');
       b64 = parts[1];
-      mime = customFile.type || 'image/jpeg';
+      mime = opt.type || 'image/jpeg';
       previewUrl = fileDataUri;
 
       // Add to docs array
       if (!Array.isArray(app.docs)) app.docs = [];
       app.docs.unshift({
         field: 'fileSPM',
-        name: customFile.name,
-        size: customFile.size,
+        name: opt.name || customFile.name,
+        size: opt.size || customFile.size,
         type: mime,
         data: fileDataUri
       });
@@ -1441,36 +1774,169 @@ function renderPublicForm(targetContainerId) {
     </div>
 
     <!-- SECTION 12: DOCUMENT UPLOAD -->
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-      <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-file-arrow-up text-blue-600"></i> Document Upload / Muat Naik Dokumen</h3>
-      <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700 mb-3">
-        <i class="fa-solid fa-circle-info mr-1"></i>
-        Accept: PDF, JPG, PNG. Max ${MAX_FILE_MB}MB per file. Upload original scan/photo — not edited copies.
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5" id="secDocumentUpload">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
+          <i class="fa-solid fa-file-arrow-up text-blue-600"></i>
+          <span>Document Upload / Muat Naik Dokumen</span>
+        </h3>
+        <span class="text-[11px] text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+          ⚡ Auto-Compressed &amp; Fast Upload
+        </span>
       </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label class="rec-label">Recent Passport Photo *</label>
-          <input type="file" name="filePhoto" accept="image/*,.pdf" required class="rec-file-input">
+
+      <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800 mb-4 flex items-start gap-2.5">
+        <i class="fa-solid fa-circle-info text-blue-600 text-base mt-0.5 shrink-0"></i>
+        <div class="leading-relaxed">
+          <strong>Panduan Dokumen &amp; Foto:</strong><br>
+          • Format disokong: <strong>JPG, PNG, PDF, HEIC</strong> (Maksimum ${MAX_FILE_MB}MB setiap fail).<br>
+          • <em>Tips Pantas:</em> Anda boleh terus mengambil foto menggunakan kamera telefon pintar. Sistem akan <strong>mengoptimumkan saiz fail secara automatik</strong> supaya penghantaran laju dan dokumen jelas dibaca.
         </div>
-        <div>
-          <label class="rec-label">NRIC / MyKad (Front & Back) *</label>
-          <input type="file" name="fileIC" accept="image/*,.pdf" required class="rec-file-input" multiple>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        <!-- 1. Recent Passport Photo -->
+        <div class="rec-doc-slot bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col justify-between transition" id="slot_filePhoto">
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="rec-label text-slate-800 font-bold text-xs uppercase flex items-center gap-1.5">
+                <i class="fa-solid fa-user text-blue-600"></i>
+                <span>Recent Passport Photo *</span>
+              </label>
+              <span class="text-[10px] text-rose-700 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">Wajib / Required</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mb-2">Gambar pasport terkini (latar belakang putih/biru, jelas).</p>
+            
+            <div class="rec-dropzone border-2 border-dashed border-slate-300 hover:border-blue-500 hover:bg-blue-50/30 rounded-xl p-3 text-center cursor-pointer transition bg-white" onclick="document.getElementById('input_filePhoto').click()">
+              <input type="file" id="input_filePhoto" name="filePhoto" accept="image/jpeg,image/png,image/webp,image/jpg,image/heic,image/heif,application/pdf,.pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,image/*" class="hidden" onchange="window.pmgRecruitment.handleDocFileSelect(event, 'filePhoto')">
+              <div id="placeholder_filePhoto" class="py-2.5">
+                <i class="fa-solid fa-camera text-2xl text-blue-500 mb-1"></i>
+                <div class="text-xs font-bold text-slate-700">Pilih / Ambil Gambar Pasport</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">Camera photo or gallery (JPG, PNG, PDF)</div>
+              </div>
+              <div id="preview_filePhoto" class="hidden text-left"></div>
+            </div>
+          </div>
         </div>
-        <div>
-          <label class="rec-label">SPM Result Slip *</label>
-          <input type="file" name="fileSPM" accept="image/*,.pdf" required class="rec-file-input">
+
+        <!-- 2. NRIC / MyKad -->
+        <div class="rec-doc-slot bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col justify-between transition" id="slot_fileIC">
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="rec-label text-slate-800 font-bold text-xs uppercase flex items-center gap-1.5">
+                <i class="fa-solid fa-id-card text-blue-600"></i>
+                <span>NRIC / MyKad (Front &amp; Back) *</span>
+              </label>
+              <span class="text-[10px] text-rose-700 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">Wajib / Required</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mb-2">Salinan MyKad depan &amp; belakang (jelas &amp; boleh dibaca).</p>
+            
+            <div class="rec-dropzone border-2 border-dashed border-slate-300 hover:border-blue-500 hover:bg-blue-50/30 rounded-xl p-3 text-center cursor-pointer transition bg-white" onclick="document.getElementById('input_fileIC').click()">
+              <input type="file" id="input_fileIC" name="fileIC" accept="image/jpeg,image/png,image/webp,image/jpg,image/heic,image/heif,application/pdf,.pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,image/*" multiple class="hidden" onchange="window.pmgRecruitment.handleDocFileSelect(event, 'fileIC')">
+              <div id="placeholder_fileIC" class="py-2.5">
+                <i class="fa-solid fa-id-card-clip text-2xl text-blue-500 mb-1"></i>
+                <div class="text-xs font-bold text-slate-700">Muat Naik MyKad Depan &amp; Belakang</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">Pilih 1 atau 2 foto (Depan &amp; Belakang)</div>
+              </div>
+              <div id="preview_fileIC" class="hidden text-left"></div>
+            </div>
+          </div>
         </div>
-        <div>
-          <label class="rec-label">Diploma / Degree Certificate</label>
-          <input type="file" name="fileDegree" accept="image/*,.pdf" class="rec-file-input" multiple>
+
+        <!-- 3. SPM Result Slip -->
+        <div class="rec-doc-slot bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col justify-between transition" id="slot_fileSPM">
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="rec-label text-slate-800 font-bold text-xs uppercase flex items-center gap-1.5">
+                <i class="fa-solid fa-graduation-cap text-amber-600"></i>
+                <span>SPM Result Slip / Sijil SPM *</span>
+              </label>
+              <span class="text-[10px] text-rose-700 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">Wajib / Required</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mb-2">Slip Penyata Keputusan atau Sijil SPM rasmi (jelas &amp; penuh).</p>
+            
+            <div class="rec-dropzone border-2 border-dashed border-slate-300 hover:border-amber-500 hover:bg-amber-50/30 rounded-xl p-3 text-center cursor-pointer transition bg-white" onclick="document.getElementById('input_fileSPM').click()">
+              <input type="file" id="input_fileSPM" name="fileSPM" accept="image/jpeg,image/png,image/webp,image/jpg,image/heic,image/heif,application/pdf,.pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,image/*" multiple class="hidden" onchange="window.pmgRecruitment.handleDocFileSelect(event, 'fileSPM')">
+              <div id="placeholder_fileSPM" class="py-2.5">
+                <i class="fa-solid fa-file-invoice text-2xl text-amber-500 mb-1"></i>
+                <div class="text-xs font-bold text-slate-700">Pilih / Tangkap Gambar Slip SPM</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">Foto kamera atau PDF (diimbas oleh AI)</div>
+              </div>
+              <div id="preview_fileSPM" class="hidden text-left"></div>
+            </div>
+          </div>
         </div>
-        <div>
-          <label class="rec-label">Transcript / Academic Results</label>
-          <input type="file" name="fileTranscript" accept="image/*,.pdf" class="rec-file-input" multiple>
+
+        <!-- 4. Diploma / Degree Certificate -->
+        <div class="rec-doc-slot bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col justify-between transition" id="slot_fileDegree">
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="rec-label text-slate-800 font-bold text-xs uppercase flex items-center gap-1.5">
+                <i class="fa-solid fa-certificate text-purple-600"></i>
+                <span>Diploma / Degree Certificate</span>
+              </label>
+              <span class="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">Pilihan / Optional</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mb-2">Sijil pengajian tinggi jika berkenaan.</p>
+            
+            <div class="rec-dropzone border-2 border-dashed border-slate-300 hover:border-purple-500 hover:bg-purple-50/30 rounded-xl p-3 text-center cursor-pointer transition bg-white" onclick="document.getElementById('input_fileDegree').click()">
+              <input type="file" id="input_fileDegree" name="fileDegree" accept="image/jpeg,image/png,image/webp,image/jpg,image/heic,image/heif,application/pdf,.pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,image/*" multiple class="hidden" onchange="window.pmgRecruitment.handleDocFileSelect(event, 'fileDegree')">
+              <div id="placeholder_fileDegree" class="py-2.5">
+                <i class="fa-solid fa-file-shield text-2xl text-purple-500 mb-1"></i>
+                <div class="text-xs font-bold text-slate-700">Muat Naik Sijil Diploma / Ijazah</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">Foto atau PDF sijil graduasi</div>
+              </div>
+              <div id="preview_fileDegree" class="hidden text-left"></div>
+            </div>
+          </div>
         </div>
-        <div>
-          <label class="rec-label">Other Supporting Documents</label>
-          <input type="file" name="fileOther" accept="image/*,.pdf" class="rec-file-input" multiple>
+
+        <!-- 5. Transcript / Academic Results -->
+        <div class="rec-doc-slot bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col justify-between transition" id="slot_fileTranscript">
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="rec-label text-slate-800 font-bold text-xs uppercase flex items-center gap-1.5">
+                <i class="fa-solid fa-file-lines text-indigo-600"></i>
+                <span>Transcript / Academic Results</span>
+              </label>
+              <span class="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">Pilihan / Optional</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mb-2">Transkrip semester atau rekod markah.</p>
+            
+            <div class="rec-dropzone border-2 border-dashed border-slate-300 hover:border-indigo-500 hover:bg-indigo-50/30 rounded-xl p-3 text-center cursor-pointer transition bg-white" onclick="document.getElementById('input_fileTranscript').click()">
+              <input type="file" id="input_fileTranscript" name="fileTranscript" accept="image/jpeg,image/png,image/webp,image/jpg,image/heic,image/heif,application/pdf,.pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,image/*" multiple class="hidden" onchange="window.pmgRecruitment.handleDocFileSelect(event, 'fileTranscript')">
+              <div id="placeholder_fileTranscript" class="py-2.5">
+                <i class="fa-solid fa-list-check text-2xl text-indigo-500 mb-1"></i>
+                <div class="text-xs font-bold text-slate-700">Muat Naik Transkrip Akademik</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">Transkrip keputusan peperiksaan</div>
+              </div>
+              <div id="preview_fileTranscript" class="hidden text-left"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6. Other Supporting Documents / Resume -->
+        <div class="rec-doc-slot bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col justify-between transition" id="slot_fileOther">
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="rec-label text-slate-800 font-bold text-xs uppercase flex items-center gap-1.5">
+                <i class="fa-solid fa-folder-open text-teal-600"></i>
+                <span>Other Documents / Resume / CV</span>
+              </label>
+              <span class="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">Pilihan / Optional</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mb-2">Resume, surat sokongan, atau sijil kokurikulum.</p>
+            
+            <div class="rec-dropzone border-2 border-dashed border-slate-300 hover:border-teal-500 hover:bg-teal-50/30 rounded-xl p-3 text-center cursor-pointer transition bg-white" onclick="document.getElementById('input_fileOther').click()">
+              <input type="file" id="input_fileOther" name="fileOther" accept="image/jpeg,image/png,image/webp,image/jpg,image/heic,image/heif,application/pdf,.pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,image/*" multiple class="hidden" onchange="window.pmgRecruitment.handleDocFileSelect(event, 'fileOther')">
+              <div id="placeholder_fileOther" class="py-2.5">
+                <i class="fa-solid fa-cloud-arrow-up text-2xl text-teal-500 mb-1"></i>
+                <div class="text-xs font-bold text-slate-700">Muat Naik Resume atau Sijil Lain</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">Resume / Sijil sokongan</div>
+              </div>
+              <div id="preview_fileOther" class="hidden text-left"></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1570,26 +2036,85 @@ async function submitPublicForm(e) {
   }
   const langSummary = langItems.join('; ');
 
-  // Process file uploads → base64 metadata (no fileLicense needed)
+  // Helper to scroll and highlight missing required slots
+  function highlightDocSlotError(slotId) {
+    const slot = document.getElementById(`slot_${slotId}`);
+    if (slot) {
+      slot.classList.add('border-rose-400', 'bg-rose-50/40', 'ring-2', 'ring-rose-300');
+      slot.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+
+  // 1. Process files from docUploadCache or raw inputs with auto-optimization
   const fileFields = ['filePhoto','fileIC','fileSPM','fileDegree','fileTranscript','fileOther'];
   const uploadedDocs = [];
+
   for (const field of fileFields) {
-    const files = form[field] ? Array.from(form[field].files) : [];
-    for (const f of files) {
-      if (f.size > MAX_FILE_MB * 1024 * 1024) {
-        toast(`File "${f.name}" exceeds ${MAX_FILE_MB}MB limit`, 'error');
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Submit Application';
-        return;
+    const cached = docUploadCache[field] || [];
+    if (cached.length > 0) {
+      for (const item of cached) {
+        uploadedDocs.push({
+          field,
+          name: item.name,
+          size: item.size,
+          type: item.type,
+          data: item.data
+        });
       }
-      try {
-        const b64 = await fileToBase64(f);
-        uploadedDocs.push({ field, name: f.name, size: f.size, type: f.type, data: b64 });
-      } catch(err) {
-        toast(`Error reading file ${f.name}`, 'error');
+    } else {
+      // Fallback: check raw input files if applicant didn't trigger onchange
+      const input = form[field];
+      const files = input && input.files ? Array.from(input.files) : [];
+      for (const f of files) {
+        try {
+          const opt = await compressAndOptimizeDocFile(f);
+          if (opt) {
+            uploadedDocs.push({
+              field,
+              name: opt.name,
+              size: opt.size,
+              type: opt.type,
+              data: opt.data
+            });
+          }
+        } catch(err) {
+          console.warn(`[Doc Upload] Error reading ${f.name}:`, err);
+        }
       }
     }
   }
+
+  // 2. Validate mandatory documents: Passport Photo, NRIC, SPM Result Slip
+  const hasPhoto = uploadedDocs.some(d => d.field === 'filePhoto');
+  const hasIC = uploadedDocs.some(d => d.field === 'fileIC');
+  const hasSPM = uploadedDocs.some(d => d.field === 'fileSPM');
+
+  if (!hasPhoto) {
+    toast('Sila muat naik Gambar Pasport terkini / Please upload recent Passport Photo', 'error');
+    highlightDocSlotError('filePhoto');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Submit Application / Hantar Permohonan';
+    return;
+  }
+
+  if (!hasIC) {
+    toast('Sila muat naik MyKad (Depan & Belakang) / Please upload NRIC / MyKad', 'error');
+    highlightDocSlotError('fileIC');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Submit Application / Hantar Permohonan';
+    return;
+  }
+
+  if (!hasSPM) {
+    toast('Sila muat naik Slip / Sijil Keputusan SPM / Please upload SPM Result Slip', 'error');
+    highlightDocSlotError('fileSPM');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Submit Application / Hantar Permohonan';
+    return;
+  }
+
+  // Progressive button status
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menghantar Permohonan...';
 
   // Extract SPM School, Year & Subjects Breakdown
   const spmSchool = get('spmSchool');
@@ -1707,7 +2232,7 @@ async function submitPublicForm(e) {
   try {
     const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 18000);
+    const timeout = setTimeout(() => controller.abort(), 45000); // 45s for slower mobile uploads
     const res = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
@@ -1765,6 +2290,10 @@ async function submitPublicForm(e) {
   }
 
   // Show success
+  for (const k of Object.keys(docUploadCache)) {
+    docUploadCache[k] = [];
+  }
+
   const container = form.closest('#publicJobAppContainer')
                  || form.closest('#recruitmentPublicFormArea')
                  || el('publicJobAppContainer')
@@ -2360,7 +2889,19 @@ ${aiSection}
 
 <!-- Personal Info -->
 <div class="bg-white rounded-xl border border-gray-200 p-4 mb-4">
-  <h4 class="text-xs font-bold text-gray-700 mb-3 pb-2 border-b border-gray-100 flex items-center gap-2"><i class="fa-solid fa-id-card text-blue-500"></i>${sanitize(app.name)} — ${sanitize(app.position)}</h4>
+  <div class="flex items-center gap-3.5 mb-3 pb-2.5 border-b border-gray-100">
+    ${(function(){
+      const photoSrc = getCandidatePassportPhoto(app);
+      if (photoSrc) {
+        return `<img src="${photoSrc}" alt="Passport Photo" class="w-14 h-16 object-cover rounded-xl border border-slate-300 shadow-2xs shrink-0 cursor-pointer" onclick="window.pmgRecruitment.viewDoc('${app.id}', 0)" title="Click to view full photo">`;
+      }
+      return `<div class="w-14 h-16 rounded-xl bg-slate-100 border border-slate-200 flex flex-col items-center justify-center text-slate-400 shrink-0"><i class="fa-solid fa-user text-xl"></i><span class="text-[9px] mt-1 font-bold">No Photo</span></div>`;
+    })()}
+    <div>
+      <h4 class="text-sm font-bold text-gray-900 flex items-center gap-2"><i class="fa-solid fa-id-card text-blue-500"></i>${sanitize(app.name)} — ${sanitize(app.position)}</h4>
+      <p class="text-xs text-gray-500 mt-0.5">Reference ID: <span class="font-mono font-bold text-blue-700">${app.id}</span> &bull; Applied: ${fmtDateTime(app.appliedAt)}</p>
+    </div>
+  </div>
   <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
     ${[
       ['Ref ID', app.id], ['Applied', fmtDateTime(app.appliedAt)], ['Position', app.position],
@@ -2756,6 +3297,11 @@ function resetPublicForm() {
   const spmCont = document.getElementById('spmSubjectsContainer');
   if (spmCont) {
     spmCont.innerHTML = DEFAULT_SPM_SUBJECTS.map(subj => createSpmRowHtml(subj, '')).join('');
+  }
+  // Clear all cached files and reset dropzone previews
+  for (const k of Object.keys(docUploadCache)) {
+    docUploadCache[k] = [];
+    updateDocUploadUI(k);
   }
 }
 
@@ -3466,6 +4012,12 @@ window.pmgRecruitment = {
   promptSetGeminiKey,
   scanCandidateSpmVision,
   onSpmFileSelected,
+  handleDocFileSelect,
+  removeDocFile,
+  updateDocUploadUI,
+  compressAndOptimizeDocFile,
+  docUploadCache,
+  getCandidatePassportPhoto,
 };
 
 // Auto-init when DOM ready
