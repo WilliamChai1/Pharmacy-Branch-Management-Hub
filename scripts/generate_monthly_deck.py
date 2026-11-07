@@ -20,13 +20,109 @@ from pptx import Presentation
 from pptx.util import Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
+from pptx.enum.shapes import MSO_SHAPE_TYPE
 
 # Color Palette
-COLOR_GREEN = RGBColor(22, 163, 74)   # #16A34A - Positive growth / MoM improvement
-COLOR_RED   = RGBColor(220, 38, 38)  # #DC2626 - Decline / underperforming
-COLOR_AMBER = RGBColor(217, 119, 6)   # #D97706 - Warning / attention
-COLOR_DARK  = RGBColor(30, 41, 59)    # #1E293B - Neutral text
-COLOR_WHITE = RGBColor(255, 255, 255) # #FFFFFF - Header text
+COLOR_GREEN       = RGBColor(19, 115, 51)   # #137333 - Positive growth / MoM improvement
+COLOR_RED         = RGBColor(220, 38, 38)   # #DC2626 - Decline / underperforming
+COLOR_AMBER       = RGBColor(217, 119, 6)   # #D97706 - Warning / attention
+COLOR_DARK        = RGBColor(30, 41, 59)    # #1E293B - Neutral text
+COLOR_WHITE       = RGBColor(255, 255, 255) # #FFFFFF - Header text
+COLOR_PMG_RED     = RGBColor(197, 34, 31)   # #C5221F - Official PMG Red Header
+COLOR_SLATE       = RGBColor(75, 85, 99)    # #4B5563 - Official Subtitle Slate Gray
+COLOR_DARK_TEXT   = RGBColor(31, 41, 55)    # #1F2937 - Dark bold card headers
+COLOR_MUTED_TEXT  = RGBColor(51, 65, 85)    # #334155 - Card body text
+COLOR_MUTED_LIGHT = RGBColor(107, 114, 128) # #6B7280 - Secondary text / notes
+COLOR_BLUE        = RGBColor(12, 158, 213)  # #0C9ED5 - JASE & Opportunities
+COLOR_ORANGE      = RGBColor(233, 113, 49)  # #E97131 - Merchandising & Threats
+COLOR_PURPLE      = RGBColor(160, 40, 145)  # #A02891 - Marketing & Digital Health
+COLOR_INDIGO      = RGBColor(79, 70, 229)   # #4F46E5 - Mobility & Solutions
+
+def set_slide_header(shape, title_text, subtitle_text, title_size=Pt(15), subtitle_size=Pt(11),
+                     title_color=COLOR_PMG_RED, subtitle_color=COLOR_SLATE):
+    """
+    Sets clean, professional slide headers with official PMG Red title and Slate Gray subtitle.
+    Handles both direct TEXT_BOX shapes and GROUP shapes containing text frames.
+    """
+    tf = None
+    if shape.has_text_frame:
+        tf = shape.text_frame
+    elif shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+        target_sub = None
+        for sub in shape.shapes:
+            if sub.has_text_frame and sub.shape_type == MSO_SHAPE_TYPE.TEXT_BOX:
+                target_sub = sub
+                break
+        if not target_sub:
+            for sub in shape.shapes:
+                if sub.has_text_frame and sub.text_frame.text.strip():
+                    target_sub = sub
+                    break
+        if target_sub:
+            tf = target_sub.text_frame
+            # Clear text in any other subshape of this group to prevent ghosting
+            for sub in shape.shapes:
+                if sub != target_sub and sub.has_text_frame:
+                    sub.text_frame.text = ''
+    if not tf:
+        return
+
+    tf.text = ''
+    p0 = tf.paragraphs[0]
+    p0.space_after = Pt(2)
+    r0 = p0.add_run()
+    r0.text = title_text
+    r0.font.name = 'Arial'
+    r0.font.size = title_size
+    r0.font.bold = True
+    r0.font.color.rgb = title_color
+
+    p1 = tf.add_paragraph()
+    r1 = p1.add_run()
+    r1.text = subtitle_text
+    r1.font.name = 'Arial'
+    r1.font.size = subtitle_size
+    r1.font.bold = True
+    r1.font.color.rgb = subtitle_color
+
+def set_card_content(shape_or_grp, paragraphs_spec):
+    """
+    Writes formatted paragraphs and runs into a card text box or group subshape.
+    paragraphs_spec is a list of tuples:
+      (runs_list, space_after)
+    where runs_list is a list of tuples:
+      (text, font_size, bold, color_rgb)
+    """
+    tf = None
+    if shape_or_grp.has_text_frame:
+        tf = shape_or_grp.text_frame
+    elif shape_or_grp.shape_type == MSO_SHAPE_TYPE.GROUP:
+        if len(shape_or_grp.shapes) > 2 and shape_or_grp.shapes[2].has_text_frame:
+            tf = shape_or_grp.shapes[2].text_frame
+        else:
+            for sub in shape_or_grp.shapes:
+                if sub.has_text_frame and sub.text_frame.text.strip():
+                    tf = sub.text_frame
+                    break
+    if not tf:
+        return
+
+    tf.text = ''
+    for p_idx, (runs, space_after) in enumerate(paragraphs_spec):
+        p = tf.paragraphs[0] if p_idx == 0 else tf.add_paragraph()
+        if space_after is not None:
+            p.space_after = space_after
+        for item in runs:
+            txt, sz, bld, col = item
+            r = p.add_run()
+            r.text = txt
+            r.font.name = 'Arial'
+            if sz is not None:
+                r.font.size = sz
+            if bld is not None:
+                r.font.bold = bld
+            if col is not None:
+                r.font.color.rgb = col
 
 def fmt_rm(val):
     if val is None or val == 0:
@@ -649,302 +745,403 @@ def update_presentation(template_path, data, output_path):
         set_cell_formatted(t6.cell(row_num, 11), diff_gp, val_size=font_sz, val_bold=True, val_color=diff_gp_col)
 
     # =========================================================================
-    # SLIDE 7: TOP EXPANSION DRIVERS
+    # SLIDE 7: TOP EXPANSION DRIVERS — REFINED EXECUTIVE CARDS & HEADER
     # =========================================================================
     s7 = prs.slides[6]
-    for shape in s7.shapes:
-        if shape.has_text_frame and 'September' in shape.text_frame.text:
-            shape.text_frame.text = shape.text_frame.text.replace('September 2026 vs September 2025', 'October 2026 vs October 2025')
-            for p in shape.text_frame.paragraphs:
-                p.font.name = 'Arial'
+    set_slide_header(s7.shapes[1], "CATEGORY SALES ANALYSIS (MTD): TOP EXPANSION DRIVERS (WHAT GOES UP & REASONS)",
+                     "In-Depth Category Deep Dive — October 2026 vs October 2025")
 
-    grp7_2 = s7.shapes[2]
-    supp_text = (
-        "Supplements +3.71% YoY\n"
-        "+RM 2,723.59 | RM 76,082.27 Total\n"
-        "Top GP Generator: Contributed RM 28,112.94 in gross profit (36.95% GP margin), accounting for 22.5% of outlet revenue.\n"
-        "Major Item Gainers:\n"
-        "• Nutribridge Nutri Alpha 800gm (F&B): +RM 5,061.46 YoY (GP 22.28%)\n"
-        "• Livemore Neomega Softgel 60's x2: +RM 2,885.86 YoY (GP 30.35%)\n"
-        "• Axon Arm BP Monitor (Elderly): +RM 1,820.00 YoY (GP 44.62%)\n"
-        "• Nutribridge Multivit & CoQ10 60's: +RM 1,675.96 YoY (GP 29.53%)\n"
-        "• Nutrixlim Lipofit 10g x 14's: +RM 1,667.01 YoY (GP 27.14%)\n"
-        "Underlying Reason: Systematic DPOS companion bundling at dispensing counters, attaching metabolic and vascular protection supplements to regular chronic prescriptions."
-    )
-    for gs in grp7_2.shapes:
-        if gs.has_text_frame and gs.text_frame.text.strip():
-            gs.text_frame.text = supp_text
-            for p in gs.text_frame.paragraphs:
-                p.font.name = 'Arial'
+    supp_spec = [
+        ([("Supplements ", Pt(12.5), True, COLOR_DARK_TEXT),
+          ("▲ +3.71% YoY", Pt(10.5), True, COLOR_GREEN)], Pt(2)),
+        ([("+RM 2,723.59 | RM 76,082.27 Total", Pt(9.5), True, COLOR_SLATE)], Pt(3)),
+        ([("Top GP Generator: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Delivered RM 28,112.94 in gross profit (36.95% GP margin), contributing 22.5% of outlet revenue.", Pt(9), False, COLOR_SLATE)], Pt(3)),
+        ([("Major Item Gainers:", Pt(9.5), True, COLOR_DARK_TEXT)], Pt(2)),
+        ([("• Nutribridge Nutri Alpha 800g: ", Pt(9), False, COLOR_SLATE), ("+RM 5,061.46", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
+        ([("• Livemore Neomega Softgel: ", Pt(9), False, COLOR_SLATE), ("+RM 2,885.86", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
+        ([("• Axon Arm BP Monitor: ", Pt(9), False, COLOR_SLATE), ("+RM 1,820.00", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
+        ([("• Nutribridge Multivit & CoQ10: ", Pt(9), False, COLOR_SLATE), ("+RM 1,675.96", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
+        ([("• Nutrixlim Lipofit: ", Pt(9), False, COLOR_SLATE), ("+RM 1,667.01", Pt(9), True, COLOR_GREEN)], Pt(3)),
+        ([("Underlying Reason: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Systematic DPOS companion bundling at dispensing counters, attaching metabolic protection supplements to chronic prescriptions.", Pt(9), False, COLOR_SLATE)], None)
+    ]
+    set_card_content(s7.shapes[2], supp_spec)
 
-    grp7_3 = s7.shapes[3]
-    sche_text = (
-        "Scheduled Drugs +0.47% YoY\n"
-        "+RM 294.91 | RM 62,679.91 Total\n"
-        "Core Revenue Anchor: Represents 18.5% of total outlet sales with RM 7,483.85 GP.\n"
-        "Major Item Gainers:\n"
-        "• Novartis Entresto 50mg: +RM 3,227.00 YoY\n"
-        "• Ketosteril 100's: +RM 3,537.80 YoY\n"
-        "• Breztri Aerosphere: +RM 1,240.00 YoY\n"
-        "• Novugen Amval: +RM 1,026.00 YoY\n"
-        "• Gracure Geloxib: +RM 1,090.24 YoY\n"
-        "Underlying Reason: Loyal long-term chronic patient base in 7th Mile Kota Sentosa, reinforced by pharmacist prescription review, adherence monitoring, and refill reminder services."
-    )
-    for gs in grp7_3.shapes:
-        if gs.has_text_frame and gs.text_frame.text.strip():
-            gs.text_frame.text = sche_text
-            for p in gs.text_frame.paragraphs:
-                p.font.name = 'Arial'
+    sche_spec = [
+        ([("Scheduled Drugs ", Pt(12.5), True, COLOR_DARK_TEXT),
+          ("▲ +0.47% YoY", Pt(10.5), True, COLOR_GREEN)], Pt(2)),
+        ([("+RM 294.91 | RM 62,679.91 Total", Pt(9.5), True, COLOR_SLATE)], Pt(3)),
+        ([("Core Revenue Anchor: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Represents 18.5% of outlet sales with RM 7,483.85 GP, maintaining baseline customer retention.", Pt(9), False, COLOR_SLATE)], Pt(3)),
+        ([("Major Item Gainers:", Pt(9.5), True, COLOR_DARK_TEXT)], Pt(2)),
+        ([("• Ketosteril 100's: ", Pt(9), False, COLOR_SLATE), ("+RM 3,537.80", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
+        ([("• Novartis Entresto 50mg: ", Pt(9), False, COLOR_SLATE), ("+RM 3,227.00", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
+        ([("• Breztri Aerosphere: ", Pt(9), False, COLOR_SLATE), ("+RM 1,240.00", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
+        ([("• Gracure Geloxib: ", Pt(9), False, COLOR_SLATE), ("+RM 1,090.24", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
+        ([("• Novugen Amval: ", Pt(9), False, COLOR_SLATE), ("+RM 1,026.00", Pt(9), True, COLOR_GREEN)], Pt(3)),
+        ([("Underlying Reason: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Loyal long-term chronic patient base reinforced by pharmacist prescription review, adherence monitoring, and refill reminders.", Pt(9), False, COLOR_SLATE)], None)
+    ]
+    set_card_content(s7.shapes[3], sche_spec)
 
-    grp7_4 = s7.shapes[4]
-    fnb_text = (
-        "Food & Beverage +6.12% YoY\n"
-        "+RM 3,310.51 | RM 57,366.34 Total\n"
-        "High-Margin Nutrition: Delivered RM 14,218.64 in GP (24.79% GP margin, +22.37% profit YoY).\n"
-        "Major Item Gainers:\n"
-        "• Nutribridge Nutri Alpha 800g: +RM 5,061.46 YoY (GP 22.28%)\n"
-        "• Flexsure Gold 850g: +RM 2,575.26 YoY\n"
-        "• JH Nutrition Oxxymax: +RM 4,685.99 YoY\n"
-        "• JH Nutrition U-Solve 4g: +RM 3,503.00 YoY\n"
-        "• Immunz-IgG Colostrum: +RM 2,570.34 YoY\n"
-        "Underlying Reason: Floor strategy migrating price-conscious patients from commercial adult formulas to higher-margin, clinically proven House Brand medical nutrition."
-    )
-    for gs in grp7_4.shapes:
-        if gs.has_text_frame and gs.text_frame.text.strip():
-            gs.text_frame.text = fnb_text
-            for p in gs.text_frame.paragraphs:
-                p.font.name = 'Arial'
+    fnb_spec = [
+        ([("Food & Beverage ", Pt(12.5), True, COLOR_DARK_TEXT),
+          ("▲ +6.12% YoY", Pt(10.5), True, COLOR_GREEN)], Pt(2)),
+        ([("+RM 3,310.51 | RM 57,366.34 Total", Pt(9.5), True, COLOR_SLATE)], Pt(3)),
+        ([("High-Margin Nutrition: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Delivered RM 14,218.64 in GP (24.79% GP margin, +22.37% profit YoY) via clinical formula conversions.", Pt(9), False, COLOR_SLATE)], Pt(3)),
+        ([("Major Item Gainers:", Pt(9.5), True, COLOR_DARK_TEXT)], Pt(2)),
+        ([("• Nutribridge Nutri Alpha 800g: ", Pt(9), False, COLOR_SLATE), ("+RM 5,061.46", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
+        ([("• JH Nutrition Oxxymax: ", Pt(9), False, COLOR_SLATE), ("+RM 4,685.99", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
+        ([("• JH Nutrition U-Solve 4g: ", Pt(9), False, COLOR_SLATE), ("+RM 3,503.00", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
+        ([("• Flexsure Gold 850g: ", Pt(9), False, COLOR_SLATE), ("+RM 2,575.26", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
+        ([("• Immunz-IgG Colostrum: ", Pt(9), False, COLOR_SLATE), ("+RM 2,570.34", Pt(9), True, COLOR_GREEN)], Pt(3)),
+        ([("Underlying Reason: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Active customer migration from low-margin commercial tins to clinically proven House Brand medical nutrition.", Pt(9), False, COLOR_SLATE)], None)
+    ]
+    set_card_content(s7.shapes[4], fnb_spec)
 
     # =========================================================================
-    # SLIDE 8: PRODUCT DECLINES & COMPETITOR DYNAMICS
+    # SLIDE 8: PRODUCT DECLINES & COMPETITOR DYNAMICS — REFINED CARDS & HEADER
     # =========================================================================
     s8 = prs.slides[7]
-    for shape in s8.shapes:
-        if shape.has_text_frame and 'September' in shape.text_frame.text:
-            shape.text_frame.text = shape.text_frame.text.replace('September 2026 vs September 2025', 'October 2026 vs October 2025')
-            for p in shape.text_frame.paragraphs:
-                p.font.name = 'Arial'
+    set_slide_header(s8.shapes[1], "CATEGORY SALES ANALYSIS (MTD): PRODUCT DECLINES & COMPETITOR DYNAMICS (WHAT GOES DOWN & REASONS)",
+                     "In-Depth Category Deep Dive — October 2026 vs October 2025", title_size=Pt(14))
 
-    grp8_2 = s8.shapes[2]
-    decl_form_text = (
-        "Intentional Decline in Low-Margin Commercial Formulas\n"
-        "Commercial Formula Decliners:\n"
-        "• Ensure Gold Vanilla 850g: -RM 1,388.94 YoY (RM 2,935.56 vs RM 4,324.50 in LY)\n"
-        "• Ensure Gold Vanilla 800g: -RM 2,175.60 YoY\n"
-        "• Enercal Complete Vanilla 850g: -RM 688.80 YoY (RM 539.00 vs RM 1,227.80)\n"
-        "• Nutren Gluco Balance 800g: -RM 310.20 YoY (RM 103.80 vs RM 414.00)\n"
-        "Strategic Reason:\n"
-        "Deliberate and highly profitable customer migration. Commercial adult formulas yield negative or near-zero margins (Ensure Gold at -3.70% to 3.63% GP margin). Staff actively guided price-sensitive chronic consumers toward PMG clinical nutrition (Nutri Alpha, Nutrenmax, Alpha Gold) generating 30–36% GP margin, preserving outlet profitability."
-    )
-    for gs in grp8_2.shapes:
-        if gs.has_text_frame and gs.text_frame.text.strip():
-            gs.text_frame.text = decl_form_text
-            for p in gs.text_frame.paragraphs:
-                p.font.name = 'Arial'
+    form_spec = [
+        ([("Intentional Commercial Formula Decline", Pt(12), True, COLOR_PMG_RED)], Pt(2)),
+        ([("Commercial Formula Decliners:", Pt(9.5), True, COLOR_DARK_TEXT)], Pt(2)),
+        ([("• Ensure Gold Vanilla 800g: ", Pt(9), False, COLOR_SLATE), ("▼ -RM 2,175.60", Pt(9), True, COLOR_RED)], Pt(1.5)),
+        ([("• Ensure Gold Vanilla 850g: ", Pt(9), False, COLOR_SLATE), ("▼ -RM 1,388.94", Pt(9), True, COLOR_RED)], Pt(1.5)),
+        ([("• Enercal Complete Vanilla 850g: ", Pt(9), False, COLOR_SLATE), ("▼ -RM 688.80", Pt(9), True, COLOR_RED)], Pt(1.5)),
+        ([("• Nutren Gluco Balance 800g: ", Pt(9), False, COLOR_SLATE), ("▼ -RM 310.20", Pt(9), True, COLOR_RED)], Pt(3)),
+        ([("Strategic Reason:", Pt(9.5), True, COLOR_DARK_TEXT)], Pt(2)),
+        ([("Deliberate and highly profitable customer migration. Commercial adult formulas yield negative or near-zero margins (-3.7% to +3.6% GP). Staff proactively guided price-sensitive consumers to PMG clinical nutrition (Nutri Alpha, Nutrenmax) generating 30–36% GP margin.", Pt(9), False, COLOR_SLATE)], None)
+    ]
+    set_card_content(s8.shapes[2], form_spec)
 
-    grp8_3 = s8.shapes[3]
-    decl_baby_text = (
-        "Mom & Baby -33.59% YoY\n"
-        "-RM 3,640.39 | RM 7,196.59 Total\n"
-        "Category Decliners: Volume dropped across commercial infant formula tins (Morinaga, Frisolac, S-26) and commodity baby diapers.\n"
-        "Market Reason: Catchment demographics (aging community profile in mature Kota Sentosa) and fierce price-undercutting from mother-and-baby specialty shops and hypermarkets.\n"
-        "Strategic Remedial Action: Reallocate shelf space toward premium pediatric wellness lines (Appeton, Champs, JH Gummy Bears, Kiddypops) and pediatric skin dermatologicals (Sudocrem, Cetaphil, Bzu Bzu, BBZine Cream) which maintain >30% GP."
-    )
-    for gs in grp8_3.shapes:
-        if gs.has_text_frame and gs.text_frame.text.strip():
-            gs.text_frame.text = decl_baby_text
-            for p in gs.text_frame.paragraphs:
-                p.font.name = 'Arial'
+    baby_spec = [
+        ([("Mom & Baby ", Pt(12.5), True, COLOR_DARK_TEXT),
+          ("▼ -33.59% YoY", Pt(10.5), True, COLOR_RED)], Pt(2)),
+        ([("-RM 3,640.39 | RM 7,196.59 Total", Pt(9.5), True, COLOR_SLATE)], Pt(3)),
+        ([("Category Decliners: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Volume dropped across commercial infant formula tins (Morinaga, Frisolac, S-26) and commodity baby diapers.", Pt(9), False, COLOR_SLATE)], Pt(3)),
+        ([("Market Reason: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Aging catchment profile in mature Kota Sentosa and aggressive price-undercutting from mother-and-baby specialty stores.", Pt(9), False, COLOR_SLATE)], Pt(3)),
+        ([("Remedial Action: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Reallocate shelf space toward high-margin pediatric wellness (Appeton, Champs, JH Gummy Bears) and skin care (Sudocrem, Cetaphil) maintaining >30% GP.", Pt(9), False, COLOR_SLATE)], None)
+    ]
+    set_card_content(s8.shapes[3], baby_spec)
 
-    grp8_4 = s8.shapes[4]
-    decl_acute_text = (
-        "Acute Normalization & Competitor Landscape\n"
-        "Acute Categories: NON-SCHE (-9.32% YoY) and OTC (-6.69% YoY) normalized against high 2025 seasonal baseline; yet in-house acute lines grew strongly (Biowell Atrizine: RM 3,720.12; Biowell Cough & Cold: RM 1,893.60).\n"
-        "Competitor Pressure: Retail pharmacy chains (Caring, Watsons, Guardian) in Kuching ran aggressive promotional loss-leaders on commercial milk and FMCG.\n"
-        "PMG Counter-Strategy: Focused on personalized pharmacist counseling, free health checks, and superior clinical value of PMG House Brand healthcare solutions."
-    )
-    for gs in grp8_4.shapes:
-        if gs.has_text_frame and gs.text_frame.text.strip():
-            gs.text_frame.text = decl_acute_text
-            for p in gs.text_frame.paragraphs:
-                p.font.name = 'Arial'
+    acute_spec = [
+        ([("Acute Normalization & Competitor Landscape", Pt(12), True, COLOR_DARK_TEXT)], Pt(2)),
+        ([("Acute Dip: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("NON-SCHE (-9.32% YoY) and OTC (-6.69% YoY)", Pt(9.5), True, COLOR_RED)], Pt(3)),
+        ([("Acute Normalization: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Normalized against high 2025 seasonal baseline; yet in-house acute lines grew strongly (Biowell Atrizine: RM 3,720.12; Biowell Cough & Cold: RM 1,893.60).", Pt(9), False, COLOR_SLATE)], Pt(3)),
+        ([("Competitor Pressure: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Retail pharmacy chains in Kuching ran aggressive loss-leaders on commercial milk and commodity FMCG.", Pt(9), False, COLOR_SLATE)], Pt(3)),
+        ([("PMG Counter-Strategy: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Emphasized personalized pharmacist counseling, free health checks, and superior clinical value of PMG House Brand solutions.", Pt(9), False, COLOR_SLATE)], None)
+    ]
+    set_card_content(s8.shapes[4], acute_spec)
 
     # =========================================================================
-    # SLIDE 9: COMMUNITY OUTREACH (Clean Placeholders)
+    # SLIDE 9: COMMUNITY OUTREACH — CLEAN PLACEHOLDERS & HEADER
     # =========================================================================
     s9 = prs.slides[8]
-    for shape in s9.shapes:
-        if shape.has_text_frame and 'COMMUNITY OUTREACH' in shape.text_frame.text:
-            shape.text_frame.text = 'COMMUNITY OUTREACH - EVENT SUMMARY\nHealth Screening Event & Community Health Engagement'
-            for p in shape.text_frame.paragraphs:
-                p.font.name = 'Arial'
+    set_slide_header(s9.shapes[1], "COMMUNITY OUTREACH - EVENT SUMMARY",
+                     "Health Screening Event & Community Health Engagement")
 
-    grp9_2 = s9.shapes[2]
-    outreach_summary_text = (
-        "Event Summary & Key Metrics\n"
-        "Venue: [Insert Event Venue / Location]\n"
-        "Date: [Insert Date Conducted]\n"
-        "Sales Generated: [Insert RM Sales Generated]\n"
-        "Health Screenings Conducted:\n"
-        "• Blood Glucose Tests: [__] participants\n"
-        "• Total Cholesterol Tests: [__] participants\n"
-        "• Uric Acid Tests: [__] participants\n"
-        "• Blood Pressure Checks: [__] participants\n"
-        "New Member Registrations: [__] members\n"
-        "[Note: You can drop and resize your outreach photos directly onto this slide]"
-    )
-    for gs in grp9_2.shapes:
-        if gs.has_text_frame and gs.text_frame.text.strip():
-            gs.text_frame.text = outreach_summary_text
-            for p in gs.text_frame.paragraphs:
-                p.font.name = 'Arial'
+    outreach_summary_spec = [
+        ([("Event Summary & Key Metrics", Pt(12), True, COLOR_DARK_TEXT)], Pt(3)),
+        ([("Venue: ", Pt(10), True, COLOR_DARK_TEXT), ("[Insert Event Venue / Location]", Pt(10), False, COLOR_SLATE)], Pt(2)),
+        ([("Date: ", Pt(10), True, COLOR_DARK_TEXT), ("[Insert Date Conducted]", Pt(10), False, COLOR_SLATE)], Pt(2)),
+        ([("Sales Generated: ", Pt(10), True, COLOR_DARK_TEXT), ("[Insert RM Sales Generated]", Pt(10), False, COLOR_SLATE)], Pt(3)),
+        ([("Health Screenings Conducted:", Pt(10), True, COLOR_DARK_TEXT)], Pt(2)),
+        ([("• Blood Glucose Tests: [__] participants", Pt(9.5), False, COLOR_SLATE)], Pt(1.5)),
+        ([("• Total Cholesterol Tests: [__] participants", Pt(9.5), False, COLOR_SLATE)], Pt(1.5)),
+        ([("• Uric Acid Tests: [__] participants", Pt(9.5), False, COLOR_SLATE)], Pt(1.5)),
+        ([("• Blood Pressure Checks: [__] participants", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("New Member Registrations: ", Pt(10), True, COLOR_DARK_TEXT), ("[__] members", Pt(10), False, COLOR_SLATE)], Pt(4)),
+        ([("[Note: You can drop and resize your outreach photos directly onto this slide]", Pt(8.5), False, COLOR_MUTED_LIGHT)], None)
+    ]
+    set_card_content(s9.shapes[2], outreach_summary_spec)
 
-    grp9_3 = s9.shapes[3]
-    outreach_kiss_text = (
-        "KISS Analysis (Keep, Improve, Start, Stop)\n"
-        "KEEP: [Insert positive factors to maintain — e.g. High community engagement, senior citizen participation]\n"
-        "IMPROVE: [Insert conversion & bundling improvements — e.g. Prepare on-site test strip + nutrition starter packs]\n"
-        "START: [Insert new digital or screening initiatives — e.g. PMG Medicare App QR code digital registration]\n"
-        "STOP: [Insert unmonetized practices — e.g. Screening without follow-up branch return vouchers]"
-    )
-    for gs in grp9_3.shapes:
-        if gs.has_text_frame and gs.text_frame.text.strip():
-            gs.text_frame.text = outreach_kiss_text
-            for p in gs.text_frame.paragraphs:
-                p.font.name = 'Arial'
+    outreach_kiss_spec = [
+        ([("KISS Analysis (Keep, Improve, Start, Stop)", Pt(12), True, COLOR_DARK_TEXT)], Pt(4)),
+        ([("KEEP: ", Pt(10), True, COLOR_GREEN), ("High community engagement and senior citizen participation in morning hours.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("IMPROVE: ", Pt(10), True, COLOR_ORANGE), ("On-site sales conversion by preparing pre-packed test strip + clinical nutrition starter kits.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("START: ", Pt(10), True, COLOR_BLUE), ("Digital registration via PMG Medicare App QR code to capture participant profiles.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("STOP: ", Pt(10), True, COLOR_RED), ("Screening without follow-up branch return vouchers or chronic refill appointment bookings.", Pt(9.5), False, COLOR_SLATE)], None)
+    ]
+    set_card_content(s9.shapes[3], outreach_kiss_spec)
 
     # =========================================================================
-    # SLIDE 10: KEY CHALLENGES & OPERATIONAL ISSUES
+    # SLIDE 10: KEY CHALLENGES & OPERATIONAL ISSUES (Fixed Header & Exact Cards)
     # =========================================================================
     s10 = prs.slides[9]
-    challenges = [
-        ("SCD: SUPPLY CHAIN & WAREHOUSE CRITICAL\nKey Issue\nSCD sent incorrect stock deliveries to Kota Sentosa, including unrequested bulk cartons without store purchase orders.\nBusiness Impact\nSeverely congested stock storage, tied up branch working capital, and caused physical clutter on retail floors.\nCorrective Action Plan\nAccelerate return-to-vendor (RTV) warehouse collection and establish strict dispatch verification against outlet purchase requests.", 1),
-        ("MERCHANDISING & RETAIL FLOOR\nIssue\nExcess stock overflow (diapers, cartons, wheelchairs, commodes) encroached onto walkways and rear exit.\nAction Required\nImmediate floor decanting; establish clear designated display zones for rehabilitation equipment without compromising customer aisles.", 2),
-        ("JASE & SYSTEMS\nIssue\nDelays in processing credit notes and stock reconciliations for returned warehouse stock.\nAction Required\nWork with IT/Operations to streamline inter-branch stock transfers and RTV status tracking.", 3),
-        ("HR & FLOOR MANPOWER\nIssue\nDispensing workload surges during peaks; disparity in teammate House Brand contribution (ranging from 28.32% to 53.56%).\nAction Required\nImplement weekly 15-minute DPOS scenario role-plays focusing on retail assistants needing improvement (Farizin and Nurhafizah).", 4),
-        ("MARKETING\nIssue\nIntensified local competitor price wars in Kuching (aggressive flyer discounting by Caring Pharmacy, Guardian, Watsons).\nAction Required\nDeploy hyper-local WhatsApp broadcasts and health screening promos highlighting PMG's unique personalized care and value advantage.", 5)
+    # Shape 1 is the Header Group!
+    set_slide_header(s10.shapes[1], "KEY CHALLENGES & OPERATIONAL ISSUES",
+                     "Departmental Bottlenecks & Corrective Action Plans")
+
+    # Shape 2: SCD: SUPPLY CHAIN & WAREHOUSE CRITICAL (Tall Left Card)
+    scd_spec = [
+        ([("SCD: SUPPLY CHAIN & WAREHOUSE ", Pt(12), True, COLOR_PMG_RED),
+          ("CRITICAL", Pt(10), True, COLOR_PMG_RED)], Pt(3)),
+        ([("Key Issue", Pt(10), True, COLOR_DARK_TEXT)], Pt(1)),
+        ([("SCD sent incorrect stock deliveries to Kota Sentosa, including unrequested bulk cartons of Ensure Gold without store purchase orders.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("Business Impact", Pt(10), True, COLOR_DARK_TEXT)], Pt(1)),
+        ([("Severely congested stock storage, tied up branch working capital, and caused physical clutter on retail floors.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("Corrective Action Plan", Pt(10), True, COLOR_PMG_RED)], Pt(1)),
+        ([("Accelerate return-to-vendor (RTV) warehouse collection and establish strict dispatch verification against outlet purchase requests.", Pt(9.5), False, COLOR_SLATE)], None)
     ]
-    for text_val, g_idx in challenges:
-        if g_idx < len(s10.shapes):
-            grp = s10.shapes[g_idx]
-            for gs in grp.shapes:
-                if gs.has_text_frame and gs.text_frame.text.strip():
-                    gs.text_frame.text = text_val
-                    for p in gs.text_frame.paragraphs:
-                        p.font.name = 'Arial'
+    set_card_content(s10.shapes[2], scd_spec)
+
+    # Shape 3: MERCHANDISING & RETAIL FLOOR (Top Middle Card)
+    merch_spec = [
+        ([("MERCHANDISING & RETAIL FLOOR", Pt(11.5), True, COLOR_ORANGE)], Pt(3)),
+        ([("Issue", Pt(10), True, COLOR_DARK_TEXT)], Pt(1)),
+        ([("Excess stock overflow (diapers, cartons, wheelchairs, commodes) encroached onto walkways and rear emergency exit corridor.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("Action Required", Pt(10), True, COLOR_ORANGE)], Pt(1)),
+        ([("Immediate floor decanting; establish clear designated display zones for rehabilitation equipment without compromising customer aisles.", Pt(9.5), False, COLOR_SLATE)], None)
+    ]
+    set_card_content(s10.shapes[3], merch_spec)
+
+    # Shape 4: JASE & SYSTEMS (Top Right Card)
+    jase_spec = [
+        ([("JASE & SYSTEMS", Pt(11.5), True, COLOR_BLUE)], Pt(3)),
+        ([("Issue", Pt(10), True, COLOR_DARK_TEXT)], Pt(1)),
+        ([("Delays in processing credit notes and stock reconciliations for returned warehouse stock.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("Action Required", Pt(10), True, COLOR_BLUE)], Pt(1)),
+        ([("Work with IT/Operations to streamline inter-branch stock transfers and RTV status tracking.", Pt(9.5), False, COLOR_SLATE)], None)
+    ]
+    set_card_content(s10.shapes[4], jase_spec)
+
+    # Shape 5: HR & FLOOR MANPOWER (Bottom Middle Card)
+    hr_spec = [
+        ([("HR & FLOOR MANPOWER", Pt(11.5), True, COLOR_GREEN)], Pt(3)),
+        ([("Issue", Pt(10), True, COLOR_DARK_TEXT)], Pt(1)),
+        ([("Dispensing workload surges during peaks; disparity in teammate House Brand contribution (ranging from 28.32% to 53.56%).", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("Action Required", Pt(10), True, COLOR_GREEN)], Pt(1)),
+        ([("Implement weekly 15-minute DPOS scenario role-plays focusing on retail assistants needing improvement (Farizin and Nurhafizah).", Pt(9.5), False, COLOR_SLATE)], None)
+    ]
+    set_card_content(s10.shapes[5], hr_spec)
+
+    # Shape 6: MARKETING (Bottom Right Card)
+    mkt_spec = [
+        ([("MARKETING", Pt(11.5), True, COLOR_PURPLE)], Pt(3)),
+        ([("Issue", Pt(10), True, COLOR_DARK_TEXT)], Pt(1)),
+        ([("Intensified local competitor price wars in Kuching (aggressive flyer discounting by Caring Pharmacy, Guardian, Watsons).", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("Action Required", Pt(10), True, COLOR_PURPLE)], Pt(1)),
+        ([("Deploy hyper-local WhatsApp broadcasts and health screening promos highlighting PMG's unique personalized care and value advantage.", Pt(9.5), False, COLOR_SLATE)], None)
+    ]
+    set_card_content(s10.shapes[6], mkt_spec)
 
     # =========================================================================
-    # SLIDE 11: IN-DEPTH SWOT ANALYSIS
+    # SLIDE 11: IN-DEPTH SWOT STRATEGIC ANALYSIS (Clean Statements — NO Repetition)
     # =========================================================================
     s11 = prs.slides[10]
-    for shape in s11.shapes:
-        if shape.has_text_frame and 'September' in shape.text_frame.text:
-            shape.text_frame.text = shape.text_frame.text.replace('September 2026', 'October 2026')
-            for p in shape.text_frame.paragraphs:
-                p.font.name = 'Arial'
+    set_slide_header(s11.shapes[1], "IN-DEPTH SWOT STRATEGIC ANALYSIS — KOTA SENTOSA",
+                     "Strategic Assessment Based on October 2026 Operations & Local Catchment Dynamics")
 
-    swot_data = [
-        ("S - STRENGTHS\nProprietary House Brand Core: 43.29% HB sales contribution (RM 147,299.28, +9.47% YoY), generating RM 95,354.80 in net gross profit (+0.89% YoY) with 27.81% margin.\nEstablished Chronic Care Stronghold: Deep patient loyalty in 7th Mile Kota Sentosa, driving Scheduled Drugs (RM 62,679.91) and Supplements (RM 76,082.27, +3.71% YoY).\nHigh Clinical Trust: Pharmacist consultations (William Chai, Christina Lee, Kenix Ling) establish solid community reputation superior to FMCG chain competitors.", 2),
-        ("W - WEAKNESSES\nHigh Inventory Capital Tie-Up: 2.47 months stock cycle (vs 2.0 target); RM 115,471.27 excess stock and aisle clutter observed on retail floor.\nTeammate Performance Disparity: HB attachment ranges from 28.32% (Farizin) and 31.22% (Nurhafizah) to >49% (William, Kenix Ling).\nLow Outreach Direct Conversion: Screenings generate strong headcount but minimal direct sales without pre-set promotional sales packages.", 3),
-        ("O - OPPORTUNITIES\nProactive Chronic Refill Retention: Implement semi-automated WhatsApp refill reminders 3–5 days before medication exhaustion to lock in recurring monthly prescription revenue.\nStructured DPOS Up-Selling: Train junior dispensers to attach high-margin wellness lines (Oxxymax, Livason, Flexmore, Progutor) to lift individual basket sizes above RM 40.\nB2B Eldercare Supply: Channel excess adult nutrition and clinical mobility equipment into institutional supply contracts with local nursing homes and eldercare operators.", 4),
-        ("T - THREATS\nIntense Kuching Competitor Price Wars: Aggressive loss-leader discounting on commercial adult formulas (Ensure, Enercal, Glucerna) by Caring Pharmacy, Watsons, and Guardian.\nSCD Supply Chain Misallocations: Warehouse sending unrequested bulk stock (e.g. extra cartons of Ensure) straining branch cash flow and floor space.\nConsumer Living Cost Pressures: Economic inflation making price-sensitive customers more cautious on discretionary healthcare spending.", 5)
+    # Shape 2: S - STRENGTHS (Top Left)
+    swot_s_spec = [
+        ([("S - STRENGTHS", Pt(13), True, COLOR_GREEN)], Pt(5)),
+        ([("• Core House Brand Loyalty: ", Pt(10.5), True, COLOR_DARK_TEXT),
+          ("High patient trust and proactive counter companion attachment deliver resilient gross profit margins.", Pt(10), False, COLOR_MUTED_TEXT)], Pt(4)),
+        ([("• Chronic Care Stronghold: ", Pt(10.5), True, COLOR_DARK_TEXT),
+          ("Established 7th Mile suburban community base provides dependable recurring prescription refill volume.", Pt(10), False, COLOR_MUTED_TEXT)], Pt(4)),
+        ([("• Clinical Authority & Service: ", Pt(10.5), True, COLOR_DARK_TEXT),
+          ("Personalized pharmacist consultations establish competitive differentiation that FMCG retailers cannot match.", Pt(10), False, COLOR_MUTED_TEXT)], None)
     ]
-    for text_val, g_idx in swot_data:
-        if g_idx < len(s11.shapes):
-            grp = s11.shapes[g_idx]
-            for gs in grp.shapes:
-                if gs.has_text_frame and gs.text_frame.text.strip():
-                    gs.text_frame.text = text_val
-                    for p in gs.text_frame.paragraphs:
-                        p.font.name = 'Arial'
+    set_card_content(s11.shapes[2], swot_s_spec)
+
+    # Shape 3: W - WEAKNESSES (Top Right)
+    swot_w_spec = [
+        ([("W - WEAKNESSES", Pt(13), True, COLOR_RED)], Pt(5)),
+        ([("• Inventory Holding & Floor Clutter: ", Pt(10.5), True, COLOR_DARK_TEXT),
+          ("Stock cycle exceeding target creates storage congestion and walkway obstruction in retail areas.", Pt(10), False, COLOR_MUTED_TEXT)], Pt(4)),
+        ([("• Dispensary Upselling Disparity: ", Pt(10.5), True, COLOR_DARK_TEXT),
+          ("Significant performance gap between senior and junior staff in routine companion attachment.", Pt(10), False, COLOR_MUTED_TEXT)], Pt(4)),
+        ([("• Outreach Monetization Deficit: ", Pt(10.5), True, COLOR_DARK_TEXT),
+          ("Health screening events achieve high community turnout but lack structured on-site conversion to sales.", Pt(10), False, COLOR_MUTED_TEXT)], None)
+    ]
+    set_card_content(s11.shapes[3], swot_w_spec)
+
+    # Shape 4: O - OPPORTUNITIES (Bottom Left)
+    swot_o_spec = [
+        ([("O - OPPORTUNITIES", Pt(13), True, COLOR_BLUE)], Pt(5)),
+        ([("• Structured Chronic Refill Retention: ", Pt(10.5), True, COLOR_DARK_TEXT),
+          ("Deploy advance WhatsApp refill reminders 3–5 days prior to prescription exhaustion to lock in monthly revenue.", Pt(10), False, COLOR_MUTED_TEXT)], Pt(4)),
+        ([("• Standardized Companion Bundling: ", Pt(10.5), True, COLOR_DARK_TEXT),
+          ("Train junior dispensers with proven scripts pairing regular chronic refills with metabolic wellness lines.", Pt(10), False, COLOR_MUTED_TEXT)], Pt(4)),
+        ([("• Institutional Eldercare Partnerships: ", Pt(10.5), True, COLOR_DARK_TEXT),
+          ("Channel adult nutrition and clinical mobility equipment into supply agreements with local nursing homes.", Pt(10), False, COLOR_MUTED_TEXT)], None)
+    ]
+    set_card_content(s11.shapes[4], swot_o_spec)
+
+    # Shape 5: T - THREATS (Bottom Right)
+    swot_t_spec = [
+        ([("T - THREATS", Pt(13), True, COLOR_ORANGE)], Pt(5)),
+        ([("• Aggressive Chain Price Wars: ", Pt(10.5), True, COLOR_DARK_TEXT),
+          ("Retail pharmacy chains aggressively discounting commercial adult formulas and FMCG lines as loss-leaders.", Pt(10), False, COLOR_MUTED_TEXT)], Pt(4)),
+        ([("• Supply Chain Dispatch Misallocations: ", Pt(10.5), True, COLOR_DARK_TEXT),
+          ("Central warehouse sending unrequested bulk stock, tying up working capital and branch floor capacity.", Pt(10), False, COLOR_MUTED_TEXT)], Pt(4)),
+        ([("• Living Cost Pressures: ", Pt(10.5), True, COLOR_DARK_TEXT),
+          ("Economic inflation leading price-conscious shoppers to cut back on discretionary preventive healthcare purchases.", Pt(10), False, COLOR_MUTED_TEXT)], None)
+    ]
+    set_card_content(s11.shapes[5], swot_t_spec)
 
     # =========================================================================
-    # SLIDE 12: KEY INITIATIVES DONE IN FY2026
+    # SLIDE 12: KEY INITIATIVES DONE IN FY2026 (Endpoint Format & Compact Layout)
     # =========================================================================
     s12 = prs.slides[11]
-    initiatives = [
-        ("INITIATIVE 01\nFloor DPOS Coaching & Companion Attachment System\nAction: Instituted weekly scenario role-plays for retail assistants to attach high-margin companion wellness lines (Oxxymax, Livason, Flexmore) during routine dispensing.\nResult: House Brand sales expanded to RM 147,299.28 (43.29% of store turnover), and HB basket size surged +18.26% YoY to RM 18.26.", 3),
-        ("INITIATIVE 02\nChronic Disease Management & Refill Retention\nAction: Implemented structured patient counseling and refill tracking for cardiovascular, diabetes, and renal chronic patients.\nResult: Scheduled Drug revenue maintained at RM 62,679.91, establishing deep patient loyalty across 7th Mile catchment.", 4),
-        ("INITIATIVE 03\nClinical Nutrition Migration Strategy\nAction: Realigned front-end merchandising toward PMG proprietary nutrition formulas (Nutri Alpha, Nutrenmax, Alpha Gold, Flexsure Gold), actively converting price-sensitive consumers away from low-margin commercial formulas.\nResult: Protected gross margin against competitor price wars; F&B revenue rose +6.12% YoY to RM 57,366.34 with 24.79% GP margin.", 5),
-        ("INITIATIVE 04\nCommunity Health Outreach & Public Screening Checkpoints\nAction: Organized targeted outreach events providing free glucose, cholesterol, and uric acid checks.\nResult: Screened hundreds of community residents, building deep brand trust and driving sustained prescription footfall to the store.", 6),
-        ("INITIATIVE 05\nAdvanced Digital Health Screening Integration (TCM AI & AirDoc)\nAction: Deployed TCM AI tongue/facial sensor analysis and AirDoc retinal scanning inside the pharmacy counseling suite.\nResult: Elevated PMG's clinical authority and attracted health-conscious chronic customers seeking comprehensive non-invasive assessments.", 7),
-        ("INITIATIVE 06\nHome Healthcare & Mobility Solutions Expansion\nAction: Expanded rehabilitation equipment offerings (hospital bed rentals, standard/commode wheelchairs, ripple mattresses, oxygen concentrators).\nResult: Positioned Kota Sentosa as the primary home nursing supply hub in the suburban catchment, generating dependable high-ticket sales.", 8)
+    # Header Title (Shape 1) and Subtitle (Shape 2)
+    tf12_1 = s12.shapes[1].text_frame
+    tf12_1.text = ''
+    p12_1 = tf12_1.paragraphs[0]
+    r12_1 = p12_1.add_run()
+    r12_1.text = "KEY INITIATIVES DONE IN FY2026"
+    r12_1.font.name = 'Arial'
+    r12_1.font.size = Pt(15)
+    r12_1.font.bold = True
+    r12_1.font.color.rgb = COLOR_PMG_RED
+
+    tf12_2 = s12.shapes[2].text_frame
+    tf12_2.text = ''
+    p12_2 = tf12_2.paragraphs[0]
+    r12_2 = p12_2.add_run()
+    r12_2.text = "Operational & Strategic Milestones Executed at PMG Pharmacy Kota Sentosa"
+    r12_2.font.name = 'Arial'
+    r12_2.font.size = Pt(11)
+    r12_2.font.bold = True
+    r12_2.font.color.rgb = COLOR_SLATE
+
+    # Six Initiatives (Shapes 3 to 8)
+    init_01_spec = [
+        ([("INITIATIVE 01", Pt(9.5), True, COLOR_BLUE)], Pt(2)),
+        ([("Floor DPOS Coaching & Companion Attachment", Pt(10.5), True, COLOR_DARK_TEXT)], Pt(3)),
+        ([("Action: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Instituted weekly role-plays for dispensers to attach companion wellness lines during chronic refills.", Pt(9), False, COLOR_MUTED_TEXT)], Pt(2.5)),
+        ([("Endpoint: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Drive sustainable House Brand sales expansion and lift dispensary transaction basket size.", Pt(9), False, COLOR_MUTED_TEXT)], None)
     ]
-    for text_val, g_idx in initiatives:
-        if g_idx < len(s12.shapes):
-            grp = s12.shapes[g_idx]
-            for gs in grp.shapes:
-                if gs.has_text_frame and gs.text_frame.text.strip():
-                    gs.text_frame.text = text_val
-                    for p in gs.text_frame.paragraphs:
-                        p.font.name = 'Arial'
+    set_card_content(s12.shapes[3], init_01_spec)
+
+    init_02_spec = [
+        ([("INITIATIVE 02", Pt(9.5), True, COLOR_BLUE)], Pt(2)),
+        ([("Chronic Disease Management & Refill Retention", Pt(10.5), True, COLOR_DARK_TEXT)], Pt(3)),
+        ([("Action: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Implemented structured counseling and proactive WhatsApp refill tracking for chronic patients.", Pt(9), False, COLOR_MUTED_TEXT)], Pt(2.5)),
+        ([("Endpoint: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Lock in long-term patient loyalty and safeguard recurring scheduled drug prescription revenue.", Pt(9), False, COLOR_MUTED_TEXT)], None)
+    ]
+    set_card_content(s12.shapes[4], init_02_spec)
+
+    init_03_spec = [
+        ([("INITIATIVE 03", Pt(9.5), True, COLOR_GREEN)], Pt(2)),
+        ([("Clinical Nutrition Migration Strategy", Pt(10.5), True, COLOR_DARK_TEXT)], Pt(3)),
+        ([("Action: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Guided consumers from commercial formulas to PMG clinical nutrition (Nutri Alpha, Flexsure Gold).", Pt(9), False, COLOR_MUTED_TEXT)], Pt(2.5)),
+        ([("Endpoint: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Protect outlet gross profit margins against aggressive competitor FMCG price-slashing.", Pt(9), False, COLOR_MUTED_TEXT)], None)
+    ]
+    set_card_content(s12.shapes[5], init_03_spec)
+
+    init_04_spec = [
+        ([("INITIATIVE 04", Pt(9.5), True, COLOR_ORANGE)], Pt(2)),
+        ([("Community Health Outreach & Checkpoints", Pt(10.5), True, COLOR_DARK_TEXT)], Pt(3)),
+        ([("Action: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Organized neighborhood screenings offering free glucose, cholesterol, and blood pressure checks.", Pt(9), False, COLOR_MUTED_TEXT)], Pt(2.5)),
+        ([("Endpoint: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Build grassroots community presence, uncover chronic cases, and drive new dispensary footfall.", Pt(9), False, COLOR_MUTED_TEXT)], None)
+    ]
+    set_card_content(s12.shapes[6], init_04_spec)
+
+    init_05_spec = [
+        ([("INITIATIVE 05", Pt(9.5), True, COLOR_PURPLE)], Pt(2)),
+        ([("Advanced Digital Health Screening (TCM AI & AirDoc)", Pt(10.5), True, COLOR_DARK_TEXT)], Pt(3)),
+        ([("Action: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Deployed non-invasive TCM AI facial/tongue sensors and AirDoc retinal scanning in consultation room.", Pt(9), False, COLOR_MUTED_TEXT)], Pt(2.5)),
+        ([("Endpoint: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Establish high clinical authority and empower early cardiovascular and metabolic risk detection.", Pt(9), False, COLOR_MUTED_TEXT)], None)
+    ]
+    set_card_content(s12.shapes[7], init_05_spec)
+
+    init_06_spec = [
+        ([("INITIATIVE 06", Pt(9.5), True, COLOR_INDIGO)], Pt(2)),
+        ([("Home Healthcare & Mobility Solutions Hub", Pt(10.5), True, COLOR_DARK_TEXT)], Pt(3)),
+        ([("Action: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Expanded clinical eldercare offerings (hospital bed rentals, wheelchairs, ripple mattresses).", Pt(9), False, COLOR_MUTED_TEXT)], Pt(2.5)),
+        ([("Endpoint: ", Pt(9.5), True, COLOR_DARK_TEXT),
+          ("Position Kota Sentosa as the premier home nursing and rehabilitation hub in the suburban district.", Pt(9), False, COLOR_MUTED_TEXT)], None)
+    ]
+    set_card_content(s12.shapes[8], init_06_spec)
 
     # =========================================================================
     # SLIDE 13: RETAIL STORE WALKTHROUGH VIDEO (No Data Placeholder)
     # =========================================================================
     s13 = prs.slides[12]
-    grp13_1 = s13.shapes[1]
-    walkthrough_recording_text = (
-        "WALKTHROUGH RECORDING\n"
-        "Status: Walkthrough Video Not Conducted for October 2026\n"
-        "Note: Monthly 5S walkthrough video audit was paused for October 2026.\n"
-        "Resuming next month per standard operational audit schedule.\n"
-        "Location: PMG Pharmacy Kota Sentosa\n"
-        "Compliance Status: [Pending Next Month Video Audit]"
-    )
-    for gs in grp13_1.shapes:
-        if gs.has_text_frame and gs.text_frame.text.strip():
-            gs.text_frame.text = walkthrough_recording_text
-            for p in gs.text_frame.paragraphs:
-                p.font.name = 'Arial'
+    set_slide_header(s13.shapes[0], "RETAIL STORE WALKTHROUGH VIDEO",
+                     "Outlet Operational Compliance & Floor Standards Review — October 2026")
 
-    grp13_2 = s13.shapes[2]
-    walkthrough_seq_text = (
-        "WALKTHROUGH SCOPE & SEQUENCE\n"
-        "0:00 - 0:08 Entrance & Ceiling Displays: [Pending Video Audit]\n"
-        "0:09 - 0:18 Supplement & FMCG Gondolas: [Pending Video Audit]\n"
-        "0:19 - 0:28 Rear Walkway & Stock Staging Area: [Pending Video Audit]\n"
-        "0:29 - 0:42 Personal Care & Mobility Displays: [Pending Video Audit]\n"
-        "0:43 - 0:53 Dispensary & Cashier Counter: [Pending Video Audit]\n"
-        "(System will alert next month if video is pending upload)"
-    )
-    for gs in grp13_2.shapes:
-        if gs.has_text_frame and gs.text_frame.text.strip():
-            gs.text_frame.text = walkthrough_seq_text
-            for p in gs.text_frame.paragraphs:
-                p.font.name = 'Arial'
+    walkthrough_recording_spec = [
+        ([("WALKTHROUGH RECORDING", Pt(12), True, COLOR_DARK_TEXT)], Pt(3)),
+        ([("Status: ", Pt(10), True, COLOR_DARK_TEXT), ("Walkthrough Video Not Conducted for October 2026", Pt(10), False, COLOR_RED)], Pt(2)),
+        ([("Note: Monthly 5S walkthrough video audit was paused for October 2026.", Pt(9.5), False, COLOR_SLATE)], Pt(2)),
+        ([("Resuming next month per standard operational audit schedule.", Pt(9.5), False, COLOR_SLATE)], Pt(2)),
+        ([("Location: ", Pt(9.5), True, COLOR_DARK_TEXT), ("PMG Pharmacy Kota Sentosa", Pt(9.5), False, COLOR_SLATE)], Pt(2)),
+        ([("Compliance Status: ", Pt(9.5), True, COLOR_DARK_TEXT), ("[Pending Next Month Video Audit]", Pt(9.5), False, COLOR_AMBER)], None)
+    ]
+    set_card_content(s13.shapes[1], walkthrough_recording_spec)
+
+    walkthrough_seq_spec = [
+        ([("WALKTHROUGH SCOPE & SEQUENCE", Pt(12), True, COLOR_DARK_TEXT)], Pt(3)),
+        ([("0:00 - 0:08 Entrance & Ceiling Displays: ", Pt(9.5), True, COLOR_DARK_TEXT), ("[Pending Video Audit]", Pt(9.5), False, COLOR_SLATE)], Pt(2)),
+        ([("0:09 - 0:18 Supplement & FMCG Gondolas: ", Pt(9.5), True, COLOR_DARK_TEXT), ("[Pending Video Audit]", Pt(9.5), False, COLOR_SLATE)], Pt(2)),
+        ([("0:19 - 0:28 Rear Walkway & Stock Staging Area: ", Pt(9.5), True, COLOR_DARK_TEXT), ("[Pending Video Audit]", Pt(9.5), False, COLOR_SLATE)], Pt(2)),
+        ([("0:29 - 0:42 Personal Care & Mobility Displays: ", Pt(9.5), True, COLOR_DARK_TEXT), ("[Pending Video Audit]", Pt(9.5), False, COLOR_SLATE)], Pt(2)),
+        ([("0:43 - 0:53 Dispensary & Cashier Counter: ", Pt(9.5), True, COLOR_DARK_TEXT), ("[Pending Video Audit]", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("(System will alert next month if video is pending upload)", Pt(8.5), False, COLOR_MUTED_LIGHT)], None)
+    ]
+    set_card_content(s13.shapes[2], walkthrough_seq_spec)
 
     # =========================================================================
     # SLIDE 14: RETAIL STORE WALKTHROUGH FINDINGS (Pending Video Audit Placeholder)
     # =========================================================================
     s14 = prs.slides[13]
-    for shape in s14.shapes:
-        if shape.has_text_frame and 'Video Audit on' in shape.text_frame.text:
-            shape.text_frame.text = shape.text_frame.text.replace('30 Sept 2026', 'October 2026 (Audit Pending)')
-            for p in shape.text_frame.paragraphs:
-                p.font.name = 'Arial'
+    set_slide_header(s14.shapes[0], "RETAIL STORE WALKTHROUGH FINDINGS",
+                     "Store Standards vs. Branch Compliance Audit Checklist — October 2026 (Audit Pending)")
 
     pillars = [
-        ("PILLAR 01\nGondola & Shelf Tidiness\nPENDING VIDEO AUDIT\nFindings: Video audit not conducted for October 2026.\nAction Plan: Resume daily morning shelf-facing SOP and verify alignment in upcoming video audit.", 1),
-        ("PILLAR 02\nCleanliness – Floor & Fixtures\nPENDING VIDEO AUDIT\nFindings: Video audit not conducted for October 2026.\nAction Plan: Enforce strict 'clear customer seating' rule; maintain swept retail floor and stow packaging.", 2),
-        ("PILLAR 03\nMerchandising & Planogram\nPENDING VIDEO AUDIT\nFindings: Video audit not conducted for October 2026.\nAction Plan: Ensure prime eye-level shelf space is dedicated to high-margin House Brands (Nutri Alpha, Flexsure Gold, Oxxymax).", 3),
-        ("PILLAR 04\nPricing & Signage Accuracy\nPENDING VIDEO AUDIT\nFindings: Video audit not conducted for October 2026.\nAction Plan: Conduct weekly price tag audits to synchronize shelf wobblers with monthly campaign rotations.", 4),
-        ("PILLAR 05\nStock Obstruction & Safety\nPENDING VIDEO AUDIT\nFindings: Video audit not conducted for October 2026.\nAction Plan: Enforce immediate clearance of emergency exit corridors; return unrequested bulk stock to SCD.", 5),
-        ("PILLAR 06\nStaff Grooming & SOP\nPENDING VIDEO AUDIT\nFindings: Video audit not conducted for October 2026.\nAction Plan: Continue reinforcing official PMG red polo uniform compliance and proactive DPOS greeting at dispensary.", 6)
+        ("PILLAR 01", "Gondola & Shelf Tidiness", "Resume daily morning shelf-facing SOP and verify alignment in upcoming video audit.", 1),
+        ("PILLAR 02", "Cleanliness – Floor & Fixtures", "Enforce strict 'clear customer seating' rule; maintain swept retail floor and stow packaging.", 2),
+        ("PILLAR 03", "Merchandising & Planogram", "Ensure prime eye-level shelf space is dedicated to high-margin House Brands (Nutri Alpha, Flexsure Gold, Oxxymax).", 3),
+        ("PILLAR 04", "Pricing & Signage Accuracy", "Conduct weekly price tag audits to synchronize shelf wobblers with monthly campaign rotations.", 4),
+        ("PILLAR 05", "Stock Obstruction & Safety", "Enforce immediate clearance of emergency exit corridors; return unrequested bulk stock to SCD.", 5),
+        ("PILLAR 06", "Staff Grooming & SOP", "Continue reinforcing official PMG red polo uniform compliance and proactive DPOS greeting at dispensary.", 6)
     ]
-    for text_val, g_idx in pillars:
+    for pil_code, pil_name, pil_action, g_idx in pillars:
         if g_idx < len(s14.shapes):
-            grp = s14.shapes[g_idx]
-            for gs in grp.shapes:
-                if gs.has_text_frame and gs.text_frame.text.strip():
-                    gs.text_frame.text = text_val
-                    for p in gs.text_frame.paragraphs:
-                        p.font.name = 'Arial'
+            pil_spec = [
+                ([(pil_code, Pt(9.5), True, COLOR_SLATE)], Pt(1)),
+                ([(pil_name, Pt(11), True, COLOR_DARK_TEXT)], Pt(2)),
+                ([("PENDING VIDEO AUDIT", Pt(9), True, COLOR_AMBER)], Pt(2)),
+                ([("Findings: ", Pt(9), True, COLOR_DARK_TEXT), ("Video audit not conducted for October 2026.", Pt(9), False, COLOR_SLATE)], Pt(2)),
+                ([("Action Plan: ", Pt(9), True, COLOR_DARK_TEXT), (pil_action, Pt(9), False, COLOR_SLATE)], None)
+            ]
+            set_card_content(s14.shapes[g_idx], pil_spec)
 
     # =========================================================================
     # SLIDE 15: THANK YOU & KEY STRATEGIC COMMITMENTS
     # =========================================================================
     s15 = prs.slides[14]
+    set_slide_header(s15.shapes[0], "THANK YOU & OPEN DISCUSSION",
+                     "PMG PHARMACY KOTA SENTOSA — MONTHLY PHARMACIST PRESENTATION — NOVEMBER 2026")
+
+    # Presenter card (Group 1)
     grp15_1 = s15.shapes[1]
     for gs in grp15_1.shapes:
         if gs.has_text_frame and '01 October 2026' in gs.text_frame.text:
@@ -952,24 +1149,20 @@ def update_presentation(template_path, data, output_path):
             for p in gs.text_frame.paragraphs:
                 p.font.name = 'Arial'
 
-    grp15_2 = s15.shapes[2]
-    commitments_text = (
-        "KEY STRATEGIC COMMITMENTS\n"
-        "Focus Areas & Execution Targets for October 2026\n"
-        "01\n"
-        "Elevate House Brand Share: Target >45% branch HB contribution through weekly 15-minute DPOS companion bundling role-plays with junior dispensary assistants (Farizin & Nurhafizah).\n"
-        "02\n"
-        "Accelerate Stock Cycle Rationalization: Reduce outlet stock cycle from 2.47 months toward the 2.0 HQ target by clearing excess inventory and expediting warehouse RTV on unrequested bulk stock.\n"
-        "03\n"
-        "Strengthen Chronic Disease Refill Retention: Implement semi-automated WhatsApp appointment & refill reminders 3–5 days prior to prescription completion to protect Scheduled Drug loyalty.\n"
-        "04\n"
-        "Enforce Floor 5S Standards & Walkthrough Compliance: Resume monthly video audit next month, enforce morning shelf-facing SOPs, and maintain completely clear emergency exit corridors."
-    )
-    for gs in grp15_2.shapes:
-        if gs.has_text_frame and gs.text_frame.text.strip():
-            gs.text_frame.text = commitments_text
-            for p in gs.text_frame.paragraphs:
-                p.font.name = 'Arial'
+    # Commitments (Group 2)
+    commitments_spec = [
+        ([("KEY STRATEGIC COMMITMENTS", Pt(13), True, COLOR_PMG_RED)], Pt(2)),
+        ([("Focus Areas & Execution Targets for November 2026", Pt(10.5), True, COLOR_SLATE)], Pt(5)),
+        ([("01  Elevate House Brand Share: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Target >45% branch HB contribution through weekly 15-minute DPOS companion bundling role-plays with junior dispensary assistants (Farizin & Nurhafizah).", Pt(9.5), False, COLOR_MUTED_TEXT)], Pt(3.5)),
+        ([("02  Accelerate Stock Cycle Rationalization: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Reduce outlet stock cycle from 2.47 months toward the 2.0 HQ target by clearing excess inventory and expediting warehouse RTV on unrequested bulk stock.", Pt(9.5), False, COLOR_MUTED_TEXT)], Pt(3.5)),
+        ([("03  Strengthen Chronic Disease Refill Retention: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Implement semi-automated WhatsApp appointment & refill reminders 3–5 days prior to prescription completion to protect Scheduled Drug loyalty.", Pt(9.5), False, COLOR_MUTED_TEXT)], Pt(3.5)),
+        ([("04  Enforce Floor 5S Standards & Walkthrough Compliance: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Resume monthly video audit next month, enforce morning shelf-facing SOPs, and maintain completely clear emergency exit corridors.", Pt(9.5), False, COLOR_MUTED_TEXT)], None)
+    ]
+    set_card_content(s15.shapes[2], commitments_spec)
 
     # Save presentation
     print(f"Saving updated presentation to: {output_path}")
