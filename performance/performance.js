@@ -1705,21 +1705,33 @@ function buildDynamicBaselineReport(m, state) {
       return sorted.map((t, idx) => {
         const norm = normalizeTeammateName(t.name);
         const sid = 'tm-' + norm.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-        const m3Summary = `3M Trajectory: M-2 RM ${fmtNum(t.tsM2)} ➔ M-1 RM ${fmtNum(t.tsM1)} ➔ Latest RM ${fmtNum(t.tsLatest)} (${t.ts3mPct >= 0 ? '+' : ''}${t.ts3mPct.toFixed(1)}% 3M, ${t.tsMoMPct >= 0 ? '+' : ''}${t.tsMoMPct.toFixed(1)}% MoM) | HB%: ${t.hbPctM2.toFixed(1)}% ➔ ${t.hbPctM1.toFixed(1)}% ➔ ${t.hbPctLatest.toFixed(1)}% | GP%: ${t.gpPctLatest.toFixed(1)}% | Tx: ${fmtNum(t.txLatest)} (Basket: RM ${t.basketTsLatest.toFixed(2)})`;
+        
+        const m3PctText = (t.ts3mPct !== null && isFinite(t.ts3mPct)) ? `${t.ts3mPct >= 0 ? '+' : ''}${Number(t.ts3mPct).toFixed(1)}% 3M` : 'New';
+        const momPctText = (t.tsMoMPct !== null && isFinite(t.tsMoMPct)) ? `${t.tsMoMPct >= 0 ? '+' : ''}${Number(t.tsMoMPct).toFixed(1)}% MoM` : 'New';
+        const hbM2Text = (t.hbPctM2 !== null && isFinite(t.hbPctM2)) ? `${Number(t.hbPctM2).toFixed(1)}%` : '—';
+        const hbM1Text = (t.hbPctM1 !== null && isFinite(t.hbPctM1)) ? `${Number(t.hbPctM1).toFixed(1)}%` : '—';
+        const hbLatestText = (t.hbPctLatest !== null && isFinite(t.hbPctLatest)) ? `${Number(t.hbPctLatest).toFixed(1)}%` : '—';
+        const gpLatestText = (t.gpPctLatest !== null && isFinite(t.gpPctLatest)) ? `${Number(t.gpPctLatest).toFixed(1)}%` : '—';
+        const basketTsVal = Number(t.basketTsLatest || 0).toFixed(2);
+        const basketHbVal = Number(t.basketHbLatest || 0).toFixed(2);
+        const hbLatestVal = Number(t.hbPctLatest || 0).toFixed(2);
+        const gpLatestVal = Number(t.gpPctLatest || 0).toFixed(2);
+
+        const m3Summary = `3M Trajectory: M-2 RM ${fmtNum(t.tsM2)} ➔ M-1 RM ${fmtNum(t.tsM1)} ➔ Latest RM ${fmtNum(t.tsLatest)} (${m3PctText}, ${momPctText}) | HB%: ${hbM2Text} ➔ ${hbM1Text} ➔ ${hbLatestText} | GP%: ${gpLatestText} | Tx: ${fmtNum(t.txLatest)} (Basket: RM ${basketTsVal})`;
 
         let statusBadge = '';
         let commentAndAction = '';
 
         if (t.picAlertRequired) {
-          statusBadge = `⚠️ PRIORITY PIC ADVISORY ALERT: ${t.picAlertReasonShort}`;
+          statusBadge = `⚠️ PRIORITY PIC ADVISORY ALERT: ${t.picAlertReasonShort || 'Action Required'}`;
           if (norm.includes('FARIZIN')) {
-            commentAndAction = `⚠️ PRIORITY PIC ADVISORY (Pharmacist William): Farizin served ${fmtNum(t.txLatest)} customers (3rd highest footfall) and achieved a 9.01% HM share, but his HB share (${t.hbPctLatest.toFixed(2)}%) and HB Basket Size (RM ${t.basketHbLatest.toFixed(2)} vs branch RM 18.38) are the lowest among active staff. William must conduct 1-on-1 coaching and pair Farizin with Penny for 1 week at the OTC/nutrition counter, enforcing a daily minimum target of RM 450+ HB sales.`;
+            commentAndAction = `⚠️ PRIORITY PIC ADVISORY (Pharmacist William): Farizin served ${fmtNum(t.txLatest)} customers (3rd highest footfall) and achieved a 9.01% HM share, but his HB share (${hbLatestVal}%) and HB Basket Size (RM ${basketHbVal} vs branch RM 18.38) are the lowest among active staff. William must conduct 1-on-1 coaching and pair Farizin with Penny for 1 week at the OTC/nutrition counter, enforcing a daily minimum target of RM 450+ HB sales.`;
           } else if (norm.includes('LOUNA') || norm.includes('HANIESHA')) {
-            commentAndAction = `⚠️ PRIORITY PIC ADVISORY (Pharmacist William): As ABM, Louna's personal TS contracted -15.2% over 3 months (from RM 38,394 to RM 32,557) and personal GP Margin fell -1.94 pp to ${t.gpPctLatest.toFixed(2)}% (lowest in active team). William to coach Louna to cease unattached checkout of low-margin F & B adult milk / SCHE-DRU items and mandate attaching high-margin SUPPLEME / NON-SCHE (35%+ GP) items to bring her personal GP% back above 27.5%.`;
+            commentAndAction = `⚠️ PRIORITY PIC ADVISORY (Pharmacist William): As ABM, Louna's personal TS contracted -15.2% over 3 months (from RM 38,394 to RM 32,557) and personal GP Margin fell -1.94 pp to ${gpLatestVal}% (lowest in active team). William to coach Louna to cease unattached checkout of low-margin F & B adult milk / SCHE-DRU items and mandate attaching high-margin SUPPLEME / NON-SCHE (35%+ GP) items to bring her personal GP% back above 27.5%.`;
           } else if (norm.includes('FIONA')) {
             commentAndAction = `⚠️ PRIORITY PIC ADVISORY (Pharmacist William): Fiona suffered a 3-month sales contraction of -23.4% (from RM 41,200 to RM 31,577) alongside a loss of 253 transactions (-23.4% customers). While her TS Basket is healthy (RM 38.18), volume dropped drastically. William to assign Fiona prime morning greeting duty during 7th Mile wet-market peak (7:30 - 10:30 AM) with a minimum daily target of 32 transactions.`;
           } else if (norm.includes('NURHAFIZAH')) {
-            commentAndAction = `⚠️ PRIORITY PIC ADVISORY (Pharmacist William): Nurhafizah is Kota Sentosa's #1 HM champion (11.73% HM share, +43.79% YoY), but her HB% has slipped over 3 consecutive months (${t.hbPctM2.toFixed(1)}% ➔ ${t.hbPctM1.toFixed(1)}% ➔ ${t.hbPctLatest.toFixed(1)}%). William to guide her to transfer her high-conviction HM consulting methods to core House Brand supplement and first-aid lines to lift HB% back above 35%.`;
+            commentAndAction = `⚠️ PRIORITY PIC ADVISORY (Pharmacist William): Nurhafizah is Kota Sentosa's #1 HM champion (11.73% HM share, +43.79% YoY), but her HB% has slipped over 3 consecutive months (${hbM2Text} ➔ ${hbM1Text} ➔ ${hbLatestText}). William to guide her to transfer her high-conviction HM consulting methods to core House Brand supplement and first-aid lines to lift HB% back above 35%.`;
           } else {
             commentAndAction = `⚠️ PRIORITY PIC ADVISORY (Pharmacist William): ${t.picAlertReason}. William to schedule a 1-on-1 coaching session to review counter attachment scripts, set a weekly HB sales quota, and monitor daily progress.`;
           }
@@ -1737,7 +1749,7 @@ function buildDynamicBaselineReport(m, state) {
             statusBadge = '⭐ #1 Profit Leader & Clinical Benchmark';
             commentAndAction = `William leads Kota Sentosa in Gross Profit RM (RM 15,577.29), HB RM (RM 26,315.55), and TS Basket Size (RM 97.22, 49.94% HB). Document William's high-ticket chronic + supplement consultation framework into a standard branch SOP.`;
           } else {
-            statusBadge = `✅ On Target (${t.hbPctLatest.toFixed(1)}% HB, ${t.gpPctLatest.toFixed(1)}% GP)`;
+            statusBadge = `✅ On Target (${hbLatestText} HB, ${gpLatestText} GP)`;
             commentAndAction = `${t.name} is performing steadily across the 3-month trajectory. Maintain consistent attachment of House Brand items and sustain daily customer interaction targets.`;
           }
         }
@@ -1760,39 +1772,43 @@ function buildGeminiPrompt(m, state) {
   const o = m.outlet;
   const hq = m.catSummaryHq11;
   const all12 = m.catSummaryAll12;
+
+  const nFmt = (val, dec = 2, fallback = '0.00') => (val != null && isFinite(val)) ? Number(val).toFixed(dec) : fallback;
+  const pFmt = (val, dec = 1, showSign = false, fallback = '—') => (val != null && isFinite(val)) ? `${showSign && val > 0 ? '+' : ''}${Number(val).toFixed(dec)}%` : fallback;
+
   const cats = m.categories.map(c =>
-    `- ${c.category}${c.isHqFocus ? '' : ' (Excluded from HQ 11 Stock Cycle focus)'}: Latest Price RM ${c.netSoldPriceLatest.toFixed(2)} vs Prev RM ${c.netSoldPricePrev.toFixed(2)} (${c.priceDiffPct.toFixed(2)}%), Latest Profit RM ${c.netSoldProfitLatest.toFixed(2)} vs Prev RM ${c.netSoldProfitPrev.toFixed(2)} (${c.profitDiffPct.toFixed(2)}%), GP% ${c.gpPctLatest.toFixed(2)}% vs ${c.gpPctPrev.toFixed(2)}% (${c.gpPctDiffPP >= 0 ? '+' : ''}${c.gpPctDiffPP.toFixed(2)} pp), CostOfSales RM ${c.costOfSalesLatest.toFixed(2)}, ClosingCustomCost RM ${c.totalCustomCost.toFixed(2)}, PMG_StockCycle (CustomCost / COS) = ${c.pmgStockCycle.toFixed(2)} (HQ Target = 2.0), 6M_AgedValue RM ${c.agedValueRm.toFixed(2)}`
+    `- ${c.category}${c.isHqFocus ? '' : ' (Excluded from HQ 11 Stock Cycle focus)'}: Latest Price RM ${nFmt(c.netSoldPriceLatest)} vs Prev RM ${nFmt(c.netSoldPricePrev)} (${pFmt(c.priceDiffPct, 2)}), Latest Profit RM ${nFmt(c.netSoldProfitLatest)} vs Prev RM ${nFmt(c.netSoldProfitPrev)} (${pFmt(c.profitDiffPct, 2)}), GP% ${nFmt(c.gpPctLatest)}% vs ${nFmt(c.gpPctPrev)}% (${pFmt(c.gpPctDiffPP, 2, true).replace('%', ' pp')}), CostOfSales RM ${nFmt(c.costOfSalesLatest)}, ClosingCustomCost RM ${nFmt(c.totalCustomCost)}, PMG_StockCycle = ${nFmt(c.pmgStockCycle)} (HQ Target = 2.0), 6M_AgedValue RM ${nFmt(c.agedValueRm)}`
   ).join('\n');
 
   const staff = m.teammates.filter(t => t.isActiveLatest || t.hasPrevYear).map(t =>
-    `- ${t.name} [${t.role}]: Latest TS RM ${t.tsLatest.toFixed(2)} (Prev RM ${t.tsPrev.toFixed(2)} | M-1 RM ${t.tsM1.toFixed(2)} | M-2 RM ${t.tsM2.toFixed(2)} | 3M Trend: ${t.ts3mPct >= 0 ? '+' : ''}${t.ts3mPct.toFixed(1)}% | MoM: ${t.tsMoMPct >= 0 ? '+' : ''}${t.tsMoMPct.toFixed(1)}%), HB RM ${t.hbLatest.toFixed(2)} (HB% 3M Trajectory: M-2 ${t.hbPctM2.toFixed(1)}% ➔ M-1 ${t.hbPctM1.toFixed(1)}% ➔ Latest ${t.hbPctLatest.toFixed(1)}%), HM RM ${t.hmLatest.toFixed(2)} (${t.hmPctOwnTsLatest.toFixed(2)}%), Tx ${t.txLatest} (Prev ${t.txPrev}), BasketTS RM ${t.basketTsLatest.toFixed(2)}, BasketHB RM ${t.basketHbLatest.toFixed(2)}, GP RM ${t.gpRmLatest.toFixed(2)} (GP% 3M Trajectory: M-2 ${t.gpPctM2.toFixed(1)}% ➔ M-1 ${t.gpPctM1.toFixed(1)}% ➔ Latest ${t.gpPctLatest.toFixed(1)}%). [PIC Alert Status: ${t.picAlertRequired ? 'CRITICAL ALERT - ' + t.picAlertReason : 'NORMAL'}]`
+    `- ${t.name} [${t.role}]: Latest TS RM ${nFmt(t.tsLatest)} (Prev RM ${nFmt(t.tsPrev)} | M-1 RM ${nFmt(t.tsM1)} | M-2 RM ${nFmt(t.tsM2)} | 3M Trend: ${pFmt(t.ts3mPct, 1, true, 'New')} | MoM: ${pFmt(t.tsMoMPct, 1, true, 'New')}), HB RM ${nFmt(t.hbLatest)} (HB% 3M Trajectory: M-2 ${pFmt(t.hbPctM2)} ➔ M-1 ${pFmt(t.hbPctM1)} ➔ Latest ${pFmt(t.hbPctLatest)}), HM RM ${nFmt(t.hmLatest)} (${pFmt(t.hmPctOwnTsLatest, 2)}), Tx ${t.txLatest || 0} (Prev ${t.txPrev || 0}), BasketTS RM ${nFmt(t.basketTsLatest)}, BasketHB RM ${nFmt(t.basketHbLatest)}, GP RM ${nFmt(t.gpRmLatest)} (GP% 3M Trajectory: M-2 ${pFmt(t.gpPctM2)} ➔ M-1 ${pFmt(t.gpPctM1)} ➔ Latest ${pFmt(t.gpPctLatest)}). [PIC Alert Status: ${t.picAlertRequired ? 'CRITICAL ALERT - ' + (t.picAlertReason || '') : 'NORMAL'}]`
   ).join('\n');
 
-  const topHeroes = m.topHeroSkus.slice(0, 8).map(s =>
-    `${s.itemCode} ${s.itemName} (${s.category}): +RM ${s.priceDiffRm.toFixed(2)} (Latest RM ${s.priceLatest.toFixed(2)} vs LY RM ${s.pricePrev.toFixed(2)}, GP ${s.gpPctLatest.toFixed(1)}%)`
-  ).join('; ');
+  const topHeroes = (m.topHeroSkus || []).slice(0, 8).map(s =>
+    `${s.itemCode} ${s.itemName} (${s.category}): +RM ${nFmt(s.priceDiffRm)} (Latest RM ${nFmt(s.priceLatest)} vs LY RM ${nFmt(s.pricePrev)}, GP ${pFmt(s.gpPctLatest)})`
+  ).join('; ') || 'None';
 
-  const topBleeders = m.topBleederSkus.slice(0, 8).map(s =>
-    `${s.itemCode} ${s.itemName} (${s.category}): ${s.priceDiffRm.toFixed(2)} (Latest RM ${s.priceLatest.toFixed(2)} vs LY RM ${s.pricePrev.toFixed(2)}, GP ${s.gpPctLatest.toFixed(1)}%)`
-  ).join('; ');
+  const topBleeders = (m.topBleederSkus || []).slice(0, 8).map(s =>
+    `${s.itemCode} ${s.itemName} (${s.category}): RM ${nFmt(s.priceDiffRm)} (Latest RM ${nFmt(s.priceLatest)} vs LY RM ${nFmt(s.pricePrev)}, GP ${pFmt(s.gpPctLatest)})`
+  ).join('; ') || 'None';
 
   return `You are a Chief Retail Pharmacy Strategist & Commercial Analyst for PMG Pharmacy Kota Sentosa (7th Mile Bazaar, Penrissen Road, Kuching, Sarawak).
 Analyze the following verified monthly performance dataset comparing Latest Month (${state.meta?.latestPeriodLabel || 'Latest Month'}) against Previous Year Same Month (${state.meta?.prevYearPeriodLabel || 'Prev Year'}) and the Latest 3-Month trend:
 
 1. OUTLET SUMMARY KPIs:
-- Total Sales (TS): RM ${o.tsLatest.toFixed(2)} vs LY RM ${o.tsPrev.toFixed(2)} (${o.tsDiffPct.toFixed(2)}%)
-- House Brand (HB): RM ${o.hbLatest.toFixed(2)} (${o.hbShareLatestPct.toFixed(2)}% of TS) vs LY RM ${o.hbPrev.toFixed(2)} (${o.hbSharePrevPct.toFixed(2)}% of TS), YoY change: ${o.hbDiffPct.toFixed(2)}%
-- House Margin (HM): RM ${o.hmLatest.toFixed(2)} (${o.hmShareLatestPct.toFixed(2)}% of TS) vs LY RM ${o.hmPrev.toFixed(2)} (${o.hmSharePrevPct.toFixed(2)}% of TS), YoY change: ${o.hmDiffPct.toFixed(2)}%
-- Personal Gross Profit Total: RM ${o.personalGpTotalLatest.netSoldProfit.toFixed(2)} (${o.personalGpTotalLatest.gpMarginPct.toFixed(2)}%) vs LY RM ${o.personalGpTotalPrev.netSoldProfit.toFixed(2)} (${o.personalGpTotalPrev.gpMarginPct.toFixed(2)}%)
-- Total Transactions (Customers Served): ${o.txLatest} vs LY ${o.txPrev} (${o.txDiffPct.toFixed(2)}%)
-- TS Basket Size: RM ${o.basketTsLatest.toFixed(2)} vs LY RM ${o.basketTsPrev.toFixed(2)} (${o.basketTsDiffPct.toFixed(2)}%)
-- HB Basket Size: RM ${o.basketHbLatest.toFixed(2)} vs LY RM ${o.basketHbPrev.toFixed(2)} (${o.basketHbDiffPct.toFixed(2)}%)
-- 3-Month Horizon: M-2 TS RM ${(m.threeMonthTrend.m2.ts || 0).toFixed(2)}, M-1 TS RM ${(m.threeMonthTrend.m1.ts || 0).toFixed(2)}, Latest TS RM ${o.tsLatest.toFixed(2)}
+- Total Sales (TS): RM ${nFmt(o.tsLatest)} vs LY RM ${nFmt(o.tsPrev)} (${pFmt(o.tsDiffPct, 2, true)})
+- House Brand (HB): RM ${nFmt(o.hbLatest)} (${pFmt(o.hbShareLatestPct, 2)} of TS) vs LY RM ${nFmt(o.hbPrev)} (${pFmt(o.hbSharePrevPct, 2)} of TS), YoY change: ${pFmt(o.hbDiffPct, 2, true)}
+- House Margin (HM): RM ${nFmt(o.hmLatest)} (${pFmt(o.hmShareLatestPct, 2)} of TS) vs LY RM ${nFmt(o.hmPrev)} (${pFmt(o.hmSharePrevPct, 2)} of TS), YoY change: ${pFmt(o.hmDiffPct, 2, true)}
+- Personal Gross Profit Total: RM ${nFmt(o.personalGpTotalLatest?.netSoldProfit)} (${pFmt(o.personalGpTotalLatest?.gpMarginPct, 2)}) vs LY RM ${nFmt(o.personalGpTotalPrev?.netSoldProfit)} (${pFmt(o.personalGpTotalPrev?.gpMarginPct, 2)})
+- Total Transactions (Customers Served): ${o.txLatest || 0} vs LY ${o.txPrev || 0} (${pFmt(o.txDiffPct, 2, true)})
+- TS Basket Size: RM ${nFmt(o.basketTsLatest)} vs LY RM ${nFmt(o.basketTsPrev)} (${pFmt(o.basketTsDiffPct, 2, true)})
+- HB Basket Size: RM ${nFmt(o.basketHbLatest)} vs LY RM ${nFmt(o.basketHbPrev)} (${pFmt(o.basketHbDiffPct, 2, true)})
+- 3-Month Horizon: M-2 TS RM ${nFmt(m.threeMonthTrend?.m2?.ts)}, M-1 TS RM ${nFmt(m.threeMonthTrend?.m1?.ts)}, Latest TS RM ${nFmt(o.tsLatest)}
 
 2. ALL 12 CATEGORIES (NET SOLD PRICE, PROFIT & GP%) & 11 HQ FOCUS STOCK CYCLE:
 Formula: COST OF SALES = NET SOLD PRICE - NET SOLD PROFIT; STOCK CYCLE = TOTAL CUSTOM COST / COST OF SALES (HQ TARGET = 2.0); AVERAGE STOCK CYCLE = TOTAL CUSTOM COST / TOTAL COST OF SALES
-All 12 Categories Total (KPIs 7, 8, 9): Net Sold Price RM ${all12.netSoldPriceLatest.toFixed(2)} (vs LY RM ${all12.netSoldPricePrev.toFixed(2)}, ${all12.priceDiffPct.toFixed(2)}%), Net Sold Profit RM ${all12.netSoldProfitLatest.toFixed(2)} (vs LY RM ${all12.netSoldProfitPrev.toFixed(2)}, ${all12.profitDiffPct.toFixed(2)}%), GP% ${all12.gpPctLatest.toFixed(2)}% (vs LY ${all12.gpPctPrev.toFixed(2)}%, +${all12.gpPctDiffPP.toFixed(2)} pp).
-HQ 11 Focus Stock Cycle Subtotal (Excl. WYMED-EX): Cost of Sales RM ${hq.costOfSalesLatest.toFixed(2)}, Closing Custom Cost RM ${hq.totalCustomCost.toFixed(2)}, Average Stock Cycle = ${hq.averageStockCycle.toFixed(2)} vs HQ Target 2.0 (Excess Stock above 2.0 target = RM ${hq.excessStockRm.toFixed(2)}).
+All 12 Categories Total (KPIs 7, 8, 9): Net Sold Price RM ${nFmt(all12?.netSoldPriceLatest)} (vs LY RM ${nFmt(all12?.netSoldPricePrev)}, ${pFmt(all12?.priceDiffPct, 2, true)}), Net Sold Profit RM ${nFmt(all12?.netSoldProfitLatest)} (vs LY RM ${nFmt(all12?.netSoldProfitPrev)}, ${pFmt(all12?.profitDiffPct, 2, true)}), GP% ${pFmt(all12?.gpPctLatest, 2)} (vs LY ${pFmt(all12?.gpPctPrev, 2)}, ${pFmt(all12?.gpPctDiffPP, 2, true).replace('%', ' pp')}).
+HQ 11 Focus Stock Cycle Subtotal (Excl. WYMED-EX): Cost of Sales RM ${nFmt(hq?.costOfSalesLatest)}, Closing Custom Cost RM ${nFmt(hq?.totalCustomCost)}, Average Stock Cycle = ${nFmt(hq?.averageStockCycle)} vs HQ Target 2.0 (Excess Stock above 2.0 target = RM ${nFmt(hq?.excessStockRm)}).
 Category Breakdown:
 ${cats}
 
@@ -1802,7 +1818,7 @@ ${staff}
 4. GRANULAR SKU & 6-MONTH STOCK AGING HIGHLIGHTS:
 - Top Growth SKUs: ${topHeroes}
 - Top Declining SKUs: ${topBleeders}
-- 6-Month Stock Aging: ${m.agingSummary.totalAgedSkus} SKUs with ≥6M aged stock totaling RM ${m.agingSummary.totalAgedValueRm.toFixed(2)} (including RM ${m.agingSummary.totalAbove1YrValueRm.toFixed(2)} aged >1 year).
+- 6-Month Stock Aging: ${m.agingSummary?.totalAgedSkus || 0} SKUs with ≥6M aged stock totaling RM ${nFmt(m.agingSummary?.totalAgedValueRm)} (including RM ${nFmt(m.agingSummary?.totalAbove1YrValueRm)} aged >1 year).
 - Video Walkthrough Report Notes: ${state.videoWalkthroughReport || 'None provided'}
 
 CRITICAL INSTRUCTION FOR TEAMMATE COACHING & PIC ALERTS:
@@ -5143,6 +5159,15 @@ function showToast(msg, type = 'info') {
 }
 
 // ─── INITIALIZE ON DOM READY ────────────────────────────────────────────────
+if (typeof window !== 'undefined') {
+  window.perfState = perfState;
+  window.refreshAllViews = refreshAllViews;
+  window.computeAllMetrics = computeAllMetrics;
+  window.buildDynamicBaselineReport = buildDynamicBaselineReport;
+  window.buildGeminiPrompt = buildGeminiPrompt;
+  window.handleBatchCsvFiles = handleBatchCsvFiles;
+}
+
 if (typeof document !== 'undefined') {
   document.addEventListener('DOMContentLoaded', () => {
     loadInitialState();
@@ -5163,6 +5188,8 @@ if (typeof module !== 'undefined' && module.exports) {
     parseAgingCsv,
     autoDetectCsvTypeAndPeriod,
     computeAllMetrics,
-    buildDynamicBaselineReport
+    buildDynamicBaselineReport,
+    buildGeminiPrompt,
+    handleBatchCsvFiles
   };
 }
