@@ -12,6 +12,46 @@ let invActiveFilterPill = 'ALL'; // 'ALL', 'REORDER', 'MOMENTUM', 'STOCKOUT', 'A
 
 // ─── PACKAGING SPECIFICATION & UOM CONVERSION PARSER ─────────────────────────
 /**
+ * Normalizes UOM strings to standard catalog formats
+ */
+function normalizeUom(val) {
+  if (!val) return 'PCS';
+  const s = String(val).trim().toUpperCase();
+  if (s === 'PC' || s === 'PCS' || s === 'PIECE' || s === 'PIECES' || s === 'UNIT' || s === 'UNITS' || s === 'EA' || s === 'EACH') return 'PCS';
+  if (s === 'BOX' || s === 'BOXES' || s === 'BX') return 'BOX';
+  if (s === 'STRIP' || s === 'STRIPS' || s === 'STP') return 'STRIP';
+  if (s === 'SAC' || s === 'SACHET' || s === 'SACHETS') return 'SAC';
+  if (s === 'BOT' || s === 'BOTTLE' || s === 'BOTTLES' || s === 'BTL') return 'BOT';
+  if (s === 'TAB' || s === 'TABLET' || s === 'TABLETS') return 'TAB';
+  if (s === 'CAP' || s === 'CAPSULE' || s === 'CAPSULES') return 'CAP';
+  if (s === 'PACK' || s === 'PACKS' || s === 'PK' || s === 'PKT') return 'PACK';
+  if (s === 'TUBE' || s === 'TUBES') return 'TUBE';
+  if (s === 'CAN' || s === 'CANS' || s === 'TIN' || s === 'TINS') return 'CAN';
+  if (s === 'TWINPACK' || s === 'TWIN') return 'TWINPACK';
+  return s;
+}
+
+/**
+ * Disambiguates Item Code and Unit of Measure (UOM) for Xilnex exports.
+ * In Xilnex, sales and stock aging are tracked specifically by (Item Code + UOM),
+ * e.g. "100133 - BOX" vs "100133 - STRIP", or "114682 - BOX30" vs "114682 - SAC" vs "114682 - TWINPACK".
+ */
+function extractItemCodeAndUom(rawItemCode, rawUom) {
+  const codeStr = String(rawItemCode || '').trim().toUpperCase();
+  let baseCode = codeStr;
+  let suffixUom = '';
+  const dashIdx = codeStr.indexOf('-');
+  if (dashIdx !== -1) {
+    baseCode = codeStr.substring(0, dashIdx).trim();
+    suffixUom = normalizeUom(codeStr.substring(dashIdx + 1).trim());
+  }
+  const colUom = rawUom ? normalizeUom(rawUom) : '';
+  const orderUom = colUom || suffixUom || 'PCS';
+  const compositeKey = `${baseCode}::${orderUom}`;
+  return { exactCode: codeStr, baseCode, orderUom, compositeKey };
+}
+
+/**
  * In PMG Xilnex catalog, the suffix after '-' defines the packaging specification:
  * - 'box30'   : 1 Box containing 30 sachets / smallest UOM (order unit: Box)
  * - 'twinpack': Twinpack containing 2 boxes of 30 sachets = 60 sachets (order unit: Twinpack)
@@ -153,29 +193,54 @@ function parsePackagingSpecification(itemCode) {
   };
 }
 
-// ─── STOCK AGING STORAGE INTEGRATION & SYNC ──────────────────────────────────
+// ─── STOCK AGING & SALES TREND STORAGE INTEGRATION ───────────────────────────
 function syncStockAgingFromStorage() {
   try {
+    let syncedAging = false;
+    let syncedTrends = false;
+
     // 1. Try Performance Suite active state
     const rawPerf = localStorage.getItem('pmg_perf_active_state_v1');
     if (rawPerf) {
       const parsed = JSON.parse(rawPerf);
       if (parsed?.stockAgingLatest?.items && Array.isArray(parsed.stockAgingLatest.items) && parsed.stockAgingLatest.items.length > 0) {
         ingestStockAgingItems(parsed.stockAgingLatest.items, 'Performance Suite State');
-        return true;
+        syncedAging = true;
       }
+      if (parsed?.itemSalesLatest?.items && Array.isArray(parsed.itemSalesLatest.items) && parsed.itemSalesLatest.items.length > 0) {
+        ingestSalesTrendItems(parsed.itemSalesLatest.items, parsed.itemSalesPrevYear?.items || []);
+        syncedTrends = true;
+      }
+      if (syncedAging && syncedTrends) return true;
     }
-    // 2. Try dedicated Stock Aging cache
+
+    // 2. Try window.PMG_PERFORMANCE_SAMPLE_DATA fallback if in demo/preloaded state
+    if (typeof window !== 'undefined' && window.PMG_PERFORMANCE_SAMPLE_DATA) {
+      const sample = window.PMG_PERFORMANCE_SAMPLE_DATA;
+      if (!syncedAging && sample.stockAgingLatest?.items && Array.isArray(sample.stockAgingLatest.items)) {
+        ingestStockAgingItems(sample.stockAgingLatest.items, 'Preloaded October 2026 Sample');
+        syncedAging = true;
+      }
+      if (!syncedTrends && sample.itemSalesLatest?.items && Array.isArray(sample.itemSalesLatest.items)) {
+        ingestSalesTrendItems(sample.itemSalesLatest.items, sample.itemSalesPrevYear?.items || []);
+        syncedTrends = true;
+      }
+      if (syncedAging && syncedTrends) return true;
+    }
+
+    // 3. Try dedicated Stock Aging cache
     const rawAging = localStorage.getItem('pmg_stock_aging_cache_v1');
-    if (rawAging) {
+    if (rawAging && !syncedAging) {
       const parsed = JSON.parse(rawAging);
       if (Array.isArray(parsed) && parsed.length > 0) {
         ingestStockAgingItems(parsed, 'Stock Aging Cache');
-        return true;
+        syncedAging = true;
       }
     }
+
+    if (syncedAging || syncedTrends) return true;
   } catch (err) {
-    console.warn('[Replenishment] Error syncing stock aging from storage:', err);
+    console.warn('[Replenishment] Error syncing stock aging and trends from storage:', err);
   }
   updateAgingStatusUI();
   return false;
@@ -185,10 +250,11 @@ function ingestStockAgingItems(items, sourceName) {
   stockAgingMap.clear();
   let agedCount = 0;
   let totalAgedVal = 0;
+  const baseCodeVariants = new Map(); // baseCode -> Map of uom -> record
 
   (items || []).forEach(it => {
-    const code = String(it.itemCode || '').trim().toUpperCase();
-    if (!code) return;
+    const meta = extractItemCodeAndUom(it.itemCode, it.uom);
+    if (!meta.baseCode) return;
     const agedQty = (it.d150_180 || 0) + (it.d180_210 || 0) + (it.d210_240 || 0) +
                     (it.d240_270 || 0) + (it.d270_300 || 0) + (it.d300_330 || 0) +
                     (it.d330_360 || 0) + (it.above1Yr || 0);
@@ -197,7 +263,10 @@ function ingestStockAgingItems(items, sourceName) {
     const isAged = agedQty > 0;
 
     const record = {
-      itemCode: code,
+      itemCode: meta.exactCode,
+      baseCode: meta.baseCode,
+      uom: meta.orderUom,
+      compositeKey: meta.compositeKey,
       itemName: it.itemName || '',
       category: it.category || '',
       ohQty: it.ohQty || 0,
@@ -207,16 +276,26 @@ function ingestStockAgingItems(items, sourceName) {
       isAged
     };
 
-    stockAgingMap.set(code, record);
-    // Also map bare item code without packaging suffix if present
-    const bareCode = code.split('-')[0].trim();
-    if (bareCode && bareCode !== code && !stockAgingMap.has(bareCode)) {
-      stockAgingMap.set(bareCode, record);
+    // Index specifically by composite key `${baseCode}::${orderUom}` and exact code
+    stockAgingMap.set(meta.compositeKey, record);
+    stockAgingMap.set(meta.exactCode, record);
+
+    if (!baseCodeVariants.has(meta.baseCode)) {
+      baseCodeVariants.set(meta.baseCode, new Map());
     }
+    baseCodeVariants.get(meta.baseCode).set(meta.orderUom, record);
 
     if (isAged) {
       agedCount++;
       totalAgedVal += agedValue;
+    }
+  });
+
+  // Only assign bareCode if there is exactly 1 unique UOM variant for that item code in the catalog
+  baseCodeVariants.forEach((uomMap, baseCode) => {
+    if (uomMap.size === 1) {
+      const singleRecord = uomMap.values().next().value;
+      stockAgingMap.set(baseCode, singleRecord);
     }
   });
 
@@ -230,6 +309,47 @@ function ingestStockAgingItems(items, sourceName) {
 
   updateAgingStatusUI();
   if (inventoryData.length > 0) recalcInventory();
+}
+
+/**
+ * Ingests multi-month sales comparisons by exact Item Code and UOM.
+ * In Xilnex, sales velocity up/down trends are calculated specifically on that individual UOM
+ * (e.g. 100133 - BOX vs 100133 - STRIP).
+ */
+function ingestSalesTrendItems(latestItems, prevItems) {
+  skuSalesTrendMap.clear();
+  const prevMap = new Map();
+
+  (prevItems || []).forEach(it => {
+    const meta = extractItemCodeAndUom(it.itemCode, it.uom);
+    prevMap.set(meta.compositeKey, it);
+    prevMap.set(meta.exactCode, it);
+  });
+
+  (latestItems || []).forEach(it => {
+    const meta = extractItemCodeAndUom(it.itemCode, it.uom);
+    const prev = prevMap.get(meta.compositeKey) || prevMap.get(meta.exactCode);
+    const latestQty = parseFloat(it.qty !== undefined ? it.qty : it.salesQty) || 0;
+    const prevQty = prev ? (parseFloat(prev.qty !== undefined ? prev.qty : prev.salesQty) || 0) : 0;
+
+    const diffQty = latestQty - prevQty;
+    const diffPct = prevQty > 0 ? ((latestQty - prevQty) / prevQty) * 100 : (latestQty > 0 ? 100 : 0);
+    const direction = diffPct >= 10 ? 'UP' : (diffPct <= -10 ? 'DOWN' : 'FLAT');
+
+    const record = {
+      direction,
+      momentumPct: +diffPct.toFixed(1),
+      diffQty,
+      latestQty,
+      prevQty,
+      uom: meta.orderUom,
+      unconstrainedAds: prevQty > 0 ? +(prevQty / 30).toFixed(3) : 0,
+      isZeroRecent: latestQty === 0
+    };
+
+    skuSalesTrendMap.set(meta.compositeKey, record);
+    skuSalesTrendMap.set(meta.exactCode, record);
+  });
 }
 
 function updateAgingStatusUI() {
@@ -306,18 +426,36 @@ async function handleAgingFileUpload(file) {
   }
 }
 
-function getStockAgingForItem(itemCode) {
-  const code = String(itemCode || '').trim().toUpperCase();
-  if (stockAgingMap.has(code)) return stockAgingMap.get(code);
-  const bare = code.split('-')[0].trim();
-  if (bare && stockAgingMap.has(bare)) return stockAgingMap.get(bare);
+/**
+ * Retrieves stock aging record disambiguated specifically by Item Code and UOM.
+ * Prevents "100133 - STRIP" aging from locking out "100133 - BOX".
+ */
+function getStockAgingForItem(itemCode, uom) {
+  const meta = extractItemCodeAndUom(itemCode, uom);
+  // 1. Specific composite key e.g. "100133::STRIP"
+  if (stockAgingMap.has(meta.compositeKey)) return stockAgingMap.get(meta.compositeKey);
+  // 2. Exact code e.g. "100133 - STRIP"
+  if (stockAgingMap.has(meta.exactCode)) return stockAgingMap.get(meta.exactCode);
+  // 3. Alternative formatted dash key
+  const altDash = `${meta.baseCode} - ${meta.orderUom}`;
+  if (stockAgingMap.has(altDash)) return stockAgingMap.get(altDash);
+  // 4. Fallback to bare baseCode only if non-conflicting
+  if (stockAgingMap.has(meta.baseCode)) {
+    const rec = stockAgingMap.get(meta.baseCode);
+    if (!rec.uom || rec.uom === meta.orderUom || rec.uom === 'PCS') {
+      return rec;
+    }
+  }
   return null;
 }
 
 // ─── MULTI-MONTH SALES TREND & MOMENTUM DETECTOR ─────────────────────────────
-function detectItemSalesTrend(row, baselineAds) {
+/**
+ * Detects sales momentum and direction specifically for the SKU's Order UOM.
+ */
+function detectItemSalesTrend(row, baselineAds, rowUom) {
   const code = String(resolveCol(row, ['Item Code', 'Item_Code', 'ItemCode', 'SKU', 'Code'])).trim().toUpperCase();
-  const bare = code.split('-')[0].trim();
+  const meta = extractItemCodeAndUom(code, rowUom);
 
   // 1. Check if row itself has month columns (e.g. Month 1, Month 2, Latest, M-1, M-2)
   const m2 = parseFloat(resolveCol(row, ['Sales_M2', 'Month 2 Qty', 'Qty_M2', 'M-2 Qty', 'Month2'])) || 0;
@@ -331,13 +469,16 @@ function detectItemSalesTrend(row, baselineAds) {
       direction: diffPct >= 10 ? 'UP' : (diffPct <= -10 ? 'DOWN' : 'FLAT'),
       momentumPct: diffPct,
       unconstrainedAds: prior > 0 ? (prior / 30) : baselineAds,
-      isZeroRecent: mLatest === 0
+      isZeroRecent: mLatest === 0,
+      uom: meta.orderUom
     };
   }
 
-  // 2. Check storage/suite trend cache
-  if (skuSalesTrendMap.has(code)) return skuSalesTrendMap.get(code);
-  if (bare && skuSalesTrendMap.has(bare)) return skuSalesTrendMap.get(bare);
+  // 2. Check storage/suite trend cache using exact composite key first!
+  if (skuSalesTrendMap.has(meta.compositeKey)) return skuSalesTrendMap.get(meta.compositeKey);
+  if (skuSalesTrendMap.has(meta.exactCode)) return skuSalesTrendMap.get(meta.exactCode);
+  const altDash = `${meta.baseCode} - ${meta.orderUom}`;
+  if (skuSalesTrendMap.has(altDash)) return skuSalesTrendMap.get(altDash);
 
   // 3. Fallback: evaluate single salesQty & SOH
   const salesQty = parseFloat(resolveCol(row, ['Sales Qty', 'Sales_Qty_90d', 'SalesQty', 'Qty Sold', 'Sales', 'Qty_Sold'])) || 0;
@@ -348,7 +489,8 @@ function detectItemSalesTrend(row, baselineAds) {
       direction: 'ZERO',
       momentumPct: -100,
       unconstrainedAds: 0.5,
-      isZeroRecent: true
+      isZeroRecent: true,
+      uom: meta.orderUom
     };
   }
 
@@ -356,7 +498,8 @@ function detectItemSalesTrend(row, baselineAds) {
     direction: 'FLAT',
     momentumPct: 0,
     unconstrainedAds: baselineAds,
-    isZeroRecent: false
+    isZeroRecent: false,
+    uom: meta.orderUom
   };
 }
 
@@ -579,7 +722,9 @@ function recalcInventory() {
       const nonFunctionalField1 = (resolveCol(row, ['Non Functional Field 1', 'NonFunctionalField1', 'Non_Functional_Field_1', 'Non Functional 1', 'Field 1', 'NFF1']) || '').trim();
       const orderGroup = getOrderGroup(vendorCode, nonFunctionalField1);
 
-      const uom        = resolveCol(row, ['UOM','Unit','Unit of Measure','Uom']) || 'PCS';
+      const rawUom     = resolveCol(row, ['UOM','Unit','Unit of Measure','Uom']);
+      const itemUomMeta = extractItemCodeAndUom(itemCode, rawUom);
+      const uom        = itemUomMeta.orderUom;
       const salesQty   = parseFloat(resolveCol(row, ['Sales Qty','Sales_Qty_90d','SalesQty','Qty Sold','Sales','Qty_Sold'])) || 0;
       const soh        = parseFloat(resolveCol(row, ['Quantity On Hand','SOH','Stock on Hand','StockOnHand','Closing Stock','Balance','Qty Balance'])) || 0;
       const onOrder    = parseFloat(resolveCol(row, ['In Order Quantity','On_Order','OnOrder','Pending PO','In Transit','Order Qty','Pending_PO'])) || 0;
@@ -605,21 +750,21 @@ function recalcInventory() {
         targetDays = 30; // Strict JIT 30 days max on low/negative margin commercial milk tins
       }
 
-      // Detect Sales Trend & Momentum
-      const trend = detectItemSalesTrend(row, baselineAds);
+      // Detect Sales Trend & Momentum specifically by Order UOM
+      const trend = detectItemSalesTrend(row, baselineAds, uom);
 
       // Smart replenishment diagnostic variables
       let suggestedOrder = 0;
       let ruleApplied = 'STANDARD_ROP';
       let badge = '✓ NORMAL ROP';
       let badgeColor = 'bg-slate-100 text-slate-700 border-slate-200';
-      let reason = 'Steady historical replenishment rate.';
+      let reason = `Steady historical replenishment rate (${uom}).`;
       let isAgingLocked = false;
       let isOverridden = false;
 
       // ─── RULE 1: STOCK AGING DIRECT LOCK ──────────────────────────────────
       // Any SKU appearing in stock aging is directly locked away until quantity drops under 2 months from selling (< 60 days)
-      const agingInfo = getStockAgingForItem(itemCode);
+      const agingInfo = getStockAgingForItem(itemCode, uom);
       if (agingInfo && agingInfo.isAged && agingInfo.agedQty > 0) {
         const daysCover = baselineAds > 0 ? (soh / baselineAds) : 9999;
         const monthsCover = daysCover / 30;
@@ -630,7 +775,7 @@ function recalcInventory() {
           ruleApplied = 'RULE_1_AGING_LOCKED';
           badge = '🛑 AGING LOCKED';
           badgeColor = 'bg-rose-100 text-rose-800 border-rose-300';
-          reason = `Aging stock detected (${agingInfo.agedQty} pcs ≥150d, RM ${agingInfo.agedValue}). Existing SOH covers ${monthsCover >= 999 ? '∞' : monthsCover.toFixed(1) + ' mo'} (≥ 2.0 mo target). Strictly locked from ordering until stock is depleted under 2 months.`;
+          reason = `Aging stock detected (${agingInfo.agedQty} ${uom} ≥150d, RM ${agingInfo.agedValue}). Existing SOH covers ${monthsCover >= 999 ? '∞' : monthsCover.toFixed(1) + ' mo'} (≥ 2.0 mo target). Strictly locked from ordering until stock is depleted under 2 months.`;
           isAgingLocked = true;
         } else {
           // Stock has depleted to LESS than 2 months! Allow conservative replenishment up to 2.0 months target
@@ -640,7 +785,7 @@ function recalcInventory() {
           ruleApplied = 'RULE_1_AGING_DEPLETED';
           badge = '🟡 AGING DEPLETED (< 2 Mo)';
           badgeColor = 'bg-amber-100 text-amber-900 border-amber-300';
-          reason = `Aged stock depleted to ${monthsCover.toFixed(1)} mo (< 2.0 mo target). Reordering conservatively up to 2 months limit.`;
+          reason = `Aged stock depleted to ${monthsCover.toFixed(1)} mo (< 2.0 mo target). Reordering conservatively up to 2 months limit (${uom}).`;
         }
       }
 
@@ -657,7 +802,7 @@ function recalcInventory() {
           ruleApplied = 'RULE_2_MOMENTUM_BOOST';
           badge = `🚀 MOMENTUM UP (+${Math.round(trend.momentumPct)}%)`;
           badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-300';
-          reason = `Sales accelerating (+${Math.round(trend.momentumPct)}% MoM). ADS adjusted from ${baselineAds.toFixed(2)} to ${effectiveAds.toFixed(2)} to prevent fast-mover stockouts.`;
+          reason = `Sales accelerating (+${Math.round(trend.momentumPct)}% MoM on ${uom}). ADS adjusted from ${baselineAds.toFixed(2)} to ${effectiveAds.toFixed(2)} ${uom}/day to prevent fast-mover stockouts.`;
         }
         // ─── RULE 3: SMART STOCKOUT (PHANTOM DROP) VS TRUE CONTRACTION ───────
         else if (trend.direction === 'DOWN' || baselineAds === 0 || trend.isZeroRecent) {
@@ -671,7 +816,7 @@ function recalcInventory() {
             ruleApplied = 'RULE_3A_PHANTOM_DROP';
             badge = '⚠️ OOS PHANTOM DROP';
             badgeColor = 'bg-amber-100 text-amber-900 border-amber-300';
-            reason = 'Sales dropped to 0 due to zero shelf stock (stockout), not loss of demand. Restoring baseline replenishment rate.';
+            reason = `Sales dropped to 0 due to zero shelf stock (stockout), not loss of demand. Restoring baseline replenishment rate (${uom}).`;
           } else {
             // RULE 3B: TRUE CONTRACTION (Stock was available, but demand fell)
             const decayedAds = Math.max(0.01, baselineAds * Math.max(0.4, 1 - Math.abs(trend.momentumPct || 25) / 100));
@@ -683,7 +828,7 @@ function recalcInventory() {
               ruleApplied = 'RULE_3B_SURPLUS_HALT';
               badge = '⏸️ SURPLUS (SOH ≥ 2 Mo)';
               badgeColor = 'bg-blue-100 text-blue-800 border-blue-300';
-              reason = `Demand softened. Existing SOH (${soh} pcs) covers ${daysCoverWithSoh} days (≥ 60d target). Reorder halted.`;
+              reason = `Demand softened. Existing SOH (${soh} ${uom}) covers ${daysCoverWithSoh} days (≥ 60d target). Reorder halted.`;
               effectiveAds = decayedAds;
             } else {
               effectiveAds = decayedAds;
@@ -693,7 +838,7 @@ function recalcInventory() {
               ruleApplied = 'RULE_3B_DECAYING_ORDER';
               badge = `📉 DECAYING DEMAND (-${Math.round(Math.abs(trend.momentumPct || 25))}%)`;
               badgeColor = 'bg-purple-100 text-purple-800 border-purple-300';
-              reason = `Demand softened with stock on shelf. Reordering conservatively at decayed run-rate (${decayedAds.toFixed(2)}/day).`;
+              reason = `Demand softened with stock on shelf. Reordering conservatively at decayed run-rate (${decayedAds.toFixed(2)} ${uom}/day).`;
             }
           }
         }
@@ -869,7 +1014,7 @@ function overrideAgingLock(rowIdx) {
   if (!row) return;
 
   const inputVal = prompt(
-    `[PHARMACIST OVERRIDE - STOCK AGING LOCK]\n\nSKU: ${row.itemCode} - ${row.desc}\nCurrent SOH: ${row.soh} pcs\nAged Qty: ${row.isAgingLocked ? 'Locked' : 'Depleted'}\n\nEnter approved order quantity to override lock:`,
+    `[PHARMACIST OVERRIDE - STOCK AGING LOCK]\n\nSKU: ${row.itemCode} - ${row.desc}\nOrder UOM: ${row.uom}\nCurrent SOH: ${row.soh} ${row.uom}\nAged Qty: ${row.isAgingLocked ? 'Locked' : 'Depleted'}\n\nEnter approved order quantity in ${row.uom} to override lock:`,
     row.packSize > 1 ? String(row.packSize) : '10'
   );
 
@@ -878,9 +1023,9 @@ function overrideAgingLock(rowIdx) {
     if (!isNaN(qty) && qty >= 0) {
       row.approvedQty = qty;
       row.isOverridden = true;
-      row.badge = `⚠️ OVERRIDE (${qty} pcs)`;
+      row.badge = `⚠️ OVERRIDE (${qty} ${row.uom})`;
       row.badgeColor = 'bg-amber-200 text-amber-950 border-amber-400';
-      row.reason = `Pharmacist manual override applied. Approved: ${qty} units.`;
+      row.reason = `Pharmacist manual override applied. Approved: ${qty} ${row.uom}.`;
       updateInventoryKPIs();
       renderInventoryGrid();
     }
@@ -925,6 +1070,7 @@ function renderInventoryGrid() {
     const isSSJ        = isSSJPharmaVendor(row.vendorCode);
 
     return `<tr class="${origIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50/60 border-b border-gray-100 transition">
+      <!-- Col 1: Item Code & Pack -->
       <td class="px-3 py-2 text-xs font-mono text-gray-700">
         <div class="font-bold text-gray-900">${escHtml(row.itemCode)}</div>
         <div class="mt-0.5 inline-flex items-center gap-1">
@@ -934,6 +1080,15 @@ function renderInventoryGrid() {
           ${row.category ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-500">${escHtml(row.category)}</span>` : ''}
         </div>
       </td>
+
+      <!-- Col 2: Order UOM -->
+      <td class="px-3 py-2 text-xs text-center">
+        <span class="px-2 py-0.5 rounded font-black text-xs bg-blue-100 text-blue-900 border border-blue-300 shadow-xs" title="Official Ordering UOM: ${escHtml(row.uom)}">
+          ${escHtml(row.uom)}
+        </span>
+      </td>
+
+      <!-- Col 3: Description & Diagnostics -->
       <td class="px-3 py-2 text-xs text-gray-800 max-w-sm" title="${escHtml(row.desc)}">
         <div class="font-medium text-slate-900 leading-snug">${escHtml(row.desc)}</div>
         <div class="mt-1 flex items-center gap-1.5 flex-wrap">
@@ -951,11 +1106,11 @@ function renderInventoryGrid() {
             ${row.clearanceOffers.map(off => `
               <div class="flex items-center justify-between gap-2 p-1 rounded bg-amber-50 border border-amber-200 text-[10px] text-amber-900">
                 <span>
-                  ⚡ <b class="text-amber-950 font-bold">${escHtml(off.branch)}</b> has <b>${off.quantity} pcs</b> (Exp: ${off.expiryDate}, ${off.horizonLabel})
+                  ⚡ <b class="text-amber-950 font-bold">${escHtml(off.branch)}</b> has <b>${off.quantity} ${escHtml(row.uom)}</b> (Exp: ${off.expiryDate}, ${off.horizonLabel})
                 </span>
                 ${row.transferredQty > 0 && row.transferredFrom === off.branch ? `
                   <div class="flex items-center gap-1">
-                    <span class="bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">✓ Transferring ${row.transferredQty} pcs</span>
+                    <span class="bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">✓ Transferring ${row.transferredQty} ${escHtml(row.uom)}</span>
                     <button type="button" onclick="cancelClearanceTransfer(${origIdx})" class="text-rose-600 hover:underline font-semibold ml-1">Cancel</button>
                   </div>
                 ` : `
@@ -970,32 +1125,62 @@ function renderInventoryGrid() {
           </div>
         ` : ''}
       </td>
+
+      <!-- Col 4: Vendor -->
       <td class="px-3 py-2 text-xs text-center text-gray-600">
         <div class="truncate max-w-[140px] mx-auto font-medium" title="${escHtml(row.vendorCode)}">${escHtml(row.vendorCode)}</div>
         ${row.nonFunctionalField1 ? `<span class="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${isSSJ ? 'bg-purple-100 text-purple-700 border border-purple-200' : 'bg-gray-100 text-gray-600'}">${escHtml(row.nonFunctionalField1)}</span>` : ''}
       </td>
-      <td class="px-3 py-2 text-xs text-right font-medium text-slate-800">${row.soh}</td>
-      <td class="px-3 py-2 text-xs text-right text-gray-500">${row.onOrder}</td>
+
+      <!-- Col 5: SOH -->
+      <td class="px-3 py-2 text-xs text-right font-medium text-slate-800">
+        <div>${row.soh}</div>
+        <div class="text-[9px] text-gray-400 font-medium">${escHtml(row.uom)}</div>
+      </td>
+
+      <!-- Col 6: On Order -->
+      <td class="px-3 py-2 text-xs text-right text-gray-500">
+        <div>${row.onOrder}</div>
+        <div class="text-[9px] text-gray-400">${escHtml(row.uom)}</div>
+      </td>
+
+      <!-- Col 7: ADS -->
       <td class="px-3 py-2 text-xs text-right text-gray-700" title="Baseline ADS: ${row.baselineAds}">
         <div class="font-bold">${row.ads}</div>
+        <div class="text-[9px] text-gray-400 font-normal">${escHtml(row.uom)}/d</div>
         ${row.ruleApplied === 'RULE_2_MOMENTUM_BOOST' ? '<span class="text-[9px] text-emerald-600 font-bold">▲ Boosted</span>' : ''}
       </td>
+
+      <!-- Col 8: Days Cover -->
       <td class="px-3 py-2 text-xs text-right ${coverClass}">${coverDisplay}</td>
-      <td class="px-3 py-2 text-xs text-right text-gray-500">${Math.round(row.rop)}</td>
+
+      <!-- Col 9: ROP -->
+      <td class="px-3 py-2 text-xs text-right text-gray-500">
+        <div>${Math.round(row.rop)}</div>
+        <div class="text-[9px] text-gray-400">${escHtml(row.uom)}</div>
+      </td>
+
+      <!-- Col 10: Suggested Qty -->
       <td class="px-3 py-2 text-xs text-right font-extrabold ${needReorder ? 'text-blue-700' : 'text-gray-300'}">
-        <div>${row.suggestedOrder || '–'}</div>
+        <div class="text-sm font-black">${row.suggestedOrder || '–'}</div>
+        <div class="text-[10px] text-blue-700 font-bold">${row.suggestedOrder ? escHtml(row.uom) : ''}</div>
         ${row.packRoundingNote ? `<div class="text-[9px] text-indigo-600 font-normal truncate max-w-[90px]" title="${escHtml(row.packRoundingNote)}">📦 MOQ Pack</div>` : ''}
       </td>
+
+      <!-- Col 11: Approved Qty ✏️ -->
       <td class="px-3 py-2 text-xs text-center">
-        <input type="number" min="0" value="${row.approvedQty}"
-          class="w-20 border ${row.isAgingLocked ? 'border-rose-300 bg-rose-50/50 text-rose-900' : 'border-gray-300 bg-white text-gray-900'} rounded px-1 py-0.5 text-center text-xs focus:ring-1 focus:ring-blue-400 focus:border-blue-400 font-bold"
-          onchange="updateApprovedQtyByRowIndex(${origIdx}, this.value)">
+        <div class="inline-flex items-center justify-center gap-1">
+          <input type="number" min="0" value="${row.approvedQty}"
+            class="w-20 border ${row.isAgingLocked ? 'border-rose-300 bg-rose-50/50 text-rose-900' : 'border-gray-300 bg-white text-gray-900'} rounded px-1 py-0.5 text-center text-xs focus:ring-1 focus:ring-blue-400 focus:border-blue-400 font-bold"
+            onchange="updateApprovedQtyByRowIndex(${origIdx}, this.value)">
+          <span class="text-[10px] text-gray-600 font-bold">${escHtml(row.uom)}</span>
+        </div>
       </td>
     </tr>`;
   }).join('');
 
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="10" class="text-center py-10 text-gray-400 text-sm">No SKUs match the current filter (${invActiveFilterPill}).</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" class="text-center py-10 text-gray-400 text-sm">No SKUs match the current filter (${invActiveFilterPill}).</td></tr>`;
   }
 }
 
@@ -1007,13 +1192,23 @@ function updateApprovedQtyByRowIndex(origIdx, val) {
   }
 }
 
-// Global exposure for UI buttons
+// Global exposure for UI buttons & cross-module integration
 if (typeof window !== 'undefined') {
   window.syncStockAgingFromStorage = syncStockAgingFromStorage;
   window.handleAgingFileUpload = handleAgingFileUpload;
+  window.ingestStockAgingItems = ingestStockAgingItems;
   window.setInvFilterPill = setInvFilterPill;
   window.overrideAgingLock = overrideAgingLock;
   window.updateApprovedQtyByRowIndex = updateApprovedQtyByRowIndex;
+  window.extractItemCodeAndUom = extractItemCodeAndUom;
+  window.normalizeUom = normalizeUom;
+  window.ingestSalesTrendItems = ingestSalesTrendItems;
+  window.stockAgingMap = stockAgingMap;
+  window.skuSalesTrendMap = skuSalesTrendMap;
+  window.setInventoryData = (d) => { inventoryData = d; };
+  window.getInventoryGrid = () => inventoryGrid;
+  window.recalcInventory = recalcInventory;
+  window.buildOrderCsvContent = buildOrderCsvContent;
 }
 
 // ─── INTER-BRANCH CLEARANCE TRANSFER LOGIC ──────────────────────────────────
