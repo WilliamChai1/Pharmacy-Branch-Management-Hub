@@ -5,12 +5,14 @@
 let inventoryData = [];  // Raw parsed rows from Xilnex CSV
 let inventoryGrid = [];  // Calculated rows
 let interBranchTransfers = []; // List of near-expiry clearance items transferred from sister branches
-let stockAgingMap = new Map(); // Key: uppercase itemCode / bareCode -> { agedQty, totalOh, avgCost, agedValue, isAged }
-let skuSalesTrendMap = new Map(); // Key: uppercase itemCode -> { m2Qty, m1Qty, latestQty, momentumPct, direction, unconstrainedAds }
+let stockAgingMap = new Map(); // Key: uppercase itemCode / compositeKey -> { agedQty, totalOh, avgCost, agedValue, isAged }
+let skuAgingSummaryMap = new Map(); // Key: uppercase baseCode -> { baseCode, hasAgedStock, totalAgedValue, agedBreakdown: [] }
+let skuSalesTrendMap = new Map(); // Key: uppercase itemCode / compositeKey -> { m2Qty, m1Qty, latestQty, momentumPct, direction, unconstrainedAds }
+let baseProductTrendMap = new Map(); // Key: uppercase baseCode -> { direction, momentumPct, latestUnits, prevUnits }
 let stockAgingStatus = { connected: false, skuCount: 0, agedCount: 0, totalAgedValue: 0, source: 'None' };
 let invActiveFilterPill = 'ALL'; // 'ALL', 'REORDER', 'MOMENTUM', 'STOCKOUT', 'AGING_LOCKED', 'SURPLUS'
 
-// ─── PACKAGING SPECIFICATION & UOM CONVERSION PARSER ─────────────────────────
+// ─── UNIVERSAL PACKAGING SPECIFICATION & UOM MULTIPLIER PARSER ────────────────
 /**
  * Normalizes UOM strings to standard catalog formats
  */
@@ -28,170 +30,108 @@ function normalizeUom(val) {
   if (s === 'TUBE' || s === 'TUBES') return 'TUBE';
   if (s === 'CAN' || s === 'CANS' || s === 'TIN' || s === 'TINS') return 'CAN';
   if (s === 'TWINPACK' || s === 'TWIN') return 'TWINPACK';
+  if (s === 'CTN' || s === 'CARTON' || s === 'CARTONS') return 'CTN';
+  if (s === 'VIAL' || s === 'VIALS') return 'VIAL';
+  if (s === 'AMP' || s === 'AMPOULE' || s === 'AMPOULES') return 'AMP';
+  if (s === 'BLIST' || s === 'BLISTER' || s === 'BLISTERS') return 'BLIST';
+  if (s === 'JAR' || s === 'JARS') return 'JAR';
+  if (s === 'ROLL' || s === 'ROLLS') return 'ROLL';
+  if (s === 'SHEET' || s === 'SHEETS') return 'SHEET';
   return s;
 }
 
+// Dynamic knowledge base of packaging multipliers discovered from Item Code suffixes
+const knownBaseCodeBoxMultipliers = new Map([
+  ['114682', 30], // JH P2: box30 = 30 sachets
+]);
+
 /**
- * Disambiguates Item Code and Unit of Measure (UOM) for Xilnex exports.
- * In Xilnex, sales and stock aging are tracked specifically by (Item Code + UOM),
- * e.g. "100133 - BOX" vs "100133 - STRIP", or "114682 - BOX30" vs "114682 - SAC" vs "114682 - TWINPACK".
+ * Universal Multi-UOM & Packaging Specification Parser
+ * Supports any packaging descriptor:
+ * - <UOM><NUMBER>: BOX70, BOX200, CTN12, VIAL10, TUBE5, CAN6, BOT25, PACK10, SAC30, etc.
+ * - Compound packs: TWINPACK (2 boxes / 2x box size), TRIPLEPACK (3 boxes / 3x box size)
+ * - Single units: UNIT, PIECE, PCS, SAC, STRIP, BOTTLE, CAN, VIAL, TUBE, JAR, ROLL, SHEET, etc.
  */
-function extractItemCodeAndUom(rawItemCode, rawUom) {
-  const codeStr = String(rawItemCode || '').trim().toUpperCase();
+function parseUniversalPackaging(rawItemCode, rawUom) {
+  const codeStr = String(rawItemCode || '').trim();
+  const uomCol = String(rawUom || '').trim();
+  
   let baseCode = codeStr;
-  let suffixUom = '';
+  let suffixStr = '';
   const dashIdx = codeStr.indexOf('-');
   if (dashIdx !== -1) {
-    baseCode = codeStr.substring(0, dashIdx).trim();
-    suffixUom = normalizeUom(codeStr.substring(dashIdx + 1).trim());
-  }
-  const colUom = rawUom ? normalizeUom(rawUom) : '';
-  const orderUom = colUom || suffixUom || 'PCS';
-  const compositeKey = `${baseCode}::${orderUom}`;
-  return { exactCode: codeStr, baseCode, orderUom, compositeKey };
-}
-
-/**
- * In PMG Xilnex catalog, the suffix after '-' defines the packaging specification:
- * - 'box30'   : 1 Box containing 30 sachets / smallest UOM (order unit: Box)
- * - 'twinpack': Twinpack containing 2 boxes of 30 sachets = 60 sachets (order unit: Twinpack)
- * - 'sac'     : 1 Sachet (smallest UOM) (order unit: Sachet)
- * - 'pack10'  : 1 Pack containing 10 units of the smallest UOM (order unit: Pack)
- * - 'bot25'   : 25 Bottles of this item (order unit: Bundle/Carton of 25 Bottles)
- * 
- * IMPORTANT: The quantity on hand (SOH) and order quantity in Xilnex are already in units
- * of that specific SKU. An order quantity of 7 for "114682 - BOX30" means 7 boxes (NOT 30 boxes!).
- */
-function parsePackagingSpecification(itemCode) {
-  if (!itemCode) return { smallestUomUnits: 1, baseCode: '', suffix: '', label: '1 Unit', displayTag: '1 Unit', unitType: 'Unit' };
-  const str = String(itemCode).trim();
-  const dashIdx = str.indexOf('-');
-  const baseCode = dashIdx !== -1 ? str.substring(0, dashIdx).trim().toUpperCase() : str.toUpperCase();
-  if (dashIdx === -1) return { smallestUomUnits: 1, baseCode, suffix: '', label: '1 Unit', displayTag: '1 Unit', unitType: 'Unit' };
-
-  const suffix = str.substring(dashIdx + 1).trim();
-  const sLower = suffix.toLowerCase();
-
-  // 1. Specific twinpack rule: 2 boxes of 30 sachets = 60 sachets
-  if (sLower.includes('twinpack') || sLower.includes('twin')) {
-    return {
-      smallestUomUnits: 60,
-      boxCount: 2,
-      baseCode,
-      suffix,
-      label: 'Twinpack (2 Boxes of 30 Sac = 60 Sac)',
-      displayTag: 'Twinpack (2 Boxes)',
-      unitType: 'Twinpacks'
-    };
+    baseCode = codeStr.substring(0, dashIdx).trim().toUpperCase();
+    suffixStr = codeStr.substring(dashIdx + 1).trim();
+  } else {
+    baseCode = codeStr.toUpperCase();
   }
 
-  // 2. Specific triplepack rule: 3 boxes
-  if (sLower.includes('triplepack') || sLower.includes('tripack')) {
-    return {
-      smallestUomUnits: 90,
-      boxCount: 3,
-      baseCode,
-      suffix,
-      label: 'Triplepack (3 Boxes)',
-      displayTag: 'Triplepack (3 Boxes)',
-      unitType: 'Triplepacks'
-    };
+  // Determine packaging descriptor: prioritize embedded suffix, then UOM column
+  const candidate = (suffixStr || uomCol || 'UNIT').toUpperCase();
+  const clean = candidate.replace(/[^A-Z0-9]/g, '');
+
+  let baseUom = 'UNIT';
+  let packMultiplier = 1;
+  let label = candidate;
+
+  if (clean.includes('TWINPACK') || clean.includes('TWIN')) {
+    baseUom = 'TWINPACK';
+    const boxMul = knownBaseCodeBoxMultipliers.get(baseCode) || 1;
+    packMultiplier = 2 * boxMul;
+    label = boxMul > 1 ? `Twinpack (2 Boxes of ${boxMul} = ${packMultiplier} Units)` : 'Twinpack (2 Units)';
+  } else if (clean.includes('TRIPLEPACK') || clean.includes('TRIPACK')) {
+    baseUom = 'TRIPLEPACK';
+    const boxMul = knownBaseCodeBoxMultipliers.get(baseCode) || 1;
+    packMultiplier = 3 * boxMul;
+    label = boxMul > 1 ? `Triplepack (3 Boxes of ${boxMul} = ${packMultiplier} Units)` : 'Triplepack (3 Units)';
+  } else {
+    // Universal regex for <UOM_LETTERS><NUMBER> e.g. BOX70, BOX200, CTN12, VIAL10, TUBE5, BOT25, PACK10
+    const match = clean.match(/^([A-Z]+)(\d+)$/);
+    if (match) {
+      baseUom = match[1];
+      packMultiplier = parseInt(match[2], 10) || 1;
+      label = `${baseUom} of ${packMultiplier}`;
+      // Register discovered box/container size for compound pack calculations (e.g. twinpack)
+      if (['BOX', 'BOT', 'CAN', 'PACK', 'CTN', 'TUBE', 'VIAL'].includes(baseUom)) {
+        knownBaseCodeBoxMultipliers.set(baseCode, packMultiplier);
+      }
+    } else {
+      baseUom = clean || 'UNIT';
+      packMultiplier = 1;
+      label = `1 ${baseUom}`;
+    }
   }
 
-  // 3. boxN (e.g. box30 -> 30 sachets/units in 1 box)
-  let m = sLower.match(/box\s*(\d+)/);
-  if (m) {
-    const n = parseInt(m[1], 10);
-    return {
-      smallestUomUnits: n,
-      baseCode,
-      suffix,
-      label: `Box of ${n} (${n} Sac/Box)`,
-      displayTag: `Box of ${n} (${n} Sac)`,
-      unitType: 'Boxes'
-    };
-  }
-
-  // 4. packN (e.g. pack10 -> 10 units of the smallest UOM)
-  m = sLower.match(/pack\s*(\d+)/);
-  if (m) {
-    const n = parseInt(m[1], 10);
-    return {
-      smallestUomUnits: n,
-      baseCode,
-      suffix,
-      label: `Pack of ${n} (${n} Units Smallest UOM)`,
-      displayTag: `Pack of ${n}`,
-      unitType: 'Packs'
-    };
-  }
-
-  // 5. botN (e.g. bot25 -> 25 bottles of this item)
-  m = sLower.match(/bot\s*(\d+)/);
-  if (m) {
-    const n = parseInt(m[1], 10);
-    return {
-      smallestUomUnits: n,
-      baseCode,
-      suffix,
-      label: `${n} Bottles of this item`,
-      displayTag: `${n} Bottles`,
-      unitType: 'Bundles (25 Bot)'
-    };
-  }
-
-  // 6. Sachet / sac (Smallest UOM)
-  if (sLower === 'sac' || sLower === 'sachet') {
-    return {
-      smallestUomUnits: 1,
-      baseCode,
-      suffix,
-      label: '1 Sachet (Smallest UOM)',
-      displayTag: '1 Sachet (Smallest UOM)',
-      unitType: 'Sachets'
-    };
-  }
-
-  // 7. Strip / Tab / Cap / Bottle / Tube without trailing numbers
-  if (sLower === 'strip') {
-    return { smallestUomUnits: 1, baseCode, suffix, label: '1 Strip', displayTag: '1 Strip', unitType: 'Strips' };
-  }
-  if (sLower === 'cap' || sLower === 'tab') {
-    return { smallestUomUnits: 1, baseCode, suffix, label: `1 ${suffix.toUpperCase()} (Smallest UOM)`, displayTag: `1 ${suffix.toUpperCase()}`, unitType: `${suffix.toUpperCase()}s` };
-  }
-  if (sLower === 'bot' || sLower === 'bottle') {
-    return { smallestUomUnits: 1, baseCode, suffix, label: '1 Bottle', displayTag: '1 Bottle', unitType: 'Bottles' };
-  }
-  if (sLower === 'box') {
-    return { smallestUomUnits: 1, baseCode, suffix, label: '1 Box', displayTag: '1 Box', unitType: 'Boxes' };
-  }
-  if (sLower === 'pack') {
-    return { smallestUomUnits: 1, baseCode, suffix, label: '1 Pack', displayTag: '1 Pack', unitType: 'Packs' };
-  }
-
-  // Fallback pattern for numbers like 60's, 60s, x2
-  m = sLower.match(/(?:x\s*(\d+)|\b(\d+)\s*(?:'s|s)\b)/);
-  if (m) {
-    const n = parseInt(m[1] || m[2], 10);
-    return {
-      smallestUomUnits: n,
-      baseCode,
-      suffix,
-      label: `${suffix.toUpperCase()} (${n} Units/Pack)`,
-      displayTag: suffix.toUpperCase(),
-      unitType: suffix.toUpperCase()
-    };
-  }
+  // Order UOM strictly reflects the specific unit from row (e.g. BOX70, UNIT, PIECE, BOX200, CTN12, SAC)
+  const orderUom = (suffixStr || uomCol || 'PCS').toUpperCase();
 
   return {
-    smallestUomUnits: 1,
     baseCode,
-    suffix,
-    label: suffix.toUpperCase() || '1 Unit',
-    displayTag: suffix.toUpperCase() || '1 Unit',
-    unitType: suffix.toUpperCase() || 'Units'
+    baseUom,
+    packMultiplier,
+    label,
+    orderUom,
+    compositeKey: `${baseCode}::${orderUom}`,
+    exactCode: codeStr.toUpperCase()
   };
 }
+
+// Backwards-compatible aliases
+const extractItemCodeAndUom = (code, uom) => {
+  const p = parseUniversalPackaging(code, uom);
+  return { exactCode: p.exactCode, baseCode: p.baseCode, orderUom: p.orderUom, compositeKey: p.compositeKey };
+};
+const parsePackagingSpecification = (code) => {
+  const p = parseUniversalPackaging(code, '');
+  return {
+    smallestUomUnits: p.packMultiplier,
+    baseCode: p.baseCode,
+    suffix: p.orderUom,
+    label: p.label,
+    displayTag: p.label,
+    unitType: p.orderUom
+  };
+};
 
 // ─── STOCK AGING & SALES TREND STORAGE INTEGRATION ───────────────────────────
 function syncStockAgingFromStorage() {
@@ -248,13 +188,13 @@ function syncStockAgingFromStorage() {
 
 function ingestStockAgingItems(items, sourceName) {
   stockAgingMap.clear();
+  skuAgingSummaryMap.clear();
   let agedCount = 0;
   let totalAgedVal = 0;
-  const baseCodeVariants = new Map(); // baseCode -> Map of uom -> record
 
   (items || []).forEach(it => {
-    const meta = extractItemCodeAndUom(it.itemCode, it.uom);
-    if (!meta.baseCode) return;
+    const pack = parseUniversalPackaging(it.itemCode, it.uom);
+    if (!pack.baseCode) return;
     const agedQty = (it.d150_180 || 0) + (it.d180_210 || 0) + (it.d210_240 || 0) +
                     (it.d240_270 || 0) + (it.d270_300 || 0) + (it.d300_330 || 0) +
                     (it.d330_360 || 0) + (it.above1Yr || 0);
@@ -263,10 +203,11 @@ function ingestStockAgingItems(items, sourceName) {
     const isAged = agedQty > 0;
 
     const record = {
-      itemCode: meta.exactCode,
-      baseCode: meta.baseCode,
-      uom: meta.orderUom,
-      compositeKey: meta.compositeKey,
+      itemCode: pack.exactCode,
+      baseCode: pack.baseCode,
+      uom: pack.orderUom,
+      packMultiplier: pack.packMultiplier,
+      compositeKey: pack.compositeKey,
       itemName: it.itemName || '',
       category: it.category || '',
       ohQty: it.ohQty || 0,
@@ -276,26 +217,27 @@ function ingestStockAgingItems(items, sourceName) {
       isAged
     };
 
-    // Index specifically by composite key `${baseCode}::${orderUom}` and exact code
-    stockAgingMap.set(meta.compositeKey, record);
-    stockAgingMap.set(meta.exactCode, record);
+    // Specific UOM mapping
+    stockAgingMap.set(pack.compositeKey, record);
+    stockAgingMap.set(pack.exactCode, record);
 
-    if (!baseCodeVariants.has(meta.baseCode)) {
-      baseCodeVariants.set(meta.baseCode, new Map());
+    // Aggregate to Item/SKU level across all UOM variants
+    if (!skuAgingSummaryMap.has(pack.baseCode)) {
+      skuAgingSummaryMap.set(pack.baseCode, {
+        baseCode: pack.baseCode,
+        hasAgedStock: false,
+        totalAgedValue: 0,
+        agedBreakdown: []
+      });
     }
-    baseCodeVariants.get(meta.baseCode).set(meta.orderUom, record);
 
     if (isAged) {
+      const summary = skuAgingSummaryMap.get(pack.baseCode);
+      summary.hasAgedStock = true;
+      summary.totalAgedValue += agedValue;
+      summary.agedBreakdown.push(`${agedQty} ${pack.orderUom} (RM ${agedValue.toFixed(2)})`);
       agedCount++;
       totalAgedVal += agedValue;
-    }
-  });
-
-  // Only assign bareCode if there is exactly 1 unique UOM variant for that item code in the catalog
-  baseCodeVariants.forEach((uomMap, baseCode) => {
-    if (uomMap.size === 1) {
-      const singleRecord = uomMap.values().next().value;
-      stockAgingMap.set(baseCode, singleRecord);
     }
   });
 
@@ -312,23 +254,29 @@ function ingestStockAgingItems(items, sourceName) {
 }
 
 /**
- * Ingests multi-month sales comparisons by exact Item Code and UOM.
- * In Xilnex, sales velocity up/down trends are calculated specifically on that individual UOM
- * (e.g. 100133 - BOX vs 100133 - STRIP).
+ * Ingests multi-month sales comparisons by exact Item Code and UOM,
+ * AND aggregates total consumer demand across all packaging variants of the same item code.
  */
 function ingestSalesTrendItems(latestItems, prevItems) {
   skuSalesTrendMap.clear();
+  baseProductTrendMap.clear();
   const prevMap = new Map();
+  const baseCodePrevUnits = new Map();
+  const baseCodeLatestUnits = new Map();
 
   (prevItems || []).forEach(it => {
-    const meta = extractItemCodeAndUom(it.itemCode, it.uom);
-    prevMap.set(meta.compositeKey, it);
-    prevMap.set(meta.exactCode, it);
+    const pack = parseUniversalPackaging(it.itemCode, it.uom);
+    prevMap.set(pack.compositeKey, it);
+    prevMap.set(pack.exactCode, it);
+
+    const qty = parseFloat(it.qty !== undefined ? it.qty : it.salesQty) || 0;
+    const smallestUnits = qty * pack.packMultiplier;
+    baseCodePrevUnits.set(pack.baseCode, (baseCodePrevUnits.get(pack.baseCode) || 0) + smallestUnits);
   });
 
   (latestItems || []).forEach(it => {
-    const meta = extractItemCodeAndUom(it.itemCode, it.uom);
-    const prev = prevMap.get(meta.compositeKey) || prevMap.get(meta.exactCode);
+    const pack = parseUniversalPackaging(it.itemCode, it.uom);
+    const prev = prevMap.get(pack.compositeKey) || prevMap.get(pack.exactCode);
     const latestQty = parseFloat(it.qty !== undefined ? it.qty : it.salesQty) || 0;
     const prevQty = prev ? (parseFloat(prev.qty !== undefined ? prev.qty : prev.salesQty) || 0) : 0;
 
@@ -342,13 +290,32 @@ function ingestSalesTrendItems(latestItems, prevItems) {
       diffQty,
       latestQty,
       prevQty,
-      uom: meta.orderUom,
+      uom: pack.orderUom,
+      packMultiplier: pack.packMultiplier,
       unconstrainedAds: prevQty > 0 ? +(prevQty / 30).toFixed(3) : 0,
       isZeroRecent: latestQty === 0
     };
 
-    skuSalesTrendMap.set(meta.compositeKey, record);
-    skuSalesTrendMap.set(meta.exactCode, record);
+    skuSalesTrendMap.set(pack.compositeKey, record);
+    skuSalesTrendMap.set(pack.exactCode, record);
+
+    const smallestUnits = latestQty * pack.packMultiplier;
+    baseCodeLatestUnits.set(pack.baseCode, (baseCodeLatestUnits.get(pack.baseCode) || 0) + smallestUnits);
+  });
+
+  // Calculate aggregated cross-UOM momentum for each base product across both prior and latest periods
+  const allBaseCodes = new Set([...baseCodePrevUnits.keys(), ...baseCodeLatestUnits.keys()]);
+  allBaseCodes.forEach(baseCode => {
+    const latestUnits = baseCodeLatestUnits.get(baseCode) || 0;
+    const prevUnits = baseCodePrevUnits.get(baseCode) || 0;
+    const diffPct = prevUnits > 0 ? ((latestUnits - prevUnits) / prevUnits) * 100 : (latestUnits > 0 ? 100 : 0);
+    const direction = diffPct >= 10 ? 'UP' : (diffPct <= -10 ? 'DOWN' : 'FLAT');
+    baseProductTrendMap.set(baseCode, {
+      direction,
+      momentumPct: +diffPct.toFixed(1),
+      latestUnits,
+      prevUnits
+    });
   });
 }
 
@@ -427,35 +394,38 @@ async function handleAgingFileUpload(file) {
 }
 
 /**
- * Retrieves stock aging record disambiguated specifically by Item Code and UOM.
- * Prevents "100133 - STRIP" aging from locking out "100133 - BOX".
+ * Universal Item-Level Stock Aging Interlock
+ * If ANY UOM variant of this SKU has aging stock (>= 150d), returns aging info
+ * so the replenishment engine can strictly enforce the direct lock until stock < 2 mo.
  */
-function getStockAgingForItem(itemCode, uom) {
-  const meta = extractItemCodeAndUom(itemCode, uom);
-  // 1. Specific composite key e.g. "100133::STRIP"
-  if (stockAgingMap.has(meta.compositeKey)) return stockAgingMap.get(meta.compositeKey);
-  // 2. Exact code e.g. "100133 - STRIP"
-  if (stockAgingMap.has(meta.exactCode)) return stockAgingMap.get(meta.exactCode);
-  // 3. Alternative formatted dash key
-  const altDash = `${meta.baseCode} - ${meta.orderUom}`;
-  if (stockAgingMap.has(altDash)) return stockAgingMap.get(altDash);
-  // 4. Fallback to bare baseCode only if non-conflicting
-  if (stockAgingMap.has(meta.baseCode)) {
-    const rec = stockAgingMap.get(meta.baseCode);
-    if (!rec.uom || rec.uom === meta.orderUom || rec.uom === 'PCS') {
-      return rec;
-    }
-  }
-  return null;
+function getStockAgingForItem(itemCode, orderUom) {
+  const pack = parseUniversalPackaging(itemCode, orderUom);
+  const skuSummary = skuAgingSummaryMap.get(pack.baseCode);
+  const specific = stockAgingMap.get(pack.compositeKey) || stockAgingMap.get(pack.exactCode);
+
+  const hasAged = (specific && specific.isAged && specific.agedQty > 0) || 
+                  (skuSummary && skuSummary.hasAgedStock);
+
+  if (!hasAged) return null;
+
+  const breakdownText = (skuSummary && skuSummary.agedBreakdown.length > 0)
+    ? skuSummary.agedBreakdown.join(', ')
+    : `${specific?.agedQty || 0} ${pack.orderUom}`;
+
+  return {
+    isAged: true,
+    hasAgedStock: true,
+    specificAgedQty: specific ? specific.agedQty : 0,
+    specificUom: pack.orderUom,
+    totalAgedValue: skuSummary ? +skuSummary.totalAgedValue.toFixed(2) : (specific ? specific.agedValue : 0),
+    breakdownText
+  };
 }
 
-// ─── MULTI-MONTH SALES TREND & MOMENTUM DETECTOR ─────────────────────────────
-/**
- * Detects sales momentum and direction specifically for the SKU's Order UOM.
- */
+// ─── MULTI-MONTH SALES TREND & CROSS-UOM MOMENTUM DETECTOR ──────────────────
 function detectItemSalesTrend(row, baselineAds, rowUom) {
   const code = String(resolveCol(row, ['Item Code', 'Item_Code', 'ItemCode', 'SKU', 'Code'])).trim().toUpperCase();
-  const meta = extractItemCodeAndUom(code, rowUom);
+  const pack = parseUniversalPackaging(code, rowUom);
 
   // 1. Check if row itself has month columns (e.g. Month 1, Month 2, Latest, M-1, M-2)
   const m2 = parseFloat(resolveCol(row, ['Sales_M2', 'Month 2 Qty', 'Qty_M2', 'M-2 Qty', 'Month2'])) || 0;
@@ -470,19 +440,51 @@ function detectItemSalesTrend(row, baselineAds, rowUom) {
       momentumPct: diffPct,
       unconstrainedAds: prior > 0 ? (prior / 30) : baselineAds,
       isZeroRecent: mLatest === 0,
-      uom: meta.orderUom
+      uom: pack.orderUom
     };
   }
 
-  // 2. Check storage/suite trend cache using exact composite key first!
-  if (skuSalesTrendMap.has(meta.compositeKey)) return skuSalesTrendMap.get(meta.compositeKey);
-  if (skuSalesTrendMap.has(meta.exactCode)) return skuSalesTrendMap.get(meta.exactCode);
-  const altDash = `${meta.baseCode} - ${meta.orderUom}`;
-  if (skuSalesTrendMap.has(altDash)) return skuSalesTrendMap.get(altDash);
+  // 2. Cross-UOM trend resolution:
+  // Check specific UOM trend AND overall base product trend
+  const specificTrend = skuSalesTrendMap.get(pack.compositeKey) || skuSalesTrendMap.get(pack.exactCode);
+  const baseProductTrend = baseProductTrendMap.get(pack.baseCode);
 
-  // 3. Fallback: evaluate single salesQty & SOH
-  const salesQty = parseFloat(resolveCol(row, ['Sales Qty', 'Sales_Qty_90d', 'SalesQty', 'Qty Sold', 'Sales', 'Qty_Sold'])) || 0;
-  const soh = parseFloat(resolveCol(row, ['Quantity On Hand', 'SOH', 'Stock on Hand', 'StockOnHand'])) || 0;
+  // If specific UOM has an explicit UP trend, use it
+  if (specificTrend && specificTrend.direction === 'UP') {
+    return specificTrend;
+  }
+  // If overall product consumption surged (e.g. loose sachet/strip sales surging), inherit the surge for Order UOM!
+  if (baseProductTrend && baseProductTrend.direction === 'UP') {
+    return {
+      direction: 'UP',
+      momentumPct: baseProductTrend.momentumPct,
+      unconstrainedAds: baselineAds,
+      isZeroRecent: false,
+      isProductWideSurge: true,
+      uom: pack.orderUom
+    };
+  }
+
+  // If specific UOM dropped, or overall product consumption collapsed
+  if (specificTrend && specificTrend.direction === 'DOWN') {
+    return specificTrend;
+  }
+  if (baseProductTrend && baseProductTrend.direction === 'DOWN') {
+    return {
+      direction: 'DOWN',
+      momentumPct: baseProductTrend.momentumPct,
+      unconstrainedAds: baselineAds,
+      isZeroRecent: false,
+      isProductWideDecay: true,
+      uom: pack.orderUom
+    };
+  }
+
+  if (specificTrend) return specificTrend;
+
+  // 3. Fallback: evaluate single salesQty & Quantity On Hand
+  const salesQty = parseFloat(resolveCol(row, ['Sales Qty', 'Sales_Qty', 'Sales Quantity', 'SalesQty', 'Qty Sold', 'Sales', 'Qty_Sold'])) || 0;
+  const qoh = parseFloat(resolveCol(row, ['Quantity On Hand', 'QuantityOnHand', 'Quantity_On_Hand', 'SOH', 'Stock on Hand', 'StockOnHand'])) || 0;
 
   if (salesQty === 0) {
     return {
@@ -490,7 +492,7 @@ function detectItemSalesTrend(row, baselineAds, rowUom) {
       momentumPct: -100,
       unconstrainedAds: 0.5,
       isZeroRecent: true,
-      uom: meta.orderUom
+      uom: pack.orderUom
     };
   }
 
@@ -499,14 +501,14 @@ function detectItemSalesTrend(row, baselineAds, rowUom) {
     momentumPct: 0,
     unconstrainedAds: baselineAds,
     isZeroRecent: false,
-    uom: meta.orderUom
+    uom: pack.orderUom
   };
 }
 
 // ─── PARAMETERS (user-editable) ──────────────────────────────────────────────
 function getParams() {
   return {
-    salesWindow: parseInt(document.getElementById('paramSalesWindow')?.value, 10) || 90,
+    salesWindow: parseInt(document.getElementById('paramSalesWindow')?.value, 10) || 180, // Default 180 days (6 months) as configured in UI
     leadTime:    parseInt(document.getElementById('paramLeadTime')?.value,    10) || 7,
     safetyDays:  parseInt(document.getElementById('paramSafetyDays')?.value,  10) || 30,
     targetDays:  parseInt(document.getElementById('paramTargetDays')?.value,  10) || 60, // HQ Standard: 2.0 months (60 days buffer)
@@ -765,7 +767,7 @@ function recalcInventory() {
       // ─── RULE 1: STOCK AGING DIRECT LOCK ──────────────────────────────────
       // Any SKU appearing in stock aging is directly locked away until quantity drops under 2 months from selling (< 60 days)
       const agingInfo = getStockAgingForItem(itemCode, uom);
-      if (agingInfo && agingInfo.isAged && agingInfo.agedQty > 0) {
+      if (agingInfo && agingInfo.hasAgedStock) {
         const daysCover = baselineAds > 0 ? (soh / baselineAds) : 9999;
         const monthsCover = daysCover / 30;
 
@@ -775,7 +777,7 @@ function recalcInventory() {
           ruleApplied = 'RULE_1_AGING_LOCKED';
           badge = '🛑 AGING LOCKED';
           badgeColor = 'bg-rose-100 text-rose-800 border-rose-300';
-          reason = `Aging stock detected (${agingInfo.agedQty} ${uom} ≥150d, RM ${agingInfo.agedValue}). Existing SOH covers ${monthsCover >= 999 ? '∞' : monthsCover.toFixed(1) + ' mo'} (≥ 2.0 mo target). Strictly locked from ordering until stock is depleted under 2 months.`;
+          reason = `Aging stock detected across SKU [${packSpec.baseCode || itemCode}] (${agingInfo.breakdownText}, Total RM ${agingInfo.totalAgedValue.toFixed(2)}). Current Quantity On Hand covers ${monthsCover >= 999 ? '∞' : monthsCover.toFixed(1) + ' mo'} (≥ 2.0 mo target). Strictly locked across all UOMs until depleted under 2.0 months.`;
           isAgingLocked = true;
         } else {
           // Stock has depleted to LESS than 2 months! Allow conservative replenishment up to 2.0 months target
@@ -785,27 +787,30 @@ function recalcInventory() {
           ruleApplied = 'RULE_1_AGING_DEPLETED';
           badge = '🟡 AGING DEPLETED (< 2 Mo)';
           badgeColor = 'bg-amber-100 text-amber-900 border-amber-300';
-          reason = `Aged stock depleted to ${monthsCover.toFixed(1)} mo (< 2.0 mo target). Reordering conservatively up to 2 months limit (${uom}).`;
+          reason = `Aged stock across SKU [${packSpec.baseCode || itemCode}] depleted to ${monthsCover.toFixed(1)} mo (< 2.0 mo target). Replenishing conservatively up to 2.0 mo limit (${uom}).`;
         }
       }
 
       // If not aging-locked, evaluate Rule 2 and Rule 3
       if (!isAgingLocked) {
         // ─── RULE 2: SALES MOMENTUM UPWARD ACCELERATION ─────────────────────
-        if (trend.direction === 'UP' && trend.momentumPct >= 10) {
+        if (trend.direction === 'UP' && (trend.momentumPct >= 10 || trend.isProductWideSurge)) {
           // Cap momentum multiplier between +5% and +35% to prevent runaway over-ordering
-          const momentumMultiplier = Math.min(1.35, 1 + (trend.momentumPct / 100) * 0.5);
-          effectiveAds = baselineAds * momentumMultiplier;
+          const momPct = Math.max(10, trend.momentumPct || 10);
+          const momentumMultiplier = Math.min(1.35, 1 + (momPct / 100) * 0.5);
+          effectiveAds = baselineAds > 0 ? (baselineAds * momentumMultiplier) : 0.5;
           const rop = effectiveAds * (p.leadTime + p.safetyDays);
           const targetMax = effectiveAds * targetDays;
           suggestedOrder = (ip <= rop && effectiveAds > 0 && isActive) ? Math.ceil(targetMax - ip) : 0;
           ruleApplied = 'RULE_2_MOMENTUM_BOOST';
-          badge = `🚀 MOMENTUM UP (+${Math.round(trend.momentumPct)}%)`;
+          badge = trend.isProductWideSurge ? `🚀 SKU SURGE (+${Math.round(momPct)}%)` : `🚀 MOMENTUM UP (+${Math.round(momPct)}%)`;
           badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-300';
-          reason = `Sales accelerating (+${Math.round(trend.momentumPct)}% MoM on ${uom}). ADS adjusted from ${baselineAds.toFixed(2)} to ${effectiveAds.toFixed(2)} ${uom}/day to prevent fast-mover stockouts.`;
+          reason = trend.isProductWideSurge
+            ? `Product consumption surging across variants (+${Math.round(momPct)}% overall). Order UOM (${uom}) replenishment accelerated.`
+            : `Sales accelerating (+${Math.round(momPct)}% on ${uom}). ADS adjusted from ${baselineAds.toFixed(2)} to ${effectiveAds.toFixed(2)} ${uom}/day to prevent fast-mover stockouts.`;
         }
         // ─── RULE 3: SMART STOCKOUT (PHANTOM DROP) VS TRUE CONTRACTION ───────
-        else if (trend.direction === 'DOWN' || baselineAds === 0 || trend.isZeroRecent) {
+        else if (trend.direction === 'DOWN' || baselineAds === 0 || trend.isZeroRecent || trend.direction === 'ZERO') {
           if (soh <= 0) {
             // RULE 3A: PHANTOM DROP / OOS MISSED ORDERING
             // Demand did not vanish; shelf was empty!
@@ -813,10 +818,14 @@ function recalcInventory() {
             const rop = effectiveAds * (p.leadTime + p.safetyDays);
             const targetMax = effectiveAds * targetDays;
             suggestedOrder = (ip <= rop && isActive) ? Math.ceil(targetMax - ip) : 0;
+            // CRITICAL USER REQUIREMENT: Suggest at least 1 unit of Order UOM!
+            if (isActive && suggestedOrder < 1) {
+              suggestedOrder = 1;
+            }
             ruleApplied = 'RULE_3A_PHANTOM_DROP';
-            badge = '⚠️ OOS PHANTOM DROP';
+            badge = `⚠️ OOS PHANTOM DROP (Min 1 ${uom})`;
             badgeColor = 'bg-amber-100 text-amber-900 border-amber-300';
-            reason = `Sales dropped to 0 due to zero shelf stock (stockout), not loss of demand. Restoring baseline replenishment rate (${uom}).`;
+            reason = `Quantity On Hand is 0 with zero/contracted sales. Zero sales caused by stockout / missed ordering, not lack of demand. Ordering min 1 ${uom} to test replenishment and restore shelf availability.`;
           } else {
             // RULE 3B: TRUE CONTRACTION (Stock was available, but demand fell)
             const decayedAds = Math.max(0.01, baselineAds * Math.max(0.4, 1 - Math.abs(trend.momentumPct || 25) / 100));
@@ -828,7 +837,7 @@ function recalcInventory() {
               ruleApplied = 'RULE_3B_SURPLUS_HALT';
               badge = '⏸️ SURPLUS (SOH ≥ 2 Mo)';
               badgeColor = 'bg-blue-100 text-blue-800 border-blue-300';
-              reason = `Demand softened. Existing SOH (${soh} ${uom}) covers ${daysCoverWithSoh} days (≥ 60d target). Reorder halted.`;
+              reason = `Demand softened. Existing Quantity On Hand (${soh} ${uom}) covers ${daysCoverWithSoh} days (≥ 60d target). Reorder halted to clear existing stock.`;
               effectiveAds = decayedAds;
             } else {
               effectiveAds = decayedAds;
@@ -836,9 +845,9 @@ function recalcInventory() {
               const targetMax = effectiveAds * targetDays;
               suggestedOrder = (ip <= rop && effectiveAds > 0 && isActive) ? Math.ceil(targetMax - ip) : 0;
               ruleApplied = 'RULE_3B_DECAYING_ORDER';
-              badge = `📉 DECAYING DEMAND (-${Math.round(Math.abs(trend.momentumPct || 25))}%)`;
+              badge = trend.isProductWideDecay ? `📉 SKU CONTRACTION (-${Math.round(Math.abs(trend.momentumPct || 25))}%)` : `📉 DECAYING DEMAND (-${Math.round(Math.abs(trend.momentumPct || 25))}%)`;
               badgeColor = 'bg-purple-100 text-purple-800 border-purple-300';
-              reason = `Demand softened with stock on shelf. Reordering conservatively at decayed run-rate (${decayedAds.toFixed(2)} ${uom}/day).`;
+              reason = `Sales contracted with available shelf stock. Reordering conservatively at decayed run-rate (${decayedAds.toFixed(2)} ${uom}/day).`;
             }
           }
         }
@@ -1014,7 +1023,7 @@ function overrideAgingLock(rowIdx) {
   if (!row) return;
 
   const inputVal = prompt(
-    `[PHARMACIST OVERRIDE - STOCK AGING LOCK]\n\nSKU: ${row.itemCode} - ${row.desc}\nOrder UOM: ${row.uom}\nCurrent SOH: ${row.soh} ${row.uom}\nAged Qty: ${row.isAgingLocked ? 'Locked' : 'Depleted'}\n\nEnter approved order quantity in ${row.uom} to override lock:`,
+    `[PHARMACIST OVERRIDE - STOCK AGING LOCK]\n\nSKU: ${row.itemCode} - ${row.desc}\nOrder UOM: ${row.uom}\nCurrent Quantity On Hand: ${row.soh} ${row.uom}\nAged Qty: ${row.isAgingLocked ? 'Locked' : 'Depleted'}\n\nEnter approved order quantity in ${row.uom} to override lock:`,
     row.packSize > 1 ? String(row.packSize) : '10'
   );
 
@@ -1201,10 +1210,15 @@ if (typeof window !== 'undefined') {
   window.overrideAgingLock = overrideAgingLock;
   window.updateApprovedQtyByRowIndex = updateApprovedQtyByRowIndex;
   window.extractItemCodeAndUom = extractItemCodeAndUom;
+  window.parseUniversalPackaging = parseUniversalPackaging;
   window.normalizeUom = normalizeUom;
   window.ingestSalesTrendItems = ingestSalesTrendItems;
   window.stockAgingMap = stockAgingMap;
+  window.skuAgingSummaryMap = skuAgingSummaryMap;
   window.skuSalesTrendMap = skuSalesTrendMap;
+  window.baseProductTrendMap = baseProductTrendMap;
+  window.getStockAgingForItem = getStockAgingForItem;
+  window.detectItemSalesTrend = detectItemSalesTrend;
   window.setInventoryData = (d) => { inventoryData = d; };
   window.getInventoryGrid = () => inventoryGrid;
   window.recalcInventory = recalcInventory;

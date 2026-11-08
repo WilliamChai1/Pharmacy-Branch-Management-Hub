@@ -275,8 +275,8 @@
       </h3>
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div>
-          <label class="block text-xs text-gray-500 mb-1">Sales History (days)</label>
-          <input id="paramSalesWindow" type="number" value="90" min="1"
+          <label class="block text-xs text-gray-500 mb-1">Sales History (days) — Default 180d (6 Mo)</label>
+          <input id="paramSalesWindow" type="number" value="180" min="1"
             class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-blue-400 focus:border-blue-400 outline-none">
         </div>
         <div>
@@ -296,6 +296,39 @@
         </div>
       </div>
       <p class="text-xs text-gray-400 mt-3">HQ Standard: 2.0 months stock cycle (60 days buffer). ROP = ADS × (Lead Time + Safety Buffer) &nbsp;|&nbsp; Suggested Order = Max(0, ceil(ADS × Target − IP)) if IP ≤ ROP</p>
+    </div>
+
+    <!-- Official Xilnex Export Format Reference Card -->
+    <div class="bg-blue-50/70 border border-blue-200 rounded-xl p-4 mb-5 shadow-xs">
+      <div class="flex items-center justify-between cursor-pointer" onclick="document.getElementById('xilnexFormatGuide').classList.toggle('hidden')">
+        <div class="flex items-center gap-2.5">
+          <div class="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center text-xs shadow-xs">
+            <i class="fa-solid fa-file-excel"></i>
+          </div>
+          <div>
+            <span class="text-xs font-black text-blue-950 uppercase tracking-wide">Official Xilnex Inventory Export Format Reference</span>
+            <p class="text-[11px] text-blue-800/80">Click to expand reference image &amp; required 7-column layout (Preferred Vendor, Item Code, Quantity On Hand, Sales Qty, etc.)</p>
+          </div>
+        </div>
+        <span class="text-xs text-blue-700 font-extrabold hover:underline inline-flex items-center gap-1">
+          Toggle Reference <i class="fa-solid fa-chevron-down text-[10px]"></i>
+        </span>
+      </div>
+      <div id="xilnexFormatGuide" class="mt-3 pt-3 border-t border-blue-200">
+        <p class="text-xs text-slate-700 font-medium mb-2">When exporting from Xilnex for replenishment, ensure the file includes the 7 standard columns below:</p>
+        <div class="flex flex-wrap gap-1.5 mb-3">
+          <span class="px-2 py-1 rounded bg-white text-slate-800 border border-slate-300 text-[11px] font-mono font-bold shadow-xs">1. Preferred Vendor</span>
+          <span class="px-2 py-1 rounded bg-white text-slate-800 border border-slate-300 text-[11px] font-mono font-bold shadow-xs">2. Non Functional Field 1</span>
+          <span class="px-2 py-1 rounded bg-white text-slate-800 border border-slate-300 text-[11px] font-mono font-bold shadow-xs">3. Item Code <span class="text-[9px] text-indigo-600 font-sans font-normal">(e.g. 100925 - BOX70)</span></span>
+          <span class="px-2 py-1 rounded bg-white text-slate-800 border border-slate-300 text-[11px] font-mono font-bold shadow-xs">4. Item Name</span>
+          <span class="px-2 py-1 rounded bg-blue-100 text-blue-900 border border-blue-300 text-[11px] font-mono font-black shadow-xs">5. Quantity On Hand</span>
+          <span class="px-2 py-1 rounded bg-blue-100 text-blue-900 border border-blue-300 text-[11px] font-mono font-black shadow-xs">6. Sales Qty <span class="text-[9px] text-blue-700 font-sans font-normal">(Default 6 Months / 180 Days)</span></span>
+          <span class="px-2 py-1 rounded bg-white text-slate-800 border border-slate-300 text-[11px] font-mono font-bold shadow-xs">7. Category</span>
+        </div>
+        <div class="rounded-lg overflow-hidden border border-blue-300/80 shadow-xs bg-white">
+          <img src="assets/xilnex_replenishment_export_format.jpg" alt="Official Xilnex Inventory CSV Export Format" class="w-full object-contain max-h-[240px]">
+        </div>
+      </div>
     </div>
 
     <!-- File drop zone -->
@@ -462,7 +495,7 @@
                 <th class="px-3 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide">Order UOM</th>
                 <th class="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Description &amp; Diagnostics</th>
                 <th class="px-3 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide">Vendor</th>
-                <th class="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">SOH</th>
+                <th class="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">Quantity On Hand</th>
                 <th class="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">On Order</th>
                 <th class="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">ADS</th>
                 <th class="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">Days Cover</th>
