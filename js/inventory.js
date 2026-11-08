@@ -10,72 +10,147 @@ let skuSalesTrendMap = new Map(); // Key: uppercase itemCode -> { m2Qty, m1Qty, 
 let stockAgingStatus = { connected: false, skuCount: 0, agedCount: 0, totalAgedValue: 0, source: 'None' };
 let invActiveFilterPill = 'ALL'; // 'ALL', 'REORDER', 'MOMENTUM', 'STOCKOUT', 'AGING_LOCKED', 'SURPLUS'
 
-// ─── PACK SIZE & MOQ PARSER (EXTRACTED FROM ITEM CODE SUFFIX) ────────────────
+// ─── PACKAGING SPECIFICATION & UOM CONVERSION PARSER ─────────────────────────
 /**
- * In PMG Xilnex catalog, packing size is explicitly specified after the hyphen in Item Code:
- * e.g. "114682 - sac" -> 1 PC
- *      "114682 - box30" -> 30 PCs (BOX of 30)
- *      "114682 - twinpack" -> 2 PCs (Twinpack)
- *      "100041 - BOT25" -> 25 PCs (Bottle of 25)
- *      "100130 - PACK10" -> 10 PCs (Pack of 10)
- *      "100049 - CAP 60'S" -> 60 PCs (60's)
+ * In PMG Xilnex catalog, the suffix after '-' defines the packaging specification:
+ * - 'box30'   : 1 Box containing 30 sachets / smallest UOM (order unit: Box)
+ * - 'twinpack': Twinpack containing 2 boxes of 30 sachets = 60 sachets (order unit: Twinpack)
+ * - 'sac'     : 1 Sachet (smallest UOM) (order unit: Sachet)
+ * - 'pack10'  : 1 Pack containing 10 units of the smallest UOM (order unit: Pack)
+ * - 'bot25'   : 25 Bottles of this item (order unit: Bundle/Carton of 25 Bottles)
+ * 
+ * IMPORTANT: The quantity on hand (SOH) and order quantity in Xilnex are already in units
+ * of that specific SKU. An order quantity of 7 for "114682 - BOX30" means 7 boxes (NOT 30 boxes!).
  */
-function parsePackSizeFromItemCode(itemCode) {
-  if (!itemCode) return { packSize: 1, rawSuffix: '', label: '1 PC' };
+function parsePackagingSpecification(itemCode) {
+  if (!itemCode) return { smallestUomUnits: 1, baseCode: '', suffix: '', label: '1 Unit', displayTag: '1 Unit', unitType: 'Unit' };
   const str = String(itemCode).trim();
   const dashIdx = str.indexOf('-');
-  if (dashIdx === -1) return { packSize: 1, rawSuffix: '', label: '1 PC' };
+  const baseCode = dashIdx !== -1 ? str.substring(0, dashIdx).trim().toUpperCase() : str.toUpperCase();
+  if (dashIdx === -1) return { smallestUomUnits: 1, baseCode, suffix: '', label: '1 Unit', displayTag: '1 Unit', unitType: 'Unit' };
 
   const suffix = str.substring(dashIdx + 1).trim();
   const sLower = suffix.toLowerCase();
 
-  // Pattern 1: box30, box60, etc.
+  // 1. Specific twinpack rule: 2 boxes of 30 sachets = 60 sachets
+  if (sLower.includes('twinpack') || sLower.includes('twin')) {
+    return {
+      smallestUomUnits: 60,
+      boxCount: 2,
+      baseCode,
+      suffix,
+      label: 'Twinpack (2 Boxes of 30 Sac = 60 Sac)',
+      displayTag: 'Twinpack (2 Boxes)',
+      unitType: 'Twinpacks'
+    };
+  }
+
+  // 2. Specific triplepack rule: 3 boxes
+  if (sLower.includes('triplepack') || sLower.includes('tripack')) {
+    return {
+      smallestUomUnits: 90,
+      boxCount: 3,
+      baseCode,
+      suffix,
+      label: 'Triplepack (3 Boxes)',
+      displayTag: 'Triplepack (3 Boxes)',
+      unitType: 'Triplepacks'
+    };
+  }
+
+  // 3. boxN (e.g. box30 -> 30 sachets/units in 1 box)
   let m = sLower.match(/box\s*(\d+)/);
   if (m) {
     const n = parseInt(m[1], 10);
-    return { packSize: n > 0 ? n : 1, rawSuffix: suffix, label: `BOX of ${n}` };
+    return {
+      smallestUomUnits: n,
+      baseCode,
+      suffix,
+      label: `Box of ${n} (${n} Sac/Box)`,
+      displayTag: `Box of ${n} (${n} Sac)`,
+      unitType: 'Boxes'
+    };
   }
 
-  // Pattern 2: pack10, pack5, etc.
+  // 4. packN (e.g. pack10 -> 10 units of the smallest UOM)
   m = sLower.match(/pack\s*(\d+)/);
   if (m) {
     const n = parseInt(m[1], 10);
-    return { packSize: n > 0 ? n : 1, rawSuffix: suffix, label: `PACK of ${n}` };
+    return {
+      smallestUomUnits: n,
+      baseCode,
+      suffix,
+      label: `Pack of ${n} (${n} Units Smallest UOM)`,
+      displayTag: `Pack of ${n}`,
+      unitType: 'Packs'
+    };
   }
 
-  // Pattern 3: bot25, bot60, bot100, etc.
+  // 5. botN (e.g. bot25 -> 25 bottles of this item)
   m = sLower.match(/bot\s*(\d+)/);
   if (m) {
     const n = parseInt(m[1], 10);
-    return { packSize: n > 0 ? n : 1, rawSuffix: suffix, label: `BOT of ${n}` };
+    return {
+      smallestUomUnits: n,
+      baseCode,
+      suffix,
+      label: `${n} Bottles of this item`,
+      displayTag: `${n} Bottles`,
+      unitType: 'Bundles (25 Bot)'
+    };
   }
 
-  // Pattern 4: strip10, tab30, cap60, sac30
-  m = sLower.match(/(?:strip|tab|cap|sachet|sac)\s*(\d+)/);
-  if (m) {
-    const n = parseInt(m[1], 10);
-    return { packSize: n > 0 ? n : 1, rawSuffix: suffix, label: `${suffix.toUpperCase()}` };
+  // 6. Sachet / sac (Smallest UOM)
+  if (sLower === 'sac' || sLower === 'sachet') {
+    return {
+      smallestUomUnits: 1,
+      baseCode,
+      suffix,
+      label: '1 Sachet (Smallest UOM)',
+      displayTag: '1 Sachet (Smallest UOM)',
+      unitType: 'Sachets'
+    };
   }
 
-  // Pattern 5: (\d+)'s or (\d+)s or x(\d+)
+  // 7. Strip / Tab / Cap / Bottle / Tube without trailing numbers
+  if (sLower === 'strip') {
+    return { smallestUomUnits: 1, baseCode, suffix, label: '1 Strip', displayTag: '1 Strip', unitType: 'Strips' };
+  }
+  if (sLower === 'cap' || sLower === 'tab') {
+    return { smallestUomUnits: 1, baseCode, suffix, label: `1 ${suffix.toUpperCase()} (Smallest UOM)`, displayTag: `1 ${suffix.toUpperCase()}`, unitType: `${suffix.toUpperCase()}s` };
+  }
+  if (sLower === 'bot' || sLower === 'bottle') {
+    return { smallestUomUnits: 1, baseCode, suffix, label: '1 Bottle', displayTag: '1 Bottle', unitType: 'Bottles' };
+  }
+  if (sLower === 'box') {
+    return { smallestUomUnits: 1, baseCode, suffix, label: '1 Box', displayTag: '1 Box', unitType: 'Boxes' };
+  }
+  if (sLower === 'pack') {
+    return { smallestUomUnits: 1, baseCode, suffix, label: '1 Pack', displayTag: '1 Pack', unitType: 'Packs' };
+  }
+
+  // Fallback pattern for numbers like 60's, 60s, x2
   m = sLower.match(/(?:x\s*(\d+)|\b(\d+)\s*(?:'s|s)\b)/);
   if (m) {
     const n = parseInt(m[1] || m[2], 10);
-    return { packSize: n > 0 ? n : 1, rawSuffix: suffix, label: `${suffix.toUpperCase()}` };
+    return {
+      smallestUomUnits: n,
+      baseCode,
+      suffix,
+      label: `${suffix.toUpperCase()} (${n} Units/Pack)`,
+      displayTag: suffix.toUpperCase(),
+      unitType: suffix.toUpperCase()
+    };
   }
 
-  // Pattern 6: twinpack / twin
-  if (sLower.includes('twinpack') || sLower.includes('twin')) {
-    return { packSize: 2, rawSuffix: suffix, label: 'TWINPACK (2)' };
-  }
-
-  // Pattern 7: triplepack / tripack
-  if (sLower.includes('triplepack') || sLower.includes('tripack')) {
-    return { packSize: 3, rawSuffix: suffix, label: 'TRIPLEPACK (3)' };
-  }
-
-  // Generic single-item tokens (e.g. SAC, CAP, TAB, BOX, BOT, TUBE, STRIP)
-  return { packSize: 1, rawSuffix: suffix, label: suffix.toUpperCase() || '1 PC' };
+  return {
+    smallestUomUnits: 1,
+    baseCode,
+    suffix,
+    label: suffix.toUpperCase() || '1 Unit',
+    displayTag: suffix.toUpperCase() || '1 Unit',
+    unitType: suffix.toUpperCase() || 'Units'
+  };
 }
 
 // ─── STOCK AGING STORAGE INTEGRATION & SYNC ──────────────────────────────────
@@ -512,8 +587,8 @@ function recalcInventory() {
       const isActive   = activeVal !== 'no' && activeVal !== 'false';
       const category   = resolveCol(row, ['Category', 'Cat', 'Item Category', 'Division']).trim().toUpperCase();
 
-      // Pack Size / MOQ parsed from Item Code suffix (e.g. - box30, - pack10, - twinpack)
-      const packInfo = parsePackSizeFromItemCode(itemCode);
+      // Packaging Specification & UOM parsed from Item Code suffix (e.g. - box30, - pack10, - twinpack, - sac)
+      const packSpec = parsePackagingSpecification(itemCode);
 
       // Baseline ADS
       const baselineAds = salesQty > 0 ? (salesQty / p.salesWindow) : 0;
@@ -630,16 +705,9 @@ function recalcInventory() {
         }
       }
 
-      // ─── PACK SIZE & MOQ ROUNDING ──────────────────────────────────────────
-      let rawOrderQty = suggestedOrder;
-      let packRoundingNote = '';
-      if (suggestedOrder > 0 && packInfo.packSize > 1) {
-        const rounded = Math.ceil(suggestedOrder / packInfo.packSize) * packInfo.packSize;
-        if (rounded !== suggestedOrder) {
-          packRoundingNote = ` (Rounded from ${suggestedOrder} to ${rounded} pcs for whole ${packInfo.label})`;
-          suggestedOrder = rounded;
-        }
-      }
+      // In Xilnex, the row quantity is already measured in the SKU's specific unit (e.g. boxes, twinpacks, packs, sachets).
+      // We do NOT artificially multiply suggestedOrder by packSize (e.g. 7 boxes remains 7 boxes).
+      suggestedOrder = Math.max(0, Math.ceil(suggestedOrder));
 
       const ropFinal = effectiveAds * (p.leadTime + p.safetyDays);
       const daysCover = effectiveAds > 0 ? Math.round(soh / effectiveAds) : 9999;
@@ -654,9 +722,11 @@ function recalcInventory() {
       return {
         itemCode, desc, vendorCode, nonFunctionalField1, orderGroup, uom, isActive, category,
         salesQty, soh, onOrder,
-        packSize: packInfo.packSize,
-        packLabel: packInfo.label,
-        packRoundingNote,
+        packSize: packSpec.smallestUomUnits,
+        smallestUomUnits: packSpec.smallestUomUnits,
+        packLabel: packSpec.label,
+        packDisplayTag: packSpec.displayTag,
+        unitType: packSpec.unitType,
         ads: +effectiveAds.toFixed(3),
         baselineAds: +baselineAds.toFixed(3),
         ip,
@@ -669,7 +739,7 @@ function recalcInventory() {
         ruleApplied,
         badge,
         badgeColor,
-        reason: reason + packRoundingNote,
+        reason,
         isAgingLocked,
         isOverridden: false,
         clearanceOffers,

@@ -905,105 +905,104 @@ def update_presentation(template_path, data, output_path):
         set_cell_formatted(t6.cell(row_num, 11), diff_gp, val_size=font_sz, val_bold=True, val_color=diff_gp_col)
 
     # =========================================================================
-    # SLIDE 7: TOP EXPANSION DRIVERS — REFINED EXECUTIVE CARDS & HEADER
+    # SLIDE 7: TOP EXPANSION DRIVERS — CLEAN STATEMENTS (NO REPETITIVE DATA CLUTTER)
     # =========================================================================
     s7 = prs.slides[6]
     set_slide_header(s7.shapes[1], "CATEGORY SALES ANALYSIS (MTD): TOP EXPANSION DRIVERS (WHAT GOES UP & REASONS)",
                      "In-Depth Category Deep Dive — October 2026 vs October 2025")
 
     supp_spec = [
-        ([("Supplements ", Pt(12.5), True, COLOR_DARK_TEXT),
-          ("▲ +3.71% YoY", Pt(10.5), True, COLOR_GREEN)], Pt(2)),
-        ([("+RM 2,723.59 | RM 76,082.27 Total", Pt(9.5), True, COLOR_SLATE)], Pt(3)),
-        ([("Top GP Generator: ", Pt(9.5), True, COLOR_DARK_TEXT),
-          ("Delivered RM 28,112.94 in gross profit (36.95% GP margin), contributing 22.5% of outlet revenue.", Pt(9), False, COLOR_SLATE)], Pt(3)),
-        ([("Major Item Gainers:", Pt(9.5), True, COLOR_DARK_TEXT)], Pt(2)),
-        ([("• Nutribridge Nutri Alpha 800g: ", Pt(9), False, COLOR_SLATE), ("+RM 5,061.46", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
-        ([("• Livemore Neomega Softgel: ", Pt(9), False, COLOR_SLATE), ("+RM 2,885.86", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
-        ([("• Axon Arm BP Monitor: ", Pt(9), False, COLOR_SLATE), ("+RM 1,820.00", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
-        ([("• Nutribridge Multivit & CoQ10: ", Pt(9), False, COLOR_SLATE), ("+RM 1,675.96", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
-        ([("• Nutrixlim Lipofit: ", Pt(9), False, COLOR_SLATE), ("+RM 1,667.01", Pt(9), True, COLOR_GREEN)], Pt(3)),
-        ([("Underlying Reason: ", Pt(9.5), True, COLOR_DARK_TEXT),
-          ("DPOS companion bundling + 7th Mile aging demographic + viral TikTok/XHS awareness on CoQ10, Berberine & joint health.", Pt(9), False, COLOR_SLATE)], None)
+        ([("Supplements", Pt(13), True, COLOR_DARK_TEXT),
+          (" ▲ +3.71% YoY", Pt(11), True, COLOR_GREEN)], Pt(3)),
+        ([("Top Outlet GP Generator (36.95% GP Margin | 22.5% Revenue)", Pt(10), True, COLOR_GREEN)], Pt(4)),
+        ([("• Companion Attachment Protocol: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Dispensary staff routinely attach vascular and metabolic wellness lines to regular chronic prescriptions.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("• Local Catchment Demographics: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Suburban 7th Mile senior citizen population drives sustained demand for joint care, blood pressure monitors, and omega protection.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("• Social Media Health Trends: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Viral consumer awareness on TikTok and XiaoHongShu (XHS) for CoQ10, Berberine, and vascular longevity created strong walk-in demand.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("• Strategic Growth Lines: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Nutribridge Nutri Alpha, Livemore NeOmega, Axon BP Monitors, and Nutrixlim Lipofit led volume growth.", Pt(9.5), False, COLOR_SLATE)], None)
     ]
     set_card_content(s7.shapes[2], supp_spec)
 
     sche_spec = [
-        ([("Scheduled Drugs ", Pt(12.5), True, COLOR_DARK_TEXT),
-          ("▲ +0.47% YoY", Pt(10.5), True, COLOR_GREEN)], Pt(2)),
-        ([("+RM 294.91 | RM 62,679.91 Total", Pt(9.5), True, COLOR_SLATE)], Pt(3)),
-        ([("Core Revenue Anchor: ", Pt(9.5), True, COLOR_DARK_TEXT),
-          ("Represents 18.5% of outlet sales with RM 7,483.85 GP, maintaining baseline customer retention.", Pt(9), False, COLOR_SLATE)], Pt(3)),
-        ([("Major Item Gainers:", Pt(9.5), True, COLOR_DARK_TEXT)], Pt(2)),
-        ([("• Ketosteril 100's: ", Pt(9), False, COLOR_SLATE), ("+RM 3,537.80", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
-        ([("• Novartis Entresto 50mg: ", Pt(9), False, COLOR_SLATE), ("+RM 3,227.00", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
-        ([("• Breztri Aerosphere: ", Pt(9), False, COLOR_SLATE), ("+RM 1,240.00", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
-        ([("• Gracure Geloxib: ", Pt(9), False, COLOR_SLATE), ("+RM 1,090.24", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
-        ([("• Novugen Amval: ", Pt(9), False, COLOR_SLATE), ("+RM 1,026.00", Pt(9), True, COLOR_GREEN)], Pt(3)),
-        ([("Underlying Reason: ", Pt(9.5), True, COLOR_DARK_TEXT),
-          ("Loyal long-term chronic patient base reinforced by pharmacist prescription review, adherence monitoring, and refill reminders.", Pt(9), False, COLOR_SLATE)], None)
+        ([("Scheduled Drugs", Pt(13), True, COLOR_DARK_TEXT),
+          (" ▲ +0.47% YoY", Pt(11), True, COLOR_GREEN)], Pt(3)),
+        ([("Foundational Revenue Anchor (18.5% of Store Sales)", Pt(10), True, COLOR_GREEN)], Pt(4)),
+        ([("• Chronic Refill Adherence: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("High long-term patient loyalty reinforced by proactive prescription reviews and advance refill notifications.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("• Core Chronic Disease Anchors: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Sustained refill volume across specialized renal care (Ketosteril), heart failure (Entresto), and respiratory therapies (Breztri).", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("• Clinical Authority Moat: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Community patients rely on personal pharmacist counseling, providing an authoritative defense against retail chain discounters.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("• Adherence Retention Target: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Maintain zero-stockout policy on regular patient maintenance drugs to prevent customer leakage.", Pt(9.5), False, COLOR_SLATE)], None)
     ]
     set_card_content(s7.shapes[3], sche_spec)
 
     fnb_spec = [
-        ([("Food & Beverage ", Pt(12.5), True, COLOR_DARK_TEXT),
-          ("▲ +6.12% YoY", Pt(10.5), True, COLOR_GREEN)], Pt(2)),
-        ([("+RM 3,310.51 | RM 57,366.34 Total", Pt(9.5), True, COLOR_SLATE)], Pt(3)),
-        ([("High-Margin Nutrition: ", Pt(9.5), True, COLOR_DARK_TEXT),
-          ("Delivered RM 14,218.64 in GP (24.79% GP margin, +22.37% profit YoY) via clinical formula conversions.", Pt(9), False, COLOR_SLATE)], Pt(3)),
-        ([("Major Item Gainers:", Pt(9.5), True, COLOR_DARK_TEXT)], Pt(2)),
-        ([("• Nutribridge Nutri Alpha 800g: ", Pt(9), False, COLOR_SLATE), ("+RM 5,061.46", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
-        ([("• JH Nutrition Oxxymax: ", Pt(9), False, COLOR_SLATE), ("+RM 4,685.99", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
-        ([("• JH Nutrition U-Solve 4g: ", Pt(9), False, COLOR_SLATE), ("+RM 3,503.00", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
-        ([("• Flexsure Gold 850g: ", Pt(9), False, COLOR_SLATE), ("+RM 2,575.26", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
-        ([("• Immunz-IgG Colostrum: ", Pt(9), False, COLOR_SLATE), ("+RM 2,570.34", Pt(9), True, COLOR_GREEN)], Pt(3)),
-        ([("Underlying Reason: ", Pt(9.5), True, COLOR_DARK_TEXT),
-          ("Active customer migration from low-margin commercial tins to clinically proven House Brand medical nutrition.", Pt(9), False, COLOR_SLATE)], None)
+        ([("Food & Beverage", Pt(13), True, COLOR_DARK_TEXT),
+          (" ▲ +6.12% YoY", Pt(11), True, COLOR_GREEN)], Pt(3)),
+        ([("High-Margin Clinical Nutrition (+22.4% Profit YoY)", Pt(10), True, COLOR_GREEN)], Pt(4)),
+        ([("• Clinical Nutrition Migration: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Actively guided price-sensitive adult formula consumers away from commercial tins to high-margin PMG clinical formulas.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("• House Brand Product Gains: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("High patient compliance with Nutribridge Nutri Alpha, Flexsure Gold joint formula, and JH Nutrition Oxxymax / U-Solve lines.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("• Profitability Transformation: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Delivered RM 14,218.64 gross profit at 24.79% GP margin, turning low-margin grocery spend into a high-yield clinical category.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("• Expansion Target: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Introduce sampling and clinical nutrition displays near consultation rooms for newly diagnosed diabetic and geriatric walk-ins.", Pt(9.5), False, COLOR_SLATE)], None)
     ]
     set_card_content(s7.shapes[4], fnb_spec)
 
     # =========================================================================
-    # SLIDE 8: PRODUCT DECLINES & COMPETITOR DYNAMICS — REFINED CARDS & HEADER
+    # SLIDE 8: PRODUCT DECLINES & COMPETITOR DYNAMICS — CLEAN STATEMENTS
     # =========================================================================
     s8 = prs.slides[7]
     set_slide_header(s8.shapes[1], "CATEGORY SALES ANALYSIS (MTD): PRODUCT DECLINES & COMPETITOR DYNAMICS (WHAT GOES DOWN & REASONS)",
                      "In-Depth Category Deep Dive — October 2026 vs October 2025", title_size=Pt(14))
 
     form_spec = [
-        ([("Intentional Commercial Formula Decline", Pt(12), True, COLOR_PMG_RED)], Pt(2)),
-        ([("Commercial Formula Decliners:", Pt(9.5), True, COLOR_DARK_TEXT)], Pt(2)),
-        ([("• Ensure Gold Vanilla 800g: ", Pt(9), False, COLOR_SLATE), ("▼ -RM 2,175.60", Pt(9), True, COLOR_RED)], Pt(1.5)),
-        ([("• Ensure Gold Vanilla 850g: ", Pt(9), False, COLOR_SLATE), ("▼ -RM 1,388.94", Pt(9), True, COLOR_RED)], Pt(1.5)),
-        ([("• Enercal Complete Vanilla 850g: ", Pt(9), False, COLOR_SLATE), ("▼ -RM 688.80", Pt(9), True, COLOR_RED)], Pt(1.5)),
-        ([("• Nutren Gluco Balance 800g: ", Pt(9), False, COLOR_SLATE), ("▼ -RM 310.20", Pt(9), True, COLOR_RED)], Pt(3)),
-        ([("Strategic Reason:", Pt(9.5), True, COLOR_DARK_TEXT)], Pt(2)),
-        ([("Deliberate and highly profitable customer migration. Commercial adult formulas yield negative or near-zero margins (-3.7% to +3.6% GP). Staff proactively guided price-sensitive consumers to PMG clinical nutrition (Nutri Alpha, Nutrenmax) generating 30–36% GP margin.", Pt(9), False, COLOR_SLATE)], None)
+        ([("Intentional Commercial Formula Decline", Pt(12.5), True, COLOR_PMG_RED)], Pt(3)),
+        ([("Deliberate Phase-Down of Zero/Negative Margin Lines", Pt(10), True, COLOR_PMG_RED)], Pt(4)),
+        ([("• Margin Dilution Driver: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Commercial adult milk tins (Ensure Gold, Enercal) deliver negative to paper-thin margins (-3.7% to +3.6% GP), eroding store profitability.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("• Deliberate Counter-Action: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Dispensary staff actively migrated regular formula consumers toward PMG clinical nutrition (Nutri Alpha, Nutrenmax) yielding 30–36% GP.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("• Financial Endpoint: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("While commercial milk sales contracted by RM 4.5k, total branch gross profit expanded by RM 839.62, protecting bottom-line health.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("• Ongoing Inventory Rule: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Maintain strict Just-In-Time replenishment (max 30 days stock) on commercial tins to eliminate tied-up working capital.", Pt(9.5), False, COLOR_SLATE)], None)
     ]
     set_card_content(s8.shapes[2], form_spec)
 
     baby_spec = [
-        ([("Mom & Baby ", Pt(12.5), True, COLOR_DARK_TEXT),
-          ("▼ -33.59% YoY", Pt(10.5), True, COLOR_RED)], Pt(2)),
-        ([("-RM 3,640.39 | RM 7,196.59 Total", Pt(9.5), True, COLOR_SLATE)], Pt(3)),
-        ([("Category Decliners: ", Pt(9.5), True, COLOR_DARK_TEXT),
-          ("Volume dropped across commercial infant formula tins (Morinaga, Frisolac, S-26) and commodity baby diapers.", Pt(9), False, COLOR_SLATE)], Pt(3)),
-        ([("Market Reason: ", Pt(9.5), True, COLOR_DARK_TEXT),
-          ("Sarawak birth rate contraction (TFR ~1.4) + mature aging catchment; parents shifted to viral pediatric wellness lines on TikTok/XHS.", Pt(9), False, COLOR_SLATE)], Pt(3)),
-        ([("Remedial Action: ", Pt(9.5), True, COLOR_DARK_TEXT),
-          ("Reallocate shelf space toward high-margin pediatric wellness (Appeton, Champs, JH Gummy Bears) and skin care (Sudocrem, Cetaphil) maintaining >30% GP.", Pt(9), False, COLOR_SLATE)], None)
+        ([("Mom & Baby Category Contraction", Pt(12.5), True, COLOR_DARK_TEXT),
+          (" ▼ -33.59% YoY", Pt(11), True, COLOR_RED)], Pt(3)),
+        ([("Demographic Shift & Hypermarket Commodity Wars", Pt(10), True, COLOR_RED)], Pt(4)),
+        ([("• Local Demographics: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Sarawak birth rate contraction (TFR ~1.4) combined with mature aging catchment in Kota Sentosa reduces infant category volume.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("• Hypermarket Loss-Leaders: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Local hypermarkets (Farley, Emart) heavily discount commodity milk powders and diapers at subsidized negative margins.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("• Strategic Floor Realignment: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Reallocate floor space away from commodity infant milk toward high-margin pediatric wellness (Appeton, Champs, JH Gummy Bears).", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("• Pediatric Dermatology Moat: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Expand premium sensitive skincare displays (Sudocrem, Cetaphil, Bzu Bzu) that maintain resilient >30% GP margins.", Pt(9.5), False, COLOR_SLATE)], None)
     ]
     set_card_content(s8.shapes[3], baby_spec)
 
     acute_spec = [
-        ([("Acute Normalization & Competitor Landscape", Pt(12), True, COLOR_DARK_TEXT)], Pt(2)),
-        ([("Acute Dip: ", Pt(9.5), True, COLOR_DARK_TEXT),
-          ("NON-SCHE (-9.32% YoY) and OTC (-6.69% YoY)", Pt(9.5), True, COLOR_RED)], Pt(3)),
-        ([("Acute Normalization: ", Pt(9.5), True, COLOR_DARK_TEXT),
-          ("Normalized against high 2025 seasonal baseline; yet in-house acute lines grew strongly (Biowell Atrizine: RM 3,720.12; Biowell Cough & Cold: RM 1,893.60).", Pt(9), False, COLOR_SLATE)], Pt(3)),
-        ([("Competitor Pressure: ", Pt(9.5), True, COLOR_DARK_TEXT),
-          ("Retail pharmacy chains in Kuching ran aggressive loss-leaders on commercial milk and commodity FMCG.", Pt(9), False, COLOR_SLATE)], Pt(3)),
-        ([("PMG Counter-Strategy: ", Pt(9.5), True, COLOR_DARK_TEXT),
-          ("Emphasized personalized pharmacist counseling, free health checks, and superior clinical value of PMG House Brand solutions.", Pt(9), False, COLOR_SLATE)], None)
+        ([("Acute Normalization & Competitor Landscape", Pt(12.5), True, COLOR_DARK_TEXT)], Pt(3)),
+        ([("Post-Peak Normalization (NON-SCHE -9.3% | OTC -6.7%)", Pt(10), True, COLOR_SLATE)], Pt(4)),
+        ([("• High Baseline Effect: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Acute lines (cough, cold, fever, analgesics) normalized against the exceptionally high October 2025 seasonal infection baseline.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("• Kuching Price Wars: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Retail pharmacy chains (Caring, Guardian, Watsons) in Kuching ran aggressive price-slashing flyers on common FMCG lines.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("• In-House Acute Strength: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("PMG proprietary acute lines (Biowell Atrizine, Biowell Cough & Cold) grew strongly, retaining high patient trust and healthy margins.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("• Clinical Counter-Strategy: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Counter commodity price wars with free clinical consultations, blood pressure triaging, and personalized pharmacist care.", Pt(9.5), False, COLOR_SLATE)], None)
     ]
     set_card_content(s8.shapes[4], acute_spec)
 
@@ -1117,49 +1116,49 @@ def update_presentation(template_path, data, output_path):
 
     # Shape 2: S - STRENGTHS (Top Left)
     swot_s_spec = [
-        ([("S - STRENGTHS", Pt(13), True, COLOR_GREEN)], Pt(5)),
-        ([("• Core House Brand Loyalty: ", Pt(10.5), True, COLOR_DARK_TEXT),
-          ("High patient trust and proactive counter companion attachment deliver resilient gross profit margins.", Pt(10), False, COLOR_MUTED_TEXT)], Pt(4)),
-        ([("• Chronic Care Stronghold: ", Pt(10.5), True, COLOR_DARK_TEXT),
-          ("Established 7th Mile suburban community base provides dependable recurring prescription refill volume.", Pt(10), False, COLOR_MUTED_TEXT)], Pt(4)),
-        ([("• Clinical Authority & Service: ", Pt(10.5), True, COLOR_DARK_TEXT),
-          ("Personalized pharmacist consultations establish competitive differentiation that FMCG retailers cannot match.", Pt(10), False, COLOR_MUTED_TEXT)], None)
+        ([("S - STRENGTHS", Pt(13), True, COLOR_GREEN)], Pt(3)),
+        ([("Diagnosis: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("High patient trust, 43.29% House Brand share, dependable chronic refill base in 7th Mile.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("Action Plan (Point Form):", Pt(10), True, COLOR_GREEN)], Pt(2)),
+        ([("• Attach vascular & metabolic supplements to regular chronic prescriptions.", Pt(9), False, COLOR_DARK_TEXT)], Pt(1.5)),
+        ([("• Maintain 100% adherence monitoring on long-term hypertensive/diabetic patients.", Pt(9), False, COLOR_DARK_TEXT)], Pt(1.5)),
+        ([("• Leverage pharmacist consultations to build competitive moat against discounters.", Pt(9), False, COLOR_DARK_TEXT)], None)
     ]
     set_card_content(s11.shapes[2], swot_s_spec)
 
     # Shape 3: W - WEAKNESSES (Top Right)
     swot_w_spec = [
-        ([("W - WEAKNESSES", Pt(13), True, COLOR_RED)], Pt(5)),
-        ([("• Inventory Holding & Floor Clutter: ", Pt(10.5), True, COLOR_DARK_TEXT),
-          ("Stock cycle exceeding target creates storage congestion and walkway obstruction in retail areas.", Pt(10), False, COLOR_MUTED_TEXT)], Pt(4)),
-        ([("• Dispensary Upselling Disparity: ", Pt(10.5), True, COLOR_DARK_TEXT),
-          ("Significant performance gap between senior and junior staff in routine companion attachment.", Pt(10), False, COLOR_MUTED_TEXT)], Pt(4)),
-        ([("• Outreach Monetization Deficit: ", Pt(10.5), True, COLOR_DARK_TEXT),
-          ("Health screening events achieve high community turnout but lack structured on-site conversion to sales.", Pt(10), False, COLOR_MUTED_TEXT)], None)
+        ([("W - WEAKNESSES", Pt(13), True, COLOR_RED)], Pt(3)),
+        ([("Diagnosis: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Stock cycle 2.47 mo (>2.0 mo target), walkway congestion, junior upselling gap (Farizin 28.32% HB).", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("Action Plan (Point Form):", Pt(10), True, COLOR_RED)], Pt(2)),
+        ([("• Lock ordering on aging SKUs (≥150d) until inventory depletes below 2 months.", Pt(9), False, COLOR_DARK_TEXT)], Pt(1.5)),
+        ([("• Immediately decant stock cartons and clear 1-meter emergency exit corridor.", Pt(9), False, COLOR_DARK_TEXT)], Pt(1.5)),
+        ([("• Conduct weekly 15-minute DPOS companion role-plays with junior retail staff.", Pt(9), False, COLOR_DARK_TEXT)], None)
     ]
     set_card_content(s11.shapes[3], swot_w_spec)
 
     # Shape 4: O - OPPORTUNITIES (Bottom Left)
     swot_o_spec = [
-        ([("O - OPPORTUNITIES", Pt(13), True, COLOR_BLUE)], Pt(5)),
-        ([("• Structured Chronic Refill Retention: ", Pt(10.5), True, COLOR_DARK_TEXT),
-          ("Deploy advance WhatsApp refill reminders 3–5 days prior to prescription exhaustion to lock in monthly revenue.", Pt(10), False, COLOR_MUTED_TEXT)], Pt(4)),
-        ([("• Standardized Companion Bundling: ", Pt(10.5), True, COLOR_DARK_TEXT),
-          ("Train junior dispensers with proven scripts pairing regular chronic refills with metabolic wellness lines.", Pt(10), False, COLOR_MUTED_TEXT)], Pt(4)),
-        ([("• Institutional Eldercare Partnerships: ", Pt(10.5), True, COLOR_DARK_TEXT),
-          ("Channel adult nutrition and clinical mobility equipment into supply agreements with local nursing homes.", Pt(10), False, COLOR_MUTED_TEXT)], None)
+        ([("O - OPPORTUNITIES", Pt(13), True, COLOR_BLUE)], Pt(3)),
+        ([("Diagnosis: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Digital WhatsApp chronic tracking, 7th Mile eldercare hub demand, pediatric wellness shift.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("Action Plan (Point Form):", Pt(10), True, COLOR_BLUE)], Pt(2)),
+        ([("• Send automated WhatsApp refill reminders 3–5 days prior to Rx completion.", Pt(9), False, COLOR_DARK_TEXT)], Pt(1.5)),
+        ([("• Partner with local nursing homes and clinics for bulk eldercare supply.", Pt(9), False, COLOR_DARK_TEXT)], Pt(1.5)),
+        ([("• Reposition cashier eye-level gondolas to high-margin pediatric vitamins & skincare.", Pt(9), False, COLOR_DARK_TEXT)], None)
     ]
     set_card_content(s11.shapes[4], swot_o_spec)
 
     # Shape 5: T - THREATS (Bottom Right)
     swot_t_spec = [
-        ([("T - THREATS", Pt(13), True, COLOR_ORANGE)], Pt(5)),
-        ([("• Aggressive Chain Price Wars: ", Pt(10.5), True, COLOR_DARK_TEXT),
-          ("Retail pharmacy chains aggressively discounting commercial adult formulas and FMCG lines as loss-leaders.", Pt(10), False, COLOR_MUTED_TEXT)], Pt(4)),
-        ([("• Supply Chain Dispatch Misallocations: ", Pt(10.5), True, COLOR_DARK_TEXT),
-          ("Central warehouse sending unrequested bulk stock, tying up working capital and branch floor capacity.", Pt(10), False, COLOR_MUTED_TEXT)], Pt(4)),
-        ([("• Living Cost Pressures: ", Pt(10.5), True, COLOR_DARK_TEXT),
-          ("Economic inflation leading price-conscious shoppers to cut back on discretionary preventive healthcare purchases.", Pt(10), False, COLOR_MUTED_TEXT)], None)
+        ([("T - THREATS", Pt(13), True, COLOR_ORANGE)], Pt(3)),
+        ([("Diagnosis: ", Pt(10), True, COLOR_DARK_TEXT),
+          ("Kuching pharmacy flyer wars, SCD warehouse dispatching unrequested stock, birth rate drop.", Pt(9.5), False, COLOR_SLATE)], Pt(3)),
+        ([("Action Plan (Point Form):", Pt(10), True, COLOR_ORANGE)], Pt(2)),
+        ([("• Refuse milk price wars; guide shoppers to PMG clinical nutrition (+30-36% GP).", Pt(9), False, COLOR_DARK_TEXT)], Pt(1.5)),
+        ([("• Strictly enforce purchase order verification and reject unauthorized SCD deliveries.", Pt(9), False, COLOR_DARK_TEXT)], Pt(1.5)),
+        ([("• Downsize commodity infant milk displays and expand adult chronic wellness lines.", Pt(9), False, COLOR_DARK_TEXT)], None)
     ]
     set_card_content(s11.shapes[5], swot_t_spec)
 

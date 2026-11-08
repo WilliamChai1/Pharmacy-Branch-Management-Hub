@@ -1075,6 +1075,92 @@ function renderAuditReport(report) {
     }).join('');
   }
 
+  // 6 Area Manager Store Standards Pillars (Slide 14 Alignment)
+  const pillarsEl = document.getElementById('auditPillarsContainer');
+  if (pillarsEl) {
+    const defaultPillars = [
+      {
+        id: 'P01',
+        title: 'Pillar 01: Gondola & Shelf Tidiness',
+        categoryMatch: ['Tidiness', 'Stock Management', 'Display'],
+        defaultFinding: 'Labels front-faced, no empty gaps between items, shelf wobblers aligned.',
+        action: 'Maintain daily morning shelf-facing SOP before 9:00 AM opening.'
+      },
+      {
+        id: 'P02',
+        title: 'Pillar 02: Cleanliness – Floor & Fixtures',
+        categoryMatch: ['Cleanliness'],
+        defaultFinding: 'Floor swept, glass consultation counters wiped dust-free, seating clean.',
+        action: 'Enforce strict 14:00–15:30 Golden Cleaning routine across fixtures.'
+      },
+      {
+        id: 'P03',
+        title: 'Pillar 03: Merchandising & Planogram',
+        categoryMatch: ['Display', 'Operation'],
+        defaultFinding: 'House Brand eye-level placements verified (Nutri Alpha, Flexsure, Oxxymax).',
+        action: 'Ensure top-margin House Brand lines occupy prime 1.2m–1.6m eye-level gondolas.'
+      },
+      {
+        id: 'P04',
+        title: 'Pillar 04: Pricing & Signage Accuracy',
+        categoryMatch: ['Display'],
+        defaultFinding: 'Price tags matched on all displayed SKUs; campaign wobblers up-to-date.',
+        action: 'Run weekly barcode sticker and shelf price synchronization audit.'
+      },
+      {
+        id: 'P05',
+        title: 'Pillar 05: Stock Obstruction & Safety',
+        categoryMatch: ['Stock Management', 'Tidiness', 'Cleanliness'],
+        defaultFinding: 'Customer walkways clear (≥1m clearance); emergency exit unblocked.',
+        action: 'Decant cartons immediately upon arrival; stow wheelchairs in designated zone.'
+      },
+      {
+        id: 'P06',
+        title: 'Pillar 06: Staff Grooming & SOP',
+        categoryMatch: ["Team Member's Attire", 'Customer Service', 'Operation'],
+        defaultFinding: 'Official PMG red polo uniform / white coat with lanyard; proactive greeting.',
+        action: 'Enforce 3-second customer triage and professional name badge policy.'
+      }
+    ];
+
+    const deductions = report.timestamped_deductions || [];
+
+    pillarsEl.innerHTML = defaultPillars.map(p => {
+      const matchingDeductions = deductions.filter(d =>
+        p.categoryMatch.some(catName => (d.category || '').toLowerCase().includes(catName.toLowerCase()) || (d.clause || '').toLowerCase().includes(catName.toLowerCase()))
+      );
+      const isPass = matchingDeductions.length === 0;
+      const statusBadge = isPass
+        ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">PASS</span>'
+        : `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">${matchingDeductions.length} Finding(s)</span>`;
+
+      const findingText = matchingDeductions.length > 0
+        ? matchingDeductions.map(m => `[${m.timestamp || 'Floor'}] ${m.observation || m.clause}`).join('; ')
+        : p.defaultFinding;
+
+      const actionText = matchingDeductions.length > 0 && matchingDeductions[0].corrective_action
+        ? matchingDeductions[0].corrective_action
+        : p.action;
+
+      return `
+        <div class="p-3.5 rounded-xl border ${isPass ? 'bg-white border-gray-200' : 'bg-amber-50/70 border-amber-300'} flex flex-col justify-between text-xs">
+          <div>
+            <div class="flex items-center justify-between gap-1 mb-1.5">
+              <span class="font-bold text-gray-900">${escHtml(p.title)}</span>
+              ${statusBadge}
+            </div>
+            <div class="text-gray-600 mt-1 leading-relaxed">
+              <strong class="text-gray-700">Findings:</strong> ${escHtml(findingText)}
+            </div>
+          </div>
+          <div class="mt-2.5 pt-2 border-t border-gray-200/70 text-[11px] text-gray-600">
+            <strong class="text-emerald-700">Action Plan:</strong> ${escHtml(actionText)}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
   // Findings table (Timestamped deductions)
   const findingsEl = document.getElementById('auditFindingsBody');
   if (findingsEl) {
