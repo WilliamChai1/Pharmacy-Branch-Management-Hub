@@ -397,7 +397,9 @@ async function handleDocFileSelect(event, fieldName) {
         toast(`Fail "${f.name}" (${(f.size / 1048576).toFixed(1)}MB) melebihi had ${MAX_FILE_MB}MB`, 'error');
         continue;
       }
-      const opt = await compressAndOptimizeDocFile(f);
+      const maxDim = (fieldName === 'filePhoto') ? 500 : 1800;
+      const qual = (fieldName === 'filePhoto') ? 0.72 : 0.82;
+      const opt = await compressAndOptimizeDocFile(f, maxDim, qual);
       if (opt) {
         optimizedList.push(opt);
       }
@@ -2220,6 +2222,7 @@ async function submitPublicForm(e) {
     // Documents
     docs: uploadedDocs,
     docNames: uploadedDocs.map(d=>d.name),
+    photoThumbnail: (uploadedDocs.find(d => d.field === 'filePhoto' && d.data && d.data.length < 35000)?.data) || '',
   };
 
 
@@ -2262,7 +2265,8 @@ async function submitPublicForm(e) {
   if (!cloudSuccess) {
     try {
       const lightweightApp = Object.assign({}, app, {
-        docs: (app.docs || []).map(d => ({ field: d.field, name: d.name, size: d.size, type: d.type }))
+        docs: (app.docs || []).map(d => ({ field: d.field, name: d.name, size: d.size, type: d.type })),
+        photoThumbnail: (app.photoThumbnail && app.photoThumbnail.length < 35000) ? app.photoThumbnail : ''
       });
       const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
       await fetch(apiUrl, {
@@ -2610,7 +2614,13 @@ function viewApp(appId) {
 ${cloudResumeBanner}
 ${app.docs && app.docs.length > 0 ? `
 <div class="mb-4">
-  <h4 class="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1"><i class="fa-solid fa-paperclip text-gray-400"></i>Uploaded Documents (${app.docs.length})</h4>
+  <div class="flex items-center justify-between mb-2">
+    <h4 class="text-xs font-bold text-gray-700 flex items-center gap-1"><i class="fa-solid fa-paperclip text-gray-400"></i>Uploaded Documents (${app.docs.length})</h4>
+    <label class="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-[11px] font-bold cursor-pointer transition flex items-center gap-1">
+      <i class="fa-solid fa-cloud-arrow-up text-blue-600"></i> Lampirkan Fail / Upload File
+      <input type="file" accept="image/*,application/pdf" class="hidden" onchange="window.pmgRecruitment.attachDocManually(event, '${app.id}', 0)">
+    </label>
+  </div>
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
     ${app.docs.map((d,i)=>`
     <div class="flex items-center justify-between p-2.5 border border-gray-200 rounded-lg hover:bg-gray-50 transition text-xs bg-white shadow-2xs">
@@ -2622,9 +2632,13 @@ ${app.docs && app.docs.length > 0 ? `
         </div>
       </div>
       <div class="flex items-center gap-1 shrink-0">
-        <button type="button" onclick="window.pmgRecruitment.viewDoc('${app.id}', ${i})" class="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded text-[11px] transition flex items-center gap-1" title="Preview Document">
+        <button type="button" onclick="window.pmgRecruitment.viewDoc('${app.id}', ${i})" class="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded text-[11px] transition flex items-center gap-1 cursor-pointer" title="Preview Document">
           <i class="fa-solid fa-eye"></i> View
         </button>
+        <label class="p-1 text-slate-400 hover:text-blue-600 rounded cursor-pointer transition" title="Lampirkan / Tukar fail ini (Attach / Replace file)">
+          <i class="fa-solid fa-upload"></i>
+          <input type="file" accept="image/*,application/pdf" class="hidden" onchange="window.pmgRecruitment.attachDocManually(event, '${app.id}', ${i})">
+        </label>
         ${d.data ? `<a href="${d.data}" download="${sanitize(d.name)}" class="p-1 text-gray-400 hover:text-gray-700 rounded transition" title="Download"><i class="fa-solid fa-download"></i></a>` : (d.url ? `<a href="${sanitize(d.url)}" target="_blank" class="p-1 text-blue-500 hover:text-blue-700 rounded transition" title="Open Link"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>` : '')}
       </div>
     </div>`).join('')}
@@ -3608,11 +3622,22 @@ function viewDoc(appId, docIdx) {
   const fileSizeText = doc.size ? ` • Size: ${Math.round(doc.size / 1024)} KB` : '';
   subtitle.textContent = `Candidate: ${app.name} (${app.id})${fileSizeText}`;
 
-  // Resolve source: prioritize data URI / base64, then doc.url, then candidate fields
-  const fileSource = (doc.data || doc.url || app.spm || app.resumeUrl || '').trim();
-  const driveFileId = extractDriveFileId(fileSource);
+  // Resolve source: strictly accept valid data URI or http URL (never accept plain text like spm remarks)
+  let fileSource = '';
+  if (doc.data && (doc.data.startsWith('data:') || doc.data.startsWith('http://') || doc.data.startsWith('https://'))) {
+    fileSource = doc.data;
+  } else if (doc.url && (doc.url.startsWith('http://') || doc.url.startsWith('https://'))) {
+    fileSource = doc.url;
+  } else if ((doc.field === 'filePhoto' || docTypeLabel.includes('PHOTO')) && app.photoThumbnail && app.photoThumbnail.startsWith('data:')) {
+    fileSource = app.photoThumbnail;
+  } else if (typeof app.resumeUrl === 'string' && app.resumeUrl.startsWith('http')) {
+    fileSource = app.resumeUrl;
+  } else if (typeof app.spm === 'string' && app.spm.startsWith('http')) {
+    fileSource = app.spm;
+  }
 
-  // Configure external button and download button
+  // 1. Check if source is a Google Drive Link
+  const driveFileId = extractDriveFileId(fileSource);
   if (driveFileId) {
     const drivePreviewUrl = `https://drive.google.com/file/d/${driveFileId}/preview`;
     const driveViewUrl    = `https://drive.google.com/file/d/${driveFileId}/view?usp=sharing`;
@@ -3657,65 +3682,208 @@ function viewDoc(appId, docIdx) {
           </iframe>
         </div>
       </div>`;
-  } else if (!fileSource) {
-    if (dlBtn) {
-      dlBtn.href = '#';
-      dlBtn.removeAttribute('target');
-    }
+    modal.classList.remove('hidden');
+    return;
+  }
+
+  // 2. If no valid file source, attempt async fetch from Applicant_Documents cloud vault
+  const isSheetDoc = (doc.url && doc.url.startsWith('sheet://'));
+  if (!fileSource || isSheetDoc) {
+    if (dlBtn) dlBtn.removeAttribute('href');
     if (openExternalBtn) openExternalBtn.classList.add('hidden');
     body.innerHTML = `
-      <div class="p-8 text-center text-gray-500 bg-white rounded-xl border border-gray-200 shadow-sm max-w-md">
-        <i class="fa-solid fa-triangle-exclamation text-amber-500 text-4xl mb-3"></i>
-        <h4 class="font-bold text-gray-800 text-sm">Document Link Unavailable</h4>
-        <p class="text-xs text-gray-500 mt-1">This application did not record a valid file URL or base64 data for this document entry.</p>
+      <div class="p-8 text-center text-blue-600 bg-white rounded-xl border border-blue-200 shadow-sm max-w-md mx-auto my-auto">
+        <i class="fa-solid fa-spinner fa-spin text-3xl mb-3 text-blue-600"></i>
+        <h4 class="font-bold text-gray-800 text-sm">Menyemak Dokumen daripada Cloud Vault...</h4>
+        <p class="text-xs text-gray-500 mt-1">Retrieving ${sanitize(docDisplayName)} for ${sanitize(app.name)}...</p>
       </div>`;
-  } else {
-    // Non-Drive file (data: URI or direct HTTP link)
-    const isImage = fileSource.startsWith('data:image/') ||
-                    /\.(jpeg|jpg|png|webp|gif|svg)($|\?)/i.test(fileSource) ||
-                    (doc.type && doc.type.toLowerCase().includes('image'));
+    modal.classList.remove('hidden');
 
-    const isPdf = fileSource.startsWith('data:application/pdf') ||
-                  /\.pdf($|\?)/i.test(fileSource) ||
-                  (doc.type && doc.type.toLowerCase().includes('pdf')) ||
-                  (doc.name && doc.name.toLowerCase().endsWith('.pdf'));
+    const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+    fetch(`${apiUrl}?action=getApplicantDoc&appId=${encodeURIComponent(app.id)}&field=${encodeURIComponent(doc.field || '')}&name=${encodeURIComponent(doc.name || '')}`)
+      .then(r => r.json())
+      .then(res => {
+        if (res && res.success && res.data) {
+          doc.data = res.data;
+          // Cache in local storage
+          saveApps(loadApps().map(a => {
+            if (a.id === app.id && a.docs && a.docs[docIdx]) {
+              a.docs[docIdx].data = res.data;
+              if (doc.field === 'filePhoto') a.photoThumbnail = res.data;
+            }
+            return a;
+          }));
+          viewDoc(appId, docIdx);
+        } else {
+          renderMissingDocFallback(app, doc, docIdx, docTypeLabel, docDisplayName);
+        }
+      })
+      .catch(() => {
+        renderMissingDocFallback(app, doc, docIdx, docTypeLabel, docDisplayName);
+      });
+    return;
+  }
 
-    if (dlBtn) {
-      dlBtn.href = fileSource;
-      dlBtn.download = docDisplayName;
-      dlBtn.removeAttribute('target');
-    }
-    if (openExternalBtn) {
-      if (fileSource.startsWith('http')) {
-        openExternalBtn.href = fileSource;
-        openExternalBtn.target = '_blank';
-        openExternalBtn.classList.remove('hidden');
-        openExternalBtn.classList.add('flex');
-      } else {
-        openExternalBtn.classList.add('hidden');
-      }
-    }
+  // 3. Render valid image or PDF
+  const isImage = fileSource.startsWith('data:image/') ||
+                  /\.(jpeg|jpg|png|webp|gif|svg)($|\?)/i.test(fileSource) ||
+                  (doc.type && doc.type.toLowerCase().includes('image'));
 
-    if (isImage) {
-      body.innerHTML = `
-        <div class="w-full h-full flex flex-col items-center justify-center overflow-auto p-2">
-          <img src="${fileSource}" alt="${sanitize(docDisplayName)}" class="max-h-[80vh] max-w-full object-contain rounded-lg shadow-sm border border-slate-200 bg-white">
-        </div>`;
-    } else if (isPdf) {
-      body.innerHTML = `
-        <iframe src="${fileSource}" class="w-full h-full rounded-lg border border-slate-300 bg-white" title="${sanitize(docDisplayName)}">
-          <p class="p-4 text-center text-sm text-gray-500">Your browser does not support inline PDF preview. <a href="${fileSource}" download="${sanitize(docDisplayName)}" class="text-blue-600 underline font-bold">Click here to download</a>.</p>
-        </iframe>`;
+  const isPdf = fileSource.startsWith('data:application/pdf') ||
+                /\.pdf($|\?)/i.test(fileSource) ||
+                (doc.type && doc.type.toLowerCase().includes('pdf')) ||
+                (doc.name && doc.name.toLowerCase().endsWith('.pdf'));
+
+  if (dlBtn) {
+    dlBtn.href = fileSource;
+    dlBtn.download = docDisplayName;
+    dlBtn.removeAttribute('target');
+  }
+  if (openExternalBtn) {
+    if (fileSource.startsWith('http')) {
+      openExternalBtn.href = fileSource;
+      openExternalBtn.target = '_blank';
+      openExternalBtn.classList.remove('hidden');
+      openExternalBtn.classList.add('flex');
     } else {
-      // Fallback for other file types or web links
-      body.innerHTML = `
-        <iframe src="${fileSource}" class="w-full h-full rounded-lg border border-slate-300 bg-white" title="${sanitize(docDisplayName)}">
-          <p class="p-4 text-center text-sm text-gray-500">Preview not supported inline. <a href="${fileSource}" target="_blank" class="text-blue-600 underline font-bold">Click here to view or download file</a>.</p>
-        </iframe>`;
+      openExternalBtn.classList.add('hidden');
     }
   }
 
+  if (isImage) {
+    body.innerHTML = `
+      <div class="w-full h-full flex flex-col items-center justify-center overflow-auto p-3">
+        <img src="${fileSource}" alt="${sanitize(docDisplayName)}" class="max-h-[80vh] max-w-full object-contain rounded-xl shadow-md border border-slate-200 bg-white">
+      </div>`;
+  } else if (isPdf) {
+    body.innerHTML = `
+      <iframe src="${fileSource}" class="w-full h-full rounded-lg border border-slate-300 bg-white" title="${sanitize(docDisplayName)}">
+        <p class="p-4 text-center text-sm text-gray-500">Browser does not support inline PDF preview. <a href="${fileSource}" download="${sanitize(docDisplayName)}" class="text-blue-600 underline font-bold">Download file</a>.</p>
+      </iframe>`;
+  } else {
+    body.innerHTML = `
+      <iframe src="${fileSource}" class="w-full h-full rounded-lg border border-slate-300 bg-white" title="${sanitize(docDisplayName)}">
+        <p class="p-4 text-center text-sm text-gray-500">Preview not supported inline. <a href="${fileSource}" target="_blank" class="text-blue-600 underline font-bold">Download or view file</a>.</p>
+      </iframe>`;
+  }
+
   modal.classList.remove('hidden');
+}
+
+function renderMissingDocFallback(app, doc, docIdx, docTypeLabel, docDisplayName) {
+  const modal = el('modalRecDocViewer');
+  const body = el('recDocModalBody');
+  const dlBtn = el('recDocModalDownloadBtn');
+  const openExternalBtn = el('recDocModalExternalBtn');
+  if (dlBtn) dlBtn.removeAttribute('href');
+  if (openExternalBtn) openExternalBtn.classList.add('hidden');
+
+  const cleanPhone = String(app.phone || '').replace(/\D/g, '').replace(/^0/, '');
+  const waMsg = encodeURIComponent(
+    `Salam ${app.name}, kami daripada PMG Pharmacy Kota Sentosa berhubung permohonan kerja anda sebagai ${app.position} (${app.id}). ` +
+    `Sila hantar salinan dokumen ${docTypeLabel} (${docDisplayName}) di sini untuk melengkapkan semakan profil anda. Terima kasih!`
+  );
+  const waUrl = `https://wa.me/60${cleanPhone}?text=${waMsg}`;
+
+  body.innerHTML = `
+    <div class="p-6 bg-white rounded-xl border border-slate-200 shadow-sm max-w-lg mx-auto text-left my-auto">
+      <div class="flex items-center gap-3 mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900">
+        <i class="fa-solid fa-cloud-arrow-up text-amber-600 text-2xl shrink-0"></i>
+        <div>
+          <h4 class="font-bold text-sm">Dokumen Belum Disegerakkan / Fail Perlu Dilampirkan</h4>
+          <p class="text-xs text-amber-800/90 mt-0.5">Nama fail telah direkodkan dalam permohonan calon (${sanitize(docDisplayName)}), tetapi salinan data belum dimuat naik ke cloud vault.</p>
+        </div>
+      </div>
+
+      <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-700 space-y-1.5 mb-4">
+        <div class="flex justify-between">
+          <span class="text-slate-500">Calon / Candidate:</span>
+          <span class="font-bold text-slate-900">${sanitize(app.name)} (${sanitize(app.id)})</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Jenis Dokumen:</span>
+          <span class="font-bold text-blue-700 uppercase">${sanitize(docTypeLabel)}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Nama Fail Calon:</span>
+          <span class="font-mono font-medium text-slate-800 truncate max-w-[240px]">${sanitize(docDisplayName)}</span>
+        </div>
+        ${doc.size ? `
+        <div class="flex justify-between">
+          <span class="text-slate-500">Saiz Fail:</span>
+          <span class="font-bold text-slate-700">${Math.round(doc.size / 1024)} KB</span>
+        </div>` : ''}
+        <div class="flex justify-between">
+          <span class="text-slate-500">No. Telefon Calon:</span>
+          <span class="font-bold text-emerald-700 font-mono">${sanitize(app.phone)}</span>
+        </div>
+      </div>
+
+      <div class="space-y-2">
+        <label class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer">
+          <i class="fa-solid fa-cloud-arrow-up"></i>
+          <span>Muat Naik / Lampirkan Fail Sekarang (Upload File)</span>
+          <input type="file" accept="image/*,application/pdf" class="hidden" onchange="window.pmgRecruitment.attachDocManually(event, '${app.id}', ${docIdx})">
+        </label>
+        
+        <a href="${waUrl}" target="_blank" rel="noopener noreferrer" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-xs">
+          <i class="fa-brands fa-whatsapp text-sm"></i>
+          <span>Minta Dokumen Melalui WhatsApp (${sanitize(app.phone)})</span>
+        </a>
+      </div>
+    </div>`;
+  modal.classList.remove('hidden');
+}
+
+async function attachDocManually(event, appId, docIdx) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  toast('Memproses & mengoptimumkan fail... (Optimizing file)', 'info');
+  try {
+    const opt = await compressAndOptimizeDocFile(file);
+    if (!opt) throw new Error('File optimization failed');
+
+    const apps = loadApps();
+    const app = apps.find(a => a.id === appId);
+    if (!app || !app.docs || !app.docs[docIdx]) throw new Error('Applicant not found');
+
+    app.docs[docIdx].data = opt.data;
+    app.docs[docIdx].name = opt.name || file.name;
+    app.docs[docIdx].size = opt.size || file.size;
+    app.docs[docIdx].type = opt.type || 'image/jpeg';
+    if (app.docs[docIdx].field === 'filePhoto') {
+      app.photoThumbnail = opt.data;
+    }
+
+    saveApps(apps);
+    toast('Dokumen berjaya dilampirkan secara tempatan!', 'success');
+
+    // Async push to cloud vault
+    const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+    fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'uploadApplicantDoc',
+        appId: appId,
+        doc: {
+          field: app.docs[docIdx].field,
+          name: opt.name || file.name,
+          size: opt.size || file.size,
+          type: opt.type || 'image/jpeg',
+          data: opt.data
+        }
+      })
+    }).catch(err => console.warn('[Recruitment] Cloud doc attach push error:', err));
+
+    // Re-render viewDoc immediately
+    viewDoc(appId, docIdx);
+    renderAmDashboard();
+  } catch (err) {
+    console.error('Error attaching doc:', err);
+    toast('Ralat melampirkan dokumen: ' + err.message, 'error');
+  }
 }
 
 function closeDocViewer() {
@@ -3916,13 +4084,23 @@ async function syncAppsFromCloud(force = false) {
           localMap.set(remoteApp.id, remoteApp);
           changesCount++;
         } else {
-          // Merge remote with local (preserve manual user evaluations/interviews)
+          // Merge remote with local (preserve manual user evaluations/interviews and local doc base64)
+          const mergedDocs = (remoteApp.docs || []).map((rDoc, idx) => {
+            const lDoc = (existing.docs || [])[idx] || (existing.docs || []).find(d => d.field === rDoc.field || d.name === rDoc.name);
+            return {
+              ...rDoc,
+              data: (lDoc && lDoc.data) ? lDoc.data : (rDoc.data || ''),
+              url: rDoc.url || (lDoc && lDoc.url) || ''
+            };
+          });
+
           const mergedApp = {
             ...remoteApp,
             ...existing,
-            docs: (remoteApp.docs && remoteApp.docs.length) ? remoteApp.docs : existing.docs,
-            spm: remoteApp.spm || existing.spm,
-            resumeUrl: remoteApp.resumeUrl || existing.resumeUrl,
+            docs: (mergedDocs.length > 0) ? mergedDocs : (existing.docs || remoteApp.docs || []),
+            photoThumbnail: existing.photoThumbnail || remoteApp.photoThumbnail || '',
+            spm: (remoteApp.spm && !remoteApp.spm.startsWith('School:')) ? remoteApp.spm : (existing.spm || remoteApp.spm || ''),
+            resumeUrl: remoteApp.resumeUrl || existing.resumeUrl || '',
             status: existing.status || remoteApp.status || 'screening'
           };
           localMap.set(existing.id || remoteApp.id, mergedApp);
@@ -4004,6 +4182,8 @@ window.pmgRecruitment = {
   onIcInput,
   viewDoc,
   closeDocViewer,
+  attachDocManually,
+  renderMissingDocFallback,
   syncAppsFromCloud,
   loadApps,
   saveApps,
@@ -4019,6 +4199,9 @@ window.pmgRecruitment = {
   docUploadCache,
   getCandidatePassportPhoto,
 };
+
+// Global aliases
+window.attachDocManually = attachDocManually;
 
 // Auto-init when DOM ready
 if (document.readyState === 'loading') {

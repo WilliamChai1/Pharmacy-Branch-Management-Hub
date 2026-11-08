@@ -166,7 +166,7 @@ function doGet(e) {
         if (h.includes('name') || h.includes('nama')) colMap.name = colMap.name ?? idx;
         if (h.includes('position') || h.includes('jawatan')) colMap.position = colMap.position ?? idx;
         if (h.includes('branch') || h.includes('cawangan')) colMap.preferredBranch = colMap.preferredBranch ?? idx;
-        if (h.includes('ic') || h.includes('nric') || h.includes('kad pengenalan') || h.includes('k/p')) colMap.ic = colMap.ic ?? idx;
+        if ((h === 'ic' || h === 'nric' || h.startsWith('ic ') || h.includes('kad pengenalan') || h.includes('mykad') || h.includes('k/p')) && !h.includes('application')) colMap.ic = colMap.ic ?? idx;
         if (h.includes('phone') || h.includes('tel') || h.includes('mobile') || h.includes('whatsapp') || h.includes('nombor')) colMap.phone = colMap.phone ?? idx;
         if (h.includes('email') || h.includes('emel')) colMap.email = colMap.email ?? idx;
         if (h.includes('dob') || h.includes('birth') || h.includes('lahir')) colMap.dob = colMap.dob ?? idx;
@@ -281,6 +281,56 @@ function doGet(e) {
       } catch (fErr) {
         return buildResponse({ success: false, error: 'DriveApp error: ' + fErr.message });
       }
+    }
+
+    // ── 3C. ACTION: GET APPLICANT DOCUMENT FROM SECURE VAULT ──
+    if (action === 'getApplicantDoc' || action === 'fetchApplicantDocument') {
+      const appId = String(e.parameter.appId || '').trim();
+      const docId = String(e.parameter.docId || '').trim();
+      const field = String(e.parameter.field || '').trim().toLowerCase();
+      const name = String(e.parameter.name || '').trim().toLowerCase();
+
+      const docSheet = ss.getSheetByName('Applicant_Documents');
+      if (!docSheet) return buildResponse({ success: false, error: 'Applicant_Documents sheet not found' });
+      const rows = docSheet.getDataRange().getValues();
+      if (rows.length <= 1) return buildResponse({ success: false, error: 'No documents stored in vault' });
+
+      const matched = [];
+      for (let i = 1; i < rows.length; i++) {
+        const r = rows[i];
+        const rDocId = String(r[0] || '').trim();
+        const rAppId = String(r[1] || '').trim();
+        const rField = String(r[2] || '').trim().toLowerCase();
+        const rName = String(r[3] || '').trim().toLowerCase();
+
+        if (docId && rDocId === docId) {
+          matched.push(r);
+        } else if (appId && rAppId === appId) {
+          if (!field && !name) {
+            matched.push(r);
+          } else if (field && rField === field) {
+            matched.push(r);
+          } else if (name && rName === name) {
+            matched.push(r);
+          }
+        }
+      }
+
+      if (matched.length === 0) return buildResponse({ success: false, error: 'Document not found' });
+
+      matched.sort((a, b) => (Number(a[6]) || 0) - (Number(b[6]) || 0));
+      const mimeType = matched[0][4] || 'image/jpeg';
+      const fileName = matched[0][3] || 'document.jpg';
+      const fullData = matched.map(m => String(m[8] || '')).join('');
+
+      return buildResponse({
+        success: true,
+        docId: matched[0][0],
+        appId: matched[0][1],
+        name: fileName,
+        mimeType: mimeType,
+        data: fullData
+      });
     }
 
     // ── 4. ACTION: GET STAFF PREFERENCES ──
@@ -539,43 +589,70 @@ function doPost(e) {
 
         a.docs.forEach((doc, dIdx) => {
           if (!doc) return;
+          const cleanFileName = String(doc.name || `document_${dIdx + 1}.pdf`).replace(/[^a-zA-Z0-9._-]/g, '_');
+          const finalFileName = `${appId}_${cleanFileName}`;
+          const mime = doc.type || 'image/jpeg';
+          let fileUrl = '';
+          let saved = false;
+
+          // Attempt 1: Upload to Google Drive if authorized
           if (doc.data && driveFolder) {
             try {
               const cleanB64 = doc.data.includes(',') ? doc.data.split(',')[1] : doc.data;
               const decoded = Utilities.base64Decode(cleanB64);
-              const mime = doc.type || 'application/pdf';
-              const cleanFileName = String(doc.name || `document_${dIdx + 1}.pdf`).replace(/[^a-zA-Z0-9._-]/g, '_');
-              const finalFileName = `${appId}_${cleanFileName}`;
               const blob = Utilities.newBlob(decoded, mime, finalFileName);
               const file = driveFolder.createFile(blob);
               file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-              const fileUrl = file.getUrl();
+              fileUrl = file.getUrl();
+              saved = true;
               if (!resumeUrl) resumeUrl = fileUrl;
-              processedDocs.push({
-                field: doc.field || 'file',
-                name: doc.name || cleanFileName,
-                size: doc.size || 0,
-                type: mime,
-                url: fileUrl
-              });
             } catch (dErr) {
-              console.warn('Failed saving doc to Drive: ' + dErr.message);
-              processedDocs.push({
-                field: doc.field || 'file',
-                name: doc.name || 'document',
-                size: doc.size || 0,
-                type: doc.type || 'application/octet-stream'
-              });
+              console.warn('Drive save error: ' + dErr.message);
             }
+          }
+
+          // Attempt 2: Fallback to Applicant_Documents sheet tab (zero permission errors)
+          if (!saved && doc.data) {
+            try {
+              let docSheet = ss.getSheetByName('Applicant_Documents');
+              if (!docSheet) {
+                docSheet = ss.insertSheet('Applicant_Documents');
+                docSheet.appendRow(['DocId', 'ApplicationId', 'Field', 'FileName', 'MimeType', 'Size', 'ChunkIndex', 'TotalChunks', 'DataChunk', 'CreatedAt']);
+              }
+              const docId = `${appId}_${doc.field || 'doc'}_${dIdx + 1}`;
+              const fullData = doc.data;
+              const chunkSize = 35000;
+              const totalChunks = Math.ceil(fullData.length / chunkSize);
+              for (let c = 0; c < totalChunks; c++) {
+                const chunk = fullData.substring(c * chunkSize, (c + 1) * chunkSize);
+                docSheet.appendRow([docId, appId, doc.field || 'file', doc.name || cleanFileName, mime, doc.size || 0, c, totalChunks, chunk, now]);
+              }
+              fileUrl = `sheet://doc/${docId}`;
+              saved = true;
+              if (!resumeUrl) resumeUrl = fileUrl;
+            } catch (sErr) {
+              console.warn('Applicant_Documents vault fallback error: ' + sErr.message);
+            }
+          }
+
+          if (saved) {
+            processedDocs.push({
+              field: doc.field || 'file',
+              name: doc.name || cleanFileName,
+              size: doc.size || 0,
+              type: mime,
+              url: fileUrl
+            });
           } else if (doc.url) {
             if (!resumeUrl) resumeUrl = doc.url;
             processedDocs.push(doc);
           } else {
             processedDocs.push({
               field: doc.field || 'file',
-              name: doc.name || 'document',
+              name: doc.name || cleanFileName,
               size: doc.size || 0,
-              type: doc.type || 'application/octet-stream'
+              type: mime,
+              url: ''
             });
           }
         });
@@ -585,6 +662,15 @@ function doPost(e) {
       const cleanApp = Object.assign({}, a);
       cleanApp.resumeUrl = resumeUrl;
       cleanApp.docs = processedDocs;
+
+      // Retain compact passport photo thumbnail directly in record if under 35k chars
+      if (a.photoThumbnail && a.photoThumbnail.length < 35000) {
+        cleanApp.photoThumbnail = a.photoThumbnail;
+      } else {
+        const photoDoc = (a.docs || []).find(d => d.field === 'filePhoto' && d.data && d.data.length < 35000);
+        if (photoDoc) cleanApp.photoThumbnail = photoDoc.data;
+      }
+
       const payloadStr = JSON.stringify(cleanApp);
 
       // 3. Match columns dynamically
@@ -597,7 +683,7 @@ function doPost(e) {
         if (h.includes('name')) colMap.name = colMap.name ?? idx;
         if (h.includes('position')) colMap.position = colMap.position ?? idx;
         if (h.includes('branch')) colMap.preferredBranch = colMap.preferredBranch ?? idx;
-        if (h.includes('ic') || h.includes('nric')) colMap.ic = colMap.ic ?? idx;
+        if ((h === 'ic' || h === 'nric' || h.startsWith('ic ') || h.includes('kad pengenalan') || h.includes('mykad') || h.includes('k/p')) && !h.includes('application')) colMap.ic = colMap.ic ?? idx;
         if (h.includes('phone') || h.includes('tel') || h.includes('mobile')) colMap.phone = colMap.phone ?? idx;
         if (h.includes('email')) colMap.email = colMap.email ?? idx;
         if (h.includes('dob') || h.includes('birth')) colMap.dob = colMap.dob ?? idx;
@@ -667,6 +753,64 @@ function doPost(e) {
         resumeUrl: resumeUrl,
         message: 'Application recorded to Job_Applicants successfully.'
       });
+    }
+
+    // ── 4B. ACTION: UPLOAD / ATTACH APPLICANT DOCUMENT TO VAULT ──
+    if (action === 'uploadApplicantDoc' || action === 'attachApplicantDoc') {
+      const appId = String(payload.appId || '').trim();
+      const doc = payload.doc || {};
+      if (!appId || !doc.data) return buildResponse({ success: false, error: 'Missing appId or doc.data' });
+
+      let docSheet = ss.getSheetByName('Applicant_Documents');
+      if (!docSheet) {
+        docSheet = ss.insertSheet('Applicant_Documents');
+        docSheet.appendRow(['DocId', 'ApplicationId', 'Field', 'FileName', 'MimeType', 'Size', 'ChunkIndex', 'TotalChunks', 'DataChunk', 'CreatedAt']);
+      }
+      const docId = `${appId}_${doc.field || 'doc'}_${Date.now()}`;
+      const fullData = doc.data;
+      const chunkSize = 35000;
+      const totalChunks = Math.ceil(fullData.length / chunkSize);
+      for (let c = 0; c < totalChunks; c++) {
+        const chunk = fullData.substring(c * chunkSize, (c + 1) * chunkSize);
+        docSheet.appendRow([docId, appId, doc.field || 'file', doc.name || 'document', doc.type || 'image/jpeg', doc.size || 0, c, totalChunks, chunk, now]);
+      }
+      const fileUrl = `sheet://doc/${docId}`;
+
+      // Update in Job_Applicants PayloadJSON
+      let recSheet = ss.getSheetByName('Job_Applicants') || ss.getSheetByName('Form responses 1');
+      if (recSheet) {
+        const data = recSheet.getDataRange().getValues();
+        for (let i = 1; i < data.length; i++) {
+          if (String(data[i][0]).trim() === appId) {
+            try {
+              const pCol = 21; // PayloadJSON
+              const currentPayload = JSON.parse(data[i][pCol] || '{}');
+              if (!Array.isArray(currentPayload.docs)) currentPayload.docs = [];
+              const existingIdx = currentPayload.docs.findIndex(d => d.field === doc.field);
+              const newDocEntry = {
+                field: doc.field || 'file',
+                name: doc.name || 'document',
+                size: doc.size || 0,
+                type: doc.type || 'image/jpeg',
+                url: fileUrl
+              };
+              if (existingIdx !== -1) {
+                currentPayload.docs[existingIdx] = newDocEntry;
+              } else {
+                currentPayload.docs.push(newDocEntry);
+              }
+              if (doc.field === 'filePhoto' && fullData.length < 35000) {
+                currentPayload.photoThumbnail = fullData;
+              }
+              recSheet.getRange(i + 1, pCol + 1).setValue(JSON.stringify(currentPayload));
+            } catch (_) {}
+            break;
+          }
+        }
+      }
+
+      SpreadsheetApp.flush();
+      return buildResponse({ success: true, docId: docId, fileUrl: fileUrl, message: 'Document saved to vault successfully' });
     }
 
     // ── 5. ACTION: SAVE STAFF PREFERENCES ──
