@@ -924,7 +924,7 @@ def update_presentation(template_path, data, output_path):
         ([("• Nutribridge Multivit & CoQ10: ", Pt(9), False, COLOR_SLATE), ("+RM 1,675.96", Pt(9), True, COLOR_GREEN)], Pt(1.5)),
         ([("• Nutrixlim Lipofit: ", Pt(9), False, COLOR_SLATE), ("+RM 1,667.01", Pt(9), True, COLOR_GREEN)], Pt(3)),
         ([("Underlying Reason: ", Pt(9.5), True, COLOR_DARK_TEXT),
-          ("Systematic DPOS companion bundling at dispensing counters, attaching metabolic protection supplements to chronic prescriptions.", Pt(9), False, COLOR_SLATE)], None)
+          ("DPOS companion bundling + 7th Mile aging demographic + viral TikTok/XHS awareness on CoQ10, Berberine & joint health.", Pt(9), False, COLOR_SLATE)], None)
     ]
     set_card_content(s7.shapes[2], supp_spec)
 
@@ -988,7 +988,7 @@ def update_presentation(template_path, data, output_path):
         ([("Category Decliners: ", Pt(9.5), True, COLOR_DARK_TEXT),
           ("Volume dropped across commercial infant formula tins (Morinaga, Frisolac, S-26) and commodity baby diapers.", Pt(9), False, COLOR_SLATE)], Pt(3)),
         ([("Market Reason: ", Pt(9.5), True, COLOR_DARK_TEXT),
-          ("Aging catchment profile in mature Kota Sentosa and aggressive price-undercutting from mother-and-baby specialty stores.", Pt(9), False, COLOR_SLATE)], Pt(3)),
+          ("Sarawak birth rate contraction (TFR ~1.4) + mature aging catchment; parents shifted to viral pediatric wellness lines on TikTok/XHS.", Pt(9), False, COLOR_SLATE)], Pt(3)),
         ([("Remedial Action: ", Pt(9.5), True, COLOR_DARK_TEXT),
           ("Reallocate shelf space toward high-margin pediatric wellness (Appeton, Champs, JH Gummy Bears) and skin care (Sudocrem, Cetaphil) maintaining >30% GP.", Pt(9), False, COLOR_SLATE)], None)
     ]

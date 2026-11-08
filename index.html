@@ -314,18 +314,63 @@
     <!-- KPI counters + filter/search (hidden until file loaded) -->
     <div id="invResultPanel" class="hidden">
       <!-- KPI row -->
-      <div class="grid grid-cols-3 gap-4 mb-5">
-        <div class="kpi-card rounded-xl p-4 shadow-sm border border-gray-200">
-          <p class="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total SKUs</p>
-          <p id="kpiTotalSKUs" class="text-3xl font-bold text-blue-700 mt-1">0</p>
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+        <div class="kpi-card rounded-xl p-3 shadow-xs border border-gray-200 bg-white">
+          <p class="text-[11px] text-gray-500 uppercase tracking-wide font-semibold">Total SKUs</p>
+          <p id="kpiTotalSKUs" class="text-2xl font-bold text-blue-700 mt-0.5">0</p>
         </div>
-        <div class="kpi-card amber rounded-xl p-4 shadow-sm border border-gray-200">
-          <p class="text-xs text-gray-500 uppercase tracking-wide font-semibold">SKUs to Reorder</p>
-          <p id="kpiToReorder" class="text-3xl font-bold text-amber-600 mt-1">0</p>
+        <div class="kpi-card amber rounded-xl p-3 shadow-xs border border-gray-200 bg-white">
+          <p class="text-[11px] text-gray-500 uppercase tracking-wide font-semibold">SKUs to Reorder</p>
+          <p id="kpiToReorder" class="text-2xl font-bold text-amber-600 mt-0.5">0</p>
         </div>
-        <div class="kpi-card green rounded-xl p-4 shadow-sm border border-gray-200">
-          <p class="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Order Units</p>
-          <p id="kpiTotalUnits" class="text-3xl font-bold text-green-700 mt-1">0</p>
+        <div class="kpi-card green rounded-xl p-3 shadow-xs border border-gray-200 bg-white">
+          <p class="text-[11px] text-gray-500 uppercase tracking-wide font-semibold">Total Order Units</p>
+          <p id="kpiTotalUnits" class="text-2xl font-bold text-green-700 mt-0.5">0</p>
+        </div>
+        <div class="kpi-card rounded-xl p-3 shadow-xs border border-rose-200 bg-rose-50/40">
+          <p class="text-[11px] text-rose-700 uppercase tracking-wide font-semibold flex items-center gap-1">
+            <span>🛑 Aging Locked</span>
+          </p>
+          <p id="kpiAgingLocked" class="text-2xl font-bold text-rose-700 mt-0.5">0</p>
+        </div>
+        <div class="kpi-card rounded-xl p-3 shadow-xs border border-emerald-200 bg-emerald-50/40">
+          <p class="text-[11px] text-emerald-700 uppercase tracking-wide font-semibold flex items-center gap-1">
+            <span>🚀 Momentum Up</span>
+          </p>
+          <p id="kpiMomentum" class="text-2xl font-bold text-emerald-700 mt-0.5">0</p>
+        </div>
+        <div class="kpi-card rounded-xl p-3 shadow-xs border border-amber-200 bg-amber-50/40">
+          <p class="text-[11px] text-amber-800 uppercase tracking-wide font-semibold flex items-center gap-1">
+            <span>⚠️ OOS Phantom</span>
+          </p>
+          <p id="kpiStockout" class="text-2xl font-bold text-amber-700 mt-0.5">0</p>
+        </div>
+      </div>
+
+      <!-- Stock Aging & Trend Intelligence Interlock Status Bar -->
+      <div id="invStockAgingBar" class="mb-4 rounded-xl p-3.5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shadow-sm flex items-center justify-between flex-wrap gap-3 border border-indigo-900/60">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-300 flex items-center justify-center text-sm border border-indigo-400/30 shrink-0">
+            <i class="fa-solid fa-shield-halved"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-xs text-white">Stock Aging &amp; Trend Intelligence Interlock</span>
+              <span id="invAgingStatusPill" class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">Syncing...</span>
+            </div>
+            <p id="invAgingStatusDesc" class="text-[11px] text-slate-300 mt-0.5">
+              Rule 1: Direct Lock for aging items until SOH &lt; 2 months &bull; Rule 2: Momentum Boost &bull; Rule 3: OOS Phantom Drop vs True Contraction
+            </p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <label for="invAgingFileInput" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-bold cursor-pointer transition flex items-center gap-1.5 border border-white/15">
+            <i class="fa-solid fa-file-arrow-up text-amber-300"></i> Upload Aging CSV
+          </label>
+          <input type="file" id="invAgingFileInput" accept=".csv" class="hidden">
+          <button type="button" onclick="syncStockAgingFromStorage()" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer">
+            <i class="fa-solid fa-arrows-rotate"></i> Refresh Sync
+          </button>
         </div>
       </div>
 
@@ -347,10 +392,32 @@
             </div>
           </div>
           <button type="button" id="btnExportTransfers" onclick="exportInterBranchTransferSheet()"
-            class="hidden shrink-0 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition">
+            class="hidden shrink-0 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer">
             <i class="fa-solid fa-file-excel text-amber-200"></i> Export Transfers
           </button>
         </div>
+      </div>
+
+      <!-- Filter pills bar -->
+      <div class="flex items-center gap-1.5 mb-3 flex-wrap text-xs">
+        <button type="button" onclick="setInvFilterPill('ALL')" data-pill="ALL" class="inv-filter-pill px-3 py-1.5 rounded-lg font-bold transition bg-blue-600 text-white shadow-xs">
+          All (<span id="pillCountAll">0</span>)
+        </button>
+        <button type="button" onclick="setInvFilterPill('REORDER')" data-pill="REORDER" class="inv-filter-pill px-3 py-1.5 rounded-lg font-bold transition bg-white text-slate-700 hover:bg-slate-100 border border-slate-200">
+          To Reorder (<span id="pillCountReorder">0</span>)
+        </button>
+        <button type="button" onclick="setInvFilterPill('MOMENTUM')" data-pill="MOMENTUM" class="inv-filter-pill px-3 py-1.5 rounded-lg font-bold transition bg-white text-slate-700 hover:bg-slate-100 border border-slate-200">
+          🚀 Momentum Up (<span id="pillCountMomentum">0</span>)
+        </button>
+        <button type="button" onclick="setInvFilterPill('STOCKOUT')" data-pill="STOCKOUT" class="inv-filter-pill px-3 py-1.5 rounded-lg font-bold transition bg-white text-slate-700 hover:bg-slate-100 border border-slate-200">
+          ⚠️ OOS Phantom (<span id="pillCountStockout">0</span>)
+        </button>
+        <button type="button" onclick="setInvFilterPill('AGING_LOCKED')" data-pill="AGING_LOCKED" class="inv-filter-pill px-3 py-1.5 rounded-lg font-bold transition bg-white text-slate-700 hover:bg-slate-100 border border-slate-200">
+          🛑 Aging Locked (<span id="pillCountAging">0</span>)
+        </button>
+        <button type="button" onclick="setInvFilterPill('SURPLUS')" data-pill="SURPLUS" class="inv-filter-pill px-3 py-1.5 rounded-lg font-bold transition bg-white text-slate-700 hover:bg-slate-100 border border-slate-200">
+          ⏸️ Surplus Cover (&ge; 2 Mo)
+        </button>
       </div>
 
       <!-- Filter & search row -->
@@ -373,12 +440,12 @@
         </div>
         <div class="flex items-center gap-2 flex-wrap">
           <button id="invDownloadTryOutBtn" type="button"
-            class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm"
+            class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm cursor-pointer"
             title="Download Purchase Order CSV for selected vendor or all vendors">
             <i class="fa-solid fa-file-csv"></i> Download PO (.csv)
           </button>
           <button id="invDownloadBtn" type="button"
-            class="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm"
+            class="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm cursor-pointer"
             title="Generate ZIP containing individual Purchase Order CSV files separated by Preferred Vendor and category">
             <i class="fa-solid fa-file-zipper"></i> Download Vendor ZIP
           </button>
@@ -391,8 +458,8 @@
           <table class="w-full text-sm">
             <thead>
               <tr class="bg-gray-50 border-b border-gray-200">
-                <th class="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Item Code</th>
-                <th class="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Description</th>
+                <th class="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Item Code &amp; Pack</th>
+                <th class="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Description &amp; Diagnostics</th>
                 <th class="px-3 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide">Vendor</th>
                 <th class="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">SOH</th>
                 <th class="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">On Order</th>

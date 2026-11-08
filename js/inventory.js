@@ -5,6 +5,285 @@
 let inventoryData = [];  // Raw parsed rows from Xilnex CSV
 let inventoryGrid = [];  // Calculated rows
 let interBranchTransfers = []; // List of near-expiry clearance items transferred from sister branches
+let stockAgingMap = new Map(); // Key: uppercase itemCode / bareCode -> { agedQty, totalOh, avgCost, agedValue, isAged }
+let skuSalesTrendMap = new Map(); // Key: uppercase itemCode -> { m2Qty, m1Qty, latestQty, momentumPct, direction, unconstrainedAds }
+let stockAgingStatus = { connected: false, skuCount: 0, agedCount: 0, totalAgedValue: 0, source: 'None' };
+let invActiveFilterPill = 'ALL'; // 'ALL', 'REORDER', 'MOMENTUM', 'STOCKOUT', 'AGING_LOCKED', 'SURPLUS'
+
+// ─── PACK SIZE & MOQ PARSER (EXTRACTED FROM ITEM CODE SUFFIX) ────────────────
+/**
+ * In PMG Xilnex catalog, packing size is explicitly specified after the hyphen in Item Code:
+ * e.g. "114682 - sac" -> 1 PC
+ *      "114682 - box30" -> 30 PCs (BOX of 30)
+ *      "114682 - twinpack" -> 2 PCs (Twinpack)
+ *      "100041 - BOT25" -> 25 PCs (Bottle of 25)
+ *      "100130 - PACK10" -> 10 PCs (Pack of 10)
+ *      "100049 - CAP 60'S" -> 60 PCs (60's)
+ */
+function parsePackSizeFromItemCode(itemCode) {
+  if (!itemCode) return { packSize: 1, rawSuffix: '', label: '1 PC' };
+  const str = String(itemCode).trim();
+  const dashIdx = str.indexOf('-');
+  if (dashIdx === -1) return { packSize: 1, rawSuffix: '', label: '1 PC' };
+
+  const suffix = str.substring(dashIdx + 1).trim();
+  const sLower = suffix.toLowerCase();
+
+  // Pattern 1: box30, box60, etc.
+  let m = sLower.match(/box\s*(\d+)/);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    return { packSize: n > 0 ? n : 1, rawSuffix: suffix, label: `BOX of ${n}` };
+  }
+
+  // Pattern 2: pack10, pack5, etc.
+  m = sLower.match(/pack\s*(\d+)/);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    return { packSize: n > 0 ? n : 1, rawSuffix: suffix, label: `PACK of ${n}` };
+  }
+
+  // Pattern 3: bot25, bot60, bot100, etc.
+  m = sLower.match(/bot\s*(\d+)/);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    return { packSize: n > 0 ? n : 1, rawSuffix: suffix, label: `BOT of ${n}` };
+  }
+
+  // Pattern 4: strip10, tab30, cap60, sac30
+  m = sLower.match(/(?:strip|tab|cap|sachet|sac)\s*(\d+)/);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    return { packSize: n > 0 ? n : 1, rawSuffix: suffix, label: `${suffix.toUpperCase()}` };
+  }
+
+  // Pattern 5: (\d+)'s or (\d+)s or x(\d+)
+  m = sLower.match(/(?:x\s*(\d+)|\b(\d+)\s*(?:'s|s)\b)/);
+  if (m) {
+    const n = parseInt(m[1] || m[2], 10);
+    return { packSize: n > 0 ? n : 1, rawSuffix: suffix, label: `${suffix.toUpperCase()}` };
+  }
+
+  // Pattern 6: twinpack / twin
+  if (sLower.includes('twinpack') || sLower.includes('twin')) {
+    return { packSize: 2, rawSuffix: suffix, label: 'TWINPACK (2)' };
+  }
+
+  // Pattern 7: triplepack / tripack
+  if (sLower.includes('triplepack') || sLower.includes('tripack')) {
+    return { packSize: 3, rawSuffix: suffix, label: 'TRIPLEPACK (3)' };
+  }
+
+  // Generic single-item tokens (e.g. SAC, CAP, TAB, BOX, BOT, TUBE, STRIP)
+  return { packSize: 1, rawSuffix: suffix, label: suffix.toUpperCase() || '1 PC' };
+}
+
+// ─── STOCK AGING STORAGE INTEGRATION & SYNC ──────────────────────────────────
+function syncStockAgingFromStorage() {
+  try {
+    // 1. Try Performance Suite active state
+    const rawPerf = localStorage.getItem('pmg_perf_active_state_v1');
+    if (rawPerf) {
+      const parsed = JSON.parse(rawPerf);
+      if (parsed?.stockAgingLatest?.items && Array.isArray(parsed.stockAgingLatest.items) && parsed.stockAgingLatest.items.length > 0) {
+        ingestStockAgingItems(parsed.stockAgingLatest.items, 'Performance Suite State');
+        return true;
+      }
+    }
+    // 2. Try dedicated Stock Aging cache
+    const rawAging = localStorage.getItem('pmg_stock_aging_cache_v1');
+    if (rawAging) {
+      const parsed = JSON.parse(rawAging);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        ingestStockAgingItems(parsed, 'Stock Aging Cache');
+        return true;
+      }
+    }
+  } catch (err) {
+    console.warn('[Replenishment] Error syncing stock aging from storage:', err);
+  }
+  updateAgingStatusUI();
+  return false;
+}
+
+function ingestStockAgingItems(items, sourceName) {
+  stockAgingMap.clear();
+  let agedCount = 0;
+  let totalAgedVal = 0;
+
+  (items || []).forEach(it => {
+    const code = String(it.itemCode || '').trim().toUpperCase();
+    if (!code) return;
+    const agedQty = (it.d150_180 || 0) + (it.d180_210 || 0) + (it.d210_240 || 0) +
+                    (it.d240_270 || 0) + (it.d270_300 || 0) + (it.d300_330 || 0) +
+                    (it.d330_360 || 0) + (it.above1Yr || 0);
+    const cost = it.avgCost || it.averageCost || it.unitCost || 0;
+    const agedValue = +(agedQty * cost).toFixed(2);
+    const isAged = agedQty > 0;
+
+    const record = {
+      itemCode: code,
+      itemName: it.itemName || '',
+      category: it.category || '',
+      ohQty: it.ohQty || 0,
+      avgCost: cost,
+      agedQty,
+      agedValue,
+      isAged
+    };
+
+    stockAgingMap.set(code, record);
+    // Also map bare item code without packaging suffix if present
+    const bareCode = code.split('-')[0].trim();
+    if (bareCode && bareCode !== code && !stockAgingMap.has(bareCode)) {
+      stockAgingMap.set(bareCode, record);
+    }
+
+    if (isAged) {
+      agedCount++;
+      totalAgedVal += agedValue;
+    }
+  });
+
+  stockAgingStatus = {
+    connected: true,
+    skuCount: stockAgingMap.size,
+    agedCount,
+    totalAgedValue: +totalAgedVal.toFixed(2),
+    source: sourceName || 'Live Ingestion'
+  };
+
+  updateAgingStatusUI();
+  if (inventoryData.length > 0) recalcInventory();
+}
+
+function updateAgingStatusUI() {
+  const pill = document.getElementById('invAgingStatusPill');
+  const desc = document.getElementById('invAgingStatusDesc');
+  if (!pill) return;
+
+  if (stockAgingStatus.connected) {
+    pill.className = 'px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30';
+    pill.textContent = `✓ Active (${stockAgingStatus.agedCount} Aged SKUs Monitored)`;
+    if (desc) {
+      desc.innerHTML = `Stock Aging interlock active (source: <b>${stockAgingStatus.source}</b>): <b>${stockAgingStatus.skuCount}</b> SKUs monitored (${stockAgingStatus.agedCount} aged &ge; 150d, RM ${stockAgingStatus.totalAgedValue.toLocaleString()}). Direct lock active until SOH &lt; 2 mo.`;
+    }
+  } else {
+    pill.className = 'px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-400/30';
+    pill.textContent = '⚠ Standalone Mode (Upload Aging CSV to Interlock)';
+    if (desc) {
+      desc.textContent = 'Upload [Admin] Aging CSV or sync from Performance Suite to enforce Rule 1 (direct lock on aging stock until < 2 mo cover).';
+    }
+  }
+}
+
+async function handleAgingFileUpload(file) {
+  try {
+    const text = await file.text();
+    const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+    let headerIdx = -1;
+    for (let i = 0; i < Math.min(lines.length, 30); i++) {
+      const lower = lines[i].toLowerCase();
+      if (lower.includes('item code') && lower.includes('category') && (lower.includes('150-180') || lower.includes('oh qty'))) {
+        headerIdx = i;
+        break;
+      }
+    }
+    if (headerIdx === -1) {
+      alert('Could not locate Aging header in uploaded file. Please ensure it is a Xilnex [Admin] Aging export.');
+      return;
+    }
+
+    const items = [];
+    for (let i = headerIdx + 1; i < lines.length; i++) {
+      const parseResult = Papa.parse(lines[i]);
+      const cols = (parseResult && parseResult.data && parseResult.data[0]) || [];
+      const code = (cols[0] || '').trim();
+      if (!code || code.toLowerCase() === 'grand total') continue;
+      const itemName = (cols[1] || '').trim();
+      const category = (cols[2] || '').trim();
+      const parseNum = v => parseFloat(String(v || '').replace(/[^0-9.-]/g, '')) || 0;
+      const ohQty = parseNum(cols[3]);
+      const avgCost = parseNum(cols[4]);
+      const d150_180 = parseNum(cols[5]);
+      const d180_210 = parseNum(cols[6]);
+      const d210_240 = parseNum(cols[7]);
+      const d240_270 = parseNum(cols[8]);
+      const d270_300 = parseNum(cols[9]);
+      const d300_330 = parseNum(cols[10]);
+      const d330_360 = parseNum(cols[11]);
+      const above1Yr = parseNum(cols[12]);
+
+      items.push({
+        itemCode: code, itemName, category, ohQty, avgCost,
+        d150_180, d180_210, d210_240, d240_270, d270_300, d300_330, d330_360, above1Yr
+      });
+    }
+
+    try {
+      localStorage.setItem('pmg_stock_aging_cache_v1', JSON.stringify(items));
+    } catch(e) {}
+
+    ingestStockAgingItems(items, file.name);
+    alert(`✓ Successfully loaded Stock Aging report (${items.length} SKUs). Replenishment engine now locked to aging guidelines.`);
+  } catch(err) {
+    alert('Failed to parse Aging file: ' + err.message);
+  }
+}
+
+function getStockAgingForItem(itemCode) {
+  const code = String(itemCode || '').trim().toUpperCase();
+  if (stockAgingMap.has(code)) return stockAgingMap.get(code);
+  const bare = code.split('-')[0].trim();
+  if (bare && stockAgingMap.has(bare)) return stockAgingMap.get(bare);
+  return null;
+}
+
+// ─── MULTI-MONTH SALES TREND & MOMENTUM DETECTOR ─────────────────────────────
+function detectItemSalesTrend(row, baselineAds) {
+  const code = String(resolveCol(row, ['Item Code', 'Item_Code', 'ItemCode', 'SKU', 'Code'])).trim().toUpperCase();
+  const bare = code.split('-')[0].trim();
+
+  // 1. Check if row itself has month columns (e.g. Month 1, Month 2, Latest, M-1, M-2)
+  const m2 = parseFloat(resolveCol(row, ['Sales_M2', 'Month 2 Qty', 'Qty_M2', 'M-2 Qty', 'Month2'])) || 0;
+  const m1 = parseFloat(resolveCol(row, ['Sales_M1', 'Month 1 Qty', 'Qty_M1', 'M-1 Qty', 'Month1'])) || 0;
+  const mLatest = parseFloat(resolveCol(row, ['Sales_Latest', 'Latest Qty', 'Qty_Latest', 'Current Month Qty'])) || 0;
+
+  if (m1 > 0 || mLatest > 0) {
+    const prior = m1 || m2 || 1;
+    const diffPct = ((mLatest - prior) / prior) * 100;
+    return {
+      direction: diffPct >= 10 ? 'UP' : (diffPct <= -10 ? 'DOWN' : 'FLAT'),
+      momentumPct: diffPct,
+      unconstrainedAds: prior > 0 ? (prior / 30) : baselineAds,
+      isZeroRecent: mLatest === 0
+    };
+  }
+
+  // 2. Check storage/suite trend cache
+  if (skuSalesTrendMap.has(code)) return skuSalesTrendMap.get(code);
+  if (bare && skuSalesTrendMap.has(bare)) return skuSalesTrendMap.get(bare);
+
+  // 3. Fallback: evaluate single salesQty & SOH
+  const salesQty = parseFloat(resolveCol(row, ['Sales Qty', 'Sales_Qty_90d', 'SalesQty', 'Qty Sold', 'Sales', 'Qty_Sold'])) || 0;
+  const soh = parseFloat(resolveCol(row, ['Quantity On Hand', 'SOH', 'Stock on Hand', 'StockOnHand'])) || 0;
+
+  if (salesQty === 0) {
+    return {
+      direction: 'ZERO',
+      momentumPct: -100,
+      unconstrainedAds: 0.5,
+      isZeroRecent: true
+    };
+  }
+
+  return {
+    direction: 'FLAT',
+    momentumPct: 0,
+    unconstrainedAds: baselineAds,
+    isZeroRecent: false
+  };
+}
 
 // ─── PARAMETERS (user-editable) ──────────────────────────────────────────────
 function getParams() {
@@ -33,6 +312,16 @@ function initInventory() {
     dropZone.classList.remove('drag-over');
     if (e.dataTransfer.files.length) handleInventoryFile(e.dataTransfer.files[0]);
   });
+
+  const agingInput = document.getElementById('invAgingFileInput');
+  if (agingInput) {
+    agingInput.addEventListener('change', e => {
+      if (e.target.files.length) handleAgingFileUpload(e.target.files[0]);
+    });
+  }
+
+  // Auto-sync Stock Aging from Performance Suite / LocalStorage on startup
+  syncStockAgingFromStorage();
 
   ['paramSalesWindow','paramLeadTime','paramSafetyDays','paramTargetDays'].forEach(id => {
     const el = document.getElementById(id);
@@ -190,9 +479,14 @@ function showDownloadSuccess(btnId, msg) {
   }
 }
 
-// ─── CALCULATION ENGINE ───────────────────────────────────────────────────────
+// ─── CALCULATION ENGINE (SMART REPLENISHMENT RULES 1, 2, 3) ───────────────────
 function recalcInventory() {
   const p = getParams();
+
+  // Try to sync aging data if not yet loaded
+  if (stockAgingMap.size === 0) {
+    syncStockAgingFromStorage();
+  }
 
   // Cross-reference with near-expiry stock from all branches (< 12 months)
   const shortDatedMap = (typeof getShortDatedStockForReplenishment === 'function')
@@ -216,14 +510,139 @@ function recalcInventory() {
       const onOrder    = parseFloat(resolveCol(row, ['In Order Quantity','On_Order','OnOrder','Pending PO','In Transit','Order Qty','Pending_PO'])) || 0;
       const activeVal  = resolveCol(row, ['Active','Status','IsActive']).trim().toLowerCase();
       const isActive   = activeVal !== 'no' && activeVal !== 'false';
+      const category   = resolveCol(row, ['Category', 'Cat', 'Item Category', 'Division']).trim().toUpperCase();
 
-      const ads            = salesQty / p.salesWindow;
-      const ip             = soh + onOrder;
-      const rop            = ads * (p.leadTime + p.safetyDays);
-      const targetDaysHQ   = Math.min(p.targetDays, 60); // HQ standard 2.0 months buffer maximum
-      const targetMax      = ads * targetDaysHQ;
-      const suggestedOrder = (ip <= rop && ads > 0 && isActive) ? Math.ceil(targetMax - ip) : 0;
-      const daysCover      = ads > 0 ? Math.round(soh / ads) : 9999;
+      // Pack Size / MOQ parsed from Item Code suffix (e.g. - box30, - pack10, - twinpack)
+      const packInfo = parsePackSizeFromItemCode(itemCode);
+
+      // Baseline ADS
+      const baselineAds = salesQty > 0 ? (salesQty / p.salesWindow) : 0;
+      let effectiveAds = baselineAds;
+      const ip = soh + onOrder;
+      const targetDaysHQ = Math.min(p.targetDays, 60); // HQ standard 2.0 months buffer maximum
+
+      // Margin Tier Buffer Adjustment
+      let targetDays = targetDaysHQ;
+      const descUpper = desc.toUpperCase();
+      if (category === 'SUPPLEME' || descUpper.includes('NUTRI') || descUpper.includes('LIVEMORE') || descUpper.includes('JH NUTRITION')) {
+        targetDays = Math.min(65, p.targetDays + 5); // +5 days buffer on high-margin anchors
+      } else if (descUpper.includes('ENSURE GOLD') || descUpper.includes('ENERCAL') || descUpper.includes('NUTREN GLUCO')) {
+        targetDays = 30; // Strict JIT 30 days max on low/negative margin commercial milk tins
+      }
+
+      // Detect Sales Trend & Momentum
+      const trend = detectItemSalesTrend(row, baselineAds);
+
+      // Smart replenishment diagnostic variables
+      let suggestedOrder = 0;
+      let ruleApplied = 'STANDARD_ROP';
+      let badge = '✓ NORMAL ROP';
+      let badgeColor = 'bg-slate-100 text-slate-700 border-slate-200';
+      let reason = 'Steady historical replenishment rate.';
+      let isAgingLocked = false;
+      let isOverridden = false;
+
+      // ─── RULE 1: STOCK AGING DIRECT LOCK ──────────────────────────────────
+      // Any SKU appearing in stock aging is directly locked away until quantity drops under 2 months from selling (< 60 days)
+      const agingInfo = getStockAgingForItem(itemCode);
+      if (agingInfo && agingInfo.isAged && agingInfo.agedQty > 0) {
+        const daysCover = baselineAds > 0 ? (soh / baselineAds) : 9999;
+        const monthsCover = daysCover / 30;
+
+        if (monthsCover >= 2.0 || baselineAds === 0) {
+          // DIRECT LOCK AWAY: Do not order until stock is depleted under 2 months
+          suggestedOrder = 0;
+          ruleApplied = 'RULE_1_AGING_LOCKED';
+          badge = '🛑 AGING LOCKED';
+          badgeColor = 'bg-rose-100 text-rose-800 border-rose-300';
+          reason = `Aging stock detected (${agingInfo.agedQty} pcs ≥150d, RM ${agingInfo.agedValue}). Existing SOH covers ${monthsCover >= 999 ? '∞' : monthsCover.toFixed(1) + ' mo'} (≥ 2.0 mo target). Strictly locked from ordering until stock is depleted under 2 months.`;
+          isAgingLocked = true;
+        } else {
+          // Stock has depleted to LESS than 2 months! Allow conservative replenishment up to 2.0 months target
+          const rop = baselineAds * (p.leadTime + p.safetyDays);
+          const targetMax = baselineAds * targetDays;
+          suggestedOrder = (ip <= rop && baselineAds > 0 && isActive) ? Math.ceil(targetMax - ip) : 0;
+          ruleApplied = 'RULE_1_AGING_DEPLETED';
+          badge = '🟡 AGING DEPLETED (< 2 Mo)';
+          badgeColor = 'bg-amber-100 text-amber-900 border-amber-300';
+          reason = `Aged stock depleted to ${monthsCover.toFixed(1)} mo (< 2.0 mo target). Reordering conservatively up to 2 months limit.`;
+        }
+      }
+
+      // If not aging-locked, evaluate Rule 2 and Rule 3
+      if (!isAgingLocked) {
+        // ─── RULE 2: SALES MOMENTUM UPWARD ACCELERATION ─────────────────────
+        if (trend.direction === 'UP' && trend.momentumPct >= 10) {
+          // Cap momentum multiplier between +5% and +35% to prevent runaway over-ordering
+          const momentumMultiplier = Math.min(1.35, 1 + (trend.momentumPct / 100) * 0.5);
+          effectiveAds = baselineAds * momentumMultiplier;
+          const rop = effectiveAds * (p.leadTime + p.safetyDays);
+          const targetMax = effectiveAds * targetDays;
+          suggestedOrder = (ip <= rop && effectiveAds > 0 && isActive) ? Math.ceil(targetMax - ip) : 0;
+          ruleApplied = 'RULE_2_MOMENTUM_BOOST';
+          badge = `🚀 MOMENTUM UP (+${Math.round(trend.momentumPct)}%)`;
+          badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-300';
+          reason = `Sales accelerating (+${Math.round(trend.momentumPct)}% MoM). ADS adjusted from ${baselineAds.toFixed(2)} to ${effectiveAds.toFixed(2)} to prevent fast-mover stockouts.`;
+        }
+        // ─── RULE 3: SMART STOCKOUT (PHANTOM DROP) VS TRUE CONTRACTION ───────
+        else if (trend.direction === 'DOWN' || baselineAds === 0 || trend.isZeroRecent) {
+          if (soh <= 0) {
+            // RULE 3A: PHANTOM DROP / OOS MISSED ORDERING
+            // Demand did not vanish; shelf was empty!
+            effectiveAds = Math.max(trend.unconstrainedAds || 0, baselineAds, 0.5);
+            const rop = effectiveAds * (p.leadTime + p.safetyDays);
+            const targetMax = effectiveAds * targetDays;
+            suggestedOrder = (ip <= rop && isActive) ? Math.ceil(targetMax - ip) : 0;
+            ruleApplied = 'RULE_3A_PHANTOM_DROP';
+            badge = '⚠️ OOS PHANTOM DROP';
+            badgeColor = 'bg-amber-100 text-amber-900 border-amber-300';
+            reason = 'Sales dropped to 0 due to zero shelf stock (stockout), not loss of demand. Restoring baseline replenishment rate.';
+          } else {
+            // RULE 3B: TRUE CONTRACTION (Stock was available, but demand fell)
+            const decayedAds = Math.max(0.01, baselineAds * Math.max(0.4, 1 - Math.abs(trend.momentumPct || 25) / 100));
+            const daysCoverWithSoh = decayedAds > 0 ? Math.round(soh / decayedAds) : 9999;
+
+            if (daysCoverWithSoh >= targetDaysHQ) {
+              // SOH covers >= 60 days HQ standard
+              suggestedOrder = 0;
+              ruleApplied = 'RULE_3B_SURPLUS_HALT';
+              badge = '⏸️ SURPLUS (SOH ≥ 2 Mo)';
+              badgeColor = 'bg-blue-100 text-blue-800 border-blue-300';
+              reason = `Demand softened. Existing SOH (${soh} pcs) covers ${daysCoverWithSoh} days (≥ 60d target). Reorder halted.`;
+              effectiveAds = decayedAds;
+            } else {
+              effectiveAds = decayedAds;
+              const rop = effectiveAds * (p.leadTime + p.safetyDays);
+              const targetMax = effectiveAds * targetDays;
+              suggestedOrder = (ip <= rop && effectiveAds > 0 && isActive) ? Math.ceil(targetMax - ip) : 0;
+              ruleApplied = 'RULE_3B_DECAYING_ORDER';
+              badge = `📉 DECAYING DEMAND (-${Math.round(Math.abs(trend.momentumPct || 25))}%)`;
+              badgeColor = 'bg-purple-100 text-purple-800 border-purple-300';
+              reason = `Demand softened with stock on shelf. Reordering conservatively at decayed run-rate (${decayedAds.toFixed(2)}/day).`;
+            }
+          }
+        }
+        // ─── STANDARD ROP ────────────────────────────────────────────────────
+        else {
+          const rop = effectiveAds * (p.leadTime + p.safetyDays);
+          const targetMax = effectiveAds * targetDays;
+          suggestedOrder = (ip <= rop && effectiveAds > 0 && isActive) ? Math.ceil(targetMax - ip) : 0;
+        }
+      }
+
+      // ─── PACK SIZE & MOQ ROUNDING ──────────────────────────────────────────
+      let rawOrderQty = suggestedOrder;
+      let packRoundingNote = '';
+      if (suggestedOrder > 0 && packInfo.packSize > 1) {
+        const rounded = Math.ceil(suggestedOrder / packInfo.packSize) * packInfo.packSize;
+        if (rounded !== suggestedOrder) {
+          packRoundingNote = ` (Rounded from ${suggestedOrder} to ${rounded} pcs for whole ${packInfo.label})`;
+          suggestedOrder = rounded;
+        }
+      }
+
+      const ropFinal = effectiveAds * (p.leadTime + p.safetyDays);
+      const daysCover = effectiveAds > 0 ? Math.round(soh / effectiveAds) : 9999;
 
       // Match clearance offers from sister branches
       const cleanCode = String(itemCode || '').trim().toUpperCase();
@@ -233,14 +652,27 @@ function recalcInventory() {
       }
 
       return {
-        itemCode, desc, vendorCode, nonFunctionalField1, orderGroup, uom, isActive,
+        itemCode, desc, vendorCode, nonFunctionalField1, orderGroup, uom, isActive, category,
         salesQty, soh, onOrder,
-        ads: +ads.toFixed(4),
-        ip, rop: +rop.toFixed(2), targetMax: +targetMax.toFixed(2),
+        packSize: packInfo.packSize,
+        packLabel: packInfo.label,
+        packRoundingNote,
+        ads: +effectiveAds.toFixed(3),
+        baselineAds: +baselineAds.toFixed(3),
+        ip,
+        rop: +ropFinal.toFixed(1),
+        targetDays,
+        targetMax: +(effectiveAds * targetDays).toFixed(1),
         suggestedOrder: Math.max(0, suggestedOrder),
         daysCover: Math.min(daysCover, 9999),
         approvedQty: Math.max(0, suggestedOrder),
-        clearanceOffers: clearanceOffers,
+        ruleApplied,
+        badge,
+        badgeColor,
+        reason: reason + packRoundingNote,
+        isAgingLocked,
+        isOverridden: false,
+        clearanceOffers,
         transferredQty: 0,
         transferredFrom: ''
       };
@@ -321,12 +753,26 @@ function populateVendorDropdown() {
 
 // ─── KPI COUNTERS ────────────────────────────────────────────────────────────
 function updateInventoryKPIs() {
-  const totalSKUs  = inventoryGrid.length;
-  const toReorder  = inventoryGrid.filter(r => r.suggestedOrder > 0).length;
-  const totalUnits = inventoryGrid.reduce((s, r) => s + (r.approvedQty || 0), 0);
-  setText('kpiTotalSKUs',  totalSKUs);
-  setText('kpiToReorder',  toReorder);
-  setText('kpiTotalUnits', totalUnits);
+  const totalSKUs   = inventoryGrid.length;
+  const toReorder   = inventoryGrid.filter(r => r.suggestedOrder > 0).length;
+  const totalUnits  = inventoryGrid.reduce((s, r) => s + (r.approvedQty || 0), 0);
+  const agingLocked = inventoryGrid.filter(r => r.ruleApplied === 'RULE_1_AGING_LOCKED').length;
+  const momentum    = inventoryGrid.filter(r => r.ruleApplied === 'RULE_2_MOMENTUM_BOOST').length;
+  const stockout    = inventoryGrid.filter(r => r.ruleApplied === 'RULE_3A_PHANTOM_DROP').length;
+
+  setText('kpiTotalSKUs',   totalSKUs);
+  setText('kpiToReorder',   toReorder);
+  setText('kpiTotalUnits',  totalUnits);
+  setText('kpiAgingLocked', agingLocked);
+  setText('kpiMomentum',    momentum);
+  setText('kpiStockout',    stockout);
+
+  // Update filter pill counts if present
+  setText('pillCountAll', totalSKUs);
+  setText('pillCountReorder', toReorder);
+  setText('pillCountAging', agingLocked);
+  setText('pillCountMomentum', momentum);
+  setText('pillCountStockout', stockout);
 }
 
 function setText(id, val) {
@@ -334,14 +780,51 @@ function setText(id, val) {
   if (el) el.textContent = val;
 }
 
+function setInvFilterPill(pillType) {
+  invActiveFilterPill = pillType;
+  document.querySelectorAll('.inv-filter-pill').forEach(btn => {
+    if (btn.dataset.pill === pillType) {
+      btn.classList.add('bg-blue-600', 'text-white', 'shadow-xs');
+      btn.classList.remove('bg-white', 'text-slate-700', 'hover:bg-slate-100');
+    } else {
+      btn.classList.remove('bg-blue-600', 'text-white', 'shadow-xs');
+      btn.classList.add('bg-white', 'text-slate-700', 'hover:bg-slate-100');
+    }
+  });
+  renderInventoryGrid();
+}
+
+function overrideAgingLock(rowIdx) {
+  const row = inventoryGrid[rowIdx];
+  if (!row) return;
+
+  const inputVal = prompt(
+    `[PHARMACIST OVERRIDE - STOCK AGING LOCK]\n\nSKU: ${row.itemCode} - ${row.desc}\nCurrent SOH: ${row.soh} pcs\nAged Qty: ${row.isAgingLocked ? 'Locked' : 'Depleted'}\n\nEnter approved order quantity to override lock:`,
+    row.packSize > 1 ? String(row.packSize) : '10'
+  );
+
+  if (inputVal !== null) {
+    const qty = parseInt(inputVal, 10);
+    if (!isNaN(qty) && qty >= 0) {
+      row.approvedQty = qty;
+      row.isOverridden = true;
+      row.badge = `⚠️ OVERRIDE (${qty} pcs)`;
+      row.badgeColor = 'bg-amber-200 text-amber-950 border-amber-400';
+      row.reason = `Pharmacist manual override applied. Approved: ${qty} units.`;
+      updateInventoryKPIs();
+      renderInventoryGrid();
+    }
+  }
+}
+
 // ─── GRID RENDER ─────────────────────────────────────────────────────────────
 function renderInventoryGrid() {
   const tbody = document.getElementById('invTableBody');
   if (!tbody) return;
 
-  const searchQ      = (document.getElementById('invSearch')?.value || '').toLowerCase();
+  const searchQ        = (document.getElementById('invSearch')?.value || '').toLowerCase();
   const selectedVendor = document.getElementById('invVendorFilter')?.value || '';
-  const onlyReorder  = document.getElementById('invFilterReorder')?.checked || false;
+  const onlyReorder    = document.getElementById('invFilterReorder')?.checked || false;
 
   const filtered = inventoryGrid.filter(row => {
     if (selectedVendor) {
@@ -351,10 +834,19 @@ function renderInventoryGrid() {
     }
     if (onlyReorder && row.approvedQty === 0 && row.suggestedOrder === 0) return false;
     if (searchQ && !row.itemCode.toLowerCase().includes(searchQ) && !row.desc.toLowerCase().includes(searchQ)) return false;
+
+    // Filter pill logic
+    if (invActiveFilterPill === 'REORDER' && row.approvedQty === 0 && row.suggestedOrder === 0) return false;
+    if (invActiveFilterPill === 'MOMENTUM' && row.ruleApplied !== 'RULE_2_MOMENTUM_BOOST') return false;
+    if (invActiveFilterPill === 'STOCKOUT' && row.ruleApplied !== 'RULE_3A_PHANTOM_DROP') return false;
+    if (invActiveFilterPill === 'AGING_LOCKED' && row.ruleApplied !== 'RULE_1_AGING_LOCKED') return false;
+    if (invActiveFilterPill === 'SURPLUS' && row.ruleApplied !== 'RULE_3B_SURPLUS_HALT') return false;
+
     return true;
   });
 
-  tbody.innerHTML = filtered.map((row, idx) => {
+  tbody.innerHTML = filtered.map((row) => {
+    const origIdx = inventoryGrid.indexOf(row);
     const coverClass   = row.daysCover < 14 ? 'text-red-600 font-bold'
                        : row.daysCover < 30 ? 'text-amber-600 font-semibold'
                        : 'text-green-700';
@@ -362,12 +854,30 @@ function renderInventoryGrid() {
     const needReorder  = row.suggestedOrder > 0;
     const isSSJ        = isSSJPharmaVendor(row.vendorCode);
 
-    return `<tr class="${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 border-b border-gray-100">
-      <td class="px-3 py-2 text-xs font-mono text-gray-700">${escHtml(row.itemCode)}</td>
+    return `<tr class="${origIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50/60 border-b border-gray-100 transition">
+      <td class="px-3 py-2 text-xs font-mono text-gray-700">
+        <div class="font-bold text-gray-900">${escHtml(row.itemCode)}</div>
+        <div class="mt-0.5 inline-flex items-center gap-1">
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold ${row.packSize > 1 ? 'bg-indigo-100 text-indigo-800 border border-indigo-200' : 'bg-slate-100 text-slate-600'}" title="Outer Pack Size: ${row.packSize} pcs">
+            📦 ${escHtml(row.packLabel)}
+          </span>
+          ${row.category ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-500">${escHtml(row.category)}</span>` : ''}
+        </div>
+      </td>
       <td class="px-3 py-2 text-xs text-gray-800 max-w-sm" title="${escHtml(row.desc)}">
-        <div class="font-medium">${escHtml(row.desc)}</div>
+        <div class="font-medium text-slate-900 leading-snug">${escHtml(row.desc)}</div>
+        <div class="mt-1 flex items-center gap-1.5 flex-wrap">
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${row.badgeColor}" title="${escHtml(row.reason)}">
+            ${row.badge}
+          </span>
+          ${row.isAgingLocked ? `
+            <button type="button" onclick="overrideAgingLock(${origIdx})" class="text-[10px] text-blue-600 hover:text-blue-800 font-bold underline cursor-pointer" title="Unlock for exceptional customer orders">
+              Override Lock
+            </button>
+          ` : ''}
+        </div>
         ${row.clearanceOffers && row.clearanceOffers.length > 0 ? `
-          <div class="mt-1 flex flex-col gap-1">
+          <div class="mt-1.5 flex flex-col gap-1">
             ${row.clearanceOffers.map(off => `
               <div class="flex items-center justify-between gap-2 p-1 rounded bg-amber-50 border border-amber-200 text-[10px] text-amber-900">
                 <span>
@@ -376,10 +886,10 @@ function renderInventoryGrid() {
                 ${row.transferredQty > 0 && row.transferredFrom === off.branch ? `
                   <div class="flex items-center gap-1">
                     <span class="bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">✓ Transferring ${row.transferredQty} pcs</span>
-                    <button type="button" onclick="cancelClearanceTransfer(${idx})" class="text-rose-600 hover:underline font-semibold ml-1">Cancel</button>
+                    <button type="button" onclick="cancelClearanceTransfer(${origIdx})" class="text-rose-600 hover:underline font-semibold ml-1">Cancel</button>
                   </div>
                 ` : `
-                  <button type="button" onclick="applyClearanceTransfer(${idx}, '${escHtml(off.branch)}', ${off.quantity}, '${off.expiryDate}', '${escHtml(off.batchNumber || 'N/A')}')"
+                  <button type="button" onclick="applyClearanceTransfer(${origIdx}, '${escHtml(off.branch)}', ${off.quantity}, '${off.expiryDate}', '${escHtml(off.batchNumber || 'N/A')}')"
                     class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-2 py-0.5 rounded text-[10px] transition shadow-xs shrink-0"
                     title="Transfer short-dated stock from sister branch instead of ordering new stock">
                     🤝 Help Clear (${Math.min(row.approvedQty || row.suggestedOrder, off.quantity)})
@@ -391,26 +901,49 @@ function renderInventoryGrid() {
         ` : ''}
       </td>
       <td class="px-3 py-2 text-xs text-center text-gray-600">
-        <div class="truncate max-w-[150px] mx-auto font-medium" title="${escHtml(row.vendorCode)}">${escHtml(row.vendorCode)}</div>
+        <div class="truncate max-w-[140px] mx-auto font-medium" title="${escHtml(row.vendorCode)}">${escHtml(row.vendorCode)}</div>
         ${row.nonFunctionalField1 ? `<span class="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${isSSJ ? 'bg-purple-100 text-purple-700 border border-purple-200' : 'bg-gray-100 text-gray-600'}">${escHtml(row.nonFunctionalField1)}</span>` : ''}
       </td>
-      <td class="px-3 py-2 text-xs text-right">${row.soh}</td>
+      <td class="px-3 py-2 text-xs text-right font-medium text-slate-800">${row.soh}</td>
       <td class="px-3 py-2 text-xs text-right text-gray-500">${row.onOrder}</td>
-      <td class="px-3 py-2 text-xs text-right text-gray-500">${row.ads}</td>
+      <td class="px-3 py-2 text-xs text-right text-gray-700" title="Baseline ADS: ${row.baselineAds}">
+        <div class="font-bold">${row.ads}</div>
+        ${row.ruleApplied === 'RULE_2_MOMENTUM_BOOST' ? '<span class="text-[9px] text-emerald-600 font-bold">▲ Boosted</span>' : ''}
+      </td>
       <td class="px-3 py-2 text-xs text-right ${coverClass}">${coverDisplay}</td>
       <td class="px-3 py-2 text-xs text-right text-gray-500">${Math.round(row.rop)}</td>
-      <td class="px-3 py-2 text-xs text-right font-semibold ${needReorder ? 'text-blue-700' : 'text-gray-300'}">${row.suggestedOrder || '–'}</td>
+      <td class="px-3 py-2 text-xs text-right font-extrabold ${needReorder ? 'text-blue-700' : 'text-gray-300'}">
+        <div>${row.suggestedOrder || '–'}</div>
+        ${row.packRoundingNote ? `<div class="text-[9px] text-indigo-600 font-normal truncate max-w-[90px]" title="${escHtml(row.packRoundingNote)}">📦 MOQ Pack</div>` : ''}
+      </td>
       <td class="px-3 py-2 text-xs text-center">
         <input type="number" min="0" value="${row.approvedQty}"
-          class="w-20 border border-gray-300 rounded px-1 py-0.5 text-center text-xs focus:ring-1 focus:ring-blue-400 focus:border-blue-400 font-bold"
-          onchange="updateApprovedQtyByFilter(${idx}, this.value)">
+          class="w-20 border ${row.isAgingLocked ? 'border-rose-300 bg-rose-50/50 text-rose-900' : 'border-gray-300 bg-white text-gray-900'} rounded px-1 py-0.5 text-center text-xs focus:ring-1 focus:ring-blue-400 focus:border-blue-400 font-bold"
+          onchange="updateApprovedQtyByRowIndex(${origIdx}, this.value)">
       </td>
     </tr>`;
   }).join('');
 
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="10" class="text-center py-10 text-gray-400 text-sm">No SKUs match the current filter.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" class="text-center py-10 text-gray-400 text-sm">No SKUs match the current filter (${invActiveFilterPill}).</td></tr>`;
   }
+}
+
+function updateApprovedQtyByRowIndex(origIdx, val) {
+  if (inventoryGrid[origIdx]) {
+    inventoryGrid[origIdx].approvedQty = Math.max(0, parseInt(val, 10) || 0);
+    updateInventoryKPIs();
+    populateVendorDropdown();
+  }
+}
+
+// Global exposure for UI buttons
+if (typeof window !== 'undefined') {
+  window.syncStockAgingFromStorage = syncStockAgingFromStorage;
+  window.handleAgingFileUpload = handleAgingFileUpload;
+  window.setInvFilterPill = setInvFilterPill;
+  window.overrideAgingLock = overrideAgingLock;
+  window.updateApprovedQtyByRowIndex = updateApprovedQtyByRowIndex;
 }
 
 // ─── INTER-BRANCH CLEARANCE TRANSFER LOGIC ──────────────────────────────────

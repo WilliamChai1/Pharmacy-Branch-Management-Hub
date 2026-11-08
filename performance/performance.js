@@ -2398,34 +2398,52 @@ ${catRows}
    - **Growth & Profit**: Top Gross Profit generator in branch! Contributed RM ${fmtNum((m.categories.find(c => c.category === 'SUPPLEME') || {}).netSoldProfitLatest || 29291.80, 2)} in gross profit (${fmtPct((m.categories.find(c => c.category === 'SUPPLEME') || {}).gpPctLatest || 36.17)} GP margin) on RM ${fmtNum((m.categories.find(c => c.category === 'SUPPLEME') || {}).netSoldPriceLatest || 80974.16, 2)} total turnover (${(m.categories.find(c => c.category === 'SUPPLEME') || {}).priceDiffRm >= 0 ? '+' : ''}${fmtPct((m.categories.find(c => c.category === 'SUPPLEME') || {}).priceDiffPct || 29.98, 2)} YoY).
    - **Major SKU Gainers**:
 ${topHeroesStr}
-   - **Underlying Reason**: Systematic DPOS companion bundling at dispensing counters, attaching metabolic and vascular protection supplements (CoQ10, Progutor, Livemore Flexmore, JH Nutrition FLVRight, Nutribridge Sheep Placenta) to regular chronic prescriptions.
+   - **Catchment & Demographic Drivers**: Mature 7th Mile Kota Sentosa community profile with high senior citizen concentration seeking cardiovascular, joint, and cellular vitality supplements.
+   - **Social Media Trend Amplification (TikTok & XiaoHongShu / XHS)**: Viral consumer awareness on TikTok Shop & XHS regarding CoQ10 cellular energy, Berberine metabolic support, and joint-protective collagen peptides, driving self-motivated inquiries at retail counters.
+   - **Dispensary Execution**: Systematic DPOS companion bundling at dispensing counters, attaching metabolic and vascular protection supplements (CoQ10, Progutor, Livemore Flexmore, JH Nutrition FLVRight, Nutribridge Sheep Placenta) to regular chronic prescriptions.
 
 2. **Scheduled Drugs (SCHE-DRU)**:
    - **Growth & Profit**: Core revenue anchor, representing ~20% of total outlet sales (RM ${fmtNum((m.categories.find(c => c.category === 'SCHE-DRU') || {}).netSoldPriceLatest || 68093.60, 2)}, +${fmtPct((m.categories.find(c => c.category === 'SCHE-DRU') || {}).priceDiffPct || 12.77, 2)} YoY) with RM ${fmtNum((m.categories.find(c => c.category === 'SCHE-DRU') || {}).netSoldProfitLatest || 8433.04, 2)} in gross profit.
-   - **Major SKU Gainers**: Novartis Entresto 50mg (+RM 3,227.00), chronic cardiovascular and endocrine therapies.
-   - **Underlying Reason**: High refill compliance and long-term customer loyalty built through structured pharmacist consultations (William Chai) and digital refill reminders.
+   - **Major SKU Gainers**: Novartis Entresto 50mg (+RM 3,227.00), Ketosteril (+RM 3,537.80), Breztri Aerosphere (+RM 1,240.00), chronic cardiovascular and endocrine therapies.
+   - **Public Health & Hospital Spillover**: High prevalence of chronic non-communicable diseases (NCDs: hypertension, dyslipidemia, diabetes, heart failure) in Padawan district. Long-term chronic outpatients from Klinik Kesihatan Kota Sentosa and Sentosa Hospital consistently refill prescriptions at PMG for immediate stock availability and dedicated pharmacist adherence reviews.
 
 3. **Food & Beverage / Clinical Nutrition (F & B)**:
    - **Growth & Profit**: Revenue reached RM ${fmtNum((m.categories.find(c => c.category === 'F & B') || {}).netSoldPriceLatest || 53068.23, 2)} (+${fmtPct((m.categories.find(c => c.category === 'F & B') || {}).priceDiffPct || 11.14, 2)} YoY) generating RM ${fmtNum((m.categories.find(c => c.category === 'F & B') || {}).netSoldProfitLatest || 12824.43, 2)} in profit (${fmtPct((m.categories.find(c => c.category === 'F & B') || {}).gpPctLatest || 24.17)} GP margin).
-   - **Underlying Reason**: Deliberate customer migration strategy moving patients from zero-margin commercial tins to proprietary PMG clinical formulas.
+   - **Major SKU Gainers**: Nutribridge Nutri Alpha 800g (+RM 5,061.46 YoY, 22.28% GP), Flexsure Gold 850g (+RM 2,575.26 YoY), JH Nutrition Oxxymax (+RM 4,685.99 YoY), Immunz-IgG Colostrum (+RM 2,570.34 YoY).
+   - **Economic & Migration Driver**: High living cost inflation causing consumers to resist RM 100+ commercial milk prices. Staff actively guided price-sensitive diabetic and geriatric consumers toward clinically complete PMG House Brand nutrition formulas with superior margin.
 
 ---
 
 ### SLIDE 9: CATEGORY SALES ANALYSIS (MTD): PRODUCT DECLINES & COMPETITOR DYNAMICS (WHAT GOES DOWN & REASONS)
-**INTENTIONAL MARGIN PROTECTION & COMPETITOR DYNAMICS**
+**INTENTIONAL MARGIN PROTECTION, DEMOGRAPHICS & COMPETITOR DYNAMICS**
 
 1. **Intentional Decline in Low-Margin Commercial Formulas**:
    - **Decliners**:
      - Ensure Gold Vanilla 850g: -RM 1,388.94 YoY (RM 2,935.56 vs RM 4,324.50 in LY)
+     - Ensure Gold Vanilla 800g: -RM 2,175.60 YoY
      - Enercal Complete Vanilla 850g: -RM 688.80 YoY (RM 539.00 vs RM 1,227.80)
      - Nutren Gluco Balance 800g: -RM 310.20 YoY (RM 103.80 vs RM 414.00)
    - **Strategic Reason**: Deliberate and highly profitable customer migration. Commercial adult formulas yield negative or razor-thin gross margins (Ensure Gold at **-3.70% GP margin** due to aggressive chain store discounting). Staff actively guided price-sensitive chronic consumers toward PMG clinical nutrition (**Nutri Alpha, Nutrenmax, Alpha Gold, Flexsure Gold**) generating **30–36% GP margin**, preserving branch gross profit.
 ${topBleedersStr}
 
 2. **Mom & Baby Category Contraction (MOM&BABY)**:
-   - **Performance**: Revenue contracted -18.24% YoY (RM 6,628.62 vs RM 8,106.93).
-   - **Market Reason**: Catchment demographics (aging community profile in mature Kota Sentosa) and fierce price-undercutting on milk powder tins (Morinaga, Frisolac, S-26) by mother-and-baby specialty shops and hypermarkets.
-   - **Strategic Remedial Action**: Reallocate shelf space toward premium pediatric wellness lines (Appeton, Champs, JH Gummy Bears, Kiddypops) and pediatric skin dermatologicals (Sudocrem, Cetaphil, Bzu Bzu, BBZine Cream) which consistently maintain **>30% GP**.
+   - **Performance**: Revenue contracted -33.59% YoY (-RM 3,640.39 | RM 7,196.59 Total).
+   - **Macro Demographic Shift (Sarawak Birth Rate Contraction)**: Declining total fertility rate (TFR dropped to ~1.4 across urban Sarawak/Padawan). Fewer births translate into structural reduction in demand for commercial infant formula tins (Morinaga, Frisolac, S-26) and commodity baby diapers.
+   - **Retail Channel Shifts**: Hypermarkets and mother-and-baby specialty chains in Kuching run mass loss-leader promotions on baby milk tins, eroding retail pharmacy footfall for commodity baby goods.
+   - **Social Media Trend Shift (TikTok / XHS)**: Modern parents are shifting spending from traditional generic milks to viral pediatric wellness supplements (Appeton, Champs, JH Gummy Bears, Kiddypops) and pediatric barrier dermatologicals (Sudocrem, Cetaphil, Bzu Bzu, BBZine Cream) which consistently maintain **>30% GP**.
+   - **Strategic Remedial Action**: Shrink floor space dedicated to low-margin baby milk tins; reallocate prime eye-level shelves to high-margin pediatric wellness and dermatologicals.
+
+3. **Viral Social Media Trends & New Product Discovery Pipeline (TikTok, XiaoHongShu, Facebook, Instagram)**:
+   - **Viral Wellness Trends Grounding**:
+     • *Liposomal Vitamin C & High-Absorption Glutathione*: Trending on TikTok Shop & XHS for skin brightening, hyperpigmentation, and cellular immunity.
+     • *NMN Longevity & Berberine*: Viral wellness searches on XHS for metabolic regulation, insulin sensitivity, and anti-aging vitality.
+     • *Magnesium Glycinate*: Trending viral sleep hygiene and anxiety reduction supplement among urban working adults.
+     • *Gut-Skin Axis Probiotics*: High engagement on Instagram/TikTok for acne relief and irritable bowel wellness.
+   - **New Product Discovery Pipeline (High-Potential Assortment Expansion)**:
+     • *Target SKU 1*: Liposomal Vitamin C 1000mg Sachets (Target: Beauty / immunity consumers | Expected GP: 35–40% | Trial Order: 24 packs)
+     • *Target SKU 2*: Magnesium Glycinate 200mg Capsules (Target: Sleep / stress management outpatients | Expected GP: 38% | Trial Order: 18 bottles)
+     • *Target SKU 3*: Kids Probiotic + Elderberry Immune Gummies (Target: Padawan young families | Expected GP: 35% | Trial Order: 24 boxes)
+     • *Target SKU 4*: Ceramide Eczema Barrier Repair Cream (Target: Catchment sensitive skin patients | Expected GP: 42% | Trial Order: 20 tubes)
 
 ---
 
