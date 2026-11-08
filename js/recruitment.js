@@ -1972,6 +1972,329 @@ function renderPublicPortalForm(targetContainerId) {
   renderPublicForm(targetContainerId || 'publicJobAppContainer');
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// CANDIDATE DOCUMENT DIRECT UPLOAD PORTAL (?upload=APP-...)
+// ══════════════════════════════════════════════════════════════════════════════
+const candidateUploadCache = {};
+
+async function handleCandidateSlotSelect(event, fieldName) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  const holder = document.getElementById(`reup_holder_${fieldName}`);
+  const preview = document.getElementById(`reup_preview_${fieldName}`);
+  const slot = document.getElementById(`reup_slot_${fieldName}`);
+
+  if (holder) holder.classList.add('hidden');
+  if (preview) {
+    preview.classList.remove('hidden');
+    preview.innerHTML = `
+      <div class="p-2 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold flex items-center justify-center gap-2">
+        <i class="fa-solid fa-spinner fa-spin"></i>
+        <span>Mengoptimumkan fail...</span>
+      </div>`;
+  }
+
+  try {
+    const isPhoto = (fieldName === 'filePhoto');
+    const opt = await compressAndOptimizeDocFile(file, isPhoto ? 500 : 1800, isPhoto ? 0.72 : 0.82);
+    if (!opt) throw new Error('Optimization failed');
+
+    candidateUploadCache[fieldName] = {
+      field: fieldName,
+      name: opt.name || file.name,
+      size: opt.size || file.size,
+      type: opt.type || (file.type || 'image/jpeg'),
+      data: opt.data
+    };
+
+    if (slot) {
+      slot.classList.add('border-emerald-400', 'bg-emerald-50/30', 'ring-1', 'ring-emerald-300');
+    }
+
+    if (preview) {
+      const isImg = opt.type.startsWith('image/');
+      preview.innerHTML = `
+        <div class="flex items-center gap-3 p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-left">
+          ${isImg && opt.data ? `<img src="${opt.data}" class="w-12 h-12 object-cover rounded-md border border-emerald-300 shrink-0">` : `<i class="fa-solid fa-file-pdf text-rose-500 text-2xl shrink-0"></i>`}
+          <div class="min-w-0 flex-1">
+            <div class="text-xs font-bold text-emerald-900 truncate">${sanitize(opt.name || file.name)}</div>
+            <div class="text-[10px] text-emerald-700 flex items-center gap-1 mt-0.5">
+              <i class="fa-solid fa-check-circle"></i> Sedia dihantar &bull; ${Math.round((opt.size || 0)/1024)} KB
+            </div>
+          </div>
+          <span class="text-xs text-blue-600 font-bold hover:underline cursor-pointer">Tukar</span>
+        </div>`;
+    }
+  } catch (err) {
+    console.error('Error optimizing candidate doc:', err);
+    if (holder) holder.classList.remove('hidden');
+    if (preview) preview.classList.add('hidden');
+    toast('Ralat membaca fail: ' + err.message, 'error');
+  }
+}
+
+async function submitCandidateReupload(event, candidateRef) {
+  event.preventDefault();
+  const keys = Object.keys(candidateUploadCache);
+  if (keys.length === 0) {
+    toast('Sila pilih sekurang-kurangnya satu dokumen untuk dimuat naik.', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('candidateReuploadSubmitBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan dokumen ke cloud...';
+  }
+
+  const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+  let successCount = 0;
+
+  for (const field of keys) {
+    const item = candidateUploadCache[field];
+    if (!item || !item.data) continue;
+
+    try {
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'uploadApplicantDoc',
+          appId: candidateRef,
+          doc: item
+        })
+      });
+      if (res.ok) {
+        const resJson = await res.json().catch(() => null);
+        if (resJson && resJson.success !== false) {
+          successCount++;
+        }
+      }
+    } catch (postErr) {
+      console.warn('[Doc Reupload] Error uploading ' + field, postErr);
+    }
+  }
+
+  // Update local storage if record exists locally
+  const localApps = loadApps();
+  const existingApp = localApps.find(a => a.id === candidateRef);
+  if (existingApp) {
+    if (!Array.isArray(existingApp.docs)) existingApp.docs = [];
+    keys.forEach(k => {
+      const itm = candidateUploadCache[k];
+      const matchIdx = existingApp.docs.findIndex(d => d.field === k);
+      if (matchIdx !== -1) {
+        existingApp.docs[matchIdx].data = itm.data;
+        existingApp.docs[matchIdx].name = itm.name;
+        existingApp.docs[matchIdx].size = itm.size;
+        existingApp.docs[matchIdx].type = itm.type;
+      } else {
+        existingApp.docs.push(itm);
+      }
+      if (k === 'filePhoto') existingApp.photoThumbnail = itm.data;
+    });
+    saveApps(localApps);
+  }
+
+  // Render Celebration / Success Screen
+  const form = document.getElementById('candidateReuploadForm');
+  if (form) {
+    form.parentElement.innerHTML = `
+      <div class="p-8 sm:p-12 text-center max-w-lg mx-auto">
+        <div class="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-5 text-emerald-600 text-4xl shadow-inner">
+          <i class="fa-solid fa-circle-check"></i>
+        </div>
+        <h2 class="text-2xl font-black text-gray-900 mb-2">Dokumen Berjaya Dihantar!</h2>
+        <p class="text-gray-600 text-sm mb-4">
+          Sebanyak <span class="font-bold text-blue-700">${keys.length} dokumen</span> telah berjaya dimuat naik dan disahkan untuk rujukan permohonan <span class="font-mono font-bold text-slate-800">${sanitize(candidateRef)}</span>.
+        </p>
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-900 text-left mb-6 leading-relaxed">
+          <div class="font-bold mb-1 flex items-center gap-1.5 text-blue-800">
+            <i class="fa-solid fa-bell"></i> Status Permohonan Anda:
+          </div>
+          Pengurus cawangan PMG Pharmacy Kota Sentosa (<strong>William Chai</strong>) telah menerima makluman dokumen anda. Pihak kami akan menyemak profil anda dan menghubungi anda melalui WhatsApp/panggilan telefon untuk perkembangan seterusnya.
+        </div>
+        <p class="text-xs text-gray-400">Anda boleh menutup tetingkap pelayar ini sekarang.</p>
+      </div>`;
+  }
+}
+
+async function renderCandidateUploadPortal(targetContainerId, appId) {
+  const container = document.getElementById(targetContainerId) || el(targetContainerId);
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="max-w-xl mx-auto py-16 px-4 text-center">
+      <i class="fa-solid fa-spinner fa-spin text-3xl text-blue-600 mb-3"></i>
+      <h3 class="text-base font-bold text-gray-800">Memuatkan Maklumat Permohonan...</h3>
+      <p class="text-xs text-gray-500 mt-1">Mengambil rekod rujukan ${sanitize(appId)}...</p>
+    </div>`;
+
+  let app = (loadApps() || []).find(a => a && a.id === appId);
+  if (!app) {
+    try {
+      const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+      const res = await fetch(`${apiUrl}?action=getJobApplications`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.applications)) {
+          app = data.applications.find(a => a && a.id === appId);
+        }
+      }
+    } catch (_) {}
+  }
+
+  const candidateName = app ? app.name : 'Calon PMG';
+  const candidatePos  = app ? app.position : 'Permohonan Jawatan';
+  const candidateRef  = appId || (app ? app.id : 'APP');
+  const candidateBranch = app ? (app.preferredBranch || 'PMG Pharmacy Kota Sentosa') : 'PMG Pharmacy Kota Sentosa';
+
+  container.innerHTML = `
+    <div class="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden my-4 sm:my-8">
+      <!-- Portal Top Banner -->
+      <div class="bg-gradient-to-r from-blue-700 via-blue-800 to-indigo-900 text-white p-6 sm:p-8">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-white/10 backdrop-blur-xs flex items-center justify-center font-black text-rose-300 border border-white/20 text-lg">
+              PMG
+            </div>
+            <div>
+              <h2 class="text-lg sm:text-xl font-black tracking-tight">Portal Muat Naik Dokumen Calon</h2>
+              <p class="text-xs text-blue-200 font-medium">Public Medicare Group (PMG) &bull; ${sanitize(candidateBranch)}</p>
+            </div>
+          </div>
+          <span class="px-2.5 py-1 bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 rounded-full text-[11px] font-bold flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Portal Rasmi
+          </span>
+        </div>
+
+        <!-- Candidate Info Pill -->
+        <div class="bg-white/10 backdrop-blur-md border border-white/15 rounded-xl p-3.5 text-xs text-white grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div>
+            <div class="text-[10px] text-blue-200 uppercase font-semibold">Nama Calon</div>
+            <div class="font-bold text-sm text-white truncate">${sanitize(candidateName)}</div>
+          </div>
+          <div>
+            <div class="text-[10px] text-blue-200 uppercase font-semibold">Jawatan Dipohon</div>
+            <div class="font-bold text-white truncate">${sanitize(candidatePos)}</div>
+          </div>
+          <div>
+            <div class="text-[10px] text-blue-200 uppercase font-semibold">No. Rujukan Permohonan</div>
+            <div class="font-mono font-bold text-amber-300 truncate">${sanitize(candidateRef)}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Instruction Callout -->
+      <div class="p-5 sm:p-6 bg-slate-50 border-b border-slate-200">
+        <div class="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl p-3.5 text-xs text-blue-900">
+          <i class="fa-solid fa-circle-info text-blue-600 text-base mt-0.5 shrink-0"></i>
+          <div class="leading-relaxed">
+            <strong>Arahan Muat Naik Dokumen:</strong><br>
+            Sila muat naik atau tangkap gambar dokumen anda yang diperlukan di bawah menggunakan kamera telefon pintar atau galeri fail anda. Dokumen akan <strong>dimampatkan secara automatik</strong> untuk penghantaran yang pantas dan selamat terus ke pangkalan data PMG.
+          </div>
+        </div>
+      </div>
+
+      <!-- Upload Slots Form -->
+      <form id="candidateReuploadForm" class="p-5 sm:p-8 space-y-5" onsubmit="window.pmgRecruitment.submitCandidateReupload(event, '${candidateRef}')">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <!-- 1. Passport Photo -->
+          <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs hover:border-blue-300 transition" id="reup_slot_filePhoto">
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="text-xs font-bold text-slate-800 uppercase flex items-center gap-1.5">
+                <i class="fa-solid fa-user text-blue-600"></i> Gambar Pasport Terkini *
+              </label>
+              <span class="text-[10px] text-rose-700 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">Wajib / Required</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mb-3">Foto pasport terkini (latar belakang putih atau biru).</p>
+            <label class="block border-2 border-dashed border-slate-300 hover:border-blue-500 hover:bg-blue-50/30 rounded-xl p-4 text-center cursor-pointer transition">
+              <input type="file" accept="image/*" class="hidden" onchange="window.pmgRecruitment.handleCandidateSlotSelect(event, 'filePhoto')">
+              <div id="reup_holder_filePhoto">
+                <i class="fa-solid fa-camera text-2xl text-blue-500 mb-1"></i>
+                <div class="text-xs font-bold text-slate-700">Tangkap / Pilih Gambar Pasport</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">Camera photo or file gallery</div>
+              </div>
+              <div id="reup_preview_filePhoto" class="hidden"></div>
+            </label>
+          </div>
+
+          <!-- 2. IC / MyKad -->
+          <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs hover:border-blue-300 transition" id="reup_slot_fileIC">
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="text-xs font-bold text-slate-800 uppercase flex items-center gap-1.5">
+                <i class="fa-solid fa-id-card text-emerald-600"></i> MyKad / IC (Depan & Belakang) *
+              </label>
+              <span class="text-[10px] text-rose-700 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">Wajib / Required</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mb-3">Salinan MyKad depan & belakang yang jelas.</p>
+            <label class="block border-2 border-dashed border-slate-300 hover:border-blue-500 hover:bg-blue-50/30 rounded-xl p-4 text-center cursor-pointer transition">
+              <input type="file" accept="image/*,application/pdf" class="hidden" onchange="window.pmgRecruitment.handleCandidateSlotSelect(event, 'fileIC')">
+              <div id="reup_holder_fileIC">
+                <i class="fa-solid fa-id-card text-2xl text-emerald-500 mb-1"></i>
+                <div class="text-xs font-bold text-slate-700">Tangkap / Pilih Salinan MyKad</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">JPG, PNG, atau PDF</div>
+              </div>
+              <div id="reup_preview_fileIC" class="hidden"></div>
+            </label>
+          </div>
+
+          <!-- 3. SPM Result Slip -->
+          <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs hover:border-blue-300 transition" id="reup_slot_fileSPM">
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="text-xs font-bold text-slate-800 uppercase flex items-center gap-1.5">
+                <i class="fa-solid fa-graduation-cap text-indigo-600"></i> Slip / Sijil Keputusan SPM *
+              </label>
+              <span class="text-[10px] text-rose-700 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">Wajib / Required</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mb-3">Slip keputusan peperiksaan SPM rasmi.</p>
+            <label class="block border-2 border-dashed border-slate-300 hover:border-blue-500 hover:bg-blue-50/30 rounded-xl p-4 text-center cursor-pointer transition">
+              <input type="file" accept="image/*,application/pdf" class="hidden" onchange="window.pmgRecruitment.handleCandidateSlotSelect(event, 'fileSPM')">
+              <div id="reup_holder_fileSPM">
+                <i class="fa-solid fa-graduation-cap text-2xl text-indigo-500 mb-1"></i>
+                <div class="text-xs font-bold text-slate-700">Tangkap / Pilih Slip SPM</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">JPG, PNG, atau PDF</div>
+              </div>
+              <div id="reup_preview_fileSPM" class="hidden"></div>
+            </label>
+          </div>
+
+          <!-- 4. Additional Certs / Degree / Diploma -->
+          <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs hover:border-blue-300 transition" id="reup_slot_fileDegree">
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="text-xs font-bold text-slate-800 uppercase flex items-center gap-1.5">
+                <i class="fa-solid fa-certificate text-amber-600"></i> Sijil / Diploma / Degree
+              </label>
+              <span class="text-[10px] text-slate-500 font-semibold bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">Pilihan / Optional</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mb-3">Transkrip pendidikan tinggi atau sijil kelayakan berkaitan.</p>
+            <label class="block border-2 border-dashed border-slate-300 hover:border-blue-500 hover:bg-blue-50/30 rounded-xl p-4 text-center cursor-pointer transition">
+              <input type="file" accept="image/*,application/pdf" class="hidden" onchange="window.pmgRecruitment.handleCandidateSlotSelect(event, 'fileDegree')">
+              <div id="reup_holder_fileDegree">
+                <i class="fa-solid fa-file-pdf text-2xl text-amber-500 mb-1"></i>
+                <div class="text-xs font-bold text-slate-700">Pilih Sijil / Dokumen Tambahan</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">JPG, PNG, atau PDF</div>
+              </div>
+              <div id="reup_preview_fileDegree" class="hidden"></div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Submit Button -->
+        <div class="pt-4 border-t border-slate-200">
+          <button type="submit" id="candidateReuploadSubmitBtn" class="w-full py-3.5 px-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl text-sm transition shadow-md flex items-center justify-center gap-2 cursor-pointer">
+            <i class="fa-solid fa-cloud-arrow-up text-base"></i>
+            <span>Hantar &amp; Simpan Dokumen / Submit Documents</span>
+          </button>
+          <p class="text-center text-[11px] text-slate-400 mt-2">
+            Data dokumen anda disimpan secara selamat dalam arkib Google Cloud PMG Pharmacy Kota Sentosa.
+          </p>
+        </div>
+      </form>
+    </div>`;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SUBMIT PUBLIC FORM
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3779,11 +4102,14 @@ function renderMissingDocFallback(app, doc, docIdx, docTypeLabel, docDisplayName
   if (openExternalBtn) openExternalBtn.classList.add('hidden');
 
   const cleanPhone = String(app.phone || '').replace(/\D/g, '').replace(/^0/, '');
-  const waMsg = encodeURIComponent(
-    `Salam ${app.name}, kami daripada PMG Pharmacy Kota Sentosa berhubung permohonan kerja anda sebagai ${app.position} (${app.id}). ` +
-    `Sila hantar salinan dokumen ${docTypeLabel} (${docDisplayName}) di sini untuk melengkapkan semakan profil anda. Terima kasih!`
-  );
-  const waUrl = `https://wa.me/60${cleanPhone}?text=${waMsg}`;
+  const uploadLink = `https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/?upload=${encodeURIComponent(app.id)}`;
+  const waMsgText = 
+    `Salam ${app.name}, kami daripada PMG Pharmacy Kota Sentosa berhubung permohonan kerja anda sebagai ${app.position} (${app.id}).\n\n` +
+    `Sila muat naik semula salinan dokumen ${docTypeLabel} (${docDisplayName}) melalui pautan rasmi ini:\n` +
+    `${uploadLink}\n\n` +
+    `Atau anda juga boleh balas dan lampirkan foto/fail tersebut terus di dalam chat WhatsApp ini.\n\n` +
+    `Terima kasih!\nWilliam Chai (PMG Pharmacy Kota Sentosa)`;
+  const waUrl = `https://wa.me/60${cleanPhone}?text=${encodeURIComponent(waMsgText)}`;
 
   body.innerHTML = `
     <div class="p-6 bg-white rounded-xl border border-slate-200 shadow-sm max-w-lg mx-auto text-left my-auto">
@@ -3795,7 +4121,7 @@ function renderMissingDocFallback(app, doc, docIdx, docTypeLabel, docDisplayName
         </div>
       </div>
 
-      <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-700 space-y-1.5 mb-4">
+      <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-700 space-y-1.5 mb-3">
         <div class="flex justify-between">
           <span class="text-slate-500">Calon / Candidate:</span>
           <span class="font-bold text-slate-900">${sanitize(app.name)} (${sanitize(app.id)})</span>
@@ -3819,17 +4145,31 @@ function renderMissingDocFallback(app, doc, docIdx, docTypeLabel, docDisplayName
         </div>
       </div>
 
+      <!-- Candidate Online Upload Link Box -->
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-900 mb-4">
+        <div class="font-bold flex items-center justify-between gap-1.5 mb-1.5 text-blue-800">
+          <span class="flex items-center gap-1.5"><i class="fa-solid fa-link text-blue-600"></i> Pautan Muat Naik Calon (Candidate Upload Link):</span>
+          <span class="text-[10px] text-blue-600 bg-blue-100 font-semibold px-1.5 py-0.2 rounded">Bebas Login</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <input type="text" readonly value="${uploadLink}" id="recUploadDirectLink" class="bg-white border border-blue-300 rounded px-2.5 py-1.5 text-[11px] font-mono text-slate-700 w-full select-all" onclick="this.select()">
+          <button type="button" onclick="navigator.clipboard.writeText('${uploadLink}').then(()=>toast('Pautan muat naik disalin!', 'success'))" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold shrink-0 transition flex items-center gap-1 cursor-pointer" title="Copy Link">
+            <i class="fa-solid fa-copy"></i> Salin
+          </button>
+        </div>
+      </div>
+
       <div class="space-y-2">
-        <label class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer">
-          <i class="fa-solid fa-cloud-arrow-up"></i>
-          <span>Muat Naik / Lampirkan Fail Sekarang (Upload File)</span>
-          <input type="file" accept="image/*,application/pdf" class="hidden" onchange="window.pmgRecruitment.attachDocManually(event, '${app.id}', ${docIdx})">
-        </label>
-        
         <a href="${waUrl}" target="_blank" rel="noopener noreferrer" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-xs">
           <i class="fa-brands fa-whatsapp text-sm"></i>
-          <span>Minta Dokumen Melalui WhatsApp (${sanitize(app.phone)})</span>
+          <span>Hantar Pautan Muat Naik via WhatsApp (${sanitize(app.phone)})</span>
         </a>
+
+        <label class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer">
+          <i class="fa-solid fa-cloud-arrow-up"></i>
+          <span>Muat Naik / Lampirkan Fail Secara Manual (Upload File)</span>
+          <input type="file" accept="image/*,application/pdf" class="hidden" onchange="window.pmgRecruitment.attachDocManually(event, '${app.id}', ${docIdx})">
+        </label>
       </div>
     </div>`;
   modal.classList.remove('hidden');
@@ -4184,6 +4524,9 @@ window.pmgRecruitment = {
   closeDocViewer,
   attachDocManually,
   renderMissingDocFallback,
+  renderCandidateUploadPortal,
+  handleCandidateSlotSelect,
+  submitCandidateReupload,
   syncAppsFromCloud,
   loadApps,
   saveApps,

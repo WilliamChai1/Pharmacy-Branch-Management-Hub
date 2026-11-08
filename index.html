@@ -5173,6 +5173,43 @@ function openPublicApplicationPortal(e) {
   }
 }
 
+function openCandidateDocUploadPortal(appId) {
+  // Hide all staff views & overlays
+  document.getElementById('authOverlay')?.classList.add('hidden');
+  document.getElementById('mainHeader')?.classList.add('hidden');
+  document.getElementById('mainNav')?.classList.add('hidden');
+  document.getElementById('mainContent')?.classList.add('hidden');
+  document.getElementById('mainFooter')?.classList.add('hidden');
+  document.getElementById('customerBookingView')?.classList.add('hidden');
+
+  // Reveal standalone job application portal
+  const portalView = document.getElementById('publicJobApplicationView');
+  if (portalView) {
+    portalView.classList.remove('hidden');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // Update browser URL query param without reload if opened via link click
+  if (window.history && window.history.pushState) {
+    const curSearch = window.location.search;
+    if (!curSearch.includes('upload=')) {
+      const newUrl = window.location.pathname + '?upload=' + encodeURIComponent(appId);
+      window.history.pushState({ path: newUrl }, '', newUrl);
+    }
+  }
+
+  const render = () => {
+    if (window.pmgRecruitment && typeof window.pmgRecruitment.renderCandidateUploadPortal === 'function') {
+      window.pmgRecruitment.renderCandidateUploadPortal('publicJobAppContainer', appId);
+    } else {
+      setTimeout(render, 150);
+    }
+  };
+
+  render();
+}
+window.openCandidateDocUploadPortal = openCandidateDocUploadPortal;
+
 // ─── GLOBAL GEMINI AI CONFIGURATION (Universal Across Hub) ────────────────────
 function getGlobalGeminiKey() {
   const k = (localStorage.getItem('pmg_gemini_key') || '').trim();
@@ -5384,6 +5421,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // Check URL parameters for Public Job Application Portal Mode (?apply=1 or ?job=1 or ?action=apply)
   if (urlParams.get('apply') === '1' || urlParams.get('job') === '1' || urlParams.get('action') === 'apply') {
     openPublicApplicationPortal();
+    return; // Exit staff app boot - do NOT prompt for staff PIN/login
+  }
+
+  // Check URL parameters for Candidate Document Upload Portal Mode (?upload=APP-... or ?reupload=APP-...)
+  const uploadCandidateId = urlParams.get('upload') || urlParams.get('reupload');
+  if (uploadCandidateId) {
+    openCandidateDocUploadPortal(uploadCandidateId);
     return; // Exit staff app boot - do NOT prompt for staff PIN/login
   }
 
