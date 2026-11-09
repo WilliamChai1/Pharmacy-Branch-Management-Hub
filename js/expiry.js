@@ -2104,7 +2104,7 @@ async function pushExpiryUpdateToSheets(rowId, quantity, status, expiryDate = nu
           quantity: quantity !== null ? quantity : (item?.quantity || 0),
           sourceFile: item?.sourceFile || 'Direct Update',
           status: status || (isDoneOrCleared ? 'DONE' : 'Active'),
-          actionPlan: extraFields.actionPlan !== undefined ? extraFields.actionPlan : item?.actionPlan,
+          actionPlan: extraFields.actionPlan !== undefined ? extraFields.actionPlan : getItemActionPlan(item),
           offeredPrice: extraFields.offeredPrice !== undefined ? extraFields.offeredPrice : item?.offeredPrice,
           clearancePrice: extraFields.clearancePrice !== undefined ? extraFields.clearancePrice : item?.clearancePrice,
           normalPrice: item?.normalPrice,
@@ -2133,8 +2133,8 @@ async function pushExpiryUpdateToSheets(rowId, quantity, status, expiryDate = nu
     if (extraFields.itemCode) payload.itemCode = extraFields.itemCode;
     if (extraFields.actionPlan !== undefined) {
       payload.actionPlan = extraFields.actionPlan;
-    } else if (item?.actionPlan) {
-      payload.actionPlan = item.actionPlan;
+    } else if (item) {
+      payload.actionPlan = getItemActionPlan(item);
     }
     if (extraFields.offeredPrice !== undefined) {
       payload.offeredPrice = extraFields.offeredPrice;
@@ -2175,7 +2175,7 @@ async function pushExpiryUpdateToSheets(rowId, quantity, status, expiryDate = nu
           quantity: quantity !== null ? quantity : (item?.quantity || 0),
           sourceFile: item?.sourceFile || 'Direct Update',
           status: status || (isDoneOrCleared ? 'DONE' : 'Active'),
-          actionPlan: extraFields.actionPlan !== undefined ? extraFields.actionPlan : item?.actionPlan,
+          actionPlan: extraFields.actionPlan !== undefined ? extraFields.actionPlan : getItemActionPlan(item),
           offeredPrice: extraFields.offeredPrice !== undefined ? extraFields.offeredPrice : item?.offeredPrice,
           clearancePrice: extraFields.clearancePrice !== undefined ? extraFields.clearancePrice : item?.clearancePrice,
           normalPrice: item?.normalPrice,
@@ -3084,6 +3084,15 @@ function updateExpiryItemQuantity(rowId, newQty) {
   pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate).catch(console.warn);
 }
 
+function isItemBelow9Months(it) {
+  if (!it) return false;
+  if (typeof getItemHorizon === 'function') {
+    const h = getItemHorizon(it);
+    return Boolean(h && typeof h.monthsLeft === 'number' && h.monthsLeft <= 9);
+  }
+  return false;
+}
+
 function getItemActionPlan(it) {
   if (!it) return '';
   const offNum = parseFloat(it.offeredPrice !== undefined ? it.offeredPrice : it.clearancePrice);
@@ -3102,6 +3111,14 @@ function getItemActionPlan(it) {
   if (retStatus === 'RETURNABLE' || retStatus === 'SPECIAL') {
     return 'Returnable with Condition';
   }
+
+  // Auto-put "Closely monitor" for all items that fall within 9 months expiry (including expired)
+  // where the pharmacist hasn't yet entered a specific action plan.
+  // Items with more than 9 months remain blank.
+  if (isItemBelow9Months(it)) {
+    return 'Closely monitor';
+  }
+
   return '';
 }
 
@@ -3380,7 +3397,7 @@ function openEditExpiryItemModal(rowId) {
 
   const editActionPlan = document.getElementById('editActionPlan');
   const editOfferedPrice = document.getElementById('editOfferedPrice');
-  if (editActionPlan) editActionPlan.value = item.actionPlan || '';
+  if (editActionPlan) editActionPlan.value = getItemActionPlan(item) || '';
   if (editOfferedPrice) editOfferedPrice.value = item.offeredPrice !== undefined ? item.offeredPrice : '';
 
   modal.classList.remove('hidden');
@@ -4328,7 +4345,7 @@ function filterExpiryItems() {
 
     // 3.5 Action Plan Filter (including Blank and In Write-Off Queue filter)
     if (targetActionPlan && targetActionPlan !== 'all') {
-      const planRaw = String(it.actionPlan || '').trim();
+      const planRaw = String(getItemActionPlan(it) || '').trim();
       const rIdStr = String(it.rowId || '');
       if (targetActionPlan === 'blank') {
         if (planRaw !== '') continue;
@@ -4346,7 +4363,7 @@ function filterExpiryItems() {
       const code = String(it.itemCode || '').toLowerCase();
       const desc = String(it.itemDescription || '').toLowerCase();
       const batch = String(it.batchNumber || '').toLowerCase();
-      const plan = String(it.actionPlan || '').toLowerCase();
+      const plan = String(getItemActionPlan(it) || '').toLowerCase();
       const promoRem = String(it.promoRemark || '').toLowerCase();
       if (!code.includes(searchQ) && !desc.includes(searchQ) && !batch.includes(searchQ) && !plan.includes(searchQ) && !promoRem.includes(searchQ)) continue;
     }
