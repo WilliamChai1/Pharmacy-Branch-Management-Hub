@@ -4750,7 +4750,7 @@ ItemCode,Description,Brand,Category,Cost,SellingPrice,Supplier
 <!-- ═══════════════════════════════════════════════════════════════════════════
      HR RECRUITMENT — DOCUMENT VIEWER MODAL
 ══════════════════════════════════════════════════════════════════════════════ -->
-<div id="modalRecDocViewer" class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs hidden p-3 md:p-6">
+<div id="modalRecDocViewer" onclick="if(event.target === this) window.pmgRecruitment.closeDocViewer()" class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs hidden p-3 md:p-6">
   <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full h-[90vh] flex flex-col overflow-hidden border border-slate-200">
     <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between shrink-0">
       <div class="flex items-center gap-2.5 min-w-0">
@@ -4796,7 +4796,7 @@ ItemCode,Description,Brand,Category,Cost,SellingPrice,Supplier
 <script src="js/expiry.js?v=20261103_v45"></script>
 <script src="js/returns-cn.js?v=20261024_v7"></script>
 <script src="js/pricing-intelligence.js?v=20261024_v7"></script>
-<script src="js/recruitment.js?v=20261024_v7"></script>
+<script src="js/recruitment.js?v=20261110_docviewer_fix"></script>
 <script src="js/admin-assets.js?v=20261024_v7"></script>
 <script src="js/commercial-admin.js?v=20261024_v7"></script>
 <!-- Promo Broadcaster extracted to standalone /promo/ webapp for zero-lag performance -->

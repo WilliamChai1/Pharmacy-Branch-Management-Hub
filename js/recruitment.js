@@ -3921,6 +3921,12 @@ function exportAppPdf(appId) {
   printApp(appId);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DOCUMENT VIEWER & CLOUD VAULT RETRIEVAL
+// ─────────────────────────────────────────────────────────────────────────────
+let _currentDocViewerAbortController = null;
+let _activeDocViewerKey = null;
+
 function viewDoc(appId, docIdx) {
   const apps = loadApps();
   const app = apps.find(a => a.id === appId);
@@ -3939,17 +3945,26 @@ function viewDoc(appId, docIdx) {
 
   if (!modal || !body) return;
 
+  const currentKey = `${appId}_${docIdx}`;
+  _activeDocViewerKey = currentKey;
+
+  // Abort any prior in-flight document fetch
+  if (_currentDocViewerAbortController) {
+    try { _currentDocViewerAbortController.abort(); } catch (_) {}
+    _currentDocViewerAbortController = null;
+  }
+
   const docTypeLabel = (doc.field || 'Document').replace('file', '').toUpperCase();
   const docDisplayName = doc.name || 'SPM_Result_Document';
   title.textContent = `${docTypeLabel} — ${docDisplayName}`;
   const fileSizeText = doc.size ? ` • Size: ${Math.round(doc.size / 1024)} KB` : '';
   subtitle.textContent = `Candidate: ${app.name} (${app.id})${fileSizeText}`;
 
-  // Resolve source: strictly accept valid data URI or http URL (never accept plain text like spm remarks)
+  // Resolve source: strictly accept valid data URI, http URL, or blob URI
   let fileSource = '';
-  if (doc.data && (doc.data.startsWith('data:') || doc.data.startsWith('http://') || doc.data.startsWith('https://'))) {
+  if (doc.data && (doc.data.startsWith('data:') || doc.data.startsWith('http://') || doc.data.startsWith('https://') || doc.data.startsWith('blob:'))) {
     fileSource = doc.data;
-  } else if (doc.url && (doc.url.startsWith('http://') || doc.url.startsWith('https://'))) {
+  } else if (doc.url && (doc.url.startsWith('http://') || doc.url.startsWith('https://') || doc.url.startsWith('blob:'))) {
     fileSource = doc.url;
   } else if ((doc.field === 'filePhoto' || docTypeLabel.includes('PHOTO')) && app.photoThumbnail && app.photoThumbnail.startsWith('data:')) {
     fileSource = app.photoThumbnail;
@@ -4010,22 +4025,42 @@ function viewDoc(appId, docIdx) {
   }
 
   // 2. If no valid file source, attempt async fetch from Applicant_Documents cloud vault
-  const isSheetDoc = (doc.url && doc.url.startsWith('sheet://'));
-  if (!fileSource || isSheetDoc) {
+  if (!fileSource) {
     if (dlBtn) dlBtn.removeAttribute('href');
     if (openExternalBtn) openExternalBtn.classList.add('hidden');
     body.innerHTML = `
       <div class="p-8 text-center text-blue-600 bg-white rounded-xl border border-blue-200 shadow-sm max-w-md mx-auto my-auto">
         <i class="fa-solid fa-spinner fa-spin text-3xl mb-3 text-blue-600"></i>
-        <h4 class="font-bold text-gray-800 text-sm">Menyemak Dokumen daripada Cloud Vault...</h4>
+        <h4 class="font-bold text-gray-800 text-sm">Checking Document from Cloud Vault...</h4>
         <p class="text-xs text-gray-500 mt-1">Retrieving ${sanitize(docDisplayName)} for ${sanitize(app.name)}...</p>
       </div>`;
     modal.classList.remove('hidden');
 
+    const controller = new AbortController();
+    _currentDocViewerAbortController = controller;
     const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
-    fetch(`${apiUrl}?action=getApplicantDoc&appId=${encodeURIComponent(app.id)}&field=${encodeURIComponent(doc.field || '')}&name=${encodeURIComponent(doc.name || '')}`)
+
+    fetch(`${apiUrl}?action=getApplicantDoc&appId=${encodeURIComponent(app.id)}&field=${encodeURIComponent(doc.field || '')}&name=${encodeURIComponent(doc.name || '')}`, {
+      signal: controller.signal
+    })
       .then(r => r.json())
       .then(res => {
+        // Guard: If user closed the viewer or switched to another document, do not reopen modal
+        if (_activeDocViewerKey !== currentKey) {
+          if (res && res.success && res.data) {
+            // Silently cache retrieved data
+            doc.data = res.data;
+            saveApps(loadApps().map(a => {
+              if (a.id === app.id && a.docs && a.docs[docIdx]) {
+                a.docs[docIdx].data = res.data;
+                if (doc.field === 'filePhoto') a.photoThumbnail = res.data;
+              }
+              return a;
+            }));
+          }
+          return;
+        }
+
         if (res && res.success && res.data) {
           doc.data = res.data;
           // Cache in local storage
@@ -4036,12 +4071,15 @@ function viewDoc(appId, docIdx) {
             }
             return a;
           }));
+          // Re-render: now fileSource is doc.data, renders immediately without looping
           viewDoc(appId, docIdx);
         } else {
           renderMissingDocFallback(app, doc, docIdx, docTypeLabel, docDisplayName);
         }
       })
-      .catch(() => {
+      .catch(err => {
+        if (err.name === 'AbortError') return; // Cancelled cleanly
+        if (_activeDocViewerKey !== currentKey) return;
         renderMissingDocFallback(app, doc, docIdx, docTypeLabel, docDisplayName);
       });
     return;
@@ -4050,7 +4088,8 @@ function viewDoc(appId, docIdx) {
   // 3. Render valid image or PDF
   const isImage = fileSource.startsWith('data:image/') ||
                   /\.(jpeg|jpg|png|webp|gif|svg)($|\?)/i.test(fileSource) ||
-                  (doc.type && doc.type.toLowerCase().includes('image'));
+                  (doc.type && doc.type.toLowerCase().includes('image')) ||
+                  /\.(jpeg|jpg|png|webp|gif|svg)$/i.test(doc.name || '');
 
   const isPdf = fileSource.startsWith('data:application/pdf') ||
                 /\.pdf($|\?)/i.test(fileSource) ||
@@ -4063,7 +4102,7 @@ function viewDoc(appId, docIdx) {
     dlBtn.removeAttribute('target');
   }
   if (openExternalBtn) {
-    if (fileSource.startsWith('http')) {
+    if (fileSource.startsWith('http') || fileSource.startsWith('blob:')) {
       openExternalBtn.href = fileSource;
       openExternalBtn.target = '_blank';
       openExternalBtn.classList.remove('hidden');
@@ -4079,8 +4118,21 @@ function viewDoc(appId, docIdx) {
         <img src="${fileSource}" alt="${sanitize(docDisplayName)}" class="max-h-[80vh] max-w-full object-contain rounded-xl shadow-md border border-slate-200 bg-white">
       </div>`;
   } else if (isPdf) {
+    let pdfUrl = fileSource;
+    if (fileSource.startsWith('data:application/pdf')) {
+      try {
+        const parts = fileSource.split(',');
+        const b64 = atob(parts[1]);
+        const u8arr = new Uint8Array(b64.length);
+        for (let i = 0; i < b64.length; i++) u8arr[i] = b64.charCodeAt(i);
+        const blob = new Blob([u8arr], { type: 'application/pdf' });
+        pdfUrl = URL.createObjectURL(blob);
+      } catch (e) {
+        pdfUrl = fileSource;
+      }
+    }
     body.innerHTML = `
-      <iframe src="${fileSource}" class="w-full h-full rounded-lg border border-slate-300 bg-white" title="${sanitize(docDisplayName)}">
+      <iframe src="${pdfUrl}" class="w-full h-full rounded-lg border border-slate-300 bg-white" title="${sanitize(docDisplayName)}">
         <p class="p-4 text-center text-sm text-gray-500">Browser does not support inline PDF preview. <a href="${fileSource}" download="${sanitize(docDisplayName)}" class="text-blue-600 underline font-bold">Download file</a>.</p>
       </iframe>`;
   } else {
@@ -4094,6 +4146,9 @@ function viewDoc(appId, docIdx) {
 }
 
 function renderMissingDocFallback(app, doc, docIdx, docTypeLabel, docDisplayName) {
+  // If modal was already closed or another doc was selected, do not force modal open
+  if (_activeDocViewerKey !== `${app.id}_${docIdx}`) return;
+
   const modal = el('modalRecDocViewer');
   const body = el('recDocModalBody');
   const dlBtn = el('recDocModalDownloadBtn');
@@ -4227,6 +4282,11 @@ async function attachDocManually(event, appId, docIdx) {
 }
 
 function closeDocViewer() {
+  _activeDocViewerKey = null;
+  if (_currentDocViewerAbortController) {
+    try { _currentDocViewerAbortController.abort(); } catch (_) {}
+    _currentDocViewerAbortController = null;
+  }
   const modal = el('modalRecDocViewer');
   if (modal) {
     modal.classList.add('hidden');
@@ -4483,6 +4543,26 @@ function init() {
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get('view') === 'apply') {
     setTimeout(() => switchRecTab('apply'), 500);
+  }
+
+  // Keyboard shortcut: Close document viewer modal on Escape key
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const modal = el('modalRecDocViewer');
+      if (modal && !modal.classList.contains('hidden')) {
+        closeDocViewer();
+      }
+    }
+  });
+
+  // Close document viewer when clicking outside modal
+  const docModal = el('modalRecDocViewer');
+  if (docModal) {
+    docModal.addEventListener('click', (e) => {
+      if (e.target === docModal) {
+        closeDocViewer();
+      }
+    });
   }
 
   // Initial render
