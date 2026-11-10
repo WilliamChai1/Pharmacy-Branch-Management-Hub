@@ -176,8 +176,8 @@ function applyUserEdits(items) {
 
     const e = (rowKey && edits[rowKey]) || edits[itemKey] || edits[descKey];
     if (e) {
-      if (e.actionPlan !== undefined && String(e.actionPlan).trim() !== '') {
-        it.actionPlan = e.actionPlan;
+      if (e.actionPlan !== undefined && e.actionPlan !== null) {
+        it.actionPlan = String(e.actionPlan).trim();
       }
       if (e.expiryDate !== undefined && String(e.expiryDate).trim() !== '') {
         it.expiryDate = e.expiryDate;
@@ -3291,9 +3291,16 @@ async function markExpiryItemCleared(rowId, btnEl = null, ev = null) {
       if (itIdStr && itIdStr !== 'undefined' && itIdStr !== 'null') {
         addClearedExpiryKey(`ROW_${itIdStr}`);
         addClearedExpiryKey(itIdStr);
+        selectedWriteOffRowIds.delete(itIdStr);
       }
     }
   });
+
+  if (targetIdStr) {
+    selectedWriteOffRowIds.delete(targetIdStr);
+  }
+  saveAccumulatedWriteOffItems();
+  updateWriteOffSelectedCounter();
 
   delete expiryItems._productBatchMap;
   delete expiryItems._skuBatchMap;
@@ -5448,9 +5455,16 @@ async function markBatchItemDoneClear(rowId, btnEl = null, ev = null) {
       if (itIdStr && itIdStr !== 'undefined' && itIdStr !== 'null') {
         addClearedExpiryKey(`ROW_${itIdStr}`);
         addClearedExpiryKey(itIdStr);
+        selectedWriteOffRowIds.delete(itIdStr);
       }
     }
   });
+
+  if (targetIdStr) {
+    selectedWriteOffRowIds.delete(targetIdStr);
+  }
+  saveAccumulatedWriteOffItems();
+  updateWriteOffSelectedCounter();
 
   // Invalidate cache
   delete expiryItems._productBatchMap;
@@ -5555,19 +5569,50 @@ function isItemPoison(item) {
 }
 
 function loadAccumulatedWriteOffItems() {
+  selectedWriteOffRowIds.clear();
+  let saved = [];
   try {
-    const saved = JSON.parse(localStorage.getItem('pmg_accumulated_write_off_ids') || '[]');
+    saved = JSON.parse(localStorage.getItem('pmg_accumulated_write_off_ids') || '[]');
     if (Array.isArray(saved)) {
-      saved.forEach(id => selectedWriteOffRowIds.add(String(id)));
+      saved.forEach(id => {
+        if (id !== undefined && id !== null && String(id).trim() !== '' && String(id) !== 'undefined' && String(id) !== 'null') {
+          selectedWriteOffRowIds.add(String(id).trim());
+        }
+      });
     }
   } catch (e) {}
 
+  const clearedSet = typeof getClearedExpiryKeys === 'function' ? getClearedExpiryKeys() : null;
+
   if (Array.isArray(expiryItems)) {
     expiryItems.forEach(it => {
-      if (it.rowId && it.status !== 'Cleared' && it.status !== 'DONE' && isWriteOffActionPlan(it.actionPlan)) {
-        selectedWriteOffRowIds.add(String(it.rowId));
+      if (!it || !it.rowId) return;
+      if (isItemMarkedDoneOrCleared(it, clearedSet) || it.status === 'DONE' || it.status === 'Cleared' || it.status === 'WRITTEN-OFF') {
+        return;
+      }
+      if (isWriteOffActionPlan(it.actionPlan)) {
+        selectedWriteOffRowIds.add(String(it.rowId).trim());
       }
     });
+
+    // STRICT VALIDATION & PRUNING:
+    // Any ID in selectedWriteOffRowIds MUST correspond to a real, ACTIVE (not cleared/done) item in expiryItems
+    const validIds = new Set();
+    selectedWriteOffRowIds.forEach(id => {
+      const it = findExpiryItemById(id);
+      if (it && !isItemMarkedDoneOrCleared(it, clearedSet) && it.status !== 'DONE' && it.status !== 'Cleared' && it.status !== 'WRITTEN-OFF') {
+        const qty = Number(it.quantity !== undefined ? it.quantity : it.remainingQty);
+        if (qty > 0 || isNaN(qty)) {
+          if (isWriteOffActionPlan(it.actionPlan)) {
+            validIds.add(String(id));
+          } else if (Array.isArray(saved) && saved.includes(String(id)) && (!it.actionPlan || it.actionPlan === '')) {
+            validIds.add(String(id));
+          }
+        }
+      }
+    });
+    selectedWriteOffRowIds.clear();
+    validIds.forEach(id => selectedWriteOffRowIds.add(id));
   }
 
   saveAccumulatedWriteOffItems();
@@ -5726,11 +5771,18 @@ function bulkAddSelectedToWriteOff() {
   if (ids.length === 0) return;
 
   ids.forEach(id => {
-    selectedWriteOffRowIds.add(id);
+    selectedWriteOffRowIds.add(String(id));
     const it = findExpiryItemById(id);
-    if (it && (!it.actionPlan || it.actionPlan === '')) {
+    if (it) {
       it.actionPlan = 'Write-off / Dispose';
       recordUserEdit(it, { actionPlan: 'Write-off / Dispose' });
+      pushExpiryUpdateToSheets(it.rowId, it.quantity, it.status, it.expiryDate, {
+        actionPlan: 'Write-off / Dispose',
+        branch: it.branch,
+        itemCode: it.itemCode,
+        itemDescription: it.itemDescription,
+        batchNumber: it.batchNumber
+      }).catch(console.warn);
     }
   });
 
@@ -5755,12 +5807,22 @@ function bulkSetSelectedActionPlan(planValue) {
   ids.forEach(id => {
     const it = findExpiryItemById(id);
     if (it) {
-      it.actionPlan = finalPlan;
+      const planToSet = (finalPlan === '' && isItemBelow9Months(it)) ? 'Closely monitor' : finalPlan;
+      it.actionPlan = planToSet;
       it.lastUpdated = new Date().toISOString();
-      if (finalPlan === 'Write-off / Dispose') {
-        selectedWriteOffRowIds.add(id);
+      if (planToSet === 'Write-off / Dispose') {
+        selectedWriteOffRowIds.add(String(id));
+      } else {
+        selectedWriteOffRowIds.delete(String(id));
       }
-      recordUserEdit(it, { actionPlan: finalPlan });
+      recordUserEdit(it, { actionPlan: planToSet });
+      pushExpiryUpdateToSheets(it.rowId, it.quantity, it.status, it.expiryDate, {
+        actionPlan: planToSet,
+        branch: it.branch,
+        itemCode: it.itemCode,
+        itemDescription: it.itemDescription,
+        batchNumber: it.batchNumber
+      }).catch(console.warn);
     }
   });
 
@@ -5788,19 +5850,34 @@ function toggleSelectWriteOffItem(rowId, isChecked) {
   const item = findExpiryItemById(safeId);
   if (isChecked) {
     selectedWriteOffRowIds.add(safeId);
-    if (item && (!item.actionPlan || item.actionPlan === '')) {
+    if (item && (!item.actionPlan || item.actionPlan === '' || item.actionPlan === 'Closely monitor')) {
       item.actionPlan = 'Write-off / Dispose';
       recordUserEdit(item, { actionPlan: 'Write-off / Dispose' });
       saveLocalExpiryData();
+      pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate, {
+        actionPlan: 'Write-off / Dispose',
+        branch: item.branch,
+        itemCode: item.itemCode,
+        itemDescription: item.itemDescription,
+        batchNumber: item.batchNumber
+      }).catch(console.warn);
     }
     saveAccumulatedWriteOffItems();
     updateWriteOffSelectedCounter();
   } else {
     selectedWriteOffRowIds.delete(safeId);
     if (item && isWriteOffActionPlan(item.actionPlan)) {
-      item.actionPlan = '';
-      recordUserEdit(item, { actionPlan: '' });
+      const resetPlan = isItemBelow9Months(item) ? 'Closely monitor' : '';
+      item.actionPlan = resetPlan;
+      recordUserEdit(item, { actionPlan: resetPlan });
       saveLocalExpiryData();
+      pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate, {
+        actionPlan: resetPlan,
+        branch: item.branch,
+        itemCode: item.itemCode,
+        itemDescription: item.itemDescription,
+        batchNumber: item.batchNumber
+      }).catch(console.warn);
     }
     saveAccumulatedWriteOffItems();
     updateWriteOffSelectedCounter();
@@ -5843,21 +5920,38 @@ function updateWriteOffSelectedCounter() {
   }
 }
 
-function clearAllWriteOffSelection() {
-  if (selectedWriteOffRowIds.size === 0) return;
-  const count = selectedWriteOffRowIds.size;
-  const confirmMsg = count === 1
-    ? 'Remove this item from the HQ Write-Off queue? (It will remain in your expiry list)'
-    : `Remove all ${count} accumulated item(s) from the Write-Off queue? (They will remain in your expiry list)`;
-  if (!confirm(confirmMsg)) {
+function clearAllWriteOffSelection(skipConfirm = false) {
+  if (selectedWriteOffRowIds.size === 0) {
+    try {
+      localStorage.removeItem('pmg_accumulated_write_off_ids');
+    } catch (e) {}
+    saveAccumulatedWriteOffItems();
+    updateWriteOffSelectedCounter();
     return;
+  }
+  const count = selectedWriteOffRowIds.size;
+  if (!skipConfirm) {
+    const confirmMsg = count === 1
+      ? 'Remove this item from the HQ Write-Off queue? (It will remain in your expiry list)'
+      : `Remove all ${count} accumulated item(s) from the Write-Off queue? (They will remain in your expiry list)`;
+    if (!confirm(confirmMsg)) {
+      return;
+    }
   }
   let modified = false;
   selectedWriteOffRowIds.forEach(id => {
     const item = findExpiryItemById(id);
     if (item && isWriteOffActionPlan(item.actionPlan)) {
-      item.actionPlan = '';
-      recordUserEdit(item, { actionPlan: '' });
+      const resetPlan = isItemBelow9Months(item) ? 'Closely monitor' : '';
+      item.actionPlan = resetPlan;
+      recordUserEdit(item, { actionPlan: resetPlan });
+      pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate, {
+        actionPlan: resetPlan,
+        branch: item.branch,
+        itemCode: item.itemCode,
+        itemDescription: item.itemDescription,
+        batchNumber: item.batchNumber
+      }).catch(console.warn);
       modified = true;
     }
   });
@@ -5865,6 +5959,9 @@ function clearAllWriteOffSelection() {
     saveLocalExpiryData();
   }
   selectedWriteOffRowIds.clear();
+  try {
+    localStorage.removeItem('pmg_accumulated_write_off_ids');
+  } catch (e) {}
   saveAccumulatedWriteOffItems();
   updateWriteOffSelectedCounter();
   renderExpiryUI();
@@ -6177,6 +6274,13 @@ function addSingleItemToWriteOff(rowId) {
   saveLocalExpiryData();
   saveAccumulatedWriteOffItems();
   updateWriteOffSelectedCounter();
+  pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate, {
+    actionPlan: 'Write-off / Dispose',
+    branch: item.branch,
+    itemCode: item.itemCode,
+    itemDescription: item.itemDescription,
+    batchNumber: item.batchNumber
+  }).catch(console.warn);
 
   const searchInput = document.getElementById('writeOffModalSearchAdd');
   if (searchInput) searchInput.value = '';
@@ -6226,9 +6330,17 @@ function removeWriteOffRow(rowId) {
   selectedWriteOffRowIds.delete(safeId);
   const item = findExpiryItemById(safeId);
   if (item && isWriteOffActionPlan(item.actionPlan)) {
-    item.actionPlan = '';
-    recordUserEdit(item, { actionPlan: '' });
+    const resetPlan = isItemBelow9Months(item) ? 'Closely monitor' : '';
+    item.actionPlan = resetPlan;
+    recordUserEdit(item, { actionPlan: resetPlan });
     saveLocalExpiryData();
+    pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate, {
+      actionPlan: resetPlan,
+      branch: item.branch,
+      itemCode: item.itemCode,
+      itemDescription: item.itemDescription,
+      batchNumber: item.batchNumber
+    }).catch(console.warn);
   }
   saveAccumulatedWriteOffItems();
   updateWriteOffSelectedCounter();
@@ -6506,6 +6618,7 @@ function confirmAndExecuteWriteOff() {
 }
 
 // Window exports
+window.selectedWriteOffRowIds = selectedWriteOffRowIds;
 window.isWriteOffActionPlan = isWriteOffActionPlan;
 window.isItemPoison = isItemPoison;
 window.loadAccumulatedWriteOffItems = loadAccumulatedWriteOffItems;
