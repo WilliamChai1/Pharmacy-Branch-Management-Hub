@@ -138,7 +138,7 @@ const DEFAULT_PATIENTS_DATA = [
         time: '10:00',
         service: 'blood glucose test',
         purpose: 'blood glucose test',
-        pharmacist: 'William Chai Yee Sian (Area Manager)',
+        pharmacist: 'William Chai Yee Sian (Pharmacist)',
         status: 'Completed',
         type: 'in_person',
         notes: 'Follow-up appointment imported from Lark consultation record.'
@@ -8017,7 +8017,7 @@ async function backupToOneDrive() {
     updateBackupStatusBadge();
     updateDailyBackupBanner();
 
-    alert(`☁️ Daily OneDrive Backup Saved Successfully!\n\n• File: ${filename}\n• Patients: ${patientCount}\n• Attached Reports: ${docCount}\n• Pharmacist Schedules: ${scheduleCount} branch(es)\n\nSaved to your branch OneDrive sync folder. OneDrive will automatically synchronize this file with Area Manager William Chai in the cloud.`);
+    alert(`☁️ Daily OneDrive Backup Saved Successfully!\n\n• File: ${filename}\n• Patients: ${patientCount}\n• Attached Reports: ${docCount}\n• Pharmacist Schedules: ${scheduleCount} branch(es)\n\nSaved to your branch OneDrive sync folder. OneDrive will automatically synchronize this file in the cloud.`);
   } catch (err) {
     console.error('OneDrive backup failed:', err);
     alert('Failed to generate OneDrive backup: ' + err.message);
@@ -8194,7 +8194,7 @@ function updateDailyBackupBanner() {
       icon.innerHTML = '<i class="fa-brands fa-microsoft text-lg"></i>';
     }
     title.innerHTML = `⚠️ Daily Backup Due for Today (${todayStr})`;
-    desc.innerHTML = `Last backup was performed on <b>${lastDateFormatted}</b> (${lastType} by ${lastUser}). Back up today's consults & appointments to sync with Area Manager.`;
+    desc.innerHTML = `Last backup was performed on <b>${lastDateFormatted}</b> (${lastType} by ${lastUser}). Back up today's consults & appointments to sync.`;
     if (actionBtn) {
       actionBtn.className = 'bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5';
       actionBtn.innerHTML = '<i class="fa-brands fa-microsoft"></i> Backup Today\'s Records (OneDrive)';
@@ -8208,7 +8208,7 @@ function updateDailyBackupBanner() {
       icon.innerHTML = '<i class="fa-solid fa-cloud-arrow-up text-lg text-emerald-700"></i>';
     }
     title.innerHTML = `✅ Today's Cloud Backup Completed (${timeFormatted} today)`;
-    desc.innerHTML = `Saved to <b>OneDrive (${lastType})</b> by ${lastUser}. Synced with Area Manager & protected against local PC loss.`;
+    desc.innerHTML = `Saved to <b>OneDrive (${lastType})</b> by ${lastUser}. Protected against local PC loss.`;
     if (actionBtn) {
       actionBtn.className = 'bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold text-xs px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5';
       actionBtn.innerHTML = '<i class="fa-brands fa-microsoft"></i> Re-Backup to OneDrive';

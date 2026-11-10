@@ -222,7 +222,7 @@
           ? `Master "Patient care" (Kota Sentosa)`
           : `Branch Outlet (${this.activeBranchFolder})`;
 
-        alert(`✅ PMG OneDrive Connected Successfully!\n\nFolder: ${handle.name}\nMode: ${folderDesc}\n\nClinical records, encounters, and appointments are now synchronized in real-time across branch PCs and with Area Manager.`);
+        alert(`✅ PMG OneDrive Connected Successfully!\n\nFolder: ${handle.name}\nMode: ${folderDesc}\n\nClinical records, encounters, and appointments are now synchronized in real-time across branch PCs.`);
         return true;
       } catch (err) {
         if (err.name === 'AbortError') return false;
@@ -1540,7 +1540,7 @@
         const payload = {
           title: 'PMG 7-Branch Pricing Master Database',
           lastUpdated: new Date().toISOString(),
-          updatedBy: session?.displayName || 'Area Manager Chai Yee Sian (William)',
+          updatedBy: session?.displayName || 'Pharmacist Chai Yee Sian (William)',
           totalSkus: skus ? skus.length : 0,
           skus: skus || []
         };
@@ -1665,7 +1665,7 @@
           clearedKeysList = (typeof getClearedExpiryKeys === 'function') ? Array.from(getClearedExpiryKeys()) : JSON.parse(localStorage.getItem('pmg_cleared_expiry_keys') || '[]');
         } catch (_) {}
 
-        // 1. In PARENT mode (Area Manager Master View):
+        // 1. In PARENT mode (Master View):
         if (this.mode === 'PARENT') {
           // A: Save master backup in EXPIRY_BACKUP/stock_expiry_master.json
           let expDir = this.rootHandle;

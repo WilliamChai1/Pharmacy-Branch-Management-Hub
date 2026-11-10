@@ -1,4 +1,4 @@
-// js/pricing-intelligence.js — PMG Area Manager Pricing Intelligence, Competitor Benchmarking & SWOT Strategy
+// js/pricing-intelligence.js — PMG Pricing Intelligence, Competitor Benchmarking & SWOT Strategy
 'use strict';
 
 (function(window) {
@@ -7,7 +7,7 @@
   const STORAGE_KEY_GEMINI = 'pmg_gemini_key';
   const PMG_SCHEDULE_API_URL = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
 
-  // ─── DEFAULT BENCHMARK SKUs (Clean Slate for Area Manager Xilnex Import) ─────
+  // ─── DEFAULT BENCHMARK SKUs (Clean Slate for Xilnex Import) ─────
   const DEFAULT_SKUS = [];
 
   // ─── CURATED MALAYSIAN PHARMACY RETAIL BENCHMARK DICTIONARY ─────────────────
@@ -213,7 +213,7 @@
     'KOTA SENTOSA': {
       name: 'PMG Pharmacy Kota Sentosa',
       code: 'KS01',
-      badge: 'Area Manager Flagship Base',
+      badge: 'Flagship Base',
       locationProfile: '7th Mile Bazaar, Penrissen Road. Busy commercial interchange, heavy senior citizen demographic, high bus/transport connectivity.',
       localCompetitors: [
         'Farley Supermarket (6th Mile - aggressive FMCG/milk discounter)',
@@ -223,7 +223,7 @@
       ],
       swot: {
         strengths: [
-          'Area Manager William Chai base outlet; clinical expertise and reputation are very strong.',
+          'William Chai base outlet; clinical expertise and reputation are very strong.',
           'Large established pool of chronic patients (Diabetes, Hypertension, Dyslipidemia).',
           'High patient trust in clinical counselling, Airdoc eye screening, and Teda Meridian consultation.'
         ],
@@ -813,7 +813,7 @@
       if (!PMG_SCHEDULE_API_URL || !this.skus || this.skus.length === 0) return;
       try {
         const session = typeof getSession === 'function' ? getSession() : null;
-        const updatedBy = (session && session.displayName) || localStorage.getItem('pmg_user_name') || 'Area Manager';
+        const updatedBy = (session && session.displayName) || localStorage.getItem('pmg_user_name') || 'Pharmacist';
         
         // Prioritize any customized, edited, or strategic role SKUs first so NO user changes are ever omitted!
         const modifiedSkus = [];
@@ -1628,7 +1628,7 @@
         competitorName: skuData.competitorName || 'Local Competitors',
         strategyTag: skuData.strategyTag || 'core_rx',
         elasticity: 'Moderate',
-        notes: skuData.notes || 'Added by Area Manager.'
+        notes: skuData.notes || 'Added by Branch In-Charge.'
       };
       if (this.isScheduledPrescriptionDrug(newSku)) {
         newSku.supermarketPrice = null;
@@ -2037,7 +2037,7 @@
       }
       const dataStr = JSON.stringify({
         exportedAt: new Date().toISOString(),
-        author: 'Area Manager William Chai',
+        author: 'William Chai (Pharmacist)',
         outlets: ['Kota Sentosa', 'Matang Jaya', 'Sungai Moyan', 'Malihah', 'Metrocity', 'Astana', 'Samariang'],
         skus: this.skus
       }, null, 2);
@@ -2517,7 +2517,7 @@
             <p class="text-xs text-gray-600 mb-3 leading-relaxed">${p.summary}</p>
             <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs">
               <div class="font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
-                <i class="fa-solid fa-list-check text-slate-600"></i> Area Manager Directives:
+                <i class="fa-solid fa-list-check text-slate-600"></i> Management Directives:
               </div>
               <ul class="list-disc pl-4 space-y-1 text-slate-700">
                 ${p.rules.map(r => `<li>${r}</li>`).join('')}
@@ -2645,7 +2645,7 @@ Please provide an actionable 7-outlet battle plan:
 4. Outlet-Specific Merchandising & Refill Management:
    - High-density residential branches (Matang Jaya, Moyan, Samariang) vs Commercial centers (Metrocity, Kota Sentosa).
 5. Wholesaler / Distributor Deal Negotiation:
-   - With PMG purchasing for 7 branches, what bulk or bonus terms (e.g. 10+1, 12+2 bonus, or volume rebates) should Area Manager negotiate with ${sku.supplier || 'the distributor'}?`;
+   - With PMG purchasing for 7 branches, what bulk or bonus terms (e.g. 10+1, 12+2 bonus, or volume rebates) should PMG negotiate with ${sku.supplier || 'the distributor'}?`;
         } else {
           input.value = `Perform an in-depth commercial market dynamics, basket building, and counter-strategy analysis for:
 Product: ${sku.name} (Code: ${sku.code})
@@ -2667,7 +2667,7 @@ Please provide an actionable 7-outlet battle plan:
 4. Outlet-Specific Merchandising Directives:
    - High-density residential branches (Matang Jaya, Moyan, Samariang) vs Commercial centers (Metrocity, Kota Sentosa).
 5. Wholesaler / Supplier Deal Negotiation:
-   - With PMG purchasing for 7 branches, what bulk deal (e.g. 10+1 free, 12+2 bonus, or quarter-end rebate) should Area Manager negotiate with ${sku.supplier || 'the distributor'}?`;
+   - With PMG purchasing for 7 branches, what bulk deal (e.g. 10+1 free, 12+2 bonus, or quarter-end rebate) should PMG negotiate with ${sku.supplier || 'the distributor'}?`;
         }
       }
 
@@ -2691,7 +2691,7 @@ Please provide an actionable 7-outlet battle plan:
         input.value = `Generate an aggressive 90-day competitive action plan for ${bData.name} located in ${bData.locationProfile}.
 Local Competitors: ${bData.localCompetitors.join(', ')}.
 
-Our objective as Area Manager:
+Our strategic objective:
 1. Defend OTC and prescription volume against nearby hypermarkets and chain pharmacies.
 2. Standardize prices with our other 6 branches in Kuching/Padawan without losing local foot traffic.
 3. Specific promotional initiatives tailored for this outlet's demographic.
@@ -3396,9 +3396,9 @@ Respond STRICTLY with a valid JSON array of objects. Use the exact ITEM_ID provi
     // ─── EXPORT 7-BRANCH PRICE BROADCAST MEMO ──────────────────────────────────
     exportPriceMemo() {
       let memo = `==========================================================\n`;
-      memo += `PMG PHARMACY — AREA MANAGER PRICING MEMORANDUM\n`;
+      memo += `PMG PHARMACY — PRICING MEMORANDUM\n`;
       memo += `UNIFIED 7-OUTLET STANDARDIZED PRICING DIRECTIVE\n`;
-      memo += `Authorized by: Area Manager Chai Yee Sian (William)\n`;
+      memo += `Authorized by: William Chai Yee Sian (Pharmacist)\n`;
       memo += `Date: ${new Date().toLocaleDateString('en-GB')}\n`;
       memo += `Target Branches: Kota Sentosa, Matang Jaya, Sungai Moyan, Malihah, Metrocity, Astana, Samariang\n`;
       memo += `==========================================================\n\n`;

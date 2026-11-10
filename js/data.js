@@ -28,7 +28,7 @@ const GOOGLE_SHEETS_CONFIG = {
   branchCSV: '',   // ✅ Paste published Branches CSV URL here (optional)
 };
 
-// ─── BRANCHES (The 7 Outlets Managed by Area Manager) ───────────────────────
+// ─── BRANCHES (The 7 Outlets Managed by Branch In-Charge) ───────────────────────
 const BRANCHES = [
   { code: 'MATANG JAYA',  name: 'Matang Jaya',   startTime: '0800', companyName: 'PMG PHARMACY (MATANG JAYA) SDN BHD',  address: 'LOT 694G, BLOCK C, LOT 6798, SYNERGY SQUARE, MATANG JAYA, 93050 KUCHING, SARAWAK.' },
   { code: 'SUNGAI MOYAN', name: 'Sungai Moyan',  startTime: '0800', companyName: 'PMG PHARMACY (SUNGAI MOYAN) SDN BHD', address: 'E-1-45, LOT 4568, GROUND FLOOR, BLOCK 10, MLD, GENESIS WALK, JALAN BATU KAWA/MATANG, 93250 KUCHING, SARAWAK.' },
@@ -41,12 +41,12 @@ const BRANCHES = [
 
 // ─── USERS / CREDENTIALS (secure internal storage) ───────────────────────────
 // Stored securely inside app code — NEVER publish passwords to Google Sheets web CSV.
-// Permitted roles: Area Manager, Pharmacist, Branch Manager, Assistant Branch Manager.
+// Permitted roles: Branch In-Charge, Pharmacist, Branch Manager, Assistant Branch Manager.
 // Regular Staff rows cannot log in.
 let USERS = [
-  // ── Area Manager (All Branches + Patient Care + Area Manager Suite) ──
-  { username: 'williamchai', password: '833445', branch: 'ALL',          role: 'AM',         displayName: 'William Chai Yee Sian (Area Manager)', empNo: 'PMG00831' },
-  { username: 'am',          password: '9999',   branch: 'ALL',          role: 'AM',         displayName: 'Area Manager',                         empNo: 'PMG00831' },
+  // ── Branch In-Charge (All Branches + Patient Care + Management Suite) ──
+  { username: 'williamchai', password: '833445', branch: 'ALL',          role: 'AM',         displayName: 'William Chai Yee Sian (Pharmacist)', empNo: 'PMG00831' },
+  { username: 'am',          password: '9999',   branch: 'ALL',          role: 'AM',         displayName: 'Branch In-Charge',                   empNo: 'PMG00831' },
 
   // ── Branch Managers & Assistant Branch Managers (Inventory + Roster only) ──
   { username: 'Louna',       password: '100711', branch: 'Kota Sentosa', role: 'ABM',        displayName: 'Haniesha Louna (ABM)',         empNo: 'PMG01294' },

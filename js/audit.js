@@ -1,4 +1,4 @@
-// js/audit.js — Module 3: Outlet 5S AI Walkthrough Auditor (Area Manager Only)
+// js/audit.js — Module 3: Outlet 5S AI Walkthrough Auditor (Pharmacist / Branch In-Charge)
 'use strict';
 
 let auditVideoFile   = null;
@@ -1075,7 +1075,7 @@ function renderAuditReport(report) {
     }).join('');
   }
 
-  // 6 Area Manager Store Standards Pillars (Slide 14 Alignment)
+  // 6 Store Standards Pillars (Slide 14 Alignment)
   const pillarsEl = document.getElementById('auditPillarsContainer');
   if (pillarsEl) {
     const defaultPillars = [

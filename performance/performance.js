@@ -2022,7 +2022,7 @@ You must rigorously compare 3 months of personal sales (Latest vs M-1 vs M-2) fo
 2. In "commentAndAction", provide direct, concrete guidance directed to Pharmacist (PIC - William) on what 1-on-1 advice, shadowing partner, and 30-day targets William must give to that teammate.
 
 CRITICAL INSTRUCTION FOR ALL ACTION PLANS (MANDATORY POINT FORM & STRAIGHTFORWARD):
-The Area Manager / PIC mandates that ALL action plans MUST be straight-to-the-point, easily understood, and formatted strictly in POINT FORM.
+The Pharmacist / PIC mandates that ALL action plans MUST be straight-to-the-point, easily understood, and formatted strictly in POINT FORM.
 - NEVER output long, vague narrative paragraphs, generic essays, or convoluted corporate jargon.
 - In "roleActionPlans": "action" MUST be an array of 2 to 3 crisp, practical bullet points stating the exact physical actions to execute.
 - In "teammateCoaching": "commentAndAction" MUST be an array of point-form strings: "Key Issue: [one sentence]", "Action Plan (Straightforward Steps):", "• Step 1", "• Step 2", "• Step 3".
@@ -2328,7 +2328,7 @@ PRESENTATION OUTLINE (16 SLIDES)
 
 ### SLIDE 1: TITLE SLIDE
 - **Title**: MONTHLY PHARMACIST PERFORMANCE & STRATEGIC PRESENTATION
-- **Presenter**: William Chai (Pharmacist / Area Manager)
+- **Presenter**: William Chai (Pharmacist)
 - **Outlet**: PMG PHARMACY KOTA SENTOSA
 - **Location**: Pekan Batu 7, Penrissen Road, Kuching, Sarawak
 - **Meeting Date**: ${presDate}
@@ -2593,7 +2593,7 @@ ${topBleedersStr}
 ### SLIDE 16: THANK YOU & KEY STRATEGIC COMMITMENTS
 **PMG PHARMACY KOTA SENTOSA · MONTHLY PHARMACIST PRESENTATION**
 
-- **PRESENTER**: William Chai (Pharmacist / Area Manager)
+- **PRESENTER**: William Chai (Pharmacist)
 - **OUTLET**: PMG Pharmacy Kota Sentosa (Pekan Batu 7, Kuching, Sarawak)
 - **MEETING DATE**: ${presDate}
 - **TAGLINE**: "Your Trusted Community Healthcare Partner · Serve Beyond Expectation"
@@ -3502,7 +3502,7 @@ function renderHeaderBanner() {
       walkthroughAlert.className = 'mb-5 p-4 rounded-2xl border border-emerald-300/80 bg-emerald-50/90 flex flex-wrap items-center justify-between gap-3 text-xs text-emerald-950 shadow-xs no-print';
       walkthroughBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-200 text-emerald-900 border border-emerald-300';
       walkthroughBadge.textContent = `Audit Completed (${savedAudit.overall_score}/200 pts)`;
-      walkthroughMsg.innerHTML = `<span class="text-emerald-900 font-semibold">5S Walkthrough audit verified for ${escapeHtml(curMonthName)} across all 6 Area Manager pillars.</span>`;
+      walkthroughMsg.innerHTML = `<span class="text-emerald-900 font-semibold">5S Walkthrough audit verified for ${escapeHtml(curMonthName)} across all 6 Store Standards pillars.</span>`;
     } else {
       walkthroughAlert.className = 'mb-5 p-4 rounded-2xl border border-amber-300/80 bg-amber-50/90 flex flex-wrap items-center justify-between gap-3 text-xs text-amber-950 shadow-xs no-print';
       walkthroughBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-900 border border-amber-300';

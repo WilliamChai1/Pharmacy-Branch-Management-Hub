@@ -1245,7 +1245,7 @@
     if (isAM) {
       const allOpt = document.createElement('option');
       allOpt.value = '';
-      allOpt.textContent = 'All Branches (Area Manager)';
+      allOpt.textContent = 'All Branches';
       select.appendChild(allOpt);
     }
 
@@ -1586,9 +1586,19 @@
     return `${day}.${mon}.${yr}`;
   }
 
+  function cleanStaffTitle(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/\s*\(\s*Area\s+Manager\s*\)/gi, '')
+      .replace(/Area\s+Manager/gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
   function getCurrentUserDisplayName() {
     const session = typeof getSession === 'function' ? getSession() : null;
-    return session?.displayName || 'Pharmacist';
+    const name = session?.displayName || 'Pharmacist';
+    return cleanStaffTitle(name);
   }
 
   function syncDraftItemsFromDom() {
@@ -2381,16 +2391,6 @@
                     </td>
                   </tr>
                 ` : ''}
-                ${doCfg.showDeadline ? `
-                  <tr>
-                    <td style="padding: 6px 10px; font-weight: 900; background: ${doCfg.deadlineBg}; border: 1.5px solid #000; text-transform: uppercase; color: ${doCfg.deadlineColor};">
-                      ${doCfg.deadlineLabel || 'DEADLINE RETURN'}
-                    </td>
-                    <td style="padding: 6px 10px; font-weight: 900; border: 1.5px solid #000; color: ${doCfg.deadlineColor}; background: ${doCfg.deadlineBg}; text-transform: uppercase;">
-                      ${escapeHtml(ret.deadlineReturn || ret.pickupDate || 'URGENT / WITHIN 24-48 HOURS')}
-                    </td>
-                  </tr>
-                ` : ''}
                 <tr>
                   <td style="padding: 6px 10px; font-weight: 900; background: ${doCfg.dateBg}; border: 1.5px solid #000; text-transform: uppercase; color: ${doCfg.dateColor};">
                     ${doCfg.dateLabel}
@@ -2456,7 +2456,7 @@
           <div style="width: 250px;">
             <div style="border-bottom: 1px solid #000; height: 35px;"></div>
             <div style="font-weight: bold; margin-top: 4px;">Verified by:</div>
-            <div style="font-size: 11px; color: #444;">${escapeHtml(ret.verifiedBy || 'Branch Staff')}</div>
+            <div style="font-size: 11px; color: #444;">${escapeHtml(cleanStaffTitle(ret.verifiedBy || 'Branch Staff'))}</div>
             <div style="font-size: 10px; color: #666; margin-top: 2px;">(Branch Staff Signature & Stamp)</div>
           </div>
           <div style="width: 250px;">
@@ -2581,12 +2581,11 @@
       remarks: 'HANDLE WITH CARE-FRAGILE ITEM',
       remarksBg: '#FFFFFF',
       remarksColor: '#000000',
-      showDeadline: true,
-      deadlineLabel: 'DEADLINE RETURN',
+      showDeadline: false,
       dateLabel: 'DATE RETURN',
       badgeText: 'SSJ URGENT PRODUCT RECALL',
       caution: '🚨 URGENT PRODUCT RECALL RETURN GOODS · PRIORITY SSJ WAREHOUSE RECEIVING 🚨',
-      // Exact HQ Color Palette (Category: Red #FF0000, From/Deadline/Date: Yellow #FFFF00)
+      // Exact HQ Color Palette (Category: Red #FF0000, From/Date: Yellow #FFFF00)
       categoryBg: '#FF0000',
       categoryColor: '#000000',
       fromBg: '#FFFF00',
@@ -2595,8 +2594,6 @@
       toColor: '#000000',
       attnBg: '#FFFFFF',
       attnColor: '#000000',
-      deadlineBg: '#FFFF00',
-      deadlineColor: '#000000',
       dateBg: '#FFFF00',
       dateColor: '#000000',
       excelFileName: 'TEMPLATE USE FOR PRODUCT RECALL TO SSJ.xlsx'
@@ -2684,7 +2681,7 @@
                 </div>
                 <div style="font-size: 13px; font-weight: 900; text-transform: uppercase;">${escapeHtml(ret.companyName || ('PMG PHARMACY (' + (ret.branch || 'BRANCH') + ')'))}</div>
                 <div style="font-size: 10.5px; font-weight: 600; text-transform: uppercase; margin-top: 2px; color: #222;">${escapeHtml(ret.companyAddress || 'Sarawak, Malaysia')}</div>
-                <div style="font-size: 10.5px; font-weight: bold; margin-top: 4px; color: #000;">BRANCH PIC: ${escapeHtml(ret.verifiedBy || 'Branch Pharmacist')}</div>
+                <div style="font-size: 10.5px; font-weight: bold; margin-top: 4px; color: #000;">BRANCH PIC: ${escapeHtml(cleanStaffTitle(ret.verifiedBy || 'Branch Pharmacist'))}</div>
               </div>
 
               <div style="flex: 1; border: 2.5px solid #000; background: #f4f4f4; padding: 8px 10px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
@@ -2812,16 +2809,6 @@
                     </td>
                   </tr>
                 ` : ''}
-                ${cfg.showDeadline ? `
-                  <tr>
-                    <td style="padding: 5px 8px; font-size: 11px; font-weight: 900; background: ${cfg.deadlineBg}; border: 1px solid #000; text-transform: uppercase; color: ${cfg.deadlineColor};">
-                      ${cfg.deadlineLabel || 'DEADLINE RETURN'}
-                    </td>
-                    <td style="padding: 5px 8px; font-size: 13px; font-weight: 900; border: 1px solid #000; color: ${cfg.deadlineColor}; background: ${cfg.deadlineBg}; text-transform: uppercase;">
-                      ${escapeHtml(ret.deadlineReturn || ret.pickupDate || 'URGENT / WITHIN 24-48 HOURS')}
-                    </td>
-                  </tr>
-                ` : ''}
                 <tr>
                   <td style="padding: 5px 8px; font-size: 11px; font-weight: 900; background: ${cfg.dateBg}; border: 1px solid #000; text-transform: uppercase; color: ${cfg.dateColor};">
                     ${cfg.dateLabel}
@@ -2843,7 +2830,7 @@
               <div style="flex: 1.2; border: 2.5px solid #000; background: #fff; padding: 8px 10px; display: flex; flex-direction: column; justify-content: center;">
                 <div style="font-size: 12px; font-weight: 900; margin-bottom: 3px;">DO NUMBER: <span style="font-family: monospace; font-size: 13.5px; color: #0d47a1;">${escapeHtml(ret.doNumber)}</span></div>
                 <div style="font-size: 12px; font-weight: 900; margin-bottom: 3px;">PRN REF: <span style="font-family: monospace; font-size: 12px; color: #92400e;">${prnList || 'N/A'}</span></div>
-                <div style="font-size: 11px; font-weight: bold; color: #475569;">BRANCH PIC: ${escapeHtml(ret.verifiedBy || 'Branch Pharmacist')}</div>
+                <div style="font-size: 11px; font-weight: bold; color: #475569;">BRANCH PIC: ${escapeHtml(cleanStaffTitle(ret.verifiedBy || 'Branch Pharmacist'))}</div>
               </div>
             </div>
 
@@ -3161,11 +3148,6 @@
     let nextRow = 11;
     if (cfg.showRemarks) {
       addHqRow(nextRow, 'REMARKS', cfg.remarks || 'HANDLE WITH CARE-FRAGILE ITEM', cfg.remarksBg, cfg.remarksBg, true);
-      nextRow += 2;
-    }
-    if (cfg.showDeadline) {
-      const deadline = ret.deadlineReturn || ret.pickupDate || 'URGENT / WITHIN 24-48 HOURS';
-      addHqRow(nextRow, 'DEADLINE RETURN', deadline, cfg.deadlineBg, cfg.deadlineBg, true);
       nextRow += 2;
     }
 

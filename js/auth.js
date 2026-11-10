@@ -43,7 +43,8 @@ function applyRoleUI(session) {
   const userSpan = document.getElementById('loggedInUser');
   if (userSpan) {
     const roleLabel = session.role === 'PIC' ? 'Pharmacist-in-Charge' : (session.role === 'AM' ? 'Branch In-Charge' : session.role);
-    userSpan.textContent = `${session.displayName} · Kota Sentosa · ${roleLabel}`;
+    const cleanDisplayName = String(session.displayName || '').replace(/\s*\(\s*Area\s+Manager\s*\)/gi, ' (Pharmacist)').replace(/Area\s+Manager/gi, 'Branch In-Charge');
+    userSpan.textContent = `${cleanDisplayName} · Kota Sentosa · ${roleLabel}`;
   }
 
   // Update active branch badge in roster module
@@ -101,7 +102,7 @@ function setGlobalActiveBranch(branchCodeOrName) {
     }
   } catch (e) { console.warn('[Auth] Patient module sync warning:', e); }
 
-  // 3. AI Smart Timetable Generator (Area Manager Suite)
+  // 3. AI Smart Timetable Generator (Management Suite)
   try {
     const schedulerSel = document.getElementById('schedulerBranchSelect');
     if (schedulerSel) {
@@ -156,10 +157,10 @@ function setGlobalActiveBranch(branchCodeOrName) {
     }
   } catch (e) { console.warn('[Auth] OneDrive sync warning:', e); }
 
-  // Persist choice for Area Manager
+  // Persist choice for Branch In-Charge
   localStorage.setItem('pmg_global_branch', branchCode);
 
-  const displayName = branchName ? `${branchCode} – ${branchName}` : 'All Branches (AM Overview)';
+  const displayName = branchName ? `${branchCode} – ${branchName}` : 'All Branches (Overview)';
   if (typeof showExpiryToast === 'function') {
     showExpiryToast(`Switched active view to: ${displayName}`);
   }
@@ -210,7 +211,7 @@ async function login() {
         const roleLower = rawRole.toLowerCase();
 
         // ── ROLE-BASED ACCESS CONTROL FOR PMG MANAGEMENT HUB ──
-        // • Area Manager: Full access across all 6 modules & all branches
+        // • Branch In-Charge / PIC: Full access across all 6 modules & all branches
         // • Branch Manager / ABM: Inventory, Roster (Rymnet), Stock Expiry, Record CN (PRN/DO)
         // • Pharmacist: Inventory, Roster (Rymnet), Stock Expiry, Record CN (PRN/DO) (Patient Care hidden - pilot stage)
         // • Staff (normal assistant), Nutritionist, Dietitian: RESTRICTED to PMG Sales WebApp only!
@@ -243,7 +244,7 @@ async function login() {
           };
         } else {
           // Staff (Normal Pharmacist Assistant), Nutritionist, Dietitian
-          accessDeniedMessage = `Access Restricted: ${u.name || u.username} (${rawRole}) is authorized for the PMG Sales WebApp only. PMG Management Hub is restricted to Area Managers, Branch Managers, and Pharmacists.`;
+          accessDeniedMessage = `Access Restricted: ${u.name || u.username} (${rawRole}) is authorized for the PMG Sales WebApp only. PMG Management Hub is restricted to Branch In-Charge, Branch Managers, and Pharmacists.`;
         }
       } else if (result.message) {
         if (result.message.toLowerCase().includes('pending') || result.message.toLowerCase().includes('inactive')) {
