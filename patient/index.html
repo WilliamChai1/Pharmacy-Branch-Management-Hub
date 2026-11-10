@@ -976,27 +976,40 @@ Date visit: 06.01.2026
           </div>
         </div>
 
-        <!-- 2. OBJECTIVE: Comprehensive POCT Suite (Accordion Panels) -->
-        <div class="border border-teal-200 rounded-xl overflow-hidden">
-          <div class="bg-teal-50/80 px-4 py-2.5 font-bold text-sm sm:text-base text-teal-900 flex items-center justify-between">
+        <!-- 2. OBJECTIVE: Comprehensive POCT Suite (Arranged by Clinical Frequency) -->
+        <div class="border border-teal-200 rounded-xl overflow-hidden shadow-2xs">
+          <div class="bg-gradient-to-r from-teal-50 via-emerald-50 to-teal-50 px-4 py-2.5 font-bold text-sm sm:text-base text-teal-900 flex items-center justify-between border-b border-teal-200/70">
             <span class="flex items-center gap-2"><i class="fa-solid fa-microscope text-teal-700"></i> 2. Objective (POCT & Clinical Diagnostic Panels)</span>
-            <span class="text-xs text-teal-700 font-normal">(Fill applicable tests)</span>
+            <span class="text-xs text-teal-700 font-semibold bg-white/80 px-2.5 py-0.5 rounded-full border border-teal-200 shadow-2xs">Tiers by Frequency</span>
           </div>
 
-          <div class="p-4 space-y-3 bg-white">
-            <!-- Panel 1: Vitals & Body Composition Analysis (BCA) -->
-            <div class="border border-gray-200 rounded-lg overflow-hidden">
-              <button type="button" onclick="togglePanel('panelVitals')" class="w-full bg-gray-50 px-3.5 py-2.5 text-left font-bold text-xs sm:text-sm text-gray-800 flex justify-between items-center">
-                <span>🩺 Vitals & Body Composition Analysis (BP, BMI, Fat %, Visceral Fat, Muscle Mass, Metabolic Age)</span>
-                <i id="panelVitals_icon" class="fa-solid fa-chevron-down text-gray-400 text-xs transition-transform"></i>
+          <div class="p-3.5 sm:p-4 space-y-4 bg-white">
+            <!-- ============================================================== -->
+            <!-- ⭐ TIER 1: MOST COMMON (Routine Primary Screening & Vitals) -->
+            <!-- BP, Glucose, SpO2, ACT, Full Lipid, TEDA, Airdoc, BCA -->
+            <!-- ============================================================== -->
+            <div class="border-2 border-teal-300/80 rounded-xl overflow-hidden shadow-xs">
+              <button type="button" onclick="togglePanel('panelTier1')" class="w-full bg-gradient-to-r from-teal-100/90 via-emerald-50 to-teal-50 px-4 py-2.5 text-left font-bold text-teal-950 flex justify-between items-center text-xs sm:text-sm">
+                <span class="flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-md bg-teal-700 text-white flex items-center justify-center text-xs shadow-2xs">
+                    <i class="fa-solid fa-star"></i>
+                  </span>
+                  <span>⭐ TIER 1: MOST COMMON (BP, Glucose, SpO2, ACT, Full Lipid, TEDA, Airdoc, Body Composition)</span>
+                </span>
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-200 text-teal-900 border border-teal-300">Routine POCT</span>
+                  <i id="panelTier1_icon" class="fa-solid fa-chevron-down text-teal-700 text-xs transition-transform"></i>
+                </div>
               </button>
-              <div id="panelVitals" class="p-3 bg-white space-y-3.5">
-                <!-- Standard Vitals -->
-                <div>
-                  <div class="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <i class="fa-solid fa-heart-pulse text-rose-500"></i> Standard Vitals
+
+              <div id="panelTier1" class="p-3.5 space-y-3.5 bg-white">
+                <!-- 1. Blood Pressure, Pulse, SpO2 & Rossmax ACT -->
+                <div class="p-3 bg-rose-50/30 rounded-xl border border-rose-200/70">
+                  <div class="text-xs font-bold text-rose-950 uppercase tracking-wider mb-2 flex items-center justify-between">
+                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-heart-pulse text-rose-600"></i> Blood Pressure, Pulse, SpO2 & Arterial Condition</span>
+                    <span class="text-[10px] text-gray-500 font-normal">Immediate vitals</span>
                   </div>
-                  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
                     <div>
                       <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">BP Systolic (mmHg)</label>
                       <input type="text" id="encBpSys" placeholder="e.g. 135" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
@@ -1013,14 +1026,118 @@ Date visit: 06.01.2026
                       <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">SpO2 Oxygen (%)</label>
                       <input type="text" id="encSpo2" placeholder="e.g. 98 or < 90" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
                     </div>
+                    <div class="col-span-2 sm:col-span-1">
+                      <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Rossmax ACT</label>
+                      <input type="text" id="encRossmaxAct" placeholder="e.g. ACT 3 / Age 60" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none" title="Artery Condition / Vascular Stiffness">
+                    </div>
                   </div>
                 </div>
 
-                <!-- Body Composition Analyzer (BCA) -->
-                <div class="pt-3 border-t border-gray-100">
-                  <div class="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2 flex items-center justify-between">
+                <!-- 2. Blood Glucose Reading -->
+                <div class="p-3 bg-amber-50/40 rounded-xl border border-amber-200">
+                  <div class="text-xs font-bold text-amber-950 uppercase tracking-wider mb-2 flex items-center justify-between">
+                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-droplet text-amber-600"></i> Blood Glucose Reading</span>
+                    <span class="text-[10px] text-amber-700 font-normal">Capillary POCT</span>
+                  </div>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Blood Glucose (mmol/L)</label>
+                      <input type="text" id="encGlucose" placeholder="e.g. 6.8 or > 33.3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none" title="Accepts numeric values and symbols such as < 1.1 or > 33.3">
+                    </div>
+                    <div>
+                      <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Glucose Type</label>
+                      <select id="encGlucoseType" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 bg-white outline-none">
+                        <option value="Fasting">Fasting</option>
+                        <option value="Random">Random</option>
+                        <option value="Post-Prandial">Post-Prandial (2h)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 3. Full Lipid Profile (POCT) -->
+                <div class="p-3 bg-blue-50/40 rounded-xl border border-blue-200">
+                  <div class="text-xs font-bold text-blue-950 uppercase tracking-wider mb-2 flex items-center justify-between">
+                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-vial-virus text-blue-600"></i> Full Lipid Test (POCT: TC, TG, HDL, LDL, AI, R-CHD)</span>
+                    <span class="text-[10px] text-blue-700 font-normal">Lipid panel</span>
+                  </div>
+                  <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Total Cholesterol (mmol/L)</label>
+                      <input type="text" id="encTc" placeholder="e.g. 5.4 or < 2.59" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none" title="Accepts numeric values and symbols such as < 2.59 or > 10.36">
+                    </div>
+                    <div>
+                      <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Triglycerides (mmol/L)</label>
+                      <input type="text" id="encTg" placeholder="e.g. 1.8 or < 0.5" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none" title="Accepts numeric values and symbols such as < 0.5 or > 5.6">
+                    </div>
+                    <div>
+                      <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">HDL-C (mmol/L)</label>
+                      <input type="text" id="encHdl" placeholder="e.g. 1.1 or > 2.5" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none" title="Accepts numeric values and symbols such as < 0.65 or > 2.5">
+                    </div>
+                    <div>
+                      <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">LDL-C (mmol/L)</label>
+                      <input type="text" id="encLdl" placeholder="e.g. 3.5 or < 1.0" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none" title="Accepts numeric values and symbols such as < 1.0 or > 6.0">
+                    </div>
+                    <div>
+                      <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">AI (Arteriosclerosis Index)</label>
+                      <input type="text" id="encAi" readonly placeholder="Auto: (TC-HDL)/HDL" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base bg-gray-50 font-bold text-blue-700 outline-none">
+                    </div>
+                    <div>
+                      <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">R-CHD (Coronary Risk)</label>
+                      <input type="text" id="encRchd" readonly placeholder="Auto: TC/HDL" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base bg-gray-50 font-bold text-blue-700 outline-none">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 4. TEDA TCM & Airdoc Retinal AI Scans -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <!-- TEDA -->
+                  <div class="p-3 bg-amber-50/50 rounded-xl border border-amber-200 flex flex-col justify-between">
+                    <div>
+                      <div class="text-xs font-bold text-amber-950 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                        <span class="flex items-center gap-1.5"><i class="fa-solid fa-yin-yang text-amber-700"></i> TEDA TCM Wellness & Meridian Scan</span>
+                        <span class="text-[10px] text-amber-700 font-normal">Cloud report link</span>
+                      </div>
+                      <div class="space-y-2">
+                        <div class="flex items-center gap-2">
+                          <input type="url" id="encTedaLink" placeholder="Paste TEDA link: https://sg-report.qiaolz.com/..." class="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-xs outline-none bg-white text-gray-800 focus:border-amber-500">
+                          <button type="button" onclick="openTedaLinkInNewTab()" class="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 whitespace-nowrap shadow-2xs">
+                            <i class="fa-solid fa-arrow-up-right-from-square"></i> Open
+                          </button>
+                        </div>
+                        <textarea id="encTeda" rows="2" placeholder="TCM findings or clinical notes..." class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs outline-none bg-white font-sans"></textarea>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Airdoc -->
+                  <div class="p-3 bg-blue-50/50 rounded-xl border border-blue-200 flex flex-col justify-between">
+                    <div>
+                      <div class="text-xs font-bold text-blue-950 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                        <span class="flex items-center gap-1.5"><i class="fa-solid fa-eye text-blue-600"></i> Airdoc Retinal AI Scan</span>
+                        <span id="encAirdocBadge" class="text-[10px] text-gray-400">No PDF</span>
+                      </div>
+                      <div class="space-y-2">
+                        <div class="flex items-center gap-2">
+                          <label class="cursor-pointer px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-800 border border-blue-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-2xs">
+                            <i class="fa-solid fa-file-pdf text-red-500"></i> Upload Airdoc PDF
+                            <input type="file" id="encAirdocPdf" accept="application/pdf" class="hidden" onchange="handleAirdocFile(this.files)">
+                          </label>
+                          <button type="button" id="encAirdocRemoveBtn" onclick="removeAirdocFile()" class="text-rose-600 hover:text-rose-800 text-xs hidden font-bold" title="Remove PDF">
+                            <i class="fa-solid fa-xmark"></i> Remove
+                          </button>
+                        </div>
+                        <span id="encAirdocFileName" class="text-[11px] text-gray-600 font-medium truncate block"></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 5. Body Composition Analysis (BCA) -->
+                <div class="p-3 bg-indigo-50/40 rounded-xl border border-indigo-200">
+                  <div class="text-xs font-bold text-indigo-900 uppercase tracking-wider mb-2 flex items-center justify-between">
                     <span class="flex items-center gap-1.5"><i class="fa-solid fa-weight-scale text-indigo-600"></i> Body Composition Analysis (Tanita / InBody / Omron)</span>
-                    <span class="text-xs text-gray-400 font-normal lowercase">branch analyzer</span>
+                    <span class="text-[10px] text-indigo-700 font-normal">Physical analyzer</span>
                   </div>
                   <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div>
@@ -1041,7 +1158,7 @@ Date visit: 06.01.2026
                     </div>
                     <div>
                       <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Visceral Fat Rating</label>
-                      <input type="number" step="1" id="encVisceralFat" placeholder="e.g. 9 (1-9 normal, 10-14 high)" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                      <input type="number" step="1" id="encVisceralFat" placeholder="e.g. 9 (1-9 normal)" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
                     </div>
                     <div>
                       <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Muscle Mass (kg)</label>
@@ -1060,71 +1177,14 @@ Date visit: 06.01.2026
               </div>
             </div>
 
-            <!-- Panel 2: Full Lipid Profile -->
-            <div class="border border-gray-200 rounded-xl overflow-hidden">
-              <button type="button" onclick="togglePanel('panelLipid')" class="w-full bg-gray-50 px-4 py-2.5 text-left font-bold text-gray-800 flex justify-between items-center text-sm sm:text-base">
-                <span>🩸 Full Lipid Profile (POCT: TC, TG, HDL, LDL, AI, R-CHD)</span>
-                <i id="panelLipid_icon" class="fa-solid fa-chevron-down text-gray-400 text-xs transition-transform"></i>
-              </button>
-              <div id="panelLipid" class="p-3.5 grid grid-cols-2 sm:grid-cols-3 gap-3 bg-white">
-                <div>
-                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Total Cholesterol (mmol/L)</label>
-                  <input type="text" id="encTc" placeholder="e.g. 5.4 or < 2.59" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none" title="Accepts numeric values and symbols such as < 2.59 or > 10.36">
-                </div>
-                <div>
-                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Triglycerides (mmol/L)</label>
-                  <input type="text" id="encTg" placeholder="e.g. 1.8 or < 0.5" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none" title="Accepts numeric values and symbols such as < 0.5 or > 5.6">
-                </div>
-                <div>
-                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">HDL-C (mmol/L)</label>
-                  <input type="text" id="encHdl" placeholder="e.g. 1.1 or > 2.5" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none" title="Accepts numeric values and symbols such as < 0.65 or > 2.5">
-                </div>
-                <div>
-                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">LDL-C (mmol/L)</label>
-                  <input type="text" id="encLdl" placeholder="e.g. 3.5 or < 1.0" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none" title="Accepts numeric values and symbols such as < 1.0 or > 6.0">
-                </div>
-                <div>
-                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">AI (Arteriosclerosis Index)</label>
-                  <input type="text" id="encAi" readonly placeholder="Auto: (TC-HDL)/HDL" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base bg-gray-50 font-bold text-blue-700 outline-none">
-                </div>
-                <div>
-                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">R-CHD (Coronary Risk)</label>
-                  <input type="text" id="encRchd" readonly placeholder="Auto: TC/HDL" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base bg-gray-50 font-bold text-blue-700 outline-none">
-                </div>
-              </div>
-            </div>
-
-            <!-- Panel 3: Kidney Function -->
-            <div class="border border-gray-200 rounded-xl overflow-hidden">
-              <button type="button" onclick="togglePanel('panelKidney')" class="w-full bg-gray-50 px-4 py-2.5 text-left font-bold text-gray-800 flex justify-between items-center text-sm sm:text-base">
-                <span>🧪 Kidney Function (POCT: UA, Creatinine, Urea, eGFR)</span>
-                <i id="panelKidney_icon" class="fa-solid fa-chevron-down text-gray-400 text-xs transition-transform"></i>
-              </button>
-              <div id="panelKidney" class="p-3.5 grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white">
-                <div>
-                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Uric Acid (umol/L)</label>
-                  <input type="text" id="encUa" placeholder="e.g. 380 or > 500" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none" title="Accepts numeric values and symbols such as < 120 or > 595">
-                </div>
-                <div>
-                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Creatinine (umol/L)</label>
-                  <input type="text" id="encCreatinine" placeholder="e.g. 88 or < 40" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
-                </div>
-                <div>
-                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Urea (mmol/L)</label>
-                  <input type="text" id="encUrea" placeholder="e.g. 5.4 or > 25" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
-                </div>
-                <div>
-                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">eGFR (mL/min/1.73m²)</label>
-                  <input type="text" id="encEgfr" placeholder="Auto / manual (e.g. > 90 or < 15)" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base bg-gray-50 font-bold text-indigo-700 outline-none">
-                </div>
-              </div>
-            </div>
-
-            <!-- Panel 3B: Cardiovascular Disease (CVD) Risk Assessment Suite -->
-            <div class="border-2 border-rose-200 rounded-xl overflow-hidden shadow-xs">
-              <button type="button" onclick="togglePanel('panelCvdRisk')" class="w-full bg-gradient-to-r from-rose-50/90 via-pink-50/70 to-rose-50/90 px-4 py-2.5 text-left font-bold text-gray-900 flex justify-between items-center text-sm sm:text-base">
+            <!-- ============================================================== -->
+            <!-- ❤️ CARDIOVASCULAR DISEASE (CVD) RISK ASSESSMENT SUITE -->
+            <!-- Malaysian CPG FRS & 2024 AHA PREVENT™ (Base vs Enhanced Models) -->
+            <!-- ============================================================== -->
+            <div class="border-2 border-rose-300/80 rounded-xl overflow-hidden shadow-xs">
+              <button type="button" onclick="togglePanel('panelCvdRisk')" class="w-full bg-gradient-to-r from-rose-100/90 via-pink-50 to-rose-50 px-4 py-2.5 text-left font-bold text-gray-900 flex justify-between items-center text-xs sm:text-sm">
                 <span class="flex items-center gap-2">
-                  <span class="w-7 h-7 rounded-lg bg-rose-600 text-white flex items-center justify-center text-xs shadow-xs">
+                  <span class="w-6 h-6 rounded-md bg-rose-600 text-white flex items-center justify-center text-xs shadow-2xs">
                     <i class="fa-solid fa-heart-pulse"></i>
                   </span>
                   <span>❤️ CVD Risk Suite · 🇲🇾 Malaysian CPG FRS & 🇺🇸 2024 AHA PREVENT™</span>
@@ -1139,7 +1199,7 @@ Date visit: 06.01.2026
                 <div class="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-rose-50/60 rounded-xl border border-rose-100 text-xs text-rose-950">
                   <div class="flex items-center gap-2">
                     <i class="fa-solid fa-circle-info text-rose-600 text-sm"></i>
-                    <span>Parameters auto-sync from BP, POCT Lipid (TC, HDL in mmol/L), BMI, eGFR, and patient chronic history.</span>
+                    <span>Auto-syncs from BP, Lipid (TC, HDL), BMI, eGFR, HbA1c, UACR, and patient risk history.</span>
                   </div>
                   <button type="button" onclick="recalculateCvdRisk(true)" class="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg transition shadow-2xs flex items-center gap-1.5 cursor-pointer">
                     <i class="fa-solid fa-bolt"></i> Auto-Populate & Calculate
@@ -1220,7 +1280,7 @@ Date visit: 06.01.2026
                         <span class="font-bold text-sm text-blue-950 flex items-center gap-1.5">
                           <span>🇺🇸</span> 2024 ACC/AHA PREVENT™
                         </span>
-                        <span class="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full border border-blue-200">Multi-Organ Equations</span>
+                        <span id="preventModelBadge" class="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full border border-blue-200 transition-colors">Base Model</span>
                       </div>
                       <p class="text-xs text-gray-500 mb-2.5">Predicting Risk of CVD Events (Circulation 2024)</p>
                       
@@ -1255,75 +1315,154 @@ Date visit: 06.01.2026
               </div>
             </div>
 
-            <!-- Panel 4: Liver Function -->
-            <div class="border border-gray-200 rounded-xl overflow-hidden">
-              <button type="button" onclick="togglePanel('panelLiver')" class="w-full bg-gray-50 px-4 py-2.5 text-left font-bold text-gray-800 flex justify-between items-center text-sm sm:text-base">
-                <span>🍃 Liver Function (POCT: AST, ALT, Albumin)</span>
-                <i id="panelLiver_icon" class="fa-solid fa-chevron-down text-gray-400 text-xs transition-transform"></i>
+            <!-- ============================================================== -->
+            <!-- 📋 TIER 2: LESS COMMON (Organ Function & Blood Work) -->
+            <!-- Liver, Kidney (UA, Cr, Urea, eGFR, UACR), Haemoglobin (Hb, HCT), HbA1c -->
+            <!-- ============================================================== -->
+            <div class="border border-blue-200 rounded-xl overflow-hidden shadow-xs">
+              <button type="button" onclick="togglePanel('panelTier2')" class="w-full bg-gradient-to-r from-blue-100/80 via-indigo-50 to-blue-50 px-4 py-2.5 text-left font-bold text-blue-950 flex justify-between items-center text-xs sm:text-sm">
+                <span class="flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-md bg-blue-600 text-white flex items-center justify-center text-xs shadow-2xs">
+                    <i class="fa-solid fa-flask-vial"></i>
+                  </span>
+                  <span>📋 TIER 2: LESS COMMON (Liver, Kidney, Haemoglobin, HbA1c)</span>
+                </span>
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-200 text-blue-900 border border-blue-300">Organ & Heme</span>
+                  <i id="panelTier2_icon" class="fa-solid fa-chevron-down text-blue-700 text-xs transition-transform"></i>
+                </div>
               </button>
-              <div id="panelLiver" class="p-3.5 grid grid-cols-3 gap-3 bg-white">
-                <div>
-                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">AST / SGOT (U/L)</label>
-                  <input type="text" id="encAst" placeholder="e.g. 28 or > 500" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+
+              <div id="panelTier2" class="p-3.5 space-y-3.5 bg-white">
+                <!-- 1. Liver Function Test -->
+                <div class="p-3 bg-emerald-50/30 rounded-xl border border-emerald-200">
+                  <div class="text-xs font-bold text-emerald-950 uppercase tracking-wider mb-2 flex items-center justify-between">
+                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-leaf text-emerald-600"></i> Liver Function Test (POCT: AST, ALT, Albumin)</span>
+                    <span class="text-[10px] text-emerald-700 font-normal">Hepatic panel</span>
+                  </div>
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">AST / SGOT (U/L)</label>
+                      <input type="text" id="encAst" placeholder="e.g. 28 or > 500" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                    </div>
+                    <div>
+                      <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">ALT / SGPT (U/L)</label>
+                      <input type="text" id="encAlt" placeholder="e.g. 32 or > 500" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                    </div>
+                    <div>
+                      <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Albumin (ALB, g/L)</label>
+                      <input type="text" id="encAlb" placeholder="e.g. 42 or < 20" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">ALT / SGPT (U/L)</label>
-                  <input type="text" id="encAlt" placeholder="e.g. 32 or > 500" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+
+                <!-- 2. Kidney Function Test (Including NEW UACR) -->
+                <div class="p-3 bg-purple-50/30 rounded-xl border border-purple-200">
+                  <div class="text-xs font-bold text-purple-950 uppercase tracking-wider mb-2 flex items-center justify-between">
+                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-flask text-purple-600"></i> Kidney Function Test (POCT: UA, Creatinine, Urea, eGFR, UACR)</span>
+                    <span class="text-[10px] text-purple-700 font-normal">Renal & metabolic</span>
+                  </div>
+                  <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    <div>
+                      <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Uric Acid (umol/L)</label>
+                      <input type="text" id="encUa" placeholder="e.g. 380 or > 500" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none" title="Accepts numeric values and symbols such as < 120 or > 595">
+                    </div>
+                    <div>
+                      <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Creatinine (umol/L)</label>
+                      <input type="text" id="encCreatinine" placeholder="e.g. 88 or < 40" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                    </div>
+                    <div>
+                      <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Urea (mmol/L)</label>
+                      <input type="text" id="encUrea" placeholder="e.g. 5.4 or > 25" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                    </div>
+                    <div>
+                      <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">eGFR (mL/min/1.73m²)</label>
+                      <input type="text" id="encEgfr" placeholder="Auto / manual (>90)" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base bg-gray-50 font-bold text-indigo-700 outline-none">
+                    </div>
+                    <div class="col-span-2 sm:col-span-1">
+                      <div class="flex items-center justify-between mb-1">
+                        <label class="block text-xs sm:text-sm font-semibold text-gray-700">UACR (Alb/Cr)</label>
+                        <select id="encUacrUnit" class="text-[10px] font-bold text-purple-900 bg-purple-100 border border-purple-200 rounded px-1 py-0.5 outline-none cursor-pointer">
+                          <option value="mg/g">mg/g</option>
+                          <option value="mg/mmol">mg/mmol</option>
+                        </select>
+                      </div>
+                      <input type="text" id="encUacr" placeholder="e.g. 25 or < 30" class="w-full border border-purple-300 focus:border-purple-500 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-purple-950 outline-none bg-purple-50/20" title="Urine Albumin-to-Creatinine Ratio (feeds PREVENT Enhanced Model)">
+                      <span class="block text-[9px] text-purple-700 font-semibold mt-0.5">Feeds PREVENT Enhanced</span>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Albumin (ALB, g/L)</label>
-                  <input type="text" id="encAlb" placeholder="e.g. 42 or < 20" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+
+                <!-- 3. Haemoglobin Test (Hb, HCT%) & 4. HbA1c Test (%) -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <!-- Haemoglobin & Haematocrit -->
+                  <div class="p-3 bg-rose-50/30 rounded-xl border border-rose-200">
+                    <div class="text-xs font-bold text-rose-950 uppercase tracking-wider mb-2 flex items-center justify-between">
+                      <span class="flex items-center gap-1.5"><i class="fa-solid fa-droplet text-rose-600"></i> Haemoglobin Test (Hb, HCT %)</span>
+                      <span class="text-[10px] text-rose-700 font-normal">Hematology</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                      <div>
+                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Haemoglobin (Hb, g/dL)</label>
+                        <input type="text" id="encHb" placeholder="e.g. 14.2 or < 7.0" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                      </div>
+                      <div>
+                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Haematocrit (HCT, %)</label>
+                        <input type="text" id="encHct" placeholder="e.g. 42.5" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- HbA1c Test -->
+                  <div class="p-3 bg-indigo-50/40 rounded-xl border border-indigo-200">
+                    <div class="text-xs font-bold text-indigo-950 uppercase tracking-wider mb-2 flex items-center justify-between">
+                      <span class="flex items-center gap-1.5"><i class="fa-solid fa-chart-line text-indigo-600"></i> HbA1c Test (%)</span>
+                      <span class="text-[10px] text-indigo-700 font-bold">3-Month Glycemic Control</span>
+                    </div>
+                    <div>
+                      <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">HbA1c Glycated Haemoglobin (%)</label>
+                      <input type="text" id="encHba1c" placeholder="e.g. 6.5 or > 14.0" class="w-full border border-indigo-300 focus:border-indigo-500 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-indigo-950 outline-none bg-indigo-50/20" title="Glycated Haemoglobin (%) - feeds PREVENT Enhanced Model">
+                      <span class="block text-[9px] text-indigo-700 font-semibold mt-0.5">Feeds PREVENT Enhanced Model</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <!-- Panel 5: Glycemic & Hematology -->
-            <div class="border border-gray-200 rounded-xl overflow-hidden">
-              <button type="button" onclick="togglePanel('panelGlycemic')" class="w-full bg-gray-50 px-4 py-2.5 text-left font-bold text-gray-800 flex justify-between items-center text-sm sm:text-base">
-                <span>🩸 Glycemic & Hematology (Glucose, HbA1c, Haemoglobin, HCT)</span>
-                <i id="panelGlycemic_icon" class="fa-solid fa-chevron-down text-gray-400 text-xs transition-transform"></i>
-              </button>
-              <div id="panelGlycemic" class="p-3.5 grid grid-cols-2 sm:grid-cols-5 gap-3 bg-white">
-                <div>
-                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Blood Glucose (mmol/L)</label>
-                  <input type="text" id="encGlucose" placeholder="e.g. 6.8 or > 33.3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none" title="Accepts numeric values and symbols such as < 1.1 or > 33.3">
+            <!-- ============================================================== -->
+            <!-- 🧪 TIER 3: RARE (Qualitative Rapid POCT Kits) -->
+            <!-- Vitamin D, Sperm Quantity, Ferritin -->
+            <!-- ============================================================== -->
+            <div class="border border-amber-200 rounded-xl overflow-hidden shadow-xs">
+              <button type="button" onclick="togglePanel('panelTier3')" class="w-full bg-gradient-to-r from-amber-100/80 via-orange-50 to-amber-50 px-4 py-2.5 text-left font-bold text-amber-950 flex justify-between items-center text-xs sm:text-sm">
+                <span class="flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-md bg-amber-600 text-white flex items-center justify-center text-xs shadow-2xs">
+                    <i class="fa-solid fa-vial"></i>
+                  </span>
+                  <span>🧪 TIER 3: RARE (Qualitative Rapid Tests: Vitamin D, Sperm Quantity, Ferritin)</span>
+                </span>
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 border border-amber-300">Specialized Kits</span>
+                  <i id="panelTier3_icon" class="fa-solid fa-chevron-down text-amber-700 text-xs transition-transform"></i>
                 </div>
+              </button>
+
+              <div id="panelTier3" class="p-3.5 grid grid-cols-1 sm:grid-cols-3 gap-3 bg-white">
                 <div>
-                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Glucose Type</label>
-                  <select id="encGlucoseType" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 bg-white outline-none">
-                    <option value="Fasting">Fasting</option>
-                    <option value="Random">Random</option>
-                    <option value="Post-Prandial">Post-Prandial (2h)</option>
+                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Qualitative Test for Vitamin D</label>
+                  <select id="encVitD" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none bg-white">
+                    <option value="">Not Tested</option>
+                    <option value="Sufficient">Sufficient (Normal ≥30 ng/mL)</option>
+                    <option value="Insufficient">Insufficient / Deficient (&lt;30 ng/mL)</option>
                   </select>
                 </div>
                 <div>
-                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">HbA1c (%)</label>
-                  <input type="text" id="encHba1c" placeholder="e.g. 6.9 or > 14.0" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
-                </div>
-                <div>
-                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Haemoglobin (Hb, g/dL)</label>
-                  <input type="text" id="encHb" placeholder="e.g. 14.2 or < 7.0" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
-                </div>
-                <div>
-                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Haematocrit (HCT, %)</label>
-                  <input type="text" id="encHct" placeholder="e.g. 42.5" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
-                </div>
-              </div>
-            </div>
-
-            <!-- Panel 6: Specialty Scans & POCT Devices -->
-            <div class="border border-gray-200 rounded-xl overflow-hidden">
-              <button type="button" onclick="togglePanel('panelScans')" class="w-full bg-gray-50 px-4 py-2.5 text-left font-bold text-gray-800 flex justify-between items-center text-sm sm:text-base">
-                <span>🔬 Specialty & Wellness Scans (Vit D, Ferritin, TEDA TCM, Airdoc, Rossmax ACT)</span>
-                <i id="panelScans_icon" class="fa-solid fa-chevron-down text-gray-400 text-xs transition-transform"></i>
-              </button>
-              <div id="panelScans" class="p-3.5 grid grid-cols-1 sm:grid-cols-3 gap-3 bg-white">
-                <div>
-                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Vitamin D Home Kit</label>
-                  <select id="encVitD" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none bg-white">
+                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Qualitative Test for Sperm Quantity</label>
+                  <select id="encSpermCount" class="w-full border border-amber-300 focus:border-amber-500 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-amber-950 outline-none bg-amber-50/20">
                     <option value="">Not Tested</option>
-                    <option value="Sufficient">Sufficient (Normal)</option>
-                    <option value="Insufficient">Insufficient / Deficient</option>
+                    <option value="Normal">Normal (≥ 15 Million/mL)</option>
+                    <option value="Low">Low / Oligozoospermia (&lt; 15 Million/mL)</option>
+                    <option value="Negative">Negative / Azoospermia (&lt; 2 Million/mL)</option>
                   </select>
                 </div>
                 <div>
@@ -1334,124 +1473,85 @@ Date visit: 06.01.2026
                     <option value="Insufficient">Insufficient / Deficient</option>
                   </select>
                 </div>
-                <div>
-                  <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Rossmax ACT (Artery Condition)</label>
-                  <input type="text" id="encRossmaxAct" placeholder="e.g. ACT 3 / Vascular Age 60" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base font-semibold text-gray-800 outline-none">
-                </div>
+              </div>
+            </div>
 
-                <!-- TEDA TCM & Meridian Wellness Scan Link -->
-                <div class="sm:col-span-3 border border-amber-200/80 bg-amber-50/40 rounded-xl p-3.5">
-                  <div class="flex justify-between items-center mb-2">
-                    <label class="block text-xs sm:text-sm text-amber-950 font-bold flex items-center gap-1.5">
-                      <i class="fa-solid fa-yin-yang text-amber-700"></i> TEDA TCM Wellness & Meridian Scan Link
+            <!-- ============================================================== -->
+            <!-- 📁 TIER 4: ADDITIONAL (Diagnostic Reports & Uploads) -->
+            <!-- Blood Report IndexedDB, CGM PDF, Zentalog PDF, Quick Notes -->
+            <!-- ============================================================== -->
+            <div class="border border-gray-300/80 rounded-xl overflow-hidden shadow-xs space-y-3.5 p-3.5 bg-gray-50/50">
+              <div class="flex items-center justify-between border-b border-gray-200 pb-2">
+                <span class="font-bold text-xs sm:text-sm text-gray-900 flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-md bg-gray-700 text-white flex items-center justify-center text-xs shadow-2xs">
+                    <i class="fa-solid fa-paperclip"></i>
+                  </span>
+                  <span>📁 TIER 4: ADDITIONAL (Full Blood Report Upload, CGM, Zentalog & Notes)</span>
+                </span>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 border border-gray-300">Attachments</span>
+              </div>
+
+              <!-- Attach Full Blood Report / Documents (IndexedDB) -->
+              <div class="border border-gray-200 rounded-xl overflow-hidden bg-white">
+                <div class="bg-gray-50 px-4 py-2 flex justify-between items-center">
+                  <span class="font-bold text-gray-800 text-xs sm:text-sm">📄 Attach Full Blood Report / Documents (IndexedDB)</span>
+                  <span class="text-xs text-gray-400 font-medium">PDF / Images</span>
+                </div>
+                <div class="p-3 bg-white space-y-2">
+                  <label class="block border-2 border-dashed border-gray-300 hover:border-blue-500 rounded-xl p-3.5 text-center cursor-pointer transition bg-gray-50/50">
+                    <i class="fa-solid fa-cloud-arrow-up text-blue-600 text-xl mb-1 block"></i>
+                    <span class="text-xs sm:text-sm font-semibold text-gray-700">Click to select or drop lab report (PDF, JPG, PNG)</span>
+                    <span class="block text-[11px] text-gray-400 mt-0.5">Files are stored securely in browser IndexedDB (Gigabyte capacity)</span>
+                    <input type="file" multiple accept="application/pdf,image/*" class="hidden" onchange="handleEncounterFiles(this.files)">
+                  </label>
+                  <div id="encAttachedFilesList"></div>
+                </div>
+              </div>
+
+              <!-- Specialized Diagnostic PDF Reports (CGM & Zentalog) -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <!-- CGM -->
+                <div class="p-3 bg-white rounded-xl border border-gray-200">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <label class="block text-xs font-bold text-gray-700">CGM Glucose Report (PDF)</label>
+                    <span id="encCgmBadge" class="text-[10px] text-gray-400">No PDF</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <label class="cursor-pointer px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition">
+                      <i class="fa-solid fa-chart-line text-teal-600"></i> Upload CGM PDF
+                      <input type="file" id="encCgmPdf" accept="application/pdf" class="hidden" onchange="handleCgmFile(this.files)">
                     </label>
+                    <button type="button" id="encCgmRemoveBtn" onclick="removeCgmFile()" class="text-rose-600 hover:text-rose-800 text-xs hidden font-bold" title="Remove PDF">
+                      <i class="fa-solid fa-xmark"></i> Remove
+                    </button>
                   </div>
-                  <div class="space-y-2">
-                    <div>
-                      <div class="flex items-center gap-2">
-                        <input type="url" id="encTedaLink" placeholder="Paste TEDA report link: e.g. https://sg-report.qiaolz.com/#/pages/reportTv/reportTvMain?rid=..." class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-xs sm:text-sm outline-none bg-white text-gray-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500">
-                        <button type="button" onclick="openTedaLinkInNewTab()" class="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs sm:text-sm font-bold transition flex items-center gap-1.5 shadow-xs whitespace-nowrap" title="Open TEDA report in a new browser tab">
-                          <i class="fa-solid fa-arrow-up-right-from-square"></i> Open Link
-                        </button>
-                      </div>
-                    </div>
-                    <div>
-                      <label class="block text-xs font-semibold text-gray-600 mb-1">TCM Findings & Notes (Optional)</label>
-                      <textarea id="encTeda" rows="2" placeholder="Optional clinical observations or notes regarding TEDA TCM scan..." class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs sm:text-sm outline-none bg-white font-sans"></textarea>
-                    </div>
-                  </div>
+                  <span id="encCgmFileName" class="text-[11px] text-gray-600 font-medium truncate block mt-1"></span>
                 </div>
 
-                <div class="sm:col-span-3 border-t border-gray-100 pt-3">
-                  <div class="text-xs font-bold text-indigo-950 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <i class="fa-solid fa-file-medical text-indigo-600"></i> Specialized Diagnostic Reports (PDF Upload for AI Synthesis)
+                <!-- Zentalog -->
+                <div class="p-3 bg-white rounded-xl border border-gray-200">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <label class="block text-xs font-bold text-gray-700">Zentalog Report (PDF)</label>
+                    <span id="encZentalogBadge" class="text-[10px] text-gray-400">No PDF</span>
                   </div>
-                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <!-- 1. Airdoc Retinal AI Scan -->
-                    <div class="p-3 bg-gray-50 rounded-xl border border-gray-200">
-                      <div class="flex items-center justify-between mb-1.5">
-                        <label class="block text-xs font-bold text-gray-700">Airdoc Retinal AI Scan</label>
-                        <span id="encAirdocBadge" class="text-[10px] text-gray-400">No PDF</span>
-                      </div>
-                      <div class="flex items-center gap-2">
-                        <label class="cursor-pointer px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition">
-                          <i class="fa-solid fa-file-pdf text-red-500"></i> Upload Airdoc
-                          <input type="file" id="encAirdocPdf" accept="application/pdf" class="hidden" onchange="handleAirdocFile(this.files)">
-                        </label>
-                        <button type="button" id="encAirdocRemoveBtn" onclick="removeAirdocFile()" class="text-rose-600 hover:text-rose-800 text-xs hidden font-bold" title="Remove PDF">
-                          <i class="fa-solid fa-xmark"></i>
-                        </button>
-                      </div>
-                      <span id="encAirdocFileName" class="text-[11px] text-gray-600 font-medium truncate block mt-1"></span>
-                    </div>
-
-                    <!-- 2. Continuous Glucose Monitoring (CGM) Report -->
-                    <div class="p-3 bg-gray-50 rounded-xl border border-gray-200">
-                      <div class="flex items-center justify-between mb-1.5">
-                        <label class="block text-xs font-bold text-gray-700">CGM Glucose Report (PDF)</label>
-                        <span id="encCgmBadge" class="text-[10px] text-gray-400">No PDF</span>
-                      </div>
-                      <div class="flex items-center gap-2">
-                        <label class="cursor-pointer px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition">
-                          <i class="fa-solid fa-chart-line text-teal-600"></i> Upload CGM PDF
-                          <input type="file" id="encCgmPdf" accept="application/pdf" class="hidden" onchange="handleCgmFile(this.files)">
-                        </label>
-                        <button type="button" id="encCgmRemoveBtn" onclick="removeCgmFile()" class="text-rose-600 hover:text-rose-800 text-xs hidden font-bold" title="Remove PDF">
-                          <i class="fa-solid fa-xmark"></i>
-                        </button>
-                      </div>
-                      <span id="encCgmFileName" class="text-[11px] text-gray-600 font-medium truncate block mt-1"></span>
-                    </div>
-
-                    <!-- 3. Zentalog Health & Lifestyle Log -->
-                    <div class="p-3 bg-gray-50 rounded-xl border border-gray-200">
-                      <div class="flex items-center justify-between mb-1.5">
-                        <label class="block text-xs font-bold text-gray-700">Zentalog Report (PDF)</label>
-                        <span id="encZentalogBadge" class="text-[10px] text-gray-400">No PDF</span>
-                      </div>
-                      <div class="flex items-center gap-2">
-                        <label class="cursor-pointer px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition">
-                          <i class="fa-solid fa-bowl-food text-purple-600"></i> Upload Zentalog
-                          <input type="file" id="encZentalogPdf" accept="application/pdf" class="hidden" onchange="handleZentalogFile(this.files)">
-                        </label>
-                        <button type="button" id="encZentalogRemoveBtn" onclick="removeZentalogFile()" class="text-rose-600 hover:text-rose-800 text-xs hidden font-bold" title="Remove PDF">
-                          <i class="fa-solid fa-xmark"></i>
-                        </button>
-                      </div>
-                      <span id="encZentalogFileName" class="text-[11px] text-gray-600 font-medium truncate block mt-1"></span>
-                    </div>
+                  <div class="flex items-center gap-2">
+                    <label class="cursor-pointer px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition">
+                      <i class="fa-solid fa-bowl-food text-purple-600"></i> Upload Zentalog
+                      <input type="file" id="encZentalogPdf" accept="application/pdf" class="hidden" onchange="handleZentalogFile(this.files)">
+                    </label>
+                    <button type="button" id="encZentalogRemoveBtn" onclick="removeZentalogFile()" class="text-rose-600 hover:text-rose-800 text-xs hidden font-bold" title="Remove PDF">
+                      <i class="fa-solid fa-xmark"></i> Remove
+                    </button>
                   </div>
+                  <span id="encZentalogFileName" class="text-[11px] text-gray-600 font-medium truncate block mt-1"></span>
                 </div>
               </div>
-            </div>
 
-            <!-- Panel 7: Other & Custom POCT Tests (Quick Notes) -->
-            <div class="border border-gray-200 rounded-xl overflow-hidden">
-              <button type="button" onclick="togglePanel('panelOtherTests')" class="w-full bg-gray-50 px-4 py-2.5 text-left font-bold text-gray-800 flex justify-between items-center text-sm sm:text-base">
-                <span>➕ Other & Custom POCT Tests (Quick Notes)</span>
-                <i id="panelOtherTests_icon" class="fa-solid fa-chevron-down text-gray-400 text-xs transition-transform"></i>
-              </button>
-              <div id="panelOtherTests" class="p-3.5 bg-white">
-                <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5">Log any additional rapid tests, wellness screenings, or clinical notes:</label>
-                <textarea id="encOtherTestsNotes" rows="2" placeholder="e.g. Saliva Cortisol 12 nmol/L, Troponin-I negative, Rapid Strep Test negative, etc."
-                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base outline-none focus:ring-1 focus:ring-blue-500"></textarea>
-              </div>
-            </div>
-
-            <!-- Panel 8: Document / Lab Report Upload (IndexedDB) -->
-            <div class="border border-gray-200 rounded-xl overflow-hidden">
-              <div class="bg-gray-50 px-4 py-2.5 flex justify-between items-center">
-                <span class="font-bold text-gray-800 text-sm sm:text-base">📄 Attach Full Blood Report / Documents (IndexedDB)</span>
-                <span class="text-xs text-gray-400 font-medium">PDF / Images</span>
-              </div>
-              <div class="p-3.5 bg-white space-y-2">
-                <label class="block border-2 border-dashed border-gray-300 hover:border-blue-500 rounded-xl p-4 text-center cursor-pointer transition bg-gray-50/50">
-                  <i class="fa-solid fa-cloud-arrow-up text-blue-600 text-2xl mb-1 block"></i>
-                  <span class="text-xs sm:text-sm font-semibold text-gray-700">Click to select or drop lab report (PDF, JPG, PNG)</span>
-                  <span class="block text-xs text-gray-400 mt-0.5">Files are stored securely in browser IndexedDB (Gigabyte capacity)</span>
-                  <input type="file" multiple accept="application/pdf,image/*" class="hidden" onchange="handleEncounterFiles(this.files)">
-                </label>
-                <div id="encAttachedFilesList"></div>
+              <!-- Other & Custom POCT Tests (Quick Notes) -->
+              <div class="p-3 bg-white rounded-xl border border-gray-200">
+                <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5">Other & Custom POCT Quick Notes:</label>
+                <textarea id="encOtherTestsNotes" rows="2" placeholder="e.g. Saliva Cortisol 12 nmol/L, Rapid Strep negative, etc."
+                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs sm:text-sm outline-none focus:ring-1 focus:ring-blue-500"></textarea>
               </div>
             </div>
           </div>
@@ -3080,7 +3180,7 @@ Date visit: 06.01.2026
   <script src="../js/auth.js?v=20261110_clean_wa_v1"></script>
   <script src="../js/db.js?v=20261110_clean_wa_v1"></script>
   <script src="../js/onedrive-sync.js?v=20261110_clean_wa_v1"></script>
-  <script src="../js/patient.js?v=20261110_clean_wa_v1"></script>
+  <script src="../js/patient.js?v=20261110_prevent_enhanced_v3"></script>
 
   <script>
     // Compatibility alias for New Patient modal

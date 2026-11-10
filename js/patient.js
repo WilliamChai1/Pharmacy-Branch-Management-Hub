@@ -1557,6 +1557,12 @@ function setupEncounterAutoCalculations() {
   if (wtEl) wtEl.addEventListener('input', () => recalculateCvdRisk(false));
   if (htEl) htEl.addEventListener('input', () => recalculateCvdRisk(false));
   if (egfrEl) egfrEl.addEventListener('input', () => recalculateCvdRisk(false));
+  const hba1cEl = document.getElementById('encHba1c');
+  if (hba1cEl) hba1cEl.addEventListener('input', () => recalculateCvdRisk(false));
+  const uacrEl = document.getElementById('encUacr');
+  if (uacrEl) uacrEl.addEventListener('input', () => recalculateCvdRisk(false));
+  const uacrUnitEl = document.getElementById('encUacrUnit');
+  if (uacrUnitEl) uacrUnitEl.addEventListener('change', () => recalculateCvdRisk(false));
 
   ['cvdSmoker', 'cvdHtnMeds', 'cvdLipidMeds', 'cvdDiabetes'].forEach(id => {
     const el = document.getElementById(id);
@@ -1733,110 +1739,208 @@ function calculateFraminghamGeneralCvd(params) {
   };
 }
 
+const PREVENT_COEFFICIENTS = {
+  "base_10yr": {
+    "female_total_cvd": [0.7939329, 0.0305239, -0.1606857, -0.2394003, 0.3600781, 0.8667604, 0.5360739, 0, 0, 0.6045917, 0.0433769, 0.3151672, -0.1477655, -0.0663612, 0.1197879, -0.0819715, 0.0306769, -0.0946348, -0.27057, -0.078715, 0, -0.1637806, -3.307728],
+    "male_total_cvd": [0.7688528, 0.0736174, -0.0954431, -0.4347345, 0.3362658, 0.7692857, 0.4386871, 0, 0, 0.5378979, 0.0164827, 0.288879, -0.1337349, -0.0475924, 0.150273, -0.0517874, 0.0191169, -0.1049477, -0.2251948, -0.0895067, 0, -0.1543702, -3.031168],
+    "female_ascvd": [0.719883, 0.1176967, -0.151185, -0.0835358, 0.3592852, 0.8348585, 0.4831078, 0, 0, 0.4864619, 0.0397779, 0.2265309, -0.0592374, -0.0395762, 0.0844423, -0.0567839, 0.0325692, -0.1035985, -0.2417542, -0.0791142, 0, -0.1671492, -3.819975],
+    "male_ascvd": [0.7099847, 0.1658663, -0.1144285, -0.2837212, 0.3239977, 0.7189597, 0.3956973, 0, 0, 0.3690075, 0.0203619, 0.2036522, -0.0865581, -0.0322916, 0.114563, -0.0300005, 0.0232747, -0.0927024, -0.2018525, -0.0970527, 0, -0.1217081, -3.500655],
+    "female_heart_failure": [0.8998235, 0, 0, -0.4559771, 0.3576505, 1.038346, 0.583916, -0.0072294, 0.2997706, 0.7451638, 0.0557087, 0.3534442, 0, -0.0981511, 0, 0, 0, -0.0946663, -0.3581041, -0.1159453, -0.003878, -0.1884289, -4.310409],
+    "male_heart_failure": [0.8972642, 0, 0, -0.6811466, 0.3634461, 0.923776, 0.5023736, -0.0485841, 0.3726929, 0.6926917, 0.0251827, 0.2980922, 0, -0.0497731, 0, 0, 0, -0.1289201, -0.3040924, -0.1401688, 0.0068126, -0.1797778, -3.946391],
+  },
+  "hba1c_10yr": {
+    "female_total_cvd": [0.7858178, 0.0194438, -0.1521964, -0.2296681, 0.3465777, 0.5366241, 0.5411682, 0, 0, 0.5931898, 0.0472458, 0.3158567, -0.1535174, -0.0687752, 0.1054746, -0.0761119, 0.0307469, -0.0905966, -0.2241857, -0.080186, 0, -0.1667286, 0.1338348, 0.1622409, -0.0142496, -3.306162],
+    "male_total_cvd": [0.7699177, 0.0605093, -0.0888525, -0.417713, 0.3288657, 0.4759471, 0.4385663, 0, 0, 0.5334616, 0.0206431, 0.2917524, -0.1383313, -0.0482622, 0.1393796, -0.0463501, 0.0205926, -0.1037717, -0.1737697, -0.0915839, 0, -0.1637039, 0.13159, 0.1295185, -0.0128373, -3.040901],
+    "female_ascvd": [0.7111831, 0.106797, -0.1425745, -0.0736824, 0.3480844, 0.5112951, 0.4880292, 0, 0, 0.4754997, 0.0438132, 0.2259093, -0.0648872, -0.0437645, 0.0697082, -0.0506382, 0.0327475, -0.0996442, -0.1924338, -0.0803539, 0, -0.1682586, 0.1339055, 0.1596461, 0.0015678, -3.838746],
+    "male_ascvd": [0.7064146, 0.1532267, -0.1082166, -0.2675288, 0.3173809, 0.432604, 0.3958842, 0, 0, 0.3665014, 0.0250243, 0.2061158, -0.0899988, -0.0334959, 0.1034168, -0.0255406, 0.0247538, -0.0917441, -0.1499195, -0.098089, 0, -0.1305231, 0.1157161, 0.1288303, -0.0010001, -3.51835],
+    "female_heart_failure": [0.8997391, 0, 0, -0.4422749, 0.3378691, 0.681284, 0.5886005, -0.0148657, 0.2958374, 0.73447, 0.05926, 0.3543475, 0, -0.1002139, 0, 0, 0, -0.0878765, -0.303684, -0.1178943, -0.008345, -0.1912183, 0.1856442, 0.1833083, -0.0143112, -4.288225],
+    "male_heart_failure": [0.911787, 0, 0, -0.6568071, 0.3524645, 0.5849752, 0.5014014, -0.0512352, 0.365294, 0.6892219, 0.0292377, 0.3038296, 0, -0.0515032, 0, 0, 0, -0.1262343, -0.2449514, -0.1392217, 0.0009592, -0.1917105, 0.1652857, 0.1505859, -0.0113444, -3.961954],
+  },
+  "uacr_10yr": {
+    "female_total_cvd": [0.7969249, 0.0256635, -0.1588107, -0.2255701, 0.3396649, 0.8047515, 0.5285338, 0, 0, 0.4803511, 0.0434472, 0.2985207, -0.1497787, -0.0742889, 0.106756, -0.0778126, 0.0306768, -0.0907168, -0.2705122, -0.0830564, 0, -0.1389249, 0.1793037, 0.0132073, -3.738341],
+    "male_total_cvd": [0.7768655, 0.0659949, -0.0951111, -0.420667, 0.3120151, 0.698521, 0.4314669, 0, 0, 0.3841364, 0.009384, 0.2676494, -0.1390966, -0.0579315, 0.1383719, -0.0488332, 0.0200406, -0.102454, -0.2236355, -0.089485, 0, -0.1321848, 0.1887974, 0.0916979, -3.510705],
+    "female_ascvd": [0.7201999, 0.1135771, -0.1493506, -0.0726677, 0.3436259, 0.7773094, 0.4746662, 0, 0, 0.3824646, 0.0394178, 0.2125182, -0.0603046, -0.0466053, 0.0733118, -0.0534262, 0.0325689, -0.0999887, -0.2411762, -0.0826941, 0, -0.1444737, 0.1501217, 0.0050257, -4.174614],
+    "male_ascvd": [0.7141718, 0.1602194, -0.1139086, -0.2719456, 0.3058719, 0.6600631, 0.3884022, 0, 0, 0.2466316, 0.0151852, 0.186167, -0.0894395, -0.0411884, 0.1058212, -0.028089, 0.0240427, -0.0912325, -0.2004894, -0.096936, 0, -0.1022867, 0.1510073, 0.0556, -3.85146],
+    "female_heart_failure": [0.9145975, 0, 0, -0.4441346, 0.3260323, 0.9611365, 0.5755787, 0.0008831, 0.2988964, 0.5915291, 0.0556823, 0.3314097, 0, -0.1078596, 0, 0, 0, -0.0875231, -0.356859, -0.1220248, -0.0053637, -0.1610389, 0.2197281, 0.0326667, -4.841506],
+    "male_heart_failure": [0.9111795, 0, 0, -0.6693649, 0.3290082, 0.8377655, 0.4978917, -0.042749, 0.3624165, 0.5075796, 0.0137716, 0.2739963, 0, -0.0645712, 0, 0, 0, -0.1230039, -0.3013297, -0.1410318, 0.0021531, -0.1548018, 0.2306299, 0.1472194, -4.556907],
+  },
+  "full_10yr": {
+    "female_total_cvd": [0.7716794, 0.0062109, -0.1547756, -0.1933123, 0.3071217, 0.496753, 0.466605, 0, 0, 0.4780697, 0.0529077, 0.3034892, -0.1556524, -0.0667026, 0.1061825, -0.0742271, 0.0288245, -0.0875188, -0.2267102, -0.0676125, 0, -0.1493231, 0.1361989, 0.2261596, 0.1804508, 0.1645922, 0.0198413, 0.1298513, 0.1412555, -0.0031658, -3.860385],
+    "male_total_cvd": [0.7847578, 0.0534485, -0.0911282, -0.4921973, 0.2972415, 0.4527054, 0.3726641, 0, 0, 0.3886854, 0.0081661, 0.2508052, -0.1538484, -0.0474695, 0.1415382, -0.0436455, 0.0199549, -0.1022686, -0.1762507, -0.0715873, 0, -0.1428668, 0.0802431, 0.275073, 0.144759, 0.1772853, 0.1095674, 0.1165698, 0.1048297, -0.0230072, -3.631387],
+    "female_ascvd": [0.7023067, 0.0898765, -0.1407316, -0.0256648, 0.314511, 0.4799217, 0.4062049, 0, 0, 0.3847744, 0.0495174, 0.2133861, -0.0678552, -0.0451416, 0.0788187, -0.0535985, 0.0291762, -0.0961839, -0.2001466, -0.0586472, 0, -0.1537791, 0.1413965, 0.228136, 0.1588908, 0.1371824, 0.0061613, 0.123192, 0.1410572, 0.005866, -4.291503],
+    "male_ascvd": [0.7128741, 0.1465201, -0.1125794, -0.3387216, 0.2980252, 0.399583, 0.3379111, 0, 0, 0.2582604, 0.0147769, 0.1686621, -0.1073619, -0.0381038, 0.1034169, -0.0228755, 0.0267453, -0.0897449, -0.1497464, -0.077206, 0, -0.1198368, 0.0651121, 0.2676683, 0.1388492, 0.1375837, 0.0652944, 0.101282, 0.1092726, -0.0112852, -3.969788],
+    "female_heart_failure": [0.884209, 0, 0, -0.421474, 0.3002919, 0.6170359, 0.5380269, -0.0191335, 0.2764302, 0.5975847, 0.0654197, 0.3313614, 0, -0.1002304, 0, 0, 0, -0.0845363, -0.2989062, -0.1111354, 0.0008104, -0.1666635, 0.1213034, 0.2314147, 0.1819138, 0.1948135, 0.0395368, 0.176668, 0.1614911, -0.0010583, -4.896524],
+    "male_heart_failure": [0.9095703, 0, 0, -0.6765184, 0.3111651, 0.5535052, 0.4326811, -0.0854286, 0.3551736, 0.5102245, 0.015472, 0.2570964, 0, -0.0591177, 0, 0, 0, -0.1219056, -0.2437577, -0.105363, 0.0037907, -0.1660207, 0.1106372, 0.3371204, 0.1694628, 0.2164607, 0.1702805, 0.148297, 0.1234088, -0.0234637, -4.663513],
+  },
+  "base_30yr": {
+    "female_total_cvd": [0.5503079, -0.0928369, 0.0409794, -0.1663306, -0.1628654, 0.3299505, 0.6793894, 0.3196112, 0, 0, 0.1857101, 0.0553528, 0.2894, -0.075688, -0.056367, 0.1071019, -0.0751438, 0.0301786, -0.0998776, -0.3206166, -0.1607862, 0, -0.1450788, -1.318827],
+    "male_total_cvd": [0.4627309, -0.0984281, 0.0836088, -0.1029824, -0.2140352, 0.2904325, 0.5331276, 0.2141914, 0, 0, 0.1155556, 0.0603775, 0.232714, -0.0272112, -0.0384488, 0.134192, -0.0511759, 0.0165865, -0.1101437, -0.2585943, -0.1566406, 0, -0.1166776, -1.148204],
+    "female_ascvd": [0.4669202, -0.0893118, 0.1256901, -0.1542255, -0.0018093, 0.322949, 0.6296707, 0.268292, 0, 0, 0.100106, 0.0499663, 0.1875292, 0.0152476, -0.0276123, 0.0736147, -0.0521962, 0.0316918, -0.1046101, -0.2727793, -0.1530907, 0, -0.1299149, -1.974074],
+    "male_ascvd": [0.3994099, -0.0937484, 0.1744643, -0.120203, -0.0665117, 0.2753037, 0.4790257, 0.1782635, 0, 0, -0.0218789, 0.0602553, 0.1421182, 0.0135996, -0.0218265, 0.1013148, -0.0312619, 0.020673, -0.0920935, -0.2159947, -0.1548811, 0, -0.0712547, -1.736444],
+    "female_heart_failure": [0.6254374, -0.0983038, 0, 0, -0.3919241, 0.3142295, 0.8330787, 0.3438651, 0.0594874, 0.2525536, 0.2981642, 0.0667159, 0.333921, 0, -0.0893177, 0, 0, 0, -0.0974299, -0.404855, -0.1982991, -0.0035619, -0.1564215, -2.205379],
+    "male_heart_failure": [0.5681541, -0.1048388, 0, 0, -0.4761564, 0.30324, 0.6840338, 0.2656273, 0.0833107, 0.26999, 0.2541805, 0.0638923, 0.2583631, 0, -0.0391938, 0, 0, 0, -0.1269124, -0.3273572, -0.2043019, -0.0182831, -0.1342618, -1.95751],
+  },
+  "hba1c_30yr": {
+    "female_total_cvd": [0.5343493, -0.0952314, 0.0298124, -0.1578451, -0.1504488, 0.3173368, 0.4314738, 0.3209399, 0, 0, 0.1771435, 0.0582828, 0.2888947, -0.0795886, -0.0600438, 0.0920598, -0.0696108, 0.0308807, -0.0954051, -0.2763408, -0.1623944, 0, -0.1430514, 0.0940543, 0.1116486, -0.0024798, -1.341059],
+    "male_total_cvd": [0.4519873, -0.101624, 0.0700456, -0.0968005, -0.1923527, 0.2827043, 0.3417152, 0.2105272, 0, 0, 0.1113291, 0.0640135, 0.2334248, -0.0299421, -0.0393204, 0.1228854, -0.0463737, 0.0184599, -0.1085744, -0.2208049, -0.1577978, 0, -0.1179375, 0.0768169, 0.0777295, 0.0092204, -1.180767],
+    "female_ascvd": [0.4555574, -0.0903501, 0.1148321, -0.1458754, 0.0089323, 0.3139029, 0.386281, 0.2714309, 0, 0, 0.0930987, 0.0532216, 0.1862181, 0.0106964, -0.0329713, 0.0583609, -0.0463273, 0.0324717, -0.1004777, -0.2266944, -0.1541859, 0, -0.1286005, 0.0875827, 0.1126417, 0.0124356, -2.011533],
+    "male_ascvd": [0.3883267, -0.0958114, 0.1613374, -0.1144418, -0.0474338, 0.2691281, 0.2859773, 0.1759553, 0, 0, -0.0242898, 0.0644523, 0.142874, 0.0115062, -0.02333, 0.0899664, -0.0275478, 0.022573, -0.090802, -0.1771894, -0.1548847, 0, -0.0732754, 0.0591089, 0.0821158, 0.0179755, -1.777708],
+    "female_heart_failure": [0.6210856, -0.1000972, 0, 0, -0.3773697, 0.295316, 0.5681692, 0.3449139, 0.0540094, 0.249767, 0.2875781, 0.0692013, 0.3334936, 0, -0.0922339, 0, 0, 0, -0.0907885, -0.3554646, -0.2008846, -0.0079611, -0.156803, 0.1448336, 0.1277838, -0.0022589, -2.193553],
+    "male_heart_failure": [0.5703729, -0.1084544, 0, 0, -0.4471767, 0.2910152, 0.4507242, 0.259585, 0.0850676, 0.2637222, 0.2454706, 0.0675649, 0.2611991, 0, -0.0408908, 0, 0, 0, -0.1241051, -0.2849461, -0.2032308, -0.0239714, -0.138301, 0.1101184, 0.0949198, 0.0084192, -1.974999],
+  },
+  "uacr_30yr": {
+    "female_total_cvd": [0.5491768, -0.0937311, 0.0359847, -0.1642965, -0.1483404, 0.313353, 0.6253766, 0.3147172, 0, 0, 0.1094663, 0.0550705, 0.2782433, -0.0786239, -0.0628947, 0.093204, -0.0710685, 0.0306363, -0.0951455, -0.3168231, -0.1636391, 0, -0.1265483, 0.1142251, -0.0055863, -1.583738],
+    "male_total_cvd": [0.464491, -0.0998895, 0.0757606, -0.1031778, -0.1990714, 0.2715816, 0.4754637, 0.2069672, 0, 0, 0.0331103, 0.0540474, 0.2189911, -0.0331044, -0.04534, 0.1214535, -0.0483995, 0.0178997, -0.1059324, -0.2492861, -0.1561543, 0, -0.1012429, 0.1007571, 0.0572456, -1.398727],
+    "female_ascvd": [0.4629669, -0.0902777, 0.1215214, -0.1522069, 0.0092679, 0.3113609, 0.581256, 0.263167, 0, 0, 0.0391726, 0.0492959, 0.1786178, 0.0131058, -0.0325135, 0.0617093, -0.0489189, 0.0321079, -0.1003185, -0.2684574, -0.1547301, 0, -0.1130703, 0.0903471, -0.0145818, -2.178888],
+    "male_ascvd": [0.3995607, -0.094557, 0.1686692, -0.1202145, -0.0555561, 0.2633566, 0.4362036, 0.1716233, 0, 0, -0.0775282, 0.0561236, 0.1319331, 0.0102428, -0.0269294, 0.0920557, -0.0297021, 0.0217935, -0.0893347, -0.2081467, -0.1542716, 0, -0.0597254, 0.0684872, 0.0193962, -1.873449],
+    "female_heart_failure": [0.6319513, -0.1009284, 0, 0, -0.3787175, 0.2863393, 0.7631221, 0.3355843, 0.0677084, 0.2517238, 0.1940067, 0.0664006, 0.3171436, 0, -0.0970661, 0, 0, 0, -0.0896239, -0.400743, -0.2042041, -0.0054699, -0.13602, 0.1486028, 0.011608, -2.538952],
+    "male_heart_failure": [0.5750236, -0.1062268, 0, 0, -0.4633994, 0.2742874, 0.612208, 0.2614987, 0.0895459, 0.2632424, 0.1430472, 0.0535184, 0.2417468, 0, -0.0498574, 0, 0, 0, -0.1193827, -0.316651, -0.2046122, -0.0216878, -0.1165637, 0.1366452, 0.1078355, -2.314872],
+  },
+  "full_30yr": {
+    "female_total_cvd": [0.5073749, -0.0981751, 0.0162303, -0.1617147, -0.1111241, 0.282946, 0.4004069, 0.2918701, 0, 0, 0.1017102, 0.0622643, 0.2872416, -0.0768135, -0.0557282, 0.0917585, -0.0679131, 0.029076, -0.0907755, -0.2702118, -0.1373216, 0, -0.1255864, 0.1067741, 0.1853138, 0.1567115, 0.1028065, -0.0006181, 0.0925285, 0.0975598, 0.0101713, -1.748475],
+    "male_total_cvd": [0.4427595, -0.1064108, 0.0629381, -0.1015427, -0.2542326, 0.2549679, 0.333835, 0.1873833, 0, 0, 0.0246102, 0.0552014, 0.1979729, -0.0407714, -0.0365522, 0.1232822, -0.0441334, 0.0177865, -0.1046657, -0.2116113, -0.1277905, 0, -0.0955922, 0.0256704, 0.1887637, 0.089241, 0.0894596, 0.0710124, 0.0676202, 0.063409, 0.0038783, -1.504558],
+    "female_ascvd": [0.4386739, -0.0921956, 0.0977728, -0.1453525, 0.0590925, 0.2862862, 0.3669136, 0.2354695, 0, 0, 0.0354338, 0.0573093, 0.1840085, 0.0117504, -0.0331945, 0.0664311, -0.0492826, 0.0288888, -0.0964709, -0.2279648, -0.120405, 0, -0.1157635, 0.1107632, 0.1840367, 0.1308962, 0.0810739, -0.0147785, 0.0794709, 0.1002615, 0.017301, -2.314066],
+    "male_ascvd": [0.3743566, -0.0995499, 0.1544808, -0.1215297, -0.1083968, 0.2555179, 0.2696998, 0.1628432, 0, 0, -0.077507, 0.0583407, 0.1120322, -0.0025063, -0.0256116, 0.0886745, -0.0254507, 0.0244639, -0.0869146, -0.165745, -0.1244714, 0, -0.0624552, 0.015675, 0.1864231, 0.0845697, 0.0560171, 0.0252244, 0.0501422, 0.0722905, 0.0114945, -1.985368],
+    "female_heart_failure": [0.5927507, -0.1028754, 0, 0, -0.3593781, 0.2628556, 0.5113472, 0.347344, 0.0564656, 0.2363857, 0.1971295, 0.0735227, 0.3219386, 0, -0.0880321, 0, 0, 0, -0.0863132, -0.3425359, -0.181405, 0.0031285, -0.1356989, 0.0847634, 0.18397, 0.1485802, 0.1273306, 0.0167008, 0.1378342, 0.1138832, 0.0138979, -2.642208],
+    "male_heart_failure": [0.5478829, -0.1111928, 0, 0, -0.4547346, 0.2527602, 0.4385384, 0.2397952, 0.0640931, 0.2643081, 0.1354588, 0.0570689, 0.220666, 0, -0.0436769, 0, 0, 0, -0.1168376, -0.2730055, -0.1573691, -0.0174998, -0.1128676, 0.057746, 0.2446441, 0.1076782, 0.1233486, 0.1274796, 0.0985062, 0.0804844, 0.0022806, -2.425439],
+  },
+};
+
 /**
  * 2024 American Heart Association (AHA) PREVENT™ Risk Equations
  * Reference: Khan SS, et al. Circulation. 2024;149:430–449
+ * Race-free multi-organ prediction models.
+ * Automatically switches between Base Model and Enhanced Models based on presence of HbA1c and/or UACR.
  */
 function calculateAhaPreventRisk(params) {
   if (!params) return null;
   const sex = (params.sex || 'Male').toLowerCase();
   const isMale = (sex === 'male');
+  const pSex = isMale ? 'male' : 'female';
   const age = Math.max(30, Math.min(79, Number(params.age) || 50));
 
   let tcMmol = Number(params.tcMmol || params.tc) || 0;
   let hdlMmol = Number(params.hdlMmol || params.hdl) || 0;
   if (!tcMmol || !hdlMmol) return null;
 
-  const tcMg = tcMmol * 38.67;
-  const hdlMg = hdlMmol * 38.67;
   const sbp = Math.max(90, Math.min(200, Number(params.sbp) || 120));
   const bmi = Math.max(18.5, Math.min(39.9, Number(params.bmi) || 24.5));
   const egfr = Math.max(15, Math.min(140, Number(params.egfr) || 90.0));
 
   const diabetes = Boolean(params.diabetes || params.hasDiabetes);
-  const smoker = Boolean(params.smoker);
+  const smoker = Boolean(params.smoker || params.isSmoker);
   const onHtnMeds = Boolean(params.treatedBp || params.onHtnMeds);
   const onStatin = Boolean(params.onLipidMeds || params.onCholesterolMeds);
 
-  const covs = {
-    female_10_yr_ascvd: { c: -3.819975, dm: 0.8348585, smk: 0.4831078, htn: 0.2265309, stat: -0.0592374, age: 0.719883, chol_mult: 0.02586, tc_diff: 0.1176967, hdl_diff: -0.151185, sbp_min: -0.0835358, sbp_max: 0.3592852, egfr_min: 0.4864619, egfr_max: 0.0397779, htn_sbp_max: -0.0395762, stat_tc_diff: 0.0844423, age_tc_diff: -0.0567839, age_hdl_diff: 0.0325692, age_sbp_max: -0.1035985, dm_age: -0.2417542, smk_age: -0.0791142, age_min_egfr: -0.1671492, age2: 0, bmi_min: 0, bmi_max: 0, age_bmi_max: 0 },
-    male_10_yr_ascvd: { c: -3.500655, dm: 0.7189597, smk: 0.3956973, htn: 0.2036522, stat: -0.0865581, age: 0.7099847, chol_mult: 0.02586, tc_diff: 0.1658663, hdl_diff: -0.1144285, sbp_min: -0.2837212, sbp_max: 0.3239977, egfr_min: 0.3690075, egfr_max: 0.0203619, htn_sbp_max: -0.0322916, stat_tc_diff: 0.114563, age_tc_diff: -0.0300005, age_hdl_diff: 0.0232747, age_sbp_max: -0.0927024, dm_age: -0.2018525, smk_age: -0.0970527, age_min_egfr: -0.1217081, age2: 0, bmi_min: 0, bmi_max: 0, age_bmi_max: 0 },
-    female_30_yr_ascvd: { c: -1.974074, dm: 0.6296707, smk: 0.268292, htn: 0.1875292, stat: 0.0152476, age: 0.4669202, age2: -0.0893118, chol_mult: 0.02586, tc_diff: 0.1256901, hdl_diff: -0.1542255, sbp_min: -0.0018093, sbp_max: 0.322949, egfr_min: 0.100106, egfr_max: 0.0499663, htn_sbp_max: -0.0276123, stat_tc_diff: 0.0736147, age_tc_diff: -0.0521962, age_hdl_diff: 0.0316918, age_sbp_max: -0.1046101, dm_age: -0.2727793, smk_age: -0.1530907, age_min_egfr: -0.1299149, bmi_min: 0, bmi_max: 0, age_bmi_max: 0 },
-    male_30_yr_ascvd: { c: -1.736444, dm: 0.4790257, smk: 0.1782635, htn: 0.1421182, stat: 0.0135996, age: 0.3994099, age2: -0.0937484, chol_mult: 0.02586, tc_diff: 0.1744643, hdl_diff: -0.120203, sbp_min: -0.0665117, sbp_max: 0.2753037, egfr_min: -0.0218789, egfr_max: 0.0602553, htn_sbp_max: -0.0218265, stat_tc_diff: 0.1013148, age_tc_diff: -0.0312619, age_hdl_diff: 0.020673, age_sbp_max: -0.0920935, dm_age: -0.2159947, smk_age: -0.1548811, age_min_egfr: -0.0712547, bmi_min: 0, bmi_max: 0, age_bmi_max: 0 },
-    female_10_yr_hf: { c: -4.310409, dm: 1.038346, smk: 0.583916, htn: 0.3534442, stat: 0, age: 0.8998235, age2: 0, chol_mult: 0.02586, tc_diff: 0, hdl_diff: 0, sbp_min: -0.4559771, sbp_max: 0.3576505, egfr_min: 0.7451638, egfr_max: 0.0557087, htn_sbp_max: -0.0981511, stat_tc_diff: 0, age_tc_diff: 0, age_hdl_diff: 0, age_sbp_max: -0.0946663, dm_age: -0.3581041, smk_age: -0.1159453, age_min_egfr: -0.1884289, bmi_min: -0.0072294, bmi_max: 0.2997706, age_bmi_max: -0.003878 },
-    male_10_yr_hf: { c: -3.946391, dm: 0.923776, smk: 0.5023736, htn: 0.2980922, stat: 0, age: 0.8972642, age2: 0, chol_mult: 0, tc_diff: 0, hdl_diff: 0, sbp_min: -0.6811466, sbp_max: 0.3634461, egfr_min: 0.6926917, egfr_max: 0.0251827, htn_sbp_max: -0.0497731, stat_tc_diff: 0, age_tc_diff: 0, age_hdl_diff: 0, age_sbp_max: -0.1289201, dm_age: -0.3040924, smk_age: -0.1401688, age_min_egfr: -0.1797778, bmi_min: -0.0485841, bmi_max: 0.3726929, age_bmi_max: 0.0068126 },
-    female_30_yr_hf: { c: -2.205379, dm: 0.8330787, smk: 0.3438651, htn: 0.333921, stat: 0, age: 0.6254374, age2: -0.0983038, chol_mult: 0, tc_diff: 0, hdl_diff: 0, sbp_min: -0.3919241, sbp_max: 0.3142295, egfr_min: 0.2981642, egfr_max: 0.0667159, htn_sbp_max: -0.0893177, stat_tc_diff: 0, age_tc_diff: 0, age_hdl_diff: 0, age_sbp_max: -0.0974299, dm_age: -0.404855, smk_age: -0.1982991, age_min_egfr: -0.1564215, bmi_min: 0.0594874, bmi_max: 0.2525536, age_bmi_max: -0.0035619 },
-    male_30_yr_hf: { c: -1.95751, dm: 0.6840338, smk: 0.2656273, htn: 0.2583631, stat: 0, age: 0.5681541, age2: -0.1048388, chol_mult: 0, tc_diff: 0, hdl_diff: 0, sbp_min: -0.4761564, sbp_max: 0.30324, egfr_min: 0.2541805, egfr_max: 0.0638923, htn_sbp_max: -0.0391938, stat_tc_diff: 0, age_tc_diff: 0, age_hdl_diff: 0, age_sbp_max: -0.1269124, dm_age: -0.3273572, smk_age: -0.2043019, age_min_egfr: -0.1342618, bmi_min: 0.0833107, bmi_max: 0.26999, age_bmi_max: -0.0182831 },
-    female_10_yr_cvd: { c: -3.307728, dm: 0.8667604, smk: 0.5360739, htn: 0.3151672, stat: -0.1477655, age: 0.7939329, age2: 0, chol_mult: 0.02586, tc_diff: 0.0305239, hdl_diff: -0.1606857, sbp_min: -0.2394003, sbp_max: 0.3600781, egfr_min: 0.6045917, egfr_max: 0.0433769, htn_sbp_max: -0.0663612, stat_tc_diff: 0.1197879, age_tc_diff: -0.0819715, age_hdl_diff: 0.0306769, age_sbp_max: -0.0946348, dm_age: -0.27057, smk_age: -0.078715, age_min_egfr: -0.1637806, bmi_min: 0, bmi_max: 0, age_bmi_max: 0 },
-    male_10_yr_cvd: { c: -3.031168, dm: 0.7692857, smk: 0.4386871, htn: 0.288879, stat: -0.1337349, age: 0.7688528, age2: 0, chol_mult: 0.02586, tc_diff: 0.0736174, hdl_diff: -0.0954431, sbp_min: -0.4347345, sbp_max: 0.3362658, egfr_min: 0.5378979, egfr_max: 0.0164827, htn_sbp_max: -0.0475924, stat_tc_diff: 0.150273, age_tc_diff: -0.0517874, age_hdl_diff: 0.0191169, age_sbp_max: -0.1049477, dm_age: -0.2251948, smk_age: -0.0895067, age_min_egfr: -0.1543702, bmi_min: 0, bmi_max: 0, age_bmi_max: 0 },
-    female_30_yr_cvd: { c: -1.318827, dm: 0.6793894, smk: 0.3196112, htn: 0.2894, stat: -0.075688, age: 0.5503079, age2: -0.0928369, chol_mult: 0.02586, tc_diff: 0.0409794, hdl_diff: -0.1663306, sbp_min: -0.1628654, sbp_max: 0.3299505, egfr_min: 0.1857101, egfr_max: 0.0553528, htn_sbp_max: -0.056367, stat_tc_diff: 0.1071019, age_tc_diff: -0.0751438, age_hdl_diff: 0.0301786, age_sbp_max: -0.0998776, dm_age: -0.3206166, smk_age: -0.1607862, age_min_egfr: -0.1450788, bmi_min: 0, bmi_max: 0, age_bmi_max: 0 },
-    male_30_yr_cvd: { c: -1.148204, dm: 0.5331276, smk: 0.2141914, htn: 0.232714, stat: -0.0272112, age: 0.4627309, age2: -0.0984281, chol_mult: 0.02586, tc_diff: 0.0836088, hdl_diff: -0.1029824, sbp_min: -0.2140352, sbp_max: 0.2904325, egfr_min: 0.1155556, egfr_max: 0.0603775, htn_sbp_max: -0.0384488, stat_tc_diff: 0.134192, age_tc_diff: -0.0511759, age_hdl_diff: 0.0165865, age_sbp_max: -0.1101437, dm_age: -0.2585943, smk_age: -0.1566406, age_min_egfr: -0.1166776, bmi_min: 0, bmi_max: 0, age_bmi_max: 0 }
-  };
+  // Optional Enhanced Predictors: HbA1c (%) & UACR (mg/g)
+  let rawHba1c = (params.hba1c !== undefined && params.hba1c !== null && params.hba1c !== '')
+    ? parseFloat(String(params.hba1c).replace(/[^\d.]/g, ''))
+    : null;
+  const hasHba1c = (rawHba1c !== null && !isNaN(rawHba1c) && rawHba1c >= 3.0 && rawHba1c <= 20.0);
+  const hba1c = hasHba1c ? Math.max(4.5, Math.min(15.0, rawHba1c)) : null;
 
-  function calcOne(key, bmiVal) {
-    const cov = covs[key];
-    const adjAge = (age - 55.0) / 10.0;
-    const adjAge2 = adjAge * adjAge;
-    const sbpMax = (Math.max(sbp, 110.0) - 130.0) / 20.0;
-    const sbpMin = (Math.min(sbp, 110.0) - 110.0) / 20.0;
-    const cholDiff = tcMg - hdlMg;
-    const cholDiffFactor = cov.chol_mult * cholDiff - 3.5;
-    const hdlDiffFactor = (cov.chol_mult * hdlMg - 1.3) / 0.3;
-    const dmFactor = diabetes ? cov.dm : 0;
-    const smkFactor = smoker ? cov.smk : 0;
-    const htnFactor = onHtnMeds ? cov.htn : 0;
-    const statFactor = onStatin ? cov.stat : 0;
-    const dmAgeFactor = diabetes ? (cov.dm_age * adjAge) : 0;
-    const smkAgeFactor = smoker ? (cov.smk_age * adjAge) : 0;
-    const egfrMin = (Math.min(egfr, 60.0) - 60.0) / -15.0;
-    const egfrMax = (Math.max(egfr, 60.0) - 90.0) / -15.0;
-    const bMin = (Math.min(bmiVal, 30.0) - 25.0) / 5.0;
-    const bMax = (Math.max(bmiVal, 30.0) - 30.0) / 5.0;
+  let rawUacr = (params.uacr !== undefined && params.uacr !== null && params.uacr !== '')
+    ? parseFloat(String(params.uacr).replace(/[^\d.]/g, ''))
+    : null;
+  const uacrUnit = (params.uacrUnit || 'mg/g').toLowerCase();
+  if (rawUacr !== null && !isNaN(rawUacr) && uacrUnit.includes('mmol')) {
+    rawUacr = rawUacr * 8.8418; // Convert standard lab mg/mmol to mg/g
+  }
+  const hasUacr = (rawUacr !== null && !isNaN(rawUacr) && rawUacr > 0);
+  const uacr = hasUacr ? Math.max(0.1, Math.min(25000.0, rawUacr)) : null;
 
-    const terms = [
-      cov.age * adjAge,
-      cov.age2 * adjAge2,
-      cov.c,
-      cov.tc_diff * cholDiffFactor,
-      cov.hdl_diff * hdlDiffFactor,
-      cov.sbp_min * sbpMin,
-      cov.sbp_max * sbpMax,
-      dmFactor,
-      smkFactor,
-      cov.egfr_min * egfrMin,
-      cov.egfr_max * egfrMax,
-      htnFactor,
-      statFactor,
-      onHtnMeds ? (cov.htn_sbp_max * sbpMax) : 0,
-      onStatin ? (cov.stat_tc_diff * cholDiffFactor) : 0,
-      cov.age_tc_diff * adjAge * cholDiffFactor,
-      cov.age_hdl_diff * adjAge * hdlDiffFactor,
-      cov.age_sbp_max * adjAge * sbpMax,
-      dmAgeFactor,
-      smkAgeFactor,
-      cov.age_min_egfr * adjAge * egfrMin,
-      cov.bmi_min * bMin,
-      cov.bmi_max * bMax,
-      cov.age_bmi_max * adjAge * bMax
-    ];
-    const s = terms.reduce((acc, v) => acc + v, 0);
-    const expS = Math.exp(s);
-    const risk = (expS / (1.0 + expS)) * 100.0;
-    return Math.max(0.1, Math.min(99.9, Number(risk.toFixed(1))));
+  // Determine model variation according to AHA PREVENT specification
+  let modelType = 'base';
+  let modelLabel = 'Base Model';
+  if (hasHba1c && hasUacr) {
+    modelType = 'full';
+    modelLabel = 'Enhanced (HbA1c + UACR)';
+  } else if (hasHba1c) {
+    modelType = 'hba1c';
+    modelLabel = 'Enhanced (HbA1c)';
+  } else if (hasUacr) {
+    modelType = 'uacr';
+    modelLabel = 'Enhanced (UACR)';
   }
 
-  const prefix = isMale ? 'male' : 'female';
-  const ascvd10 = calcOne(`${prefix}_10_yr_ascvd`, bmi);
-  const hf10 = calcOne(`${prefix}_10_yr_hf`, bmi);
-  const totalCvd10 = calcOne(`${prefix}_10_yr_cvd`, 0.0);
+  const age_c = (age - 55.0) / 10.0;
+  const non_hdl_c = (tcMmol - hdlMmol) - 3.5;
+  const hdl_c = (hdlMmol - 1.3) / 0.3;
+  const sbp_lt_110 = (Math.min(sbp, 110.0) - 110.0) / 20.0;
+  const sbp_gte_110 = (Math.max(sbp, 110.0) - 130.0) / 20.0;
+  const dm = diabetes ? 1.0 : 0.0;
+  const smoking = smoker ? 1.0 : 0.0;
+  const bmi_lt_30 = (Math.min(bmi, 30.0) - 25.0) / 5.0;
+  const bmi_gte_30 = (Math.max(bmi, 30.0) - 30.0) / 5.0;
+  const egfr_lt_60 = (Math.min(egfr, 60.0) - 60.0) / -15.0;
+  const egfr_gte_60 = (Math.max(egfr, 60.0) - 90.0) / -15.0;
+  const bp_tx = onHtnMeds ? 1.0 : 0.0;
+  const statin = onStatin ? 1.0 : 0.0;
 
-  let ascvd30 = null;
-  let hf30 = null;
-  let totalCvd30 = null;
+  const common10 = [
+    age_c, non_hdl_c, hdl_c, sbp_lt_110, sbp_gte_110, dm, smoking,
+    bmi_lt_30, bmi_gte_30, egfr_lt_60, egfr_gte_60,
+    bp_tx, statin,
+    bp_tx * sbp_gte_110, statin * non_hdl_c,
+    age_c * non_hdl_c, age_c * hdl_c, age_c * sbp_gte_110,
+    age_c * dm, age_c * smoking, age_c * bmi_gte_30, age_c * egfr_lt_60
+  ];
+
+  const age2_c = age_c * age_c;
+  const common30 = [
+    age_c, age2_c, non_hdl_c, hdl_c, sbp_lt_110, sbp_gte_110, dm, smoking,
+    bmi_lt_30, bmi_gte_30, egfr_lt_60, egfr_gte_60,
+    bp_tx, statin,
+    bp_tx * sbp_gte_110, statin * non_hdl_c,
+    age_c * non_hdl_c, age_c * hdl_c, age_c * sbp_gte_110,
+    age_c * dm, age_c * smoking, age_c * bmi_gte_30, age_c * egfr_lt_60
+  ];
+
+  let terms10, terms30;
+  if (modelType === 'base') {
+    terms10 = common10.concat([1.0]);
+    terms30 = common30.concat([1.0]);
+  } else if (modelType === 'hba1c') {
+    const hba1c_no_dm = (!diabetes) ? (hba1c - 5.3) : 0.0;
+    const hba1c_dm = (diabetes) ? (hba1c - 5.3) : 0.0;
+    terms10 = common10.concat([hba1c_no_dm, hba1c_dm, 0.0, 1.0]);
+    terms30 = common30.concat([hba1c_no_dm, hba1c_dm, 0.0, 1.0]);
+  } else if (modelType === 'uacr') {
+    const ln_uacr = Math.log(uacr);
+    terms10 = common10.concat([ln_uacr, 0.0, 1.0]);
+    terms30 = common30.concat([ln_uacr, 0.0, 1.0]);
+  } else if (modelType === 'full') {
+    const ln_uacr = Math.log(uacr);
+    const hba1c_no_dm = (!diabetes) ? (hba1c - 5.3) : 0.0;
+    const hba1c_dm = (diabetes) ? (hba1c - 5.3) : 0.0;
+    // full terms: [common...] + [sdi_4_to_6=0, sdi_7_to_10=0, missing_sdi=1, ln_uacr, missing_uacr=0, hba1c_no_dm, hba1c_dm, missing_hba1c=0, Constant=1]
+    terms10 = common10.concat([0.0, 0.0, 1.0, ln_uacr, 0.0, hba1c_no_dm, hba1c_dm, 0.0, 1.0]);
+    terms30 = common30.concat([0.0, 0.0, 1.0, ln_uacr, 0.0, hba1c_no_dm, hba1c_dm, 0.0, 1.0]);
+  }
+
+  function runModel(time, outcome, terms) {
+    const modelKey = modelType + '_' + time;
+    const colKey = pSex + '_' + outcome;
+    const modelObj = (typeof PREVENT_COEFFICIENTS !== 'undefined') ? PREVENT_COEFFICIENTS[modelKey] : null;
+    if (!modelObj || !modelObj[colKey]) return 0;
+    const coeffs = modelObj[colKey];
+    let logOdds = 0;
+    for (let i = 0; i < terms.length; i++) {
+      logOdds += coeffs[i] * terms[i];
+    }
+    const p = Math.exp(logOdds) / (1.0 + Math.exp(logOdds));
+    return Number((p * 100.0).toFixed(1));
+  }
+
+  const ascvd10 = runModel('10yr', 'ascvd', terms10);
+  const hf10 = runModel('10yr', 'heart_failure', terms10);
+  const totalCvd10 = runModel('10yr', 'total_cvd', terms10);
+
+  let ascvd30 = null, hf30 = null, totalCvd30 = null;
   if (age <= 59) {
-    ascvd30 = calcOne(`${prefix}_30_yr_ascvd`, bmi);
-    hf30 = calcOne(`${prefix}_30_yr_hf`, bmi);
-    totalCvd30 = calcOne(`${prefix}_30_yr_cvd`, 0.0);
+    ascvd30 = runModel('30yr', 'ascvd', terms30);
+    hf30 = runModel('30yr', 'heart_failure', terms30);
+    totalCvd30 = runModel('30yr', 'total_cvd', terms30);
   }
 
   let ascvdCat = 'Low';
@@ -1857,16 +1961,15 @@ function calculateAhaPreventRisk(params) {
   }
 
   return {
-    ascvd10,
-    ascvd30,
-    ascvdCat,
-    ascvdCatLabel,
-    badgeColor,
-    hf10,
-    hf30,
-    totalCvd10,
-    totalCvd30,
-    is30YrApplicable: (age <= 59)
+    ascvd10, ascvd30, ascvdCat, ascvdCatLabel, badgeColor,
+    hf10, hf30, totalCvd10, totalCvd30,
+    is30YrApplicable: (age <= 59),
+    modelType,
+    modelLabel,
+    hasHba1c,
+    hasUacr,
+    hba1cVal: hba1c,
+    uacrVal: uacr
   };
 }
 
@@ -1900,12 +2003,22 @@ function recalculateCvdRisk(forceAlert = false) {
   const onLipidMeds = document.getElementById('cvdLipidMeds')?.value === '1';
   const diabetes = document.getElementById('cvdDiabetes')?.value === '1';
 
+  // Read Enhanced Model inputs (HbA1c & UACR)
+  const rawHba1c = document.getElementById('encHba1c')?.value || '';
+  const rawUacr = document.getElementById('encUacr')?.value || '';
+  const uacrUnit = document.getElementById('encUacrUnit')?.value || 'mg/g';
+
   const quickBadge = document.getElementById('cvdRiskQuickBadge');
+  const preventBadge = document.getElementById('preventModelBadge');
 
   if (!tcMmol || !hdlMmol || !sbp) {
     if (quickBadge) {
       quickBadge.textContent = 'Awaiting BP & Lipid';
       quickBadge.className = 'text-xs px-2.5 py-0.5 rounded-full font-bold bg-white text-gray-500 border border-gray-200';
+    }
+    if (preventBadge) {
+      preventBadge.textContent = 'Base Model';
+      preventBadge.className = 'text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full border border-blue-200';
     }
     const frsEl = document.getElementById('frsRiskPercent');
     if (frsEl) frsEl.textContent = '--%';
@@ -1940,7 +2053,8 @@ function recalculateCvdRisk(forceAlert = false) {
   });
 
   const preventResult = calculateAhaPreventRisk({
-    sex, age, tcMmol, hdlMmol, sbp, bmi, egfr, hasDiabetes: diabetes, isSmoker: smoker, onHtnMeds, onCholesterolMeds: onLipidMeds
+    sex, age, tcMmol, hdlMmol, sbp, bmi, egfr, hasDiabetes: diabetes, isSmoker: smoker, onHtnMeds, onCholesterolMeds: onLipidMeds,
+    hba1c: rawHba1c, uacr: rawUacr, uacrUnit
   });
 
   if (frsResult) {
@@ -1962,6 +2076,19 @@ function recalculateCvdRisk(forceAlert = false) {
   }
 
   if (preventResult) {
+    if (preventBadge) {
+      preventBadge.textContent = preventResult.modelLabel;
+      if (preventResult.modelType === 'full') {
+        preventBadge.className = 'text-[10px] bg-purple-100 text-purple-900 border border-purple-300 font-black px-2.5 py-0.5 rounded-full shadow-2xs';
+      } else if (preventResult.modelType === 'hba1c') {
+        preventBadge.className = 'text-[10px] bg-indigo-100 text-indigo-900 border border-indigo-300 font-bold px-2.5 py-0.5 rounded-full shadow-2xs';
+      } else if (preventResult.modelType === 'uacr') {
+        preventBadge.className = 'text-[10px] bg-teal-100 text-teal-900 border border-teal-300 font-bold px-2.5 py-0.5 rounded-full shadow-2xs';
+      } else {
+        preventBadge.className = 'text-[10px] bg-blue-100 text-blue-800 border border-blue-200 font-bold px-2 py-0.5 rounded-full';
+      }
+    }
+
     const ascvdEl = document.getElementById('preventAscvd10');
     if (ascvdEl) ascvdEl.textContent = `${preventResult.ascvd10}%`;
     const ascvdCatEl = document.getElementById('preventAscvdCat');
@@ -1985,14 +2112,15 @@ function recalculateCvdRisk(forceAlert = false) {
   }
 
   if (forceAlert && typeof showPmgToast === 'function') {
-    showPmgToast(`✅ FRS & PREVENT CVD Risk calculated successfully!`, 'success');
+    showPmgToast(`✅ FRS & PREVENT (${preventResult?.modelLabel || 'Risk'}) calculated successfully!`, 'success');
   }
 
   return {
     framingham: frsResult,
     prevent: preventResult,
     params: {
-      sex, age, sbp, tcMmol, hdlMmol, bmi, egfr, smoker, onHtnMeds, onLipidMeds, diabetes
+      sex, age, sbp, tcMmol, hdlMmol, bmi, egfr, smoker, onHtnMeds, onLipidMeds, diabetes,
+      hba1c: rawHba1c, uacr: rawUacr, uacrUnit
     }
   };
 }
@@ -4318,6 +4446,7 @@ function renderEncounterPastRecords(patientId) {
     if (enc.kidneyPanel?.creatinine) kList.push(`Cr: <b class="font-mono text-blue-700">${enc.kidneyPanel.creatinine}</b>`);
     if (enc.kidneyPanel?.urea) kList.push(`Urea: <b class="font-mono text-gray-800">${enc.kidneyPanel.urea}</b>`);
     if (enc.kidneyPanel?.egfr) kList.push(`eGFR: <b class="font-mono text-emerald-700">${enc.kidneyPanel.egfr}</b>`);
+    if (enc.kidneyPanel?.uacr) kList.push(`UACR: <b class="font-mono text-teal-700">${enc.kidneyPanel.uacr} ${enc.kidneyPanel.uacrUnit || 'mg/g'}</b>`);
     const eUa = kList.length > 0 ? `<div class="space-y-0.5 text-[11px] leading-tight font-mono">${kList.join('<br>')}</div>` : '<span class="text-gray-400 font-normal">—</span>';
 
     // CVD Risk (FRS & PREVENT)
@@ -4326,7 +4455,7 @@ function renderEncounterPastRecords(patientId) {
       const f = enc.cvdRisk.framingham;
       const p = enc.cvdRisk.prevent;
       const fStr = f && f.riskPercent != null ? `FRS: <b class="font-mono">${f.riskPercent}%</b> <span class="text-[9px] font-sans">(${f.category})</span>` : '';
-      const pStr = p && p.ascvd10 != null ? `PREVENT: <b class="font-mono">${p.ascvd10}%</b>` : '';
+      const pStr = p && p.ascvd10 != null ? `PREVENT: <b class="font-mono">${p.ascvd10}%</b> <span class="text-[9px] font-sans">(${p.modelLabel || 'Base'})</span>` : '';
       if (fStr || pStr) {
         eCvd = `
           <div class="space-y-0.5 text-[11px] leading-tight font-mono">
@@ -4378,6 +4507,13 @@ function renderEncounterPastRecords(patientId) {
       scansHtml.push(`<button type="button" onclick="previewDoc('${airdocDoc.id}')" class="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded text-[10px] font-bold transition shadow-2xs whitespace-nowrap cursor-pointer"><i class="fa-solid fa-eye text-emerald-600"></i> View Airdoc</button>`);
     } else if (airdocText) {
       scansHtml.push(`<span class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded text-[10px] whitespace-nowrap" title="${escapeHtml(airdocText)}"><i class="fa-solid fa-eye text-emerald-600"></i> Airdoc: ${escapeHtml(airdocText.slice(0, 16))}</span>`);
+    }
+
+    if (enc.specialtyScans?.spermCount) {
+      scansHtml.push(`<span class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 text-blue-800 border border-blue-200 rounded text-[10px] whitespace-nowrap"><i class="fa-solid fa-microscope text-blue-600"></i> Sperm: ${escapeHtml(enc.specialtyScans.spermCount)}</span>`);
+    }
+    if (enc.specialtyScans?.vitD) {
+      scansHtml.push(`<span class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 rounded text-[10px] whitespace-nowrap"><i class="fa-solid fa-sun text-amber-600"></i> Vit D: ${escapeHtml(enc.specialtyScans.vitD)}</span>`);
     }
 
     if (otherDocs.length > 0) {
@@ -4624,6 +4760,8 @@ function showNewEncounterModal(patientId) {
   document.getElementById('encCreatinine').value = '';
   document.getElementById('encUrea').value = '';
   document.getElementById('encEgfr').value = '';
+  if (document.getElementById('encUacr')) document.getElementById('encUacr').value = '';
+  if (document.getElementById('encUacrUnit')) document.getElementById('encUacrUnit').value = 'mg/g';
 
   // Glycemic / Heme
   document.getElementById('encGlucose').value = '';
@@ -4641,6 +4779,7 @@ function showNewEncounterModal(patientId) {
 
   // Specialty Scans
   document.getElementById('encVitD').value = '';
+  if (document.getElementById('encSpermCount')) document.getElementById('encSpermCount').value = '';
   document.getElementById('encFerritin').value = '';
   document.getElementById('encTeda').value = '';
   if (document.getElementById('encTedaLink')) document.getElementById('encTedaLink').value = '';
@@ -4724,6 +4863,11 @@ function showNewEncounterModal(patientId) {
     if (document.getElementById('cvdHtnMeds')) document.getElementById('cvdHtnMeds').value = '0';
     if (document.getElementById('cvdLipidMeds')) document.getElementById('cvdLipidMeds').value = '0';
     if (document.getElementById('cvdDiabetes')) document.getElementById('cvdDiabetes').value = '0';
+  }
+  const preventBadge = document.getElementById('preventModelBadge');
+  if (preventBadge) {
+    preventBadge.textContent = 'Base Model';
+    preventBadge.className = 'text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full border border-blue-200';
   }
   recalculateCvdRisk();
 
@@ -4886,6 +5030,8 @@ function editEncounterRecord(patientId, encounterId) {
   document.getElementById('encCreatinine').value = k.creatinine ?? '';
   document.getElementById('encUrea').value = k.urea ?? '';
   document.getElementById('encEgfr').value = k.egfr ?? '';
+  if (document.getElementById('encUacr')) document.getElementById('encUacr').value = k.uacr ?? '';
+  if (document.getElementById('encUacrUnit')) document.getElementById('encUacrUnit').value = k.uacrUnit || 'mg/g';
 
   // Glycemic & Heme
   const g = enc.glycemicHeme || {};
@@ -4898,6 +5044,7 @@ function editEncounterRecord(patientId, encounterId) {
   // Specialty
   const sp = enc.specialtyScans || {};
   document.getElementById('encVitD').value = sp.vitD || '';
+  if (document.getElementById('encSpermCount')) document.getElementById('encSpermCount').value = sp.spermCount || '';
   document.getElementById('encFerritin').value = sp.ferritin || '';
   let extractedTedaLink = sp.tedaLink || '';
   if (!extractedTedaLink && sp.teda) {
@@ -5903,7 +6050,9 @@ async function saveNewEncounter() {
     ua: formatClinicalInputValue(document.getElementById('encUa')?.value),
     creatinine: formatClinicalInputValue(document.getElementById('encCreatinine')?.value),
     urea: formatClinicalInputValue(document.getElementById('encUrea')?.value),
-    egfr: formatClinicalInputValue(document.getElementById('encEgfr')?.value)
+    egfr: formatClinicalInputValue(document.getElementById('encEgfr')?.value),
+    uacr: formatClinicalInputValue(document.getElementById('encUacr')?.value),
+    uacrUnit: document.getElementById('encUacrUnit')?.value || 'mg/g'
   };
 
   const glycemicObj = {
@@ -5916,6 +6065,7 @@ async function saveNewEncounter() {
 
   const specialtyObj = {
     vitD: document.getElementById('encVitD').value || null,
+    spermCount: document.getElementById('encSpermCount') ? (document.getElementById('encSpermCount').value || null) : null,
     ferritin: document.getElementById('encFerritin').value || null,
     teda: document.getElementById('encTeda').value.trim() || null,
     tedaLink: document.getElementById('encTedaLink') ? document.getElementById('encTedaLink').value.trim() : null,
@@ -6672,6 +6822,17 @@ function renderEncounterVitalsPoctBadges(enc, p) {
       </span>
     `);
   }
+  if (k.uacr != null && k.uacr !== '') {
+    const uacrVal = Number(k.uacr);
+    const uUnit = k.uacrUnit || 'mg/g';
+    const isHighUacr = (uUnit.includes('mmol') && uacrVal >= 3.0) || (!uUnit.includes('mmol') && uacrVal >= 30.0);
+    pills.push(`
+      <span class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold border ${isHighUacr ? 'bg-teal-50 text-teal-950 border-teal-300 font-bold ring-1 ring-teal-200' : 'bg-teal-50 text-teal-900 border-teal-200'}">
+        UACR: <b>${k.uacr} ${uUnit}</b>
+        ${isHighUacr ? '<span class="text-[10px] bg-teal-200 text-teal-900 px-1 rounded font-black">⚠️ Albuminuria</span>' : '<span class="text-[10px] bg-emerald-100 text-emerald-800 px-1 rounded font-bold">Normal</span>'}
+      </span>
+    `);
+  }
 
   // 8. Specialty Scans (Vit D, Ferritin, Rossmax ACT)
   if (s.vitD) {
@@ -6679,6 +6840,14 @@ function renderEncounterVitalsPoctBadges(enc, p) {
     pills.push(`
       <span class="px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold border ${isSuff ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-amber-50 text-amber-950 border-amber-300'}">
         Vit D: <b>${s.vitD}</b> ${!isSuff ? '<span class="text-[10px] bg-amber-200 text-amber-900 px-1 rounded font-black">⚠️ Suboptimal</span>' : ''}
+      </span>
+    `);
+  }
+  if (s.spermCount) {
+    const isNormal = s.spermCount.includes('Normal') || s.spermCount.includes('≥15');
+    pills.push(`
+      <span class="px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold border ${isNormal ? 'bg-blue-50 text-blue-900 border-blue-200' : 'bg-amber-50 text-amber-950 border-amber-300'}">
+        Sperm Quantity: <b>${s.spermCount}</b> ${!isNormal ? '<span class="text-[10px] bg-amber-200 text-amber-900 px-1 rounded font-black">⚠️ Attention</span>' : ''}
       </span>
     `);
   }
@@ -6715,10 +6884,11 @@ function renderEncounterVitalsPoctBadges(enc, p) {
     }
     if (prev && prev.ascvd10 != null) {
       pills.push(`
-        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold border ${prev.badgeColor || 'bg-indigo-50 text-indigo-900 border-indigo-200'} shadow-xs" title="2024 AHA PREVENT 10-Yr ASCVD Risk: ${prev.ascvd10}% · HF: ${prev.hf10}% · Total CVD: ${prev.totalCvd10}%">
+        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold border ${prev.badgeColor || 'bg-indigo-50 text-indigo-900 border-indigo-200'} shadow-xs" title="2024 AHA PREVENT 10-Yr ASCVD Risk: ${prev.ascvd10}% · HF: ${prev.hf10}% · Total CVD: ${prev.totalCvd10}% · Model: ${prev.modelLabel || 'Base'}">
           <span class="font-extrabold flex items-center gap-1"><i class="fa-solid fa-shield-heart text-indigo-600"></i> PREVENT ASCVD:</span>
           <b class="font-black text-sm">${prev.ascvd10}%</b>
           <span class="text-[10px] px-1.5 py-0.5 rounded font-black bg-white/80">${prev.ascvdCat}</span>
+          ${prev.modelLabel ? `<span class="text-[9px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold">${prev.modelLabel}</span>` : ''}
         </span>
       `);
     }
@@ -7420,6 +7590,7 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
       msg += `- 血糖 (${g.glucoseType || 'Fasting'})：${g.glucose} mmol/L ${isHigh ? '[偏高]' : '[正常]'}\n`;
     }
     if (g.hba1c) msg += `- 糖化血红蛋白 HbA1c：${g.hba1c}%\n`;
+    if (s.spermCount) msg += `- 精子活力/数量定性检测 (Sperm Quantity)：${s.spermCount}\n`;
 
     // Full Kidney Function Panel & Uric Acid in Chinese
     if (k.ua || k.creatinine || k.urea || k.egfr) {
@@ -7446,6 +7617,12 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
           else egfrLabel = '明显下降 (<30)';
         }
         msg += `  * 肾小球滤过率 (eGFR): ${k.egfr} mL/min [${egfrLabel}]\n`;
+      }
+      if (k.uacr) {
+        const uacrVal = extractNumericVal(k.uacr);
+        const uUnit = k.uacrUnit || 'mg/g';
+        const isHigh = uacrVal != null && ((uUnit.includes('mmol') && uacrVal >= 3.0) || (!uUnit.includes('mmol') && uacrVal >= 30.0));
+        msg += `  * 尿微量白蛋白/肌酐比值 (UACR): ${k.uacr} ${uUnit} ${isHigh ? '[微量白蛋白尿/偏高]' : '[正常]'}\n`;
       }
     }
 
@@ -7544,6 +7721,8 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
       msg += `- Gula Darah (${g.glucoseType || 'Fasting'}): ${g.glucose} mmol/L ${isHigh ? '[Tinggi]' : '[Normal]'}\n`;
     }
     if (g.hba1c) msg += `- HbA1c: ${g.hba1c}%\n`;
+    if (s.spermCount) msg += `- Qualitative Sperm Quantity Test: ${s.spermCount}\n`;
+    if (s.spermCount) msg += `- Ujian Kualitatif Kuantiti Sperma: ${s.spermCount}\n`;
 
     // Full Kidney Function Panel & Uric Acid in Malay
     if (k.ua || k.creatinine || k.urea || k.egfr) {
@@ -7570,6 +7749,12 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
           else egfrLabel = 'Penurunan Ketara (<30)';
         }
         msg += `  * Fungsi Buah Pinggang (eGFR): ${k.egfr} mL/min [${egfrLabel}]\n`;
+      }
+      if (k.uacr) {
+        const uacrVal = extractNumericVal(k.uacr);
+        const uUnit = k.uacrUnit || 'mg/g';
+        const isHigh = uacrVal != null && ((uUnit.includes('mmol') && uacrVal >= 3.0) || (!uUnit.includes('mmol') && uacrVal >= 30.0));
+        msg += `  * Nisbah Albumin/Kreatinin Air Kencing (UACR): ${k.uacr} ${uUnit} ${isHigh ? '[Albuminuria / Tinggi]' : '[Normal]'}\n`;
       }
     }
 
@@ -7694,6 +7879,12 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
           else egfrLabel = 'Significant Reduction (<30)';
         }
         msg += `  * eGFR: ${k.egfr} mL/min [${egfrLabel}]\n`;
+      }
+      if (k.uacr) {
+        const uacrVal = extractNumericVal(k.uacr);
+        const uUnit = k.uacrUnit || 'mg/g';
+        const isHigh = uacrVal != null && ((uUnit.includes('mmol') && uacrVal >= 3.0) || (!uUnit.includes('mmol') && uacrVal >= 30.0));
+        msg += `  * Urine Albumin-to-Creatinine Ratio (UACR): ${k.uacr} ${uUnit} ${isHigh ? '[Albuminuria / High]' : '[Normal]'}\n`;
       }
     }
 
@@ -12252,10 +12443,12 @@ async function runAiClinicalReview() {
     creatinine: document.getElementById('encCreatinine')?.value || '',
     urea: document.getElementById('encUrea')?.value || '',
     egfr: document.getElementById('encEgfr')?.value || '',
+    uacr: document.getElementById('encUacr')?.value ? `${document.getElementById('encUacr').value} ${document.getElementById('encUacrUnit')?.value || 'mg/g'}` : '',
     ast: document.getElementById('encAst')?.value || '',
     alt: document.getElementById('encAlt')?.value || '',
     alb: document.getElementById('encAlb')?.value || '',
     vitD: document.getElementById('encVitD')?.value || '',
+    spermCount: document.getElementById('encSpermCount')?.value || '',
     ferritin: document.getElementById('encFerritin')?.value || '',
     rossmaxAct: document.getElementById('encRossmaxAct')?.value.trim() || '',
     customPoctNotes: document.getElementById('encOtherTestsNotes')?.value.trim() || ''
@@ -12388,9 +12581,9 @@ BODY COMPOSITION ANALYSIS (BCA - Branch Analyzer):
 POCT LABORATORY READINGS:
 Blood Glucose: ${vitals.glucose ? vitals.glucose + ' mmol/L (' + vitals.glucoseType + ')' : 'N/A'}, HbA1c: ${vitals.hba1c ? vitals.hba1c + '%' : 'N/A'}
 Lipid Panel: TC: ${vitals.tc || 'N/A'} mmol/L, TG: ${vitals.tg || 'N/A'}, HDL: ${vitals.hdl || 'N/A'}, LDL: ${vitals.ldl || 'N/A'}, AI: ${vitals.ai || 'N/A'}, R-CHD: ${vitals.rchd || 'N/A'}
-Kidney Panel: Uric Acid: ${vitals.ua || 'N/A'} umol/L, Creatinine: ${vitals.creatinine || 'N/A'} umol/L, Urea: ${vitals.urea || 'N/A'} mmol/L, eGFR: ${vitals.egfr || 'N/A'}
+Kidney Panel: Uric Acid: ${vitals.ua || 'N/A'} umol/L, Creatinine: ${vitals.creatinine || 'N/A'} umol/L, Urea: ${vitals.urea || 'N/A'} mmol/L, eGFR: ${vitals.egfr || 'N/A'}, UACR: ${vitals.uacr || 'N/A'}
 Liver Panel: AST: ${vitals.ast || 'N/A'} U/L, ALT: ${vitals.alt || 'N/A'} U/L, Albumin: ${vitals.alb || 'N/A'} g/L
-Specialty Tests: Vit D: ${vitals.vitD || 'N/A'}, Ferritin: ${vitals.ferritin || 'N/A'}, Rossmax ACT (Artery Condition / Vascular Stiffness): ${vitals.rossmaxAct || 'N/A'}
+Specialty Tests: Vit D: ${vitals.vitD || 'N/A'}, Sperm Quantity: ${vitals.spermCount || 'N/A'}, Ferritin: ${vitals.ferritin || 'N/A'}, Rossmax ACT (Artery Condition / Vascular Stiffness): ${vitals.rossmaxAct || 'N/A'}
 Other POCT Notes: ${vitals.customPoctNotes || 'None'}
 
 SPECIALTY WELLNESS & DIAGNOSTIC SCANS:
