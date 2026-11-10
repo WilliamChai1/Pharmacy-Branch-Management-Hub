@@ -334,3 +334,67 @@ function getBranch(codeOrName) {
   const q = String(codeOrName).trim();
   return BRANCHES.find(b => b.code === q || b.name === q) || null;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UNIVERSAL WHATSAPP MESSAGING & SYMBOL SANITIZATION ENGINE
+// Prevents \uFFFD (diamond question marks) and 4-byte UTF-8 emoji corruption
+// ─────────────────────────────────────────────────────────────────────────────
+
+function sanitizeWhatsAppMessage(text) {
+  if (!text) return '';
+  return String(text)
+    // Strip compound emoji components (ZWJ & variation selectors)
+    .replace(/\u200D/g, '')
+    .replace(/[\uFE00-\uFE0F]/g, '')
+    // Normalize directional arrows to standard ASCII arrows
+    .replace(/[➔➜➡]/g, '->')
+    // Replace all common emojis with a single clean bullet point
+    .replace(/[📌👤📞🏪📅⏰📋🩺👨⚕⚡💊👉🔗🗓🌅☀️🌇🌙💡📦💰📍📢🔴☕👥📚🎓🧹🏢📄📑⚠️]/gu, '•')
+    // Remove any remaining surrogate pairs (emojis > 0xFFFF that corrupt across HTTP 302 redirects)
+    .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, '')
+    // Remove Unicode replacement character (diamond question mark)
+    .replace(/\uFFFD/g, '')
+    // Clean up duplicate bullets
+    .replace(/•[\s•]+/g, '• ')
+    .trim();
+}
+
+function buildUniversalWhatsAppUrl(phone, msg) {
+  let clean = String(phone || '').replace(/\D/g, '');
+  if (clean.startsWith('0')) {
+    clean = '60' + clean.slice(1);
+  } else if (clean && !clean.startsWith('60') && clean.length <= 10) {
+    clean = '60' + clean;
+  }
+  const cleanMsg = sanitizeWhatsAppMessage(msg);
+  const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Windows Phone|webOS/i.test(navigator.userAgent || '');
+  const baseUrl = isMobile ? 'https://api.whatsapp.com/send' : 'https://web.whatsapp.com/send';
+  if (clean) {
+    return `${baseUrl}?phone=${clean}&text=${encodeURIComponent(cleanMsg)}`;
+  }
+  return `${baseUrl}?text=${encodeURIComponent(cleanMsg)}`;
+}
+
+function openUniversalWhatsApp(phone, msg) {
+  const url = buildUniversalWhatsAppUrl(phone, msg);
+  let win = null;
+  try {
+    win = window.open(url, '_blank', 'noopener,noreferrer');
+  } catch (_) {}
+  if (!win || win.closed || typeof win.closed === 'undefined') {
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { if (a.parentNode) a.parentNode.removeChild(a); }, 300);
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.sanitizeWhatsAppMessage = sanitizeWhatsAppMessage;
+  window.buildUniversalWhatsAppUrl = buildUniversalWhatsAppUrl;
+  window.openUniversalWhatsApp = openUniversalWhatsApp;
+}
+

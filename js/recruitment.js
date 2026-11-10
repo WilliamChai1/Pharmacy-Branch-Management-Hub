@@ -2305,6 +2305,9 @@ const candidateBookingState = {
 };
 
 function formatCandidateWhatsAppUrl(phone, msg) {
+  if (typeof buildUniversalWhatsAppUrl === 'function') {
+    return buildUniversalWhatsAppUrl(phone, msg);
+  }
   let clean = String(phone || '').replace(/\D/g, '');
   if (clean.startsWith('60')) {
     // Already has Malaysian country code
@@ -2313,7 +2316,10 @@ function formatCandidateWhatsAppUrl(phone, msg) {
   } else if (clean) {
     clean = '60' + clean;
   }
-  return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
+  const cleanMsg = typeof sanitizeWhatsAppMessage === 'function' ? sanitizeWhatsAppMessage(msg) : String(msg);
+  const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Windows Phone|webOS/i.test(navigator.userAgent || '');
+  const baseUrl = isMobile ? 'https://api.whatsapp.com/send' : 'https://web.whatsapp.com/send';
+  return `${baseUrl}?phone=${clean}&text=${encodeURIComponent(cleanMsg)}`;
 }
 
 function sendShortlistBookingWhatsApp(appId) {
@@ -2336,10 +2342,10 @@ function sendShortlistBookingWhatsApp(appId) {
     `Salam / Dear ${app.name},\n\n` +
     `Tahniah! Permohonan kerja anda sebagai *${app.position || 'Pharmacy Staff'}* di *PMG Pharmacy Kota Sentosa* telah DISENARAI PENDEK (SHORTLISTED) untuk sesi temuduga bersemuka.\n` +
     `(Congratulations! Your application has been shortlisted for an interview.)\n\n` +
-    `📅 Sila layari pautan rasmi ini untuk memilih & menetapkan tarikh serta masa temuduga pilihan anda:\n` +
+    `• Sila layari pautan rasmi ini untuk memilih & menetapkan tarikh serta masa temuduga pilihan anda:\n` +
     `(Please choose and book your preferred interview date & time via this link):\n` +
-    `👉 ${bookingUrl}\n\n` +
-    `📍 Lokasi Temuduga / Interview Location:\n` +
+    `${bookingUrl}\n\n` +
+    `• Lokasi Temuduga / Interview Location:\n` +
     `PMG Pharmacy Kota Sentosa, Jalan Setia Raja, Kota Sentosa, Kuching, Sarawak.\n\n` +
     `Sila bawa bersama semasa temuduga:\n` +
     `1. Kad Pengenalan Asal (Original IC / MyKad)\n` +
@@ -2354,9 +2360,13 @@ function sendShortlistBookingWhatsApp(appId) {
     navigator.clipboard.writeText(bookingUrl).catch(() => {});
   }
 
-  const waUrl = formatCandidateWhatsAppUrl(cleanPhone, waMsg);
   toast('Membuka WhatsApp & pautan temu duga... (Opening WhatsApp...)', 'success');
-  window.open(waUrl, '_blank');
+  if (typeof openUniversalWhatsApp === 'function') {
+    openUniversalWhatsApp(cleanPhone, waMsg);
+  } else {
+    const waUrl = formatCandidateWhatsAppUrl(cleanPhone, waMsg);
+    window.open(waUrl, '_blank');
+  }
 }
 
 function shortlistCandidate(appId) {
@@ -3988,8 +3998,12 @@ async function confirmInterviewSchedule() {
 
   // Show message template
   if (confirm('Interview scheduled! Open WhatsApp message template?')) {
-    const waLink = `https://wa.me/${(app.phone||'').replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`;
-    window.open(waLink, '_blank');
+    if (typeof openUniversalWhatsApp === 'function') {
+      openUniversalWhatsApp(app.phone, msg);
+    } else {
+      const waLink = formatCandidateWhatsAppUrl(app.phone, msg);
+      window.open(waLink, '_blank');
+    }
   }
 
   renderAmDashboard();
@@ -4005,8 +4019,12 @@ function copyFormLink() {
 
 function shareViaWhatsApp() {
   const url = 'https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/?apply=1';
-  const msg = `📋 *PMG Pharmacy Job Application*\n\nInterested in joining PUBLIC MEDICARE GROUP (PMG) Pharmacy team in Kuching, Sarawak?\n\nPositions available:\n• Pharmacist\n• Pharmacy Assistant\n• Nutritionist / Dietitian\n\n🔗 Apply directly online (No login required):\n${url}\n\nFill in your details and upload your SPM/education results directly.\n\nFor enquiries, contact William Chai (PMG Kota Sentosa) at +601110990693.`;
-  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+  const msg = `*PMG Pharmacy Job Application*\n\nInterested in joining PUBLIC MEDICARE GROUP (PMG) Pharmacy team in Kuching, Sarawak?\n\nPositions available:\n• Pharmacist\n• Pharmacy Assistant\n• Nutritionist / Dietitian\n\n• Apply directly online (No login required):\n${url}\n\nFill in your details and upload your SPM/education results directly.\n\nFor enquiries, contact William Chai (PMG Kota Sentosa) at +601110990693.`;
+  if (typeof openUniversalWhatsApp === 'function') {
+    openUniversalWhatsApp('', msg);
+  } else {
+    window.open(formatCandidateWhatsAppUrl('', msg), '_blank');
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4670,7 +4688,7 @@ function renderMissingDocFallback(app, doc, docIdx, docTypeLabel, docDisplayName
     `${uploadLink}\n\n` +
     `Atau anda juga boleh balas dan lampirkan foto/fail tersebut terus di dalam chat WhatsApp ini.\n\n` +
     `Terima kasih!\nWilliam Chai (PMG Pharmacy Kota Sentosa)`;
-  const waUrl = `https://wa.me/60${cleanPhone}?text=${encodeURIComponent(waMsgText)}`;
+  const waUrl = formatCandidateWhatsAppUrl('60' + cleanPhone, waMsgText);
 
   body.innerHTML = `
     <div class="p-6 bg-white rounded-xl border border-slate-200 shadow-sm max-w-lg mx-auto text-left my-auto">

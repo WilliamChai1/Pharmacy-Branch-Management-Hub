@@ -1,6 +1,62 @@
 // js/patient.js — Patient Care, POCT Suites, SOAP Assessment & Chronic Appointment Engine
 'use strict';
 
+// ─── UNIVERSAL WHATSAPP MESSAGING & SYMBOL SANITIZATION ──────────────────────
+if (typeof sanitizeWhatsAppMessage !== 'function') {
+  var sanitizeWhatsAppMessage = function(text) {
+    if (!text) return '';
+    return String(text)
+      .replace(/\u200D/g, '')
+      .replace(/[\uFE00-\uFE0F]/g, '')
+      .replace(/[➔➜➡]/g, '->')
+      .replace(/[📌👤📞🏪📅⏰📋🩺👨⚕⚡💊👉🔗🗓🌅☀️🌇🌙💡📦💰📍📢🔴☕👥📚🎓🧹🏢📄📑⚠️]/gu, '•')
+      .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, '')
+      .replace(/\uFFFD/g, '')
+      .replace(/•[\s•]+/g, '• ')
+      .trim();
+  };
+  if (typeof window !== 'undefined') window.sanitizeWhatsAppMessage = sanitizeWhatsAppMessage;
+}
+
+if (typeof buildUniversalWhatsAppUrl !== 'function') {
+  var buildUniversalWhatsAppUrl = function(phone, msg) {
+    let clean = String(phone || '').replace(/\D/g, '');
+    if (clean.startsWith('0')) {
+      clean = '60' + clean.slice(1);
+    } else if (clean && !clean.startsWith('60') && clean.length <= 10) {
+      clean = '60' + clean;
+    }
+    const cleanMsg = typeof sanitizeWhatsAppMessage === 'function' ? sanitizeWhatsAppMessage(msg) : String(msg);
+    const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Windows Phone|webOS/i.test(navigator.userAgent || '');
+    const baseUrl = isMobile ? 'https://api.whatsapp.com/send' : 'https://web.whatsapp.com/send';
+    if (clean) {
+      return `${baseUrl}?phone=${clean}&text=${encodeURIComponent(cleanMsg)}`;
+    }
+    return `${baseUrl}?text=${encodeURIComponent(cleanMsg)}`;
+  };
+  if (typeof window !== 'undefined') window.buildUniversalWhatsAppUrl = buildUniversalWhatsAppUrl;
+}
+
+if (typeof openUniversalWhatsApp !== 'function') {
+  var openUniversalWhatsApp = function(phone, msg) {
+    const url = buildUniversalWhatsAppUrl(phone, msg);
+    let win = null;
+    try {
+      win = window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (_) {}
+    if (!win || win.closed || typeof win.closed === 'undefined') {
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { if (a.parentNode) a.parentNode.removeChild(a); }, 300);
+    }
+  };
+  if (typeof window !== 'undefined') window.openUniversalWhatsApp = openUniversalWhatsApp;
+}
+
 const PATIENTS_STORAGE_KEY = 'pmg_patients_data_v1';
 var PMG_SCHEDULE_API_URL = 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
 
@@ -2076,7 +2132,7 @@ function renderTodayQueue(items) {
     const isRefill = (apt.type === 'refill_extension' || (apt.purpose && apt.purpose.toLowerCase().includes('refill')));
     const isExtension = (apt.type === 'refill_extension' || apt.status === 'Pending Approval');
     const waMsg = buildWhatsAppMessage(p, apt);
-    const waUrl = `https://wa.me/${formatPhoneForWa(p.phone)}?text=${encodeURIComponent(waMsg)}`;
+    const waUrl = buildUniversalWhatsAppUrl(p.phone, waMsg);
     const branchDisplay = (p.branch === 'KS01' || p.branch === 'KOTA SENTOSA') ? 'Kota Sentosa' : p.branch;
 
     const purposeBadge = isRefill
@@ -2155,7 +2211,7 @@ function renderUpcomingQueue(items) {
     const isRefill = (apt.type === 'refill_extension' || (apt.purpose && apt.purpose.toLowerCase().includes('refill')));
     const isExtension = (apt.type === 'refill_extension' || apt.status === 'Pending Approval');
     const waMsg = buildWhatsAppMessage(p, apt);
-    const waUrl = `https://wa.me/${formatPhoneForWa(p.phone)}?text=${encodeURIComponent(waMsg)}`;
+    const waUrl = buildUniversalWhatsAppUrl(p.phone, waMsg);
     const branchDisplay = (p.branch === 'KS01' || p.branch === 'KOTA SENTOSA') ? 'Kota Sentosa' : p.branch;
 
     const purposeBadge = isRefill
@@ -2225,7 +2281,7 @@ function renderOverdueQueue(items) {
     const apt = item.appointment;
     const med = item.medication;
     const waMsg = buildWhatsAppRecallMessage(p, item);
-    const waUrl = `https://wa.me/${formatPhoneForWa(p.phone)}?text=${encodeURIComponent(waMsg)}`;
+    const waUrl = buildUniversalWhatsAppUrl(p.phone, waMsg);
     const branchDisplay = (p.branch === 'KS01' || p.branch === 'KOTA SENTOSA') ? 'Kota Sentosa' : p.branch;
 
     const dateStr = apt ? apt.date : (med ? med.nextRefillDate : '—');
@@ -2666,11 +2722,11 @@ function buildPatientSupplyBookingMessage(patient) {
   const tcaReminderEn = patient.nextTcaDate ? `\n\n*Recommended Follow-up/Refill Date:* ${patient.nextTcaDate}${patient.nextTcaPurpose ? ' (' + patient.nextTcaPurpose + ')' : ''}` : '';
 
   if (lang === 'Chinese') {
-    return `您好 *${patientName}*，这里是 *${branchName}*（${openTime} - ${closeTime}）。\n\n${supplyText}${tcaReminderZh}\n\n为确保您的健康指标控制平稳并避免断药，我们建议您提前安排。\n\n👉 *您可以直接点击下方专属链接，选择适合您的时间到店面诊，或直接申请1个月慢病续药：*\n🔗 ${bookingUrl}\n\n如果您有任何用药疑问，或需要我们提前备妥药物，欢迎直接回复此 WhatsApp。\n\nPMG 药剂师团队祝您与家人身体健康！`;
+    return `您好 *${patientName}*，这里是 *${branchName}*（${openTime} - ${closeTime}）。\n\n${supplyText}${tcaReminderZh}\n\n为确保您的健康指标控制平稳并避免断药，我们建议您提前安排。\n\n• *您可以直接点击下方专属链接，选择适合您的时间到店面诊，或直接申请1个月慢病续药：*\n${bookingUrl}\n\n如果您有任何用药疑问，或需要我们提前备妥药物，欢迎直接回复此 WhatsApp。\n\nPMG 药剂师团队祝您与家人身体健康！`;
   } else if (lang === 'Malay') {
-    return `Salam sejahtera *${patientName}*, ini pesanan daripada *${branchName}* (${openTime} - ${closeTime}).\n\n${supplyText}${tcaReminderMy}\n\nBagi memastikan kesihatan anda kekal terkawal tanpa gangguan bekalan ubat, kami mencadangkan anda merancang lebih awal.\n\n👉 *Sila klik pautan peribadi di bawah untuk memilih masa temujanji atau memohon lanjutan bekalan ubat 1 bulan:*\n🔗 ${bookingUrl}\n\nSekiranya anda mempunyai sebarang pertanyaan mengenai ubat-ubatan, sila balas mesej ini.\n\nPasukan Farmasi PMG sentiasa sedia membantu!`;
+    return `Salam sejahtera *${patientName}*, ini pesanan daripada *${branchName}* (${openTime} - ${closeTime}).\n\n${supplyText}${tcaReminderMy}\n\nBagi memastikan kesihatan anda kekal terkawal tanpa gangguan bekalan ubat, kami mencadangkan anda merancang lebih awal.\n\n• *Sila klik pautan peribadi di bawah untuk memilih masa temujanji atau memohon lanjutan bekalan ubat 1 bulan:*\n${bookingUrl}\n\nSekiranya anda mempunyai sebarang pertanyaan mengenai ubat-ubatan, sila balas mesej ini.\n\nPasukan Farmasi PMG sentiasa sedia membantu!`;
   } else {
-    return `Dear *${patientName}*, warm greetings from *${branchName}* (${openTime} - ${closeTime}).\n\n${supplyText}${tcaReminderEn}\n\nTo ensure your health metrics stay in optimal control and prevent any medication disruption, we recommend planning ahead.\n\n👉 *You can click your personalized link below to select a convenient appointment time, or request a 1-month refill extension:*\n🔗 ${bookingUrl}\n\nIf you have any questions or would like us to prepare your medications in advance, feel free to reply directly.\n\nWishing you good health from your PMG Pharmacy team!`;
+    return `Dear *${patientName}*, warm greetings from *${branchName}* (${openTime} - ${closeTime}).\n\n${supplyText}${tcaReminderEn}\n\nTo ensure your health metrics stay in optimal control and prevent any medication disruption, we recommend planning ahead.\n\n• *You can click your personalized link below to select a convenient appointment time, or request a 1-month refill extension:*\n${bookingUrl}\n\nIf you have any questions or would like us to prepare your medications in advance, feel free to reply directly.\n\nWishing you good health from your PMG Pharmacy team!`;
   }
 }
 
@@ -2704,8 +2760,7 @@ function sendPatientBookingWhatsApp(patientId) {
   savePatientsData();
 
   const msg = buildPatientSupplyBookingMessage(p);
-  const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
-  window.open(waUrl, '_blank');
+  openUniversalWhatsApp(cleanPhone, msg);
 }
 
 function buildWhatsAppMessage(patient, appointment) {
@@ -2719,11 +2774,11 @@ function buildWhatsAppMessage(patient, appointment) {
   const bookingUrl = typeof getPatientSelfBookingUrl === 'function' ? getPatientSelfBookingUrl(patient) : window.location.href;
 
   if (lang === 'Chinese') {
-    return `您好 ${name}，这里是 ${branchName}。\n\n温馨提醒您，您预约的【${purpose}】时间为：\n📅 日期：${date}\n⏰ 时间：${time}\n\n如需调整时间或随时重新选择预约时段，可点击您的专属预约链接：\n👉 ${bookingUrl}\n\n请问需要我们提前为您准备好药物吗？祝您身体健康！`;
+    return `您好 ${name}，这里是 ${branchName}。\n\n温馨提醒您，您预约的【${purpose}】时间为：\n• 日期：${date}\n• 时间：${time}\n\n如需调整时间或随时重新选择预约时段，可点击您的专属预约链接：\n${bookingUrl}\n\n请问需要我们提前为您准备好药物吗？祝您身体健康！`;
   } else if (lang === 'Malay') {
-    return `Salam ${name}, ini peringatan mesra dari ${branchName}.\n\nTemujanji anda untuk [${purpose}] dijadualkan pada:\n📅 Tarikh: ${date}\n⏰ Masa: ${time}\n\nSekiranya anda perlu menukar masa atau memilih waktu temujanji lain pada bila-bila masa, sila klik pautan ini:\n👉 ${bookingUrl}\n\nSila maklumkan sekiranya anda ingin kami sediakan ubat lebih awal. Terima kasih & semoga sihat selalu!`;
+    return `Salam ${name}, ini peringatan mesra dari ${branchName}.\n\nTemujanji anda untuk [${purpose}] dijadualkan pada：\n• Tarikh: ${date}\n• Masa: ${time}\n\nSekiranya anda perlu menukar masa atau memilih waktu temujanji lain pada bila-bila masa, sila klik pautan ini：\n${bookingUrl}\n\nSila maklumkan sekiranya anda ingin kami sediakan ubat lebih awal. Terima kasih & semoga sihat selalu!`;
   } else {
-    return `Hello ${name}, this is a friendly reminder from ${branchName}.\n\nYour appointment for [${purpose}] is scheduled for:\n📅 Date: ${date}\n⏰ Time: ${time}\n\nIf you need to change your time or book another slot at any time, feel free to use your personal booking link:\n👉 ${bookingUrl}\n\nWould you like us to prepare your medications in advance? Thank you and stay healthy!`;
+    return `Hello ${name}, this is a friendly reminder from ${branchName}.\n\nYour appointment for [${purpose}] is scheduled for:\n• Date: ${date}\n• Time: ${time}\n\nIf you need to change your time or book another slot at any time, feel free to use your personal booking link:\n${bookingUrl}\n\nWould you like us to prepare your medications in advance? Thank you and stay healthy!`;
   }
 }
 
@@ -2735,11 +2790,11 @@ function buildWhatsAppRecallMessage(patient, item) {
   const bookingUrl = getPatientSelfBookingUrl(patient);
 
   if (lang === 'Chinese') {
-    return `您好 *${name}*，这里是 *${branchName}*。\n\n我们注意到您的长期慢病药物已到期 / 错过了近期的复查提醒。为确保您的血压、血糖与健康指标平稳控制，建议您尽快回来复查并补充药物。\n\n👉 *您可以直接点击下方专属链接，选择适合您的时间到店面诊，或直接申请1个月慢病续药：*\n🔗 ${bookingUrl}\n\n我们药剂师团队已准备好为您服务。如有任何疑问，欢迎随时联系我们！祝您身体健康！`;
+    return `您好 *${name}*，这里是 *${branchName}*。\n\n我们注意到您的长期慢病药物已到期 / 错过了近期的复查提醒。为确保您的血压、血糖与健康指标平稳控制，建议您尽快回来复查并补充药物。\n\n• *您可以直接点击下方专属链接，选择适合您的时间到店面诊，或直接申请1个月慢病续药：*\n${bookingUrl}\n\n我们药剂师团队已准备好为您服务。如有任何疑问，欢迎随时联系我们！祝您身体健康！`;
   } else if (lang === 'Malay') {
-    return `Salam *${name}*, ini peringatan mesra dari *${branchName}*。\n\nKami mendapati bekalan ubat kronik anda telah tamat tempoh / terlepas tarikh temujanji ulangan. Demi mengekalkan kawalan kesihatan yang baik, kami mencadangkan anda memperbaharui bekalan ubat anda secepat mungkin。\n\n👉 *Sila klik pautan peribadi di bawah untuk memilih masa temujanji atau memohon lanjutan bekalan ubat 1 bulan:*\n🔗 ${bookingUrl}\n\nAhli farmasi kami sedia membantu anda. Terima kasih dan kekal sihat!`;
+    return `Salam *${name}*, ini peringatan mesra dari *${branchName}*。\n\nKami mendapati bekalan ubat kronik anda telah tamat tempoh / terlepas tarikh temujanji ulangan. Demi mengekalkan kawalan kesihatan yang baik, kami mencadangkan anda memperbaharui bekalan ubat anda secepat mungkin。\n\n• *Sila klik pautan peribadi di bawah untuk memilih masa temujanji atau memohon lanjutan bekalan ubat 1 bulan:*\n${bookingUrl}\n\nAhli farmasi kami sedia membantu anda. Terima kasih dan kekal sihat!`;
   } else {
-    return `Hello *${name}*, this is a friendly reminder from *${branchName}*.\n\nWe noticed that your chronic medication supply is overdue or you have missed your follow-up review. Maintaining steady medication compliance is essential for your long-term health control.\n\n👉 *You may click your personalized link below to select a convenient appointment time, or request a 1-month refill extension:*\n🔗 ${bookingUrl}\n\nOur pharmacy team is ready to assist you. Please let us know if you have any questions!`;
+    return `Hello *${name}*, this is a friendly reminder from *${branchName}*.\n\nWe noticed that your chronic medication supply is overdue or you have missed your follow-up review. Maintaining steady medication compliance is essential for your long-term health control.\n\n• *You may click your personalized link below to select a convenient appointment time, or request a 1-month refill extension:*\n${bookingUrl}\n\nOur pharmacy team is ready to assist you. Please let us know if you have any questions!`;
   }
 }
 
@@ -3387,15 +3442,14 @@ function sendDirectAppointmentReminderWa(patientId, appointmentId) {
   let msg = '';
 
   if (lang === 'Chinese') {
-    msg = `您好 *${p.name}*，这里是 *PMG Pharmacy (${branchName})* 的温馨预约提醒。\n\n您在我们药剂行已预订了健康咨询/续药服务：\n📅 *预约日期：* ${apt.date}\n⏰ *预约时间：* ${aptTime}\n👨‍⚕️ *主理药剂师：* ${dutyPharm}\n\n期待您的到来！如需更改时间或查看预约详情，也可使用您的专属链接：\n🔗 ${bookingUrl}\n\n祝您身体健康！\n*PMG Pharmacy*`;
+    msg = `您好 *${p.name}*，这里是 *PMG Pharmacy (${branchName})* 的温馨预约提醒。\n\n您在我们药剂行已预订了健康咨询/续药服务：\n• *预约日期：* ${apt.date}\n• *预约时间：* ${aptTime}\n• *主理药剂师：* ${dutyPharm}\n\n期待您的到来！如需更改时间或查看预约详情，也可使用您的专属链接：\n${bookingUrl}\n\n祝您身体健康！\n*PMG Pharmacy*`;
   } else if (lang === 'Malay') {
-    msg = `Salam sejahtera *${p.name}*, ini adalah peringatan mesra temujanji daripada *PMG Pharmacy (${branchName})*.\n\nAnda mempunyai temujanji rundingan kesihatan/ulangan ubat yang telah disahkan:\n📅 *Tarikh:* ${apt.date}\n⏰ *Masa:* ${aptTime}\n👨‍⚕️ *Ahli Farmasi Bertugas:* ${dutyPharm}\n\nKami menantikan kedatangan anda. Jika perlu membuat sebarang penukaran, anda juga boleh menggunakan pautan peribadi anda di sini:\n🔗 ${bookingUrl}\n\nSemoga sihat sejahtera,\n*PMG Pharmacy*`;
+    msg = `Salam sejahtera *${p.name}*, ini adalah peringatan mesra temujanji daripada *PMG Pharmacy (${branchName})*.\n\nAnda mempunyai temujanji rundingan kesihatan/ulangan ubat yang telah disahkan:\n• *Tarikh:* ${apt.date}\n• *Masa:* ${aptTime}\n• *Ahli Farmasi Bertugas:* ${dutyPharm}\n\nKami menantikan kedatangan anda. Jika perlu membuat sebarang penukaran, anda juga boleh menggunakan pautan peribadi anda di sini:\n${bookingUrl}\n\nSemoga sihat sejahtera,\n*PMG Pharmacy*`;
   } else {
-    msg = `Hello *${p.name}*, this is a friendly appointment reminder from *PMG Pharmacy (${branchName})*.\n\nYou have a confirmed consultation/refill appointment scheduled:\n📅 *Date:* ${apt.date}\n⏰ *Time:* ${aptTime}\n👨‍⚕️ *Duty Pharmacist:* ${dutyPharm}\n\nWe look forward to seeing you! If you need to make changes, you can also access your personal booking portal here:\n🔗 ${bookingUrl}\n\nBest regards,\n*PMG Pharmacy*`;
+    msg = `Hello *${p.name}*, this is a friendly appointment reminder from *PMG Pharmacy (${branchName})*.\n\nYou have a confirmed consultation/refill appointment scheduled:\n• *Date:* ${apt.date}\n• *Time:* ${aptTime}\n• *Duty Pharmacist:* ${dutyPharm}\n\nWe look forward to seeing you! If you need to make changes, you can also access your personal booking portal here:\n${bookingUrl}\n\nBest regards,\n*PMG Pharmacy*`;
   }
 
-  const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
-  window.open(waUrl, '_blank');
+  openUniversalWhatsApp(cleanPhone, msg);
 }
 
 function sendReminderBookingLinkWa(patientId, reminderType, medId) {
@@ -3458,8 +3512,7 @@ function sendReminderBookingLinkWa(patientId, reminderType, medId) {
     ? buildPatientSupplyBookingMessage(p)
     : `Hello ${p.name}, please click this link to book your consultation appointment: ${getPatientSelfBookingUrl(p)}`;
 
-  const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
-  window.open(waUrl, '_blank');
+  openUniversalWhatsApp(cleanPhone, msg);
 }
 
 function showNewAppointmentModalWithDate(patientId, defaultDate) {
@@ -3567,57 +3620,12 @@ function buildRescheduleWhatsAppMessage(patient, originalApt, newDate, newTime, 
   const reasonText = reason ? reason.trim() : '';
 
   if (lang === 'Chinese') {
-    return `您好 *${patientName}*，这里是 *PMG Pharmacy (${branchName})*。
-
-由于药剂师执勤排班调动（Shift Adjustment）${reasonText ? '（' + reasonText + '）' : ''}，您原定于 *${origSlot}* 的咨询/续药预约需要改期。
-
-现为您调整安排至：
-📅 *新预约日期：* ${newDate}
-⏰ *新预约时间：* ${newTime}
-👨‍⚕️ *主理药剂师：* ${dutyPharm}
-
-如以上新时间方便您，请回复确认即可。
-若此时间对您不便，您也可以点击以下专属预约链接，自行选择最方便您的日期与时间：
-🔗 ${bookingUrl}
-
-给您带来不便，我们深表歉意！感谢您的理解与支持。
-祝您身体健康！
-*PMG Pharmacy*`;
+    return `您好 *${patientName}*，这里是 *PMG Pharmacy (${branchName})*。\n\n由于药剂师执勤排班调动（Shift Adjustment）${reasonText ? '（' + reasonText + '）' : ''}，您原定于 *${origSlot}* 的咨询/续药预约需要改期。\n\n现为您调整安排至：\n• *新预约日期：* ${newDate}\n• *新预约时间：* ${newTime}\n• *主理药剂师：* ${dutyPharm}\n\n如以上新时间方便您，请回复确认即可。\n若此时间对您不便，您也可以点击以下专属预约链接，自行选择最方便您的日期与时间：\n${bookingUrl}\n\n给您带来不便，我们深表歉意！感谢您的理解与支持。\n祝您身体健康！\n*PMG Pharmacy*`;
   } else if (lang === 'Malay') {
-    return `Salam sejahtera *${patientName}*, kami dari *PMG Pharmacy (${branchName})*.
-
-Harap maklum bahawa disebabkan perubahan jadual syif ahli farmasi kami (Shift Adjustment)${reasonText ? ' (' + reasonText + ')' : ''}, temujanji rundingan kesihatan/ulangan ubat anda yang asal pada *${origSlot}* perlu dijadualkan semula.
-
-Kami cadangkan tarikh & masa baharu seperti berikut:
-📅 *Tarikh Baharu:* ${newDate}
-⏰ *Masa Baharu:* ${newTime}
-👨‍⚕️ *Ahli Farmasi Bertugas:* ${dutyPharm}
-
-Sekiranya masa ini sesuai, sila balas mesej ini untuk pengesahan.
-Jika masa ini kurang sesuai, anda juga boleh klik pautan khas di bawah untuk memilih sendiri tarikh & masa yang paling mudah untuk anda:
-🔗 ${bookingUrl}
-
-Kami memohon maaf atas sebarang kesulitan. Terima kasih atas pemahaman anda!
-Semoga sihat sejahtera,
-*PMG Pharmacy*`;
+    return `Salam sejahtera *${patientName}*, kami dari *PMG Pharmacy (${branchName})*.\n\nHarap maklum bahawa disebabkan perubahan jadual syif ahli farmasi kami (Shift Adjustment)${reasonText ? ' (' + reasonText + ')' : ''}, temujanji rundingan kesihatan/ulangan ubat anda yang asal pada *${origSlot}* perlu dijadualkan semula.\n\nKami cadangkan tarikh & masa baharu seperti berikut:\n• *Tarikh Baharu:* ${newDate}\n• *Masa Baharu:* ${newTime}\n• *Ahli Farmasi Bertugas:* ${dutyPharm}\n\nSekiranya masa ini sesuai, sila balas mesej ini untuk pengesahan.\nJika masa ini kurang sesuai, anda juga boleh klik pautan khas di bawah untuk memilih sendiri tarikh & masa yang paling mudah untuk anda:\n${bookingUrl}\n\nKami memohon maaf atas sebarang kesulitan. Terima kasih atas pemahaman anda!\nSemoga sihat sejahtera,\n*PMG Pharmacy*`;
   } else {
     // English
-    return `Hello *${patientName}*, this is *PMG Pharmacy (${branchName})*.
-
-Please be informed that due to a pharmacist duty shift adjustment${reasonText ? ' (' + reasonText + ')' : ''}, your consultation/refill appointment originally scheduled on *${origSlot}* needs to be rescheduled.
-
-We have updated your tentative slot to:
-📅 *New Date:* ${newDate}
-⏰ *New Time:* ${newTime}
-👨‍⚕️ *Duty Pharmacist:* ${dutyPharm}
-
-If this updated time works for you, simply reply to confirm.
-If you prefer a different slot, you can easily choose a convenient date and time using your personal booking link below:
-🔗 ${bookingUrl}
-
-We sincerely apologize for any inconvenience caused and appreciate your kind understanding.
-Best regards,
-*PMG Pharmacy*`;
+    return `Hello *${patientName}*, this is *PMG Pharmacy (${branchName})*.\n\nPlease be informed that due to a pharmacist duty shift adjustment${reasonText ? ' (' + reasonText + ')' : ''}, your consultation/refill appointment originally scheduled on *${origSlot}* needs to be rescheduled.\n\nWe have updated your tentative slot to:\n• *New Date:* ${newDate}\n• *New Time:* ${newTime}\n• *Duty Pharmacist:* ${dutyPharm}\n\nIf this updated time works for you, simply reply to confirm.\nIf you prefer a different slot, you can easily choose a convenient date and time using your personal booking link below:\n${bookingUrl}\n\nWe sincerely apologize for any inconvenience caused and appreciate your kind understanding.\nBest regards,\n*PMG Pharmacy*`;
   }
 }
 
@@ -3697,8 +3705,7 @@ function saveReschedule(sendWhatsApp = false) {
       alert('This patient does not have a recorded phone number for WhatsApp.');
     } else {
       const msg = buildRescheduleWhatsAppMessage(p, { date: oldSlot.split(' ')[0], time: oldSlot.split(' ')[1], pharmacist: apt.pharmacist }, newDate, newTime, newPharm, reason, lang);
-      const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
-      window.open(waUrl, '_blank');
+      openUniversalWhatsApp(cleanPhone, msg);
     }
   }
 
@@ -6099,8 +6106,7 @@ async function saveNewEncounter() {
       const sendWa = confirm(`✅ Consultation & POCT recorded successfully for ${p.name}!\n\nWould you like to send the Consultation Summary, Self-Booking Appointment Link & Google Review to ${p.name} via WhatsApp now?`);
       if (sendWa) {
         const waSummary = buildConsultationWaSummary(p, newEnc, p.language);
-        const waUrl = `https://wa.me/${formatPhoneForWa(p.phone)}?text=${encodeURIComponent(waSummary)}`;
-        window.open(waUrl, '_blank');
+        openUniversalWhatsApp(p.phone, waSummary);
       }
     }
   }, 300);
@@ -6737,8 +6743,7 @@ function sendEncounterWa(patientId, encId, explicitLang = null) {
   }
   const targetLang = explicitLang ? normalizeLanguage(explicitLang) : normalizeLanguage(p.language || 'English');
   const summary = buildConsultationWaSummary(p, enc, targetLang);
-  const waUrl = `https://wa.me/${formatPhoneForWa(p.phone)}?text=${encodeURIComponent(summary)}`;
-  window.open(waUrl, '_blank');
+  openUniversalWhatsApp(p.phone, summary);
 }
 
 // Tab 1: Encounters History (SOAP & POCT) - Enlarged with In-SOAP Document Integration
@@ -7486,15 +7491,15 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
 
     // TEDA Report Link in Chinese
     if (tedaUrl) {
-      msg += `\n*🔍 TEDA 智慧健康分析报告 (TEDA Report Link)：*\n- 查看完整健康评估报告：\n👉 ${tedaUrl}\n`;
+      msg += `\n*• TEDA 智慧健康分析报告 (TEDA Report Link)：*\n- 查看完整健康评估报告：\n${tedaUrl}\n`;
     }
 
     // Customer Self-Booking Link
-    msg += `\n*📅 预约下一次健康咨询 / 检查（随时自助预约）：*\n`;
+    msg += `\n*• 预约下一次健康咨询 / 检查（随时自助预约）：*\n`;
     if (nextTca) {
       msg += `- 建议随访/复查日期：${nextTca}${nextPurpose ? ` (${nextPurpose})` : ''}\n`;
     }
-    msg += `- 自助预约专属链接（随时在线选时段）：\n👉 ${bookingUrl}\n\n`;
+    msg += `- 自助预约专属链接（随时在线选时段）：\n${bookingUrl}\n\n`;
 
     msg += `*如果您对我们今天的健康咨询与检测服务满意，诚挚邀请您为我们留下 5 星好评支持：*\n- 谷歌5星好评：${googleReviewLink}\n\n`;
     msg += `*欢迎加入我们的健康关怀 WhatsApp 社区（获取最新健康资讯与用药指导）：*\n- 社区链接：${waCommunityLink}\n\n`;
@@ -7610,15 +7615,15 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
 
     // TEDA Report Link in Malay
     if (tedaUrl) {
-      msg += `\n*🔍 Pautan Laporan Kesihatan TEDA (TEDA Report Link):*\n- Pautan laporan analisis kesihatan pintar anda:\n👉 ${tedaUrl}\n`;
+      msg += `\n*• Pautan Laporan Kesihatan TEDA (TEDA Report Link):*\n- Pautan laporan analisis kesihatan pintar anda:\n${tedaUrl}\n`;
     }
 
     // Customer Self-Booking Link
-    msg += `\n*📅 Tempah Temujanji Konsultasi / Pemeriksaan Seterusnya (Bila-bila masa):*\n`;
+    msg += `\n*• Tempah Temujanji Konsultasi / Pemeriksaan Seterusnya (Bila-bila masa):*\n`;
     if (nextTca) {
       msg += `- Cadangan Tarikh Temujanji Susulan: ${nextTca}${nextPurpose ? ` (${nextPurpose})` : ''}\n`;
     }
-    msg += `- Pautan Tempahan Temujanji (Pilih Masa Dalam Talian): \n👉 ${bookingUrl}\n\n`;
+    msg += `- Pautan Tempahan Temujanji (Pilih Masa Dalam Talian): \n${bookingUrl}\n\n`;
 
     msg += `*Jika anda berpuas hati dengan perkhidmatan dan ujian kesihatan kami, sudilah berikan kami penilaian 5 bintang di Google:*\n- Ulasan Google 5 Bintang: ${googleReviewLink}\n\n`;
     msg += `*Sertai Komuniti WhatsApp Kesihatan Kami (dapatkan tips kesihatan & nasihat ubatan terkini):*\n- Pautan Komuniti: ${waCommunityLink}\n\n`;
@@ -7734,15 +7739,15 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
 
     // TEDA Report Link in English
     if (tedaUrl) {
-      msg += `\n*🔍 TEDA Health Assessment Report Link:*\n- View your personalized wellness analysis online:\n👉 ${tedaUrl}\n`;
+      msg += `\n*• TEDA Health Assessment Report Link:*\n- View your personalized wellness analysis online:\n${tedaUrl}\n`;
     }
 
     // Customer Self-Booking Link
-    msg += `\n*📅 Book Your Next Health Consultation / Checkup (Anytime self-booking):*\n`;
+    msg += `\n*• Book Your Next Health Consultation / Checkup (Anytime self-booking):*\n`;
     if (nextTca) {
       msg += `- Recommended Follow-up Date: ${nextTca}${nextPurpose ? ` (${nextPurpose})` : ''}\n`;
     }
-    msg += `- Self-Booking Appointment Link (Select Slot Online): \n👉 ${bookingUrl}\n\n`;
+    msg += `- Self-Booking Appointment Link (Select Slot Online): \n${bookingUrl}\n\n`;
 
     msg += `\n*If you are satisfied with our health consultation and testing service today, we would greatly appreciate your 5-star Google review:*\n- Rate 5 Stars on Google: ${googleReviewLink}\n\n`;
     msg += `*Join our WhatsApp Health Community (for the latest health tips & updates):*\n- Community Link: ${waCommunityLink}\n\n`;
@@ -9658,10 +9663,9 @@ function shareBookingViaWhatsApp() {
     scheduleText = `• Isnin – Jumaat: ${info.open} – ${info.close}\n• Sabtu: 08:00 – 12:00\n• Ahad: Ditutup (Closed)`;
   }
 
-  const msg = `Halo! Anda boleh tempah slot pemeriksaan kesihatan atau rundingan ahli farmasi (${dutyPharm}) di PMG Pharmacy (${sched.branchName || info.name}) di pautan berikut:\n\n🔗 ${bookingUrl}\n\n📅 *Waktu Perundingan Ahli Farmasi (Bukan Waktu Kedai):*\n${scheduleText}\n\nJumpa anda nanti!`;
+  const msg = `Halo! Anda boleh tempah slot pemeriksaan kesihatan atau rundingan ahli farmasi (${dutyPharm}) di PMG Pharmacy (${sched.branchName || info.name}) di pautan berikut:\n\n• Pautan Tempahan: ${bookingUrl}\n\n• *Waktu Perundingan Ahli Farmasi (Bukan Waktu Kedai):*\n${scheduleText}\n\nJumpa anda nanti!`;
 
-  const waUrl = `https://wa.me/?text=${encodeURIComponent(msg)}`;
-  window.open(waUrl, '_blank');
+  openUniversalWhatsApp('', msg);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -10964,8 +10968,7 @@ Thank you for choosing PMG Pharmacy. Please arrive 5-10 minutes prior to your sc
 
   const cleanPhone = b.patientPhone.replace(/\D/g, '');
   const targetPhone = cleanPhone.startsWith('0') ? '60' + cleanPhone.slice(1) : cleanPhone;
-  const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`;
-  window.open(waUrl, '_blank');
+  openUniversalWhatsApp(targetPhone, msg);
 }
 
 /**
@@ -11002,27 +11005,23 @@ function sendCustomerBookingWaToPharmacist() {
 
   const isRefill = (b.bookingType === 'refill_extension');
   const typeDisplay = isRefill
-    ? '💊 Chronic Med Refill & 1-Month Extension (续药顺延)'
-    : '🩺 In-Person Consultation (到店面诊)';
+    ? 'Chronic Med Refill & 1-Month Extension (续药顺延)'
+    : 'In-Person Consultation (到店面诊)';
 
-  const msg = `*PMG Pharmacy - New Customer Booking / Request Notification*
+  const msg = `*PMG Pharmacy - New Customer Booking / Request Notification*\n\n` +
+    `• *Ref No / 预约编号:* ${b.ref}\n` +
+    `• *Patient Name / 姓名:* ${b.patientName}\n` +
+    `• *Phone / 联络电话:* ${b.patientPhone || 'Not provided'}\n` +
+    `• *Branch / 分店:* ${b.branchName}\n` +
+    `• *Date / 日期:* ${b.date}\n` +
+    `• *Time / 时间:* ${b.time}\n` +
+    `• *Request Type / 服务项目:* ${typeDisplay}\n` +
+    `• *Consultant / 主理药剂师:* ${b.pharmacist}\n\n` +
+    `*1-Click Import into PMG System / 一键录入系统:*\n` +
+    `${importUrl}\n\n` +
+    `(The patient submitted this request online. Tap the link above to view and automatically register in the pharmacy appointment queue)`;
 
-📌 *Ref No / 预约编号:* ${b.ref}
-👤 *Patient Name / 姓名:* ${b.patientName}
-📞 *Phone / 联络电话:* ${b.patientPhone || 'Not provided'}
-🏪 *Branch / 分店:* ${b.branchName}
-📅 *Date / 日期:* ${b.date}
-⏰ *Time / 时间:* ${b.time}
-📋 *Request Type / 服务项目:* ${typeDisplay}
-👨‍⚕️ *Consultant / 主理药剂师:* ${b.pharmacist}
-
-⚡ *1-Click Import into PMG System / 一键录入系统:*
-${importUrl}
-
-(The patient submitted this request online. Tap the link above to view and automatically register in the pharmacy appointment queue)`;
-
-  const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`;
-  window.open(waUrl, '_blank');
+  openUniversalWhatsApp(targetPhone, msg);
 }
 
 /**
@@ -11454,19 +11453,15 @@ function approveRefillExtension(patientId, appointmentId) {
   // Offer to send WhatsApp confirmation to patient
   const confirmWa = confirm(`✅ 1-Month Extension Approved!\n\nPatient: ${p.name}\nNew Next TCA Reminder: ${newTcaDateStr}\n\nWould you like to send WhatsApp confirmation to the patient now?`);
   if (confirmWa) {
-    const waText = `您好 *${p.name}*，这里是 *PMG Pharmacy (${p.branch})* 药剂关怀团队。
-
-您的常规慢病药物与保健品续药及【顺延 1 个月复诊】申请已审核通过！
-
-🗓️ *更新后下一次复诊/随访提醒日期：* ${newTcaDateStr}
-💊 *常规用药与保健品：* 药剂师已为您备妥常规用药，您可在方便时间前往分店取药。
-
-如有任何用药疑问或需要安排送药服务，欢迎随时联系我们。祝您身体健康，生活顺心！`;
+    const waText = `您好 *${p.name}*，这里是 *PMG Pharmacy (${p.branch})* 药剂关怀团队。\n\n` +
+      `您的常规慢病药物与保健品续药及【顺延 1 个月复诊】申请已审核通过！\n\n` +
+      `• *更新后下一次复诊/随访提醒日期：* ${newTcaDateStr}\n` +
+      `• *常规用药与保健品：* 药剂师已为您备妥常规用药，您可在方便时间前往分店取药。\n\n` +
+      `如有任何用药疑问或需要安排送药服务，欢迎随时联系我们。祝您身体健康，生活顺心！`;
 
     const cleanPhone = formatPhoneForWa(p.phone);
     if (cleanPhone) {
-      const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(waText)}`;
-      window.open(waUrl, '_blank');
+      openUniversalWhatsApp(cleanPhone, waText);
     }
   }
 }
@@ -13237,55 +13232,54 @@ function shareChronotherapyWa() {
   if (lang === 'Chinese') {
     msg += `尊敬的 ${name}，这是【${branchName}】药剂师为您定制的每日最佳服药与保健品时间表（时间治疗学 Chronotherapy）：\n\n`;
     if (chrono.morning?.length) {
-      msg += `🌅 *早晨（早餐 / 晨起）：*\n${chrono.morning.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `• *早晨（早餐 / 晨起）：*\n${chrono.morning.map(i => `  - *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.afternoon?.length) {
-      msg += `☀️ *中午（午餐）：*\n${chrono.afternoon.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `• *中午（午餐）：*\n${chrono.afternoon.map(i => `  - *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.evening?.length) {
-      msg += `🌇 *傍晚（晚餐）：*\n${chrono.evening.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `• *傍晚（晚餐）：*\n${chrono.evening.map(i => `  - *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.bedtime?.length) {
-      msg += `🌙 *睡前（夜间）：*\n${chrono.bedtime.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `• *睡前（夜间）：*\n${chrono.bedtime.map(i => `  - *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
-    msg += `📅 *预约药剂师复诊与健康咨询（随时在线选时段）：*\n👉 ${bookingUrl}\n\n`;
-    msg += `💡 *温馨提示：* 按时规律服用可达最佳吸收效果并减少肠胃不适。如有任何用药疑问，欢迎随时联系 PMG 药剂师！`;
+    msg += `• *预约药剂师复诊与健康咨询（随时在线选时段）：*\n${bookingUrl}\n\n`;
+    msg += `*温馨提示：* 按时规律服用可达最佳吸收效果并减少肠胃不适。如有任何用药疑问，欢迎随时联系 PMG 药剂师！`;
   } else if (lang === 'Malay') {
     msg += `Salam ${name}, ini adalah jadual masa pengambilan ubat & suplemen harian anda dari 【${branchName}】 (Kronoterapi):\n\n`;
     if (chrono.morning?.length) {
-      msg += `🌅 *Pagi (Sarapan / Pagi):*\n${chrono.morning.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `• *Pagi (Sarapan / Pagi):*\n${chrono.morning.map(i => `  - *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.afternoon?.length) {
-      msg += `☀️ *Tengah Hari (Makan Tengah Hari):*\n${chrono.afternoon.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `• *Tengah Hari (Makan Tengah Hari):*\n${chrono.afternoon.map(i => `  - *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.evening?.length) {
-      msg += `🌇 *Petang (Makan Malam):*\n${chrono.evening.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `• *Petang (Makan Malam):*\n${chrono.evening.map(i => `  - *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.bedtime?.length) {
-      msg += `🌙 *Sebelum Tidur (Malam):*\n${chrono.bedtime.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `• *Sebelum Tidur (Malam):*\n${chrono.bedtime.map(i => `  - *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
-    msg += `📅 *Tempah Temujanji Konsultasi & Semakan Ubat (Bila-bila masa):*\n👉 ${bookingUrl}\n\n`;
-    msg += `💡 *Peringatan Mesra:* Ambil mengikut jadual untuk penyerapan optimum dan mengurangkan kesan sampingan. Hubungi ahli farmasi PMG jika ada soalan!`;
+    msg += `• *Tempah Temujanji Konsultasi & Semakan Ubat (Bila-bila masa):*\n${bookingUrl}\n\n`;
+    msg += `*Peringatan Mesra:* Ambil mengikut jadual untuk penyerapan optimum dan mengurangkan kesan sampingan. Hubungi ahli farmasi PMG jika ada soalan!`;
   } else {
     msg += `Dear ${name}, here is your personalized daily medication and supplement timing schedule from ${branchName} (Chronotherapy):\n\n`;
     if (chrono.morning?.length) {
-      msg += `🌅 *Morning (Breakfast / Morning):*\n${chrono.morning.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `• *Morning (Breakfast / Morning):*\n${chrono.morning.map(i => `  - *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.afternoon?.length) {
-      msg += `☀️ *Afternoon (Lunch / Afternoon):*\n${chrono.afternoon.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `• *Afternoon (Lunch / Afternoon):*\n${chrono.afternoon.map(i => `  - *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.evening?.length) {
-      msg += `🌇 *Evening (Dinner / Evening):*\n${chrono.evening.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `• *Evening (Dinner / Evening):*\n${chrono.evening.map(i => `  - *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.bedtime?.length) {
-      msg += `🌙 *Bedtime (Night):*\n${chrono.bedtime.map(i => `• *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `• *Bedtime (Night):*\n${chrono.bedtime.map(i => `  - *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
-    msg += `📅 *Book a Follow-up Consultation or Medication Review (Anytime):*\n👉 ${bookingUrl}\n\n`;
-    msg += `💡 *Pharmacist Tip:* Taking items at recommended optimal times maximizes clinical absorption and minimizes gastrointestinal upset. Feel free to reach out with any questions!`;
+    msg += `• *Book a Follow-up Consultation or Medication Review (Anytime):*\n${bookingUrl}\n\n`;
+    msg += `*Pharmacist Tip:* Taking items at recommended optimal times maximizes clinical absorption and minimizes gastrointestinal upset. Feel free to reach out with any questions!`;
   }
 
-  const waUrl = `https://wa.me/${formatPhoneForWa(patient.phone)}?text=${encodeURIComponent(msg)}`;
-  window.open(waUrl, '_blank');
+  openUniversalWhatsApp(patient.phone, msg);
 }
 
 function downloadChronotherapyImage() {
@@ -14159,9 +14153,9 @@ function sendRentalWhatsApp(id) {
 This is PMG Pharmacy Kota Sentosa.
 Friendly reminder regarding your rented medical equipment:
 
-📦 Item: ${r.itemDescription || 'Medical Equipment'}
-📅 Due Date: ${r.dueDate || 'Soon'}
-💰 Rental Fee Due: RM ${amt}
+• Item: ${r.itemDescription || 'Medical Equipment'}
+• Due Date: ${r.dueDate || 'Soon'}
+• Rental Fee Due: RM ${amt}
 
 Kindly let us know if you would like to renew the rental or arrange for return.
 For online bank transfer, you may transfer to:
@@ -14171,10 +14165,9 @@ For online bank transfer, you may transfer to:
 
 Thank you!
 PMG Pharmacy Kota Sentosa
-📞 Tel: 082-629881 / WhatsApp: 012-8889831`;
+Tel: 082-629881 / WhatsApp: 012-8889831`;
 
-  const waUrl = `https://wa.me/${rawPhone}?text=${encodeURIComponent(msg)}`;
-  window.open(waUrl, '_blank');
+  openUniversalWhatsApp(rawPhone, msg);
 }
 
 // ─── AUTOMATED PATIENT PROFILE DEDUPLICATION ENGINE ───────────────────────────

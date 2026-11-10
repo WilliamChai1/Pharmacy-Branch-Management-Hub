@@ -928,25 +928,21 @@ function renderMockAuditReport(branchOverride) {
       { text: 'Staff toilet and pantry thoroughly cleaned and dry', sla: 'Daily SLA' },
       { text: 'Fire extinguisher unobstructed and inspection license up to date', sla: 'Immediate' }
     ],
-    whatsapp_summary: `📋 *PMG HQ Compliance Audit Report – ${branchName}*
-Date: ${today}
-Auditor: PMG HQ Audit System (Natasha Vischilla Rubric)
-
-Overall Score: *171 / 200 (85.5%)*
-Status: *FAIL* ⚠️
-Bonus Tier: *At Risk / Forfeited* (Cleanliness Failed: 12/22, 54.5%)
-
-⚠️ *HQ Bonus Rule Reminder*:
-"To achieve an overall passing score and bonus payout, every component of the audit criteria must meet or exceed 80%."
-
-🔴 *Top Rectifications (Submit proof to Retail Dev Dept within 3 days)*:
-1. Wipe cashier counter and all stock shelves (remove dust & dead insects).
-2. Remove personal drinks from medication fridge immediately.
-3. Remove expired POSM campaign materials.
-4. Refill gondola gaps and arrange all items by FIFO.
-5. Deep-clean staff toilet.
-
-Please complete all checklist items before the official auditor visit!`
+    whatsapp_summary: `*PMG HQ Compliance Audit Report - ${branchName}*\n` +
+`Date: ${today}\n` +
+`Auditor: PMG HQ Audit System (Natasha Vischilla Rubric)\n\n` +
+`Overall Score: *171 / 200 (85.5%)*\n` +
+`Status: *FAIL* [Action Required]\n` +
+`Bonus Tier: *At Risk / Forfeited* (Cleanliness Failed: 12/22, 54.5%)\n\n` +
+`• *HQ Bonus Rule Reminder*:\n` +
+`"To achieve an overall passing score and bonus payout, every component of the audit criteria must meet or exceed 80%."\n\n` +
+`• *Top Rectifications (Submit proof to Retail Dev Dept within 3 days)*:\n` +
+`1. Wipe cashier counter and all stock shelves (remove dust & dead insects).\n` +
+`2. Remove personal drinks from medication fridge immediately.\n` +
+`3. Remove expired POSM campaign materials.\n` +
+`4. Refill gondola gaps and arrange all items by FIFO.\n` +
+`5. Deep-clean staff toilet.\n\n` +
+`Please complete all checklist items before the official auditor visit!`
   };
 
   renderAuditReport(mockReport);

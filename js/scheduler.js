@@ -5839,14 +5839,14 @@ function copyScheduleWhatsAppSummary() {
 
   const { month, branch, days } = generatedScheduleData;
 
-  let text = `📢 *PMG PHARMACY (${branch}) — MONTHLY SCHEDULE (${month})*\n`;
+  let text = `*PMG PHARMACY (${branch}) — MONTHLY SCHEDULE (${month})*\n`;
   text += `Generated with AI Schedule Intelligence (Balanced Shifts & Pharmacist Coverage)\n\n`;
 
   days.slice(0, 7).forEach(d => {
     const isHoliday = !!HOLIDAYS_2026_SARAWAK[d.date];
-    const holidayName = isHoliday ? ` 🔴 *[${HOLIDAYS_2026_SARAWAK[d.date]}]*` : '';
+    const holidayName = isHoliday ? ` *[${HOLIDAYS_2026_SARAWAK[d.date]}]*` : '';
 
-    text += `📅 *${d.dayOfWeek}, ${d.date}*${holidayName}\n`;
+    text += `• *${d.dayOfWeek}, ${d.date}*${holidayName}\n`;
     const morning = [];
     const night   = [];
     const off     = [];
@@ -5859,23 +5859,23 @@ function copyScheduleWhatsAppSummary() {
       else off.push(tm.nickname);
     });
 
-    text += `  🌅 *Morning (07:30-16:30):* ${morning.join(', ') || 'None'}\n`;
-    text += `  🌙 *Night (12:30-21:30):* ${night.join(', ') || 'None'}\n`;
+    text += `  - *Morning (07:30-16:30):* ${morning.join(', ') || 'None'}\n`;
+    text += `  - *Night (12:30-21:30):* ${night.join(', ') || 'None'}\n`;
     if (d.cleaningDuty) {
-      text += `  🧹 *6S Cleaning (14:00-15:30):* ${d.cleaningDuty.nickname} (${d.cleaningDuty.task})\n`;
+      text += `  - *6S Cleaning (14:00-15:30):* ${d.cleaningDuty.nickname} (${d.cleaningDuty.task})\n`;
     }
     if (d.stockDuty) {
-      text += `  📦 *Stock Receiving (${d.stockDuty.dayNumber.split(' ')[0]}):* ${d.stockDuty.nickname} (${d.stockDuty.task})\n`;
+      text += `  - *Stock Receiving (${d.stockDuty.dayNumber.split(' ')[0]}):* ${d.stockDuty.nickname} (${d.stockDuty.task})\n`;
     }
     if (d.learningSlots && d.learningSlots.length > 0) {
       d.learningSlots.forEach(ls => {
-        text += `  ${ls.isHqVideo ? '🎓 *HQ Video Training (14:00-15:00):*' : '📚 *Trainee Learning (14:00-15:00):*'} ${ls.nickname}\n`;
+        text += `  - ${ls.isHqVideo ? '*HQ Video Training (14:00-15:00):*' : '*Trainee Learning (14:00-15:00):*'} ${ls.nickname}\n`;
       });
     }
     if (d.amCount !== undefined && d.pmCount !== undefined) {
-      text += `  👥 *Floor Strength:* AM: ${d.amCount} | PM: ${d.pmCount} (Total Working: ${d.workingTotal})\n`;
+      text += `  - *Floor Strength:* AM: ${d.amCount} | PM: ${d.pmCount} (Total Working: ${d.workingTotal})\n`;
     }
-    text += `  ☕ *Rest / Holiday:* ${off.join(', ') || 'None'}\n\n`;
+    text += `  - *Rest / Holiday:* ${off.join(', ') || 'None'}\n\n`;
   });
 
   if (days.length > 7) {

@@ -5165,22 +5165,18 @@ function copyAccountsWhatsAppSummary() {
 
   const shareLink = summary.shareLink || '[Please click "OneDrive Link" in Hub to attach link]';
 
-  const text = `*PMG PHARMACY (${summary.branch}) - MONTHLY ACCOUNTS SUBMISSION*
-📅 *Period:* ${summary.month} ${summary.year}
-
-📄 *Invoices (INV):* ${invStr}
-📑 *Credit Notes (CN):* ${cnStr}
-🏢 *Vendors (${summary.vendors.length}):* ${vendorListStr}
-
-📂 *OneDrive Folder Link:*
-${shareLink}
-
-_Arranged per Accounts SOP:_
-Year (${summary.year}) ➔ Month (${summary.month}) ➔ Invoices / Credit Note ➔ Vendor Folders`;
+  const text = `*PMG PHARMACY (${summary.branch}) - MONTHLY ACCOUNTS SUBMISSION*\n` +
+    `• *Period:* ${summary.month} ${summary.year}\n\n` +
+    `• *Invoices (INV):* ${invStr}\n` +
+    `• *Credit Notes (CN):* ${cnStr}\n` +
+    `• *Vendors (${summary.vendors.length}):* ${vendorListStr}\n\n` +
+    `• *OneDrive Folder Link:*\n${shareLink}\n\n` +
+    `_Arranged per Accounts SOP:_\n` +
+    `Year (${summary.year}) -> Month (${summary.month}) -> Invoices / Credit Note -> Vendor Folders`;
 
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text).then(() => {
-      showExpiryToast('📋 Copied WhatsApp Accounts Summary to clipboard!');
+      showExpiryToast('Copied WhatsApp Accounts Summary to clipboard!');
     }).catch(() => {
       prompt('Copy your WhatsApp summary:', text);
     });
