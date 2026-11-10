@@ -115,10 +115,10 @@
     paymentRef: 'DNT-20261005-9941',
     amountPaid: 320.00,
     items: [
-      { name: 'Omron HEM-7120 Digital Arm Blood Pressure Monitor', category: 'Medical Device', qty: 1, unitPrice: 168.00, discount: 10.00 },
-      { name: 'Accu-Chek Instant Blood Glucose Test Strips 50s', category: 'Medical Device', qty: 2, unitPrice: 72.00, discount: 4.00 },
-      { name: 'Metformin HCl 500mg Tablets (Chronic Dispense)', category: 'Prescription (Rx)', qty: 1, unitPrice: 28.00, discount: 0.00 },
-      { name: 'Blackmores Multivitamin + Minerals 120s', category: 'Supplement', qty: 1, unitPrice: 65.00, discount: 5.00 }
+      { name: 'Omron HEM-7120 Digital Arm Blood Pressure Monitor', qty: 1, unitPrice: 168.00, discount: 10.00 },
+      { name: 'Accu-Chek Instant Blood Glucose Test Strips 50s', qty: 2, unitPrice: 72.00, discount: 4.00 },
+      { name: 'Metformin HCl 500mg Tablets (Chronic Dispense)', qty: 1, unitPrice: 28.00, discount: 0.00 },
+      { name: 'Blackmores Multivitamin + Minerals 120s', qty: 1, unitPrice: 65.00, discount: 5.00 }
     ]
   };
 
@@ -1003,11 +1003,12 @@
     const view = document.getElementById('admin-view-invoice');
     if (!view) return;
 
-    const subtotal = invoiceState.items.reduce((s, it) => s + (it.unitPrice * it.qty), 0);
-    const totalDiscount = invoiceState.items.reduce((s, it) => s + (it.discount || 0), 0);
+    const subtotal = invoiceState.items.reduce((s, it) => s + ((Number(it.unitPrice) || 0) * (Number(it.qty) || 0)), 0);
+    const totalDiscount = invoiceState.items.reduce((s, it) => s + (Number(it.discount) || 0), 0);
     const grandTotal = Math.max(0, subtotal - totalDiscount);
-    const balanceDue = Math.max(0, grandTotal - (invoiceState.amountPaid || 0));
-    const change = Math.max(0, (invoiceState.amountPaid || 0) - grandTotal);
+    const amountPaid = parseFloat(invoiceState.amountPaid) || 0;
+    const balanceDue = Math.max(0, grandTotal - amountPaid);
+    const change = Math.max(0, amountPaid - grandTotal);
 
     view.innerHTML = `
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
@@ -1113,10 +1114,10 @@
               <div class="grid grid-cols-2 gap-2 pt-1">
                 <div>
                   <label class="block font-bold text-gray-700 mb-0.5">Amount Tendered (RM)</label>
-                  <input type="number" step="0.01" id="invAmountPaid" value="${invoiceState.amountPaid}" onchange="window.pmgAdminUtils.updateInvField('amountPaid', parseFloat(this.value) || 0)"
+                  <input type="number" step="0.01" id="invAmountPaid" value="${invoiceState.amountPaid !== undefined ? invoiceState.amountPaid : 0}" oninput="window.pmgAdminUtils.updateInvField('amountPaid', parseFloat(this.value) || 0)"
                     class="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs font-bold font-mono focus:ring-2 focus:ring-emerald-400 outline-none">
                 </div>
-                <div class="bg-gray-50 p-2 rounded-lg border border-gray-200 flex flex-col justify-center">
+                <div id="invChangeOrBalanceDisplay" class="bg-gray-50 p-2 rounded-lg border border-gray-200 flex flex-col justify-center">
                   <div class="text-[10px] text-gray-500 font-semibold">${change > 0 ? 'Change Due:' : 'Balance Due:'}</div>
                   <div class="text-sm font-extrabold ${change > 0 ? 'text-emerald-700' : (balanceDue > 0 ? 'text-rose-700' : 'text-gray-800')}">
                     RM ${change > 0 ? change.toFixed(2) : balanceDue.toFixed(2)}
@@ -1130,52 +1131,89 @@
           <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
             <div class="flex items-center justify-between mb-3 border-b pb-2">
               <h3 class="font-bold text-gray-900 text-sm flex items-center gap-2">
-                <i class="fa-solid fa-capsules text-emerald-600"></i> Dispensed Items (${invoiceState.items.length})
+                <i class="fa-solid fa-capsules text-emerald-600"></i> Dispensed Items (<span id="invItemCount">${invoiceState.items.length}</span>)
               </h3>
-              <button type="button" onclick="window.pmgAdminUtils.openAddInvoiceItemModal()" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs">
+              <button type="button" onclick="window.pmgAdminUtils.addInvoiceItemRow()" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs">
                 <i class="fa-solid fa-plus"></i> Add Item
               </button>
             </div>
 
-            <!-- Items Table -->
-            <div class="overflow-x-auto max-h-56 overflow-y-auto">
-              <table class="w-full text-left text-xs">
-                <thead class="bg-gray-50 text-gray-600 font-semibold border-b">
+            <!-- Items Table with Direct Inline Typing (Category Removed, Live Auto-Calculate) -->
+            <div class="overflow-x-auto max-h-72 overflow-y-auto border border-gray-200 rounded-lg">
+              <table class="w-full text-left text-xs min-w-[500px]">
+                <thead class="bg-gray-50 text-gray-700 font-bold border-b sticky top-0 z-10">
                   <tr>
-                    <th class="py-1.5 px-2">Item & Category</th>
-                    <th class="py-1.5 px-1 text-center w-10">Qty</th>
-                    <th class="py-1.5 px-1 text-right w-16">Price</th>
-                    <th class="py-1.5 px-1 text-right w-14">Disc</th>
-                    <th class="py-1.5 px-1 text-center w-6"></th>
+                    <th class="py-2 px-2.5">Item / Medication</th>
+                    <th class="py-2 px-1 text-center w-14">Qty</th>
+                    <th class="py-2 px-1.5 text-right w-24">Price (RM)</th>
+                    <th class="py-2 px-1.5 text-right w-20">Disc (RM)</th>
+                    <th class="py-2 px-2 text-right w-24">Total (RM)</th>
+                    <th class="py-2 px-1 text-center w-8"></th>
                   </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-100">
-                  ${invoiceState.items.map((it, idx) => `
-                    <tr class="hover:bg-gray-50/75">
+                <tbody id="invItemsTbody" class="divide-y divide-gray-100 bg-white">
+                  ${invoiceState.items.map((it, idx) => {
+                    const qty = Number(it.qty) || 0;
+                    const price = Number(it.unitPrice) || 0;
+                    const disc = Number(it.discount) || 0;
+                    const line = Math.max(0, (qty * price) - disc);
+                    return `
+                    <tr class="hover:bg-gray-50/75 transition-colors">
                       <td class="py-1.5 px-2">
-                        <div class="font-bold text-gray-900 truncate max-w-[170px]">${escapeHtml(it.name)}</div>
-                        <span class="text-[9px] px-1.5 py-0.2 rounded font-semibold ${
-                          it.category === 'Prescription (Rx)' ? 'bg-purple-100 text-purple-700' :
-                          it.category === 'Medical Device' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
-                        }">${escapeHtml(it.category || 'OTC')}</span>
+                        <input type="text"
+                          class="inv-item-name-input w-full border border-gray-300 rounded-md px-2 py-1 text-xs font-semibold text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-emerald-400 focus:border-emerald-500 outline-none"
+                          placeholder="Item name / medication"
+                          value="${escapeHtml(it.name || '')}"
+                          oninput="window.pmgAdminUtils.updateInvoiceItem(${idx}, 'name', this.value)">
                       </td>
-                      <td class="py-1.5 px-1 text-center font-semibold">${it.qty}</td>
-                      <td class="py-1.5 px-1 text-right font-mono">${(it.unitPrice || 0).toFixed(2)}</td>
-                      <td class="py-1.5 px-1 text-right font-mono text-rose-600">-${(it.discount || 0).toFixed(2)}</td>
                       <td class="py-1.5 px-1 text-center">
-                        <button type="button" onclick="window.pmgAdminUtils.removeInvoiceItem(${idx})" class="text-rose-500 hover:text-rose-700 p-1">
+                        <input type="number" min="1" step="1"
+                          class="w-12 text-center border border-gray-300 rounded-md py-1 text-xs font-bold text-gray-800 focus:ring-2 focus:ring-emerald-400 focus:border-emerald-500 outline-none"
+                          value="${it.qty !== undefined ? it.qty : 1}"
+                          oninput="window.pmgAdminUtils.updateInvoiceItem(${idx}, 'qty', this.value)">
+                      </td>
+                      <td class="py-1.5 px-1.5 text-right">
+                        <input type="number" step="0.01" min="0"
+                          class="w-20 text-right font-mono border border-gray-300 rounded-md px-1.5 py-1 text-xs font-semibold text-gray-800 focus:ring-2 focus:ring-emerald-400 focus:border-emerald-500 outline-none"
+                          placeholder="0.00"
+                          value="${it.unitPrice !== undefined ? it.unitPrice : 0}"
+                          oninput="window.pmgAdminUtils.updateInvoiceItem(${idx}, 'unitPrice', this.value)">
+                      </td>
+                      <td class="py-1.5 px-1.5 text-right">
+                        <input type="number" step="0.01" min="0"
+                          class="w-16 text-right font-mono text-rose-600 border border-gray-300 rounded-md px-1.5 py-1 text-xs font-semibold focus:ring-2 focus:ring-emerald-400 focus:border-emerald-500 outline-none"
+                          placeholder="0.00"
+                          value="${it.discount !== undefined ? it.discount : 0}"
+                          oninput="window.pmgAdminUtils.updateInvoiceItem(${idx}, 'discount', this.value)">
+                      </td>
+                      <td class="py-1.5 px-2 text-right font-mono font-bold text-gray-900 whitespace-nowrap">
+                        <span id="invRowTotal_${idx}">RM ${line.toFixed(2)}</span>
+                      </td>
+                      <td class="py-1.5 px-1 text-center">
+                        <button type="button" onclick="window.pmgAdminUtils.removeInvoiceItem(${idx})" title="Remove item" class="text-gray-400 hover:text-rose-600 p-1 transition rounded">
                           <i class="fa-solid fa-trash-can"></i>
                         </button>
                       </td>
                     </tr>
-                  `).join('')}
+                    `;
+                  }).join('')}
                 </tbody>
               </table>
             </div>
 
+            <!-- Quick Add Row and Auto-Calculate Hint -->
+            <div class="mt-2.5 flex items-center justify-between">
+              <button type="button" onclick="window.pmgAdminUtils.addInvoiceItemRow()" class="text-xs text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1.5 py-1 px-2.5 rounded-lg border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 transition shadow-2xs">
+                <i class="fa-solid fa-plus-circle"></i> Add Item Row
+              </button>
+              <span class="text-[11px] text-gray-500 font-medium flex items-center gap-1">
+                <i class="fa-solid fa-bolt text-amber-500"></i> Prices auto-calculate live
+              </span>
+            </div>
+
             <div class="mt-3 pt-3 border-t flex items-center justify-between text-xs">
-              <span class="text-gray-500">Net Invoice Total:</span>
-              <span class="text-base font-extrabold text-emerald-700">RM ${grandTotal.toFixed(2)}</span>
+              <span class="text-gray-500 font-semibold">Net Invoice Total:</span>
+              <span id="invNetTotalDisplay" class="text-base font-extrabold text-emerald-700">RM ${grandTotal.toFixed(2)}</span>
             </div>
           </div>
         </div>
@@ -1215,6 +1253,23 @@
   pmgAdminUtils.updateInvField = function(field, val) {
     invoiceState[field] = val;
     persistInvoice();
+    if (field === 'amountPaid') {
+      const subtotal = invoiceState.items.reduce((s, it) => s + ((Number(it.unitPrice) || 0) * (Number(it.qty) || 0)), 0);
+      const totalDiscount = invoiceState.items.reduce((s, it) => s + (Number(it.discount) || 0), 0);
+      const grandTotal = Math.max(0, subtotal - totalDiscount);
+      const amountPaid = parseFloat(val) || 0;
+      const balanceDue = Math.max(0, grandTotal - amountPaid);
+      const change = Math.max(0, amountPaid - grandTotal);
+      const changeOrBalEl = document.getElementById('invChangeOrBalanceDisplay');
+      if (changeOrBalEl) {
+        changeOrBalEl.innerHTML = `
+          <div class="text-[10px] text-gray-500 font-semibold">${change > 0 ? 'Change Due:' : 'Balance Due:'}</div>
+          <div class="text-sm font-extrabold ${change > 0 ? 'text-emerald-700' : (balanceDue > 0 ? 'text-rose-700' : 'text-gray-800')}">
+            RM ${change > 0 ? change.toFixed(2) : balanceDue.toFixed(2)}
+          </div>
+        `;
+      }
+    }
     const sheet = document.getElementById('invoiceLiveSheetContainer');
     if (sheet) sheet.innerHTML = buildOfficialInvoiceHTML();
   };
@@ -1230,27 +1285,83 @@
     renderInvoiceTab();
   };
 
-  pmgAdminUtils.removeInvoiceItem = function(idx) {
-    if (invoiceState.items.length <= 1) {
-      alert('Invoice must contain at least 1 item.');
-      return;
+  pmgAdminUtils.updateInvoiceItem = function(idx, field, val) {
+    if (!invoiceState.items[idx]) return;
+
+    if (field === 'name') {
+      invoiceState.items[idx].name = val;
+    } else {
+      const num = parseFloat(val);
+      invoiceState.items[idx][field] = isNaN(num) ? 0 : num;
     }
-    invoiceState.items.splice(idx, 1);
+
+    // Auto calculate line total for this row
+    const it = invoiceState.items[idx];
+    const qty = Number(it.qty) || 0;
+    const unitPrice = Number(it.unitPrice) || 0;
+    const discount = Number(it.discount) || 0;
+    const rowLineTotal = Math.max(0, (qty * unitPrice) - discount);
+
+    const rowTotalEl = document.getElementById('invRowTotal_' + idx);
+    if (rowTotalEl) {
+      rowTotalEl.textContent = 'RM ' + rowLineTotal.toFixed(2);
+    }
+
+    // Auto calculate overall invoice totals
+    const subtotal = invoiceState.items.reduce((s, item) => s + ((Number(item.unitPrice) || 0) * (Number(item.qty) || 0)), 0);
+    const totalDiscount = invoiceState.items.reduce((s, item) => s + (Number(item.discount) || 0), 0);
+    const grandTotal = Math.max(0, subtotal - totalDiscount);
+    const amountPaid = parseFloat(invoiceState.amountPaid) || 0;
+    const balanceDue = Math.max(0, grandTotal - amountPaid);
+    const change = Math.max(0, amountPaid - grandTotal);
+
+    // Update net invoice total in the card footer
+    const netTotalEl = document.getElementById('invNetTotalDisplay');
+    if (netTotalEl) {
+      netTotalEl.textContent = 'RM ' + grandTotal.toFixed(2);
+    }
+
+    // Update Change Due / Balance Due in the payment card
+    const changeOrBalEl = document.getElementById('invChangeOrBalanceDisplay');
+    if (changeOrBalEl) {
+      changeOrBalEl.innerHTML = `
+        <div class="text-[10px] text-gray-500 font-semibold">${change > 0 ? 'Change Due:' : 'Balance Due:'}</div>
+        <div class="text-sm font-extrabold ${change > 0 ? 'text-emerald-700' : (balanceDue > 0 ? 'text-rose-700' : 'text-gray-800')}">
+          RM ${change > 0 ? change.toFixed(2) : balanceDue.toFixed(2)}
+        </div>
+      `;
+    }
+
+    // Persist to storage
     persistInvoice();
-    renderInvoiceTab();
+
+    // Auto update official A4 receipt live sheet
+    const sheet = document.getElementById('invoiceLiveSheetContainer');
+    if (sheet) {
+      sheet.innerHTML = buildOfficialInvoiceHTML();
+    }
   };
 
-  pmgAdminUtils.openAddInvoiceItemModal = function() {
-    const name = prompt('Enter Item Name / Medication:');
-    if (!name) return;
-    const cat = prompt('Select Category: 1) Prescription (Rx), 2) OTC, 3) Medical Device, 4) Supplement', '2');
-    const categories = { '1': 'Prescription (Rx)', '2': 'Over-The-Counter (OTC)', '3': 'Medical Device', '4': 'Supplement' };
-    const category = categories[cat] || 'Over-The-Counter (OTC)';
-    const qty = parseInt(prompt('Enter Quantity:', '1'), 10) || 1;
-    const price = parseFloat(prompt('Enter Unit Price (RM):', '25.00')) || 25.00;
-    const disc = parseFloat(prompt('Enter Discount (RM, or 0):', '0.00')) || 0.00;
+  pmgAdminUtils.addInvoiceItemRow = function() {
+    invoiceState.items.push({ name: '', qty: 1, unitPrice: 0.00, discount: 0.00 });
+    persistInvoice();
+    renderInvoiceTab();
+    setTimeout(() => {
+      const inputs = document.querySelectorAll('.inv-item-name-input');
+      if (inputs.length) {
+        inputs[inputs.length - 1].focus();
+        inputs[inputs.length - 1].select();
+      }
+    }, 50);
+  };
+  pmgAdminUtils.openAddInvoiceItemModal = pmgAdminUtils.addInvoiceItemRow;
 
-    invoiceState.items.push({ name, category, qty, unitPrice: price, discount: disc });
+  pmgAdminUtils.removeInvoiceItem = function(idx) {
+    if (invoiceState.items.length <= 1) {
+      invoiceState.items = [{ name: '', qty: 1, unitPrice: 0.00, discount: 0.00 }];
+    } else {
+      invoiceState.items.splice(idx, 1);
+    }
     persistInvoice();
     renderInvoiceTab();
   };
@@ -1258,12 +1369,10 @@
   // ─── OFFICIAL INVOICE / RECEIPT A4 HTML ───────────────────────────────────────
   function buildOfficialInvoiceHTML() {
     const assets = window.ADMIN_ASSETS || {};
-    const subtotal = invoiceState.items.reduce((s, it) => s + (it.unitPrice * it.qty), 0);
-    const totalDiscount = invoiceState.items.reduce((s, it) => s + (it.discount || 0), 0);
+    const subtotal = invoiceState.items.reduce((s, it) => s + ((Number(it.unitPrice) || 0) * (Number(it.qty) || 0)), 0);
+    const totalDiscount = invoiceState.items.reduce((s, it) => s + (Number(it.discount) || 0), 0);
     const grandTotal = Math.max(0, subtotal - totalDiscount);
-    const taxReliefSubtotal = invoiceState.items
-      .filter(it => it.category === 'Prescription (Rx)' || it.category === 'Medical Device')
-      .reduce((s, it) => s + ((it.unitPrice * it.qty) - (it.discount || 0)), 0);
+    const taxReliefSubtotal = grandTotal;
 
     return `
       <div class="a4-document" style="background:#ffffff; color:#111827; padding:28px 32px; border-radius:8px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; box-shadow:0 1px 3px rgba(0,0,0,0.08); font-size:11px; line-height:1.4;">
@@ -1314,26 +1423,27 @@
         <table style="width:100%; border-collapse:collapse; margin-bottom:16px; font-size:10.5px;">
           <thead>
             <tr style="background:#f3f4f6; border-top:1px solid #d1d5db; border-bottom:1px solid #d1d5db;">
-              <th style="padding:6px 8px; text-align:center; width:25px;">#</th>
+              <th style="padding:6px 8px; text-align:center; width:28px;">#</th>
               <th style="padding:6px 8px; text-align:left;">Item / Medication Description</th>
-              <th style="padding:6px 8px; text-align:left; width:100px;">Category</th>
-              <th style="padding:6px 8px; text-align:center; width:45px;">Qty</th>
-              <th style="padding:6px 8px; text-align:right; width:75px;">Price (RM)</th>
-              <th style="padding:6px 8px; text-align:right; width:70px;">Disc (RM)</th>
-              <th style="padding:6px 8px; text-align:right; width:80px;">Total (RM)</th>
+              <th style="padding:6px 8px; text-align:center; width:48px;">Qty</th>
+              <th style="padding:6px 8px; text-align:right; width:80px;">Price (RM)</th>
+              <th style="padding:6px 8px; text-align:right; width:75px;">Disc (RM)</th>
+              <th style="padding:6px 8px; text-align:right; width:85px;">Total (RM)</th>
             </tr>
           </thead>
           <tbody>
             ${invoiceState.items.map((it, idx) => {
-              const line = (it.unitPrice * it.qty) - (it.discount || 0);
+              const qty = Number(it.qty) || 0;
+              const unitPrice = Number(it.unitPrice) || 0;
+              const discount = Number(it.discount) || 0;
+              const line = Math.max(0, (unitPrice * qty) - discount);
               return `
                 <tr style="border-bottom:1px solid #e5e7eb;">
                   <td style="padding:7px 8px; text-align:center; color:#6b7280;">${idx + 1}</td>
-                  <td style="padding:7px 8px; font-weight:700; color:#111827;">${escapeHtml(it.name)}</td>
-                  <td style="padding:7px 8px; font-size:9.5px; color:#4b5563;">${escapeHtml(it.category || 'OTC')}</td>
-                  <td style="padding:7px 8px; text-align:center; font-weight:700;">${it.qty}</td>
-                  <td style="padding:7px 8px; text-align:right; font-family:monospace;">${it.unitPrice.toFixed(2)}</td>
-                  <td style="padding:7px 8px; text-align:right; font-family:monospace; color:#dc2626;">${it.discount ? `-${it.discount.toFixed(2)}` : '0.00'}</td>
+                  <td style="padding:7px 8px; font-weight:700; color:#111827;">${escapeHtml(it.name || '—')}</td>
+                  <td style="padding:7px 8px; text-align:center; font-weight:700;">${qty}</td>
+                  <td style="padding:7px 8px; text-align:right; font-family:monospace;">${unitPrice.toFixed(2)}</td>
+                  <td style="padding:7px 8px; text-align:right; font-family:monospace; color:#dc2626;">${discount > 0 ? `-${discount.toFixed(2)}` : '0.00'}</td>
                   <td style="padding:7px 8px; text-align:right; font-family:monospace; font-weight:700;">${line.toFixed(2)}</td>
                 </tr>
               `;
