@@ -20,9 +20,9 @@
 
   // ─── KS01 BRANCH PERSONNEL ───────────────────────────────────────────────────
   const BRANCH_STAFF = [
-    { name: 'William Chai', position: 'Branch Manager / Pharmacist-in-Charge', rph: 'RPh 11482', isRx: true },
-    { name: 'Kenix Foo', position: 'Fully Registered Pharmacist (FRP)', rph: 'RPh 14205', isRx: true },
-    { name: 'Christina Lau', position: 'Provisional Registered Pharmacist (PRP)', rph: 'PRP 19830', isRx: true },
+    { name: 'William Chai', position: 'Branch Manager / Pharmacist-in-Charge', rph: '', isRx: true },
+    { name: 'Kenix Foo', position: 'Fully Registered Pharmacist (FRP)', rph: '', isRx: true },
+    { name: 'Christina Lau', position: 'Provisional Registered Pharmacist (PRP)', rph: '', isRx: true },
     { name: 'Ting Siew Ling', position: 'Pharmacy Assistant / Senior Counter', rph: '', isRx: false },
     { name: 'Louna Yii', position: 'Pharmacy Assistant / Dispensary', rph: '', isRx: false },
     { name: 'Penny Wong', position: 'Pharmacy Assistant / Customer Service', rph: '', isRx: false },
@@ -109,7 +109,7 @@
     invoiceDate: new Date().toISOString().slice(0, 10),
     pharmacistName: 'William Chai',
     pharmacistRole: 'Branch Manager / Pharmacist-in-Charge',
-    pharmacistRph: 'RPh 11482',
+    pharmacistRph: '',
     doctorClinicRef: 'Poliklinik Sentosa / Dr. Lau (Ref: PK-8829)',
     paymentMethod: 'DuitNow QR',
     paymentRef: 'DNT-20261005-9941',
@@ -162,7 +162,10 @@
       const q = localStorage.getItem(KEYS.QUOTATION);
       if (q) quotationState = Object.assign(quotationState, JSON.parse(q));
       const inv = localStorage.getItem(KEYS.INVOICE);
-      if (inv) invoiceState = Object.assign(invoiceState, JSON.parse(inv));
+      if (inv) {
+        invoiceState = Object.assign(invoiceState, JSON.parse(inv));
+        invoiceState.pharmacistRph = ''; // RPh numbers strictly removed per requirements
+      }
       const inc = localStorage.getItem(KEYS.INCIDENT);
       if (inc) incidentState = Object.assign(incidentState, JSON.parse(inc));
     } catch (e) {
@@ -1015,6 +1018,7 @@
             <div class="flex items-center justify-between mb-3 border-b pb-2">
               <h3 class="font-bold text-gray-900 text-sm flex items-center gap-2">
                 <i class="fa-solid fa-receipt text-emerald-600"></i> Customer & Invoice Particulars
+                <span class="text-[10px] bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded font-bold">Reference Only · Not for e-Invoice</span>
               </h3>
               <button type="button" onclick="window.pmgAdminUtils.newInvoiceNumber()" class="text-[11px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold transition">
                 <i class="fa-solid fa-rotate mr-1"></i>New No.
@@ -1067,7 +1071,7 @@
                   class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-emerald-400 outline-none font-semibold">
                   ${BRANCH_STAFF.map(st => `
                     <option value="${escapeHtml(st.name)}" ${invoiceState.pharmacistName === st.name ? 'selected' : ''}>
-                      ${escapeHtml(st.name)} (${st.position})${st.rph ? ' — ' + st.rph : ''}
+                      ${escapeHtml(st.name)} (${st.position})
                     </option>
                   `).join('')}
                 </select>
@@ -1183,8 +1187,9 @@
               <div>
                 <h3 class="font-bold text-gray-900 text-sm flex items-center gap-2">
                   <i class="fa-solid fa-file-invoice text-emerald-600"></i> Official Medical Receipt & Tax Invoice
+                  <span class="text-[10px] bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded font-bold">Reference Only · Not for e-Invoice</span>
                 </h3>
-                <p class="text-gray-500 text-xs">A4 printable format for personal tax relief & corporate medical insurance claim</p>
+                <p class="text-gray-500 text-xs">A4 printable format for personal tax relief & corporate medical claim (For reference only; not for e-invoice)</p>
               </div>
               <button type="button" onclick="window.pmgAdminUtils.printInvoice()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
                 <i class="fa-solid fa-print"></i> Print Official Receipt
@@ -1219,7 +1224,7 @@
     const found = BRANCH_STAFF.find(s => s.name === name);
     if (found) {
       invoiceState.pharmacistRole = found.position;
-      invoiceState.pharmacistRph = found.rph;
+      invoiceState.pharmacistRph = '';
     }
     persistInvoice();
     renderInvoiceTab();
@@ -1278,7 +1283,10 @@
             <div style="display:inline-block; background:#065f46; color:#fff; font-size:11px; font-weight:800; padding:4px 12px; border-radius:4px; letter-spacing:0.05em; text-transform:uppercase;">
               TAX & MEDICAL RECEIPT
             </div>
-            <div style="font-size:12px; font-weight:800; color:#111827; margin-top:6px; font-family:monospace;">${escapeHtml(invoiceState.invoiceNo || 'INV-KTS-001')}</div>
+            <div style="font-size:8.5px; font-weight:800; color:#dc2626; margin-top:4px; letter-spacing:0.02em;">
+              (This receipt is only for reference. Not for e-invoice)
+            </div>
+            <div style="font-size:12px; font-weight:800; color:#111827; margin-top:5px; font-family:monospace;">${escapeHtml(invoiceState.invoiceNo || 'INV-KTS-001')}</div>
             <div style="font-size:10px; color:#4b5563;">Date: ${invoiceState.invoiceDate}</div>
           </div>
         </div>
@@ -1348,6 +1356,9 @@
             <div style="font-size:9px; color:#6b7280; margin-top:6px;">
               * Goods sold are strictly non-returnable once dispensed as governed under the Malaysian Poisons Act 1952 and Sale of Drugs Act 1952.
             </div>
+            <div style="font-size:9px; font-weight:800; color:#dc2626; margin-top:4px;">
+              * NOTICE: This receipt is only for reference. Not for e-invoice.
+            </div>
           </div>
 
           <div style="width:230px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:10px 14px; font-size:10.5px;">
@@ -1370,13 +1381,18 @@
           </div>
         </div>
 
+        <!-- Reference Only Notice Banner -->
+        <div style="margin-top:14px; margin-bottom:6px; padding:6px 12px; background:#fef2f2; border:1px dashed #f87171; border-radius:6px; text-align:center; font-size:9.5px; font-weight:800; color:#b91c1c; letter-spacing:0.02em;">
+          ⚠️ NOTICE: This receipt is only for reference. Not for e-invoice.
+        </div>
+
         <!-- Pharmacist Stamp & Signature Box -->
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:40px; margin-top:25px; padding-top:14px; border-top:1px solid #e5e7eb;">
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:40px; margin-top:16px; padding-top:14px; border-top:1px solid #e5e7eb;">
           <div>
             <div style="font-size:10px; color:#4b5563; line-height:1.4;">
               <strong>Dispensed / Issued By:</strong><br>
               ${escapeHtml(invoiceState.pharmacistName)}<br>
-              <span style="font-size:9.5px; color:#6b7280;">${escapeHtml(invoiceState.pharmacistRole || 'Pharmacist')}${invoiceState.pharmacistRph ? ' · ' + escapeHtml(invoiceState.pharmacistRph) : ''}</span>
+              <span style="font-size:9.5px; color:#6b7280;">${escapeHtml(invoiceState.pharmacistRole || 'Pharmacist')}</span>
             </div>
             <div style="margin-top:25px; border-top:1px dashed #9ca3af; padding-top:3px; font-size:9.5px; color:#6b7280;">
               Dispenser Signature
@@ -1387,7 +1403,7 @@
             <div style="border:1.5px dashed #059669; border-radius:6px; height:85px; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#f0fdf4; text-align:center; padding:6px;">
               <div style="font-size:10px; font-weight:800; color:#065f46; letter-spacing:0.04em;">PMG PHARMACY KOTA SENTOSA</div>
               <div style="font-size:9px; font-weight:700; color:#047857; margin-top:2px;">REGISTERED PHARMACIST STAMP</div>
-              <div style="font-size:8.5px; color:#065f46; margin-top:2px;">${escapeHtml(invoiceState.pharmacistName)} ${invoiceState.pharmacistRph ? '(' + escapeHtml(invoiceState.pharmacistRph) + ')' : ''}</div>
+              <div style="font-size:8.5px; color:#065f46; margin-top:2px;">${escapeHtml(invoiceState.pharmacistName)}</div>
               <div style="font-size:8px; color:#059669; margin-top:1px;">Lembaga Farmasi Malaysia (Pharmacy Board)</div>
             </div>
           </div>
