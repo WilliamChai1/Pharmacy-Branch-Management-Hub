@@ -1224,10 +1224,10 @@
             <div class="flex items-center justify-between mb-4 border-b pb-3">
               <div>
                 <h3 class="font-bold text-gray-900 text-sm flex items-center gap-2">
-                  <i class="fa-solid fa-file-invoice text-emerald-600"></i> Official Medical Receipt & Tax Invoice
-                  <span class="text-[10px] bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded font-bold">Reference Only · Not for e-Invoice</span>
+                  <i class="fa-solid fa-file-invoice text-emerald-600"></i> Official Medical Receipt
+                  <span class="text-[10px] bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded font-bold">Customer Reference Only · Not for e-Invoice</span>
                 </h3>
-                <p class="text-gray-500 text-xs">A4 printable format for personal tax relief & corporate medical claim (For reference only; not for e-invoice)</p>
+                <p class="text-gray-500 text-xs">A4 printable format for customer reference (Not for e-invoice)</p>
               </div>
               <button type="button" onclick="window.pmgAdminUtils.printInvoice()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
                 <i class="fa-solid fa-print"></i> Print Official Receipt
@@ -1372,7 +1372,6 @@
     const subtotal = invoiceState.items.reduce((s, it) => s + ((Number(it.unitPrice) || 0) * (Number(it.qty) || 0)), 0);
     const totalDiscount = invoiceState.items.reduce((s, it) => s + (Number(it.discount) || 0), 0);
     const grandTotal = Math.max(0, subtotal - totalDiscount);
-    const taxReliefSubtotal = grandTotal;
 
     return `
       <div class="a4-document" style="background:#ffffff; color:#111827; padding:28px 32px; border-radius:8px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; box-shadow:0 1px 3px rgba(0,0,0,0.08); font-size:11px; line-height:1.4;">
@@ -1390,7 +1389,7 @@
           </div>
           <div style="text-align:right;">
             <div style="display:inline-block; background:#065f46; color:#fff; font-size:11px; font-weight:800; padding:4px 12px; border-radius:4px; letter-spacing:0.05em; text-transform:uppercase;">
-              TAX & MEDICAL RECEIPT
+              OFFICIAL MEDICAL RECEIPT
             </div>
             <div style="font-size:8.5px; font-weight:800; color:#dc2626; margin-top:4px; letter-spacing:0.02em;">
               (This receipt is only for reference. Not for e-invoice)
@@ -1451,23 +1450,19 @@
           </tbody>
         </table>
 
-        <!-- Totals & Tax Relief Notice -->
+        <!-- Totals & Customer Reference Notice -->
         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
           <div style="max-width:55%;">
-            <div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:6px; padding:8px 12px; font-size:9.5px; color:#065f46;">
-              <div style="font-weight:700; display:flex; align-items:center; gap:4px;">
-                <span>📋</span> LHDN PERSONAL INCOME TAX RELIEF NOTICE
+            <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:6px; padding:10px 14px; font-size:10px; color:#991b1b;">
+              <div style="font-weight:800; display:flex; align-items:center; gap:5px; text-transform:uppercase; letter-spacing:0.02em;">
+                <span>⚠️</span> CUSTOMER REFERENCE ONLY
               </div>
-              <p style="margin-top:3px; line-height:1.35;">
-                Under Section 46(1)(g) of the Malaysian Income Tax Act 1967, medical expenses for serious diseases, health screening, and approved medical self-monitoring devices are eligible for tax relief up to RM 10,000.
-                <strong>Tax Relief Eligible Amount: RM ${taxReliefSubtotal.toFixed(2)}</strong>.
+              <p style="margin-top:4px; line-height:1.4; font-weight:600; color:#b91c1c;">
+                This receipt is strictly for customer reference only. Not for e-invoice and not valid for official tax submission.
               </p>
             </div>
-            <div style="font-size:9px; color:#6b7280; margin-top:6px;">
+            <div style="font-size:9px; color:#6b7280; margin-top:8px; line-height:1.4;">
               * Goods sold are strictly non-returnable once dispensed as governed under the Malaysian Poisons Act 1952 and Sale of Drugs Act 1952.
-            </div>
-            <div style="font-size:9px; font-weight:800; color:#dc2626; margin-top:4px;">
-              * NOTICE: This receipt is only for reference. Not for e-invoice.
             </div>
           </div>
 
@@ -2103,8 +2098,8 @@
       "   - Primary bid: PMG Pharmacy (Lowest/Winning bid).\n" +
       "   - Secondary bids: SSJ Pharma & AM PM Pharmacy with +3% to +8% commercial variance.\n" +
       "   - Use 'Print All 3 Bids (Batch)' for clean 3-page tender submission.\n\n" +
-      "2. Manual Invoicing & Official Billing:\n" +
-      "   - Formats official tax/medical receipt for patient income tax relief (up to RM 10,000 under LHDN Section 46).\n" +
+      "2. Manual Invoicing & Customer Reference Receipt:\n" +
+      "   - Formats customer reference receipt (strictly for customer reference only; not for e-invoice).\n" +
       "   - Includes PMG letterhead, SSM 1424437-X, and Registered Pharmacist stamp box.\n\n" +
       "3. HQ Incident Report:\n" +
       "   - Digital autofill conforming strictly to Sarikei Management Office incident reporting standards.\n" +
