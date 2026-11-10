@@ -4796,7 +4796,7 @@ ItemCode,Description,Brand,Category,Cost,SellingPrice,Supplier
 <script src="js/expiry.js?v=20261103_v45"></script>
 <script src="js/returns-cn.js?v=20261024_v7"></script>
 <script src="js/pricing-intelligence.js?v=20261024_v7"></script>
-<script src="js/recruitment.js?v=20261110_docviewer_fix"></script>
+<script src="js/recruitment.js?v=20261110_shortlist_whatsapp_booking_v1"></script>
 <script src="js/admin-assets.js?v=20261024_v7"></script>
 <script src="js/commercial-admin.js?v=20261024_v7"></script>
 <!-- Promo Broadcaster extracted to standalone /promo/ webapp for zero-lag performance -->
@@ -5212,6 +5212,43 @@ function openCandidateDocUploadPortal(appId) {
 }
 window.openCandidateDocUploadPortal = openCandidateDocUploadPortal;
 
+function openCandidateInterviewBookingPortal(appId) {
+  // Hide all staff views & overlays
+  document.getElementById('authOverlay')?.classList.add('hidden');
+  document.getElementById('mainHeader')?.classList.add('hidden');
+  document.getElementById('mainNav')?.classList.add('hidden');
+  document.getElementById('mainContent')?.classList.add('hidden');
+  document.getElementById('mainFooter')?.classList.add('hidden');
+  document.getElementById('customerBookingView')?.classList.add('hidden');
+
+  // Reveal standalone job application portal
+  const portalView = document.getElementById('publicJobApplicationView');
+  if (portalView) {
+    portalView.classList.remove('hidden');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // Update browser URL query param without reload if opened via link click
+  if (window.history && window.history.pushState) {
+    const curSearch = window.location.search;
+    if (!curSearch.includes('interview=')) {
+      const newUrl = window.location.pathname + '?interview=' + encodeURIComponent(appId);
+      window.history.pushState({ path: newUrl }, '', newUrl);
+    }
+  }
+
+  const render = () => {
+    if (window.pmgRecruitment && typeof window.pmgRecruitment.renderCandidateInterviewPortal === 'function') {
+      window.pmgRecruitment.renderCandidateInterviewPortal('publicJobAppContainer', appId);
+    } else {
+      setTimeout(render, 150);
+    }
+  };
+
+  render();
+}
+window.openCandidateInterviewBookingPortal = openCandidateInterviewBookingPortal;
+
 // ─── GLOBAL GEMINI AI CONFIGURATION (Universal Across Hub) ────────────────────
 function getGlobalGeminiKey() {
   const k = (localStorage.getItem('pmg_gemini_key') || '').trim();
@@ -5430,6 +5467,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const uploadCandidateId = urlParams.get('upload') || urlParams.get('reupload');
   if (uploadCandidateId) {
     openCandidateDocUploadPortal(uploadCandidateId);
+    return; // Exit staff app boot - do NOT prompt for staff PIN/login
+  }
+
+  // Check URL parameters for Candidate Interview Booking Portal Mode (?interview=APP-... or ?bookInterview=APP-...)
+  const interviewCandidateId = urlParams.get('interview') || urlParams.get('bookInterview');
+  if (interviewCandidateId) {
+    openCandidateInterviewBookingPortal(interviewCandidateId);
     return; // Exit staff app boot - do NOT prompt for staff PIN/login
   }
 

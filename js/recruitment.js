@@ -2296,6 +2296,499 @@ async function renderCandidateUploadPortal(targetContainerId, appId) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CANDIDATE INTERVIEW BOOKING PORTAL (?interview=APP-...)
+// ─────────────────────────────────────────────────────────────────────────────
+const candidateBookingState = {
+  selectedDate: '',
+  selectedTime: '',
+  isRescheduling: false
+};
+
+function formatCandidateWhatsAppUrl(phone, msg) {
+  let clean = String(phone || '').replace(/\D/g, '');
+  if (clean.startsWith('60')) {
+    // Already has Malaysian country code
+  } else if (clean.startsWith('0')) {
+    clean = '60' + clean.slice(1);
+  } else if (clean) {
+    clean = '60' + clean;
+  }
+  return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
+}
+
+function sendShortlistBookingWhatsApp(appId) {
+  const apps = loadApps();
+  const app = apps.find(a => a && a.id === appId);
+  if (!app) {
+    toast('Applicant not found', 'error');
+    return;
+  }
+
+  const cleanPhone = String(app.phone || '').replace(/\D/g, '');
+  if (!cleanPhone) {
+    toast('Nombor telefon calon tiada / Candidate phone number is missing', 'error');
+    return;
+  }
+
+  const bookingUrl = `https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/?interview=${encodeURIComponent(app.id)}`;
+
+  const waMsg =
+    `Salam / Dear ${app.name},\n\n` +
+    `Tahniah! Permohonan kerja anda sebagai *${app.position || 'Pharmacy Staff'}* di *PMG Pharmacy Kota Sentosa* telah DISENARAI PENDEK (SHORTLISTED) untuk sesi temuduga bersemuka.\n` +
+    `(Congratulations! Your application has been shortlisted for an interview.)\n\n` +
+    `📅 Sila layari pautan rasmi ini untuk memilih & menetapkan tarikh serta masa temuduga pilihan anda:\n` +
+    `(Please choose and book your preferred interview date & time via this link):\n` +
+    `👉 ${bookingUrl}\n\n` +
+    `📍 Lokasi Temuduga / Interview Location:\n` +
+    `PMG Pharmacy Kota Sentosa, Jalan Setia Raja, Kota Sentosa, Kuching, Sarawak.\n\n` +
+    `Sila bawa bersama semasa temuduga:\n` +
+    `1. Kad Pengenalan Asal (Original IC / MyKad)\n` +
+    `2. Sijil Akademik & Sijil Persekolahan Asal (SPM / Diploma / Ijazah)\n` +
+    `3. Salinan resume & dokumen sokongan lain (jika ada)\n\n` +
+    `Sebarang pertanyaan, anda boleh terus membalas di WhatsApp ini atau hubungi William Chai di talian +601110990693.\n\n` +
+    `Terima kasih & jumpa anda tidak lama lagi!\n` +
+    `William Chai — Branch In-Charge\n` +
+    `PMG Pharmacy Kota Sentosa`;
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(bookingUrl).catch(() => {});
+  }
+
+  const waUrl = formatCandidateWhatsAppUrl(cleanPhone, waMsg);
+  toast('Membuka WhatsApp & pautan temu duga... (Opening WhatsApp...)', 'success');
+  window.open(waUrl, '_blank');
+}
+
+function shortlistCandidate(appId) {
+  const apps = loadApps();
+  const app = apps.find(a => a && a.id === appId);
+  if (!app) {
+    toast('Applicant not found', 'error');
+    return;
+  }
+
+  app.status = 'shortlist';
+  saveApps(apps);
+
+  // Sync updated status to cloud
+  const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+  fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({
+      action: 'submitJobApplication',
+      application: app
+    }),
+    redirect: 'follow'
+  }).catch(e => console.warn('[Recruitment] Cloud shortlist status push error:', e));
+
+  // Open WhatsApp with booking link straight away
+  sendShortlistBookingWhatsApp(appId);
+
+  renderAmDashboard();
+  const detailEl = el('recAmDetailContent');
+  if (detailEl && !detailEl.classList.contains('hidden')) viewApp(appId);
+}
+
+async function renderCandidateInterviewPortal(targetContainerId, appId) {
+  const container = document.getElementById(targetContainerId) || el(targetContainerId);
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="max-w-xl mx-auto py-16 px-4 text-center">
+      <i class="fa-solid fa-spinner fa-spin text-3xl text-blue-600 mb-3"></i>
+      <h3 class="text-base font-bold text-gray-800">Memuatkan Maklumat Temu Duga...</h3>
+      <p class="text-xs text-gray-500 mt-1">Mengambil rekod permohonan ${sanitize(appId)}...</p>
+    </div>`;
+
+  let app = (loadApps() || []).find(a => a && a.id === appId);
+  if (!app) {
+    try {
+      const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+      const res = await fetch(`${apiUrl}?action=getJobApplications`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.applications)) {
+          app = data.applications.find(a => a && a.id === appId);
+          if (app) {
+            const currentApps = loadApps();
+            if (!currentApps.some(a => a.id === app.id)) {
+              currentApps.push(app);
+              saveApps(currentApps);
+            }
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  if (!app) {
+    container.innerHTML = `
+      <div class="max-w-md mx-auto my-12 bg-white rounded-2xl shadow-xl border border-slate-200 p-8 text-center">
+        <div class="w-14 h-14 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl">
+          <i class="fa-solid fa-circle-exclamation"></i>
+        </div>
+        <h3 class="text-base font-bold text-slate-800">Permohonan Tidak Dijumpai</h3>
+        <p class="text-xs text-slate-500 mt-2 leading-relaxed">
+          Pautan rujukan permohonan (<span class="font-mono font-bold">${sanitize(appId)}</span>) tidak ditemui dalam sistem. Sila hubungi cawangan untuk bantuan.
+        </p>
+        <div class="mt-6">
+          <a href="https://wa.me/601110990693" target="_blank" class="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow-xs">
+            <i class="fa-brands fa-whatsapp text-sm"></i> WhatsApp William Chai (+601110990693)
+          </a>
+        </div>
+      </div>`;
+    return;
+  }
+
+  const candidateName = app.name || 'Calon PMG';
+  const candidatePos  = app.position || 'Pharmacy Staff';
+  const candidateRef  = app.id || appId;
+  const locationStr   = 'PMG Pharmacy Kota Sentosa, Jalan Setia Raja, Kota Sentosa, Kuching, Sarawak';
+
+  // 1. If already booked and NOT in rescheduling mode: Show Confirmed Card
+  if (app.interviewDate && app.interviewTime && !candidateBookingState.isRescheduling) {
+    const waConfirmMsg = `Salam William Chai, saya ${candidateName} telah mengesahkan kehadiran sesi temu duga bagi jawatan ${candidatePos} (${candidateRef}) pada ${app.interviewDate} jam ${app.interviewTime} di PMG Pharmacy Kota Sentosa. Terima kasih!`;
+    const waConfirmUrl = formatCandidateWhatsAppUrl('01110990693', waConfirmMsg);
+
+    container.innerHTML = `
+      <div class="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden my-4 sm:my-8">
+        <!-- Confirmed Banner -->
+        <div class="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white p-6 sm:p-8 text-center">
+          <div class="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-inner">
+            <i class="fa-solid fa-calendar-check text-3xl text-white"></i>
+          </div>
+          <span class="px-3 py-1 bg-white/20 border border-white/30 text-white rounded-full text-[11px] font-bold uppercase tracking-wider inline-block mb-2">
+            Disahkan / Confirmed
+          </span>
+          <h2 class="text-xl sm:text-2xl font-black">Temu Duga Anda Telah Disahkan!</h2>
+          <p class="text-xs text-emerald-100 mt-1">Your Interview Appointment has been Scheduled</p>
+        </div>
+
+        <!-- Appointment Details Body -->
+        <div class="p-6 sm:p-8 space-y-5">
+          <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3 text-xs">
+            <div class="flex justify-between items-center pb-2.5 border-b border-slate-200">
+              <span class="text-slate-500 font-medium">Nama Calon / Candidate:</span>
+              <span class="font-bold text-slate-900 text-sm">${sanitize(candidateName)}</span>
+            </div>
+            <div class="flex justify-between items-center pb-2.5 border-b border-slate-200">
+              <span class="text-slate-500 font-medium">Jawatan Dipohon / Position:</span>
+              <span class="font-bold text-blue-700">${sanitize(candidatePos)}</span>
+            </div>
+            <div class="flex justify-between items-center pb-2.5 border-b border-slate-200">
+              <span class="text-slate-500 font-medium">No. Rujukan / Reference ID:</span>
+              <span class="font-mono font-bold text-slate-800">${sanitize(candidateRef)}</span>
+            </div>
+            <div class="flex justify-between items-center pb-2.5 border-b border-slate-200 bg-emerald-50/60 -mx-4 px-4 py-2 rounded-lg">
+              <span class="text-emerald-900 font-bold flex items-center gap-1.5"><i class="fa-solid fa-calendar text-emerald-600"></i> Tarikh Temu Duga:</span>
+              <span class="font-extrabold text-emerald-900 text-sm">${app.interviewDate}</span>
+            </div>
+            <div class="flex justify-between items-center pb-2.5 border-b border-slate-200 bg-emerald-50/60 -mx-4 px-4 py-2 rounded-lg">
+              <span class="text-emerald-900 font-bold flex items-center gap-1.5"><i class="fa-solid fa-clock text-emerald-600"></i> Masa / Waktu:</span>
+              <span class="font-extrabold text-emerald-900 text-sm">${app.interviewTime}</span>
+            </div>
+            <div class="flex justify-between items-start pt-1">
+              <span class="text-slate-500 font-medium shrink-0 flex items-center gap-1.5"><i class="fa-solid fa-location-dot text-rose-500"></i> Lokasi:</span>
+              <span class="font-semibold text-slate-800 text-right leading-relaxed">${locationStr}</span>
+            </div>
+          </div>
+
+          <!-- Document Checklist Box -->
+          <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-900">
+            <h4 class="font-bold text-amber-950 flex items-center gap-1.5 mb-2">
+              <i class="fa-solid fa-clipboard-check text-amber-600"></i> Senarai Dokumen yang Perlu Dibawa:
+            </h4>
+            <ul class="list-disc ml-5 space-y-1 text-amber-900/90 leading-relaxed">
+              <li>Kad Pengenalan Asal (Original MyKad / IC)</li>
+              <li>Sijil Persekolahan &amp; Akademik Asal (SPM / STPM / Diploma / Ijazah)</li>
+              <li>Salinan Resume &amp; Sijil berkaitan (jika ada)</li>
+              <li>Sila hadir 10 minit lebih awal dengan berpakaian kemas / formal</li>
+            </ul>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="space-y-2.5 pt-2">
+            <a href="https://maps.google.com/?q=PMG+Pharmacy+Kota+Sentosa" target="_blank" rel="noopener noreferrer" class="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-xs">
+              <i class="fa-solid fa-map-location-dot text-sm"></i> Buka Lokasi di Google Maps
+            </a>
+            <a href="${waConfirmUrl}" target="_blank" rel="noopener noreferrer" class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-xs">
+              <i class="fa-brands fa-whatsapp text-base"></i> Hantar Pengesahan Temu Duga via WhatsApp ke William Chai
+            </a>
+            <button type="button" onclick="window.pmgRecruitment.rescheduleCandidateInterview('${candidateRef}')" class="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition flex items-center justify-center gap-2">
+              <i class="fa-solid fa-calendar-alt text-slate-500"></i> Tukar Tarikh / Reschedule Temu Duga
+            </button>
+          </div>
+        </div>
+      </div>`;
+    return;
+  }
+
+  // 2. Candidate Booking Mode: Select Date & Time
+  const candidateDays = [];
+  for (let i = 1; i <= 14; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    const dow = d.getDay();
+    if (dow !== 0) { // Sunday = off
+      const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      const avail = getAvailableSlots(iso);
+      candidateDays.push({
+        d,
+        iso,
+        dow,
+        dayName: d.toLocaleDateString('ms-MY', { weekday: 'short' }).toUpperCase(),
+        dayDate: d.getDate(),
+        monthName: d.toLocaleDateString('ms-MY', { month: 'short' }),
+        availSlots: avail
+      });
+    }
+  }
+
+  // Select first available day if not set or invalid
+  if (!candidateBookingState.selectedDate || !candidateDays.some(cd => cd.iso === candidateBookingState.selectedDate)) {
+    const firstWithSlots = candidateDays.find(cd => cd.availSlots.length > 0) || candidateDays[0];
+    if (firstWithSlots) candidateBookingState.selectedDate = firstWithSlots.iso;
+  }
+
+  const currentDayData = candidateDays.find(cd => cd.iso === candidateBookingState.selectedDate);
+  const availableTimeSlots = currentDayData ? currentDayData.availSlots : [];
+
+  container.innerHTML = `
+    <div class="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden my-4 sm:my-8">
+      <!-- Portal Top Banner -->
+      <div class="bg-gradient-to-r from-blue-700 via-indigo-700 to-purple-800 text-white p-6 sm:p-8">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-white/10 backdrop-blur-xs flex items-center justify-center font-black text-rose-300 border border-white/20 text-lg">
+              PMG
+            </div>
+            <div>
+              <h2 class="text-lg sm:text-xl font-black tracking-tight">Penetapan Temu Duga Bersemuka</h2>
+              <p class="text-xs text-blue-200 font-medium">PMG Pharmacy Kota Sentosa &bull; Sesi Bersama William Chai</p>
+            </div>
+          </div>
+          <span class="px-2.5 py-1 bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 rounded-full text-[11px] font-bold flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Temu Duga Rasmi
+          </span>
+        </div>
+
+        <!-- Candidate Info Pill -->
+        <div class="bg-white/10 backdrop-blur-md border border-white/15 rounded-xl p-3.5 text-xs text-white grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div>
+            <div class="text-[10px] text-blue-200 uppercase font-semibold">Nama Calon</div>
+            <div class="font-bold text-sm text-white truncate">${sanitize(candidateName)}</div>
+          </div>
+          <div>
+            <div class="text-[10px] text-blue-200 uppercase font-semibold">Jawatan Dipohon</div>
+            <div class="font-bold text-white truncate">${sanitize(candidatePos)}</div>
+          </div>
+          <div>
+            <div class="text-[10px] text-blue-200 uppercase font-semibold">No. Rujukan</div>
+            <div class="font-mono font-bold text-amber-300 truncate">${sanitize(candidateRef)}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Instruction Callout -->
+      <div class="p-5 sm:p-6 bg-slate-50 border-b border-slate-200">
+        <div class="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl p-3.5 text-xs text-blue-900">
+          <i class="fa-solid fa-circle-check text-blue-600 text-base mt-0.5 shrink-0"></i>
+          <div class="leading-relaxed">
+            <strong>Tahniah! Permohonan anda telah disenarai pendek.</strong><br>
+            Sila pilih tarikh dan slot waktu pilihan anda di bawah untuk mengesahkan jadual temu duga bersemuka di cawangan <strong>PMG Pharmacy Kota Sentosa</strong>.
+          </div>
+        </div>
+      </div>
+
+      <div class="p-5 sm:p-8 space-y-6">
+        <!-- Step 1: Select Date -->
+        <div>
+          <label class="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-2.5 flex items-center justify-between">
+            <span class="flex items-center gap-1.5"><i class="fa-solid fa-calendar-day text-blue-600"></i> Langkah 1: Pilih Tarikh Temu Duga</span>
+            <span class="text-[11px] font-normal text-slate-500">14 Hari Bekerja Seterusnya</span>
+          </label>
+          <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+            ${candidateDays.map(cd => {
+              const isSelected = cd.iso === candidateBookingState.selectedDate;
+              const hasSlots = cd.availSlots.length > 0;
+              const activeClasses = isSelected
+                ? 'bg-blue-600 text-white border-blue-600 shadow-md ring-2 ring-blue-300'
+                : (hasSlots
+                    ? 'bg-white hover:bg-blue-50/50 text-slate-800 border-slate-200 hover:border-blue-300'
+                    : 'bg-slate-100 text-slate-400 border-slate-200 opacity-60 cursor-not-allowed');
+
+              return `
+                <button type="button" ${hasSlots ? `onclick="window.pmgRecruitment.onCandidateDateSelect('${candidateRef}', '${cd.iso}')"` : 'disabled'}
+                  class="p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center cursor-pointer ${activeClasses}">
+                  <span class="text-[10px] font-bold ${isSelected ? 'text-blue-100' : 'text-slate-500'}">${cd.dayName}</span>
+                  <span class="text-base font-extrabold my-0.5 leading-tight">${cd.dayDate}</span>
+                  <span class="text-[10px] ${isSelected ? 'text-blue-200' : 'text-slate-400'}">${cd.monthName}</span>
+                  <span class="text-[9px] mt-1 font-bold ${isSelected ? 'text-amber-300' : (hasSlots ? 'text-emerald-600' : 'text-slate-400')}">
+                    ${hasSlots ? `${cd.availSlots.length} slot` : 'Penuh'}
+                  </span>
+                </button>`;
+            }).join('')}
+          </div>
+        </div>
+
+        <!-- Step 2: Select Time Slot -->
+        <div>
+          <label class="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-2.5 flex items-center justify-between">
+            <span class="flex items-center gap-1.5"><i class="fa-solid fa-clock text-indigo-600"></i> Langkah 2: Pilih Masa / Waktu Sesi</span>
+            <span class="text-[11px] font-normal text-blue-700 font-bold">${currentDayData ? `${currentDayData.dayName}, ${currentDayData.dayDate} ${currentDayData.monthName} (${currentDayData.iso})` : ''}</span>
+          </label>
+          ${availableTimeSlots.length === 0 ? `
+            <div class="p-6 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-center text-xs text-slate-500">
+              <i class="fa-solid fa-calendar-xmark text-slate-400 text-2xl mb-1.5 block"></i>
+              Tiada slot temu duga yang tersedia pada tarikh ini. Sila pilih tarikh lain di Langkah 1.
+            </div>` : `
+            <div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2">
+              ${availableTimeSlots.map(time => {
+                const isSelected = time === candidateBookingState.selectedTime;
+                return `
+                  <button type="button" onclick="window.pmgRecruitment.onCandidateTimeSelect('${candidateRef}', '${time}')"
+                    class="py-2.5 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer border ${
+                      isSelected
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-md ring-2 ring-indigo-300'
+                        : 'bg-white hover:bg-indigo-50/50 text-slate-700 border-slate-200 hover:border-indigo-300'
+                    }">
+                    <i class="fa-regular fa-clock ${isSelected ? 'text-indigo-200' : 'text-slate-400'}"></i>
+                    <span>${time}</span>
+                  </button>`;
+              }).join('')}
+            </div>
+          `}
+        </div>
+
+        <!-- Location & Details Summary -->
+        <div class="bg-slate-50 rounded-xl border border-slate-200 p-4 text-xs text-slate-700 space-y-2">
+          <div class="flex items-start gap-2">
+            <i class="fa-solid fa-location-dot text-rose-500 mt-0.5"></i>
+            <div>
+              <strong class="text-slate-900">Lokasi Temu Duga:</strong><br>
+              ${locationStr}
+            </div>
+          </div>
+          <div class="flex items-start gap-2 pt-1 border-t border-slate-200/80">
+            <i class="fa-solid fa-user-tie text-blue-600 mt-0.5"></i>
+            <div>
+              <strong class="text-slate-900">Penemuduga:</strong> William Chai (Branch In-Charge / Pharmacist)
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3: Confirm Button -->
+        <div class="pt-2">
+          ${candidateBookingState.selectedTime ? `
+            <button type="button" onclick="window.pmgRecruitment.confirmCandidateInterview('${candidateRef}')"
+              class="w-full py-4 px-6 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold rounded-xl text-sm transition shadow-lg flex items-center justify-center gap-2 cursor-pointer">
+              <i class="fa-solid fa-calendar-check text-base"></i>
+              <span>Sahkan Temu Duga (${candidateBookingState.selectedDate} @ ${candidateBookingState.selectedTime})</span>
+            </button>` : `
+            <button type="button" disabled
+              class="w-full py-4 px-6 bg-slate-200 text-slate-400 font-bold rounded-xl text-sm cursor-not-allowed flex items-center justify-center gap-2">
+              <i class="fa-solid fa-arrow-pointer"></i>
+              <span>Sila pilih slot masa di atas untuk membuat pengesahan</span>
+            </button>
+          `}
+          <p class="text-center text-[11px] text-slate-400 mt-2">
+            Setelah disahkan, temu duga akan direkodkan secara automatik ke dalam kalendar cawangan PMG.
+          </p>
+        </div>
+      </div>
+    </div>`;
+}
+
+function onCandidateDateSelect(appId, dateStr) {
+  candidateBookingState.selectedDate = dateStr;
+  candidateBookingState.selectedTime = '';
+  renderCandidateInterviewPortal('publicJobAppContainer', appId);
+}
+
+function onCandidateTimeSelect(appId, timeStr) {
+  candidateBookingState.selectedTime = timeStr;
+  renderCandidateInterviewPortal('publicJobAppContainer', appId);
+}
+
+function rescheduleCandidateInterview(appId) {
+  candidateBookingState.isRescheduling = true;
+  candidateBookingState.selectedTime = '';
+  renderCandidateInterviewPortal('publicJobAppContainer', appId);
+}
+
+async function confirmCandidateInterview(appId) {
+  const date = candidateBookingState.selectedDate;
+  const time = candidateBookingState.selectedTime;
+  if (!date || !time) {
+    toast('Sila pilih tarikh dan masa temu duga', 'error');
+    return;
+  }
+
+  const apps = loadApps();
+  let app = apps.find(a => a && a.id === appId);
+  if (!app) {
+    try {
+      const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+      const res = await fetch(`${apiUrl}?action=getJobApplications`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.applications)) {
+          app = data.applications.find(a => a && a.id === appId);
+        }
+      }
+    } catch (_) {}
+  }
+
+  if (!app) {
+    toast('Applicant record not found', 'error');
+    return;
+  }
+
+  const location = 'PMG Pharmacy Kota Sentosa, Jalan Setia Raja, Kota Sentosa, Kuching, Sarawak';
+
+  // Save / update slot
+  const slots = loadSlots().filter(s => s.appId !== appId);
+  slots.push({
+    id: genId(),
+    appId: app.id,
+    applicantName: app.name,
+    position: app.position,
+    date,
+    time,
+    location,
+    notes: 'Self-booked by applicant via online portal',
+    confirmed: true,
+    createdAt: now()
+  });
+  saveSlots(slots);
+
+  // Update app status
+  app.status = 'invited';
+  app.interviewDate = date;
+  app.interviewTime = time;
+  app.interviewLocation = location;
+  saveApps(loadApps().map(a => a.id === app.id ? app : a));
+
+  // Push update to cloud
+  const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+  fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({
+      action: 'submitJobApplication',
+      application: app
+    }),
+    redirect: 'follow'
+  }).catch(e => console.warn('[Recruitment] Cloud slot booking push error:', e));
+
+  candidateBookingState.isRescheduling = false;
+  toast('Temu duga anda berjaya disahkan! (Interview confirmed!)', 'success');
+
+  renderCandidateInterviewPortal('publicJobAppContainer', appId);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SUBMIT PUBLIC FORM
 // ─────────────────────────────────────────────────────────────────────────────
 async function submitPublicForm(e) {
@@ -2761,11 +3254,16 @@ ${!apiKey ? `
             <td class="p-3"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${m.color}"><i class="fa-solid ${m.icon} mr-1"></i>${m.label}</span></td>
             <td class="p-3">
               <div class="flex items-center gap-1">
-                <button onclick="window.pmgRecruitment.viewApp('${app.id}')" title="View Profile" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"><i class="fa-solid fa-eye"></i></button>
-                ${app.resumeUrl ? `<a href="${sanitize(app.resumeUrl)}" target="_blank" title="Open Cloud Resume / Document" class="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg"><i class="fa-solid fa-file-pdf"></i></a>` : ''}
-                ${!app.aiReport && app.status === 'new' ? `<button onclick="window.pmgRecruitment.runAI('${app.id}')" title="Run AI Evaluation" class="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg"><i class="fa-solid fa-robot"></i></button>` : ''}
-                ${app.status === 'shortlist' ? `<button onclick="window.pmgRecruitment.openScheduleModal('${app.id}')" title="Schedule Interview" class="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"><i class="fa-solid fa-calendar-plus"></i></button>` : ''}
-                <button onclick="window.pmgRecruitment.deleteApp('${app.id}')" title="Delete" class="p-1.5 text-red-400 hover:bg-red-50 rounded-lg"><i class="fa-solid fa-trash"></i></button>
+                <button onclick="window.pmgRecruitment.viewApp('${app.id}')" title="View Profile" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg cursor-pointer"><i class="fa-solid fa-eye"></i></button>
+                ${app.resumeUrl ? `<a href="${sanitize(app.resumeUrl)}" target="_blank" title="Open Cloud Resume / Document" class="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"><i class="fa-solid fa-file-pdf"></i></a>` : ''}
+                ${!app.aiReport && app.status === 'new' ? `<button onclick="window.pmgRecruitment.runAI('${app.id}')" title="Run AI Evaluation" class="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg cursor-pointer"><i class="fa-solid fa-robot"></i></button>` : ''}
+                ${app.status === 'shortlist' ? `
+                  <button onclick="window.pmgRecruitment.sendShortlistBookingWhatsApp('${app.id}')" title="Resend Interview Booking Link via WhatsApp" class="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg cursor-pointer"><i class="fa-brands fa-whatsapp text-sm"></i></button>
+                  <button onclick="window.pmgRecruitment.openScheduleModal('${app.id}')" title="Manual Schedule Interview" class="p-1.5 text-teal-600 hover:bg-teal-50 rounded-lg cursor-pointer"><i class="fa-solid fa-calendar-plus"></i></button>
+                ` : `
+                  <button onclick="window.pmgRecruitment.shortlistCandidate('${app.id}')" title="Shortlist & Send WhatsApp Booking Link" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg cursor-pointer"><i class="fa-solid fa-check-circle"></i></button>
+                `}
+                <button onclick="window.pmgRecruitment.deleteApp('${app.id}')" title="Delete" class="p-1.5 text-red-400 hover:bg-red-50 rounded-lg cursor-pointer"><i class="fa-solid fa-trash"></i></button>
               </div>
             </td>
           </tr>`;
@@ -3323,12 +3821,16 @@ ${docsSection}
 
 <!-- Action Buttons -->
 <div class="flex flex-wrap gap-2 pt-2">
-  ${!app.aiReport ? `<button onclick="window.pmgRecruitment.runAI('${appId}')" class="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-2"><i class="fa-solid fa-robot"></i>Run AI Evaluation</button>` : ''}
-  ${app.status === 'shortlist' ? `<button onclick="window.pmgRecruitment.openScheduleModal('${appId}')" class="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-2"><i class="fa-solid fa-calendar-plus"></i>Schedule Interview</button>` : ''}
-  <button onclick="window.pmgRecruitment.updateStatus('${appId}','shortlist')" class="px-4 py-2 bg-blue-700 text-white text-xs font-bold rounded-xl hover:bg-blue-800 transition"><i class="fa-solid fa-check mr-1"></i>Shortlist</button>
-  <button onclick="window.pmgRecruitment.updateStatus('${appId}','rejected')" class="px-4 py-2 bg-red-600 text-white text-xs font-bold rounded-xl hover:bg-red-700 transition"><i class="fa-solid fa-times mr-1"></i>Reject</button>
-  <button onclick="window.pmgRecruitment.printApp('${appId}')" class="px-4 py-2 bg-gray-700 text-white text-xs font-bold rounded-xl hover:bg-gray-800 transition"><i class="fa-solid fa-print mr-1"></i>Print</button>
-  <button onclick="window.pmgRecruitment.exportAppPdf('${appId}')" class="px-4 py-2 bg-slate-600 text-white text-xs font-bold rounded-xl hover:bg-slate-700 transition"><i class="fa-solid fa-file-pdf mr-1"></i>Export PDF</button>
+  ${!app.aiReport ? `<button onclick="window.pmgRecruitment.runAI('${appId}')" class="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-2 cursor-pointer shadow-xs"><i class="fa-solid fa-robot"></i>Run AI Evaluation</button>` : ''}
+  ${app.status === 'shortlist' ? `
+    <button onclick="window.pmgRecruitment.sendShortlistBookingWhatsApp('${appId}')" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"><i class="fa-brands fa-whatsapp text-sm"></i>Resend Booking Link (WhatsApp)</button>
+    <button onclick="window.pmgRecruitment.openScheduleModal('${appId}')" class="px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"><i class="fa-solid fa-calendar-plus"></i>Manual Schedule</button>
+  ` : `
+    <button onclick="window.pmgRecruitment.shortlistCandidate('${appId}')" class="px-4 py-2 bg-blue-700 text-white text-xs font-bold rounded-xl hover:bg-blue-800 transition flex items-center gap-1.5 shadow-xs cursor-pointer"><i class="fa-solid fa-check mr-1"></i>Shortlist & Send WhatsApp Booking Link</button>
+  `}
+  <button onclick="window.pmgRecruitment.updateStatus('${appId}','rejected')" class="px-4 py-2 bg-red-600 text-white text-xs font-bold rounded-xl hover:bg-red-700 transition cursor-pointer"><i class="fa-solid fa-times mr-1"></i>Reject</button>
+  <button onclick="window.pmgRecruitment.printApp('${appId}')" class="px-4 py-2 bg-gray-700 text-white text-xs font-bold rounded-xl hover:bg-gray-800 transition cursor-pointer"><i class="fa-solid fa-print mr-1"></i>Print</button>
+  <button onclick="window.pmgRecruitment.exportAppPdf('${appId}')" class="px-4 py-2 bg-slate-600 text-white text-xs font-bold rounded-xl hover:bg-slate-700 transition cursor-pointer"><i class="fa-solid fa-file-pdf mr-1"></i>Export PDF</button>
 </div>`;
 
   switchRecTab('detail');
@@ -3380,6 +3882,10 @@ async function runAI(appId) {
 // STATUS & ACTIONS
 // ─────────────────────────────────────────────────────────────────────────────
 function updateStatus(appId, newStatus) {
+  if (newStatus === 'shortlist') {
+    shortlistCandidate(appId);
+    return;
+  }
   const apps = loadApps();
   const app = apps.find(a => a.id === appId);
   if (!app) return;
@@ -4607,6 +5113,14 @@ window.pmgRecruitment = {
   renderCandidateUploadPortal,
   handleCandidateSlotSelect,
   submitCandidateReupload,
+  renderCandidateInterviewPortal,
+  onCandidateDateSelect,
+  onCandidateTimeSelect,
+  rescheduleCandidateInterview,
+  confirmCandidateInterview,
+  shortlistCandidate,
+  sendShortlistBookingWhatsApp,
+  formatCandidateWhatsAppUrl,
   syncAppsFromCloud,
   loadApps,
   saveApps,
