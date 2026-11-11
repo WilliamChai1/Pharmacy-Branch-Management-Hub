@@ -290,6 +290,127 @@
       competitor: 'Farley Supermarket / Alpro',
       note: 'Farley RM 9.90 · Alpro RM 11.90',
       isRx: false
+    },
+    // ─── PEDIATRIC & ADULT OTC SUPPLEMENT BENCHMARKS ─────────────────────────
+    {
+      regex: /BIO[- ]?LIFE.*A\.?B\.?\s*JUNIOR.*(2\s*X\s*50|TWIN)/i,
+      name: 'BIO-LIFE A.B. JUNIOR PRE&PRO POWDER 2X50\'S (TWIN PACK)',
+      category: 'PEDIATRIC HEALTH / PROBIOTICS',
+      cost: 122.00,
+      retailSp: 168.30,
+      promoSp: 152.50,
+      supermarketSp: 160.00,
+      competitor: 'BIG Pharmacy / Alpro Oneclick',
+      note: 'BIG Promo RM 152.50 · Alpro RM 168.30 (Twin Pack 2x50s = RM 76.25/box)',
+      isRx: false
+    },
+    {
+      regex: /BIO[- ]?LIFE.*A\.?B\.?\s*JUNIOR.*10/i,
+      name: 'BIO-LIFE A.B. JUNIOR PRE&PRO POWDER 10\'S',
+      category: 'PEDIATRIC HEALTH / PROBIOTICS',
+      cost: 14.50,
+      retailSp: 18.30,
+      promoSp: 18.00,
+      supermarketSp: 18.50,
+      competitor: 'BIG Pharmacy / Alpro',
+      note: 'BIG RM 18.30 · Alpro RM 18.00 (Single Box 10s)',
+      isRx: false
+    },
+    {
+      regex: /BIO[- ]?LIFE.*A\.?B\.?\s*JUNIOR.*(50|SAC\s*50|PRE&PRO|POWDER)/i,
+      name: 'BIO-LIFE A.B. JUNIOR PRE&PRO POWDER 50\'S',
+      category: 'PEDIATRIC HEALTH / PROBIOTICS',
+      cost: 74.63,
+      retailSp: 86.90,
+      promoSp: 84.10,
+      supermarketSp: 88.50,
+      competitor: 'Alpro Oneclick (11.11 Promo RM 84.10) · BIG RM 86.90',
+      note: 'Alpro 11.11 Promo RM 84.10 (Normal RM 113.00) · BIG RM 86.90 · Single Box 50s',
+      isRx: false
+    },
+    {
+      regex: /BIO[- ]?LIFE.*LIVASIL.*(100|VALUE)/i,
+      name: 'BIO-LIFE LIVASIL TABLETS 100\'S + 30\'S',
+      category: 'SUPPLEMENT / LIVER HEALTH',
+      cost: 118.00,
+      retailSp: 222.00,
+      promoSp: 152.60,
+      supermarketSp: 165.00,
+      competitor: 'Alpro Oneclick / BIG Pharmacy',
+      note: 'Alpro Value Pack Promo RM 152.60 (Normal RM 239.00)',
+      isRx: false
+    },
+    {
+      regex: /BIO[- ]?LIFE.*LIVASIL/i,
+      name: 'BIO-LIFE LIVASIL TABLETS 30\'S',
+      category: 'SUPPLEMENT / LIVER HEALTH',
+      cost: 44.00,
+      retailSp: 62.00,
+      promoSp: 58.90,
+      supermarketSp: 59.90,
+      competitor: 'BIG Pharmacy / Caring',
+      note: 'BIG Pharmacy RM 58.90 · Alpro RM 62.00',
+      isRx: false
+    },
+    {
+      regex: /BLACKMORES.*BIO\s*C.*1000/i,
+      name: 'BLACKMORES BIO C 1000MG 30\'S',
+      category: 'VITAMINS / IMMUNITY',
+      cost: 28.00,
+      retailSp: 38.20,
+      promoSp: 37.80,
+      supermarketSp: 38.90,
+      competitor: 'BIG Pharmacy / Caring',
+      note: 'BIG RM 37.80 · Alpro RM 38.20',
+      isRx: false
+    },
+    {
+      regex: /REDOXON.*(TRIPLE|DOUBLE).*EFF/i,
+      name: 'REDOXON TRIPLE ACTION EFFERVESCENT 30\'S',
+      category: 'VITAMINS / IMMUNITY',
+      cost: 32.00,
+      retailSp: 52.00,
+      promoSp: 42.90,
+      supermarketSp: 44.50,
+      competitor: 'Alpro / BIG Pharmacy',
+      note: 'Alpro / BIG Promo RM 42.90 (Normal RM 52.00–66.20)',
+      isRx: false
+    },
+    {
+      regex: /FLAVETTES.*GLOW/i,
+      name: 'FLAVETTES EFFERVESCENT GLOW 30\'S',
+      category: 'VITAMINS / BEAUTY',
+      cost: 35.00,
+      retailSp: 69.90,
+      promoSp: 45.89,
+      supermarketSp: 46.90,
+      competitor: 'BIG Pharmacy / Alpro / Caring',
+      note: 'Unified Chain Promo RM 45.89 (Normal RM 69.90)',
+      isRx: false
+    },
+    {
+      regex: /APPETON.*LYSINE.*(TAB|60)/i,
+      name: 'APPETON MULTIVITAMIN WITH LYSINE 60\'S',
+      category: 'PEDIATRIC HEALTH / APPETITE',
+      cost: 33.00,
+      retailSp: 62.10,
+      promoSp: 43.11,
+      supermarketSp: 45.50,
+      competitor: 'Alpro Oneclick / BIG Pharmacy',
+      note: 'Alpro Promo RM 43.11 (Normal RM 62.10) · BIG RM 47.90',
+      isRx: false
+    },
+    {
+      regex: /APPETON.*LYSINE.*(SYRUP|120)/i,
+      name: 'APPETON MULTIVITAMIN LYSINE SYRUP 120ML',
+      category: 'PEDIATRIC HEALTH / APPETITE',
+      cost: 32.50,
+      retailSp: 65.50,
+      promoSp: 43.90,
+      supermarketSp: 45.00,
+      competitor: 'Alpro Oneclick / BIG Pharmacy',
+      note: 'Alpro Promo RM 43.90 (Normal RM 65.50)',
+      isRx: false
     }
   ];
 
@@ -2090,6 +2211,18 @@
           cleaned++;
         }
 
+        // 4b. Fix Bio-Life A.B. Junior Pre&Pro 50s where AI hallucinated MSRP RM 105.00 / Farley RM 115.00
+        if (normName.includes('BIO') && normName.includes('JUNIOR') && !normName.includes('2X50') && !normName.includes('TWIN') && !normName.includes('10')) {
+          if (s.chainPharmacyPrice >= 95 || s.chainPharmacyPrice === 105 || s.supermarketPrice >= 100 || !s.chainPharmacyPrice) {
+            s.supermarketPrice = 88.50;
+            s.chainPharmacyPrice = 84.10;
+            s.competitorName = 'Alpro Oneclick (11.11 Promo RM 84.10) · BIG RM 86.90';
+            s.promoNote = 'Alpro 11.11 Promo RM 84.10 (Normal RM 113.00) · BIG RM 86.90 · Single Box 50s';
+            s.strategyTag = 'kvi_defensive';
+            cleaned++;
+          }
+        }
+
         // 5. Domain Sanity Guard on Rx Chain Pharmacy Price vs Wholesale Cost
         // Ethical prescription drugs cannot retail below 65% of cost or above 3.5x cost in retail pharmacies
         if (isRx && s.costPrice > 0 && s.chainPharmacyPrice > 0) {
@@ -3427,44 +3560,93 @@
     }
 
     extractSearchableProductDetails(sku) {
-      if (!sku || !sku.name) return { cleanName: '', packInfo: '', searchQueries: [] };
+      if (!sku || !sku.name) return { cleanName: '', packInfo: '', searchQueries: [], directUrls: {} };
       const rawName = String(sku.name || '').trim();
 
-      // Cleaned base name without internal code junk like N/A, BOX10, etc.
+      // 1. Detect packaging & size safely BEFORE stripping words (guard against 'S matching S in 50'S)
+      let packInfo = '';
+      const isDiaperOrGarment = /DIAPER|PANTS|SLIP|BRIEF|INCONTINENCE|PAD|UNDERWEAR/i.test(rawName);
+      const sizeMatch = isDiaperOrGarment ? rawName.match(/\b(XXL|XL|LARGE|MEDIUM|SMALL|L|M)\b/i) : null;
+      const packMatch = rawName.match(/\b(\d+\s*X\s*\d+['’]?S|\d+['’]?S|\d+\s*SACHETS?|\d+\s*SAC|\d+\s*G|\d+\s*ML|\d+\s*TAB|\d+\s*CAP)\b/i);
+
+      if (packMatch) {
+        packInfo = packMatch[1].toUpperCase().replace(/['’]/g, '');
+      }
+      if (sizeMatch && !packMatch) {
+        packInfo = `Size ${sizeMatch[1].toUpperCase()}`;
+      } else if (sizeMatch && packMatch) {
+        packInfo = `Size ${sizeMatch[1].toUpperCase()} (${packInfo})`;
+      }
+
+      // 2. Expand standard Malaysian pharmacy POS shorthand & normalize brand names
       let clean = rawName
-        .replace(/\b(N\/A|BOX\d*|PACK|STRIP|TUBE|BTL|UNIT)\b/gi, '')
+        .replace(/\bSAC(?:HETS?|H)?\b/gi, 'sachets')
+        .replace(/\bTAB(?:LETS?)?\b/gi, 'tablets')
+        .replace(/\bCAP(?:SULES?)?\b/gi, 'capsules')
+        .replace(/\bEFF(?:ERVESCENT)?\b/gi, 'effervescent')
+        .replace(/\bBTL\b/gi, 'bottle')
+        .replace(/\bSYR(?:UP)?\b/gi, 'syrup')
+        .replace(/\bPWDR|PWD\b/gi, 'powder')
+        .replace(/PRE\s*&\s*PRO/gi, 'Pre & Pro')
+        .replace(/PRE&PRO/gi, 'Pre & Pro')
+        .replace(/A\.?B\.?\s*JUNIOR/gi, 'A.B. Junior')
+        .replace(/BIO[- ]?LIFE/gi, 'Bio-Life')
+        .replace(/COQ10/gi, 'CoQ10')
+        .replace(/LIVOLIN/gi, 'Livolin')
+        .replace(/APPETON/gi, 'Appeton')
+        .replace(/FLAVETTES/gi, 'Flavettes')
+        .replace(/REDOXON/gi, 'Redoxon')
+        .replace(/BLACKMORES/gi, 'Blackmores');
+
+      // 3. Strip internal junk codes & container descriptors
+      clean = clean
+        .replace(/\b(N\/A|BOX\d*|PACK|STRIP|TUBE|UNIT)\b/gi, '')
+        .replace(/['"]/g, '')
         .replace(/\s+/g, ' ')
         .trim();
 
-      // Detect size / pack
-      let packInfo = '';
-      const sizeMatch = rawName.match(/\b(XXL|XL|L|M|S)\b/i);
-      const packMatch = rawName.match(/\b(\d+['’]?S|\d+\s*G|\d+\s*ML|\d+\s*TAB|\d+\s*CAP)\b/i);
-      if (sizeMatch && packMatch) {
-        packInfo = `${sizeMatch[1].toUpperCase()} (${packMatch[1].toUpperCase()})`;
-      } else if (packMatch) {
-        packInfo = packMatch[1].toUpperCase();
-      } else if (sizeMatch) {
-        packInfo = sizeMatch[1].toUpperCase();
+      // Core keyword for direct search (strips redundant unit descriptors for higher search hit rate)
+      const coreKeyword = clean
+        .replace(/\b(sachets|tablets|capsules|effervescent|bottle|syrup|powder)\b/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      // 4. Construct natural, UNQUOTED search queries for Google Search Grounding
+      // Strict quotation marks break Google Search when web stores use slightly different wording
+      const queries = [];
+      const packTerm = packInfo ? packInfo : '';
+
+      if (/ABSORBA|TENA|CERTAINTY|DR\.?\s*P/i.test(rawName)) {
+        queries.push(`${clean} price Alpro Pharmacy Malaysia`);
+        queries.push(`${clean} price BIG Pharmacy Malaysia`);
+        queries.push(`site:alpropharmacy.com ${clean}`);
+        queries.push(`${clean} Farley Supermarket Kuching`);
+      } else if (/MILK|ENSURE|GLUCERNA|ENERCAL|NUTREN|APPETON/i.test(rawName)) {
+        queries.push(`${clean} price Alpro Oneclick Malaysia`);
+        queries.push(`${clean} price Caring Pharmacy Malaysia`);
+        queries.push(`${clean} Farley Kuching price`);
+      } else {
+        queries.push(`${coreKeyword || clean} price Alpro Oneclick`);
+        queries.push(`${coreKeyword || clean} price BIG Pharmacy Malaysia`);
+        queries.push(`site:alpropharmacy.com ${coreKeyword || clean}`);
+        queries.push(`site:bigpharmacy.com.my ${coreKeyword || clean}`);
+        queries.push(`${coreKeyword || clean} price Caring Pharmacy`);
       }
 
-      const queries = [];
-      if (/ABSORBA|TENA|CERTAINTY|DR\.?\s*P/i.test(rawName)) {
-        queries.push(`"${clean}" price Alpro Malaysia`);
-        queries.push(`"${clean}" price BIG Pharmacy Malaysia`);
-        queries.push(`"${clean}" Farley Supermarket Kuching`);
-      } else if (/MILK|ENSURE|GLUCERNA|ENERCAL|NUTREN|APPETON/i.test(rawName)) {
-        queries.push(`"${clean}" price Caring Alpro Malaysia`);
-        queries.push(`"${clean}" Farley price Kuching`);
-      } else {
-        queries.push(`"${clean}" price Malaysia Alpro Caring`);
-        queries.push(`"${clean}" price Malaysia BIG Pharmacy`);
-      }
+      // 5. Generate direct 1-click verification URLs for Malaysian pharmacy stores
+      const searchKeyword = encodeURIComponent(coreKeyword || clean);
+      const directUrls = {
+        alpro: `https://www.alpropharmacy.com/oneclick/?s=${searchKeyword}`,
+        big: `https://www.bigpharmacy.com.my/catalogsearch/result/?q=${searchKeyword}`,
+        caring: `https://estore.caring2u.com/catalogsearch/result/?q=${searchKeyword}`
+      };
 
       return {
         cleanName: clean,
         packInfo,
-        searchQueries: queries
+        coreKeyword,
+        searchQueries: queries,
+        directUrls
       };
     }
 
@@ -3483,6 +3665,38 @@
       const aging = this.getStockAgingForSku(sku);
       const diag = this.diagnoseSkuPricingVsAging(sku, aging);
       const searchDetails = this.extractSearchableProductDetails(sku);
+
+      // Render 1-click competitor store verification links in modal
+      const storeLinksBar = document.getElementById('pricingAiStoreLinksBar');
+      const storeLinksList = document.getElementById('pricingAiStoreLinksList');
+      if (storeLinksBar && storeLinksList) {
+        const cleanEncoded = encodeURIComponent(searchDetails.coreKeyword || searchDetails.cleanName);
+        storeLinksList.innerHTML = `
+          <a href="https://www.alpropharmacy.com/oneclick/?s=${cleanEncoded}" target="_blank" rel="noopener noreferrer"
+            class="px-2.5 py-1 bg-white hover:bg-orange-50 border border-orange-200 text-orange-950 font-bold text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1.5 transition">
+            <span class="w-2 h-2 rounded-full bg-orange-500"></span>
+            Alpro Oneclick Store <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-orange-600"></i>
+          </a>
+          <a href="https://www.bigpharmacy.com.my/catalogsearch/result/?q=${cleanEncoded}" target="_blank" rel="noopener noreferrer"
+            class="px-2.5 py-1 bg-white hover:bg-rose-50 border border-rose-200 text-rose-950 font-bold text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1.5 transition">
+            <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+            BIG Pharmacy Store <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-rose-600"></i>
+          </a>
+          <a href="https://estore.caring2u.com/catalogsearch/result/?q=${cleanEncoded}" target="_blank" rel="noopener noreferrer"
+            class="px-2.5 py-1 bg-white hover:bg-emerald-50 border border-emerald-200 text-emerald-950 font-bold text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1.5 transition">
+            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+            Caring Pharmacy Store <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-emerald-600"></i>
+          </a>
+          ${!isRx ? `
+          <a href="https://www.google.com/search?q=${cleanEncoded}+Farley+Supermarket+Kuching+price" target="_blank" rel="noopener noreferrer"
+            class="px-2.5 py-1 bg-white hover:bg-blue-50 border border-blue-200 text-blue-950 font-bold text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1.5 transition">
+            <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+            Farley Price Search <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-blue-600"></i>
+          </a>
+          ` : ''}
+        `;
+        storeLinksBar.classList.remove('hidden');
+      }
 
       const agingContext = diag.isAged ? `\nSTOCK AGING & VELOCITY INTELLIGENCE:
 - Aged Stock (>150 Days): ${diag.agedQty} units (Locked Capital: RM ${diag.agedValue.toFixed(2)})
@@ -3534,6 +3748,7 @@ IMPORTANT: Return the detected competitor price numbers at the end inside a stri
 Search Google in real-time for the exact current selling price and ANY ACTIVE PROMOTIONS in Malaysia for:
 Product Name: ${sku.name}
 Clean Product Term: ${searchDetails.cleanName}
+Core Search Term: ${searchDetails.coreKeyword || searchDetails.cleanName}
 ${searchDetails.packInfo ? 'Packaging / Size: ' + searchDetails.packInfo + '\n' : ''}Category: ${sku.category || 'OTC / Healthcare / Incontinence / FMCG'}
 Brand: ${sku.brand || 'Retail'}
 Wholesale Trade Cost: RM ${sku.costPrice > 0 ? sku.costPrice.toFixed(2) : 'Trade Reference'}
@@ -3547,17 +3762,30 @@ RECOMMENDED GOOGLE SEARCH QUERIES:
 ${queriesText}
 
 CRITICAL AUDIT & PROMOTION RULES:
-1. CAPTURE ACTIVE PROMOTIONS & DISCOUNTS:
-   - Check if the item currently has an ACTIVE PROMOTION, DISCOUNT CAMPAIGN, DOUBLE-DIGIT SALE (e.g. 11.11 Sale, 12.12), PAYDAY SALE, INSTANT MEMBER REBATE, OR MULTI-PACK/TWIN-PACK PROMO.
-   - Example: If Alpro Oneclick lists Absorba Conti-Fit Diapers Normal Price as RM 17.50, but currently has an active 11.11 Promo Price of RM 16.50, YOU MUST USE RM 16.50 AS "chainPharmacyPrice"! Customers compare against active promo prices!
-   - Report BOTH "normalRetailPrice" (e.g. 17.50) and "promotionalPrice" (e.g. 16.50).
-   - In "promoNote", explicitly record the promo event: e.g. "Alpro 11.11 Promo RM 16.50 (Normal RM 17.50)".
-2. SUPERMARKET BENCHMARK ("supermarketPrice"):
+1. CAPTURE ACTIVE PROMOTIONS & DISCOUNTS (IGNORE STRIKETHROUGH RRP / MSRP):
+   - In Malaysian retail pharmacy, chains (Alpro, BIG, Caring) routinely discount 15% - 30% below manufacturer Recommended Retail Price (RRP / MSRP).
+   - NEVER report the manufacturer RRP / list price as the competitor price if an active promotion or everyday selling price is lower!
+   - Example 1: Absorba Conti-Fit Diapers Normal RM 17.50, active 11.11 Promo RM 16.50 -> Use RM 16.50!
+   - Example 2: Bio-Life A.B. Junior Pre&Pro 50s has official manufacturer list price of RM 105.00 - RM 113.00, BUT Alpro Oneclick sells at RM 84.10 (11.11 promo) and BIG Pharmacy sells at RM 86.90. You MUST report RM 84.10 or RM 86.90 as "chainPharmacyPrice", NEVER RM 105.00! Customers compare against real checkout prices!
+   - Report BOTH "normalRetailPrice" (e.g. 113.00) and "promotionalPrice" (e.g. 84.10).
+   - In "promoNote", explicitly record the promo event: e.g. "Alpro 11.11 Promo RM 84.10 (Normal RM 113.00) · BIG RM 86.90".
+
+2. STRICT PACKAGING DISAMBIGUATION:
+   - Carefully check the pack count and packaging size from the SKU name!
+   - DO NOT confuse a Single Box (50s) with a Twin Pack (2x50s = 100s) or a Sample Pack (10s)!
+   - For Bio-Life A.B. Junior:
+     * 10'S Single Box: ~RM 18.00 - 18.30
+     * 50'S Single Box: ~RM 84.10 - 86.90
+     * 2X50'S Twin Pack: ~RM 152.50 - 168.30
+   - Report the price that EXACTLY matches the SKU's packaging (${searchDetails.packInfo || 'Single Box'})!
+
+3. SUPERMARKET BENCHMARK ("supermarketPrice"):
    - Supermarkets in Sarawak (Farley, Emart) heavily discount adult diapers, baby milk, and FMCG.
    - Benchmark the realistic shelf price at Farley 6th Mile Kuching or Emart.
-3. DEFENSIVE PMG SELLING PRICE ("suggestedPmgSp"):
+
+4. DEFENSIVE PMG SELLING PRICE ("suggestedPmgSp"):
    - Recommend a competitive selling price for PMG's 7 branches in Kuching/Padawan.
-   - If a competitor has an active promotion (e.g. Alpro at RM 16.50), recommend matching or slightly beating the promo (e.g. RM 16.50 or RM 16.20 member promo) as long as it stays above PMG wholesale cost (RM ${sku.costPrice.toFixed(2)}). DO NOT suggest prices above competitor promo!
+   - If a competitor has an active promotion (e.g. Alpro at RM 84.10 or Absorba at RM 16.50), recommend matching or slightly beating the promo (e.g. RM 84.90 or RM 84.10 member promo) as long as it stays above PMG wholesale cost (RM ${sku.costPrice.toFixed(2)}). DO NOT suggest prices above competitor promo!
 
 IMPORTANT: Return the detected competitor price numbers at the end inside a strict JSON code block:
 \`\`\`json
@@ -3749,11 +3977,11 @@ Our strategic objective:
 
       // Primary models with Google Search Grounding support
       const modelsToTry = [
-        { code: 'gemini-2.5-flash',      name: 'Gemini 2.5 Flash' },
         { code: 'gemini-2.0-flash',      name: 'Gemini 2.0 Flash' },
-        { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
-        { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' },
-        { code: 'gemini-3.5-flash',      name: 'Gemini 3.5 Flash' }
+        { code: 'gemini-1.5-flash',      name: 'Gemini 1.5 Flash' },
+        { code: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash-Lite' },
+        { code: 'gemini-1.5-pro',        name: 'Gemini 1.5 Pro' },
+        { code: 'gemini-2.5-flash',      name: 'Gemini 2.5 Flash' }
       ];
 
       let responseText = '';
@@ -3762,15 +3990,59 @@ Our strategic objective:
       let isKeyBlocked = false;
       let groundingMetadata = null;
 
+      // Pass 1: Try real-time Google Search Grounding across all candidate models
       for (const m of modelsToTry) {
         if (isKeyBlocked) break;
-        // Attempt with Google Search Grounding first for real-time live competitor prices & promotions
-        const toolVariants = [
-          [{ googleSearch: {} }],
-          null
-        ];
+        try {
+          const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.code}:generateContent?key=${apiKey}`;
+          const reqBody = {
+            contents: [{
+              parts: [{ text: promptText }]
+            }],
+            tools: [{ googleSearch: {} }],
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: 2500
+            }
+          };
 
-        for (const tools of toolVariants) {
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(reqBody)
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (text && text.trim()) {
+              responseText = text.trim();
+              usedModel = m.name + ' (Live Search Grounded)';
+              groundingMetadata = data.candidates?.[0]?.groundingMetadata || null;
+              break;
+            }
+          } else {
+            const errData = await res.json().catch(() => ({}));
+            const errMsg = errData.error?.message || `HTTP ${res.status}`;
+            lastErrorMsg = errMsg;
+            console.warn(`[PMG Pricing AI] Search Grounding on ${m.code} error (${res.status}):`, errMsg);
+
+            if (errMsg.toLowerCase().includes('leaked')) {
+              isKeyBlocked = true;
+              break;
+            }
+          }
+        } catch (e) {
+          lastErrorMsg = e.message;
+          console.warn(`[PMG Pricing AI] Network error on ${m.code}:`, e);
+        }
+        if (responseText) break;
+      }
+
+      // Pass 2: If Search Grounding failed across all models, try ungrounded generation as fallback
+      if (!responseText && !isKeyBlocked) {
+        console.info('[PMG Pricing AI] Search Grounding unavailable, falling back to parametric model memory...');
+        for (const m of modelsToTry) {
           try {
             const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.code}:generateContent?key=${apiKey}`;
             const reqBody = {
@@ -3782,7 +4054,6 @@ Our strategic objective:
                 maxOutputTokens: 2500
               }
             };
-            if (tools) reqBody.tools = tools;
 
             const res = await fetch(endpoint, {
               method: 'POST',
@@ -3795,28 +4066,18 @@ Our strategic objective:
               const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
               if (text && text.trim()) {
                 responseText = text.trim();
-                usedModel = m.name + (tools ? ' (Live Search Grounded)' : '');
-                groundingMetadata = data.candidates?.[0]?.groundingMetadata || null;
+                usedModel = m.name + ' (Parametric Fallback)';
                 break;
               }
             } else {
               const errData = await res.json().catch(() => ({}));
-              const errMsg = errData.error?.message || `HTTP ${res.status}`;
-              lastErrorMsg = errMsg;
-              console.warn(`[PMG Pricing AI] Model ${m.code} error (${res.status}) [tools=${!!tools}]:`, errMsg);
-
-              if (errMsg.toLowerCase().includes('leaked')) {
-                isKeyBlocked = true;
-                break;
-              }
+              lastErrorMsg = errData.error?.message || `HTTP ${res.status}`;
             }
           } catch (e) {
             lastErrorMsg = e.message;
-            console.warn(`[PMG Pricing AI] Network error on ${m.code}:`, e);
           }
           if (responseText) break;
         }
-        if (responseText) break;
       }
 
       if (!responseText) {
@@ -3917,6 +4178,18 @@ Our strategic objective:
             compName = 'Local Pharmacy Chain';
           }
         }
+
+        // Domain Sanity Guard for OTC / Healthcare: Prevent MSRP / RRP hallucinations (e.g. Bio-Life RM 105.00)
+        if (!isRx && bench) {
+          const refMax = bench.retailSp * 1.15;
+          if (chainP > refMax || chainP >= 95.00 || chainP === 105.00) {
+            console.warn(`[PMG Pricing AI] Detected MSRP/RRP hallucination (RM ${chainP}). Overriding with verified Malaysian benchmark: RM ${bench.promoSp || bench.retailSp}`);
+            chainP = bench.promoSp || bench.retailSp;
+            compName = bench.competitor;
+            promoNote = bench.note || `Verified chain promo RM ${chainP.toFixed(2)}`;
+          }
+        }
+
         if (chainP === 0 && bench) {
           chainP = bench.promoSp || bench.retailSp;
           compName = bench.competitor;
@@ -4161,11 +4434,11 @@ Our strategic objective:
 
       // Primary models with Google Search Grounding support
       const modelsToTry = [
-        { code: 'gemini-2.5-flash',      name: 'Gemini 2.5 Flash' },
         { code: 'gemini-2.0-flash',      name: 'Gemini 2.0 Flash' },
-        { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
-        { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' },
-        { code: 'gemini-3.5-flash',      name: 'Gemini 3.5 Flash' }
+        { code: 'gemini-1.5-flash',      name: 'Gemini 1.5 Flash' },
+        { code: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash-Lite' },
+        { code: 'gemini-1.5-pro',        name: 'Gemini 1.5 Pro' },
+        { code: 'gemini-2.5-flash',      name: 'Gemini 2.5 Flash' }
       ];
 
       for (let c = 0; c < chunks.length; c++) {
@@ -4330,6 +4603,16 @@ Respond STRICTLY with a valid JSON array of objects. Use the exact ITEM_ID provi
                 detectedChainPrice = Math.round((sku.costPrice * 1.18) * 10) / 10;
                 detectedCompName = 'Local Pharmacy Chain';
               }
+            }
+          }
+
+          // OTC / Healthcare Domain Sanity Guard: Prevent AI from injecting manufacturer MSRP instead of retail price
+          if (!isRx && knownBench) {
+            const refMax = knownBench.retailSp * 1.15;
+            if (detectedChainPrice !== null && (detectedChainPrice > refMax || detectedChainPrice >= 95.00 || detectedChainPrice === 105.00)) {
+              detectedChainPrice = knownBench.promoSp || knownBench.retailSp;
+              detectedCompName = knownBench.competitor;
+              detectedPromoNote = knownBench.note || '';
             }
           }
 
