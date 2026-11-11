@@ -14,7 +14,7 @@ let auditChecklistState = {};  // { itemId: boolean }
 const AUDIT_PRIMARY_MODEL   = 'gemini-3.5-flash-lite';
 const AUDIT_SECONDARY_MODEL = 'gemini-3.1-flash-lite';
 const AUDIT_TERTIARY_MODEL  = 'gemini-3.8-flash';
-const AUDIT_FALLBACK_MODELS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-2.0-flash-lite', 'gemini-2.0-flash'];
+const AUDIT_FALLBACK_MODELS = ['gemini-3.8-flash', 'gemini-3.6-flash'];
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 function initAudit() {
@@ -93,9 +93,7 @@ async function testGeminiApiKey() {
     { code: AUDIT_PRIMARY_MODEL,   name: 'Gemini 3.5 Flash-Lite (Primary: 500 RPD)' },
     { code: AUDIT_SECONDARY_MODEL, name: 'Gemini 3.1 Flash-Lite (Secondary: 500 RPD)' },
     { code: AUDIT_TERTIARY_MODEL,  name: 'Gemini 3.8 Flash (Latest Deep Eval)' },
-    { code: 'gemini-3.6-flash',    name: 'Gemini 3.6 Flash' },
-    { code: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash-Lite' },
-    { code: 'gemini-2.0-flash',    name: 'Gemini 2.0 Flash' }
+    { code: 'gemini-3.6-flash',    name: 'Gemini 3.6 Flash' }
   ];
 
   let verifiedModel = null;
@@ -513,8 +511,7 @@ Return ONLY valid JSON matching this schema:
     { code: AUDIT_PRIMARY_MODEL,   name: 'Gemini 3.5 Flash-Lite (Primary: 500 RPD)' },
     { code: AUDIT_SECONDARY_MODEL, name: 'Gemini 3.1 Flash-Lite (Secondary: 500 RPD)' },
     { code: AUDIT_TERTIARY_MODEL,  name: 'Gemini 3.8 Flash (Latest Deep Eval)' },
-    { code: 'gemini-3.6-flash',    name: 'Gemini 3.6 Flash' },
-    { code: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash-Lite' }
+    { code: 'gemini-3.6-flash',    name: 'Gemini 3.6 Flash' }
   ];
   let lastErr = null;
 

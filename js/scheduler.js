@@ -1626,9 +1626,7 @@ async function generateTimetable() {
         { code: SCHEDULER_PRIMARY_MODEL,   name: 'Gemini 3.8 Flash (Primary)' },
         { code: SCHEDULER_SECONDARY_MODEL, name: 'Gemini 3.6 Flash (Secondary)' },
         { code: SCHEDULER_TERTIARY_MODEL,  name: 'Gemini 3.5 Flash-Lite (Backup: 500 RPD)' },
-        { code: SCHEDULER_FALLBACK_MODEL,  name: 'Gemini 3.1 Flash-Lite (Fallback: 500 RPD)' },
-        { code: 'gemini-2.0-flash-lite',   name: 'Gemini 2.0 Flash-Lite' },
-        { code: 'gemini-2.0-flash',        name: 'Gemini 2.0 Flash' }
+        { code: SCHEDULER_FALLBACK_MODEL,  name: 'Gemini 3.1 Flash-Lite (Fallback: 500 RPD)' }
       ];
 
       const aiAttempt = async () => {

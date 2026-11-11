@@ -2428,9 +2428,7 @@ Return ONLY a valid JSON array of objects. No markdown formatting, no explanatio
     EXPIRY_OCR_PRIMARY_MODEL,
     EXPIRY_OCR_SECONDARY_MODEL,
     EXPIRY_OCR_TERTIARY_MODEL,
-    EXPIRY_OCR_FALLBACK_MODEL,
-    'gemini-2.0-flash-lite',
-    'gemini-2.0-flash'
+    EXPIRY_OCR_FALLBACK_MODEL
   ];
   let items = null;
   let successfulModel = '';

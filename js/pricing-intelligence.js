@@ -3527,14 +3527,13 @@ Our strategic objective:
 
       if (statusPill) statusPill.textContent = 'Searching Web & Grounding…';
 
-      // Active models available in Google AI Studio (500 RPD on Flash-Lite, 20 RPD on Flash 3.8 / 3.6)
+      // Active models confirmed available in user Google AI Studio (500 RPD on Flash-Lite, 20 RPD on Flash 3.8 / 3.6)
+      // Obsolete models (gemini-2.0-flash-lite, gemini-2.0-flash, gemini-2.5-flash, gemini-1.5-*) are completely excluded.
       const modelsToTry = [
         { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite (Primary: 500 RPD)' },
         { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite (Secondary: 500 RPD)' },
         { code: 'gemini-3.8-flash',      name: 'Gemini 3.8 Flash' },
-        { code: 'gemini-3.6-flash',      name: 'Gemini 3.6 Flash' },
-        { code: 'gemini-2.0-flash',      name: 'Gemini 2.0 Flash' },
-        { code: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash-Lite' }
+        { code: 'gemini-3.6-flash',      name: 'Gemini 3.6 Flash' }
       ];
 
       let responseText = '';
@@ -3542,11 +3541,13 @@ Our strategic objective:
       let lastErrorMsg = '';
       let isKeyBlocked = false;
       let groundingMetadata = null;
+      const modelAttemptErrors = [];
 
-      // Iterate through models: try with Google Search Grounding first, gracefully fallback to standard if tool unsupported
+      // Iterate through active models: try with Google Search Grounding first, gracefully fallback to standard generateContent & Interactions API
       for (const m of modelsToTry) {
         if (isKeyBlocked || responseText) break;
 
+        // Tool variants: Try search tools first, then standard evaluation
         const toolVariants = [
           [{ googleSearch: {} }],
           null
@@ -3557,6 +3558,7 @@ Our strategic objective:
             const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.code}:generateContent?key=${apiKey}`;
             const reqBody = {
               contents: [{
+                role: 'user',
                 parts: [{ text: promptText }]
               }],
               generationConfig: {
@@ -3574,7 +3576,10 @@ Our strategic objective:
 
             if (res.ok) {
               const data = await res.json();
-              const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+              const parts = data.candidates?.[0]?.content?.parts || [];
+              // Extract non-thought text parts (safely handle thinking models)
+              const nonThought = parts.filter(p => !p.thought && p.text).map(p => p.text);
+              const text = nonThought.length > 0 ? nonThought.join('\n') : parts.map(p => p.text || '').join('\n');
               if (text && text.trim()) {
                 responseText = text.trim();
                 usedModel = m.name + (tools ? ' (Live Search Grounded)' : ' (Market Intelligence)');
@@ -3592,12 +3597,15 @@ Our strategic objective:
                 break;
               }
 
-              // If tools caused a 400 error (e.g. unknown tool or unsupported), try without tools on this same model
-              if (tools && (res.status === 400 || errMsg.toLowerCase().includes('tool') || errMsg.toLowerCase().includes('googlesearch'))) {
-                continue;
+              // IF WITH-TOOLS FAILED (e.g. 403 on Free Tier or 400 unsupported), DO NOT SKIP THE MODEL!
+              // Immediately retry without tools on this EXACT SAME MODEL:
+              if (tools) {
+                console.info(`[PMG Pricing AI] Tools restricted on ${m.code} (${res.status}). Retrying without tools...`);
+                continue; // Next variant in toolVariants is null (no tools) on this same model
               }
 
-              // If rate-limited (429), model unavailable (404), or service error (503), break to next model
+              modelAttemptErrors.push(`${m.name}: ${errMsg}`);
+              // If rate-limited (429), model unavailable (404), or service error (503), break to next candidate model
               if (res.status === 429 || res.status === 404 || res.status === 503) {
                 break;
               }
@@ -3605,9 +3613,47 @@ Our strategic objective:
           } catch (e) {
             lastErrorMsg = e.message;
             console.warn(`[PMG Pricing AI] Network error on ${m.code}:`, e);
+            if (tools) continue;
             break;
           }
         }
+
+        // Secondary fallback for this model: If generateContent failed, try Interactions API
+        if (!responseText && !isKeyBlocked) {
+          try {
+            const intEndpoint = `https://generativelanguage.googleapis.com/v1beta/interactions?key=${apiKey}`;
+            const intRes = await fetch(intEndpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: m.code,
+                input: promptText
+              })
+            });
+            if (intRes.ok) {
+              const intData = await intRes.json();
+              const steps = intData.steps || [];
+              for (const step of steps) {
+                if (step.type === 'model_output' && Array.isArray(step.content)) {
+                  for (const c of step.content) {
+                    if (c.type === 'text' && c.text && c.text.trim()) {
+                      responseText = c.text.trim();
+                      usedModel = m.name + ' (Interactions API)';
+                      break;
+                    }
+                  }
+                }
+                if (responseText) break;
+              }
+            }
+          } catch (intErr) {
+            console.warn(`[PMG Pricing AI] Interactions fallback error on ${m.code}:`, intErr.message);
+          }
+        }
+      }
+
+      if (!responseText && modelAttemptErrors.length > 0) {
+        lastErrorMsg = modelAttemptErrors[0];
       }
 
       if (!responseText) {
@@ -3934,14 +3980,12 @@ Our strategic objective:
         chunks.push(targetSkus.slice(i, i + CHUNK_SIZE));
       }
 
-      // Active models available in Google AI Studio (500 RPD on Flash-Lite, 20 RPD on Flash 3.8 / 3.6)
+      // Active models confirmed available in user Google AI Studio (500 RPD on Flash-Lite, 20 RPD on Flash 3.8 / 3.6)
       const modelsToTry = [
         { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite (Primary: 500 RPD)' },
         { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite (Secondary: 500 RPD)' },
         { code: 'gemini-3.8-flash',      name: 'Gemini 3.8 Flash' },
-        { code: 'gemini-3.6-flash',      name: 'Gemini 3.6 Flash' },
-        { code: 'gemini-2.0-flash',      name: 'Gemini 2.0 Flash' },
-        { code: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash-Lite' }
+        { code: 'gemini-3.6-flash',      name: 'Gemini 3.6 Flash' }
       ];
 
       for (let c = 0; c < chunks.length; c++) {
@@ -4006,7 +4050,7 @@ Respond STRICTLY with a valid JSON array of objects. Use the exact ITEM_ID provi
             try {
               const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.code}:generateContent?key=${apiKey}`;
               const reqBody = {
-                contents: [{ parts: [{ text: prompt }] }],
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
                 generationConfig: { temperature: 0.1, maxOutputTokens: 2500 }
               };
               if (tools) reqBody.tools = tools;
@@ -4018,7 +4062,9 @@ Respond STRICTLY with a valid JSON array of objects. Use the exact ITEM_ID provi
               });
               if (res.ok) {
                 const data = await res.json();
-                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                const parts = data.candidates?.[0]?.content?.parts || [];
+                const nonThought = parts.filter(p => !p.thought && p.text).map(p => p.text);
+                const text = nonThought.length > 0 ? nonThought.join('\n') : parts.map(p => p.text || '').join('\n');
                 if (text && text.trim()) {
                   responseText = text.trim();
                   break;
@@ -4026,11 +4072,41 @@ Respond STRICTLY with a valid JSON array of objects. Use the exact ITEM_ID provi
               } else {
                 const errData = await res.json().catch(() => ({}));
                 console.warn(`[PMG Batch AI] Error on model ${m.code} (${res.status}) [tools=${!!tools}]:`, errData.error?.message || res.status);
+                // If with-tools failed, immediately retry without tools on this same model
+                if (tools) continue;
               }
             } catch (e) {
               console.warn(`[PMG Batch AI] Error on model ${m.code}:`, e);
+              if (tools) continue;
             }
             if (responseText) break;
+          }
+          if (responseText) break;
+
+          // Interactions API fallback for batch if generateContent failed
+          if (!responseText) {
+            try {
+              const intEndpoint = `https://generativelanguage.googleapis.com/v1beta/interactions?key=${apiKey}`;
+              const intRes = await fetch(intEndpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: m.code, input: prompt })
+              });
+              if (intRes.ok) {
+                const intData = await intRes.json();
+                for (const step of intData.steps || []) {
+                  if (step.type === 'model_output' && Array.isArray(step.content)) {
+                    for (const c of step.content) {
+                      if (c.type === 'text' && c.text && c.text.trim()) {
+                        responseText = c.text.trim();
+                        break;
+                      }
+                    }
+                  }
+                  if (responseText) break;
+                }
+              }
+            } catch (_) {}
           }
           if (responseText) break;
         }
