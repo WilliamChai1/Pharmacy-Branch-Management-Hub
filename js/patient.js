@@ -12705,8 +12705,8 @@ RESPONSE MUST BE STRICTLY VALID JSON matching this structure:
   let parsed = null;
   const primaryModel = 'gemini-3.5-flash-lite';
   const secondaryModel = 'gemini-3.1-flash-lite';
-  const tertiaryModel = 'gemini-3.5-flash';
-  const models = [primaryModel, secondaryModel, tertiaryModel, 'gemini-2.5-flash'];
+  const tertiaryModel = 'gemini-3.8-flash';
+  const models = [primaryModel, secondaryModel, tertiaryModel, 'gemini-3.6-flash', 'gemini-2.0-flash-lite'];
 
   for (let m of models) {
     try {

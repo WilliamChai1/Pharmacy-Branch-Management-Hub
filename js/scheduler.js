@@ -16,7 +16,7 @@ function escHtml(str) {
 // Backup: Gemini 3.5 Flash-Lite (gemini-3.5-flash-lite)
 // Fallback: Gemini 3.1 Flash-Lite (gemini-3.1-flash-lite)
 const SCHEDULER_PRIMARY_MODEL   = 'gemini-3.8-flash';
-const SCHEDULER_SECONDARY_MODEL = 'gemini-3.5-flash';
+const SCHEDULER_SECONDARY_MODEL = 'gemini-3.6-flash';
 const SCHEDULER_TERTIARY_MODEL  = 'gemini-3.5-flash-lite';
 const SCHEDULER_FALLBACK_MODEL  = 'gemini-3.1-flash-lite';
 
@@ -1624,11 +1624,11 @@ async function generateTimetable() {
       let winningModelName = '';
       const schedulerCandidateModels = [
         { code: SCHEDULER_PRIMARY_MODEL,   name: 'Gemini 3.8 Flash (Primary)' },
-        { code: SCHEDULER_SECONDARY_MODEL, name: 'Gemini 3.5 Flash (Secondary)' },
-        { code: SCHEDULER_TERTIARY_MODEL,  name: 'Gemini 3.5 Flash-Lite (Backup)' },
-        { code: SCHEDULER_FALLBACK_MODEL,  name: 'Gemini 3.1 Flash-Lite (Fallback)' },
-        { code: 'gemini-2.5-flash',        name: 'Gemini 2.5 Flash (Fallback)' },
-        { code: 'gemini-1.5-flash',        name: 'Gemini 1.5 Flash (Fallback)' }
+        { code: SCHEDULER_SECONDARY_MODEL, name: 'Gemini 3.6 Flash (Secondary)' },
+        { code: SCHEDULER_TERTIARY_MODEL,  name: 'Gemini 3.5 Flash-Lite (Backup: 500 RPD)' },
+        { code: SCHEDULER_FALLBACK_MODEL,  name: 'Gemini 3.1 Flash-Lite (Fallback: 500 RPD)' },
+        { code: 'gemini-2.0-flash-lite',   name: 'Gemini 2.0 Flash-Lite' },
+        { code: 'gemini-2.0-flash',        name: 'Gemini 2.0 Flash' }
       ];
 
       const aiAttempt = async () => {

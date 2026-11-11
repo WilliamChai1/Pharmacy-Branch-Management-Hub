@@ -3493,7 +3493,7 @@ Our strategic objective:
                 <i class="fa-solid fa-key text-amber-600"></i> Free Gemini API Key Required
               </h4>
               <p class="mb-3 text-gray-700 leading-relaxed">
-                To run AI competitor research and battle plans, paste your free Google AI Studio API key. Google provides <b>Gemini 3.5 Flash-Lite &amp; Gemini 3.5 Flash</b> on a <b>100% Free Tier</b> (up to 500 requests/day, RM 0 budget).
+                To run AI competitor research and battle plans, paste your free Google AI Studio API key. Google provides <b>Gemini 3.5 Flash-Lite &amp; Gemini 3.8 Flash</b> on a <b>100% Free Tier</b> (up to 500 requests/day, RM 0 budget).
               </p>
               <div class="flex items-center gap-2 mb-2">
                 <input type="text" id="pricingInlineApiKeyInput" placeholder="Paste your API key here (AIzaSy...)"
@@ -3520,20 +3520,21 @@ Our strategic objective:
         resultContainer.innerHTML = `
           <div class="p-8 text-center text-gray-500 text-xs">
             <i class="fa-solid fa-circle-notch fa-spin text-2xl text-purple-600 mb-2 block"></i>
-            <span>Evaluating market pricing, hypermarket dynamics, and 7-outlet strategy via Gemini 3.5 Flash…</span>
+            <span>Evaluating market pricing, hypermarket dynamics, and 7-outlet strategy via Gemini 3.5 Flash-Lite & 3.8 Flash…</span>
           </div>
         `;
       }
 
       if (statusPill) statusPill.textContent = 'Searching Web & Grounding…';
 
-      // Primary models with Google Search Grounding support
+      // Active models available in Google AI Studio (500 RPD on Flash-Lite, 20 RPD on Flash 3.8 / 3.6)
       const modelsToTry = [
+        { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite (Primary: 500 RPD)' },
+        { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite (Secondary: 500 RPD)' },
+        { code: 'gemini-3.8-flash',      name: 'Gemini 3.8 Flash' },
+        { code: 'gemini-3.6-flash',      name: 'Gemini 3.6 Flash' },
         { code: 'gemini-2.0-flash',      name: 'Gemini 2.0 Flash' },
-        { code: 'gemini-1.5-flash',      name: 'Gemini 1.5 Flash' },
-        { code: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash-Lite' },
-        { code: 'gemini-1.5-pro',        name: 'Gemini 1.5 Pro' },
-        { code: 'gemini-2.5-flash',      name: 'Gemini 2.5 Flash' }
+        { code: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash-Lite' }
       ];
 
       let responseText = '';
@@ -3542,59 +3543,16 @@ Our strategic objective:
       let isKeyBlocked = false;
       let groundingMetadata = null;
 
-      // Pass 1: Try real-time Google Search Grounding across all candidate models
+      // Iterate through models: try with Google Search Grounding first, gracefully fallback to standard if tool unsupported
       for (const m of modelsToTry) {
-        if (isKeyBlocked) break;
-        try {
-          const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.code}:generateContent?key=${apiKey}`;
-          const reqBody = {
-            contents: [{
-              parts: [{ text: promptText }]
-            }],
-            tools: [{ googleSearch: {} }],
-            generationConfig: {
-              temperature: 0.1,
-              maxOutputTokens: 2500
-            }
-          };
+        if (isKeyBlocked || responseText) break;
 
-          const res = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(reqBody)
-          });
+        const toolVariants = [
+          [{ googleSearch: {} }],
+          null
+        ];
 
-          if (res.ok) {
-            const data = await res.json();
-            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (text && text.trim()) {
-              responseText = text.trim();
-              usedModel = m.name + ' (Live Search Grounded)';
-              groundingMetadata = data.candidates?.[0]?.groundingMetadata || null;
-              break;
-            }
-          } else {
-            const errData = await res.json().catch(() => ({}));
-            const errMsg = errData.error?.message || `HTTP ${res.status}`;
-            lastErrorMsg = errMsg;
-            console.warn(`[PMG Pricing AI] Search Grounding on ${m.code} error (${res.status}):`, errMsg);
-
-            if (errMsg.toLowerCase().includes('leaked')) {
-              isKeyBlocked = true;
-              break;
-            }
-          }
-        } catch (e) {
-          lastErrorMsg = e.message;
-          console.warn(`[PMG Pricing AI] Network error on ${m.code}:`, e);
-        }
-        if (responseText) break;
-      }
-
-      // Pass 2: If Search Grounding failed across all models, try ungrounded generation as fallback
-      if (!responseText && !isKeyBlocked) {
-        console.info('[PMG Pricing AI] Search Grounding unavailable, falling back to parametric model memory...');
-        for (const m of modelsToTry) {
+        for (const tools of toolVariants) {
           try {
             const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.code}:generateContent?key=${apiKey}`;
             const reqBody = {
@@ -3606,6 +3564,7 @@ Our strategic objective:
                 maxOutputTokens: 2500
               }
             };
+            if (tools) reqBody.tools = tools;
 
             const res = await fetch(endpoint, {
               method: 'POST',
@@ -3618,17 +3577,36 @@ Our strategic objective:
               const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
               if (text && text.trim()) {
                 responseText = text.trim();
-                usedModel = m.name + ' (Parametric Fallback)';
+                usedModel = m.name + (tools ? ' (Live Search Grounded)' : ' (Market Intelligence)');
+                groundingMetadata = data.candidates?.[0]?.groundingMetadata || null;
                 break;
               }
             } else {
               const errData = await res.json().catch(() => ({}));
-              lastErrorMsg = errData.error?.message || `HTTP ${res.status}`;
+              const errMsg = errData.error?.message || `HTTP ${res.status}`;
+              lastErrorMsg = errMsg;
+              console.warn(`[PMG Pricing AI] ${m.code} (tools: ${!!tools}) error (${res.status}):`, errMsg);
+
+              if (errMsg.toLowerCase().includes('leaked')) {
+                isKeyBlocked = true;
+                break;
+              }
+
+              // If tools caused a 400 error (e.g. unknown tool or unsupported), try without tools on this same model
+              if (tools && (res.status === 400 || errMsg.toLowerCase().includes('tool') || errMsg.toLowerCase().includes('googlesearch'))) {
+                continue;
+              }
+
+              // If rate-limited (429), model unavailable (404), or service error (503), break to next model
+              if (res.status === 429 || res.status === 404 || res.status === 503) {
+                break;
+              }
             }
           } catch (e) {
             lastErrorMsg = e.message;
+            console.warn(`[PMG Pricing AI] Network error on ${m.code}:`, e);
+            break;
           }
-          if (responseText) break;
         }
       }
 
@@ -3956,13 +3934,14 @@ Our strategic objective:
         chunks.push(targetSkus.slice(i, i + CHUNK_SIZE));
       }
 
-      // Primary models with Google Search Grounding support
+      // Active models available in Google AI Studio (500 RPD on Flash-Lite, 20 RPD on Flash 3.8 / 3.6)
       const modelsToTry = [
+        { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite (Primary: 500 RPD)' },
+        { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite (Secondary: 500 RPD)' },
+        { code: 'gemini-3.8-flash',      name: 'Gemini 3.8 Flash' },
+        { code: 'gemini-3.6-flash',      name: 'Gemini 3.6 Flash' },
         { code: 'gemini-2.0-flash',      name: 'Gemini 2.0 Flash' },
-        { code: 'gemini-1.5-flash',      name: 'Gemini 1.5 Flash' },
-        { code: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash-Lite' },
-        { code: 'gemini-1.5-pro',        name: 'Gemini 1.5 Pro' },
-        { code: 'gemini-2.5-flash',      name: 'Gemini 2.5 Flash' }
+        { code: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash-Lite' }
       ];
 
       for (let c = 0; c < chunks.length; c++) {

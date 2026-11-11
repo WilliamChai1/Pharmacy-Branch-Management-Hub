@@ -12,7 +12,7 @@ const MONTH_NAMES = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SE
 // Tertiary: gemini-3.5-flash-lite (Fast invoice OCR fallback)
 // Fallback: gemini-3.1-flash-lite (High quota fallback)
 const EXPIRY_OCR_PRIMARY_MODEL   = 'gemini-3.8-flash';
-const EXPIRY_OCR_SECONDARY_MODEL = 'gemini-3.5-flash';
+const EXPIRY_OCR_SECONDARY_MODEL = 'gemini-3.6-flash';
 const EXPIRY_OCR_TERTIARY_MODEL  = 'gemini-3.5-flash-lite';
 const EXPIRY_OCR_FALLBACK_MODEL  = 'gemini-3.1-flash-lite';
 const PMG_GLOBAL_FALLBACK_KEY    = ''; // Revoked/leaked fallback key neutralized
@@ -2429,8 +2429,8 @@ Return ONLY a valid JSON array of objects. No markdown formatting, no explanatio
     EXPIRY_OCR_SECONDARY_MODEL,
     EXPIRY_OCR_TERTIARY_MODEL,
     EXPIRY_OCR_FALLBACK_MODEL,
-    'gemini-2.5-flash',
-    'gemini-1.5-flash'
+    'gemini-2.0-flash-lite',
+    'gemini-2.0-flash'
   ];
   let items = null;
   let successfulModel = '';
