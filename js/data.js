@@ -348,14 +348,16 @@ function sanitizeWhatsAppMessage(text) {
     .replace(/[\uFE00-\uFE0F]/g, '')
     // Normalize directional arrows to standard ASCII arrows
     .replace(/[➔➜➡]/g, '->')
-    // Replace all common emojis with a single clean bullet point
-    .replace(/[📌👤📞🏪📅⏰📋🩺👨⚕⚡💊👉🔗🗓🌅☀️🌇🌙💡📦💰📍📢🔴☕👥📚🎓🧹🏢📄📑⚠️]/gu, '•')
+    // Replace unicode bullets with standard ASCII hyphen
+    .replace(/[•●▪■◦‣⦿]/g, '-')
+    // Replace all common emojis with a clean standard ASCII hyphen
+    .replace(/[📌👤📞🏪📅⏰📋🩺👨⚕⚡💊👉🔗🗓🌅☀️🌇🌙💡📦💰📍📢🔴☕👥📚🎓🧹🏢📄📑⚠️]/gu, '-')
     // Remove any remaining surrogate pairs (emojis > 0xFFFF that corrupt across HTTP 302 redirects)
     .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, '')
     // Remove Unicode replacement character (diamond question mark)
     .replace(/\uFFFD/g, '')
-    // Clean up duplicate bullets
-    .replace(/•[\s•]+/g, '• ')
+    // Clean up duplicate hyphens/bullets
+    .replace(/-[\s-]+/g, '- ')
     .trim();
 }
 

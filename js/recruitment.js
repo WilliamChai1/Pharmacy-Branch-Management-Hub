@@ -4018,7 +4018,7 @@ function copyFormLink() {
 
 function shareViaWhatsApp() {
   const url = 'https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/?apply=1';
-  const msg = `*PMG Pharmacy Job Application*\n\nInterested in joining PUBLIC MEDICARE GROUP (PMG) Pharmacy team in Kuching, Sarawak?\n\nPositions available:\n• Pharmacist\n• Pharmacy Assistant\n• Nutritionist / Dietitian\n\n• Apply directly online (No login required):\n${url}\n\nFill in your details and upload your SPM/education results directly.\n\nFor enquiries, contact William Chai (PMG Kota Sentosa) at +601110990693.`;
+  const msg = `*PMG Pharmacy Job Application*\n\nInterested in joining PUBLIC MEDICARE GROUP (PMG) Pharmacy team in Kuching, Sarawak?\n\nPositions available:\n- Pharmacist\n- Pharmacy Assistant\n- Nutritionist / Dietitian\n\n- Apply directly online (No login required):\n${url}\n\nFill in your details and upload your SPM/education results directly.\n\nFor enquiries, contact William Chai (PMG Kota Sentosa) at +601110990693.`;
   if (typeof openUniversalWhatsApp === 'function') {
     openUniversalWhatsApp('', msg);
   } else {

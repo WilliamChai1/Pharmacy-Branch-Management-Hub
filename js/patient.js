@@ -9,10 +9,11 @@ if (typeof sanitizeWhatsAppMessage !== 'function') {
       .replace(/\u200D/g, '')
       .replace(/[\uFE00-\uFE0F]/g, '')
       .replace(/[➔➜➡]/g, '->')
-      .replace(/[📌👤📞🏪📅⏰📋🩺👨⚕⚡💊👉🔗🗓🌅☀️🌇🌙💡📦💰📍📢🔴☕👥📚🎓🧹🏢📄📑⚠️]/gu, '•')
+      .replace(/[•●▪■◦‣⦿]/g, '-')
+      .replace(/[📌👤📞🏪📅⏰📋🩺👨⚕⚡💊👉🔗🗓🌅☀️🌇🌙💡📦💰📍📢🔴☕👥📚🎓🧹🏢📄📑⚠️]/gu, '-')
       .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, '')
       .replace(/\uFFFD/g, '')
-      .replace(/•[\s•]+/g, '• ')
+      .replace(/-[\s-]+/g, '- ')
       .trim();
   };
   if (typeof window !== 'undefined') window.sanitizeWhatsAppMessage = sanitizeWhatsAppMessage;
@@ -3574,11 +3575,11 @@ function sendDirectAppointmentReminderWa(patientId, appointmentId) {
   let msg = '';
 
   if (lang === 'Chinese') {
-    msg = `您好 *${p.name}*，这里是 *PMG Pharmacy (${branchName})* 的温馨预约提醒。\n\n您在我们药剂行已预订了健康咨询/续药服务：\n• *预约日期：* ${apt.date}\n• *预约时间：* ${aptTime}\n• *主理药剂师：* ${dutyPharm}\n\n期待您的到来！如需更改时间或查看预约详情，也可使用您的专属链接：\n${bookingUrl}\n\n祝您身体健康！\n*PMG Pharmacy*`;
+    msg = `您好 *${p.name}*，这里是 *PMG Pharmacy (${branchName})* 的温馨预约提醒。\n\n您在我们药剂行已预订了健康咨询/续药服务：\n- *预约日期：* ${apt.date}\n- *预约时间：* ${aptTime}\n- *主理药剂师：* ${dutyPharm}\n\n期待您的到来！如需更改时间或查看预约详情，也可使用您的专属链接：\n${bookingUrl}\n\n祝您身体健康！\n*PMG Pharmacy*`;
   } else if (lang === 'Malay') {
-    msg = `Salam sejahtera *${p.name}*, ini adalah peringatan mesra temujanji daripada *PMG Pharmacy (${branchName})*.\n\nAnda mempunyai temujanji rundingan kesihatan/ulangan ubat yang telah disahkan:\n• *Tarikh:* ${apt.date}\n• *Masa:* ${aptTime}\n• *Ahli Farmasi Bertugas:* ${dutyPharm}\n\nKami menantikan kedatangan anda. Jika perlu membuat sebarang penukaran, anda juga boleh menggunakan pautan peribadi anda di sini:\n${bookingUrl}\n\nSemoga sihat sejahtera,\n*PMG Pharmacy*`;
+    msg = `Salam sejahtera *${p.name}*, ini adalah peringatan mesra temujanji daripada *PMG Pharmacy (${branchName})*.\n\nAnda mempunyai temujanji rundingan kesihatan/ulangan ubat yang telah disahkan:\n- *Tarikh:* ${apt.date}\n- *Masa:* ${aptTime}\n- *Ahli Farmasi Bertugas:* ${dutyPharm}\n\nKami menantikan kedatangan anda. Jika perlu membuat sebarang penukaran, anda juga boleh menggunakan pautan peribadi anda di sini:\n${bookingUrl}\n\nSemoga sihat sejahtera,\n*PMG Pharmacy*`;
   } else {
-    msg = `Hello *${p.name}*, this is a friendly appointment reminder from *PMG Pharmacy (${branchName})*.\n\nYou have a confirmed consultation/refill appointment scheduled:\n• *Date:* ${apt.date}\n• *Time:* ${aptTime}\n• *Duty Pharmacist:* ${dutyPharm}\n\nWe look forward to seeing you! If you need to make changes, you can also access your personal booking portal here:\n${bookingUrl}\n\nBest regards,\n*PMG Pharmacy*`;
+    msg = `Hello *${p.name}*, this is a friendly appointment reminder from *PMG Pharmacy (${branchName})*.\n\nYou have a confirmed consultation/refill appointment scheduled:\n- *Date:* ${apt.date}\n- *Time:* ${aptTime}\n- *Duty Pharmacist:* ${dutyPharm}\n\nWe look forward to seeing you! If you need to make changes, you can also access your personal booking portal here:\n${bookingUrl}\n\nBest regards,\n*PMG Pharmacy*`;
   }
 
   openUniversalWhatsApp(cleanPhone, msg);
@@ -11204,14 +11205,14 @@ function sendCustomerBookingWaToPharmacist() {
     : 'In-Person Consultation (到店面诊)';
 
   const msg = `*PMG Pharmacy - New Customer Booking / Request Notification*\n\n` +
-    `• *Ref No / 预约编号:* ${b.ref}\n` +
-    `• *Patient Name / 姓名:* ${b.patientName}\n` +
-    `• *Phone / 联络电话:* ${b.patientPhone || 'Not provided'}\n` +
-    `• *Branch / 分店:* ${b.branchName}\n` +
-    `• *Date / 日期:* ${b.date}\n` +
-    `• *Time / 时间:* ${b.time}\n` +
-    `• *Request Type / 服务项目:* ${typeDisplay}\n` +
-    `• *Consultant / 主理药剂师:* ${b.pharmacist}\n\n` +
+    `- *Ref No / 预约编号:* ${b.ref}\n` +
+    `- *Patient Name / 姓名:* ${b.patientName}\n` +
+    `- *Phone / 联络电话:* ${b.patientPhone || 'Not provided'}\n` +
+    `- *Branch / 分店:* ${b.branchName}\n` +
+    `- *Date / 日期:* ${b.date}\n` +
+    `- *Time / 时间:* ${b.time}\n` +
+    `- *Request Type / 服务项目:* ${typeDisplay}\n` +
+    `- *Consultant / 主理药剂师:* ${b.pharmacist}\n\n` +
     `*1-Click Import into PMG System / 一键录入系统:*\n` +
     `${importUrl}\n\n` +
     `(The patient submitted this request online. Tap the link above to view and automatically register in the pharmacy appointment queue)`;
@@ -13464,15 +13465,15 @@ function shareChronotherapyWa() {
       msg += `• *Morning (Breakfast / Morning):*\n${chrono.morning.map(i => `  - *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.afternoon?.length) {
-      msg += `• *Afternoon (Lunch / Afternoon):*\n${chrono.afternoon.map(i => `  - *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `- *Afternoon (Lunch / Afternoon):*\n${chrono.afternoon.map(i => `  - *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.evening?.length) {
-      msg += `• *Evening (Dinner / Evening):*\n${chrono.evening.map(i => `  - *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `- *Evening (Dinner / Evening):*\n${chrono.evening.map(i => `  - *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
     if (chrono.bedtime?.length) {
-      msg += `• *Bedtime (Night):*\n${chrono.bedtime.map(i => `  - *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
+      msg += `- *Bedtime (Night):*\n${chrono.bedtime.map(i => `  - *${i.item}*${i.note ? ` (${i.note})` : ''}`).join('\n')}\n\n`;
     }
-    msg += `• *Book a Follow-up Consultation or Medication Review (Anytime):*\n${bookingUrl}\n\n`;
+    msg += `- *Book a Follow-up Consultation or Medication Review (Anytime):*\n${bookingUrl}\n\n`;
     msg += `*Pharmacist Tip:* Taking items at recommended optimal times maximizes clinical absorption and minimizes gastrointestinal upset. Feel free to reach out with any questions!`;
   }
 
