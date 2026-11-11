@@ -201,9 +201,94 @@
       category: 'NUTRITIONAL MILK',
       cost: 99.00,
       retailSp: 109.90,
+      promoSp: 106.90,
       supermarketSp: 107.90,
       competitor: 'Caring / Farley 6th Mile',
       note: 'Diabetes Nutrition 850g Can',
+      isRx: false
+    },
+    {
+      regex: /ABSORBA.*(CONTI[- ]?FIT|PANTS|DIAPER).*(L|LARGE|9)/i,
+      name: 'ABSORBA CONTI-FIT SOFT ADULT PANTS / DIAPERS L 9\'S',
+      category: 'INCONTINENCE / ADULT CARE',
+      cost: 15.50,
+      retailSp: 17.50,
+      promoSp: 16.50,
+      supermarketSp: 15.90,
+      competitor: 'Alpro Oneclick (11.11 Promo)',
+      note: 'Alpro 11.11 Promo RM 16.50 (Normal RM 17.50) · Farley RM 15.90',
+      isRx: false
+    },
+    {
+      regex: /ABSORBA.*(CONTI[- ]?FIT|PANTS|DIAPER).*(M|MEDIUM|10)/i,
+      name: 'ABSORBA CONTI-FIT SOFT ADULT PANTS / DIAPERS M 10\'S',
+      category: 'INCONTINENCE / ADULT CARE',
+      cost: 15.50,
+      retailSp: 17.50,
+      promoSp: 16.50,
+      supermarketSp: 15.90,
+      competitor: 'Alpro Oneclick (11.11 Promo)',
+      note: 'Alpro 11.11 Promo RM 16.50 (Normal RM 17.50) · Farley RM 15.90',
+      isRx: false
+    },
+    {
+      regex: /ABSORBA.*(CONTI[- ]?FIT|PANTS|DIAPER).*(XL|8)/i,
+      name: 'ABSORBA CONTI-FIT SOFT ADULT PANTS / DIAPERS XL 8\'S',
+      category: 'INCONTINENCE / ADULT CARE',
+      cost: 15.50,
+      retailSp: 17.50,
+      promoSp: 16.50,
+      supermarketSp: 15.90,
+      competitor: 'Alpro Oneclick (11.11 Promo)',
+      note: 'Alpro 11.11 Promo RM 16.50 (Normal RM 17.50) · Farley RM 15.90',
+      isRx: false
+    },
+    {
+      regex: /ABSORBA/i,
+      name: 'ABSORBA ADULT INCONTINENCE CARE',
+      category: 'INCONTINENCE / ADULT CARE',
+      cost: 15.50,
+      retailSp: 17.50,
+      promoSp: 16.50,
+      supermarketSp: 15.90,
+      competitor: 'Alpro Oneclick / Farley',
+      note: 'Alpro 11.11 Promo RM 16.50 (Normal RM 17.50) · Farley RM 15.90',
+      isRx: false
+    },
+    {
+      regex: /TENA.*(VALUE|PANTS|SLIP)/i,
+      name: 'TENA ADULT CARE',
+      category: 'INCONTINENCE / ADULT CARE',
+      cost: 18.00,
+      retailSp: 22.90,
+      promoSp: 20.90,
+      supermarketSp: 19.90,
+      competitor: 'Alpro / Farley 6th Mile',
+      note: 'Retail Pack · Farley Promo RM 19.90',
+      isRx: false
+    },
+    {
+      regex: /CERTAINTY.*(DRYPANTS|TAPE|MAXI)/i,
+      name: 'CERTAINTY ADULT PANTS / DIAPERS',
+      category: 'INCONTINENCE / ADULT CARE',
+      cost: 24.00,
+      retailSp: 31.90,
+      promoSp: 28.90,
+      supermarketSp: 27.50,
+      competitor: 'Caring / Farley 6th Mile',
+      note: 'Promo RM 28.90 · Farley RM 27.50',
+      isRx: false
+    },
+    {
+      regex: /YHG.*MATI.*ZHUZHE/i,
+      name: 'YHG MATI ZHUZHE MAOGEN BEVERAGE 10\'S',
+      category: 'HERBAL BEVERAGE',
+      cost: 7.50,
+      retailSp: 11.90,
+      promoSp: 10.90,
+      supermarketSp: 9.90,
+      competitor: 'Farley Supermarket / Alpro',
+      note: 'Farley RM 9.90 · Alpro RM 11.90',
       isRx: false
     }
   ];
@@ -1374,8 +1459,8 @@
 
         const knownBench = this.getKnownMalaysianBenchmark(s);
         if (knownBench) {
-          if (!s.chainPharmacyPrice && knownBench.retailSp) {
-            s.chainPharmacyPrice = knownBench.retailSp;
+          if (!s.chainPharmacyPrice && (knownBench.promoSp || knownBench.retailSp)) {
+            s.chainPharmacyPrice = knownBench.promoSp || knownBench.retailSp;
             if (!s.competitorName || s.competitorName === 'Local Competitors') {
               s.competitorName = knownBench.competitor;
             }
@@ -1840,7 +1925,6 @@
     // Supermarkets only sell adult/baby nutrition milk, diapers, personal care, and general GSL OTC.
     isScheduledPrescriptionDrug(sku) {
       if (!sku) return false;
-      if (sku.isPrescription === true) return true;
 
       const cat = (sku.category || '').toUpperCase().trim();
       const name = (sku.name || '').toUpperCase().trim();
@@ -1850,17 +1934,28 @@
       // legally sell adult diapers, baby diapers, nutrition milk, drinks, and personal care
       // even if categorized under Chronic/NCD or Health & Supplements in POS
       const fmcgExclusions = [
-        'DIAPER', 'PANTS', 'PAD', 'UNDERPAD', 'WIPES', 'ADULT',
-        'MILK', 'ENSURE', 'GLUCERNA', 'ENERGETIC', 'NUTRITION', 'PROSURE', 'APPETON',
-        'SOAP', 'SHAMPOO', 'LOTION', 'CLEANSER', 'WASH', 'TOOTHPASTE',
-        'PATCH', 'PANAFLEX', 'KOOLFEVER', 'SALONPAS', 'TIGER BALM',
+        'DIAPER', 'PANTS', 'PAD', 'UNDERPAD', 'WIPES', 'ADULT', 'BRIEFS', 'INCONTINENCE',
+        'ABSORBA', 'TENA', 'CERTAINTY', 'DR. P', 'DR P', 'INTCO', 'CONFIDENCE', 'LIFREE',
+        'MILK', 'ENSURE', 'GLUCERNA', 'ENERGETIC', 'NUTRITION', 'PROSURE', 'APPETON', 'NUTREN',
+        'PEDIASURE', 'SUSTAGEN', 'SIMILAC', 'ISOMIL', 'ANLENE', 'FERNLEAF', 'DUMEX', 'DUTCH LADY',
+        'ENFAGROW', 'FRISO', 'S-26', 'CARNATION',
+        'SOAP', 'SHAMPOO', 'LOTION', 'CLEANSER', 'WASH', 'TOOTHPASTE', 'CETAPHIL', 'CERAVE',
+        'QV', 'SEBAMED', 'EUCERIN', 'DERVEEN', 'DERMA', 'BODY WASH', 'HAIR',
+        'PATCH', 'PANAFLEX', 'KOOLFEVER', 'SALONPAS', 'TIGER BALM', 'AMMELTZ', 'EAGLE BRAND',
+        'AXE BRAND', 'YOKO YOKO', 'MEDICATED OIL', 'BALM', 'LINIMENT',
         'STRIP', 'LANCET', 'METER', 'SYRINGE', 'NEEDLE', 'MASK', 'GLOVE', 'PLASTER',
-        'COTTON', 'GAUZE', 'BANDAGE', 'THERMOMETER', 'CONDOM', 'BEVERAGE', 'DRINK', 'TEA', 'CEREAL',
-        'OIL', 'BALM', 'GEL', 'SPRAY', 'HONEY', 'HERBAL', 'CANDY', 'LOZENGE'
+        'COTTON', 'GAUZE', 'BANDAGE', 'THERMOMETER', 'CONDOM', 'NEBULIZER', 'BLOOD PRESSURE',
+        'OMRON', 'ACCU-CHEK', 'ONE TOUCH',
+        'BEVERAGE', 'DRINK', 'TEA', 'CEREAL', 'HONEY', 'HERBAL', 'CANDY', 'LOZENGE',
+        'STREPSILS', 'WOODS', 'DIFFLAM', 'NIN JIOM', 'PEI PA KOA',
+        'OIL', 'GEL', 'SPRAY'
       ];
       if (fmcgExclusions.some(ex => name.includes(ex))) {
+        if (sku.isPrescription) sku.isPrescription = false;
         return false;
       }
+
+      if (sku.isPrescription === true) return true;
 
       // 1. Explicit Category matching (Poisons Act 1952 scheduled drugs)
       if (
@@ -1964,7 +2059,25 @@
 
         const normName = (s.name || '').toUpperCase();
 
-        // 2. Fix the specific corrupted RM 110.00 prices from the prior anchoring & N/A code collision bug
+        // 2. Clear corrupted isPrescription flag on FMCG items
+        if (!isRx && s.isPrescription) {
+          s.isPrescription = false;
+          cleaned++;
+        }
+
+        // 3. Fix Absorba adult incontinence pants & diapers to live Alpro promo benchmark
+        if (normName.includes('ABSORBA') && (normName.includes('PANTS') || normName.includes('DIAPER') || normName.includes('CONTI'))) {
+          if (s.supermarketPrice === null || s.supermarketPrice === undefined || s.chainPharmacyPrice >= 18.00 || !s.chainPharmacyPrice) {
+            s.supermarketPrice = 15.90;
+            s.chainPharmacyPrice = 16.50;
+            s.competitorName = 'Alpro Oneclick (11.11 Promo)';
+            s.promoNote = 'Alpro 11.11 Promo RM 16.50 (Normal RM 17.50) · Farley RM 15.90';
+            s.strategyTag = 'kvi_defensive';
+            cleaned++;
+          }
+        }
+
+        // 4. Fix the specific corrupted RM 110.00 prices from the prior anchoring & N/A code collision bug
         if (normName.includes('ACETAN') && s.chainPharmacyPrice >= 90) {
           s.chainPharmacyPrice = 18.50;
           s.competitorName = 'BIG Pharmacy';
@@ -1977,13 +2090,13 @@
           cleaned++;
         }
 
-        // 3. Domain Sanity Guard on Rx Chain Pharmacy Price vs Wholesale Cost
+        // 5. Domain Sanity Guard on Rx Chain Pharmacy Price vs Wholesale Cost
         // Ethical prescription drugs cannot retail below 65% of cost or above 3.5x cost in retail pharmacies
         if (isRx && s.costPrice > 0 && s.chainPharmacyPrice > 0) {
           const bench = this.getKnownMalaysianBenchmark(s);
           if (s.chainPharmacyPrice < s.costPrice * 0.65 || s.chainPharmacyPrice > s.costPrice * 3.5) {
             if (bench) {
-              s.chainPharmacyPrice = bench.retailSp;
+              s.chainPharmacyPrice = bench.promoSp || bench.retailSp;
               s.competitorName = bench.competitor;
               if (bench.note) s.promoNote = bench.note;
             } else {
@@ -2279,7 +2392,7 @@
       }
     }
 
-    applyAiCompetitorPrices(skuId, superPrice, chainPrice, competitorName, promoNote) {
+    applyAiCompetitorPrices(skuId, superPrice, chainPrice, competitorName, promoNote, suggestedPmgSp = 0) {
       const sku = this.skus.find(s => s.id === skuId);
       if (!sku) return;
       const isRx = this.isScheduledPrescriptionDrug(sku);
@@ -2295,7 +2408,7 @@
         if (isRx && sku.costPrice > 0 && (finalChainP < sku.costPrice * 0.65 || finalChainP > sku.costPrice * 3.5)) {
           const bench = this.getKnownMalaysianBenchmark(sku);
           if (bench) {
-            finalChainP = bench.retailSp;
+            finalChainP = bench.promoSp || bench.retailSp;
             if (!competitorName || competitorName === 'Alpro / Ting Pharmacy') competitorName = bench.competitor;
             if (!promoNote && bench.note) promoNote = bench.note;
           } else {
@@ -2309,12 +2422,25 @@
         sku.promoNote = promoNote;
       }
       sku.customModified = true;
-      this.saveSkusToStorage();
-      this.renderTableOnly();
+      this.autoAnalyzeSingleSku(skuId);
       const modal = document.getElementById('pricingAiModal');
       if (modal) modal.classList.add('hidden');
       if (typeof showExpiryToast === 'function') {
-        showExpiryToast(`✅ Saved competitor prices for ${sku.name}`);
+        showExpiryToast(`✅ Saved competitor benchmarks for ${sku.name}`);
+      }
+    }
+
+    applyAiCompetitorPricesAndPmgSp(skuId, superPrice, chainPrice, competitorName, promoNote, suggestedPmgSp) {
+      const sku = this.skus.find(s => s.id === skuId);
+      if (!sku) return;
+      if (suggestedPmgSp && !isNaN(parseFloat(suggestedPmgSp)) && parseFloat(suggestedPmgSp) > 0) {
+        sku.standardSp = parseFloat(suggestedPmgSp);
+        sku.currentBranchSp = parseFloat(suggestedPmgSp);
+        sku.priceChangedAt = new Date().toISOString();
+      }
+      this.applyAiCompetitorPrices(skuId, superPrice, chainPrice, competitorName, promoNote);
+      if (typeof showExpiryToast === 'function') {
+        showExpiryToast(`⚡ Updated ${sku.name} Member SP to RM ${sku.standardSp.toFixed(2)} to match market competitor!`);
       }
     }
 
@@ -3303,6 +3429,48 @@
       container.innerHTML = html;
     }
 
+    extractSearchableProductDetails(sku) {
+      if (!sku || !sku.name) return { cleanName: '', packInfo: '', searchQueries: [] };
+      const rawName = String(sku.name || '').trim();
+
+      // Cleaned base name without internal code junk like N/A, BOX10, etc.
+      let clean = rawName
+        .replace(/\b(N\/A|BOX\d*|PACK|STRIP|TUBE|BTL|UNIT)\b/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      // Detect size / pack
+      let packInfo = '';
+      const sizeMatch = rawName.match(/\b(XXL|XL|L|M|S)\b/i);
+      const packMatch = rawName.match(/\b(\d+['’]?S|\d+\s*G|\d+\s*ML|\d+\s*TAB|\d+\s*CAP)\b/i);
+      if (sizeMatch && packMatch) {
+        packInfo = `${sizeMatch[1].toUpperCase()} (${packMatch[1].toUpperCase()})`;
+      } else if (packMatch) {
+        packInfo = packMatch[1].toUpperCase();
+      } else if (sizeMatch) {
+        packInfo = sizeMatch[1].toUpperCase();
+      }
+
+      const queries = [];
+      if (/ABSORBA|TENA|CERTAINTY|DR\.?\s*P/i.test(rawName)) {
+        queries.push(`"${clean}" price Alpro Malaysia`);
+        queries.push(`"${clean}" price BIG Pharmacy Malaysia`);
+        queries.push(`"${clean}" Farley Supermarket Kuching`);
+      } else if (/MILK|ENSURE|GLUCERNA|ENERCAL|NUTREN|APPETON/i.test(rawName)) {
+        queries.push(`"${clean}" price Caring Alpro Malaysia`);
+        queries.push(`"${clean}" Farley price Kuching`);
+      } else {
+        queries.push(`"${clean}" price Malaysia Alpro Caring`);
+        queries.push(`"${clean}" price Malaysia BIG Pharmacy`);
+      }
+
+      return {
+        cleanName: clean,
+        packInfo,
+        searchQueries: queries
+      };
+    }
+
     // ─── GEMINI AI DEEP RESEARCH RUNNER ─────────────────────────────────────────
     launchAiCompetitorPriceCheck(skuId) {
       const sku = this.skus.find(s => s.id === skuId);
@@ -3317,6 +3485,8 @@
       const knownBench = this.getKnownMalaysianBenchmark(sku);
       const aging = this.getStockAgingForSku(sku);
       const diag = this.diagnoseSkuPricingVsAging(sku, aging);
+      const searchDetails = this.extractSearchableProductDetails(sku);
+
       const agingContext = diag.isAged ? `\nSTOCK AGING & VELOCITY INTELLIGENCE:
 - Aged Stock (>150 Days): ${diag.agedQty} units (Locked Capital: RM ${diag.agedValue.toFixed(2)})
 - Oldest Aging Bracket: ${diag.maxBracket}
@@ -3327,13 +3497,14 @@
       if (title) title.textContent = `Competitor Price Benchmark Analysis: ${sku.name}`;
       if (input) {
         if (isRx) {
-          input.value = `You are a Senior Pharmaceutical Pricing Specialist in Malaysia conducting an INDEPENDENT, UNANCHORED market price audit.
-Search Google for the real, current retail dispensing price of this prescription medicine in Malaysian licensed community pharmacies (such as BIG Pharmacy, Alpro Pharmacy, Caring Pharmacy, Ting Pharmacy Kuching, and DoctorOnCall).
-DO NOT anchor to or assume any user-entered price. Conduct an authentic market search.
+          input.value = `You are a Senior Pharmaceutical Pricing Specialist in Malaysia conducting an INDEPENDENT, REAL-TIME MARKET PRICE AUDIT with LIVE GOOGLE SEARCH.
+Search Google for the real, current retail dispensing price of this prescription medicine in Malaysian licensed community pharmacies (such as BIG Pharmacy, Alpro Pharmacy / Alpro Oneclick, Caring Pharmacy, Ting Pharmacy Kuching, and DoctorOnCall).
+DO NOT anchor to or assume any user-entered price. Conduct an authentic live market search.
 
 Product: ${sku.name}
-${genericHint ? 'Active Formulation / Packaging: ' + genericHint + '\n' : ''}Category: ${sku.category || 'Prescription Medicine'} (Poisons Act 1952 - Group B/C Poison)
+${genericHint ? 'Active Formulation / Strength / Packaging: ' + genericHint + '\n' : ''}Category: ${sku.category || 'Prescription Medicine'} (Poisons Act 1952 - Group B/C Poison)
 Wholesale Trade Cost: RM ${sku.costPrice > 0 ? sku.costPrice.toFixed(2) : '15.00 - 25.00 trade range'}
+Our Current Member SP: RM ${sku.standardSp > 0 ? sku.standardSp.toFixed(2) : 'Unset'}
 ${agingContext}
 CRITICAL REGULATORY RULE (Malaysian Poisons Act 1952):
 - This item is a scheduled prescription poison. Supermarkets and hypermarkets (Farley Supermarket, Emart Hypermarket, Everwin) CANNOT legally stock, sell, or dispense this medicine.
@@ -3341,48 +3512,67 @@ CRITICAL REGULATORY RULE (Malaysian Poisons Act 1952):
 - Ethical prescription retail prices in Malaysian community pharmacies typically reflect a 12% to 25% gross retail margin above wholesale cost. Prices below cost or 300% above cost are illogical errors.
 
 Search & Market Benchmarking Tasks:
-1. Google Search for the actual retail selling price for "${sku.name}" in Malaysia (BIG Pharmacy, Alpro Pharmacy, Caring Pharmacy, DoctorOnCall).
+1. Google Search for the actual retail selling price for "${sku.name}" in Malaysia (BIG Pharmacy, Alpro Pharmacy / Oneclick, Caring Pharmacy, DoctorOnCall).
 2. Report the verified packaging unit (e.g. per box of 30 tabs, per 4ml cartridge refill).
-3. Identify typical chronic compliance promotions (e.g. 3-month supply, member repeat refills).
-4. Provide a defensive recommended selling price for community pharmacies in suburban Kuching (Sentosa, Moyan, Matang).
+3. Identify typical chronic compliance promotions (e.g. 3-month supply, member repeat refills, bulk box discounts).
+4. Provide a defensive recommended selling price ("suggestedPmgSp") for community pharmacies in suburban Kuching (Sentosa, Moyan, Matang) that protects patient compliance and retention.
 
 IMPORTANT: Return the detected competitor price numbers at the end inside a strict JSON code block:
 \`\`\`json
 {
   "supermarketPrice": null,
-  "chainPharmacyPrice": ${knownBench ? knownBench.retailSp.toFixed(2) : '18.50'},
+  "chainPharmacyPrice": ${knownBench ? (knownBench.promoSp || knownBench.retailSp).toFixed(2) : (sku.costPrice > 0 ? (sku.costPrice * 1.18).toFixed(2) : '0.00')},
   "competitorName": "${knownBench ? knownBench.competitor : 'BIG Pharmacy / Alpro'}",
-  "promoNote": "${knownBench ? knownBench.note : 'Box / Dispensing Pack'}",
-  "suggestedPmgSp": ${knownBench ? (knownBench.retailSp - 0.5).toFixed(2) : '18.00'}
+  "promoNote": "${knownBench ? (knownBench.note || '') : ''}",
+  "suggestedPmgSp": ${knownBench ? (knownBench.promoSp || knownBench.retailSp).toFixed(2) : (sku.costPrice > 0 ? (sku.costPrice * 1.15).toFixed(2) : '0.00')},
+  "hasActivePromo": ${knownBench && knownBench.promoSp ? 'true' : 'false'},
+  "normalRetailPrice": ${knownBench ? knownBench.retailSp.toFixed(2) : '0.00'},
+  "promotionalPrice": ${knownBench && knownBench.promoSp ? knownBench.promoSp.toFixed(2) : 'null'}
 }
 \`\`\``;
         } else {
-          input.value = `You are a Senior Commercial Retail Pricing Specialist in Sarawak, Malaysia conducting an INDEPENDENT, UNANCHORED market price audit.
-Search Google for the real, current retail prices of this FMCG / OTC healthcare product in Sarawak supermarkets (Farley Supermarket, Emart Hypermarket) and community pharmacies (Alpro Pharmacy, Caring Pharmacy, BIG Pharmacy, Ting Pharmacy, Watsons, Guardian).
-DO NOT anchor to or assume any user-entered price. Conduct an authentic market search.
+          const queriesText = searchDetails.searchQueries.map(q => `   - ${q}`).join('\n');
+          input.value = `You are a Senior Retail Pharmacy & FMCG Pricing Specialist in Sarawak, Malaysia conducting an INDEPENDENT, REAL-TIME MARKET PRICE & ACTIVE PROMOTION AUDIT using Live Google Search.
 
-Product: ${sku.name}
-${genericHint ? 'Specification / Size: ' + genericHint + '\n' : ''}Category: ${sku.category || 'OTC / Healthcare'}
+Search Google in real-time for the exact current selling price and ANY ACTIVE PROMOTIONS in Malaysia for:
+Product Name: ${sku.name}
+Clean Product Term: ${searchDetails.cleanName}
+${searchDetails.packInfo ? 'Packaging / Size: ' + searchDetails.packInfo + '\n' : ''}Category: ${sku.category || 'OTC / Healthcare / Incontinence / FMCG'}
 Brand: ${sku.brand || 'Retail'}
 Wholesale Trade Cost: RM ${sku.costPrice > 0 ? sku.costPrice.toFixed(2) : 'Trade Reference'}
+Our Current Member SP: RM ${sku.standardSp > 0 ? sku.standardSp.toFixed(2) : 'Unset'}
 ${agingContext}
-Target Retail Competitors in Kuching & Padawan, Sarawak:
-1. Supermarkets / Hypermarkets: Farley Supermarket (6th Mile), Emart Hypermarket (Batu Kawa/Matang), Everwin.
-2. Licensed Pharmacies: Alpro Pharmacy, Caring Pharmacy, BIG Pharmacy, Ting Pharmacy Kuching, Watsons, Guardian.
+TARGET COMPETITORS TO AUDIT IN SARAWAK / MALAYSIA:
+1. Pharmacy Chains: Alpro Pharmacy (especially Alpro Oneclick alpropharmacy.com), Caring Pharmacy (caring2u.com), BIG Pharmacy (bigpharmacy.com.my), Guardian Malaysia, Watsons Malaysia.
+2. Sarawak Supermarkets / Hypermarkets: Farley Supermarket (Kuching 6th Mile / Samarahan), Emart Hypermarket (Batu Kawa / Matang), Everwin.
 
-Search & Market Benchmarking Tasks:
-1. Google Search for the actual retail price of "${sku.name}" in Sarawak / Malaysia.
-2. Check for active multi-buys, twin packs, PWP, or member promo discounts.
-3. Provide a defensive recommended selling price to defend foot traffic against Farley and Alpro while protecting margin.
+RECOMMENDED GOOGLE SEARCH QUERIES:
+${queriesText}
+
+CRITICAL AUDIT & PROMOTION RULES:
+1. CAPTURE ACTIVE PROMOTIONS & DISCOUNTS:
+   - Check if the item currently has an ACTIVE PROMOTION, DISCOUNT CAMPAIGN, DOUBLE-DIGIT SALE (e.g. 11.11 Sale, 12.12), PAYDAY SALE, INSTANT MEMBER REBATE, OR MULTI-PACK/TWIN-PACK PROMO.
+   - Example: If Alpro Oneclick lists Absorba Conti-Fit Diapers Normal Price as RM 17.50, but currently has an active 11.11 Promo Price of RM 16.50, YOU MUST USE RM 16.50 AS "chainPharmacyPrice"! Customers compare against active promo prices!
+   - Report BOTH "normalRetailPrice" (e.g. 17.50) and "promotionalPrice" (e.g. 16.50).
+   - In "promoNote", explicitly record the promo event: e.g. "Alpro 11.11 Promo RM 16.50 (Normal RM 17.50)".
+2. SUPERMARKET BENCHMARK ("supermarketPrice"):
+   - Supermarkets in Sarawak (Farley, Emart) heavily discount adult diapers, baby milk, and FMCG.
+   - Benchmark the realistic shelf price at Farley 6th Mile Kuching or Emart.
+3. DEFENSIVE PMG SELLING PRICE ("suggestedPmgSp"):
+   - Recommend a competitive selling price for PMG's 7 branches in Kuching/Padawan.
+   - If a competitor has an active promotion (e.g. Alpro at RM 16.50), recommend matching or slightly beating the promo (e.g. RM 16.50 or RM 16.20 member promo) as long as it stays above PMG wholesale cost (RM ${sku.costPrice.toFixed(2)}). DO NOT suggest prices above competitor promo!
 
 IMPORTANT: Return the detected competitor price numbers at the end inside a strict JSON code block:
 \`\`\`json
 {
   "supermarketPrice": ${knownBench && knownBench.supermarketSp ? knownBench.supermarketSp.toFixed(2) : '0.00'},
-  "chainPharmacyPrice": ${knownBench ? knownBench.retailSp.toFixed(2) : '0.00'},
-  "competitorName": "${knownBench ? knownBench.competitor : 'Alpro / Farley'}",
-  "promoNote": "${knownBench ? knownBench.note : 'Retail Pack'}",
-  "suggestedPmgSp": 0.00
+  "chainPharmacyPrice": ${knownBench ? (knownBench.promoSp || knownBench.retailSp).toFixed(2) : '0.00'},
+  "competitorName": "${knownBench ? knownBench.competitor : 'Alpro Oneclick / Farley'}",
+  "promoNote": "${knownBench ? (knownBench.note || '') : ''}",
+  "suggestedPmgSp": ${knownBench ? (knownBench.promoSp || knownBench.retailSp).toFixed(2) : (sku.costPrice > 0 ? (sku.costPrice * 1.08).toFixed(2) : '0.00')},
+  "hasActivePromo": ${knownBench && knownBench.promoSp ? 'true' : 'false'},
+  "normalRetailPrice": ${knownBench ? knownBench.retailSp.toFixed(2) : '0.00'},
+  "promotionalPrice": ${knownBench && knownBench.promoSp ? knownBench.promoSp.toFixed(2) : 'null'}
 }
 \`\`\``;
         }
@@ -3558,14 +3748,14 @@ Our strategic objective:
         `;
       }
 
-      if (statusPill) statusPill.textContent = 'Analyzing…';
+      if (statusPill) statusPill.textContent = 'Searching Web & Grounding…';
 
-      // Primary: Gemini 3.5 Flash-Lite (15 RPM / 500 RPD) — High speed routine market analysis
-      // Secondary: Gemini 3.1 Flash-Lite (15 RPM / 500 RPD) — High quota fallback
-      // Tertiary: Gemini 3.5 Flash (5 RPM / 20 RPD) — Deep competitor dynamics reasoning
+      // Primary models with Google Search Grounding support
       const modelsToTry = [
-        { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite (Primary)' },
-        { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite (Secondary)' },
+        { code: 'gemini-2.5-flash',      name: 'Gemini 2.5 Flash' },
+        { code: 'gemini-2.0-flash',      name: 'Gemini 2.0 Flash' },
+        { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
+        { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' },
         { code: 'gemini-3.5-flash',      name: 'Gemini 3.5 Flash' }
       ];
 
@@ -3576,46 +3766,60 @@ Our strategic objective:
       let groundingMetadata = null;
 
       for (const m of modelsToTry) {
-        try {
-          const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.code}:generateContent?key=${apiKey}`;
-          const res = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+        if (isKeyBlocked) break;
+        // Attempt with Google Search Grounding first for real-time live competitor prices & promotions
+        const toolVariants = [
+          [{ googleSearch: {} }],
+          null
+        ];
+
+        for (const tools of toolVariants) {
+          try {
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.code}:generateContent?key=${apiKey}`;
+            const reqBody = {
               contents: [{
                 parts: [{ text: promptText }]
               }],
               generationConfig: {
-                temperature: 0.2,
-                maxOutputTokens: 2048
+                temperature: 0.1,
+                maxOutputTokens: 2500
               }
-            })
-          });
+            };
+            if (tools) reqBody.tools = tools;
 
-          if (res.ok) {
-            const data = await res.json();
-            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (text && text.trim()) {
-              responseText = text.trim();
-              usedModel = m.name;
-              groundingMetadata = data.candidates?.[0]?.groundingMetadata || null;
-              break;
-            }
-          } else {
-            const errData = await res.json().catch(() => ({}));
-            const errMsg = errData.error?.message || `HTTP ${res.status}`;
-            lastErrorMsg = errMsg;
-            console.warn(`[PMG Pricing AI] Model ${m.code} error (${res.status}):`, errMsg);
+            const res = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(reqBody)
+            });
 
-            if (errMsg.toLowerCase().includes('leaked')) {
-              isKeyBlocked = true;
-              break; // Stop only if key is explicitly flagged as leaked
+            if (res.ok) {
+              const data = await res.json();
+              const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (text && text.trim()) {
+                responseText = text.trim();
+                usedModel = m.name + (tools ? ' (Live Search Grounded)' : '');
+                groundingMetadata = data.candidates?.[0]?.groundingMetadata || null;
+                break;
+              }
+            } else {
+              const errData = await res.json().catch(() => ({}));
+              const errMsg = errData.error?.message || `HTTP ${res.status}`;
+              lastErrorMsg = errMsg;
+              console.warn(`[PMG Pricing AI] Model ${m.code} error (${res.status}) [tools=${!!tools}]:`, errMsg);
+
+              if (errMsg.toLowerCase().includes('leaked')) {
+                isKeyBlocked = true;
+                break;
+              }
             }
+          } catch (e) {
+            lastErrorMsg = e.message;
+            console.warn(`[PMG Pricing AI] Network error on ${m.code}:`, e);
           }
-        } catch (e) {
-          lastErrorMsg = e.message;
-          console.warn(`[PMG Pricing AI] Network error on ${m.code}:`, e);
+          if (responseText) break;
         }
+        if (responseText) break;
       }
 
       if (!responseText) {
@@ -3695,12 +3899,20 @@ Our strategic objective:
         let compName = (parsedJson.competitorName || 'Alpro / Ting Pharmacy').replace(/"/g, '&quot;');
         let promoNote = (parsedJson.promoNote || '').replace(/"/g, '&quot;');
         const pmgSp = parseFloat(parsedJson.suggestedPmgSp) || 0;
+        const hasPromo = !!(parsedJson.hasActivePromo || parsedJson.promotionalPrice || (promoNote && /promo|sale|11\.11|discount|rebate/i.test(promoNote)));
+        const normalP = parseFloat(parsedJson.normalRetailPrice) || 0;
+        const promoP = parseFloat(parsedJson.promotionalPrice) || (hasPromo ? chainP : 0);
+
+        // If promotional price was detected, ensure chainP reflects the active promo
+        if (promoP > 0 && promoP < chainP) {
+          chainP = promoP;
+        }
 
         // Domain Sanity Guard on Rx Selling Price vs Wholesale Cost
         const bench = this.getKnownMalaysianBenchmark(sku);
         if (isRx && sku.costPrice > 0 && chainP > 0 && (chainP < sku.costPrice * 0.65 || chainP > sku.costPrice * 3.5)) {
           if (bench) {
-            chainP = bench.retailSp;
+            chainP = bench.promoSp || bench.retailSp;
             compName = bench.competitor;
             if (bench.note) promoNote = bench.note;
           } else {
@@ -3709,9 +3921,12 @@ Our strategic objective:
           }
         }
         if (chainP === 0 && bench) {
-          chainP = bench.retailSp;
+          chainP = bench.promoSp || bench.retailSp;
           compName = bench.competitor;
           if (bench.note) promoNote = bench.note;
+        }
+        if (!isRx && superP === 0 && bench && bench.supermarketSp) {
+          superP = bench.supermarketSp;
         }
 
         if (superP > 0 || chainP > 0 || isRx) {
@@ -3720,22 +3935,47 @@ Our strategic objective:
             : `<b class="font-mono text-gray-900 bg-white px-1.5 py-0.5 rounded border border-indigo-200">${superP > 0 ? 'RM ' + superP.toFixed(2) : 'N/A'}</b>`;
 
           applyBannerHtml = `
-            <div class="mb-4 p-3.5 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border-2 border-indigo-300 rounded-xl flex items-center justify-between gap-3 shadow-xs flex-wrap">
-              <div class="space-y-1">
-                <div class="font-bold text-indigo-950 text-xs flex items-center gap-1.5">
-                  <i class="fa-solid fa-tags text-indigo-600"></i> AI Detected Competitor Benchmarks for <span class="text-blue-900 font-extrabold">${sku.name}</span>
+            <div class="mb-4 p-4 ${hasPromo ? 'bg-gradient-to-r from-amber-50 via-rose-50 to-orange-50 border-2 border-amber-300' : 'bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border-2 border-indigo-300'} rounded-xl shadow-xs">
+              <div class="flex items-center justify-between gap-3 flex-wrap mb-2">
+                <div class="flex items-center gap-2 flex-wrap">
+                  ${hasPromo ? `
+                    <span class="px-2.5 py-0.5 rounded-full bg-rose-600 text-white font-extrabold text-[10px] tracking-wide uppercase flex items-center gap-1 shadow-xs animate-pulse">
+                      <i class="fa-solid fa-fire text-amber-200"></i> Active Competitor Promo
+                    </span>
+                  ` : `
+                    <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold text-[10px] flex items-center gap-1">
+                      <i class="fa-solid fa-tags text-indigo-600"></i> Competitor Benchmark
+                    </span>
+                  `}
+                  <span class="text-blue-950 font-extrabold text-xs">${sku.name}</span>
                 </div>
-                <div class="text-[11px] text-indigo-900 flex items-center gap-3 flex-wrap">
-                  <span>Farley/Emart: ${superTxt}</span>
-                  <span>Competitor Pharmacy (${compName}): <b class="font-mono text-gray-900 bg-white px-1.5 py-0.5 rounded border border-indigo-200">${chainP > 0 ? 'RM ' + chainP.toFixed(2) : 'N/A'}</b></span>
-                  ${promoNote ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-300"><i class="fa-solid fa-fire text-amber-600"></i> ${promoNote}</span>` : ''}
-                  ${pmgSp > 0 ? `<span>Suggested Defensive SP: <b class="font-mono text-emerald-800 bg-white px-1.5 py-0.5 rounded border border-emerald-200">RM ${pmgSp.toFixed(2)}</b></span>` : ''}
+                <div class="text-[11px] text-gray-500 font-medium">
+                  Live Grounded Market Intelligence
                 </div>
               </div>
-              <button type="button" onclick="window.pmgPricing.applyAiCompetitorPrices('${sku.id}', ${superP}, ${chainP}, '${compName.replace(/'/g, "\\'")}', '${promoNote.replace(/'/g, "\\'")}')"
-                class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-xs rounded-xl transition shadow-xs whitespace-nowrap flex items-center gap-1.5 cursor-pointer">
-                <i class="fa-solid fa-check-double text-indigo-200"></i> Apply to SKU Table
-              </button>
+
+              <div class="text-[11px] text-gray-800 flex items-center gap-3 flex-wrap mb-3">
+                <span>Competitor: <b class="font-bold text-gray-900">${compName}</b></span>
+                ${normalP > 0 ? `<span>Normal SP: <span class="line-through text-gray-500">RM ${normalP.toFixed(2)}</span></span>` : ''}
+                <span>Active Price: <b class="font-mono ${hasPromo ? 'text-rose-700 bg-white border border-rose-200 shadow-2xs' : 'text-gray-900 bg-white border border-indigo-200'} px-2 py-0.5 rounded text-xs font-extrabold">${chainP > 0 ? 'RM ' + chainP.toFixed(2) : 'N/A'}</b></span>
+                <span>Farley/Emart: ${superTxt}</span>
+                ${promoNote ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-300"><i class="fa-solid fa-tag text-amber-600"></i> ${promoNote}</span>` : ''}
+                ${pmgSp > 0 ? `<span>Suggested Defensive SP: <b class="font-mono text-emerald-800 bg-white px-2 py-0.5 rounded border border-emerald-300 font-extrabold text-xs">RM ${pmgSp.toFixed(2)}</b></span>` : ''}
+              </div>
+
+              <div class="flex items-center justify-end gap-2 pt-2 border-t border-gray-200/60 flex-wrap">
+                <button type="button" onclick="window.pmgPricing.applyAiCompetitorPrices('${sku.id}', ${superP}, ${chainP}, '${compName.replace(/'/g, "\\'")}', '${promoNote.replace(/'/g, "\\'")}')"
+                  class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-xs rounded-xl transition shadow-xs whitespace-nowrap flex items-center gap-1.5 cursor-pointer">
+                  <i class="fa-solid fa-check-double text-indigo-200"></i> Apply Benchmarks to Matrix
+                </button>
+                ${pmgSp > 0 && Math.abs(pmgSp - sku.standardSp) > 0.05 ? `
+                <button type="button" onclick="window.pmgPricing.applyAiCompetitorPricesAndPmgSp('${sku.id}', ${superP}, ${chainP}, '${compName.replace(/'/g, "\\'")}', '${promoNote.replace(/'/g, "\\'")}', ${pmgSp})"
+                  class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs rounded-xl transition shadow-xs whitespace-nowrap flex items-center gap-1.5 cursor-pointer"
+                  title="Update Member SP to RM ${pmgSp.toFixed(2)} to defensively match competitor promo">
+                  <i class="fa-solid fa-bolt text-emerald-200"></i> Match Promo (Set SP RM ${pmgSp.toFixed(2)})
+                </button>
+                ` : ''}
+              </div>
             </div>
           `;
         }
@@ -3750,12 +3990,18 @@ Our strategic objective:
           const qList = queries.map(q => `<span class="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded font-mono text-[9px] mr-1 mb-1 inline-block"><i class="fa-solid fa-magnifying-glass text-[8px] mr-0.5"></i>${q}</span>`).join('');
           const cList = chunks.slice(0, 6).map(c => `<a href="${c.web.uri}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline text-[10px] mr-2 inline-flex items-center gap-0.5"><i class="fa-solid fa-arrow-up-right-from-square text-[8px]"></i>${c.web.title || c.web.uri}</a>`).join('');
           groundingHtml = `
-            <div class="mb-3 p-2.5 bg-blue-50/70 border border-blue-200 rounded-lg text-xs text-blue-950">
-              <div class="font-bold flex items-center gap-1.5 text-blue-900 mb-1">
-                <i class="fa-brands fa-google text-blue-600"></i> Grounded with Real-Time Google Search:
+            <div class="mb-3 p-3 bg-blue-50/80 border border-blue-200 rounded-xl text-xs text-blue-950">
+              <div class="font-bold flex items-center justify-between gap-2 text-blue-900 mb-1.5 flex-wrap">
+                <span class="flex items-center gap-1.5">
+                  <i class="fa-brands fa-google text-blue-600 text-sm"></i>
+                  <span>Verified with Real-Time Google Search Grounding</span>
+                </span>
+                <span class="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  <i class="fa-solid fa-circle-check text-emerald-500 mr-1"></i>Live Web Evidence
+                </span>
               </div>
-              ${qList ? `<div class="mb-1 flex flex-wrap">${qList}</div>` : ''}
-              ${cList ? `<div class="text-[10px] text-gray-600 flex flex-wrap gap-1">${cList}</div>` : ''}
+              ${qList ? `<div class="mb-1.5 flex flex-wrap gap-1">${qList}</div>` : ''}
+              ${cList ? `<div class="text-[10px] text-gray-600 flex flex-wrap gap-2 pt-1 border-t border-blue-200/50">${cList}</div>` : ''}
             </div>
           `;
         }
@@ -3916,12 +4162,12 @@ Our strategic objective:
         chunks.push(targetSkus.slice(i, i + CHUNK_SIZE));
       }
 
-      // Primary: Gemini 3.5 Flash-Lite (15 RPM / 500 RPD)
-      // Secondary: Gemini 3.1 Flash-Lite (15 RPM / 500 RPD)
-      // Tertiary: Gemini 3.5 Flash (5 RPM / 20 RPD)
+      // Primary models with Google Search Grounding support
       const modelsToTry = [
-        { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite (Primary)' },
-        { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite (Secondary)' },
+        { code: 'gemini-2.5-flash',      name: 'Gemini 2.5 Flash' },
+        { code: 'gemini-2.0-flash',      name: 'Gemini 2.0 Flash' },
+        { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
+        { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' },
         { code: 'gemini-3.5-flash',      name: 'Gemini 3.5 Flash' }
       ];
 
@@ -3933,14 +4179,14 @@ Our strategic objective:
         const chunkEnd = Math.min((c + 1) * CHUNK_SIZE, totalItems);
 
         if (progressLabel) {
-          progressLabel.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-indigo-600 mr-1.5"></i> Scanning items ${chunkStart} to ${chunkEnd} of ${totalItems} (Gemini 3.5 Flash-Lite)...`;
+          progressLabel.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-indigo-600 mr-1.5"></i> Live Search Grounding items ${chunkStart} to ${chunkEnd} of ${totalItems}…`;
         }
 
         // Build chunk prompt (UNANCHORED - NEVER include user selling price)
         let itemListText = '';
         currentChunk.forEach((s, idx) => {
           const isRx = this.isScheduledPrescriptionDrug(s);
-          const rxLabel = isRx ? ' [PRESCRIPTION / POISONS ACT - SUPERMARKET N/A]' : '';
+          const rxLabel = isRx ? ' [PRESCRIPTION POISON - SUPERMARKET N/A]' : ' [FMCG / HEALTHCARE - AUDIT SUPERMARKET & PHARMACY]';
           const genericHint = this.getGenericDrugHint(s);
           const costHint = s.costPrice > 0 ? `Trade Cost: RM ${s.costPrice.toFixed(2)}` : 'Trade Cost: Standard';
           const codeVal = (s.code && !['N/A', 'NONE', '-', 'NULL', ''].includes(String(s.code).trim().toUpperCase())) ? s.code : 'None';
@@ -3948,14 +4194,17 @@ Our strategic objective:
         });
 
         const prompt = `You are the Senior Commercial Pharmacy Pricing Director for PMG Pharmacy (7 Outlets in Kuching & Padawan, Sarawak, Malaysia).
-Perform an OBJECTIVE, UNBIASED competitor price benchmarking for these ${currentChunk.length} products.
-Search Google for current retail selling prices in Malaysian private community pharmacies (such as BIG Pharmacy, Alpro Pharmacy, Caring Pharmacy, Ting Pharmacy Kuching, and DoctorOnCall).
-DO NOT anchor to any assumed markups. Search for actual market prices.
+Perform an OBJECTIVE, UNBIASED competitor price benchmarking using real-time Google Search for these ${currentChunk.length} products.
+Search Google for current retail selling prices in Malaysian private community pharmacies (such as BIG Pharmacy, Alpro Pharmacy / Oneclick, Caring Pharmacy, Ting Pharmacy Kuching, Guardian, Watsons).
+DO NOT anchor to any assumed markups. Search for actual live market prices.
 
-CRITICAL REGULATORY RULE (Malaysian Poisons Act 1952):
-- Supermarkets / Hypermarkets (Farley Supermarket, Emart Hypermarket, Everwin) CANNOT legally stock, sell, or dispense scheduled prescription / poison medicines (items tagged [PRESCRIPTION / POISONS ACT]). For these items, you MUST set "supermarketPrice": null.
-- For adult/baby nutrition milk (Ensure, Glucerna, Pediasure), diapers, and OTC: Supermarkets DO sell them. Benchmark realistic Farley/Emart retail prices.
-- For ALL items: Benchmark realistic Malaysian retail pharmacy prices.
+CRITICAL RULES & ACTIVE PROMOTIONS:
+1. PROMOTIONAL PRICING: Check for active promotions and campaign sales (such as 11.11, Payday Sale, clearance, instant rebates, member price, multi-pack).
+   - If an item is on promo (e.g. Alpro normal RM 17.50, promo RM 16.50), ALWAYS use the active promotional price for "chainPharmacyPrice"!
+   - State the promotion in "promoNote" (e.g. "Alpro 11.11 Promo RM 16.50 (Normal RM 17.50)").
+2. SUPERMARKETS: Supermarkets (Farley Supermarket, Emart Hypermarket, Everwin) CANNOT legally sell scheduled prescription poisons. For items tagged [PRESCRIPTION POISON], you MUST set "supermarketPrice": null.
+   - For adult/baby diapers, nutrition milk (Ensure, Glucerna, Pediasure), and OTC: Supermarkets DO sell them. Benchmark realistic Farley Kuching/Emart retail prices.
+3. DEFENSIVE SELLING PRICE ("suggestedPmgSp"): Recommend a competitive price for PMG branches that matches or defends against competitor promo while keeping margin above trade cost.
 
 Items to Benchmark:
 ${itemListText}
@@ -3966,40 +4215,51 @@ Respond STRICTLY with a valid JSON array of objects. Use the exact ITEM_ID provi
   {
     "id": "ITEM_ID",
     "supermarketPrice": null,
-    "chainPharmacyPrice": 18.50,
-    "competitorName": "BIG Pharmacy",
-    "promoNote": "Box of 30 tabs",
-    "suggestedPmgSp": 18.00
+    "chainPharmacyPrice": 0.00,
+    "competitorName": "Alpro Oneclick / BIG Pharmacy",
+    "promoNote": "Promo RM 16.50 (Normal RM 17.50)",
+    "suggestedPmgSp": 0.00
   }
 ]
 \`\`\``;
 
         let responseText = '';
         for (const m of modelsToTry) {
-          try {
-            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.code}:generateContent?key=${apiKey}`;
-            const res = await fetch(endpoint, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
+          const toolVariants = [
+            [{ googleSearch: {} }],
+            null
+          ];
+          for (const tools of toolVariants) {
+            try {
+              const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.code}:generateContent?key=${apiKey}`;
+              const reqBody = {
                 contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: { temperature: 0.2, maxOutputTokens: 2048 }
-              })
-            });
-            if (res.ok) {
-              const data = await res.json();
-              const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (text && text.trim()) {
-                responseText = text.trim();
-                break;
+                generationConfig: { temperature: 0.1, maxOutputTokens: 2500 }
+              };
+              if (tools) reqBody.tools = tools;
+
+              const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(reqBody)
+              });
+              if (res.ok) {
+                const data = await res.json();
+                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (text && text.trim()) {
+                  responseText = text.trim();
+                  break;
+                }
+              } else {
+                const errData = await res.json().catch(() => ({}));
+                console.warn(`[PMG Batch AI] Error on model ${m.code} (${res.status}) [tools=${!!tools}]:`, errData.error?.message || res.status);
               }
-            } else {
-              const errData = await res.json().catch(() => ({}));
-              console.warn(`[PMG Batch AI] Error on model ${m.code} (${res.status}):`, errData.error?.message || res.status);
+            } catch (e) {
+              console.warn(`[PMG Batch AI] Error on model ${m.code}:`, e);
             }
-          } catch (e) {
-            console.warn(`[PMG Batch AI] Error on model ${m.code}:`, e);
+            if (responseText) break;
           }
+          if (responseText) break;
         }
 
         // Parse results
@@ -4078,7 +4338,7 @@ Respond STRICTLY with a valid JSON array of objects. Use the exact ITEM_ID provi
 
           // If AI did not return a price or returned 0, but known benchmark exists
           if (!detectedChainPrice && knownBench) {
-            detectedChainPrice = knownBench.retailSp;
+            detectedChainPrice = knownBench.promoSp || knownBench.retailSp;
             if (!detectedCompName) detectedCompName = knownBench.competitor;
             if (!detectedPromoNote) detectedPromoNote = knownBench.note || '';
           }
