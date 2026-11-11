@@ -1481,10 +1481,11 @@ function computeAllMetrics(state) {
 
   const skuMap = new Map();
   itemsL.forEach(it => {
+    const cat = (it.category || 'OTHER').toUpperCase().trim();
     skuMap.set(it.itemCode, {
       itemCode: it.itemCode,
       itemName: it.itemName,
-      category: it.category,
+      category: cat,
       unitCostLatest: it.unitCost,
       qtyLatest: it.qty,
       priceLatest: it.netSoldPrice,
@@ -1498,6 +1499,7 @@ function computeAllMetrics(state) {
   });
 
   itemsP.forEach(it => {
+    const cat = (it.category || 'OTHER').toUpperCase().trim();
     if (skuMap.has(it.itemCode)) {
       const ex = skuMap.get(it.itemCode);
       ex.qtyPrev += it.qty;
@@ -1505,12 +1507,12 @@ function computeAllMetrics(state) {
       ex.profitPrev = +(ex.profitPrev + it.netSoldProfit).toFixed(2);
       ex.gpPctPrev = ex.pricePrev !== 0 ? +((ex.profitPrev / ex.pricePrev) * 100).toFixed(2) : 0;
       if (!ex.itemName && it.itemName) ex.itemName = it.itemName;
-      if (!ex.category && it.category) ex.category = it.category;
+      if (!ex.category && cat) ex.category = cat;
     } else {
       skuMap.set(it.itemCode, {
         itemCode: it.itemCode,
         itemName: it.itemName,
-        category: it.category,
+        category: cat,
         unitCostLatest: it.unitCost,
         qtyLatest: 0,
         priceLatest: 0,
@@ -1520,6 +1522,34 @@ function computeAllMetrics(state) {
         pricePrev: it.netSoldPrice,
         profitPrev: it.netSoldProfit,
         gpPctPrev: it.gpMarginPct
+      });
+    }
+  });
+
+  // CRITICAL FIX: Merge in items from Stock Aging report (agingL) so non-moving / dead stock with 0 sales
+  // are 100% included in the SKU analysis table, ensuring category totals match 1:1 with Stock Aging cards!
+  agingL.forEach(ag => {
+    const agCat = (ag.category || 'OTHER').toUpperCase().trim();
+    if (skuMap.has(ag.itemCode)) {
+      const ex = skuMap.get(ag.itemCode);
+      if (!ex.itemName && ag.itemName) ex.itemName = ag.itemName;
+      // Prioritize aging category to ensure 100% alignment with Stock Aging cards
+      if (agCat) ex.category = agCat;
+      if (!ex.unitCostLatest && ag.avgCost) ex.unitCostLatest = ag.avgCost;
+    } else {
+      skuMap.set(ag.itemCode, {
+        itemCode: ag.itemCode,
+        itemName: ag.itemName,
+        category: agCat,
+        unitCostLatest: ag.avgCost || 0,
+        qtyLatest: 0,
+        priceLatest: 0,
+        profitLatest: 0,
+        gpPctLatest: 0,
+        qtyPrev: 0,
+        pricePrev: 0,
+        profitPrev: 0,
+        gpPctPrev: 0
       });
     }
   });
@@ -4561,6 +4591,15 @@ function renderTab3TeammatesMatrix() {
 }
 
 // ── TAB 4: GRANULAR SKU SALES YOY & 6-MONTH STOCK AGING ─────────────────────
+function filterAgingCategory(cat) {
+  skuFilterState.category = (cat || 'ALL').toUpperCase().trim();
+  skuFilterState.mode = 'AGED_6M';
+  tab4SortState = { col: 'agedValueRm', dir: 'desc' };
+  skuFilterState.page = 1;
+  renderTab4SkusAndAging();
+}
+window.filterAgingCategory = filterAgingCategory;
+
 function updateSkuFilter(field, val) {
   skuFilterState[field] = val;
   if (field === 'mode') {
@@ -4583,14 +4622,15 @@ function renderTab4SkusAndAging() {
 
   let filtered = allSkus;
   if (skuFilterState.category !== 'ALL') {
-    filtered = filtered.filter(s => s.category === skuFilterState.category);
+    const targetCat = skuFilterState.category.toUpperCase().trim();
+    filtered = filtered.filter(s => (s.category || '').toUpperCase().trim() === targetCat);
   }
   if (skuFilterState.search.trim()) {
     const q = skuFilterState.search.trim().toLowerCase();
     filtered = filtered.filter(s =>
-      s.itemCode.toLowerCase().includes(q) ||
-      s.itemName.toLowerCase().includes(q) ||
-      s.category.toLowerCase().includes(q)
+      (s.itemCode || '').toLowerCase().includes(q) ||
+      (s.itemName || '').toLowerCase().includes(q) ||
+      (s.category || '').toLowerCase().includes(q)
     );
   }
 
@@ -4601,7 +4641,7 @@ function renderTab4SkusAndAging() {
   } else if (skuFilterState.mode === 'MARGIN_DROP') {
     filtered = filtered.filter(s => s.priceLatest >= 200 && s.pricePrev >= 200 && s.gpDiffPP !== null && s.gpDiffPP < -1.5);
   } else if (skuFilterState.mode === 'AGED_6M') {
-    filtered = filtered.filter(s => s.agedValueRm > 0);
+    filtered = filtered.filter(s => (s.agedQty6MPlus || 0) > 0 || (s.agedValueRm || 0) > 0);
   }
 
   // Multi-column sorting applied to filtered SKU list
@@ -4676,16 +4716,19 @@ function renderTab4SkusAndAging() {
         </div>
       </div>
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
-        ${agSum.byCategory.map(c => `
-          <div onclick="updateSkuFilter('category', '${escapeHtml(c.category)}'); updateSkuFilter('mode', 'AGED_6M');" class="p-3 rounded-xl border border-slate-200 hover:border-slate-400 bg-slate-50/70 cursor-pointer transition">
-            <div class="text-xs font-extrabold text-slate-800 flex justify-between">
-              <span>${escapeHtml(c.category)}</span>
-              <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-800 font-bold">${fmtNum(c.skuCount)} SKUs</span>
+        ${agSum.byCategory.map(c => {
+          const isSelected = (skuFilterState.category || '').toUpperCase().trim() === (c.category || '').toUpperCase().trim() && skuFilterState.mode === 'AGED_6M';
+          return `
+            <div onclick="filterAgingCategory('${escapeHtml(c.category)}')" class="p-3 rounded-xl border cursor-pointer transition ${isSelected ? 'border-indigo-600 bg-indigo-50/80 ring-2 ring-indigo-500 shadow-xs' : 'border-slate-200 hover:border-slate-400 bg-slate-50/70'}">
+              <div class="text-xs font-extrabold text-slate-800 flex justify-between">
+                <span>${escapeHtml(c.category)}</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded ${isSelected ? 'bg-indigo-200 text-indigo-900' : 'bg-slate-200 text-slate-800'} font-bold">${fmtNum(c.skuCount)} SKUs</span>
+              </div>
+              <div class="text-sm font-extrabold ${isSelected ? 'text-indigo-950' : 'text-slate-900'} mt-1">${fmtRM(c.agedValue)}</div>
+              <div class="text-[10px] ${isSelected ? 'text-indigo-700' : 'text-slate-500'}">Aged Qty: ${fmtNum(c.agedQty6MPlus)} units</div>
             </div>
-            <div class="text-sm font-extrabold text-slate-900 mt-1">${fmtRM(c.agedValue)}</div>
-            <div class="text-[10px] text-slate-500">Aged Qty: ${fmtNum(c.agedQty6MPlus)} units</div>
-          </div>
-        `).join('')}
+          `;
+        }).join('')}
       </div>
     </div>
 
@@ -4713,8 +4756,16 @@ function renderTab4SkusAndAging() {
 
     <!-- SKU Comparison Table -->
     <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-      <div class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs text-slate-600">
-        <span>Showing <strong>${fmtNum(pageItems.length)}</strong> of <strong>${fmtNum(totalMatches)}</strong> matching SKUs (Page ${skuFilterState.page} of ${totalPages})</span>
+      <div class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-slate-600">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span>Showing <strong>${fmtNum(pageItems.length)}</strong> of <strong>${fmtNum(totalMatches)}</strong> matching SKUs (Page ${skuFilterState.page} of ${totalPages})</span>
+          ${(skuFilterState.category !== 'ALL' || skuFilterState.mode === 'AGED_6M') ? `
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold text-[11px] border border-amber-300">
+              <i class="fa-solid fa-boxes-stacked text-amber-600"></i>
+              Filtered 6M+ Aged Stock: <strong>${fmtRM(filtered.reduce((s, it) => s + (it.agedValueRm || 0), 0))}</strong> (${fmtNum(filtered.reduce((s, it) => s + (it.agedQty6MPlus || 0), 0))} aged units across ${fmtNum(filtered.filter(it => (it.agedQty6MPlus || 0) > 0 || (it.agedValueRm || 0) > 0).length)} SKUs)
+            </span>
+          ` : ''}
+        </div>
         <div class="flex items-center gap-2">
           <button onclick="updateSkuFilter('page', Math.max(1, skuFilterState.page - 1))" ${skuFilterState.page <= 1 ? 'disabled' : ''} class="px-2.5 py-1 rounded border border-slate-300 bg-white disabled:opacity-40 font-bold cursor-pointer">← Prev</button>
           <button onclick="updateSkuFilter('page', Math.min(${totalPages}, skuFilterState.page + 1))" ${skuFilterState.page >= totalPages ? 'disabled' : ''} class="px-2.5 py-1 rounded border border-slate-300 bg-white disabled:opacity-40 font-bold cursor-pointer">Next →</button>
@@ -4787,37 +4838,53 @@ function renderTab4SkusAndAging() {
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 text-slate-800">
-            ${pageItems.map(s => `
-              <tr class="hover:bg-slate-50">
+            ${pageItems.map(s => {
+              const isNonMoving = s.qtyLatest === 0 && s.qtyPrev === 0 && ((s.agedQty6MPlus || 0) > 0 || (s.agedValueRm || 0) > 0);
+              return `
+              <tr class="hover:bg-slate-50 ${isNonMoving ? 'bg-amber-50/20' : ''}">
                 <td class="py-2 px-3">
                   <div class="font-bold text-slate-900 max-w-xs truncate" title="${escapeHtml(s.itemName)}">${escapeHtml(s.itemName)}</div>
                   <div class="text-[10px] font-mono text-slate-500">${escapeHtml(s.itemCode)} | Unit Cost: ${fmtRM(s.unitCostLatest)}</div>
+                  ${isNonMoving ? `
+                    <span class="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300">
+                      <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>0 Sales (Non-Moving Aged Stock)
+                    </span>
+                  ` : ''}
                 </td>
                 <td class="py-2 px-3 font-semibold text-slate-700">${escapeHtml(s.category)}</td>
                 <td class="py-2 px-3 text-right">
-                  <div class="font-bold text-slate-900">${fmtNum(s.qtyLatest)} <span class="text-slate-400 font-normal">vs ${fmtNum(s.qtyPrev)}</span></div>
-                  <div class="text-[11px] ${s.qtyDiff >= 0 ? 'text-emerald-700' : 'text-rose-700'} font-semibold mt-0.5">${s.qtyDiff >= 0 ? '+' : ''}${fmtNum(s.qtyDiff)}</div>
+                  ${(s.qtyLatest === 0 && s.qtyPrev === 0) ? `
+                    <span class="text-slate-400 font-medium">0 vs 0</span>
+                  ` : `
+                    <div class="font-bold text-slate-900">${fmtNum(s.qtyLatest)} <span class="text-slate-400 font-normal">vs ${fmtNum(s.qtyPrev)}</span></div>
+                    <div class="text-[11px] ${s.qtyDiff >= 0 ? 'text-emerald-700' : 'text-rose-700'} font-semibold mt-0.5">${s.qtyDiff >= 0 ? '+' : ''}${fmtNum(s.qtyDiff)}</div>
+                  `}
                 </td>
-                <td class="py-2 px-3 text-right font-bold text-slate-900">${fmtRM(s.priceLatest)}</td>
-                <td class="py-2 px-3 text-right text-slate-600 font-medium">${fmtRM(s.pricePrev)}</td>
-                <td class="py-2 px-3 text-right font-bold ${s.priceDiffRm >= 0 ? 'text-emerald-700' : 'text-rose-700'}">
-                  <div>${s.priceDiffRm >= 0 ? '+' : ''}${fmtRM(s.priceDiffRm)}</div>
-                  ${s.priceDiffPct !== null ? `<div class="text-[11px] text-slate-500 font-semibold mt-0.5">(${s.priceDiffPct >= 0 ? '+' : ''}${fmtPct(s.priceDiffPct)})</div>` : ''}
+                <td class="py-2 px-3 text-right font-bold text-slate-900">${s.priceLatest > 0 ? fmtRM(s.priceLatest) : '<span class="text-slate-400 font-normal">—</span>'}</td>
+                <td class="py-2 px-3 text-right text-slate-600 font-medium">${s.pricePrev > 0 ? fmtRM(s.pricePrev) : '<span class="text-slate-400 font-normal">—</span>'}</td>
+                <td class="py-2 px-3 text-right font-bold ${s.priceDiffRm > 0 ? 'text-emerald-700' : (s.priceDiffRm < 0 ? 'text-rose-700' : 'text-slate-400')}">
+                  ${(s.priceLatest === 0 && s.pricePrev === 0) ? '<span class="text-slate-400 font-normal">—</span>' : `
+                    <div>${s.priceDiffRm >= 0 ? '+' : ''}${fmtRM(s.priceDiffRm)}</div>
+                    ${s.priceDiffPct !== null ? `<div class="text-[11px] text-slate-500 font-semibold mt-0.5">(${s.priceDiffPct >= 0 ? '+' : ''}${fmtPct(s.priceDiffPct)})</div>` : ''}
+                  `}
                 </td>
-                <td class="py-2 px-3 text-right font-bold text-slate-900">${fmtRM(s.profitLatest)}</td>
-                <td class="py-2 px-3 text-right text-slate-600 font-medium">${fmtRM(s.profitPrev)}</td>
+                <td class="py-2 px-3 text-right font-bold text-slate-900">${s.profitLatest !== 0 ? fmtRM(s.profitLatest) : '<span class="text-slate-400 font-normal">—</span>'}</td>
+                <td class="py-2 px-3 text-right text-slate-600 font-medium">${s.profitPrev !== 0 ? fmtRM(s.profitPrev) : '<span class="text-slate-400 font-normal">—</span>'}</td>
                 <td class="py-2 px-3 text-right">
-                  <div class="font-bold text-slate-900">${fmtPct(s.gpPctLatest)}</div>
-                  <div class="text-[11px] text-slate-500 font-semibold mt-0.5">LY: ${fmtPct(s.gpPctPrev)}${s.gpDiffPP !== null ? ` (${fmtPP(s.gpDiffPP)})` : ''}</div>
+                  ${(s.priceLatest === 0 && s.pricePrev === 0) ? '<span class="text-slate-400 font-normal">—</span>' : `
+                    <div class="font-bold text-slate-900">${fmtPct(s.gpPctLatest)}</div>
+                    <div class="text-[11px] text-slate-500 font-semibold mt-0.5">LY: ${fmtPct(s.gpPctPrev)}${s.gpDiffPP !== null ? ` (${fmtPP(s.gpDiffPP)})` : ''}</div>
+                  `}
                 </td>
                 <td class="py-2 px-3 text-right">
-                  ${s.agedValueRm > 0 ? `
+                  ${(s.agedValueRm > 0 || (s.agedQty6MPlus || 0) > 0) ? `
                     <div class="font-bold text-amber-900">${fmtRM(s.agedValueRm)}</div>
                     <div class="text-[10px] text-slate-500 font-semibold mt-0.5">${fmtNum(s.agedQty6MPlus)} aged / ${fmtNum(s.ohQty)} OH</div>
                   ` : `<span class="text-slate-300">—</span>`}
                 </td>
               </tr>
-            `).join('')}
+              `;
+            }).join('')}
           </tbody>
         </table>
       </div>
