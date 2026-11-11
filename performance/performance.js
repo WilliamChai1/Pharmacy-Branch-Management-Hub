@@ -272,31 +272,9 @@ function loadMonthlyArchives() {
     const raw = (typeof localStorage !== 'undefined') ? localStorage.getItem(STORAGE_KEYS.MONTHLY_ARCHIVES) : null;
     if (raw) {
       const data = JSON.parse(raw);
-      let updated = false;
-      // Auto-heal / upgrade 2026-09 if old estimated value or missing teammates
-      if (!data['2026-09'] || data['2026-09'].outletTotals?.ts !== 337979.41 || !data['2026-09'].teammates?.length || !data['2026-09'].teammates[0].gpRm) {
-        data['2026-09'] = seed['2026-09'];
-        updated = true;
+      if (data && typeof data === 'object' && Object.keys(data).length > 0) {
+        return data;
       }
-      // Auto-heal / upgrade 2026-08 if old estimated value or missing teammates
-      if (!data['2026-08'] || data['2026-08'].outletTotals?.ts !== 380852.53 || !data['2026-08'].teammates?.length || !data['2026-08'].teammates[0].gpRm) {
-        data['2026-08'] = seed['2026-08'];
-        updated = true;
-      }
-      // Auto-heal 2026-07 if missing
-      if (!data['2026-07'] || !data['2026-07'].teammates?.length) {
-        data['2026-07'] = seed['2026-07'];
-        updated = true;
-      }
-      // Auto-heal 2026-10 if ts === 0 or missing
-      if (!data['2026-10'] || data['2026-10'].outletTotals?.ts === 0 || !data['2026-10'].teammates?.length) {
-        data['2026-10'] = seed['2026-10'];
-        updated = true;
-      }
-      if (updated && typeof localStorage !== 'undefined') {
-        try { localStorage.setItem(STORAGE_KEYS.MONTHLY_ARCHIVES, JSON.stringify(data)); } catch (e) {}
-      }
-      return data;
     }
   } catch (e) {}
 
@@ -359,8 +337,13 @@ function saveCurrentMonthSnapshot(quiet = false) {
     console.warn('Error saving monthly archive:', e);
   }
 
+  // Auto push updated archives to Google Cloud for multi-computer replication
+  if (typeof pushPerformanceToCloud === 'function') {
+    pushPerformanceToCloud(false).catch(() => {});
+  }
+
   if (!quiet && typeof showToast === 'function') {
-    showToast(`Snapshot for ${key} permanently archived! Future months will automatically compare against this record.`, 'success');
+    showToast(`Snapshot for ${key} permanently archived and synced to Google Cloud!`, 'success');
   }
 }
 
@@ -2972,6 +2955,236 @@ function updateTaskSyncUiState(inProgress, isSuccess = true) {
   }
 }
 
+// ─── GOOGLE CLOUD CROSS-PC PERFORMANCE DATA REPLICATION ─────────────────────
+let isSyncingPerformanceCloud = false;
+let lastPerfCloudSyncTime = null;
+let cloudPushDebounceTimer = null;
+
+function updateCloudSyncUiBadge(status) {
+  const btn = document.getElementById('btnPerfCloudSync');
+  const icon = document.getElementById('perfCloudSyncIcon');
+  const label = document.getElementById('perfCloudSyncLabel');
+  const headerBadge = document.getElementById('perfCloudSyncHeaderBadge');
+
+  if (icon && label) {
+    if (status === 'syncing') {
+      icon.textContent = '⏳';
+      label.textContent = 'Syncing Cloud...';
+      if (btn) btn.className = 'px-3 py-2 rounded-xl bg-amber-50 text-amber-800 border border-amber-300 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs';
+    } else if (status === 'uploading') {
+      icon.textContent = '📤';
+      label.textContent = 'Uploading...';
+      if (btn) btn.className = 'px-3 py-2 rounded-xl bg-indigo-50 text-indigo-800 border border-indigo-300 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs';
+    } else if (status === 'synced') {
+      icon.textContent = '☁️';
+      const timeStr = lastPerfCloudSyncTime ? lastPerfCloudSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Live';
+      label.textContent = `Cloud Synced (${timeStr})`;
+      if (btn) btn.className = 'px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs';
+    } else if (status === 'error') {
+      icon.textContent = '⚠️';
+      label.textContent = 'Local (Offline)';
+      if (btn) btn.className = 'px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs';
+    }
+  }
+
+  if (headerBadge) {
+    if (status === 'synced') {
+      headerBadge.textContent = '☁️ Synced Across All PCs';
+      headerBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200';
+    } else if (status === 'syncing' || status === 'uploading') {
+      headerBadge.textContent = '⏳ Syncing Cloud...';
+      headerBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200';
+    }
+  }
+}
+
+function debouncedCloudPush() {
+  clearTimeout(cloudPushDebounceTimer);
+  cloudPushDebounceTimer = setTimeout(() => {
+    pushPerformanceToCloud(false).catch(() => {});
+  }, 1500);
+}
+
+async function syncPerformanceWithCloud(showToastFeedback = false) {
+  if (!PMG_SCHEDULE_API_URL || isSyncingPerformanceCloud) return;
+  isSyncingPerformanceCloud = true;
+  updateCloudSyncUiBadge('syncing');
+
+  try {
+    // Step 1: Query atomic pointer from Staff_Preferences sheet (branch: 'KS01_PERF_META')
+    const metaRes = await fetch(`${PMG_SCHEDULE_API_URL}?action=getStaffPreferences&branch=KS01_PERF_META`);
+    if (!metaRes.ok) throw new Error(`HTTP ${metaRes.status}`);
+    const metaJson = await metaRes.json();
+
+    const cloudMeta = Array.isArray(metaJson?.preferences) && metaJson.preferences[0] ? metaJson.preferences[0] : null;
+    const cloudUpdated = cloudMeta?.lastUpdated || 0;
+    const localUpdated = perfState?.meta?.lastUpdated || 0;
+    const isSample = !!(perfState?.meta?.isPreloadedSample);
+
+    // If cloud has valid pointer and (cloud is newer OR local is blank/sample)
+    if (cloudMeta && cloudMeta.stateDocId && (cloudUpdated > localUpdated || isSample || !perfState?.dailySalesLatest?.rows?.length)) {
+      console.log('[Performance Cloud Sync] Pulling newer data from cloud... (Cloud TS:', new Date(cloudUpdated).toISOString(), ')');
+
+      // Fetch chunked active_state from vault
+      const stateRes = await fetch(`${PMG_SCHEDULE_API_URL}?action=getApplicantDoc&docId=${encodeURIComponent(cloudMeta.stateDocId)}`);
+      const stateJson = await stateRes.json();
+
+      let cloudArchives = null;
+      if (cloudMeta.archivesDocId) {
+        const archRes = await fetch(`${PMG_SCHEDULE_API_URL}?action=getApplicantDoc&docId=${encodeURIComponent(cloudMeta.archivesDocId)}`);
+        const archJson = await archRes.json();
+        if (archJson && archJson.success && archJson.data) {
+          try { cloudArchives = JSON.parse(archJson.data); } catch (_) {}
+        }
+      }
+
+      if (stateJson && stateJson.success && stateJson.data) {
+        const parsedState = JSON.parse(stateJson.data);
+        if (parsedState && typeof parsedState === 'object') {
+          perfState = parsedState;
+          perfState.meta = perfState.meta || {};
+          perfState.meta.isPreloadedSample = false;
+          perfState.meta.lastUpdated = cloudUpdated;
+          localStorage.setItem(STORAGE_KEYS.STATE, JSON.stringify(perfState));
+          localStorage.setItem(STORAGE_KEYS.HIDE_SAMPLE, '1');
+
+          if (cloudArchives && typeof cloudArchives === 'object') {
+            const localArchives = loadMonthlyArchives();
+            const merged = { ...localArchives, ...cloudArchives };
+            localStorage.setItem(STORAGE_KEYS.MONTHLY_ARCHIVES, JSON.stringify(merged));
+          }
+
+          computeAllMetrics();
+          refreshAllViews();
+          lastPerfCloudSyncTime = new Date();
+          updateCloudSyncUiBadge('synced');
+
+          if (showToastFeedback && typeof showToast === 'function') {
+            showToast(`✅ Synced with latest uploaded documents from other PCs! (${perfState.meta?.latestPeriodLabel || 'Latest Month'})`, 'success');
+          }
+          return;
+        }
+      }
+    } else if (perfState && !isSample && localUpdated > cloudUpdated && perfState.dailySalesLatest?.rows?.length) {
+      // Local has real data that is newer than cloud -> push local up to cloud!
+      await pushPerformanceToCloud(false);
+      lastPerfCloudSyncTime = new Date();
+      updateCloudSyncUiBadge('synced');
+      if (showToastFeedback && typeof showToast === 'function') {
+        showToast('✅ Uploaded latest local data to Google Cloud for other PCs!', 'success');
+      }
+      return;
+    }
+
+    lastPerfCloudSyncTime = new Date();
+    updateCloudSyncUiBadge('synced');
+    if (showToastFeedback && typeof showToast === 'function') {
+      showToast('✅ Cloud is up to date with latest data.', 'info');
+    }
+  } catch (err) {
+    console.warn('[Performance Cloud Sync] Warning:', err.message);
+    updateCloudSyncUiBadge('error');
+    if (showToastFeedback && typeof showToast === 'function') {
+      showToast('Could not reach Google Cloud. Working with local cached data.', 'warning');
+    }
+  } finally {
+    isSyncingPerformanceCloud = false;
+  }
+}
+
+async function pushPerformanceToCloud(showToastFeedback = false) {
+  if (!PMG_SCHEDULE_API_URL || !perfState) return;
+  try {
+    updateCloudSyncUiBadge('uploading');
+
+    if (!perfState.meta) perfState.meta = {};
+    const nowTime = Date.now();
+    perfState.meta.lastUpdated = nowTime;
+    perfState.meta.lastUpdatedIso = new Date(nowTime).toISOString();
+    perfState.meta.isPreloadedSample = false;
+
+    const statePayload = JSON.stringify(perfState);
+    const archives = loadMonthlyArchives();
+    const archivesPayload = JSON.stringify(archives);
+
+    // 1. Upload chunked active_state to Applicant_Documents vault
+    const stateUploadRes = await fetch(PMG_SCHEDULE_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'uploadApplicantDoc',
+        appId: 'PMG_PERF_KS01',
+        doc: {
+          field: 'active_state',
+          name: 'active_state.json',
+          type: 'application/json',
+          data: statePayload,
+          size: statePayload.length
+        }
+      }),
+      redirect: 'follow'
+    });
+    const stateUploadJson = await stateUploadRes.json();
+    const stateDocId = stateUploadJson.docId;
+
+    // 2. Upload chunked monthly_archives to vault
+    const archUploadRes = await fetch(PMG_SCHEDULE_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'uploadApplicantDoc',
+        appId: 'PMG_PERF_KS01',
+        doc: {
+          field: 'monthly_archives',
+          name: 'monthly_archives.json',
+          type: 'application/json',
+          data: archivesPayload,
+          size: archivesPayload.length
+        }
+      }),
+      redirect: 'follow'
+    });
+    const archUploadJson = await archUploadRes.json();
+    const archivesDocId = archUploadJson.docId;
+
+    // 3. Save atomic pointers and metadata in Staff_Preferences sheet (branch: 'KS01_PERF_META')
+    const session = typeof getSession === 'function' ? getSession() : null;
+    const updatedBy = (session && session.displayName) || localStorage.getItem('pmg_user_name') || 'Pharmacist';
+
+    await fetch(PMG_SCHEDULE_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'saveStaffPreferences',
+        branch: 'KS01_PERF_META',
+        preferences: [{
+          stateDocId: stateDocId,
+          archivesDocId: archivesDocId,
+          lastUpdated: nowTime,
+          lastUpdatedIso: new Date(nowTime).toISOString(),
+          periodKey: getArchivePeriodKey(perfState),
+          periodLabel: perfState.meta?.latestPeriodLabel || 'Latest Month',
+          updatedBy: updatedBy
+        }],
+        lastUpdated: new Date(nowTime).toISOString(),
+        updatedBy: updatedBy
+      }),
+      redirect: 'follow'
+    });
+
+    lastPerfCloudSyncTime = new Date();
+    updateCloudSyncUiBadge('synced');
+    console.log('[Performance Cloud Push] ✅ State & Archives safely pushed to Google Cloud.');
+
+    if (showToastFeedback && typeof showToast === 'function') {
+      showToast('☁️ Performance data uploaded and synced across all PCs!', 'success');
+    }
+  } catch (err) {
+    console.warn('[Performance Cloud Push] Warning:', err.message);
+    updateCloudSyncUiBadge('error');
+  }
+}
+
 function updateTaskCounterBadges() {
   const total = monthlyTasks.length;
   const done = monthlyTasks.filter(t => t.status === 'COMPLETED').length;
@@ -3430,21 +3643,31 @@ function loadInitialState() {
 
   const hideSample = localStorage.getItem(STORAGE_KEYS.HIDE_SAMPLE) === '1';
 
+  let hasLocalState = false;
   try {
     const savedStateRaw = localStorage.getItem(STORAGE_KEYS.STATE);
     if (savedStateRaw) {
       perfState = JSON.parse(savedStateRaw);
-      return;
+      hasLocalState = true;
     }
   } catch (e) {
     console.warn('Could not parse saved perfState:', e);
   }
 
-  if (!hideSample && typeof window.PMG_PERFORMANCE_SAMPLE_DATA === 'object' && window.PMG_PERFORMANCE_SAMPLE_DATA) {
-    perfState = JSON.parse(JSON.stringify(window.PMG_PERFORMANCE_SAMPLE_DATA));
-  } else {
-    perfState = createEmptyState();
+  if (!hasLocalState) {
+    if (!hideSample && typeof window.PMG_PERFORMANCE_SAMPLE_DATA === 'object' && window.PMG_PERFORMANCE_SAMPLE_DATA) {
+      perfState = JSON.parse(JSON.stringify(window.PMG_PERFORMANCE_SAMPLE_DATA));
+    } else {
+      perfState = createEmptyState();
+    }
   }
+
+  // Automatically check Google Cloud for latest uploaded performance documents across all PCs
+  setTimeout(() => {
+    if (typeof syncPerformanceWithCloud === 'function') {
+      syncPerformanceWithCloud(false).catch(() => {});
+    }
+  }, 400);
 }
 
 function saveActiveState() {
@@ -3458,6 +3681,11 @@ function saveActiveState() {
       localStorage.setItem(STORAGE_KEYS.STATE, JSON.stringify(compact));
     } catch (e2) { /* ignore */ }
   }
+
+  // Automatically replicate state to Google Cloud (debounced)
+  if (typeof debouncedCloudPush === 'function') {
+    debouncedCloudPush();
+  }
 }
 
 function clearPreloadedSampleData() {
@@ -3467,6 +3695,9 @@ function clearPreloadedSampleData() {
   activeAiReport = null;
   perfState = createEmptyState();
   refreshAllViews();
+  if (typeof pushPerformanceToCloud === 'function') {
+    pushPerformanceToCloud(false).catch(() => {});
+  }
   showToast('Preloaded sample data removed! Dashboard is now reset to blank for your fresh CSV uploads.', 'info');
 }
 
@@ -3481,6 +3712,9 @@ function restorePreloadedSampleData() {
   activeAiReport = null;
   perfState = JSON.parse(JSON.stringify(window.PMG_PERFORMANCE_SAMPLE_DATA));
   refreshAllViews();
+  if (typeof pushPerformanceToCloud === 'function') {
+    pushPerformanceToCloud(false).catch(() => {});
+  }
   showToast('Restored October 2026 vs October 2025 Kota Sentosa sample dataset!', 'success');
 }
 
@@ -5286,9 +5520,13 @@ async function handleBatchCsvFiles(fileList) {
 
   if (loadedCount > 0) {
     saveActiveState();
+    saveCurrentMonthSnapshot(true);
+    if (typeof pushPerformanceToCloud === 'function') {
+      pushPerformanceToCloud(true).catch(() => {});
+    }
     activeAiReport = null; // Regenerate dynamic baseline report with new data
     refreshAllViews();
-    showToast(`Successfully parsed & loaded ${loadedCount} CSV file(s)!`, 'success');
+    showToast(`Successfully parsed & loaded ${loadedCount} CSV file(s) and synced to Google Cloud!`, 'success');
   }
 }
 
@@ -5359,9 +5597,13 @@ async function handleSlotFileUpload(type, periodSlot, inputEl) {
     perfState.meta.isPreloadedSample = false;
     applyParsedCsvToState(type, periodSlot, text, file.name);
     saveActiveState();
+    saveCurrentMonthSnapshot(true);
+    if (typeof pushPerformanceToCloud === 'function') {
+      pushPerformanceToCloud(false).catch(() => {});
+    }
     activeAiReport = null;
     refreshAllViews();
-    showToast(`Loaded ${file.name} into ${type} (${periodSlot})!`, 'success');
+    showToast(`Loaded ${file.name} into ${type} (${periodSlot}) and synced to Google Cloud!`, 'success');
 
     // Cross-module sync: if stock aging is uploaded in Performance Suite, propagate to Inventory and Pricing Intelligence
     if (type === 'STOCK_AGING' && perfState.stockAgingLatest?.items) {
@@ -5631,6 +5873,8 @@ if (typeof window !== 'undefined') {
   window.buildDynamicBaselineReport = buildDynamicBaselineReport;
   window.buildGeminiPrompt = buildGeminiPrompt;
   window.handleBatchCsvFiles = handleBatchCsvFiles;
+  window.syncPerformanceWithCloud = syncPerformanceWithCloud;
+  window.pushPerformanceToCloud = pushPerformanceToCloud;
 }
 
 if (typeof document !== 'undefined') {

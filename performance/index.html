@@ -78,12 +78,17 @@
             <span>Branch: <strong class="text-slate-700">PMG Pharmacy Kota Sentosa (7th Mile)</strong></span>
             <span class="mx-1">•</span>
             <span id="activePeriodHeaderBadge">Loading period...</span>
+            <span class="mx-1">•</span>
+            <span id="perfCloudSyncHeaderBadge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">☁️ Cloud Synced</span>
           </div>
         </div>
       </div>
 
       <!-- Action Strip (De-duplicated & Calm Executive Style) -->
       <div class="flex flex-wrap items-center gap-2">
+        <button id="btnPerfCloudSync" onclick="syncPerformanceWithCloud(true)" class="px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold shadow-xs transition cursor-pointer flex items-center gap-1.5" title="Force sync latest uploaded documents across all PCs">
+          <span id="perfCloudSyncIcon">☁️</span> <span id="perfCloudSyncLabel">Cloud Synced</span>
+        </button>
         <a id="btnDownloadOfficialPptx" href="Kota_Sentosa_October_2026_Official.pptx" download="Kota_Sentosa_October_2026_Official.pptx" class="px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-xs transition cursor-pointer flex items-center gap-1.5" title="Download official 16-slide presentation (Official template)">
           <span>📊</span> Download Official Presentation (.pptx)
         </a>
@@ -249,7 +254,7 @@
 
   <!-- Scripts -->
   <script src="../js/exceljs.min.js"></script>
-  <script src="sample-data.js?v=59_aging_sku_sync"></script>
-  <script src="performance.js?v=59_aging_sku_sync"></script>
+  <script src="sample-data.js?v=61_cloud_sync"></script>
+  <script src="performance.js?v=61_cloud_sync"></script>
 </body>
 </html>

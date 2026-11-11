@@ -414,7 +414,7 @@
       // Auto sync from Google Sheets in background
       this.fetchPricingFromSheets(false);
 
-      if (typeof window !== 'undefined' && !this._listenersBound) {
+      if (typeof window !== 'undefined' && typeof window.addEventListener === 'function' && !this._listenersBound) {
         this._listenersBound = true;
         window.addEventListener('pmg:aging-updated', () => {
           this.loadStockAging().then(() => {
@@ -1145,6 +1145,24 @@
         };
       }
 
+      // Case 2B: PMG House Brand / Private Label
+      const isHB = this.isPmgHouseBrand(sku);
+      if (isHB) {
+        return {
+          status: 'AGING_HOUSE_BRAND',
+          statusText: 'House Brand (Display / Push)',
+          badgeClass: 'text-purple-800 bg-purple-50 border-purple-300',
+          badgeIcon: 'fa-solid fa-crown text-purple-600',
+          isPricingIssue: false,
+          isAged: true,
+          agedQty: aging.agedQty,
+          agedValue: aging.agedValue,
+          maxBracket: aging.maxBracket || '>150d',
+          reason: `Exclusive PMG House Brand (${margin}% GP). Competitors do not stock this item. Slow turnover is due to floor visibility or counter attachment gap, NOT competitor pricing.`,
+          recommendation: `DO NOT reduce single-unit price (protects 50-60% target margin). Move to eye-level counter display, conduct staff push on "Second Item Rule" companion attachment, or run a 2nd-unit bundle deal.`
+        };
+      }
+
       // Case 3: High Margin Resistance (>= 50% GP with no competitor benchmark)
       if (margin >= 50) {
         return {
@@ -1752,6 +1770,94 @@
       return false;
     }
 
+    isPmgHouseBrand(sku) {
+      if (!sku) return false;
+      if (sku.isHouseBrand === true) return true;
+
+      const cat = String(sku.category || '').toUpperCase().trim();
+      const name = String(sku.name || '').toUpperCase().trim();
+      const brand = String(sku.brand || '').toUpperCase().trim();
+      const supplier = String(sku.supplier || '').toUpperCase().trim();
+      const tag = String(sku.strategyTag || '').toLowerCase().trim();
+
+      // 1. Explicit Category or Subcategory
+      if (
+        cat === 'HB' ||
+        cat === 'HOUSE BRAND' ||
+        cat === 'HOUSEBRAND' ||
+        cat.startsWith('HB ') ||
+        cat.endsWith(' HB') ||
+        cat.includes('/HB') ||
+        cat.includes('. HB') ||
+        cat.includes(' HB ') ||
+        cat.includes('HOUSE BRAND') ||
+        cat.includes('HOUSEBRAND')
+      ) {
+        return true;
+      }
+
+      // 2. Brand indicator
+      if (
+        brand === 'PMG' ||
+        brand === 'PMG PHARMACY' ||
+        brand === 'PUBLIC MEDICARE' ||
+        brand === 'HB' ||
+        brand.includes('HOUSE BRAND') ||
+        brand.includes('HOUSEBRAND')
+      ) {
+        return true;
+      }
+
+      // 3. Name indicators (Starts with PMG, contains PMG, or known PMG private label lines)
+      if (
+        name.startsWith('PMG ') ||
+        name.startsWith('PMG-') ||
+        name.includes(' PMG ') ||
+        name.endsWith(' PMG')
+      ) {
+        return true;
+      }
+
+      // Known PMG proprietary formulations & private labels in Sarawak
+      const knownHouseBrandKeywords = [
+        'MEGA PLUS',
+        'MEGA SOFTGEL',
+        'NUTRI ALPHA',
+        'NUTRENMAX',
+        'ALPHA GOLD',
+        'FLEXSURE GOLD',
+        'VITA C PLUS',
+        'PROBIOTIC GOLD',
+        'BIO-EQUIVALENT',
+        'PMG FORMULA',
+        'PMG GLUCO',
+        'PMG FISH OIL',
+        'PMG CALCIUM',
+        'PMG VITAMIN',
+        'PMG COQ10'
+      ];
+      for (const kw of knownHouseBrandKeywords) {
+        if (name.includes(kw)) return true;
+      }
+
+      // 4. Supplier is PMG internal warehouse / group company
+      if (
+        supplier.includes('PMG') ||
+        supplier.includes('PUBLIC MEDICARE') ||
+        supplier.includes('INTERNAL WAREHOUSE') ||
+        supplier.includes('CENTRAL STORE')
+      ) {
+        return true;
+      }
+
+      // 5. Explicitly assigned to High-Margin House Brand Builder strategic role
+      if (tag === 'margin_builder') {
+        return true;
+      }
+
+      return false;
+    }
+
     getKnownMalaysianBenchmark(sku) {
       if (!sku || !sku.name) return null;
       const name = (sku.name || '').toUpperCase().trim();
@@ -2093,6 +2199,11 @@
     applyAiCompetitorPrices(skuId, superPrice, chainPrice, competitorName, promoNote, suggestedPmgSp = 0) {
       const sku = this.skus.find(s => s.id === skuId);
       if (!sku) return;
+      const isHB = this.isPmgHouseBrand(sku);
+      if (isHB) {
+        this.applyHouseBrandStrategy(skuId, suggestedPmgSp, promoNote);
+        return;
+      }
       const isRx = this.isScheduledPrescriptionDrug(sku);
       if (isRx) {
         sku.supermarketPrice = null;
@@ -2113,6 +2224,30 @@
       if (modal) modal.classList.add('hidden');
       if (typeof showExpiryToast === 'function') {
         showExpiryToast(`✅ Saved competitor benchmarks for ${sku.name}`);
+      }
+    }
+
+    applyHouseBrandStrategy(skuId, suggestedSp = 0, note = '') {
+      const sku = this.skus.find(s => s.id === skuId);
+      if (!sku) return;
+      sku.supermarketPrice = null;
+      sku.chainPharmacyPrice = null;
+      sku.competitorName = 'N/A (Exclusive PMG House Brand)';
+      sku.promoNote = note || 'Exclusive Private Label • 50-60% Margin Lock';
+      sku.isHouseBrand = true;
+      sku.strategyTag = 'margin_builder';
+      if (suggestedSp && !isNaN(parseFloat(suggestedSp)) && parseFloat(suggestedSp) > 0) {
+        sku.standardSp = parseFloat(suggestedSp);
+        sku.currentBranchSp = parseFloat(suggestedSp);
+        sku.priceChangedAt = new Date().toISOString();
+      }
+      sku.customModified = true;
+      this.saveSkusToStorage();
+      this.render();
+      const modal = document.getElementById('pricingAiModal');
+      if (modal) modal.classList.add('hidden');
+      if (typeof showExpiryToast === 'function') {
+        showExpiryToast(`👑 PMG House Brand Strategy locked for ${sku.name} (50-60% Margin Protected)`);
       }
     }
 
@@ -2728,21 +2863,32 @@
         }
 
         // Tag styling
+        const isHB = this.isPmgHouseBrand(s);
         let tagBadge = '';
-        if (s.strategyTag === 'kvi_defensive') {
+        if (isHB || s.strategyTag === 'margin_builder') {
+          tagBadge = '<span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200" title="PMG Exclusive House Brand — 50-60% Margin Lock"><i class="fa-solid fa-crown text-amber-500"></i> House Brand</span>';
+        } else if (s.strategyTag === 'kvi_defensive') {
           tagBadge = '<span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200" title="High-visibility Traffic Driver — Must match supermarket pricing within RM 1"><i class="fa-solid fa-shield text-rose-600"></i> KVI Defensive</span>';
-        } else if (s.strategyTag === 'margin_builder') {
-          tagBadge = '<span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200" title="High Margin Builder — 50%+ Gross Profit"><i class="fa-solid fa-star text-amber-500"></i> Margin Builder</span>';
         } else if (s.strategyTag === 'clinical_bundle') {
-          tagBadge = '<span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200" title="Clinical Service / Diagnostic Moat"><i class="fa-solid fa-stethoscope text-purple-600"></i> Clinical Moat</span>';
+          tagBadge = '<span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200" title="Clinical Service / Diagnostic Moat"><i class="fa-solid fa-stethoscope text-indigo-600"></i> Clinical Moat</span>';
         } else {
           tagBadge = '<span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200" title="Standard Prescription / Community OTC"><i class="fa-solid fa-prescription-bottle-medical text-blue-600"></i> Core OTC/Rx</span>';
         }
 
         // Supermarket price input & comparison pill
-        const isRx = this.isScheduledPrescriptionDrug(s);
+        const isRx = !isHB && this.isScheduledPrescriptionDrug(s);
         let superComp = '';
-        if (isRx) {
+        if (isHB) {
+          superComp = `
+            <div class="inline-flex flex-col items-end">
+              <span class="inline-flex items-center gap-1 text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded shadow-2xs"
+                    title="Exclusive PMG House Brand line. Competitor supermarkets (Farley/Emart) do not carry this private label.">
+                <i class="fa-solid fa-crown text-purple-600"></i> PMG House Brand
+              </span>
+              <span class="text-[9px] text-purple-600/80 font-medium mt-0.5">Exclusive Line</span>
+            </div>
+          `;
+        } else if (isRx) {
           superComp = `
             <div class="inline-flex flex-col items-end">
               <span class="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded cursor-help"
@@ -2780,42 +2926,55 @@
         }
 
         // Pharmacy competitor input & comparison pill
-        let chainDiffHtml = '';
-        if (s.chainPharmacyPrice && s.chainPharmacyPrice > 0) {
-          const diffNum = s.standardSp - s.chainPharmacyPrice;
-          const diff = Math.abs(diffNum).toFixed(2);
-          const pct = ((diffNum / s.chainPharmacyPrice) * 100).toFixed(1);
-          const isHigher = diffNum > 0.05;
-          const isLower = diffNum < -0.05;
-          const badgeClass = isHigher 
-            ? 'text-amber-800 bg-amber-50 border border-amber-200' 
-            : (isLower ? 'text-emerald-700 bg-emerald-50 border border-emerald-200' : 'text-slate-600 bg-slate-50 border border-slate-200');
-          const diffSign = diffNum > 0.05 ? '+' : (diffNum < -0.05 ? '-' : '');
-          chainDiffHtml = `<span class="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded ${badgeClass} mt-1">${diffSign}RM ${diff} (${diffSign}${pct}%) (${s.competitorName || 'Alpro/Ting'})</span>`;
-        }
-
-        let promoPillHtml = '';
-        if (s.promoNote && s.promoNote.trim()) {
-          promoPillHtml = `
-            <div class="mt-1 flex items-center justify-end" title="${s.promoNote.replace(/"/g, '&quot;')}">
-              <span class="inline-flex items-center gap-1 text-[9px] font-bold text-amber-900 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded truncate max-w-[150px]">
-                <i class="fa-solid fa-fire text-amber-600"></i> ${s.promoNote}
+        let chainComp = '';
+        if (isHB) {
+          chainComp = `
+            <div class="inline-flex flex-col items-end">
+              <span class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded shadow-2xs"
+                    title="Exclusive PMG House Brand. Protected 50-60% target margin. Competitors do not stock this product.">
+                <i class="fa-solid fa-shield-halved text-emerald-600"></i> 50-60% Margin Lock
               </span>
+              <span class="text-[9px] text-emerald-600/80 font-medium mt-0.5">No Competitor Stock</span>
             </div>
           `;
-        }
+        } else {
+          let chainDiffHtml = '';
+          if (s.chainPharmacyPrice && s.chainPharmacyPrice > 0) {
+            const diffNum = s.standardSp - s.chainPharmacyPrice;
+            const diff = Math.abs(diffNum).toFixed(2);
+            const pct = ((diffNum / s.chainPharmacyPrice) * 100).toFixed(1);
+            const isHigher = diffNum > 0.05;
+            const isLower = diffNum < -0.05;
+            const badgeClass = isHigher 
+              ? 'text-amber-800 bg-amber-50 border border-amber-200' 
+              : (isLower ? 'text-emerald-700 bg-emerald-50 border border-emerald-200' : 'text-slate-600 bg-slate-50 border border-slate-200');
+            const diffSign = diffNum > 0.05 ? '+' : (diffNum < -0.05 ? '-' : '');
+            chainDiffHtml = `<span class="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded ${badgeClass} mt-1">${diffSign}RM ${diff} (${diffSign}${pct}%) (${s.competitorName || 'Alpro/Ting'})</span>`;
+          }
 
-        const chainComp = `
-          <div class="inline-flex items-center gap-1 justify-end">
-            <span class="text-gray-400 text-xs font-mono">RM</span>
-            <input type="number" step="0.10" value="${s.chainPharmacyPrice ? s.chainPharmacyPrice.toFixed(2) : ''}" placeholder="Alpro/Ting..."
-              onchange="window.pmgPricing.updateSkuChainPrice('${s.id}', this.value)"
-              class="w-20 text-right font-mono font-bold text-gray-800 border border-gray-200 rounded px-1.5 py-1 focus:ring-2 focus:ring-blue-400 outline-none bg-slate-50/50 hover:bg-white transition"
-              title="Competitor Pharmacy (Alpro/Caring/BIG/Ting) benchmark price (Click to edit)">
-          </div>
-          ${chainDiffHtml}
-          ${promoPillHtml}
-        `;
+          let promoPillHtml = '';
+          if (s.promoNote && s.promoNote.trim()) {
+            promoPillHtml = `
+              <div class="mt-1 flex items-center justify-end" title="${s.promoNote.replace(/"/g, '&quot;')}">
+                <span class="inline-flex items-center gap-1 text-[9px] font-bold text-amber-900 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded truncate max-w-[150px]">
+                  <i class="fa-solid fa-fire text-amber-600"></i> ${s.promoNote}
+                </span>
+              </div>
+            `;
+          }
+
+          chainComp = `
+            <div class="inline-flex items-center gap-1 justify-end">
+              <span class="text-gray-400 text-xs font-mono">RM</span>
+              <input type="number" step="0.10" value="${s.chainPharmacyPrice ? s.chainPharmacyPrice.toFixed(2) : ''}" placeholder="Alpro/Ting..."
+                onchange="window.pmgPricing.updateSkuChainPrice('${s.id}', this.value)"
+                class="w-20 text-right font-mono font-bold text-gray-800 border border-gray-200 rounded px-1.5 py-1 focus:ring-2 focus:ring-blue-400 outline-none bg-slate-50/50 hover:bg-white transition"
+                title="Competitor Pharmacy (Alpro/Caring/BIG/Ting) benchmark price (Click to edit)">
+            </div>
+            ${chainDiffHtml}
+            ${promoPillHtml}
+          `;
+        }
 
         // Margin pill color
         let marginColor = 'text-blue-700 bg-blue-50';
@@ -3212,7 +3371,8 @@
       const modal = document.getElementById('pricingAiModal');
       const title = document.getElementById('pricingAiModalTitle');
       const input = document.getElementById('pricingAiPromptInput');
-      const isRx = this.isScheduledPrescriptionDrug(sku);
+      const isHB = this.isPmgHouseBrand(sku);
+      const isRx = !isHB && this.isScheduledPrescriptionDrug(sku);
       const genericHint = this.getGenericDrugHint(sku);
       const aging = this.getStockAgingForSku(sku);
       const diag = this.diagnoseSkuPricingVsAging(sku, aging);
@@ -3222,32 +3382,42 @@
       const storeLinksBar = document.getElementById('pricingAiStoreLinksBar');
       const storeLinksList = document.getElementById('pricingAiStoreLinksList');
       if (storeLinksBar && storeLinksList) {
-        const cleanEncoded = encodeURIComponent(searchDetails.coreKeyword || searchDetails.cleanName);
-        storeLinksList.innerHTML = `
-          <a href="https://www.alpropharmacy.com/oneclick/?s=${cleanEncoded}" target="_blank" rel="noopener noreferrer"
-            class="px-2.5 py-1 bg-white hover:bg-orange-50 border border-orange-200 text-orange-950 font-bold text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1.5 transition">
-            <span class="w-2 h-2 rounded-full bg-orange-500"></span>
-            Alpro Oneclick Store <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-orange-600"></i>
-          </a>
-          <a href="https://www.bigpharmacy.com.my/catalogsearch/result/?q=${cleanEncoded}" target="_blank" rel="noopener noreferrer"
-            class="px-2.5 py-1 bg-white hover:bg-rose-50 border border-rose-200 text-rose-950 font-bold text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1.5 transition">
-            <span class="w-2 h-2 rounded-full bg-rose-500"></span>
-            BIG Pharmacy Store <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-rose-600"></i>
-          </a>
-          <a href="https://estore.caring2u.com/catalogsearch/result/?q=${cleanEncoded}" target="_blank" rel="noopener noreferrer"
-            class="px-2.5 py-1 bg-white hover:bg-emerald-50 border border-emerald-200 text-emerald-950 font-bold text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1.5 transition">
-            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-            Caring Pharmacy Store <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-emerald-600"></i>
-          </a>
-          ${!isRx ? `
-          <a href="https://www.google.com/search?q=${cleanEncoded}+Farley+Supermarket+Kuching+price" target="_blank" rel="noopener noreferrer"
-            class="px-2.5 py-1 bg-white hover:bg-blue-50 border border-blue-200 text-blue-950 font-bold text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1.5 transition">
-            <span class="w-2 h-2 rounded-full bg-blue-500"></span>
-            Farley Price Search <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-blue-600"></i>
-          </a>
-          ` : ''}
-        `;
-        storeLinksBar.classList.remove('hidden');
+        if (isHB) {
+          storeLinksList.innerHTML = `
+            <div class="px-3 py-1.5 bg-purple-50 border border-purple-200 text-purple-900 rounded-lg text-xs font-semibold flex items-center gap-2">
+              <span class="inline-flex items-center gap-1 font-bold text-purple-800"><i class="fa-solid fa-crown text-amber-500"></i> PMG Exclusive House Brand / Private Label</span>
+              <span class="text-purple-600 text-[11px]">— Competitors (Alpro, BIG, Caring, Farley) do NOT carry this item. 100% Margin Protected Line.</span>
+            </div>
+          `;
+          storeLinksBar.classList.remove('hidden');
+        } else {
+          const cleanEncoded = encodeURIComponent(searchDetails.coreKeyword || searchDetails.cleanName);
+          storeLinksList.innerHTML = `
+            <a href="https://www.alpropharmacy.com/oneclick/?s=${cleanEncoded}" target="_blank" rel="noopener noreferrer"
+              class="px-2.5 py-1 bg-white hover:bg-orange-50 border border-orange-200 text-orange-950 font-bold text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1.5 transition">
+              <span class="w-2 h-2 rounded-full bg-orange-500"></span>
+              Alpro Oneclick Store <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-orange-600"></i>
+            </a>
+            <a href="https://www.bigpharmacy.com.my/catalogsearch/result/?q=${cleanEncoded}" target="_blank" rel="noopener noreferrer"
+              class="px-2.5 py-1 bg-white hover:bg-rose-50 border border-rose-200 text-rose-950 font-bold text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1.5 transition">
+              <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+              BIG Pharmacy Store <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-rose-600"></i>
+            </a>
+            <a href="https://estore.caring2u.com/catalogsearch/result/?q=${cleanEncoded}" target="_blank" rel="noopener noreferrer"
+              class="px-2.5 py-1 bg-white hover:bg-emerald-50 border border-emerald-200 text-emerald-950 font-bold text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1.5 transition">
+              <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+              Caring Pharmacy Store <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-emerald-600"></i>
+            </a>
+            ${!isRx ? `
+            <a href="https://www.google.com/search?q=${cleanEncoded}+Farley+Supermarket+Kuching+price" target="_blank" rel="noopener noreferrer"
+              class="px-2.5 py-1 bg-white hover:bg-blue-50 border border-blue-200 text-blue-950 font-bold text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1.5 transition">
+              <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+              Farley Price Search <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-blue-600"></i>
+            </a>
+            ` : ''}
+          `;
+          storeLinksBar.classList.remove('hidden');
+        }
       }
 
       const agingContext = diag.isAged ? `\nSTOCK AGING & VELOCITY INTELLIGENCE:
@@ -3257,9 +3427,67 @@
 - Diagnostic Finding: ${diag.reason}
 - Direct Directive: Provide a price or promo recommendation specifically tailored to unfreeze this locked inventory.\n` : '';
 
-      if (title) title.textContent = `Competitor Price Benchmark Analysis: ${sku.name}`;
+      if (title) title.textContent = isHB ? `PMG House Brand Margin Lock & Strategy: ${sku.name}` : `Competitor Price Benchmark Analysis: ${sku.name}`;
       if (input) {
-        if (isRx) {
+        if (isHB) {
+          const cost = sku.costPrice > 0 ? sku.costPrice : (sku.standardSp > 0 ? sku.standardSp * 0.45 : 10.00);
+          const currentMargin = sku.standardSp > 0 ? (((sku.standardSp - cost) / sku.standardSp) * 100).toFixed(1) : '0';
+          const suggested55Sp = +(cost / 0.45).toFixed(2); // 55% target gross margin: SP = Cost / (1 - 0.55)
+          const suggested50Sp = +(cost / 0.50).toFixed(2);
+          const suggested60Sp = +(cost / 0.40).toFixed(2);
+
+          input.value = `You are the Chief Commercial Officer & Senior Pharmaceutical Merchandising Director for PMG Pharmacy (7 Outlets in Kuching & Padawan, Sarawak).
+Perform an EXPERT PRIVATE LABEL PRICING AUDIT & HIGH-MARGIN STRATEGY EVALUATION for this EXCLUSIVE PMG HOUSE BRAND:
+
+Product: ${sku.name}
+Code: ${sku.code || 'N/A'}
+Category: ${sku.category || 'House Brand / Health Supplement'}
+Proprietary Brand: PMG Exclusive Private Label
+Wholesale Unit Cost: RM ${cost.toFixed(2)}
+Current Member SP: RM ${sku.standardSp > 0 ? sku.standardSp.toFixed(2) : 'Unset'} (Current Margin: ${currentMargin}%)
+Target Margin Band: 50.0% – 60.0% Gross Margin Lock (Target SP: RM ${suggested50Sp.toFixed(2)} – RM ${suggested60Sp.toFixed(2)}, Midpoint 55%: RM ${suggested55Sp.toFixed(2)})
+${agingContext}
+CRITICAL HOUSE BRAND RULES (STRICT ANTI-HALLUCINATION PROTOCOL):
+1. ZERO COMPETITOR STOCK (DO NOT HALLUCINATE COMPETITOR PRICES):
+   - This item is an EXCLUSIVE, PROPRIETARY PMG HOUSE BRAND.
+   - Competitors (Alpro Pharmacy, BIG Pharmacy, Caring Pharmacy, Farley Supermarket, Emart) DO NOT AND CANNOT STOCK THIS PRODUCT.
+   - It is a hallucination and logical failure to report competitor prices for an exclusive PMG private label.
+   - You MUST return:
+     "supermarketPrice": null,
+     "chainPharmacyPrice": null,
+     "competitorName": "N/A (Exclusive PMG House Brand)",
+     "promoNote": "Exclusive Private Label • 50-60% Margin Lock"
+
+2. HIGH-MARGIN TARGET PRICING ("suggestedPmgSp"):
+   - House Brands are PMG's profit engine designed to subsidize aggressive price-matching on commercial KVIs.
+   - Set "suggestedPmgSp" to achieve a protected 50% to 60% Gross Margin above wholesale cost (RM ${cost.toFixed(2)}).
+   - Recommended benchmark: RM ${suggested55Sp.toFixed(2)} (yields 55% GP).
+   - NEVER suggest a price below 50% margin unless executing an emergency short-dated stock clearance.
+
+3. STRATEGIC COMMERCIAL RECOMMENDATIONS:
+   A. "The Second Item Rule" (Companion Basket Attachment):
+      - What primary prescription or OTC indication (e.g. chronic hypertension, statins, antibiotics, joint pain, gastric distress) should automatically trigger branch staff to attach this house brand SKU as the second item in the basket?
+   B. Branded Originator Substitution Script:
+      - Word-for-word verbal counseling script for pharmacists when patients ask for expensive multinational originator brands (e.g., Blackmores, Mega We Care, Swisse, Biolife, Centrum). Explain bio-equivalence, pure formulation, 30% patient savings, and secure 50%+ GP for PMG.
+   C. Volume Bundle Structure:
+      - Multi-pack promotions (e.g., 2nd bottle 30% off, or 3-Month Continuity Bundle) to drive volume without eroding single-unit price perception.
+
+IMPORTANT: Return the analysis inside a strict JSON code block at the end:
+\`\`\`json
+{
+  "supermarketPrice": null,
+  "chainPharmacyPrice": null,
+  "competitorName": "N/A (Exclusive PMG House Brand)",
+  "promoNote": "Exclusive Private Label • 50-60% Margin Lock",
+  "suggestedPmgSp": ${suggested55Sp.toFixed(2)},
+  "hasActivePromo": false,
+  "normalRetailPrice": null,
+  "promotionalPrice": null,
+  "isHouseBrand": true,
+  "strategyTag": "margin_builder"
+}
+\`\`\``;
+        } else if (isRx) {
           input.value = `You are a Senior Pharmaceutical Pricing Specialist in Malaysia conducting an INDEPENDENT, REAL-TIME MARKET PRICE AUDIT with LIVE GOOGLE SEARCH.
 Search Google for the real, current retail dispensing price of this prescription medicine in Malaysian licensed community pharmacies (such as BIG Pharmacy, Alpro Pharmacy / Alpro Oneclick, Caring Pharmacy, Ting Pharmacy Kuching, and DoctorOnCall).
 DO NOT anchor to or assume any user-entered price. Conduct an authentic live market search.
@@ -3367,7 +3595,8 @@ IMPORTANT: Return the detected competitor price numbers at the end inside a stri
       const modal = document.getElementById('pricingAiModal');
       const title = document.getElementById('pricingAiModalTitle');
       const input = document.getElementById('pricingAiPromptInput');
-      const isRx = this.isScheduledPrescriptionDrug(sku);
+      const isHB = this.isPmgHouseBrand(sku);
+      const isRx = !isHB && this.isScheduledPrescriptionDrug(sku);
       const aging = this.getStockAgingForSku(sku);
       const diag = this.diagnoseSkuPricingVsAging(sku, aging);
       const agingStrategyContext = diag.isAged ? `\nREAL-TIME STOCK AGING & CAPITAL STATUS:
@@ -3377,9 +3606,38 @@ IMPORTANT: Return the detected competitor price numbers at the end inside a stri
 - Pricing Diagnosis: ${diag.statusText} (${diag.reason})
 - Strategic Clearance Priority: Immediate actionable tactics required to clear aged inventory (e.g. promo markdown, staff push, counter placement, or supplier credit return).\n` : '';
 
-      if (title) title.textContent = `Market Strategy & Commercial Dynamics: ${sku.name}`;
+      if (title) title.textContent = isHB ? `PMG House Brand Commercial Strategy: ${sku.name}` : `Market Strategy & Commercial Dynamics: ${sku.name}`;
       if (input) {
-        if (isRx) {
+        if (isHB) {
+          const cost = sku.costPrice > 0 ? sku.costPrice : (sku.standardSp > 0 ? sku.standardSp * 0.45 : 10.00);
+          const currentMargin = sku.standardSp > 0 ? (((sku.standardSp - cost) / sku.standardSp) * 100).toFixed(1) : '0';
+          input.value = `You are the Chief Commercial Officer & Senior Merchandising Director for PMG Pharmacy (7 Outlets in Kuching & Padawan, Sarawak).
+Conduct an executive private-label commercial battle plan and staff sales masterclass for this EXCLUSIVE PMG HOUSE BRAND:
+
+Product: ${sku.name} (Code: ${sku.code || 'N/A'})
+Brand: PMG Private Label / House Brand (Exclusive line - NOT stocked by Alpro, BIG, Caring, or Farley)
+Category: ${sku.category || 'House Brand / Health Supplement'}
+Wholesale Cost Price: RM ${cost.toFixed(2)}
+Current Member Retail SP: RM ${sku.standardSp.toFixed(2)} (Current Margin: ${currentMargin}%)
+Target Strategy: High-Margin Builder (Target 50% - 60% Gross Margin Lock)
+${agingStrategyContext}Target Market: 7 PMG branches in Kuching & Padawan (Kota Sentosa, Matang Jaya, Sungai Moyan, Malihah, Metrocity, Astana, Samariang).
+
+Deliver an actionable, high-impact commercial gameplan:
+1. EXCLUSIVE PRIVATE-LABEL POSITIONING (ZERO COMPETITOR THREAT):
+   - Reiterate clearly that competitors (Alpro, BIG, Caring, Farley) do NOT sell this item.
+   - We have 100% pricing autonomy. There is NO price war or competitor matching needed.
+2. "THE SECOND ITEM RULE" (Companion Basket Cross-Selling Protocol):
+   - Provide concrete clinical & wellness pairing protocols for branch staff.
+   - Exactly what primary prescriptions or chronic illnesses (e.g. Hypertension, Diabetes, Dyslipidemia, Joint Pain, Gut Issues) should trigger branch dispensers to attach this House Brand item as the mandatory "2nd Item in Basket"?
+3. BRANDED ORIGINATOR SUBSTITUTION VERBAL SCRIPTS:
+   - Provide word-for-word conversational scripts for pharmacists and counter staff when a customer asks for expensive multinational originator brands (e.g., Blackmores, Mega We Care, Swisse, Biolife, Centrum).
+   - How to explain bio-equivalence, therapeutic purity, superior value per dose, and customer savings while securing 50%+ GP margin for PMG.
+4. BUNDLE & VOLUME PROMOTIONS (PROTECTING PRICE INTEGRITY):
+   - NEVER discount single units (preserves high-value perception).
+   - Design multi-pack bundle structures: e.g., "Buy 2nd unit at 30% off" (yields blended ~48% margin) or "3-Month Chronic Adherence Pack (Buy 2 Free 1 / Twin + Refill)".
+5. STAFF INCENTIVES & VELOCITY ACCELERATION:
+   - Tactics to drive staff focus and front-counter eye-level placement to eliminate stock aging and maximize gross profit contribution.`;
+        } else if (isRx) {
           input.value = `Perform an in-depth commercial market dynamics, patient retention, and clinical basket-building analysis for this prescription medicine:
 Product: ${sku.name} (Code: ${sku.code})
 Category: ${sku.category} (Scheduled Prescription Drug - Poisons Act 1952)
@@ -3727,27 +3985,68 @@ Our strategic objective:
       let applyBannerHtml = '';
       if (parsedJson && this.selectedSkuForAi) {
         const sku = this.selectedSkuForAi;
-        const isRx = this.isScheduledPrescriptionDrug(sku);
-        let superP = isRx ? 0 : (parseFloat(parsedJson.supermarketPrice) || 0);
-        let chainP = parseFloat(parsedJson.chainPharmacyPrice) || 0;
-        let compName = (parsedJson.competitorName || 'Alpro / Ting Pharmacy').replace(/"/g, '&quot;');
-        let promoNote = (parsedJson.promoNote || '').replace(/"/g, '&quot;');
+        const isHB = this.isPmgHouseBrand(sku);
+        const isRx = !isHB && this.isScheduledPrescriptionDrug(sku);
+        let superP = (isHB || isRx) ? 0 : (parseFloat(parsedJson.supermarketPrice) || 0);
+        let chainP = isHB ? 0 : (parseFloat(parsedJson.chainPharmacyPrice) || 0);
+        let compName = isHB ? 'N/A (Exclusive PMG House Brand)' : (parsedJson.competitorName || 'Alpro / Ting Pharmacy').replace(/"/g, '&quot;');
+        let promoNote = isHB ? 'Exclusive Private Label • 50-60% Margin Lock' : (parsedJson.promoNote || '').replace(/"/g, '&quot;');
         const pmgSp = parseFloat(parsedJson.suggestedPmgSp) || 0;
-        const hasPromo = !!(parsedJson.hasActivePromo || parsedJson.promotionalPrice || (promoNote && /promo|sale|11\.11|discount|rebate/i.test(promoNote)));
+        const hasPromo = !isHB && !!(parsedJson.hasActivePromo || parsedJson.promotionalPrice || (promoNote && /promo|sale|11\.11|discount|rebate/i.test(promoNote)));
         const normalP = parseFloat(parsedJson.normalRetailPrice) || 0;
         const promoP = parseFloat(parsedJson.promotionalPrice) || (hasPromo ? chainP : 0);
 
         // If promotional price was detected, ensure chainP reflects the active promo
-        if (promoP > 0 && promoP < chainP) {
+        if (!isHB && promoP > 0 && promoP < chainP) {
           chainP = promoP;
         }
 
         // Ensure Poisons Act 1952 compliance for prescription items
-        if (isRx) {
+        if (isRx || isHB) {
           superP = 0;
         }
 
-        if (superP > 0 || chainP > 0 || isRx) {
+        if (isHB) {
+          const cost = sku.costPrice > 0 ? sku.costPrice : (sku.standardSp > 0 ? sku.standardSp * 0.45 : 10.00);
+          const currentMargin = sku.standardSp > 0 ? (((sku.standardSp - cost) / sku.standardSp) * 100).toFixed(1) : '0';
+          const suggestedSp = pmgSp > 0 ? pmgSp : +(cost / 0.45).toFixed(2);
+          const suggestedMargin = (((suggestedSp - cost) / suggestedSp) * 100).toFixed(1);
+
+          applyBannerHtml = `
+            <div class="mb-4 p-4 bg-gradient-to-r from-purple-50 via-indigo-50 to-amber-50 border-2 border-purple-300 rounded-xl shadow-xs">
+              <div class="flex items-center justify-between gap-3 flex-wrap mb-2">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="px-2.5 py-0.5 rounded-full bg-purple-700 text-white font-extrabold text-[10px] tracking-wide uppercase flex items-center gap-1 shadow-xs">
+                    <i class="fa-solid fa-crown text-amber-300"></i> PMG Exclusive House Brand
+                  </span>
+                  <span class="text-purple-950 font-extrabold text-xs">${sku.name}</span>
+                </div>
+                <div class="text-[11px] text-purple-700 font-semibold flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-purple-600 animate-pulse"></span>
+                  🛡️ 50-60% Margin Protected • Zero Competitor Stock
+                </div>
+              </div>
+
+              <div class="text-[11px] text-gray-800 flex items-center gap-3 flex-wrap mb-3">
+                <span>Competitor Stock: <b class="font-bold text-gray-900 bg-white px-2 py-0.5 rounded border border-purple-200">N/A (Competitors Cannot Stock)</b></span>
+                <span>Wholesale Cost: <b class="font-mono text-gray-900 bg-white px-2 py-0.5 rounded border border-purple-200">RM ${cost.toFixed(2)}</b></span>
+                <span>Current Member SP: <b class="font-mono text-gray-900 bg-white px-2 py-0.5 rounded border border-purple-200">RM ${sku.standardSp.toFixed(2)} (${currentMargin}% GP)</b></span>
+                <span>Target High-Margin SP (50-60% GP): <b class="font-mono text-emerald-800 bg-white px-2 py-0.5 rounded border border-emerald-300 font-extrabold text-xs">RM ${suggestedSp.toFixed(2)} (${suggestedMargin}% GP)</b></span>
+              </div>
+
+              <div class="flex items-center justify-end gap-2 pt-2 border-t border-purple-200/70 flex-wrap">
+                <button type="button" onclick="window.pmgPricing.applyHouseBrandStrategy('${sku.id}', ${suggestedSp}, 'Exclusive Private Label • 50-60% Margin Lock')"
+                  class="px-4 py-1.5 bg-purple-700 hover:bg-purple-800 active:bg-purple-900 text-white font-bold text-xs rounded-xl transition shadow-xs whitespace-nowrap flex items-center gap-1.5 cursor-pointer">
+                  <i class="fa-solid fa-shield-halved text-amber-300"></i> Lock House Brand Strategy (Set SP RM ${suggestedSp.toFixed(2)})
+                </button>
+                <button type="button" onclick="window.pmgPricing.applyHouseBrandStrategy('${sku.id}', ${sku.standardSp}, 'Exclusive Private Label • 50-60% Margin Lock')"
+                  class="px-3.5 py-1.5 bg-white hover:bg-purple-50 text-purple-800 border border-purple-300 font-bold text-xs rounded-xl transition shadow-2xs whitespace-nowrap flex items-center gap-1.5 cursor-pointer">
+                  Keep Current SP RM ${sku.standardSp.toFixed(2)}
+                </button>
+              </div>
+            </div>
+          `;
+        } else if (superP > 0 || chainP > 0 || isRx) {
           const superTxt = isRx 
             ? '<b class="font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">N/A (Rx Exclusive)</b>' 
             : `<b class="font-mono text-gray-900 bg-white px-1.5 py-0.5 rounded border border-indigo-200">${superP > 0 ? 'RM ' + superP.toFixed(2) : 'N/A'}</b>`;
@@ -4002,12 +4301,18 @@ Our strategic objective:
         // Build chunk prompt (UNANCHORED - NEVER include user selling price)
         let itemListText = '';
         currentChunk.forEach((s, idx) => {
-          const isRx = this.isScheduledPrescriptionDrug(s);
-          const rxLabel = isRx ? ' [PRESCRIPTION POISON - SUPERMARKET N/A]' : ' [FMCG / HEALTHCARE - AUDIT SUPERMARKET & PHARMACY]';
+          const isHB = this.isPmgHouseBrand(s);
+          const isRx = !isHB && this.isScheduledPrescriptionDrug(s);
+          let tagLabel = ' [FMCG / HEALTHCARE - AUDIT SUPERMARKET & PHARMACY]';
+          if (isHB) {
+            tagLabel = ' [EXCLUSIVE PMG HOUSE BRAND / PRIVATE LABEL - COMPETITOR STOCK N/A]';
+          } else if (isRx) {
+            tagLabel = ' [PRESCRIPTION POISON - SUPERMARKET N/A]';
+          }
           const genericHint = this.getGenericDrugHint(s);
           const costHint = s.costPrice > 0 ? `Trade Cost: RM ${s.costPrice.toFixed(2)}` : 'Trade Cost: Standard';
           const codeVal = (s.code && !['N/A', 'NONE', '-', 'NULL', ''].includes(String(s.code).trim().toUpperCase())) ? s.code : 'None';
-          itemListText += `${idx + 1}. [ITEM_ID: "${s.id}"] | Code: "${codeVal}" | Product: "${s.name}"${genericHint ? ' (' + genericHint + ')' : ''} | Category: "${s.category}"${rxLabel} | ${costHint}\n`;
+          itemListText += `${idx + 1}. [ITEM_ID: "${s.id}"] | Code: "${codeVal}" | Product: "${s.name}"${genericHint ? ' (' + genericHint + ')' : ''} | Category: "${s.category}"${tagLabel} | ${costHint}\n`;
         });
 
         const prompt = `You are the Senior Commercial Pharmacy Pricing Director for PMG Pharmacy (7 Outlets in Kuching & Padawan, Sarawak, Malaysia).
@@ -4021,7 +4326,12 @@ CRITICAL RULES & ACTIVE PROMOTIONS:
    - State the promotion in "promoNote" (e.g. "Alpro 11.11 Promo RM 16.50 (Normal RM 17.50)").
 2. SUPERMARKETS: Supermarkets (Farley Supermarket, Emart Hypermarket, Everwin) CANNOT legally sell scheduled prescription poisons. For items tagged [PRESCRIPTION POISON], you MUST set "supermarketPrice": null.
    - For adult/baby diapers, nutrition milk (Ensure, Glucerna, Pediasure), and OTC: Supermarkets DO sell them. Benchmark realistic Farley Kuching/Emart retail prices.
-3. DEFENSIVE SELLING PRICE ("suggestedPmgSp"): Recommend a competitive price for PMG branches that matches or defends against competitor promo while keeping margin above trade cost.
+3. PMG HOUSE BRANDS / PRIVATE LABELS: For items tagged [EXCLUSIVE PMG HOUSE BRAND / PRIVATE LABEL]:
+   - Competitors (Alpro, BIG, Caring, Farley) DO NOT STOCK THIS ITEM.
+   - You MUST set "supermarketPrice": null, "chainPharmacyPrice": null, "competitorName": "N/A (Exclusive PMG House Brand)".
+   - Set "promoNote": "Exclusive Private Label • 50-60% Margin Lock".
+   - Set "suggestedPmgSp" to achieve 50% - 60% gross profit margin based on Trade Cost.
+4. DEFENSIVE SELLING PRICE ("suggestedPmgSp"): Recommend a competitive price for PMG branches that matches or defends against competitor promo while keeping margin above trade cost.
 
 Items to Benchmark:
 ${itemListText}
@@ -4147,57 +4457,89 @@ Respond STRICTLY with a valid JSON array of objects. Use the exact ITEM_ID provi
             }
           }
 
-          const isRx = this.isScheduledPrescriptionDrug(sku);
+          const isHB = this.isPmgHouseBrand(sku);
+          const isRx = !isHB && this.isScheduledPrescriptionDrug(sku);
 
           let detectedChainPrice = null;
           let detectedSuperPrice = null;
           let detectedCompName = '';
           let detectedPromoNote = '';
 
-          if (r) {
-            if (r.chainPharmacyPrice && !isNaN(parseFloat(r.chainPharmacyPrice)) && parseFloat(r.chainPharmacyPrice) > 0) {
-              detectedChainPrice = parseFloat(r.chainPharmacyPrice);
-            }
-            if (r.supermarketPrice && !isNaN(parseFloat(r.supermarketPrice)) && parseFloat(r.supermarketPrice) > 0) {
-              detectedSuperPrice = parseFloat(r.supermarketPrice);
-            }
-            detectedCompName = r.competitorName || '';
-            detectedPromoNote = r.promoNote || '';
-          }
-
-          // Supermarket rule for Rx per Poisons Act 1952
-          if (isRx) {
+          if (isHB) {
+            detectedChainPrice = null;
             detectedSuperPrice = null;
-          }
-
-          if (detectedChainPrice !== null || detectedSuperPrice !== null) {
-            if (isRx) {
-              sku.supermarketPrice = null;
-            } else if (detectedSuperPrice !== null) {
-              sku.supermarketPrice = detectedSuperPrice;
-            }
-            if (detectedChainPrice !== null) {
-              sku.chainPharmacyPrice = detectedChainPrice;
-            }
-            if (detectedCompName) sku.competitorName = detectedCompName;
-            if (detectedPromoNote) sku.promoNote = detectedPromoNote;
+            detectedCompName = 'N/A (Exclusive PMG House Brand)';
+            detectedPromoNote = 'Exclusive Private Label • 50-60% Margin Lock';
+            sku.supermarketPrice = null;
+            sku.chainPharmacyPrice = null;
+            sku.competitorName = detectedCompName;
+            sku.promoNote = detectedPromoNote;
+            sku.isHouseBrand = true;
+            sku.strategyTag = 'margin_builder';
             sku.customModified = true;
             updatedCount++;
+          } else {
+            if (r) {
+              if (r.chainPharmacyPrice && !isNaN(parseFloat(r.chainPharmacyPrice)) && parseFloat(r.chainPharmacyPrice) > 0) {
+                detectedChainPrice = parseFloat(r.chainPharmacyPrice);
+              }
+              if (r.supermarketPrice && !isNaN(parseFloat(r.supermarketPrice)) && parseFloat(r.supermarketPrice) > 0) {
+                detectedSuperPrice = parseFloat(r.supermarketPrice);
+              }
+              detectedCompName = r.competitorName || '';
+              detectedPromoNote = r.promoNote || '';
+            }
+
+            // Supermarket rule for Rx per Poisons Act 1952
+            if (isRx) {
+              detectedSuperPrice = null;
+            }
+
+            if (detectedChainPrice !== null || detectedSuperPrice !== null) {
+              if (isRx) {
+                sku.supermarketPrice = null;
+              } else if (detectedSuperPrice !== null) {
+                sku.supermarketPrice = detectedSuperPrice;
+              }
+              if (detectedChainPrice !== null) {
+                sku.chainPharmacyPrice = detectedChainPrice;
+              }
+              if (detectedCompName) sku.competitorName = detectedCompName;
+              if (detectedPromoNote) sku.promoNote = detectedPromoNote;
+              sku.customModified = true;
+              updatedCount++;
+            }
           }
 
           processedCount++;
 
           // Append live stream row in modal
           if (tbody) {
-            const isRx = this.isScheduledPrescriptionDrug(sku);
-            const superTxt = isRx 
-              ? '<span class="text-slate-400 font-semibold text-[10px]">N/A (Rx)</span>' 
-              : (sku.supermarketPrice ? `RM ${sku.supermarketPrice.toFixed(2)}` : '<span class="text-gray-300">N/A</span>');
-            const chainTxt = sku.chainPharmacyPrice ? `RM ${sku.chainPharmacyPrice.toFixed(2)}` : '<span class="text-gray-300">N/A</span>';
-            const compTxt = sku.competitorName || 'Alpro / Ting';
-            const promoBadge = sku.promoNote 
-              ? `<span class="inline-flex items-center gap-1 text-[9px] font-bold text-amber-900 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded"><i class="fa-solid fa-fire text-amber-600"></i> ${sku.promoNote}</span>`
-              : '<span class="text-gray-300">-</span>';
+            let superTxt = '';
+            let chainTxt = '';
+            let compTxt = '';
+            let promoBadge = '';
+
+            if (isHB) {
+              superTxt = '<span class="text-purple-600 font-bold text-[10px]">Exclusive HB</span>';
+              chainTxt = '<span class="text-purple-700 font-bold text-[10px]">50-60% Margin</span>';
+              compTxt = 'N/A (Exclusive Line)';
+              promoBadge = '<span class="inline-flex items-center gap-1 text-[9px] font-bold text-purple-900 bg-purple-100 border border-purple-200 px-1.5 py-0.5 rounded"><i class="fa-solid fa-crown text-amber-500"></i> Margin Lock</span>';
+            } else if (isRx) {
+              superTxt = '<span class="text-slate-400 font-semibold text-[10px]">N/A (Rx)</span>';
+              chainTxt = sku.chainPharmacyPrice ? `RM ${sku.chainPharmacyPrice.toFixed(2)}` : '<span class="text-gray-300">N/A</span>';
+              compTxt = sku.competitorName || 'Alpro / Ting';
+              promoBadge = sku.promoNote 
+                ? `<span class="inline-flex items-center gap-1 text-[9px] font-bold text-amber-900 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded"><i class="fa-solid fa-fire text-amber-600"></i> ${sku.promoNote}</span>`
+                : '<span class="text-gray-300">-</span>';
+            } else {
+              superTxt = sku.supermarketPrice ? `RM ${sku.supermarketPrice.toFixed(2)}` : '<span class="text-gray-300">N/A</span>';
+              chainTxt = sku.chainPharmacyPrice ? `RM ${sku.chainPharmacyPrice.toFixed(2)}` : '<span class="text-gray-300">N/A</span>';
+              compTxt = sku.competitorName || 'Alpro / Ting';
+              promoBadge = sku.promoNote 
+                ? `<span class="inline-flex items-center gap-1 text-[9px] font-bold text-amber-900 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded"><i class="fa-solid fa-fire text-amber-600"></i> ${sku.promoNote}</span>`
+                : '<span class="text-gray-300">-</span>';
+            }
 
             const tr = document.createElement('tr');
             tr.className = 'hover:bg-indigo-50/50 transition border-b border-gray-100 text-[11px]';
@@ -4214,8 +4556,8 @@ Respond STRICTLY with a valid JSON array of objects. Use the exact ITEM_ID provi
               </td>
               <td class="p-2">${promoBadge}</td>
               <td class="p-2 text-center">
-                <span class="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                  <i class="fa-solid fa-check text-emerald-600"></i> Synced
+                <span class="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isHB ? 'bg-purple-100 text-purple-800 border border-purple-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}">
+                  <i class="fa-solid fa-check ${isHB ? 'text-purple-600' : 'text-emerald-600'}"></i> ${isHB ? 'HB Locked' : 'Synced'}
                 </span>
               </td>
             `;
