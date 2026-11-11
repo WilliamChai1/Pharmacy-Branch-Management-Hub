@@ -580,21 +580,28 @@
       this.activeCategoryFilter = 'ALL';
       this.activeStrategyFilter = 'ALL';
       this.activeCompetitorFilter = 'ALL';
+      this.activeAgingFilter = 'ALL';
       this.searchQuery = '';
       this.isAiRunning = false;
       this.selectedSkuForAi = null;
       this.currentPage = 1;
       this.pageSize = 50;
-      this.sortField = 'none'; // 'none' | 'margin' | 'supermarket_dev' | 'chain_dev' | 'abs_dev'
+      this.sortField = 'none'; // 'none' | 'margin' | 'supermarket_dev' | 'chain_dev' | 'abs_dev' | 'aged_value' | 'aged_qty'
       this.marginSortOrder = 'none'; // 'none' | 'desc' | 'asc'
       this.supermarketDevSortOrder = 'none'; // 'none' | 'desc' | 'asc'
       this.chainDevSortOrder = 'none'; // 'none' | 'desc' | 'asc'
+      this.agingSortOrder = 'none'; // 'none' | 'desc' | 'asc'
+      this.agingMap = new Map();
+      this.agingBaseCodeMap = new Map();
+      this.agingNameMap = new Map();
+      this.agingStats = { totalAgedSkus: 0, totalAgedValue: 0, source: 'None' };
       this.isSyncingWithSheets = false;
       this.init();
     }
 
     async init() {
       await this.loadSkusFromStorage();
+      await this.loadStockAging();
       this.sanitizeRxPrescriptionSkus();
       this.render();
       // Auto sync from Google Sheets in background
@@ -859,11 +866,499 @@
       await this.fetchPricingFromSheets(manual);
     }
 
+    // ─── STOCK AGING CROSS-REFERENCE & PRICING DIAGNOSTIC ENGINE ──────────────
+    async loadStockAging() {
+      try {
+        // 1. Direct window maps from Inventory suite if already initialized
+        if (typeof window !== 'undefined' && window.stockAgingMap && window.stockAgingMap.size > 0) {
+          const agingArray = Array.from(window.stockAgingMap.values());
+          this.ingestAgingData(agingArray, 'Live Inventory Suite');
+          return true;
+        }
+
+        // 2. Dedicated stock aging cache
+        const rawAgingCache = localStorage.getItem('pmg_stock_aging_cache_v1');
+        if (rawAgingCache) {
+          try {
+            const parsed = JSON.parse(rawAgingCache);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              this.ingestAgingData(parsed, 'Stock Aging Cache');
+              return true;
+            }
+          } catch (e) {}
+        }
+
+        // 3. Performance active state
+        const rawPerf = localStorage.getItem('pmg_perf_active_state_v1') || localStorage.getItem('pmg_perf_state_v1');
+        if (rawPerf) {
+          try {
+            const parsed = JSON.parse(rawPerf);
+            if (parsed?.stockAgingLatest?.items && Array.isArray(parsed.stockAgingLatest.items) && parsed.stockAgingLatest.items.length > 0) {
+              this.ingestAgingData(parsed.stockAgingLatest.items, 'Performance Suite State');
+              return true;
+            }
+          } catch (e) {}
+        }
+
+        // 4. Preloaded sample data fallback
+        if (typeof window !== 'undefined' && window.PMG_PERFORMANCE_SAMPLE_DATA?.stockAgingLatest?.items) {
+          const items = window.PMG_PERFORMANCE_SAMPLE_DATA.stockAgingLatest.items;
+          if (Array.isArray(items) && items.length > 0) {
+            this.ingestAgingData(items, 'Preloaded Sample Aging Data');
+            return true;
+          }
+        }
+      } catch (err) {
+        console.warn('[PMG Pricing] Error loading stock aging data:', err);
+      }
+      this.updateAgingStatusUI();
+      return false;
+    }
+
+    ingestAgingData(items, sourceName = 'Live Data') {
+      if (!this.agingMap) this.agingMap = new Map();
+      if (!this.agingBaseCodeMap) this.agingBaseCodeMap = new Map();
+      if (!this.agingNameMap) this.agingNameMap = new Map();
+
+      this.agingMap.clear();
+      this.agingBaseCodeMap.clear();
+      this.agingNameMap.clear();
+
+      let totalAgedSkus = 0;
+      let totalAgedValue = 0;
+
+      (items || []).forEach(it => {
+        const rawCode = String(it.itemCode || it.code || '').trim();
+        if (!rawCode) return;
+
+        const exactCode = rawCode.toUpperCase();
+        const baseCode = exactCode.split(/[-/]/)[0].trim().toUpperCase();
+        const itemName = String(it.itemName || it.name || '').trim();
+
+        // Calculate aged quantity (>150 days)
+        let agedQty = 0;
+        if (typeof it.agedQty === 'number') {
+          agedQty = it.agedQty;
+        } else if (typeof it.agedQty6MPlus === 'number') {
+          agedQty = it.agedQty6MPlus;
+        } else {
+          agedQty = (parseFloat(it.d150_180) || 0) + (parseFloat(it.d180_210) || 0) +
+                    (parseFloat(it.d210_240) || 0) + (parseFloat(it.d240_270) || 0) +
+                    (parseFloat(it.d270_300) || 0) + (parseFloat(it.d300_330) || 0) +
+                    (parseFloat(it.d330_360) || 0) + (parseFloat(it.above1Yr) || 0);
+        }
+
+        // Determine highest age bracket
+        let maxBracket = '< 150d';
+        if ((parseFloat(it.above1Yr) || 0) > 0) maxBracket = '> 1 Year';
+        else if ((parseFloat(it.d330_360) || 0) > 0) maxBracket = '330-360d';
+        else if ((parseFloat(it.d300_330) || 0) > 0) maxBracket = '300-330d';
+        else if ((parseFloat(it.d270_300) || 0) > 0) maxBracket = '270-300d';
+        else if ((parseFloat(it.d240_270) || 0) > 0) maxBracket = '240-270d';
+        else if ((parseFloat(it.d210_240) || 0) > 0) maxBracket = '210-240d';
+        else if ((parseFloat(it.d180_210) || 0) > 0) maxBracket = '180-210d';
+        else if ((parseFloat(it.d150_180) || 0) > 0) maxBracket = '150-180d';
+        else if (agedQty > 0) maxBracket = '> 150d';
+
+        const cost = parseFloat(it.avgCost || it.averageCost || it.unitCost || it.costPrice || 0) || 0;
+        const agedValue = typeof it.agedValue === 'number' ? it.agedValue : +(agedQty * cost).toFixed(2);
+        const ohQty = parseFloat(it.ohQty || it.onHand || 0) || 0;
+
+        const record = {
+          itemCode: exactCode,
+          baseCode: baseCode,
+          itemName: itemName,
+          category: it.category || '',
+          ohQty: ohQty,
+          avgCost: cost,
+          agedQty: agedQty,
+          agedValue: agedValue,
+          maxBracket: maxBracket,
+          isAged: agedQty > 0
+        };
+
+        this.agingMap.set(exactCode, record);
+
+        if (itemName) {
+          this.agingNameMap.set(itemName.toUpperCase(), record);
+        }
+
+        // Aggregate by baseCode
+        if (!this.agingBaseCodeMap.has(baseCode)) {
+          this.agingBaseCodeMap.set(baseCode, {
+            itemCode: exactCode,
+            baseCode: baseCode,
+            itemName: itemName,
+            category: it.category || '',
+            ohQty: ohQty,
+            avgCost: cost,
+            agedQty: agedQty,
+            agedValue: agedValue,
+            maxBracket: maxBracket,
+            isAged: agedQty > 0,
+            variants: [record]
+          });
+        } else {
+          const agg = this.agingBaseCodeMap.get(baseCode);
+          agg.agedQty += agedQty;
+          agg.agedValue = +(agg.agedValue + agedValue).toFixed(2);
+          agg.ohQty += ohQty;
+          agg.variants.push(record);
+          if (agedQty > 0) agg.isAged = true;
+          const bracketPriority = { '> 1 Year': 8, '330-360d': 7, '300-330d': 6, '270-300d': 5, '240-270d': 4, '210-240d': 3, '180-210d': 2, '150-180d': 1, '> 150d': 1, '< 150d': 0 };
+          if ((bracketPriority[maxBracket] || 0) > (bracketPriority[agg.maxBracket] || 0)) {
+            agg.maxBracket = maxBracket;
+          }
+        }
+
+        if (agedQty > 0) {
+          totalAgedSkus++;
+          totalAgedValue += agedValue;
+        }
+      });
+
+      this.agingStats = {
+        totalAgedSkus,
+        totalAgedValue: +totalAgedValue.toFixed(2),
+        source: sourceName
+      };
+
+      this.updateAgingStatusUI();
+    }
+
+    async handleAgingFileUpload(event) {
+      const file = event?.target?.files?.[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const rows = this.parseCsv(text);
+        if (rows.length < 2) {
+          alert('Aging CSV file is empty or formatted incorrectly.');
+          return;
+        }
+
+        // Detect header row
+        let headerIdx = -1;
+        let colItemCode = -1;
+        let colItemName = -1;
+        let colCategory = -1;
+        let colOhQty = -1;
+        let colAvgCost = -1;
+        let col150_180 = -1;
+        let col180_210 = -1;
+        let col210_240 = -1;
+        let col240_270 = -1;
+        let col270_300 = -1;
+        let col300_330 = -1;
+        let col330_360 = -1;
+        let colAbove1Yr = -1;
+
+        for (let r = 0; r < Math.min(rows.length, 50); r++) {
+          const row = rows[r];
+          for (let c = 0; c < row.length; c++) {
+            const h = (row[c] || '').trim().toLowerCase();
+            if (h.includes('item code') || h === 'code') colItemCode = c;
+            else if (h.includes('item name') || h.includes('description')) colItemName = c;
+            else if (h.includes('category')) colCategory = c;
+            else if (h.includes('oh qty') || h.includes('on hand')) colOhQty = c;
+            else if (h.includes('avg cost') || h.includes('average cost')) colAvgCost = c;
+            else if (h.includes('150') && h.includes('180')) col150_180 = c;
+            else if (h.includes('180') && h.includes('210')) col180_210 = c;
+            else if (h.includes('210') && h.includes('240')) col210_240 = c;
+            else if (h.includes('240') && h.includes('270')) col240_270 = c;
+            else if (h.includes('270') && h.includes('300')) col270_300 = c;
+            else if (h.includes('300') && h.includes('330')) col300_330 = c;
+            else if (h.includes('330') && h.includes('360')) col330_360 = c;
+            else if (h.includes('above 1') || h.includes('> 1') || h.includes('1 year')) colAbove1Yr = c;
+          }
+          if (colItemCode !== -1 && (colItemName !== -1 || colAvgCost !== -1)) {
+            headerIdx = r;
+            break;
+          }
+        }
+
+        if (headerIdx === -1 || colItemCode === -1) {
+          alert('Could not find "Item Code" column in the uploaded Aging CSV. Please check the file headers.');
+          return;
+        }
+
+        const items = [];
+        for (let r = headerIdx + 1; r < rows.length; r++) {
+          const row = rows[r];
+          if (!row || row.length === 0) continue;
+          const code = (row[colItemCode] || '').trim();
+          if (!code || code.toLowerCase().includes('grand total')) continue;
+
+          const itemName = colItemName !== -1 ? (row[colItemName] || '').trim() : '';
+          const category = colCategory !== -1 ? (row[colCategory] || '').trim() : '';
+          const ohQty = colOhQty !== -1 ? Math.abs(this.cleanNumber(row[colOhQty])) : 0;
+          const avgCost = colAvgCost !== -1 ? this.cleanNumber(row[colAvgCost]) : 0;
+          const d150_180 = col150_180 !== -1 ? Math.abs(this.cleanNumber(row[col150_180])) : 0;
+          const d180_210 = col180_210 !== -1 ? Math.abs(this.cleanNumber(row[col180_210])) : 0;
+          const d210_240 = col210_240 !== -1 ? Math.abs(this.cleanNumber(row[col210_240])) : 0;
+          const d240_270 = col240_270 !== -1 ? Math.abs(this.cleanNumber(row[col240_270])) : 0;
+          const d270_300 = col270_300 !== -1 ? Math.abs(this.cleanNumber(row[col270_300])) : 0;
+          const d300_330 = col300_330 !== -1 ? Math.abs(this.cleanNumber(row[col300_330])) : 0;
+          const d330_360 = col330_360 !== -1 ? Math.abs(this.cleanNumber(row[col330_360])) : 0;
+          const above1Yr = colAbove1Yr !== -1 ? Math.abs(this.cleanNumber(row[colAbove1Yr])) : 0;
+
+          const agedQty = d150_180 + d180_210 + d210_240 + d240_270 + d270_300 + d300_330 + d330_360 + above1Yr;
+          const agedValue = +(agedQty * avgCost).toFixed(2);
+
+          items.push({
+            itemCode: code,
+            itemName,
+            category,
+            ohQty,
+            avgCost,
+            d150_180,
+            d180_210,
+            d210_240,
+            d240_270,
+            d270_300,
+            d300_330,
+            d330_360,
+            above1Yr,
+            agedQty,
+            agedValue
+          });
+        }
+
+        if (items.length === 0) {
+          alert('No data rows found in the uploaded Aging CSV.');
+          return;
+        }
+
+        try {
+          localStorage.setItem('pmg_stock_aging_cache_v1', JSON.stringify(items));
+        } catch (e) {
+          console.warn('[PMG Pricing] Could not cache stock aging to localStorage:', e);
+        }
+
+        this.ingestAgingData(items, file.name);
+        this.render();
+
+        if (typeof showExpiryToast === 'function') {
+          showExpiryToast(`✅ Imported Stock Aging: ${items.length} items (${this.agingStats.totalAgedSkus} aged, RM ${this.agingStats.totalAgedValue.toLocaleString()} locked capital)`);
+        }
+      } catch (err) {
+        console.error('[PMG Pricing] Aging upload error:', err);
+        alert('Failed to parse Aging CSV: ' + err.message);
+      } finally {
+        if (event.target) event.target.value = '';
+      }
+    }
+
+    getStockAgingForSku(sku) {
+      if (!this.agingMap || this.agingMap.size === 0) {
+        this.loadStockAging();
+      }
+      if (!sku) return null;
+
+      const rawCode = String(sku.code || '').trim().toUpperCase();
+      const rawName = String(sku.name || '').trim().toUpperCase();
+
+      if (rawCode && rawCode !== 'N/A') {
+        // 1. Exact match
+        if (this.agingMap && this.agingMap.has(rawCode)) {
+          return this.agingMap.get(rawCode);
+        }
+
+        // 2. Base code match (strip suffix like - CAP, / BOX70, etc.)
+        const baseCode = rawCode.split(/[-/]/)[0].trim().toUpperCase();
+        if (baseCode && this.agingBaseCodeMap && this.agingBaseCodeMap.has(baseCode)) {
+          return this.agingBaseCodeMap.get(baseCode);
+        }
+      }
+
+      // 3. Name match
+      if (rawName && this.agingNameMap && this.agingNameMap.has(rawName)) {
+        return this.agingNameMap.get(rawName);
+      }
+
+      return null;
+    }
+
+    diagnoseSkuPricingVsAging(sku, aging) {
+      if (!aging || !aging.agedQty || aging.agedQty <= 0) {
+        return {
+          status: 'HEALTHY',
+          statusText: 'Healthy Turnover',
+          badgeClass: 'text-slate-600 bg-slate-100 border-slate-200',
+          badgeIcon: 'fa-solid fa-check text-emerald-600',
+          isPricingIssue: false,
+          isAged: false,
+          agedQty: 0,
+          agedValue: 0,
+          maxBracket: 'Normal',
+          reason: 'No aged stock (>150 days). Inventory turnover is healthy.',
+          recommendation: 'Maintain standard shelf pricing and replenishment schedule.'
+        };
+      }
+
+      const isRx = this.isScheduledPrescriptionDrug(sku);
+      const sp = parseFloat(sku.standardSp) || 0;
+      const cost = parseFloat(sku.costPrice) || 0;
+      const margin = parseFloat(this.calculateMargin(cost, sp)) || 0;
+
+      // Identify lowest valid competitor price
+      const comps = [];
+      if (!isRx && sku.supermarketPrice && sku.supermarketPrice > 0) {
+        comps.push({ name: 'Farley', price: sku.supermarketPrice });
+      }
+      if (sku.chainPharmacyPrice && sku.chainPharmacyPrice > 0) {
+        comps.push({ name: sku.competitorName || 'Competitor Pharmacy', price: sku.chainPharmacyPrice });
+      }
+
+      let minComp = null;
+      if (comps.length > 0) {
+        minComp = comps.reduce((prev, curr) => (curr.price < prev.price ? curr : prev), comps[0]);
+      }
+
+      // Case 1: Competitor price exists
+      if (minComp && minComp.price > 0) {
+        const diff = +(sp - minComp.price).toFixed(2);
+        const pct = +(((sp - minComp.price) / minComp.price) * 100).toFixed(1);
+
+        if (diff > 0.10 || pct > 2.0) {
+          // Overpriced vs market
+          return {
+            status: 'AGING_PRICING_ISSUE',
+            statusText: 'Pricing Issue (Overpriced)',
+            badgeClass: 'text-rose-800 bg-rose-50 border-rose-300',
+            badgeIcon: 'fa-solid fa-circle-exclamation text-rose-600',
+            isPricingIssue: true,
+            isAged: true,
+            agedQty: aging.agedQty,
+            agedValue: aging.agedValue,
+            maxBracket: aging.maxBracket || '>150d',
+            compName: minComp.name,
+            compPrice: minComp.price,
+            diff,
+            pct,
+            reason: `Our price (RM ${sp.toFixed(2)}) is +RM ${diff.toFixed(2)} (+${pct}%) higher than ${minComp.name} (RM ${minComp.price.toFixed(2)}).`,
+            recommendation: `Customers are buying from ${minComp.name}. Match price to RM ${minComp.price.toFixed(2)} or run a clearance promo to unlock RM ${aging.agedValue.toFixed(2)}.`
+          };
+        } else {
+          // Competitive price: Slow turn is NOT due to price
+          return {
+            status: 'AGING_COMPETITIVE',
+            statusText: 'Non-Pricing (Competitive Price)',
+            badgeClass: 'text-emerald-800 bg-emerald-50 border-emerald-300',
+            badgeIcon: 'fa-solid fa-circle-check text-emerald-600',
+            isPricingIssue: false,
+            isAged: true,
+            agedQty: aging.agedQty,
+            agedValue: aging.agedValue,
+            maxBracket: aging.maxBracket || '>150d',
+            compName: minComp.name,
+            compPrice: minComp.price,
+            diff,
+            pct,
+            reason: `Our price (RM ${sp.toFixed(2)}) is competitive (matches/cheaper than ${minComp.name} at RM ${minComp.price.toFixed(2)}).`,
+            recommendation: `Slow movement is NOT caused by price. DO NOT reduce price (protects margin). Improve front counter display or initiate supplier return.`
+          };
+        }
+      }
+
+      // Case 2: Prescription Poisons Act Item (No competitor price, Poison B/C)
+      if (isRx) {
+        return {
+          status: 'AGING_RX',
+          statusText: 'Rx / Prescribing Dependent',
+          badgeClass: 'text-blue-800 bg-blue-50 border-blue-300',
+          badgeIcon: 'fa-solid fa-prescription text-blue-600',
+          isPricingIssue: false,
+          isAged: true,
+          agedQty: aging.agedQty,
+          agedValue: aging.agedValue,
+          maxBracket: aging.maxBracket || '>150d',
+          reason: `Scheduled Poison medicine. Supermarkets cannot carry. Sales velocity depends on clinic doctor prescribing, not retail price elasticity.`,
+          recommendation: `Inform local GP clinic doctors of stock availability, review prescribing trends, or request supplier exchange for fast-moving chronic drugs.`
+        };
+      }
+
+      // Case 3: High Margin Resistance (>= 50% GP with no competitor benchmark)
+      if (margin >= 50) {
+        return {
+          status: 'AGING_HIGH_MARGIN',
+          statusText: 'Potential Pricing (High Margin)',
+          badgeClass: 'text-amber-800 bg-amber-50 border-amber-300',
+          badgeIcon: 'fa-solid fa-triangle-exclamation text-amber-600',
+          isPricingIssue: true,
+          isAged: true,
+          agedQty: aging.agedQty,
+          agedValue: aging.agedValue,
+          maxBracket: aging.maxBracket || '>150d',
+          reason: `High gross margin (${margin}%). Possible consumer price resistance without staff actively cross-selling.`,
+          recommendation: `Audit competitor shelf price, test a 10-15% promotional bundle, or offer staff sales incentives to unlock RM ${aging.agedValue.toFixed(2)}.`
+        };
+      }
+
+      // Case 4: Standard Margin with no competitor benchmark
+      return {
+        status: 'AGING_UNLISTED',
+        statusText: 'Non-Pricing (Demand / Placement)',
+        badgeClass: 'text-slate-800 bg-slate-100 border-slate-300',
+        badgeIcon: 'fa-solid fa-boxes-stacked text-slate-600',
+        isPricingIssue: false,
+        isAged: true,
+        agedQty: aging.agedQty,
+        agedValue: aging.agedValue,
+        maxBracket: aging.maxBracket || '>150d',
+        reason: `Normal gross margin (${margin}%). Slow sales likely due to low category footfall, poor shelf placement, or overstocking.`,
+        recommendation: `Move to front checkout counter, conduct basket bundling, or return near-expiry units to supplier for RM ${aging.agedValue.toFixed(2)} credit.`
+      };
+    }
+
+    updateAgingStatusUI() {
+      const badge = document.getElementById('pricingSummaryAgingStatusBadge');
+      if (badge) {
+        const sourceLabel = this.agingStats?.source || (this.agingMap && this.agingMap.size > 0 ? 'Connected' : 'No Data');
+        const shortLabel = sourceLabel.length > 15 ? sourceLabel.substring(0, 15) + '…' : sourceLabel;
+        badge.textContent = shortLabel;
+        badge.title = `Stock Aging Source: ${this.agingStats?.source || 'None'} (${this.agingMap ? this.agingMap.size : 0} items indexed)`;
+        if (this.agingMap && this.agingMap.size > 0) {
+          badge.className = 'text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200';
+        } else {
+          badge.className = 'text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200';
+        }
+      }
+    }
+
+    toggleAgingSort() {
+      if (this.sortField !== 'aged_value') {
+        this.sortField = 'aged_value';
+        this.agingSortOrder = 'desc';
+      } else if (this.agingSortOrder === 'desc') {
+        this.agingSortOrder = 'asc';
+      } else {
+        this.agingSortOrder = 'none';
+        this.sortField = 'none';
+      }
+      this.supermarketDevSortOrder = 'none';
+      this.chainDevSortOrder = 'none';
+      this.marginSortOrder = 'none';
+      this.updateSortIcons();
+      this.currentPage = 1;
+      this.renderTableOnly();
+      if (typeof showExpiryToast === 'function') {
+        const label = this.agingSortOrder === 'desc' 
+          ? 'Highest Aged Stock Value (RM) First' 
+          : this.agingSortOrder === 'asc' 
+          ? 'Lowest Aged Stock Value (RM) First' 
+          : 'Default Order';
+        showExpiryToast(`Sorted Stock Aging: ${label}`);
+      }
+    }
+
     // ─── MATRIX SORTING (GROSS MARGIN & COMPETITOR DEVIATIONS) ─────────────────
     toggleMarginSort() {
       this.sortField = 'margin';
       this.supermarketDevSortOrder = 'none';
       this.chainDevSortOrder = 'none';
+      this.agingSortOrder = 'none';
 
       if (this.marginSortOrder === 'none' || !this.marginSortOrder) {
         this.marginSortOrder = 'desc';
@@ -886,6 +1381,7 @@
       this.sortField = 'supermarket_dev';
       this.marginSortOrder = 'none';
       this.chainDevSortOrder = 'none';
+      this.agingSortOrder = 'none';
 
       if (this.supermarketDevSortOrder === 'none' || !this.supermarketDevSortOrder) {
         this.supermarketDevSortOrder = 'desc';
@@ -912,6 +1408,7 @@
       this.sortField = 'chain_dev';
       this.marginSortOrder = 'none';
       this.supermarketDevSortOrder = 'none';
+      this.agingSortOrder = 'none';
 
       if (this.chainDevSortOrder === 'none' || !this.chainDevSortOrder) {
         this.chainDevSortOrder = 'desc';
@@ -935,46 +1432,66 @@
     }
 
     setSortCriteria(criteria) {
-      if (criteria === 'super_dev_desc') {
+      if (criteria === 'aged_value_desc') {
+        this.sortField = 'aged_value';
+        this.agingSortOrder = 'desc';
+        this.supermarketDevSortOrder = 'none';
+        this.chainDevSortOrder = 'none';
+        this.marginSortOrder = 'none';
+      } else if (criteria === 'aged_qty_desc') {
+        this.sortField = 'aged_qty';
+        this.agingSortOrder = 'desc';
+        this.supermarketDevSortOrder = 'none';
+        this.chainDevSortOrder = 'none';
+        this.marginSortOrder = 'none';
+      } else if (criteria === 'super_dev_desc') {
         this.sortField = 'supermarket_dev';
         this.supermarketDevSortOrder = 'desc';
         this.chainDevSortOrder = 'none';
         this.marginSortOrder = 'none';
+        this.agingSortOrder = 'none';
       } else if (criteria === 'super_dev_asc') {
         this.sortField = 'supermarket_dev';
         this.supermarketDevSortOrder = 'asc';
         this.chainDevSortOrder = 'none';
         this.marginSortOrder = 'none';
+        this.agingSortOrder = 'none';
       } else if (criteria === 'chain_dev_desc') {
         this.sortField = 'chain_dev';
         this.chainDevSortOrder = 'desc';
         this.supermarketDevSortOrder = 'none';
         this.marginSortOrder = 'none';
+        this.agingSortOrder = 'none';
       } else if (criteria === 'chain_dev_asc') {
         this.sortField = 'chain_dev';
         this.chainDevSortOrder = 'asc';
         this.supermarketDevSortOrder = 'none';
         this.marginSortOrder = 'none';
+        this.agingSortOrder = 'none';
       } else if (criteria === 'abs_dev_desc') {
         this.sortField = 'abs_dev';
         this.supermarketDevSortOrder = 'none';
         this.chainDevSortOrder = 'none';
         this.marginSortOrder = 'none';
+        this.agingSortOrder = 'none';
       } else if (criteria === 'margin_desc') {
         this.sortField = 'margin';
         this.marginSortOrder = 'desc';
         this.supermarketDevSortOrder = 'none';
         this.chainDevSortOrder = 'none';
+        this.agingSortOrder = 'none';
       } else if (criteria === 'margin_asc') {
         this.sortField = 'margin';
         this.marginSortOrder = 'asc';
         this.supermarketDevSortOrder = 'none';
         this.chainDevSortOrder = 'none';
+        this.agingSortOrder = 'none';
       } else {
         this.sortField = 'none';
         this.marginSortOrder = 'none';
         this.supermarketDevSortOrder = 'none';
         this.chainDevSortOrder = 'none';
+        this.agingSortOrder = 'none';
       }
       this.updateSortIcons();
       this.currentPage = 1;
@@ -985,7 +1502,24 @@
       const marginIcon = document.getElementById('pricingMarginSortIcon');
       const superIcon = document.getElementById('pricingSupermarketSortIcon');
       const chainIcon = document.getElementById('pricingChainSortIcon');
+      const agingIcon = document.getElementById('pricingAgingSortIcon');
       const sortSelect = document.getElementById('pricingSortSelect');
+
+      if (agingIcon) {
+        if (this.sortField === 'aged_value') {
+          if (this.agingSortOrder === 'desc') {
+            agingIcon.innerHTML = '<i class="fa-solid fa-arrow-down-wide-short text-rose-600"></i>';
+          } else if (this.agingSortOrder === 'asc') {
+            agingIcon.innerHTML = '<i class="fa-solid fa-arrow-up-wide-short text-rose-600"></i>';
+          } else {
+            agingIcon.innerHTML = '<i class="fa-solid fa-sort text-gray-400"></i>';
+          }
+        } else if (this.sortField === 'aged_qty') {
+          agingIcon.innerHTML = '<i class="fa-solid fa-arrow-down-1-9 text-rose-600"></i>';
+        } else {
+          agingIcon.innerHTML = '<i class="fa-solid fa-sort text-gray-400"></i>';
+        }
+      }
 
       if (marginIcon) {
         if (this.sortField === 'margin' && this.marginSortOrder === 'desc') {
@@ -1018,7 +1552,11 @@
       }
 
       if (sortSelect) {
-        if (this.sortField === 'supermarket_dev') {
+        if (this.sortField === 'aged_value') {
+          sortSelect.value = 'aged_value_desc';
+        } else if (this.sortField === 'aged_qty') {
+          sortSelect.value = 'aged_qty_desc';
+        } else if (this.sortField === 'supermarket_dev') {
           sortSelect.value = this.supermarketDevSortOrder === 'asc' ? 'super_dev_asc' : 'super_dev_desc';
         } else if (this.sortField === 'chain_dev') {
           sortSelect.value = this.chainDevSortOrder === 'asc' ? 'chain_dev_asc' : 'chain_dev_desc';
@@ -1397,11 +1935,47 @@
             }
           }
         }
+
+        // Stock aging & pricing diagnostic filter
+        if (this.activeAgingFilter && this.activeAgingFilter !== 'ALL') {
+          const aging = this.getStockAgingForSku(s);
+          const diag = this.diagnoseSkuPricingVsAging(s, aging);
+
+          if (this.activeAgingFilter === 'ALL_AGING') {
+            if (!diag.isAged) return false;
+          } else if (this.activeAgingFilter === 'AGING_PRICING_ISSUE') {
+            if (diag.status !== 'AGING_PRICING_ISSUE') return false;
+          } else if (this.activeAgingFilter === 'AGING_COMPETITIVE') {
+            if (diag.status !== 'AGING_COMPETITIVE') return false;
+          } else if (this.activeAgingFilter === 'AGING_HIGH_MARGIN') {
+            if (diag.status !== 'AGING_HIGH_MARGIN') return false;
+          } else if (this.activeAgingFilter === 'AGING_RX') {
+            if (diag.status !== 'AGING_RX') return false;
+          } else if (this.activeAgingFilter === 'HEALTHY') {
+            if (diag.isAged) return false;
+          }
+        }
         return true;
       });
 
       // Sorting
-      if (this.sortField === 'supermarket_dev') {
+      if (this.sortField === 'aged_value') {
+        list.sort((a, b) => {
+          const agA = this.getStockAgingForSku(a);
+          const agB = this.getStockAgingForSku(b);
+          const valA = agA ? (agA.agedValue || 0) : 0;
+          const valB = agB ? (agB.agedValue || 0) : 0;
+          return this.agingSortOrder === 'asc' ? valA - valB : valB - valA;
+        });
+      } else if (this.sortField === 'aged_qty') {
+        list.sort((a, b) => {
+          const agA = this.getStockAgingForSku(a);
+          const agB = this.getStockAgingForSku(b);
+          const qtyA = agA ? (agA.agedQty || 0) : 0;
+          const qtyB = agB ? (agB.agedQty || 0) : 0;
+          return qtyB - qtyA;
+        });
+      } else if (this.sortField === 'supermarket_dev') {
         list.sort((a, b) => {
           const isRxA = this.isScheduledPrescriptionDrug(a);
           const isRxB = this.isScheduledPrescriptionDrug(b);
@@ -2068,12 +2642,25 @@
       let totalMarginSum = 0;
       let kviCount = 0;
       let marginBuilderCount = 0;
+      let agedSkusCount = 0;
+      let totalLockedValue = 0;
+      let pricingIssueCount = 0;
+      let competitiveCount = 0;
 
       this.skus.forEach(s => {
         const m = parseFloat(this.calculateMargin(s.costPrice, s.standardSp)) || 0;
         totalMarginSum += m;
         if (s.strategyTag === 'kvi_defensive') kviCount++;
         if (s.strategyTag === 'margin_builder') marginBuilderCount++;
+
+        const ag = this.getStockAgingForSku(s);
+        if (ag && ag.agedQty > 0) {
+          agedSkusCount++;
+          totalLockedValue += (ag.agedValue || 0);
+          const diag = this.diagnoseSkuPricingVsAging(s, ag);
+          if (diag.isPricingIssue) pricingIssueCount++;
+          else competitiveCount++;
+        }
       });
 
       const avgMargin = totalSkus > 0 ? (totalMarginSum / totalSkus).toFixed(1) : 0;
@@ -2082,11 +2669,24 @@
       const elAvg = document.getElementById('pricingSummaryAvgMargin');
       const elKvi = document.getElementById('pricingSummaryKvis');
       const elBuilders = document.getElementById('pricingSummaryBuilders');
+      const elAgedCount = document.getElementById('pricingSummaryAgedCount');
+      const elAgedVal = document.getElementById('pricingSummaryAgedValue');
+      const elBadge = document.getElementById('pricingSummaryAgingStatusBadge');
 
-      if (elTotal) elTotal.textContent = totalSkus;
+      if (elTotal) elTotal.textContent = totalSkus.toLocaleString();
       if (elAvg) elAvg.textContent = `${avgMargin}%`;
-      if (elKvi) elKvi.textContent = kviCount;
-      if (elBuilders) elBuilders.textContent = marginBuilderCount;
+      if (elKvi) elKvi.textContent = kviCount.toLocaleString();
+      if (elBuilders) elBuilders.textContent = marginBuilderCount.toLocaleString();
+      if (elAgedCount) elAgedCount.textContent = agedSkusCount.toLocaleString();
+      if (elAgedVal) {
+        elAgedVal.innerHTML = `RM ${totalLockedValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Locked<br><span class="text-[10px] text-gray-500 font-normal">🔴 ${pricingIssueCount} Pricing · 🟢 ${competitiveCount} Non-Pricing</span>`;
+      }
+      if (elBadge) {
+        const sourceLabel = this.agingStats?.source || (this.agingMap && this.agingMap.size > 0 ? 'Connected' : 'No Data');
+        const shortLabel = sourceLabel.length > 15 ? sourceLabel.substring(0, 15) + '…' : sourceLabel;
+        elBadge.textContent = shortLabel;
+        elBadge.title = `Stock Aging Source: ${this.agingStats?.source || 'None'} (${this.agingMap ? this.agingMap.size : 0} items indexed)`;
+      }
     }
 
     renderTableOnly() {
@@ -2099,7 +2699,7 @@
         if (this.skus.length === 0) {
           tbody.innerHTML = `
             <tr>
-              <td colspan="8" class="text-center py-12 text-gray-500 bg-white">
+              <td colspan="9" class="text-center py-12 text-gray-500 bg-white">
                 <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-3 text-2xl shadow-xs">
                   <i class="fa-solid fa-file-csv"></i>
                 </div>
@@ -2123,7 +2723,7 @@
         } else {
           tbody.innerHTML = `
             <tr>
-              <td colspan="8" class="text-center py-8 text-gray-400 text-xs bg-white">
+              <td colspan="9" class="text-center py-8 text-gray-400 text-xs bg-white">
                 <i class="fa-solid fa-box-open text-2xl mb-2 text-gray-300 block"></i>
                 No SKUs matching the current filter. Try adjusting your search query or category.
               </td>
@@ -2145,6 +2745,43 @@
       pageSkus.forEach(s => {
         const margin = this.calculateMargin(s.costPrice, s.standardSp);
         const profit = this.calculateProfit(s.costPrice, s.standardSp);
+
+        // Stock aging & pricing diagnostic for this SKU
+        const aging = this.getStockAgingForSku(s);
+        const diag = this.diagnoseSkuPricingVsAging(s, aging);
+
+        let agingCellHtml = '';
+        if (diag.isAged) {
+          agingCellHtml = `
+            <div class="space-y-1">
+              <div class="flex items-center justify-between gap-1 flex-wrap">
+                <span class="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded ${diag.badgeClass} border">
+                  <i class="${diag.badgeIcon}"></i> ${diag.statusText}
+                </span>
+                <span class="text-[9px] font-bold text-gray-600 bg-slate-100 border border-slate-200 px-1 py-0.2 rounded" title="Oldest Aging Bracket">
+                  ${diag.maxBracket}
+                </span>
+              </div>
+              <div class="flex items-center justify-between text-[11px] font-mono">
+                <span class="font-bold text-rose-700">⚠️ ${diag.agedQty.toLocaleString()} units</span>
+                <span class="text-gray-900 font-bold">RM ${diag.agedValue.toFixed(2)}</span>
+              </div>
+              <div class="text-[10px] text-gray-700 bg-slate-50 border border-gray-200 rounded p-1.5 leading-snug" title="${diag.recommendation.replace(/"/g, '&quot;')}">
+                <div class="font-semibold text-gray-800">${diag.reason}</div>
+                <div class="text-gray-600 mt-0.5 font-medium italic"><i class="fa-solid fa-lightbulb text-amber-500 mr-1"></i>${diag.recommendation}</div>
+              </div>
+            </div>
+          `;
+        } else {
+          agingCellHtml = `
+            <div class="text-center py-2">
+              <span class="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                <i class="fa-solid fa-check text-emerald-600"></i> Healthy Turn
+              </span>
+              <div class="text-[9px] text-gray-400 font-mono mt-0.5">0 Aged Units (&lt;150d)</div>
+            </div>
+          `;
+        }
 
         // Tag styling
         let tagBadge = '';
@@ -2289,6 +2926,9 @@
             </td>
             <td class="p-3 text-right">
               ${chainComp}
+            </td>
+            <td class="p-3 align-top">
+              ${agingCellHtml}
             </td>
             <td class="p-3 text-center">
               <div class="flex items-center justify-center gap-1.5 flex-wrap">
@@ -2543,6 +3183,14 @@
       const isRx = this.isScheduledPrescriptionDrug(sku);
       const genericHint = this.getGenericDrugHint(sku);
       const knownBench = this.getKnownMalaysianBenchmark(sku);
+      const aging = this.getStockAgingForSku(sku);
+      const diag = this.diagnoseSkuPricingVsAging(sku, aging);
+      const agingContext = diag.isAged ? `\nSTOCK AGING & VELOCITY INTELLIGENCE:
+- Aged Stock (>150 Days): ${diag.agedQty} units (Locked Capital: RM ${diag.agedValue.toFixed(2)})
+- Oldest Aging Bracket: ${diag.maxBracket}
+- Current Pricing Diagnosis: ${diag.statusText}
+- Diagnostic Finding: ${diag.reason}
+- Direct Directive: Provide a price or promo recommendation specifically tailored to unfreeze this locked inventory.\n` : '';
 
       if (title) title.textContent = `Competitor Price Benchmark Analysis: ${sku.name}`;
       if (input) {
@@ -2554,7 +3202,7 @@ DO NOT anchor to or assume any user-entered price. Conduct an authentic market s
 Product: ${sku.name}
 ${genericHint ? 'Active Formulation / Packaging: ' + genericHint + '\n' : ''}Category: ${sku.category || 'Prescription Medicine'} (Poisons Act 1952 - Group B/C Poison)
 Wholesale Trade Cost: RM ${sku.costPrice > 0 ? sku.costPrice.toFixed(2) : '15.00 - 25.00 trade range'}
-
+${agingContext}
 CRITICAL REGULATORY RULE (Malaysian Poisons Act 1952):
 - This item is a scheduled prescription poison. Supermarkets and hypermarkets (Farley Supermarket, Emart Hypermarket, Everwin) CANNOT legally stock, sell, or dispense this medicine.
 - "supermarketPrice" MUST be null.
@@ -2585,7 +3233,7 @@ Product: ${sku.name}
 ${genericHint ? 'Specification / Size: ' + genericHint + '\n' : ''}Category: ${sku.category || 'OTC / Healthcare'}
 Brand: ${sku.brand || 'Retail'}
 Wholesale Trade Cost: RM ${sku.costPrice > 0 ? sku.costPrice.toFixed(2) : 'Trade Reference'}
-
+${agingContext}
 Target Retail Competitors in Kuching & Padawan, Sarawak:
 1. Supermarkets / Hypermarkets: Farley Supermarket (6th Mile), Emart Hypermarket (Batu Kawa/Matang), Everwin.
 2. Licensed Pharmacies: Alpro Pharmacy, Caring Pharmacy, BIG Pharmacy, Ting Pharmacy Kuching, Watsons, Guardian.
@@ -2621,6 +3269,14 @@ IMPORTANT: Return the detected competitor price numbers at the end inside a stri
       const title = document.getElementById('pricingAiModalTitle');
       const input = document.getElementById('pricingAiPromptInput');
       const isRx = this.isScheduledPrescriptionDrug(sku);
+      const aging = this.getStockAgingForSku(sku);
+      const diag = this.diagnoseSkuPricingVsAging(sku, aging);
+      const agingStrategyContext = diag.isAged ? `\nREAL-TIME STOCK AGING & CAPITAL STATUS:
+- Current Aged Stock (>150 Days): ${diag.agedQty} units
+- Locked Capital Value: RM ${diag.agedValue.toFixed(2)}
+- Oldest Age Bracket: ${diag.maxBracket}
+- Pricing Diagnosis: ${diag.statusText} (${diag.reason})
+- Strategic Clearance Priority: Immediate actionable tactics required to clear aged inventory (e.g. promo markdown, staff push, counter placement, or supplier credit return).\n` : '';
 
       if (title) title.textContent = `Market Strategy & Commercial Dynamics: ${sku.name}`;
       if (input) {
@@ -2632,7 +3288,7 @@ Supplier/Distributor: ${sku.supplier || 'Standard Distributor'}
 PMG Custom Cost Price: RM ${sku.costPrice.toFixed(2)}
 Current PMG Standard Selling Price: RM ${sku.standardSp.toFixed(2)}
 Competitor Chain Benchmark: ${sku.chainPharmacyPrice ? 'RM ' + sku.chainPharmacyPrice.toFixed(2) : 'N/A'}
-Target Market: Kuching & Padawan, Sarawak (7 Outlets: Kota Sentosa, Matang Jaya, Sungai Moyan, Malihah, Metrocity, Astana, Samariang).
+${agingStrategyContext}Target Market: Kuching & Padawan, Sarawak (7 Outlets: Kota Sentosa, Matang Jaya, Sungai Moyan, Malihah, Metrocity, Astana, Samariang).
 
 Please provide an actionable 7-outlet battle plan:
 1. Patient Adherence & Price Elasticity:
@@ -2654,7 +3310,7 @@ PMG Custom Cost Price: RM ${sku.costPrice.toFixed(2)}
 Current PMG Standard Selling Price: RM ${sku.standardSp.toFixed(2)}
 Supermarket Benchmark (Farley / Emart): ${sku.supermarketPrice ? 'RM ' + sku.supermarketPrice.toFixed(2) : 'N/A'}
 Competitor Chain Benchmark: ${sku.chainPharmacyPrice ? 'RM ' + sku.chainPharmacyPrice.toFixed(2) : 'N/A'}
-Target Market: Kuching & Padawan, Sarawak (7 Outlets: Kota Sentosa, Matang Jaya, Sungai Moyan, Malihah, Metrocity, Astana, Samariang).
+${agingStrategyContext}Target Market: Kuching & Padawan, Sarawak (7 Outlets: Kota Sentosa, Matang Jaya, Sungai Moyan, Malihah, Metrocity, Astana, Samariang).
 
 Please provide an actionable 7-outlet battle plan:
 1. Customer Price Elasticity & Psychology:

@@ -1432,7 +1432,7 @@
       </div>
 
       <!-- KPI Summary Cards -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
           <div class="text-xs text-gray-500 font-semibold uppercase mb-1">Monitored SKUs</div>
           <div id="pricingSummaryTotalSkus" class="text-2xl font-bold text-gray-900 font-mono">—</div>
@@ -1452,6 +1452,14 @@
           <div class="text-xs text-gray-500 font-semibold uppercase mb-1">High-Margin Builders</div>
           <div id="pricingSummaryBuilders" class="text-2xl font-bold text-purple-600 font-mono">—</div>
           <div class="text-[11px] text-purple-700 mt-0.5">PMG House Brands &gt; 50% Margin</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+          <div class="text-xs text-gray-500 font-semibold uppercase mb-1 flex items-center justify-between">
+            <span>Stock Aging &amp; Capital</span>
+            <span id="pricingSummaryAgingStatusBadge" class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">Active</span>
+          </div>
+          <div id="pricingSummaryAgedCount" class="text-2xl font-bold text-rose-600 font-mono">—</div>
+          <div id="pricingSummaryAgedValue" class="text-[11px] text-gray-600 mt-0.5 font-medium leading-tight">RM 0.00 Locked Capital</div>
         </div>
       </div>
 
@@ -1508,6 +1516,20 @@
               <option value="clinical_bundle">💎 Clinical Moat</option>
             </select>
 
+            <!-- Aging Diagnostic Filter -->
+            <select id="pricingAgingDiagnosticFilter"
+              onchange="window.pmgPricing.activeAgingFilter = this.value; window.pmgPricing.currentPage = 1; window.pmgPricing.renderTableOnly();"
+              class="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white outline-none"
+              title="Filter by stock aging cross-reference and pricing diagnosis">
+              <option value="ALL">All Aging Status</option>
+              <option value="ALL_AGING">⚠️ All Aged Items (&gt;150 Days)</option>
+              <option value="AGING_PRICING_ISSUE">🔴 Aged: Pricing Issue (Overpriced vs Market)</option>
+              <option value="AGING_COMPETITIVE">🟢 Aged: Non-Pricing Issue (Competitive Price)</option>
+              <option value="AGING_HIGH_MARGIN">🟡 Aged: High Margin Resistance (&ge; 50% GP)</option>
+              <option value="AGING_RX">🔵 Aged: Rx Prescribing Dependent</option>
+              <option value="HEALTHY">⚪ Healthy Turnover (0 Aged Stock)</option>
+            </select>
+
             <!-- Competitor / Deviation Filter -->
             <select id="pricingCompetitorFilter"
               onchange="window.pmgPricing.activeCompetitorFilter = this.value; window.pmgPricing.currentPage = 1; window.pmgPricing.renderTableOnly();"
@@ -1531,8 +1553,10 @@
             <select id="pricingSortSelect"
               onchange="window.pmgPricing && window.pmgPricing.setSortCriteria(this.value);"
               class="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white outline-none"
-              title="Sort products by competitor deviation or margin">
+              title="Sort products by competitor deviation, stock aging, or margin">
               <option value="default">Sort: Default Order</option>
+              <option value="aged_value_desc">Sort: Highest Aged Value (RM Locked)</option>
+              <option value="aged_qty_desc">Sort: Highest Aged Quantity (Units)</option>
               <option value="super_dev_desc">Sort: Farley Overpriced First (+% Dev)</option>
               <option value="super_dev_asc">Sort: Farley Cheaper First (-% Dev)</option>
               <option value="chain_dev_desc">Sort: Pharmacy Overpriced First (+% Dev)</option>
@@ -1544,6 +1568,12 @@
           </div>
 
           <div class="flex items-center gap-2 flex-wrap">
+            <input type="file" id="pricingAgingFileInput" accept=".csv" class="hidden" onchange="window.pmgPricing && window.pmgPricing.handleAgingFileUpload(event)">
+            <button type="button" onclick="document.getElementById('pricingAgingFileInput').click()"
+              class="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-2xs"
+              title="Upload Xilnex [Admin] Aging CSV to cross-reference stock aging data with pricing matrix">
+              <i class="fa-solid fa-boxes-stacked"></i> Upload Aging CSV
+            </button>
             <button type="button" onclick="openXilnexImportModal()"
               class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-2xs"
               title="Upload PMG Xilnex Item List CSV/Excel Export">
@@ -1622,7 +1652,14 @@
                     </div>
                     <div class="text-[9px] text-gray-400 font-normal normal-case tracking-normal">Alpro · Caring · BIG · Ting</div>
                   </th>
-                  <th class="p-3 text-center w-64 min-w-[240px]">AI Strategic Intelligence</th>
+                  <th class="p-3 text-center w-60 min-w-[220px] cursor-pointer hover:bg-slate-200 select-none transition" onclick="window.pmgPricing && window.pmgPricing.toggleAgingSort()" title="Click to sort by Aged Stock Value (Highest to Lowest)">
+                    <div class="flex items-center justify-center gap-1">
+                      <span>Stock Aging &amp; Diagnostic</span>
+                      <span id="pricingAgingSortIcon"><i class="fa-solid fa-sort text-gray-400"></i></span>
+                    </div>
+                    <div class="text-[9px] text-gray-400 font-normal lowercase tracking-normal">Xilnex &gt;150d · Pricing vs Demand</div>
+                  </th>
+                  <th class="p-3 text-center w-56 min-w-[220px]">AI Strategic Intelligence</th>
                 </tr>
               </thead>
               <datalist id="pmgSupplierList">
@@ -4795,7 +4832,7 @@ ItemCode,Description,Brand,Category,Cost,SellingPrice,Supplier
 <script src="js/hq_return_policy.js?v=20261024_v7"></script>
 <script src="js/expiry.js?v=20261110_clean_wa_v1"></script>
 <script src="js/returns-cn.js?v=20261110_no_deadline_v8"></script>
-<script src="js/pricing-intelligence.js?v=20261110_v8"></script>
+<script src="js/pricing-intelligence.js?v=20261111_aging_diag_v10"></script>
 <script src="js/recruitment.js?v=20261110_clean_wa_v1"></script>
 <script src="js/admin-assets.js?v=20261024_v7"></script>
 <script src="js/commercial-admin.js?v=20261110_no_lhdn_v3"></script>
