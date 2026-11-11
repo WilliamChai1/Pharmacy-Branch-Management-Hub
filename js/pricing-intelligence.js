@@ -10,409 +10,10 @@
   // ─── DEFAULT BENCHMARK SKUs (Clean Slate for Xilnex Import) ─────
   const DEFAULT_SKUS = [];
 
-  // ─── CURATED MALAYSIAN PHARMACY RETAIL BENCHMARK DICTIONARY ─────────────────
-  // Verified market retail benchmarks across Malaysian Community Pharmacies
-  // (BIG Pharmacy, Alpro Pharmacy, Caring Pharmacy, Ting Pharmacy Kuching, DoctorOnCall)
-  const KNOWN_MALAYSIAN_BENCHMARKS = [
-    {
-      regex: /ACETAN\s*HCT/i,
-      name: 'ACETAN HCT 50/12.5',
-      category: 'CHRONIC / PRESCRIPTION',
-      cost: 16.00,
-      retailSp: 18.50,
-      competitor: 'BIG Pharmacy',
-      note: 'Losartan 50/12.5 (30s Box/Strip)',
-      isRx: true
-    },
-    {
-      regex: /ACETAN\s*(50|TAB)?/i,
-      name: 'ACETAN 50MG',
-      category: 'CHRONIC / PRESCRIPTION',
-      cost: 13.50,
-      retailSp: 16.00,
-      competitor: 'BIG Pharmacy',
-      note: 'Losartan Potassium 50mg (30s)',
-      isRx: true
-    },
-    {
-      regex: /SPIRIVA.*RESPIMAT/i,
-      name: 'SPIRIVA RESPIMAT REFILL 4ML',
-      category: 'CHRONIC / PRESCRIPTION',
-      cost: 193.60,
-      retailSp: 218.00,
-      competitor: 'BIG Pharmacy / Alpro',
-      note: 'Tiotropium 2.5mcg Refill (60 puffs)',
-      isRx: true
-    },
-    {
-      regex: /CRESTOR\s*10/i,
-      name: 'CRESTOR 10MG',
-      category: 'CHRONIC / PRESCRIPTION',
-      cost: 88.00,
-      retailSp: 102.00,
-      competitor: 'Alpro Pharmacy',
-      note: 'Rosuvastatin 10mg 28s',
-      isRx: true
-    },
-    {
-      regex: /CRESTOR\s*20/i,
-      name: 'CRESTOR 20MG',
-      category: 'CHRONIC / PRESCRIPTION',
-      cost: 145.00,
-      retailSp: 168.00,
-      competitor: 'Alpro Pharmacy',
-      note: 'Rosuvastatin 20mg 28s',
-      isRx: true
-    },
-    {
-      regex: /LIPITOR\s*(10|20|40)/i,
-      name: 'LIPITOR 20MG',
-      category: 'CHRONIC / PRESCRIPTION',
-      cost: 95.00,
-      retailSp: 110.00,
-      competitor: 'BIG Pharmacy',
-      note: 'Atorvastatin 20mg 30s',
-      isRx: true
-    },
-    {
-      regex: /NORVASC\s*5/i,
-      name: 'NORVASC 5MG',
-      category: 'CHRONIC / PRESCRIPTION',
-      cost: 45.00,
-      retailSp: 54.00,
-      competitor: 'Alpro Pharmacy',
-      note: 'Amlodipine 5mg 30s',
-      isRx: true
-    },
-    {
-      regex: /NORVASC\s*10/i,
-      name: 'NORVASC 10MG',
-      category: 'CHRONIC / PRESCRIPTION',
-      cost: 72.00,
-      retailSp: 85.00,
-      competitor: 'Alpro Pharmacy',
-      note: 'Amlodipine 10mg 30s',
-      isRx: true
-    },
-    {
-      regex: /COVERSYL\s*(4|5|8)/i,
-      name: 'COVERSYL 5MG',
-      category: 'CHRONIC / PRESCRIPTION',
-      cost: 58.00,
-      retailSp: 68.00,
-      competitor: 'Caring Pharmacy',
-      note: 'Perindopril Arginine 30s',
-      isRx: true
-    },
-    {
-      regex: /GLUCOPHAGE\s*XR\s*500/i,
-      name: 'GLUCOPHAGE XR 500MG',
-      category: 'CHRONIC / PRESCRIPTION',
-      cost: 26.00,
-      retailSp: 32.00,
-      competitor: 'Alpro Pharmacy',
-      note: 'Metformin XR 500mg 60s',
-      isRx: true
-    },
-    {
-      regex: /GLUCOPHAGE\s*XR\s*(750|1000)/i,
-      name: 'GLUCOPHAGE XR 750MG/1000MG',
-      category: 'CHRONIC / PRESCRIPTION',
-      cost: 38.00,
-      retailSp: 46.00,
-      competitor: 'BIG Pharmacy',
-      note: 'Metformin XR',
-      isRx: true
-    },
-    {
-      regex: /GLUCOPHAGE\s*500/i,
-      name: 'GLUCOPHAGE 500MG',
-      category: 'CHRONIC / PRESCRIPTION',
-      cost: 18.00,
-      retailSp: 22.00,
-      competitor: 'BIG Pharmacy',
-      note: 'Metformin HCl 500mg 100s',
-      isRx: true
-    },
-    {
-      regex: /FORXIGA\s*10/i,
-      name: 'FORXIGA 10MG',
-      category: 'CHRONIC / PRESCRIPTION',
-      cost: 138.00,
-      retailSp: 158.00,
-      competitor: 'Alpro Pharmacy',
-      note: 'Dapagliflozin 10mg 28s',
-      isRx: true
-    },
-    {
-      regex: /JARDIANCE\s*10/i,
-      name: 'JARDIANCE 10MG',
-      category: 'CHRONIC / PRESCRIPTION',
-      cost: 140.00,
-      retailSp: 160.00,
-      competitor: 'BIG Pharmacy',
-      note: 'Empagliflozin 10mg 30s',
-      isRx: true
-    },
-    {
-      regex: /JARDIANCE\s*25/i,
-      name: 'JARDIANCE 25MG',
-      category: 'CHRONIC / PRESCRIPTION',
-      cost: 165.00,
-      retailSp: 188.00,
-      competitor: 'BIG Pharmacy',
-      note: 'Empagliflozin 25mg 30s',
-      isRx: true
-    },
-    {
-      regex: /VENTOLIN\s*EVOHALER/i,
-      name: 'VENTOLIN EVOHALER 100MCG',
-      category: 'CHRONIC / PRESCRIPTION',
-      cost: 13.50,
-      retailSp: 16.50,
-      competitor: 'BIG Pharmacy',
-      note: 'Salbutamol 200 doses',
-      isRx: true
-    },
-    {
-      regex: /SYMBICORT.*(160|320)/i,
-      name: 'SYMBICORT TURBUHALER',
-      category: 'CHRONIC / PRESCRIPTION',
-      cost: 78.00,
-      retailSp: 92.00,
-      competitor: 'Alpro Pharmacy',
-      note: 'Budesonide/Formoterol',
-      isRx: true
-    },
-    {
-      regex: /ENSURE\s*GOLD/i,
-      name: 'ENSURE GOLD 850G',
-      category: 'NUTRITIONAL MILK',
-      cost: 89.00,
-      retailSp: 98.90,
-      supermarketSp: 96.90,
-      competitor: 'Alpro / Farley 6th Mile',
-      note: 'Complete Nutrition 850g Can',
-      isRx: false
-    },
-    {
-      regex: /GLUCERNA/i,
-      name: 'GLUCERNA 850G',
-      category: 'NUTRITIONAL MILK',
-      cost: 99.00,
-      retailSp: 109.90,
-      promoSp: 106.90,
-      supermarketSp: 107.90,
-      competitor: 'Caring / Farley 6th Mile',
-      note: 'Diabetes Nutrition 850g Can',
-      isRx: false
-    },
-    {
-      regex: /ABSORBA.*(CONTI[- ]?FIT|PANTS|DIAPER).*(L|LARGE|9)/i,
-      name: 'ABSORBA CONTI-FIT SOFT ADULT PANTS / DIAPERS L 9\'S',
-      category: 'INCONTINENCE / ADULT CARE',
-      cost: 15.50,
-      retailSp: 17.50,
-      promoSp: 16.50,
-      supermarketSp: 15.90,
-      competitor: 'Alpro Oneclick (11.11 Promo)',
-      note: 'Alpro 11.11 Promo RM 16.50 (Normal RM 17.50) · Farley RM 15.90',
-      isRx: false
-    },
-    {
-      regex: /ABSORBA.*(CONTI[- ]?FIT|PANTS|DIAPER).*(M|MEDIUM|10)/i,
-      name: 'ABSORBA CONTI-FIT SOFT ADULT PANTS / DIAPERS M 10\'S',
-      category: 'INCONTINENCE / ADULT CARE',
-      cost: 15.50,
-      retailSp: 17.50,
-      promoSp: 16.50,
-      supermarketSp: 15.90,
-      competitor: 'Alpro Oneclick (11.11 Promo)',
-      note: 'Alpro 11.11 Promo RM 16.50 (Normal RM 17.50) · Farley RM 15.90',
-      isRx: false
-    },
-    {
-      regex: /ABSORBA.*(CONTI[- ]?FIT|PANTS|DIAPER).*(XL|8)/i,
-      name: 'ABSORBA CONTI-FIT SOFT ADULT PANTS / DIAPERS XL 8\'S',
-      category: 'INCONTINENCE / ADULT CARE',
-      cost: 15.50,
-      retailSp: 17.50,
-      promoSp: 16.50,
-      supermarketSp: 15.90,
-      competitor: 'Alpro Oneclick (11.11 Promo)',
-      note: 'Alpro 11.11 Promo RM 16.50 (Normal RM 17.50) · Farley RM 15.90',
-      isRx: false
-    },
-    {
-      regex: /ABSORBA/i,
-      name: 'ABSORBA ADULT INCONTINENCE CARE',
-      category: 'INCONTINENCE / ADULT CARE',
-      cost: 15.50,
-      retailSp: 17.50,
-      promoSp: 16.50,
-      supermarketSp: 15.90,
-      competitor: 'Alpro Oneclick / Farley',
-      note: 'Alpro 11.11 Promo RM 16.50 (Normal RM 17.50) · Farley RM 15.90',
-      isRx: false
-    },
-    {
-      regex: /TENA.*(VALUE|PANTS|SLIP)/i,
-      name: 'TENA ADULT CARE',
-      category: 'INCONTINENCE / ADULT CARE',
-      cost: 18.00,
-      retailSp: 22.90,
-      promoSp: 20.90,
-      supermarketSp: 19.90,
-      competitor: 'Alpro / Farley 6th Mile',
-      note: 'Retail Pack · Farley Promo RM 19.90',
-      isRx: false
-    },
-    {
-      regex: /CERTAINTY.*(DRYPANTS|TAPE|MAXI)/i,
-      name: 'CERTAINTY ADULT PANTS / DIAPERS',
-      category: 'INCONTINENCE / ADULT CARE',
-      cost: 24.00,
-      retailSp: 31.90,
-      promoSp: 28.90,
-      supermarketSp: 27.50,
-      competitor: 'Caring / Farley 6th Mile',
-      note: 'Promo RM 28.90 · Farley RM 27.50',
-      isRx: false
-    },
-    {
-      regex: /YHG.*MATI.*ZHUZHE/i,
-      name: 'YHG MATI ZHUZHE MAOGEN BEVERAGE 10\'S',
-      category: 'HERBAL BEVERAGE',
-      cost: 7.50,
-      retailSp: 11.90,
-      promoSp: 10.90,
-      supermarketSp: 9.90,
-      competitor: 'Farley Supermarket / Alpro',
-      note: 'Farley RM 9.90 · Alpro RM 11.90',
-      isRx: false
-    },
-    // ─── PEDIATRIC & ADULT OTC SUPPLEMENT BENCHMARKS ─────────────────────────
-    {
-      regex: /BIO[- ]?LIFE.*A\.?B\.?\s*JUNIOR.*(2\s*X\s*50|TWIN)/i,
-      name: 'BIO-LIFE A.B. JUNIOR PRE&PRO POWDER 2X50\'S (TWIN PACK)',
-      category: 'PEDIATRIC HEALTH / PROBIOTICS',
-      cost: 122.00,
-      retailSp: 168.30,
-      promoSp: 152.50,
-      supermarketSp: 160.00,
-      competitor: 'BIG Pharmacy / Alpro Oneclick',
-      note: 'BIG Promo RM 152.50 · Alpro RM 168.30 (Twin Pack 2x50s = RM 76.25/box)',
-      isRx: false
-    },
-    {
-      regex: /BIO[- ]?LIFE.*A\.?B\.?\s*JUNIOR.*10/i,
-      name: 'BIO-LIFE A.B. JUNIOR PRE&PRO POWDER 10\'S',
-      category: 'PEDIATRIC HEALTH / PROBIOTICS',
-      cost: 14.50,
-      retailSp: 18.30,
-      promoSp: 18.00,
-      supermarketSp: 18.50,
-      competitor: 'BIG Pharmacy / Alpro',
-      note: 'BIG RM 18.30 · Alpro RM 18.00 (Single Box 10s)',
-      isRx: false
-    },
-    {
-      regex: /BIO[- ]?LIFE.*A\.?B\.?\s*JUNIOR.*(50|SAC\s*50|PRE&PRO|POWDER)/i,
-      name: 'BIO-LIFE A.B. JUNIOR PRE&PRO POWDER 50\'S',
-      category: 'PEDIATRIC HEALTH / PROBIOTICS',
-      cost: 74.63,
-      retailSp: 86.90,
-      promoSp: 84.10,
-      supermarketSp: 88.50,
-      competitor: 'Alpro Oneclick (11.11 Promo RM 84.10) · BIG RM 86.90',
-      note: 'Alpro 11.11 Promo RM 84.10 (Normal RM 113.00) · BIG RM 86.90 · Single Box 50s',
-      isRx: false
-    },
-    {
-      regex: /BIO[- ]?LIFE.*LIVASIL.*(100|VALUE)/i,
-      name: 'BIO-LIFE LIVASIL TABLETS 100\'S + 30\'S',
-      category: 'SUPPLEMENT / LIVER HEALTH',
-      cost: 118.00,
-      retailSp: 222.00,
-      promoSp: 152.60,
-      supermarketSp: 165.00,
-      competitor: 'Alpro Oneclick / BIG Pharmacy',
-      note: 'Alpro Value Pack Promo RM 152.60 (Normal RM 239.00)',
-      isRx: false
-    },
-    {
-      regex: /BIO[- ]?LIFE.*LIVASIL/i,
-      name: 'BIO-LIFE LIVASIL TABLETS 30\'S',
-      category: 'SUPPLEMENT / LIVER HEALTH',
-      cost: 44.00,
-      retailSp: 62.00,
-      promoSp: 58.90,
-      supermarketSp: 59.90,
-      competitor: 'BIG Pharmacy / Caring',
-      note: 'BIG Pharmacy RM 58.90 · Alpro RM 62.00',
-      isRx: false
-    },
-    {
-      regex: /BLACKMORES.*BIO\s*C.*1000/i,
-      name: 'BLACKMORES BIO C 1000MG 30\'S',
-      category: 'VITAMINS / IMMUNITY',
-      cost: 28.00,
-      retailSp: 38.20,
-      promoSp: 37.80,
-      supermarketSp: 38.90,
-      competitor: 'BIG Pharmacy / Caring',
-      note: 'BIG RM 37.80 · Alpro RM 38.20',
-      isRx: false
-    },
-    {
-      regex: /REDOXON.*(TRIPLE|DOUBLE).*EFF/i,
-      name: 'REDOXON TRIPLE ACTION EFFERVESCENT 30\'S',
-      category: 'VITAMINS / IMMUNITY',
-      cost: 32.00,
-      retailSp: 52.00,
-      promoSp: 42.90,
-      supermarketSp: 44.50,
-      competitor: 'Alpro / BIG Pharmacy',
-      note: 'Alpro / BIG Promo RM 42.90 (Normal RM 52.00–66.20)',
-      isRx: false
-    },
-    {
-      regex: /FLAVETTES.*GLOW/i,
-      name: 'FLAVETTES EFFERVESCENT GLOW 30\'S',
-      category: 'VITAMINS / BEAUTY',
-      cost: 35.00,
-      retailSp: 69.90,
-      promoSp: 45.89,
-      supermarketSp: 46.90,
-      competitor: 'BIG Pharmacy / Alpro / Caring',
-      note: 'Unified Chain Promo RM 45.89 (Normal RM 69.90)',
-      isRx: false
-    },
-    {
-      regex: /APPETON.*LYSINE.*(TAB|60)/i,
-      name: 'APPETON MULTIVITAMIN WITH LYSINE 60\'S',
-      category: 'PEDIATRIC HEALTH / APPETITE',
-      cost: 33.00,
-      retailSp: 62.10,
-      promoSp: 43.11,
-      supermarketSp: 45.50,
-      competitor: 'Alpro Oneclick / BIG Pharmacy',
-      note: 'Alpro Promo RM 43.11 (Normal RM 62.10) · BIG RM 47.90',
-      isRx: false
-    },
-    {
-      regex: /APPETON.*LYSINE.*(SYRUP|120)/i,
-      name: 'APPETON MULTIVITAMIN LYSINE SYRUP 120ML',
-      category: 'PEDIATRIC HEALTH / APPETITE',
-      cost: 32.50,
-      retailSp: 65.50,
-      promoSp: 43.90,
-      supermarketSp: 45.00,
-      competitor: 'Alpro Oneclick / BIG Pharmacy',
-      note: 'Alpro Promo RM 43.90 (Normal RM 65.50)',
-      isRx: false
-    }
-  ];
+  // ─── DYNAMIC COMPETITOR PRICING ARCHITECTURE (NO PRE-FIXED / HARDCODED PRICES) ─
+  // All SKUs, competitor benchmarks, and active promotions are dynamically fetched
+  // live via Google Search Grounding and synced across all computers via Google Sheets.
+  const KNOWN_MALAYSIAN_BENCHMARKS = [];
 
   // ─── THE 7 BRANCH SWOT PROFILES (KUCHING & PADAWAN REGION) ───────────────────
   const BRANCH_SWOT_DATA = {
@@ -982,7 +583,7 @@
       }
     }
 
-    // ─── GOOGLE SHEETS LIVE SYNC ──────────────────────────────────────────────
+    // ─── GOOGLE SHEETS LIVE SYNC (CROSS-COMPUTER CLOUD REPLICATION) ───────────
     async fetchPricingFromSheets(showToast = false) {
       if (!PMG_SCHEDULE_API_URL) return;
       try {
@@ -991,42 +592,76 @@
           method: 'GET'
         });
         const data = await res.json();
-        if (data && data.success && Array.isArray(data.skus)) {
-          if (data.skus.length > 0) {
-            if (this.skus.length > data.skus.length) {
-              // Merge Google Sheets price/cost updates into our large local catalog without losing items
-              const sheetMap = new Map();
-              data.skus.forEach(s => { if (s.code) sheetMap.set(s.code, s); });
-              this.skus.forEach(s => {
-                if (s.code && sheetMap.has(s.code)) {
-                  const updated = sheetMap.get(s.code);
-                  s.standardSp = updated.standardSp;
-                  s.currentBranchSp = updated.standardSp;
-                  s.costPrice = updated.costPrice;
-                  if (updated.nonMemberPrice) s.nonMemberPrice = updated.nonMemberPrice;
-                  if (updated.strategyTag) s.strategyTag = updated.strategyTag;
-                  if (this.isScheduledPrescriptionDrug(s)) {
-                    s.supermarketPrice = null;
-                  } else if (updated.supermarketPrice) {
-                    s.supermarketPrice = updated.supermarketPrice;
-                  }
-                  if (updated.chainPharmacyPrice) s.chainPharmacyPrice = updated.chainPharmacyPrice;
-                }
-              });
-            } else {
-              this.skus = data.skus;
-              this.sanitizeRxPrescriptionSkus();
+        if (data && data.success && Array.isArray(data.skus) && data.skus.length > 0) {
+          // Build comprehensive cloud lookup index
+          const sheetIdMap = new Map();
+          const sheetCodeMap = new Map();
+          const sheetNameMap = new Map();
+
+          data.skus.forEach(s => {
+            if (s.id) sheetIdMap.set(String(s.id).trim(), s);
+            if (s.code && !['N/A', 'NONE', '-', '', 'NULL'].includes(String(s.code).trim().toUpperCase())) {
+              sheetCodeMap.set(String(s.code).trim().toLowerCase(), s);
             }
-            await setPricingSkusToIdb(this.skus);
-            this.renderSummaryCards();
-            this.renderTableOnly();
-            if (showToast && typeof showExpiryToast === 'function') {
-              showExpiryToast(`✅ Synced ${data.skus.length} SKUs from Google Sheets.`);
-            }
-          } else if (this.skus.length > 0) {
-            // Sheet is empty but local has items -> populate Google Sheet
-            await this.pushPricingToSheets(false);
+            if (s.name) sheetNameMap.set(String(s.name).trim().toUpperCase(), s);
+          });
+
+          if (!Array.isArray(this.skus) || this.skus.length === 0) {
+            // Local database empty (e.g. computer opened for first time or cache cleared) -> Adopt cloud master directly
+            this.skus = data.skus;
+          } else {
+            // Merge cloud master updates into local catalog
+            const matchedCloudKeys = new Set();
+            this.skus.forEach(s => {
+              let updated = null;
+              if (s.id && sheetIdMap.has(String(s.id).trim())) {
+                updated = sheetIdMap.get(String(s.id).trim());
+              } else if (s.code && !['N/A', 'NONE', '-', '', 'NULL'].includes(String(s.code).trim().toUpperCase()) && sheetCodeMap.has(String(s.code).trim().toLowerCase())) {
+                updated = sheetCodeMap.get(String(s.code).trim().toLowerCase());
+              } else if (s.name && sheetNameMap.has(String(s.name).trim().toUpperCase())) {
+                updated = sheetNameMap.get(String(s.name).trim().toUpperCase());
+              }
+
+              if (updated) {
+                matchedCloudKeys.add(String(updated.id || updated.code || updated.name));
+                if (updated.standardSp !== undefined && updated.standardSp !== null) s.standardSp = updated.standardSp;
+                if (updated.currentBranchSp !== undefined && updated.currentBranchSp !== null) s.currentBranchSp = updated.currentBranchSp;
+                if (updated.costPrice !== undefined && updated.costPrice !== null) s.costPrice = updated.costPrice;
+                if (updated.nonMemberSp !== undefined && updated.nonMemberSp !== null) s.nonMemberSp = updated.nonMemberSp;
+                if (updated.strategyTag) s.strategyTag = updated.strategyTag;
+                
+                const isRx = this.isScheduledPrescriptionDrug(s);
+                s.supermarketPrice = isRx ? null : (updated.supermarketPrice !== undefined ? updated.supermarketPrice : s.supermarketPrice);
+                if (updated.chainPharmacyPrice !== undefined) s.chainPharmacyPrice = updated.chainPharmacyPrice;
+                if (updated.competitorName) s.competitorName = updated.competitorName;
+                if (updated.promoNote !== undefined && updated.promoNote !== null) s.promoNote = updated.promoNote;
+                if (updated.lastUpdated) s.lastUpdated = updated.lastUpdated;
+                if (updated.updatedBy) s.updatedBy = updated.updatedBy;
+              }
+            });
+
+            // If Cloud has additional SKUs not present in local, append them
+            data.skus.forEach(cloudSku => {
+              const cloudKey = String(cloudSku.id || cloudSku.code || cloudSku.name);
+              if (!matchedCloudKeys.has(cloudKey)) {
+                this.skus.push(cloudSku);
+              }
+            });
           }
+
+          // Enforce regulatory Poisons Act 1952 compliance
+          this.sanitizeRxPrescriptionSkus();
+
+          // Save replicated catalog to high-capacity IndexedDB
+          await setPricingSkusToIdb(this.skus);
+          this.renderSummaryCards();
+          this.renderTableOnly();
+          if (showToast && typeof showExpiryToast === 'function') {
+            showExpiryToast(`✅ Live Synced ${this.skus.length} SKUs across all computers via Cloud.`);
+          }
+        } else if (this.skus.length > 0) {
+          // Cloud sheet empty but local has items -> Populate cloud
+          await this.pushPricingToSheets(false);
         }
       } catch (err) {
         console.warn('[PMG Pricing Sheets Sync] Fetch warning:', err.message);
@@ -1578,21 +1213,7 @@
           s.supermarketPrice = null;
         }
 
-        const knownBench = this.getKnownMalaysianBenchmark(s);
-        if (knownBench) {
-          if (!s.chainPharmacyPrice && (knownBench.promoSp || knownBench.retailSp)) {
-            s.chainPharmacyPrice = knownBench.promoSp || knownBench.retailSp;
-            if (!s.competitorName || s.competitorName === 'Local Competitors') {
-              s.competitorName = knownBench.competitor;
-            }
-          }
-          if (!isRx && !s.supermarketPrice && knownBench.supermarketSp) {
-            s.supermarketPrice = knownBench.supermarketSp;
-          }
-          if (!s.promoNote && knownBench.note) {
-            s.promoNote = knownBench.note;
-          }
-        }
+
 
         const cost = parseFloat(s.costPrice) || 0;
         const sp = parseFloat(s.standardSp) || 0;
@@ -2172,76 +1793,20 @@
       this.skus.forEach(s => {
         const isRx = this.isScheduledPrescriptionDrug(s);
 
-        // 1. Remove supermarket price for scheduled prescription drugs per Poisons Act 1952
+        // 1. Regulatory compliance: Scheduled prescription poisons cannot be sold in supermarkets (Poisons Act 1952)
         if (isRx && (s.supermarketPrice !== null && s.supermarketPrice !== undefined)) {
           s.supermarketPrice = null;
           cleaned++;
         }
 
-        const normName = (s.name || '').toUpperCase();
-
-        // 2. Clear corrupted isPrescription flag on FMCG items
+        // 2. Clear corrupted isPrescription flag on non-poisons
         if (!isRx && s.isPrescription) {
           s.isPrescription = false;
           cleaned++;
         }
-
-        // 3. Fix Absorba adult incontinence pants & diapers to live Alpro promo benchmark
-        if (normName.includes('ABSORBA') && (normName.includes('PANTS') || normName.includes('DIAPER') || normName.includes('CONTI'))) {
-          if (s.supermarketPrice === null || s.supermarketPrice === undefined || s.chainPharmacyPrice >= 18.00 || !s.chainPharmacyPrice) {
-            s.supermarketPrice = 15.90;
-            s.chainPharmacyPrice = 16.50;
-            s.competitorName = 'Alpro Oneclick (11.11 Promo)';
-            s.promoNote = 'Alpro 11.11 Promo RM 16.50 (Normal RM 17.50) · Farley RM 15.90';
-            s.strategyTag = 'kvi_defensive';
-            cleaned++;
-          }
-        }
-
-        // 4. Fix the specific corrupted RM 110.00 prices from the prior anchoring & N/A code collision bug
-        if (normName.includes('ACETAN') && s.chainPharmacyPrice >= 90) {
-          s.chainPharmacyPrice = 18.50;
-          s.competitorName = 'BIG Pharmacy';
-          s.promoNote = 'Losartan 50/12.5 (30s)';
-          cleaned++;
-        } else if (normName.includes('SPIRIVA') && s.chainPharmacyPrice <= 150) {
-          s.chainPharmacyPrice = 218.00;
-          s.competitorName = 'BIG Pharmacy / Alpro';
-          s.promoNote = 'Respimat Refill 4ml (60 puffs)';
-          cleaned++;
-        }
-
-        // 4b. Fix Bio-Life A.B. Junior Pre&Pro 50s where AI hallucinated MSRP RM 105.00 / Farley RM 115.00
-        if (normName.includes('BIO') && normName.includes('JUNIOR') && !normName.includes('2X50') && !normName.includes('TWIN') && !normName.includes('10')) {
-          if (s.chainPharmacyPrice >= 95 || s.chainPharmacyPrice === 105 || s.supermarketPrice >= 100 || !s.chainPharmacyPrice) {
-            s.supermarketPrice = 88.50;
-            s.chainPharmacyPrice = 84.10;
-            s.competitorName = 'Alpro Oneclick (11.11 Promo RM 84.10) · BIG RM 86.90';
-            s.promoNote = 'Alpro 11.11 Promo RM 84.10 (Normal RM 113.00) · BIG RM 86.90 · Single Box 50s';
-            s.strategyTag = 'kvi_defensive';
-            cleaned++;
-          }
-        }
-
-        // 5. Domain Sanity Guard on Rx Chain Pharmacy Price vs Wholesale Cost
-        // Ethical prescription drugs cannot retail below 65% of cost or above 3.5x cost in retail pharmacies
-        if (isRx && s.costPrice > 0 && s.chainPharmacyPrice > 0) {
-          const bench = this.getKnownMalaysianBenchmark(s);
-          if (s.chainPharmacyPrice < s.costPrice * 0.65 || s.chainPharmacyPrice > s.costPrice * 3.5) {
-            if (bench) {
-              s.chainPharmacyPrice = bench.promoSp || bench.retailSp;
-              s.competitorName = bench.competitor;
-              if (bench.note) s.promoNote = bench.note;
-            } else {
-              s.chainPharmacyPrice = Math.round((s.costPrice * 1.18) * 10) / 10;
-              s.competitorName = 'Local Pharmacy Chain';
-            }
-            cleaned++;
-          }
-        }
       });
       if (cleaned > 0) {
-        console.log(`[PMG Pricing] Sanitized and corrected ${cleaned} SKU competitor benchmarks.`);
+        console.log(`[PMG Pricing] Regulatory sanity check verified ${cleaned} SKUs.`);
         this.saveSkusToStorage(true);
       }
     }
@@ -2536,19 +2101,7 @@
       }
 
       if (chainPrice && !isNaN(parseFloat(chainPrice)) && parseFloat(chainPrice) > 0) {
-        let finalChainP = parseFloat(chainPrice);
-        // Domain Sanity Guard on Rx selling prices vs Wholesale cost
-        if (isRx && sku.costPrice > 0 && (finalChainP < sku.costPrice * 0.65 || finalChainP > sku.costPrice * 3.5)) {
-          const bench = this.getKnownMalaysianBenchmark(sku);
-          if (bench) {
-            finalChainP = bench.promoSp || bench.retailSp;
-            if (!competitorName || competitorName === 'Alpro / Ting Pharmacy') competitorName = bench.competitor;
-            if (!promoNote && bench.note) promoNote = bench.note;
-          } else {
-            finalChainP = Math.round((sku.costPrice * 1.18) * 10) / 10;
-          }
-        }
-        sku.chainPharmacyPrice = finalChainP;
+        sku.chainPharmacyPrice = parseFloat(chainPrice);
       }
       if (competitorName) sku.competitorName = competitorName;
       if (promoNote !== undefined && promoNote !== null) {
@@ -3661,7 +3214,6 @@
       const input = document.getElementById('pricingAiPromptInput');
       const isRx = this.isScheduledPrescriptionDrug(sku);
       const genericHint = this.getGenericDrugHint(sku);
-      const knownBench = this.getKnownMalaysianBenchmark(sku);
       const aging = this.getStockAgingForSku(sku);
       const diag = this.diagnoseSkuPricingVsAging(sku, aging);
       const searchDetails = this.extractSearchableProductDetails(sku);
@@ -3732,13 +3284,13 @@ IMPORTANT: Return the detected competitor price numbers at the end inside a stri
 \`\`\`json
 {
   "supermarketPrice": null,
-  "chainPharmacyPrice": ${knownBench ? (knownBench.promoSp || knownBench.retailSp).toFixed(2) : (sku.costPrice > 0 ? (sku.costPrice * 1.18).toFixed(2) : '0.00')},
-  "competitorName": "${knownBench ? knownBench.competitor : 'BIG Pharmacy / Alpro'}",
-  "promoNote": "${knownBench ? (knownBench.note || '') : ''}",
-  "suggestedPmgSp": ${knownBench ? (knownBench.promoSp || knownBench.retailSp).toFixed(2) : (sku.costPrice > 0 ? (sku.costPrice * 1.15).toFixed(2) : '0.00')},
-  "hasActivePromo": ${knownBench && knownBench.promoSp ? 'true' : 'false'},
-  "normalRetailPrice": ${knownBench ? knownBench.retailSp.toFixed(2) : '0.00'},
-  "promotionalPrice": ${knownBench && knownBench.promoSp ? knownBench.promoSp.toFixed(2) : 'null'}
+  "chainPharmacyPrice": 0.00,
+  "competitorName": "BIG Pharmacy / Alpro",
+  "promoNote": "",
+  "suggestedPmgSp": 0.00,
+  "hasActivePromo": false,
+  "normalRetailPrice": 0.00,
+  "promotionalPrice": null
 }
 \`\`\``;
         } else {
@@ -3790,14 +3342,14 @@ CRITICAL AUDIT & PROMOTION RULES:
 IMPORTANT: Return the detected competitor price numbers at the end inside a strict JSON code block:
 \`\`\`json
 {
-  "supermarketPrice": ${knownBench && knownBench.supermarketSp ? knownBench.supermarketSp.toFixed(2) : '0.00'},
-  "chainPharmacyPrice": ${knownBench ? (knownBench.promoSp || knownBench.retailSp).toFixed(2) : '0.00'},
-  "competitorName": "${knownBench ? knownBench.competitor : 'Alpro Oneclick / Farley'}",
-  "promoNote": "${knownBench ? (knownBench.note || '') : ''}",
-  "suggestedPmgSp": ${knownBench ? (knownBench.promoSp || knownBench.retailSp).toFixed(2) : (sku.costPrice > 0 ? (sku.costPrice * 1.08).toFixed(2) : '0.00')},
-  "hasActivePromo": ${knownBench && knownBench.promoSp ? 'true' : 'false'},
-  "normalRetailPrice": ${knownBench ? knownBench.retailSp.toFixed(2) : '0.00'},
-  "promotionalPrice": ${knownBench && knownBench.promoSp ? knownBench.promoSp.toFixed(2) : 'null'}
+  "supermarketPrice": 0.00,
+  "chainPharmacyPrice": 0.00,
+  "competitorName": "Alpro Oneclick / BIG Pharmacy / Caring",
+  "promoNote": "",
+  "suggestedPmgSp": 0.00,
+  "hasActivePromo": false,
+  "normalRetailPrice": 0.00,
+  "promotionalPrice": null
 }
 \`\`\``;
         }
@@ -4166,37 +3718,9 @@ Our strategic objective:
           chainP = promoP;
         }
 
-        // Domain Sanity Guard on Rx Selling Price vs Wholesale Cost
-        const bench = this.getKnownMalaysianBenchmark(sku);
-        if (isRx && sku.costPrice > 0 && chainP > 0 && (chainP < sku.costPrice * 0.65 || chainP > sku.costPrice * 3.5)) {
-          if (bench) {
-            chainP = bench.promoSp || bench.retailSp;
-            compName = bench.competitor;
-            if (bench.note) promoNote = bench.note;
-          } else {
-            chainP = Math.round(sku.costPrice * 1.18 * 10) / 10;
-            compName = 'Local Pharmacy Chain';
-          }
-        }
-
-        // Domain Sanity Guard for OTC / Healthcare: Prevent MSRP / RRP hallucinations (e.g. Bio-Life RM 105.00)
-        if (!isRx && bench) {
-          const refMax = bench.retailSp * 1.15;
-          if (chainP > refMax || chainP >= 95.00 || chainP === 105.00) {
-            console.warn(`[PMG Pricing AI] Detected MSRP/RRP hallucination (RM ${chainP}). Overriding with verified Malaysian benchmark: RM ${bench.promoSp || bench.retailSp}`);
-            chainP = bench.promoSp || bench.retailSp;
-            compName = bench.competitor;
-            promoNote = bench.note || `Verified chain promo RM ${chainP.toFixed(2)}`;
-          }
-        }
-
-        if (chainP === 0 && bench) {
-          chainP = bench.promoSp || bench.retailSp;
-          compName = bench.competitor;
-          if (bench.note) promoNote = bench.note;
-        }
-        if (!isRx && superP === 0 && bench && bench.supermarketSp) {
-          superP = bench.supermarketSp;
+        // Ensure Poisons Act 1952 compliance for prescription items
+        if (isRx) {
+          superP = 0;
         }
 
         if (superP > 0 || chainP > 0 || isRx) {
@@ -4569,7 +4093,6 @@ Respond STRICTLY with a valid JSON array of objects. Use the exact ITEM_ID provi
           }
 
           const isRx = this.isScheduledPrescriptionDrug(sku);
-          const knownBench = this.getKnownMalaysianBenchmark(sku);
 
           let detectedChainPrice = null;
           let detectedSuperPrice = null;
@@ -4587,43 +4110,9 @@ Respond STRICTLY with a valid JSON array of objects. Use the exact ITEM_ID provi
             detectedPromoNote = r.promoNote || '';
           }
 
-          // Supermarket rule for Rx
+          // Supermarket rule for Rx per Poisons Act 1952
           if (isRx) {
             detectedSuperPrice = null;
-          }
-
-          // Domain Sanity Guard on Pharmacy Price vs Wholesale Cost
-          if (detectedChainPrice !== null && sku.costPrice > 0) {
-            if (isRx && (detectedChainPrice < sku.costPrice * 0.65 || detectedChainPrice > sku.costPrice * 3.5)) {
-              if (knownBench) {
-                detectedChainPrice = knownBench.retailSp;
-                detectedCompName = knownBench.competitor;
-                detectedPromoNote = knownBench.note || '';
-              } else {
-                detectedChainPrice = Math.round((sku.costPrice * 1.18) * 10) / 10;
-                detectedCompName = 'Local Pharmacy Chain';
-              }
-            }
-          }
-
-          // OTC / Healthcare Domain Sanity Guard: Prevent AI from injecting manufacturer MSRP instead of retail price
-          if (!isRx && knownBench) {
-            const refMax = knownBench.retailSp * 1.15;
-            if (detectedChainPrice !== null && (detectedChainPrice > refMax || detectedChainPrice >= 95.00 || detectedChainPrice === 105.00)) {
-              detectedChainPrice = knownBench.promoSp || knownBench.retailSp;
-              detectedCompName = knownBench.competitor;
-              detectedPromoNote = knownBench.note || '';
-            }
-          }
-
-          // If AI did not return a price or returned 0, but known benchmark exists
-          if (!detectedChainPrice && knownBench) {
-            detectedChainPrice = knownBench.promoSp || knownBench.retailSp;
-            if (!detectedCompName) detectedCompName = knownBench.competitor;
-            if (!detectedPromoNote) detectedPromoNote = knownBench.note || '';
-          }
-          if (!detectedSuperPrice && knownBench && !isRx && knownBench.supermarketSp) {
-            detectedSuperPrice = knownBench.supermarketSp;
           }
 
           if (detectedChainPrice !== null || detectedSuperPrice !== null) {
