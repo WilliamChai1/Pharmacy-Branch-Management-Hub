@@ -2957,7 +2957,7 @@
         if (this.skus.length === 0) {
           tbody.innerHTML = `
             <tr>
-              <td colspan="9" class="text-center py-12 text-gray-500 bg-white">
+              <td colspan="8" class="text-center py-12 text-gray-500 bg-white">
                 <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-3 text-2xl shadow-xs">
                   <i class="fa-solid fa-file-csv"></i>
                 </div>
@@ -2981,7 +2981,7 @@
         } else {
           tbody.innerHTML = `
             <tr>
-              <td colspan="9" class="text-center py-8 text-gray-400 text-xs bg-white">
+              <td colspan="8" class="text-center py-8 text-gray-400 text-xs bg-white">
                 <i class="fa-solid fa-box-open text-2xl mb-2 text-gray-300 block"></i>
                 No SKUs matching the current filter. Try adjusting your search query or category.
               </td>
@@ -3138,67 +3138,64 @@
 
         html += `
           <tr class="hover:bg-slate-50 transition border-b border-gray-100 text-xs">
-            <td class="p-3">
-              <div class="font-bold text-gray-900">${s.name}</div>
-              <div class="text-[11px] text-gray-500 flex items-center gap-2 mt-0.5">
-                <span class="font-mono bg-gray-100 px-1 rounded">${s.code}</span>
+            <td class="p-2.5">
+              <div class="font-bold text-gray-900 leading-snug">${s.name}</div>
+              <div class="text-[11px] text-gray-500 flex items-center gap-1.5 mt-0.5 flex-wrap">
+                <span class="font-mono bg-gray-100 px-1 rounded text-[10px]">${s.code}</span>
                 <span>${s.brand}</span> · <span>${s.category}</span>
               </div>
-              <div class="text-[10px] text-gray-400 mt-1 italic">${s.notes || ''}</div>
+              ${s.notes ? `<div class="text-[10px] text-gray-400 mt-0.5 italic">${s.notes}</div>` : ''}
             </td>
-            <td class="p-3">
-              ${tagBadge}
-            </td>
-            <td class="p-3 text-right">
+            <td class="p-2.5 text-right">
               <div class="inline-flex items-center gap-1 justify-end">
                 <span class="text-gray-400 text-xs font-mono">RM</span>
                 <input type="number" step="0.05" value="${s.costPrice.toFixed(2)}"
                   onchange="window.pmgPricing.updateSkuCostPrice('${s.id}', this.value)"
-                  class="w-20 text-right font-mono font-bold text-gray-900 border border-amber-300 rounded px-1.5 py-1 focus:ring-2 focus:ring-amber-500 focus:border-amber-600 outline-none bg-amber-50/50 hover:bg-white transition"
+                  class="w-18 text-right font-mono font-bold text-gray-900 border border-amber-300 rounded px-1.5 py-1 focus:ring-2 focus:ring-amber-500 focus:border-amber-600 outline-none bg-amber-50/50 hover:bg-white transition"
                   title="Click to edit Custom Cost Price (varies depending on supplier/wholesaler deal)">
               </div>
               <div class="mt-1 flex items-center justify-end gap-1">
                 <i class="fa-solid fa-truck-field text-[10px] text-amber-600/70" title="Supplier / Wholesaler"></i>
                 <input type="text" list="pmgSupplierList" value="${s.supplier || ''}" placeholder="Supplier..."
                   onchange="window.pmgPricing.updateSkuSupplier('${s.id}', this.value)"
-                  class="w-28 text-[11px] text-right font-medium text-gray-600 border-b border-dashed border-gray-300 hover:border-gray-500 focus:border-blue-500 bg-transparent px-1 py-0.5 outline-none"
+                  class="w-24 text-[10px] text-right font-medium text-gray-600 border-b border-dashed border-gray-300 hover:border-gray-500 focus:border-blue-500 bg-transparent px-1 py-0.5 outline-none"
                   title="Supplier/Distributor (e.g. DKSH, Zuellig, Apex, SSJ Pharma, Advance, HQ)">
               </div>
             </td>
-            <td class="p-3 text-right">
+            <td class="p-2.5 text-right">
               <div class="inline-flex items-center gap-1">
-                <span class="text-gray-400 text-xs">RM</span>
+                <span class="text-gray-400 text-xs font-mono">RM</span>
                 <input type="number" step="0.10" value="${s.standardSp.toFixed(2)}"
                   onchange="window.pmgPricing.updateSkuStandardSp('${s.id}', this.value)"
-                  class="w-20 text-right font-mono font-bold text-blue-900 border border-blue-300 rounded px-1.5 py-1 focus:ring-2 focus:ring-blue-400 outline-none bg-blue-50/50 hover:bg-white transition"
+                  class="w-18 text-right font-mono font-bold text-blue-900 border border-blue-300 rounded px-1.5 py-1 focus:ring-2 focus:ring-blue-400 outline-none bg-blue-50/50 hover:bg-white transition"
                   title="Click to edit standardized 7-outlet Member Selling Price">
               </div>
-              ${s.nonMemberPrice ? `<div class="text-[10px] text-gray-400 font-mono mt-0.5" title="Non-Member Price">Non-Member: RM ${s.nonMemberPrice.toFixed(2)}</div>` : ''}
+              ${s.nonMemberPrice ? `<div class="text-[9px] text-gray-400 font-mono mt-0.5" title="Non-Member Price">Non-Member: RM ${s.nonMemberPrice.toFixed(2)}</div>` : ''}
             </td>
-            <td class="p-3 text-right">
-              <span class="px-2 py-0.5 rounded ${marginColor} font-mono">${margin}%</span>
+            <td class="p-2.5 text-right">
+              <span class="px-1.5 py-0.5 rounded ${marginColor} font-mono">${margin}%</span>
               <span class="text-[10px] text-gray-400 block font-mono mt-0.5">+RM ${profit}</span>
             </td>
-            <td class="p-3 text-right">
+            <td class="p-2.5 text-right">
               ${superComp}
             </td>
-            <td class="p-3 text-right">
+            <td class="p-2.5 text-right">
               ${chainComp}
             </td>
-            <td class="p-3 align-top">
+            <td class="p-2.5 align-top">
               ${agingCellHtml}
             </td>
-            <td class="p-3 text-center align-middle sticky right-0 bg-white/95 backdrop-blur z-10 border-l border-slate-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)]">
-              <div class="flex items-center justify-center gap-1.5 flex-col sm:flex-row">
+            <td class="p-2 text-center align-middle">
+              <div class="flex flex-col gap-1 items-center justify-center">
                 <button type="button" onclick="window.pmgPricing.launchAiCompetitorPriceCheck('${s.id}')"
-                  class="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer whitespace-nowrap"
-                  title="Deep analyze competitor prices (Farley, Emart, Watsons, Caring)">
-                  <i class="fa-solid fa-tags text-blue-600"></i> Competitor Prices
+                  class="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-1.5 py-1 rounded text-[10px] font-bold transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer whitespace-nowrap"
+                  title="Deep analyze competitor prices (Farley, Emart, Watsons, Caring, Alpro)">
+                  <i class="fa-solid fa-tags text-blue-600"></i> AI Prices
                 </button>
                 <button type="button" onclick="window.pmgPricing.launchAiMarketStrategy('${s.id}')"
-                  class="bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 px-2 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer whitespace-nowrap"
+                  class="w-full bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 px-1.5 py-1 rounded text-[10px] font-bold transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer whitespace-nowrap"
                   title="Further strategic analysis based on market dynamics, price elasticity & basket building">
-                  <i class="fa-solid fa-chart-line text-purple-600"></i> Market Strategy
+                  <i class="fa-solid fa-chart-line text-purple-600"></i> Strategy
                 </button>
               </div>
             </td>
