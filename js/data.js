@@ -363,12 +363,13 @@ function buildUniversalWhatsAppUrl(phone, msg) {
   let clean = String(phone || '').replace(/\D/g, '');
   if (clean.startsWith('0')) {
     clean = '60' + clean.slice(1);
+  } else if (clean.startsWith('1') && !clean.startsWith('60')) {
+    clean = '60' + clean;
   } else if (clean && !clean.startsWith('60') && clean.length <= 10) {
     clean = '60' + clean;
   }
-  const cleanMsg = sanitizeWhatsAppMessage(msg);
-  const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Windows Phone|webOS/i.test(navigator.userAgent || '');
-  const baseUrl = isMobile ? 'https://api.whatsapp.com/send' : 'https://web.whatsapp.com/send';
+  const cleanMsg = typeof sanitizeWhatsAppMessage === 'function' ? sanitizeWhatsAppMessage(msg) : String(msg);
+  const baseUrl = 'https://api.whatsapp.com/send';
   if (clean) {
     return `${baseUrl}?phone=${clean}&text=${encodeURIComponent(cleanMsg)}`;
   }
@@ -377,19 +378,22 @@ function buildUniversalWhatsAppUrl(phone, msg) {
 
 function openUniversalWhatsApp(phone, msg) {
   const url = buildUniversalWhatsAppUrl(phone, msg);
-  let win = null;
   try {
-    win = window.open(url, '_blank', 'noopener,noreferrer');
+    const win = window.open(url, '_blank');
+    if (win) {
+      if (typeof win.focus === 'function') win.focus();
+      return win;
+    }
   } catch (_) {}
-  if (!win || win.closed || typeof win.closed === 'undefined') {
-    const a = document.createElement('a');
-    a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { if (a.parentNode) a.parentNode.removeChild(a); }, 300);
-  }
+
+  // Fallback anchor click only if window.open was explicitly blocked by browser popup blocker
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { if (a.parentNode) a.parentNode.removeChild(a); }, 300);
 }
 
 if (typeof window !== 'undefined') {

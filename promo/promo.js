@@ -1242,9 +1242,8 @@ function sendCustomerPromoWhatsApp(customerId) {
   // 1. Generate personalized message synchronously (with user updates and diamond sanitizing)
   const msg = generatePersonalizedMessage(cust).replace(/\uFFFD/g, '•');
 
-  // 2. Direct WhatsApp URL (Direct WhatsApp Web on Desktop bypasses wa.me redirect bug so emojis NEVER corrupt!)
-  const isMobile = /Android|iPhone|iPad|iPod|Windows Phone|webOS/i.test(navigator.userAgent);
-  const baseUrl = isMobile ? 'https://api.whatsapp.com/send' : 'https://web.whatsapp.com/send';
+  // 2. Direct WhatsApp URL
+  const baseUrl = 'https://api.whatsapp.com/send';
   const waUrl = `${baseUrl}?phone=${val.cleanPhone}&text=${encodeURIComponent(msg)}`;
 
   // 3. Open WhatsApp Web / App with Single-Tab Reuse to cap PC RAM usage (~400MB total instead of 20GB!)
@@ -1252,11 +1251,13 @@ function sendCustomerPromoWhatsApp(customerId) {
   let waWindow = null;
   try {
     waWindow = window.open(waUrl, targetWindow);
-    if (waWindow && waWindow.focus) waWindow.focus();
+    if (waWindow) {
+      if (typeof waWindow.focus === 'function') waWindow.focus();
+    }
   } catch (_) {}
 
-  // Fallback anchor click if window.open was intercepted by popup blocker
-  if (!waWindow || waWindow.closed || typeof waWindow.closed === 'undefined') {
+  // Fallback anchor click ONLY if window.open was intercepted by popup blocker
+  if (!waWindow) {
     const a = document.createElement('a');
     a.href = waUrl;
     a.target = targetWindow;

@@ -1242,28 +1242,29 @@ function sendCustomerPromoWhatsApp(customerId) {
   // 1. Generate personalized message synchronously (with user updates and diamond sanitizing)
   const msg = generatePersonalizedMessage(cust).replace(/\uFFFD/g, '•');
 
-  // 2. Direct WhatsApp URL (Direct WhatsApp Web on Desktop bypasses wa.me redirect bug so emojis NEVER corrupt!)
-  const isMobile = /Android|iPhone|iPad|iPod|Windows Phone|webOS/i.test(navigator.userAgent);
-  const baseUrl = isMobile ? 'https://api.whatsapp.com/send' : 'https://web.whatsapp.com/send';
-  const waUrl = `${baseUrl}?phone=${val.cleanPhone}&text=${encodeURIComponent(msg)}`;
+  // 2. Direct WhatsApp URL
+  const waUrl = (typeof buildUniversalWhatsAppUrl === 'function')
+    ? buildUniversalWhatsAppUrl(val.cleanPhone, msg)
+    : `https://api.whatsapp.com/send?phone=${val.cleanPhone}&text=${encodeURIComponent(msg)}`;
 
-  // 3. Open WhatsApp Web / App SYNCHRONOUSLY FIRST (guarantees Chrome popup blocker will NEVER block it!)
-  let waWindow = null;
-  try {
-    waWindow = window.open(waUrl, '_blank', 'noopener,noreferrer');
-  } catch (_) {}
-
-  // Fallback anchor click if window.open was intercepted by popup blocker
-  if (!waWindow || waWindow.closed || typeof waWindow.closed === 'undefined') {
-    const a = document.createElement('a');
-    a.href = waUrl;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      if (a.parentNode) a.parentNode.removeChild(a);
-    }, 100);
+  // 3. Open WhatsApp Web / App
+  if (typeof openUniversalWhatsApp === 'function') {
+    openUniversalWhatsApp(val.cleanPhone, msg);
+  } else {
+    try {
+      const win = window.open(waUrl, '_blank');
+      if (!win) {
+        const a = document.createElement('a');
+        a.href = waUrl;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { if (a.parentNode) a.parentNode.removeChild(a); }, 100);
+      }
+    } catch (_) {
+      window.open(waUrl, '_blank');
+    }
   }
 
   // 4. Auto-copy poster to clipboard in background (non-blocking, 0ms lag!)

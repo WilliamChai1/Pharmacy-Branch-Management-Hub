@@ -2317,8 +2317,7 @@ function formatCandidateWhatsAppUrl(phone, msg) {
     clean = '60' + clean;
   }
   const cleanMsg = typeof sanitizeWhatsAppMessage === 'function' ? sanitizeWhatsAppMessage(msg) : String(msg);
-  const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Windows Phone|webOS/i.test(navigator.userAgent || '');
-  const baseUrl = isMobile ? 'https://api.whatsapp.com/send' : 'https://web.whatsapp.com/send';
+  const baseUrl = 'https://api.whatsapp.com/send';
   return `${baseUrl}?phone=${clean}&text=${encodeURIComponent(cleanMsg)}`;
 }
 
