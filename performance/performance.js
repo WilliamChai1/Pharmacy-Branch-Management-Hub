@@ -5296,6 +5296,26 @@ async function handleSlotFileUpload(type, periodSlot, inputEl) {
     activeAiReport = null;
     refreshAllViews();
     showToast(`Loaded ${file.name} into ${type} (${periodSlot})!`, 'success');
+
+    // Cross-module sync: if stock aging is uploaded in Performance Suite, propagate to Inventory and Pricing Intelligence
+    if (type === 'STOCK_AGING' && perfState.stockAgingLatest?.items) {
+      const items = perfState.stockAgingLatest.items;
+      if (typeof window !== 'undefined') {
+        if (typeof window.ingestStockAgingItems === 'function') {
+          try { window.ingestStockAgingItems(items, file.name); } catch(e) {}
+        }
+        if (window.pmgPricing && typeof window.pmgPricing.ingestAgingData === 'function') {
+          try {
+            window.pmgPricing.ingestAgingData(items, file.name);
+            if (typeof window.pmgPricing.autoAnalyzeAllSkus === 'function') {
+              window.pmgPricing.autoAnalyzeAllSkus(false);
+            } else {
+              window.pmgPricing.render();
+            }
+          } catch(e) {}
+        }
+      }
+    }
   } catch (err) {
     showToast(`Failed to parse ${file.name}: ${err.message}`, 'error');
   }

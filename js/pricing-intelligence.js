@@ -606,6 +606,22 @@
       this.render();
       // Auto sync from Google Sheets in background
       this.fetchPricingFromSheets(false);
+
+      if (typeof window !== 'undefined' && !this._listenersBound) {
+        this._listenersBound = true;
+        window.addEventListener('pmg:aging-updated', () => {
+          this.loadStockAging().then(() => {
+            this.autoAnalyzeAllSkus(false);
+          });
+        });
+        window.addEventListener('storage', (e) => {
+          if (e.key === 'pmg_stock_aging_cache_v1' || e.key === 'pmg_stock_aging_data') {
+            this.loadStockAging().then(() => {
+              this.autoAnalyzeAllSkus(false);
+            });
+          }
+        });
+      }
     }
 
     async loadSkusFromStorage() {
@@ -1137,10 +1153,19 @@
         }
 
         this.ingestAgingData(items, file.name);
-        this.render();
+
+        // Sync with live inventory suite if loaded
+        if (typeof window !== 'undefined' && typeof window.ingestStockAgingItems === 'function') {
+          try {
+            window.ingestStockAgingItems(items, file.name);
+          } catch (e) {}
+        }
+
+        // Auto-analyze all SKUs against the new aging data & update list comparison
+        this.autoAnalyzeAllSkus(false);
 
         if (typeof showExpiryToast === 'function') {
-          showExpiryToast(`✅ Imported Stock Aging: ${items.length} items (${this.agingStats.totalAgedSkus} aged, RM ${this.agingStats.totalAgedValue.toLocaleString()} locked capital)`);
+          showExpiryToast(`✅ Imported Stock Aging: ${items.length} items. Automatically updated list comparison (${this.agingStats.totalAgedSkus} aged, RM ${this.agingStats.totalAgedValue.toLocaleString()} locked)!`);
         }
       } catch (err) {
         console.error('[PMG Pricing] Aging upload error:', err);
@@ -1325,6 +1350,104 @@
           badge.className = 'text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200';
         }
       }
+    }
+
+    autoAnalyzeAllSkus(showToast = true) {
+      if (!this.skus || this.skus.length === 0) return;
+
+      if (!this.agingMap || this.agingMap.size === 0) {
+        this.loadStockAging();
+      }
+
+      let totalAgedCount = 0;
+      let totalLockedVal = 0;
+      let pricingIssueCount = 0;
+      let competitiveCount = 0;
+      let rxCount = 0;
+      let highMarginCount = 0;
+
+      this.skus.forEach(s => {
+        const isRx = this.isScheduledPrescriptionDrug(s);
+        if (isRx) {
+          s.supermarketPrice = null;
+        }
+
+        const knownBench = this.getKnownMalaysianBenchmark(s);
+        if (knownBench) {
+          if (!s.chainPharmacyPrice && knownBench.retailSp) {
+            s.chainPharmacyPrice = knownBench.retailSp;
+            if (!s.competitorName || s.competitorName === 'Local Competitors') {
+              s.competitorName = knownBench.competitor;
+            }
+          }
+          if (!isRx && !s.supermarketPrice && knownBench.supermarketSp) {
+            s.supermarketPrice = knownBench.supermarketSp;
+          }
+          if (!s.promoNote && knownBench.note) {
+            s.promoNote = knownBench.note;
+          }
+        }
+
+        const cost = parseFloat(s.costPrice) || 0;
+        const sp = parseFloat(s.standardSp) || 0;
+        if (cost > 0 && sp > 0) {
+          const m = ((sp - cost) / sp) * 100;
+          if (m >= 45 && s.strategyTag !== 'clinical_bundle') {
+            s.strategyTag = 'margin_builder';
+          } else if (m < 15 && !isRx) {
+            s.strategyTag = 'kvi_defensive';
+          } else if (isRx && s.strategyTag !== 'margin_builder') {
+            s.strategyTag = 'core_rx';
+          }
+        }
+
+        const aging = this.getStockAgingForSku(s);
+        const diag = this.diagnoseSkuPricingVsAging(s, aging);
+        if (diag.isAged) {
+          totalAgedCount++;
+          totalLockedVal += (diag.agedValue || 0);
+          if (diag.status === 'AGING_PRICING_ISSUE') pricingIssueCount++;
+          else if (diag.status === 'AGING_COMPETITIVE') competitiveCount++;
+          else if (diag.status === 'AGING_HIGH_MARGIN') highMarginCount++;
+          else if (diag.status === 'AGING_RX') rxCount++;
+        }
+      });
+
+      this.saveSkusToStorage();
+      this.renderSummaryCards();
+      this.renderTableOnly();
+
+      if (showToast && typeof showExpiryToast === 'function') {
+        showExpiryToast(`⚡ Auto-analyzed ${this.skus.length} SKUs: ${totalAgedCount} with Aged Stock (${pricingIssueCount} Pricing Issues, ${competitiveCount} Competitive).`);
+      }
+    }
+
+    autoAnalyzeSingleSku(skuId) {
+      const sku = this.skus.find(s => s.id === skuId);
+      if (!sku) return null;
+
+      const isRx = this.isScheduledPrescriptionDrug(sku);
+      if (isRx) {
+        sku.supermarketPrice = null;
+      }
+
+      const cost = parseFloat(sku.costPrice) || 0;
+      const sp = parseFloat(sku.standardSp) || 0;
+      if (cost > 0 && sp > 0) {
+        const m = ((sp - cost) / sp) * 100;
+        if (m >= 45 && sku.strategyTag !== 'clinical_bundle') {
+          sku.strategyTag = 'margin_builder';
+        } else if (m < 15 && !isRx) {
+          sku.strategyTag = 'kvi_defensive';
+        } else if (isRx && sku.strategyTag !== 'margin_builder') {
+          sku.strategyTag = 'core_rx';
+        }
+      }
+
+      this.saveSkusToStorage();
+      this.renderSummaryCards();
+      this.renderTableOnly();
+      return sku;
     }
 
     toggleAgingSort() {
@@ -1723,6 +1846,22 @@
       const name = (sku.name || '').toUpperCase().trim();
       const tag = (sku.strategyTag || '').toLowerCase().trim();
 
+      // Explicit FMCG exclusions: Supermarkets and hypermarkets (Farley, Emart, Everwin)
+      // legally sell adult diapers, baby diapers, nutrition milk, drinks, and personal care
+      // even if categorized under Chronic/NCD or Health & Supplements in POS
+      const fmcgExclusions = [
+        'DIAPER', 'PANTS', 'PAD', 'UNDERPAD', 'WIPES', 'ADULT',
+        'MILK', 'ENSURE', 'GLUCERNA', 'ENERGETIC', 'NUTRITION', 'PROSURE', 'APPETON',
+        'SOAP', 'SHAMPOO', 'LOTION', 'CLEANSER', 'WASH', 'TOOTHPASTE',
+        'PATCH', 'PANAFLEX', 'KOOLFEVER', 'SALONPAS', 'TIGER BALM',
+        'STRIP', 'LANCET', 'METER', 'SYRINGE', 'NEEDLE', 'MASK', 'GLOVE', 'PLASTER',
+        'COTTON', 'GAUZE', 'BANDAGE', 'THERMOMETER', 'CONDOM', 'BEVERAGE', 'DRINK', 'TEA', 'CEREAL',
+        'OIL', 'BALM', 'GEL', 'SPRAY', 'HONEY', 'HERBAL', 'CANDY', 'LOZENGE'
+      ];
+      if (fmcgExclusions.some(ex => name.includes(ex))) {
+        return false;
+      }
+
       // 1. Explicit Category matching (Poisons Act 1952 scheduled drugs)
       if (
         cat === 'CHRONIC / NCD' || 
@@ -2082,9 +2221,7 @@
         sku.currentBranchSp = parsedSp;
         sku.customModified = true;
         sku.priceChangedAt = new Date().toISOString();
-        this.saveSkusToStorage();
-        this.renderSummaryCards();
-        this.renderTableOnly();
+        this.autoAnalyzeSingleSku(skuId);
       }
     }
 
@@ -2099,9 +2236,7 @@
         sku.costPrice = parsedCost;
         sku.customModified = true;
         sku.priceChangedAt = new Date().toISOString();
-        this.saveSkusToStorage();
-        this.renderSummaryCards();
-        this.renderTableOnly();
+        this.autoAnalyzeSingleSku(skuId);
         if (typeof showExpiryToast === 'function') {
           showExpiryToast(`Updated ${sku.name} Cost: RM ${parsedCost.toFixed(2)}`);
         }
@@ -2130,8 +2265,7 @@
           sku.supermarketPrice = (isNaN(parsed) || parsed <= 0) ? null : parsed;
         }
         sku.customModified = true;
-        this.saveSkusToStorage();
-        this.renderTableOnly();
+        this.autoAnalyzeSingleSku(skuId);
       }
     }
 
@@ -2141,8 +2275,7 @@
       if (sku) {
         sku.chainPharmacyPrice = (isNaN(parsed) || parsed <= 0) ? null : parsed;
         sku.customModified = true;
-        this.saveSkusToStorage();
-        this.renderTableOnly();
+        this.autoAnalyzeSingleSku(skuId);
       }
     }
 
@@ -2548,12 +2681,11 @@
       }
 
       localStorage.setItem('pmg_pricing_demo_purged', 'true');
-      this.saveSkusToStorage();
+      this.autoAnalyzeAllSkus(false);
       this.pushPricingToSheets(true);
-      this.render();
 
       if (typeof showExpiryToast === 'function') {
-        showExpiryToast(`Successfully imported ${this.pendingXilnexSkus.length} SKUs into Pricing Matrix & synced to Google Sheets.`);
+        showExpiryToast(`✅ Imported ${this.pendingXilnexSkus.length} SKUs & auto-analyzed pricing vs stock aging data!`);
       }
 
       this.pendingXilnexSkus = null;
@@ -2930,15 +3062,15 @@
             <td class="p-3 align-top">
               ${agingCellHtml}
             </td>
-            <td class="p-3 text-center">
-              <div class="flex items-center justify-center gap-1.5 flex-wrap">
+            <td class="p-3 text-center align-middle sticky right-0 bg-white/95 backdrop-blur z-10 border-l border-slate-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)]">
+              <div class="flex items-center justify-center gap-1.5 flex-col sm:flex-row">
                 <button type="button" onclick="window.pmgPricing.launchAiCompetitorPriceCheck('${s.id}')"
-                  class="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer whitespace-nowrap"
+                  class="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer whitespace-nowrap"
                   title="Deep analyze competitor prices (Farley, Emart, Watsons, Caring)">
                   <i class="fa-solid fa-tags text-blue-600"></i> Competitor Prices
                 </button>
                 <button type="button" onclick="window.pmgPricing.launchAiMarketStrategy('${s.id}')"
-                  class="bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer whitespace-nowrap"
+                  class="bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 px-2 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer whitespace-nowrap"
                   title="Further strategic analysis based on market dynamics, price elasticity & basket building">
                   <i class="fa-solid fa-chart-line text-purple-600"></i> Market Strategy
                 </button>

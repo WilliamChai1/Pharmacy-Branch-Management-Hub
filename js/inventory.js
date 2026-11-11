@@ -251,6 +251,20 @@ function ingestStockAgingItems(items, sourceName) {
 
   updateAgingStatusUI();
   if (inventoryData.length > 0) recalcInventory();
+
+  // Cross-module sync with Pricing Intelligence & Strategic SWOT Matrix
+  if (typeof window !== 'undefined' && window.pmgPricing && typeof window.pmgPricing.ingestAgingData === 'function') {
+    try {
+      window.pmgPricing.ingestAgingData(items, sourceName || 'Live Ingestion');
+      if (typeof window.pmgPricing.autoAnalyzeAllSkus === 'function') {
+        window.pmgPricing.autoAnalyzeAllSkus(false);
+      } else {
+        window.pmgPricing.render();
+      }
+    } catch (e) {
+      console.warn('[Replenishment] Error propagating aging data to Pricing Intelligence:', e);
+    }
+  }
 }
 
 /**

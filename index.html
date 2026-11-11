@@ -1618,48 +1618,66 @@
 
         <!-- Matrix Table -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse text-xs">
+          <div class="px-4 py-2 bg-slate-50 border-b border-gray-200 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+            <span class="flex items-center gap-1.5 font-bold text-gray-700">
+              <i class="fa-solid fa-table-list text-indigo-600"></i>
+              <span>Standardized 7-Outlet SKU Pricing Matrix</span>
+            </span>
+            <span class="flex items-center gap-2 text-[11px] text-gray-400">
+              <span><i class="fa-solid fa-arrows-left-right mr-1 text-gray-400"></i>Scroll horizontally if needed</span>
+              <span class="text-indigo-600 font-semibold bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                <i class="fa-solid fa-thumbtack mr-1"></i>AI Intelligence pinned to right
+              </span>
+            </span>
+          </div>
+          <div class="overflow-x-auto relative" style="scrollbar-width: thin;">
+            <table class="w-full text-left border-collapse text-xs min-w-[1240px]">
               <thead class="bg-slate-50 border-b border-gray-200 text-gray-700 uppercase font-bold text-[11px]">
                 <tr>
-                  <th class="p-3">Product / SKU Details</th>
-                  <th class="p-3 w-32">Strategic Role</th>
-                  <th class="p-3 text-right w-36">
+                  <th class="p-3 min-w-[220px]">Product / SKU Details</th>
+                  <th class="p-3 w-28">Strategic Role</th>
+                  <th class="p-3 text-right w-32">
                     <div>Custom Cost (RM)</div>
                     <div class="text-[9px] text-gray-400 font-normal lowercase tracking-normal">Supplier / Wholesaler</div>
                   </th>
-                  <th class="p-3 text-right w-32">
+                  <th class="p-3 text-right w-28">
                     <div>Member SP (RM)</div>
                     <div class="text-[9px] text-gray-400 font-normal lowercase tracking-normal">Standard 7-Outlet SP</div>
                   </th>
-                  <th class="p-3 text-right w-32 cursor-pointer hover:bg-slate-200 select-none transition" onclick="window.pmgPricing && window.pmgPricing.toggleMarginSort()" title="Click to sort by Gross Margin (Highest to Lowest / Lowest to Highest)">
+                  <th class="p-3 text-right w-24 cursor-pointer hover:bg-slate-200 select-none transition" onclick="window.pmgPricing && window.pmgPricing.toggleMarginSort()" title="Click to sort by Gross Margin (Highest to Lowest / Lowest to Highest)">
                     <div class="flex items-center justify-end gap-1">
                       <span>Gross Margin %</span>
                       <span id="pricingMarginSortIcon"><i class="fa-solid fa-sort text-gray-400"></i></span>
                     </div>
                   </th>
-                  <th class="p-3 text-right w-44 cursor-pointer hover:bg-slate-200 select-none transition" onclick="window.pmgPricing && window.pmgPricing.toggleSupermarketDeviationSort()" title="Click to sort by Farley / Emart Price Deviation (+% PMG Overpriced / -% PMG Cheaper)">
+                  <th class="p-3 text-right w-36 cursor-pointer hover:bg-slate-200 select-none transition" onclick="window.pmgPricing && window.pmgPricing.toggleSupermarketDeviationSort()" title="Click to sort by Farley / Emart Price Deviation (+% PMG Overpriced / -% PMG Cheaper)">
                     <div class="flex items-center justify-end gap-1">
                       <span>Supermarket (Farley)</span>
                       <span id="pricingSupermarketSortIcon"><i class="fa-solid fa-sort text-gray-400"></i></span>
                     </div>
                     <div class="text-[9px] text-gray-400 font-normal lowercase tracking-normal">FMCG &amp; Milk Only · Rx N/A</div>
                   </th>
-                  <th class="p-3 text-right w-48 cursor-pointer hover:bg-slate-200 select-none transition" onclick="window.pmgPricing && window.pmgPricing.toggleChainDeviationSort()" title="Click to sort by Pharmacy Competitors Deviation (+% PMG Overpriced / -% PMG Cheaper)">
+                  <th class="p-3 text-right w-40 cursor-pointer hover:bg-slate-200 select-none transition" onclick="window.pmgPricing && window.pmgPricing.toggleChainDeviationSort()" title="Click to sort by Pharmacy Competitors Deviation (+% PMG Overpriced / -% PMG Cheaper)">
                     <div class="flex items-center justify-end gap-1">
                       <span>Pharmacy Competitors</span>
                       <span id="pricingChainSortIcon"><i class="fa-solid fa-sort text-gray-400"></i></span>
                     </div>
                     <div class="text-[9px] text-gray-400 font-normal normal-case tracking-normal">Alpro · Caring · BIG · Ting</div>
                   </th>
-                  <th class="p-3 text-center w-60 min-w-[220px] cursor-pointer hover:bg-slate-200 select-none transition" onclick="window.pmgPricing && window.pmgPricing.toggleAgingSort()" title="Click to sort by Aged Stock Value (Highest to Lowest)">
+                  <th class="p-3 text-center w-52 min-w-[200px] cursor-pointer hover:bg-slate-200 select-none transition" onclick="window.pmgPricing && window.pmgPricing.toggleAgingSort()" title="Click to sort by Aged Stock Value (Highest to Lowest)">
                     <div class="flex items-center justify-center gap-1">
                       <span>Stock Aging &amp; Diagnostic</span>
                       <span id="pricingAgingSortIcon"><i class="fa-solid fa-sort text-gray-400"></i></span>
                     </div>
                     <div class="text-[9px] text-gray-400 font-normal lowercase tracking-normal">Xilnex &gt;150d · Pricing vs Demand</div>
                   </th>
-                  <th class="p-3 text-center w-56 min-w-[220px]">AI Strategic Intelligence</th>
+                  <th class="p-3 text-center w-48 min-w-[185px] sticky right-0 bg-slate-100 z-20 border-l border-slate-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)]">
+                    <div class="flex items-center justify-center gap-1">
+                      <i class="fa-solid fa-wand-magic-sparkles text-indigo-600"></i>
+                      <span>AI Intelligence</span>
+                    </div>
+                    <div class="text-[9px] text-gray-400 font-normal normal-case tracking-normal">Pinned Actions</div>
+                  </th>
                 </tr>
               </thead>
               <datalist id="pmgSupplierList">
@@ -4821,7 +4839,7 @@ ItemCode,Description,Brand,Category,Cost,SellingPrice,Supplier
 
 <script src="js/data.js?v=20261110_clean_wa_v1"></script>
 <script src="js/auth.js?v=20261110_clean_wa_v1"></script>
-<script src="js/inventory.js?v=20261024_v7"></script>
+<script src="js/inventory.js?v=20261111_sync_v8"></script>
 <script src="js/roster.js?v=20261026_rymnet_v8"></script>
 <script src="js/audit.js?v=20261110_clean_wa_v1"></script>
 <script src="js/scheduler.js?v=20261110_clean_wa_v1"></script>
@@ -4832,7 +4850,7 @@ ItemCode,Description,Brand,Category,Cost,SellingPrice,Supplier
 <script src="js/hq_return_policy.js?v=20261024_v7"></script>
 <script src="js/expiry.js?v=20261110_clean_wa_v1"></script>
 <script src="js/returns-cn.js?v=20261110_no_deadline_v8"></script>
-<script src="js/pricing-intelligence.js?v=20261111_aging_diag_v10"></script>
+<script src="js/pricing-intelligence.js?v=20261111_sticky_auto_v11"></script>
 <script src="js/recruitment.js?v=20261110_clean_wa_v1"></script>
 <script src="js/admin-assets.js?v=20261024_v7"></script>
 <script src="js/commercial-admin.js?v=20261110_no_lhdn_v3"></script>
