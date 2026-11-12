@@ -3345,12 +3345,12 @@
         queries.push(`${coreKeyword || clean} price Caring Pharmacy`);
       }
 
-      // 5. Generate direct 1-click verification URLs for Malaysian pharmacy stores
+      // 5. Generate direct 1-click verification URLs for Malaysian pharmacy stores (Shopify live catalog search)
       const searchKeyword = encodeURIComponent(coreKeyword || clean);
       const directUrls = {
-        alpro: `https://www.alpropharmacy.com/oneclick/?s=${searchKeyword}`,
-        big: `https://www.bigpharmacy.com.my/catalogsearch/result/?q=${searchKeyword}`,
-        caring: `https://estore.caring2u.com/catalogsearch/result/?q=${searchKeyword}`
+        alpro: `https://alpropharmacy.com.my/search?q=${searchKeyword}`,
+        big: `https://bigpharmacy.com.my/search?q=${searchKeyword}`,
+        caring: `https://estore.caring2u.com/search?q=${searchKeyword}`
       };
 
       return {
@@ -3360,6 +3360,474 @@
         searchQueries: queries,
         directUrls
       };
+    }
+
+    // ─── LIVE COMPETITOR WEBSTORE CATALOG SCRAPER (ALPRO / BIG / CARING) ─────────
+    fetchJsonpOrJson(url, timeoutMs = 6500) {
+      // Browser environment: Use native Shopify JSONP (?callback=...) via <script> injection
+      // Completely bypasses CORS & Cloudflare proxy blocks with <400ms latency
+      if (typeof window !== 'undefined' && typeof document !== 'undefined' && document.head) {
+        return new Promise((resolve) => {
+          const cbName = '__pmgStoreJsonp_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
+          const sep = url.includes('?') ? '&' : '?';
+          const script = document.createElement('script');
+          let settled = false;
+
+          const cleanup = () => {
+            if (script.parentNode) script.parentNode.removeChild(script);
+            try { delete window[cbName]; } catch (_) { window[cbName] = undefined; }
+          };
+
+          const timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve(null);
+          }, timeoutMs);
+
+          window[cbName] = (data) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            cleanup();
+            resolve(data || null);
+          };
+
+          script.onerror = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            cleanup();
+            resolve(null);
+          };
+
+          script.src = `${url}${sep}callback=${cbName}`;
+          document.head.appendChild(script);
+        });
+      }
+
+      // Node / server-side test environment: direct fetch
+      if (typeof fetch === 'function') {
+        return fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null);
+      }
+      return Promise.resolve(null);
+    }
+
+    parsePackAndMultiInfo(text) {
+      const up = String(text || '').toUpperCase();
+
+      // Convert sachet weight notations like "50 x 2.3g" or "30 x 2.5g" (count >= 8, unit weight <= 25g) into "50S"
+      let sachetCountFromWeight = null;
+      const cleanedForMulti = up.replace(/\b(\d{1,3})\s*X\s*(\d+(?:\.\d+)?)\s*(G|GM|ML)\b/gi, (match, cnt, wt) => {
+        if (parseInt(cnt, 10) >= 8 && parseFloat(wt) <= 25) {
+          sachetCountFromWeight = parseInt(cnt, 10);
+          return ` ${cnt}S `;
+        }
+        return match;
+      });
+
+      // Detect multi-packs: e.g. 2x50s, 50sx2, 2x850g, 2 x 30s, twin pack
+      const multiMatch1 = cleanedForMulti.match(/\b([2-9]|1[0-2])\s*X\s*(\d+(?:\.\d+)?)\s*(?:['’]?S|SACHETS?|SAC|TABS?|CAPS?|G|GM|KG|ML|L)?\b/i);
+      const multiMatch2 = cleanedForMulti.match(/\b(\d+)\s*(?:['’]?S|SACHETS?|SAC|TABS?|CAPS?|G|GM|KG|ML|L)?\s*X\s*([2-9]|1[0-2])\b/i);
+
+      let isMultiPack = false;
+      let packMultiplier = 1;
+      let unitCount = sachetCountFromWeight;
+
+      if (multiMatch1 && parseFloat(multiMatch1[2]) >= 8) {
+        isMultiPack = true;
+        packMultiplier = parseInt(multiMatch1[1], 10);
+        if (!/G|GM|KG|ML|L/i.test(multiMatch1[0])) {
+          unitCount = parseInt(multiMatch1[2], 10);
+        }
+      } else if (multiMatch2 && parseFloat(multiMatch2[1]) >= 8) {
+        isMultiPack = true;
+        packMultiplier = parseInt(multiMatch2[2], 10);
+        if (!/G|GM|KG|ML|L/i.test(multiMatch2[0])) {
+          unitCount = parseInt(multiMatch2[1], 10);
+        }
+      }
+
+      if (/TWIN\s*PACK|DOUBLE\s*PACK|VALUE\s*PACK\s*OF\s*2|PACK\s*OF\s*2/i.test(cleanedForMulti)) {
+        isMultiPack = true;
+        if (packMultiplier === 1) packMultiplier = 2;
+      }
+
+      if (!unitCount) {
+        const countMatch = cleanedForMulti.match(/\b(\d+)\s*(?:['’]S\b|S\b|SACHETS?\b|SAC\b|TABS?\b|TABLETS?\b|CAPS?\b|CAPSULES?\b|PCS\b|PIECES\b|PADS?\b|STRIPS?\b)/i);
+        if (countMatch) {
+          unitCount = parseInt(countMatch[1], 10);
+        }
+      }
+
+      // Weight or Volume (ignore small sachet weights <= 15g if unitCount is already present)
+      let weightVal = null;
+      let weightUnit = null;
+      const weightMatches = [...cleanedForMulti.matchAll(/\b(\d+(?:\.\d+)?)\s*(GM|G|KG|ML|L|MG|MCG)\b/gi)];
+      for (const wm of weightMatches) {
+        const val = parseFloat(wm[1]);
+        const u = wm[2].toUpperCase().replace('GM', 'G');
+        if (u === 'MG' || u === 'MCG') continue; // dosage strength, not container weight
+        if (unitCount && u === 'G' && val <= 15) continue; // skip 2.3g sachet weight
+        weightVal = val;
+        weightUnit = u;
+        break;
+      }
+
+      // Garment / Diaper size & type
+      const isDiaperOrGarment = /DIAPER|PANTS|SLIP|BRIEF|INCONTINENCE|UNDERWEAR/i.test(up);
+      let garmentSize = null;
+      let garmentType = null;
+      if (isDiaperOrGarment) {
+        const szMatch = up.match(/(?:\b|\()(XXL|XL|LARGE|MEDIUM|SMALL|L|M|S)(?:\b|\)|\s*SIZE)/i);
+        if (szMatch) {
+          const rawSz = szMatch[1].toUpperCase();
+          garmentSize = rawSz === 'LARGE' ? 'L' : rawSz === 'MEDIUM' ? 'M' : rawSz === 'SMALL' ? 'S' : rawSz;
+        }
+        if (/\bPANTS\b/.test(up)) garmentType = 'PANTS';
+        else if (/\bDIAPERS?\b|\bTAPE\b|\bSLIP\b/.test(up)) garmentType = 'DIAPERS';
+      }
+
+      return {
+        isMultiPack,
+        packMultiplier,
+        unitCount,
+        weightVal,
+        weightUnit,
+        isDiaperOrGarment,
+        garmentSize,
+        garmentType
+      };
+    }
+
+    buildStoreSearchQueries(rawName) {
+      let clean = String(rawName || '')
+        .replace(/\bSAC(?:HETS?|H)?\b/gi, '')
+        .replace(/\bTAB(?:LETS?)?\b/gi, '')
+        .replace(/\bCAP(?:SULES?)?\b/gi, '')
+        .replace(/\bBTL|PWDR|PWD|BOX\d*|PACK|STRIP|UNIT\b/gi, '')
+        .replace(/PRE\s*&\s*PRO/gi, 'Pre&Pro')
+        .replace(/A\.?B\.?\s*JUNIOR/gi, 'A.B. Junior')
+        .replace(/BIO[- ]?LIFE/gi, 'Bio-Life')
+        .replace(/(\d+)\s*GM\b/gi, '$1g')
+        .replace(/['"]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      const queries = [clean];
+
+      const withoutPack = clean
+        .replace(/\b\d+\s*X\s*\d+S?\b/gi, '')
+        .replace(/\b\d+S\b/gi, '')
+        .replace(/\b\d+(?:\.\d+)?(?:G|KG|ML|L)\b/gi, '')
+        .replace(/\b(XXL|XL|L|M)\b/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (withoutPack && withoutPack.length >= 4 && withoutPack !== clean) {
+        queries.push(withoutPack);
+      }
+
+      const tokens = withoutPack.split(' ').filter(Boolean);
+      if (tokens.length > 3) {
+        queries.push(tokens.slice(0, 3).join(' '));
+      }
+
+      return [...new Set(queries)];
+    }
+
+    scoreCandidateProduct(skuName, skuReq, candidateTitle, variantTitle = '') {
+      let baseTitle = String(candidateTitle || '');
+      const hasRealVariant = variantTitle && !/DEFAULT\s*TITLE/i.test(variantTitle);
+      if (hasRealVariant) {
+        baseTitle = baseTitle.replace(/\([^)]*(?:\d+S|\d+G|\d+ML)\/[^)]*\)/gi, ' ');
+      }
+      const fullCand = `${baseTitle} ${hasRealVariant ? variantTitle : ''}`.toUpperCase();
+      const skuUp = String(skuName || '').toUpperCase();
+
+      // Reject near-expiry clearance listings
+      if (/SHORT\s*EXP|EXP\s*:?\s*\d{2}\/\d{2,4}|CLEARANCE\s*EXP/i.test(fullCand)) {
+        return -500;
+      }
+
+      // 1. Word-boundary token matching on distinctive product words
+      const stopWords = new Set(['SAC', 'SACHET', 'SACHETS', 'TAB', 'TABLET', 'TABLETS', 'CAP', 'CAPSULE', 'CAPSULES', 'POWDER', 'PWDR', 'BTL', 'BOTTLE', 'PACK', 'BOX', 'SOFT', 'ADULT', 'PRE', 'PRO', 'AND', 'WITH', 'FOR', 'SYR', 'SYRUP']);
+      const skuTokens = skuUp
+        .replace(/['".,()&/-]/g, ' ')
+        .split(/\s+/)
+        .filter(t => t.length >= 2 && !stopWords.has(t) && !/^\d+S?$/.test(t) && !/^\d+(?:\.\d+)?(G|GM|KG|ML|L)$/.test(t) && !/^(XXL|XL|L|M|S)$/.test(t));
+
+      const candWords = new Set(fullCand.replace(/['".,()&/|-]/g, ' ').split(/\s+/).filter(Boolean));
+
+      let matchedTokens = 0;
+      for (const t of skuTokens) {
+        if (candWords.has(t)) {
+          matchedTokens++;
+        } else {
+          const partialHit = [...candWords].some(cw => (cw.length >= 4 && t.length >= 4 && (cw.startsWith(t) || t.startsWith(cw))));
+          if (partialHit) matchedTokens += 0.8;
+        }
+      }
+
+      const tokenRatio = skuTokens.length > 0 ? matchedTokens / skuTokens.length : 0.5;
+      if (tokenRatio < 0.70) return -500;
+
+      let score = tokenRatio * 100;
+
+      // 2. Parse candidate's packaging & multi-pack info
+      const candReq = hasRealVariant
+        ? this.parsePackAndMultiInfo(`${baseTitle} ${variantTitle}`)
+        : this.parsePackAndMultiInfo(fullCand);
+
+      // Strictly enforce Multi-Pack vs Single-Pack
+      if (skuReq.isMultiPack !== candReq.isMultiPack) {
+        return -300;
+      }
+      if (skuReq.isMultiPack && candReq.isMultiPack && skuReq.packMultiplier !== candReq.packMultiplier) {
+        return -250;
+      }
+
+      // Strictly enforce Unit Count (e.g. 50s vs 10s vs 9s)
+      if (skuReq.unitCount) {
+        if (candReq.unitCount === skuReq.unitCount) {
+          score += 80;
+        } else if (candReq.unitCount && candReq.unitCount !== skuReq.unitCount) {
+          return -250;
+        } else {
+          score -= 30;
+        }
+      }
+
+      // Enforce Weight / Volume (allow <= 10% single-tin reformulation tolerance e.g. 850G -> 800G)
+      if (skuReq.weightVal && skuReq.weightUnit) {
+        if (candReq.weightVal === skuReq.weightVal && candReq.weightUnit === skuReq.weightUnit) {
+          score += 80;
+        } else if (candReq.weightVal && candReq.weightUnit === skuReq.weightUnit && Math.abs(candReq.weightVal - skuReq.weightVal) / skuReq.weightVal <= 0.10) {
+          score += 55; // Slight reformulated tin weight (e.g. Ensure Gold 850g -> 800g)
+        } else if (candReq.weightVal && candReq.weightVal !== skuReq.weightVal) {
+          return -250;
+        } else {
+          score -= 30;
+        }
+      }
+
+      // Diaper / Garment Size & Type
+      if (skuReq.isDiaperOrGarment) {
+        if (skuReq.garmentSize) {
+          if (candReq.garmentSize === skuReq.garmentSize) {
+            score += 60;
+          } else {
+            return -200;
+          }
+        }
+        if (skuReq.garmentType && candReq.garmentType) {
+          if (skuReq.garmentType === candReq.garmentType) {
+            score += 40;
+          } else {
+            score += 10; // Same brand & size & count diaper vs pants variant
+          }
+        }
+      }
+
+      return score;
+    }
+
+    async searchCompetitorStoreForSku(store, skuName) {
+      const skuReq = this.parsePackAndMultiInfo(skuName);
+      const queries = this.buildStoreSearchQueries(skuName);
+      const seenHandles = new Set();
+      const candidates = [];
+
+      for (const q of queries) {
+        const url = `${store.base}/search/suggest.json?q=${encodeURIComponent(q)}&resources[type]=product&resources[limit]=10&resources[options][unavailable_products]=show`;
+        try {
+          const j = await this.fetchJsonpOrJson(url);
+          const products = j?.resources?.results?.products || [];
+          for (const p of products) {
+            if (!p.handle || seenHandles.has(p.handle)) continue;
+            seenHandles.add(p.handle);
+
+            const hasMultiVariantsInTitle = /\((?:\d+S|\d+G|\d+ML)\//i.test(p.title) || /10S.*50S/i.test(p.title) || /400G.*800G/i.test(p.title);
+            if (hasMultiVariantsInTitle) {
+              const pj = await this.fetchJsonpOrJson(`${store.base}/products/${p.handle}.json`);
+              if (pj && pj.product && Array.isArray(pj.product.variants)) {
+                for (const v of pj.product.variants) {
+                  const sc = this.scoreCandidateProduct(skuName, skuReq, p.title, v.title);
+                  if (sc >= 120) {
+                    const price = parseFloat(v.price) || 0;
+                    const compareAt = parseFloat(v.compare_at_price) || 0;
+                    if (price > 0) {
+                      candidates.push({
+                        storeId: store.id,
+                        storeName: store.name,
+                        title: `${p.title} [${v.title}]`,
+                        price,
+                        normalPrice: compareAt > price ? compareAt : null,
+                        available: v.available !== false,
+                        url: `${store.base}/products/${p.handle}?variant=${v.id}`,
+                        score: sc
+                      });
+                    }
+                  }
+                }
+                continue;
+              }
+            }
+
+            const sc = this.scoreCandidateProduct(skuName, skuReq, p.title, '');
+            if (sc >= 120) {
+              const price = parseFloat(p.price) || 0;
+              const compareAt = parseFloat(p.compare_at_price_max) || 0;
+              if (price > 0) {
+                candidates.push({
+                  storeId: store.id,
+                  storeName: store.name,
+                  title: p.title,
+                  price,
+                  normalPrice: compareAt > price ? compareAt : null,
+                  available: p.available !== false,
+                  url: `${store.base}/products/${p.handle}`,
+                  score: sc
+                });
+              }
+            }
+          }
+          if (candidates.some(c => c.score >= 165)) break;
+        } catch (_) {}
+      }
+
+      candidates.sort((a, b) => (b.score !== a.score ? b.score - a.score : a.price - b.price));
+      return candidates[0] || null;
+    }
+
+    async fetchLiveCompetitorStorePrices(sku) {
+      if (!sku || !sku.name || this.isPmgHouseBrand(sku)) return null;
+
+      if (!this.liveStoreCache) this.liveStoreCache = {};
+      const cacheKey = `${sku.id}_${sku.name}`;
+      const cached = this.liveStoreCache[cacheKey];
+      if (cached && (Date.now() - cached.timestamp < 15 * 60 * 1000)) {
+        return cached.data;
+      }
+
+      const stores = [
+        { id: 'alpro', name: 'Alpro Oneclick', shortName: 'Alpro', base: 'https://alpropharmacy.com.my' },
+        { id: 'big', name: 'BIG Pharmacy', shortName: 'BIG', base: 'https://bigpharmacy.com.my' },
+        { id: 'caring', name: 'Caring Pharmacy', shortName: 'Caring', base: 'https://estore.caring2u.com' }
+      ];
+
+      const results = await Promise.all(stores.map(st => this.searchCompetitorStoreForSku(st, sku.name)));
+      const matches = results.filter(Boolean);
+
+      if (matches.length === 0) {
+        const emptyRes = { matches: [], byStore: {}, lowestPrice: 0, normalPrice: 0, competitorSummary: '', promoNote: '', hasPromo: false };
+        this.liveStoreCache[cacheKey] = { timestamp: Date.now(), data: emptyRes };
+        return emptyRes;
+      }
+
+      const byStore = {};
+      matches.forEach(m => { byStore[m.storeId] = m; });
+
+      const sortedByPrice = [...matches].sort((a, b) => a.price - b.price);
+      const lowestMatch = sortedByPrice[0];
+      const lowestPrice = lowestMatch.price;
+
+      let highestNormal = 0;
+      matches.forEach(m => {
+        if (m.normalPrice && m.normalPrice > highestNormal) highestNormal = m.normalPrice;
+      });
+
+      const hasPromo = highestNormal > lowestPrice || matches.length > 1;
+      const noteParts = matches.map(m => {
+        const npTxt = (m.normalPrice && m.normalPrice > m.price) ? ` (NP RM ${m.normalPrice.toFixed(2)})` : '';
+        const shortName = m.storeId === 'alpro' ? 'Alpro' : m.storeId === 'big' ? 'BIG' : 'Caring';
+        return `${shortName} RM ${m.price.toFixed(2)}${npTxt}`;
+      });
+
+      const competitorSummary = matches.length > 1
+        ? `${lowestMatch.storeName} (${matches.map(m => m.storeId === 'alpro' ? 'Alpro' : m.storeId === 'big' ? 'BIG' : 'Caring').join('/')})`
+        : lowestMatch.storeName;
+
+      const data = {
+        matches,
+        byStore,
+        lowestPrice,
+        normalPrice: highestNormal > lowestPrice ? highestNormal : 0,
+        competitorSummary,
+        promoNote: noteParts.join(' · '),
+        hasPromo
+      };
+
+      this.liveStoreCache[cacheKey] = { timestamp: Date.now(), data };
+      return data;
+    }
+
+    renderStoreVerificationButtons(sku, liveStoreData = null) {
+      const storeLinksBar = document.getElementById('pricingAiStoreLinksBar');
+      const storeLinksList = document.getElementById('pricingAiStoreLinksList');
+      if (!storeLinksBar || !storeLinksList || !sku) return;
+
+      const isHB = this.isPmgHouseBrand(sku);
+      const isRx = !isHB && this.isScheduledPrescriptionDrug(sku);
+      const searchDetails = this.extractSearchableProductDetails(sku);
+
+      if (isHB) {
+        storeLinksList.innerHTML = `
+          <div class="px-3 py-1.5 bg-purple-50 border border-purple-200 text-purple-900 rounded-lg text-xs font-semibold flex items-center gap-2">
+            <span class="inline-flex items-center gap-1 font-bold text-purple-800"><i class="fa-solid fa-crown text-amber-500"></i> PMG Exclusive House Brand / Private Label</span>
+            <span class="text-purple-600 text-[11px]">— Competitors (Alpro, BIG, Caring, Farley) do NOT carry this item. 100% Margin Protected Line.</span>
+          </div>
+        `;
+        storeLinksBar.classList.remove('hidden');
+        return;
+      }
+
+      const cleanEncoded = encodeURIComponent(searchDetails.coreKeyword || searchDetails.cleanName);
+      const alproHit = liveStoreData?.byStore?.alpro;
+      const bigHit = liveStoreData?.byStore?.big;
+      const caringHit = liveStoreData?.byStore?.caring;
+
+      const alproUrl = alproHit?.url || `https://alpropharmacy.com.my/search?q=${cleanEncoded}`;
+      const bigUrl = bigHit?.url || `https://bigpharmacy.com.my/search?q=${cleanEncoded}`;
+      const caringUrl = caringHit?.url || `https://estore.caring2u.com/search?q=${cleanEncoded}`;
+
+      const alproBadge = alproHit
+        ? `<span class="ml-1 px-1.5 py-0.2 bg-orange-600 text-white rounded text-[10px] font-mono font-extrabold">RM ${alproHit.price.toFixed(2)}</span>`
+        : '';
+      const bigBadge = bigHit
+        ? `<span class="ml-1 px-1.5 py-0.2 bg-rose-600 text-white rounded text-[10px] font-mono font-extrabold">RM ${bigHit.price.toFixed(2)}</span>`
+        : '';
+      const caringBadge = caringHit
+        ? `<span class="ml-1 px-1.5 py-0.2 bg-emerald-600 text-white rounded text-[10px] font-mono font-extrabold">RM ${caringHit.price.toFixed(2)}</span>`
+        : '';
+
+      storeLinksList.innerHTML = `
+        <a href="${alproUrl}" target="_blank" rel="noopener noreferrer"
+          title="${alproHit ? alproHit.title.replace(/"/g, '&quot;') : 'Search Alpro Oneclick Store'}"
+          class="px-2.5 py-1 bg-white hover:bg-orange-50 border border-orange-200 text-orange-950 font-bold text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1.5 transition">
+          <span class="w-2 h-2 rounded-full bg-orange-500"></span>
+          Alpro Oneclick Store ${alproBadge} <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-orange-600"></i>
+        </a>
+        <a href="${bigUrl}" target="_blank" rel="noopener noreferrer"
+          title="${bigHit ? bigHit.title.replace(/"/g, '&quot;') : 'Search BIG Pharmacy Store'}"
+          class="px-2.5 py-1 bg-white hover:bg-rose-50 border border-rose-200 text-rose-950 font-bold text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1.5 transition">
+          <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+          BIG Pharmacy Store ${bigBadge} <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-rose-600"></i>
+        </a>
+        <a href="${caringUrl}" target="_blank" rel="noopener noreferrer"
+          title="${caringHit ? caringHit.title.replace(/"/g, '&quot;') : 'Search Caring Pharmacy Store'}"
+          class="px-2.5 py-1 bg-white hover:bg-emerald-50 border border-emerald-200 text-emerald-950 font-bold text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1.5 transition">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          Caring Pharmacy Store ${caringBadge} <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-emerald-600"></i>
+        </a>
+        ${!isRx ? `
+        <a href="https://www.google.com/search?q=${cleanEncoded}+Farley+Supermarket+Kuching+price" target="_blank" rel="noopener noreferrer"
+          class="px-2.5 py-1 bg-white hover:bg-blue-50 border border-blue-200 text-blue-950 font-bold text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1.5 transition">
+          <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+          Farley Price Search <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-blue-600"></i>
+        </a>
+        ` : ''}
+      `;
+      storeLinksBar.classList.remove('hidden');
     }
 
     // ─── GEMINI AI DEEP RESEARCH RUNNER ─────────────────────────────────────────
@@ -3378,47 +3846,8 @@
       const diag = this.diagnoseSkuPricingVsAging(sku, aging);
       const searchDetails = this.extractSearchableProductDetails(sku);
 
-      // Render 1-click competitor store verification links in modal
-      const storeLinksBar = document.getElementById('pricingAiStoreLinksBar');
-      const storeLinksList = document.getElementById('pricingAiStoreLinksList');
-      if (storeLinksBar && storeLinksList) {
-        if (isHB) {
-          storeLinksList.innerHTML = `
-            <div class="px-3 py-1.5 bg-purple-50 border border-purple-200 text-purple-900 rounded-lg text-xs font-semibold flex items-center gap-2">
-              <span class="inline-flex items-center gap-1 font-bold text-purple-800"><i class="fa-solid fa-crown text-amber-500"></i> PMG Exclusive House Brand / Private Label</span>
-              <span class="text-purple-600 text-[11px]">— Competitors (Alpro, BIG, Caring, Farley) do NOT carry this item. 100% Margin Protected Line.</span>
-            </div>
-          `;
-          storeLinksBar.classList.remove('hidden');
-        } else {
-          const cleanEncoded = encodeURIComponent(searchDetails.coreKeyword || searchDetails.cleanName);
-          storeLinksList.innerHTML = `
-            <a href="https://www.alpropharmacy.com/oneclick/?s=${cleanEncoded}" target="_blank" rel="noopener noreferrer"
-              class="px-2.5 py-1 bg-white hover:bg-orange-50 border border-orange-200 text-orange-950 font-bold text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1.5 transition">
-              <span class="w-2 h-2 rounded-full bg-orange-500"></span>
-              Alpro Oneclick Store <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-orange-600"></i>
-            </a>
-            <a href="https://www.bigpharmacy.com.my/catalogsearch/result/?q=${cleanEncoded}" target="_blank" rel="noopener noreferrer"
-              class="px-2.5 py-1 bg-white hover:bg-rose-50 border border-rose-200 text-rose-950 font-bold text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1.5 transition">
-              <span class="w-2 h-2 rounded-full bg-rose-500"></span>
-              BIG Pharmacy Store <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-rose-600"></i>
-            </a>
-            <a href="https://estore.caring2u.com/catalogsearch/result/?q=${cleanEncoded}" target="_blank" rel="noopener noreferrer"
-              class="px-2.5 py-1 bg-white hover:bg-emerald-50 border border-emerald-200 text-emerald-950 font-bold text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1.5 transition">
-              <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-              Caring Pharmacy Store <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-emerald-600"></i>
-            </a>
-            ${!isRx ? `
-            <a href="https://www.google.com/search?q=${cleanEncoded}+Farley+Supermarket+Kuching+price" target="_blank" rel="noopener noreferrer"
-              class="px-2.5 py-1 bg-white hover:bg-blue-50 border border-blue-200 text-blue-950 font-bold text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1.5 transition">
-              <span class="w-2 h-2 rounded-full bg-blue-500"></span>
-              Farley Price Search <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-blue-600"></i>
-            </a>
-            ` : ''}
-          `;
-          storeLinksBar.classList.remove('hidden');
-        }
-      }
+      // Render 1-click competitor store verification links in modal (initial state, upgraded with live prices during executeAiResearch)
+      this.renderStoreVerificationButtons(sku, null);
 
       const agingContext = diag.isAged ? `\nSTOCK AGING & VELOCITY INTELLIGENCE:
 - Aged Stock (>150 Days): ${diag.agedQty} units (Locked Capital: RM ${diag.agedValue.toFixed(2)})
@@ -3741,17 +4170,135 @@ Our strategic objective:
 
       if (!promptText) return;
 
+      const activeSku = this.selectedSkuForAi || null;
+      const isActiveHB = activeSku ? this.isPmgHouseBrand(activeSku) : false;
+      const isActiveRx = activeSku && !isActiveHB ? this.isScheduledPrescriptionDrug(activeSku) : false;
+
+      if (resultContainer) {
+        resultContainer.innerHTML = `
+          <div class="p-8 text-center text-gray-500 text-xs">
+            <i class="fa-solid fa-circle-notch fa-spin text-2xl text-purple-600 mb-2 block"></i>
+            <span>${activeSku && !isActiveHB ? 'Fetching live online prices from Alpro Oneclick, BIG Pharmacy & Caring Pharmacy + Google Search Grounding…' : 'Evaluating market pricing, hypermarket dynamics, and 7-outlet strategy via Gemini AI…'}</span>
+          </div>
+        `;
+      }
+      if (statusPill) statusPill.textContent = activeSku && !isActiveHB ? 'Fetching Live Store Catalogs…' : 'Searching Web & Grounding…';
+
+      // 1. Fetch real-time live prices directly from Alpro Oneclick, BIG Pharmacy, and Caring Pharmacy
+      let liveStoreData = null;
+      if (activeSku && !isActiveHB) {
+        try {
+          liveStoreData = await this.fetchLiveCompetitorStorePrices(activeSku);
+          this.renderStoreVerificationButtons(activeSku, liveStoreData);
+        } catch (err) {
+          console.warn('[PMG Live Store Scraper] Error:', err);
+        }
+      }
+
+      // Helper to build the Live Store Breakdown HTML card
+      const buildLiveStoreEvidenceHtml = (storeData) => {
+        if (!storeData || !Array.isArray(storeData.matches) || storeData.matches.length === 0) return '';
+        const rowsHtml = storeData.matches.map(m => {
+          const dotColor = m.storeId === 'alpro' ? 'bg-orange-500' : m.storeId === 'big' ? 'bg-rose-500' : 'bg-emerald-500';
+          const npHtml = (m.normalPrice && m.normalPrice > m.price)
+            ? `<span class="line-through text-gray-400 font-normal ml-1 text-[10px]">RM ${m.normalPrice.toFixed(2)}</span>`
+            : '';
+          return `
+            <a href="${m.url}" target="_blank" rel="noopener noreferrer"
+              class="flex items-center justify-between gap-2 p-2 rounded-lg bg-white border border-emerald-200/80 hover:border-emerald-400 hover:bg-emerald-50/40 transition text-[11px]">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="w-2 h-2 rounded-full ${dotColor} shrink-0"></span>
+                <span class="font-bold text-gray-900 shrink-0">${m.storeName}:</span>
+                <span class="text-gray-700 truncate" title="${m.title.replace(/"/g, '&quot;')}">${m.title}</span>
+              </div>
+              <div class="flex items-center gap-1.5 shrink-0 font-mono font-extrabold text-emerald-800">
+                <span>RM ${m.price.toFixed(2)}</span>
+                ${npHtml}
+                <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-emerald-600 ml-1"></i>
+              </div>
+            </a>
+          `;
+        }).join('');
+
+        return `
+          <div class="mb-3 p-3 bg-emerald-50/90 border border-emerald-300 rounded-xl text-xs text-emerald-950 shadow-2xs">
+            <div class="font-bold flex items-center justify-between gap-2 text-emerald-900 mb-2 flex-wrap">
+              <span class="flex items-center gap-1.5">
+                <i class="fa-solid fa-store text-emerald-600"></i>
+                <span>Live Verified Competitor Webstore Prices (Real-Time Catalog API)</span>
+              </span>
+              <span class="text-[10px] text-emerald-800 font-bold bg-white px-2 py-0.5 rounded border border-emerald-200">
+                <i class="fa-solid fa-bolt text-amber-500 mr-1"></i>100% Live Store Checkout Price
+              </span>
+            </div>
+            <div class="space-y-1.5">${rowsHtml}</div>
+          </div>
+        `;
+      };
+
+      // Helper to build fallback apply banner from liveStoreData even if AI key is missing or quota is exhausted
+      const buildLiveStoreFallbackApplyBanner = (sku, storeData) => {
+        if (!sku || !storeData || !storeData.lowestPrice || storeData.lowestPrice <= 0) return '';
+        const chainP = storeData.lowestPrice;
+        const normalP = storeData.normalPrice || 0;
+        const compName = storeData.competitorSummary || 'Alpro Oneclick / BIG / Caring';
+        const promoNote = storeData.promoNote || '';
+        const superP = (!isActiveRx && sku.supermarketPrice > 0) ? sku.supermarketPrice : 0;
+        const cost = sku.costPrice > 0 ? sku.costPrice : 0;
+        const pmgSp = (cost > 0 && chainP > cost * 1.03) ? +Math.min(chainP, Math.max(cost * 1.05, chainP - 0.10)).toFixed(2) : chainP;
+        const superTxt = isActiveRx
+          ? '<b class="font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">N/A (Rx Exclusive)</b>'
+          : `<b class="font-mono text-gray-900 bg-white px-1.5 py-0.5 rounded border border-indigo-200">${superP > 0 ? 'RM ' + superP.toFixed(2) : 'N/A'}</b>`;
+
+        return `
+          <div class="mb-4 p-4 bg-gradient-to-r from-amber-50 via-rose-50 to-orange-50 border-2 border-amber-300 rounded-xl shadow-xs">
+            <div class="flex items-center justify-between gap-3 flex-wrap mb-2">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="px-2.5 py-0.5 rounded-full bg-rose-600 text-white font-extrabold text-[10px] tracking-wide uppercase flex items-center gap-1 shadow-xs">
+                  <i class="fa-solid fa-fire text-amber-200"></i> Live Competitor Store Price
+                </span>
+                <span class="text-blue-950 font-extrabold text-xs">${sku.name}</span>
+              </div>
+              <div class="text-[11px] text-emerald-700 font-bold">
+                Verified Direct from Pharmacy E-Store
+              </div>
+            </div>
+            <div class="text-[11px] text-gray-800 flex items-center gap-3 flex-wrap mb-3">
+              <span>Competitor: <b class="font-bold text-gray-900">${compName}</b></span>
+              ${normalP > 0 ? `<span>Normal SP: <span class="line-through text-gray-500">RM ${normalP.toFixed(2)}</span></span>` : ''}
+              <span>Active Price: <b class="font-mono text-rose-700 bg-white border border-rose-200 shadow-2xs px-2 py-0.5 rounded text-xs font-extrabold">RM ${chainP.toFixed(2)}</b></span>
+              <span>Farley/Emart: ${superTxt}</span>
+              ${promoNote ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-300"><i class="fa-solid fa-tag text-amber-600"></i> ${promoNote}</span>` : ''}
+            </div>
+            <div class="flex items-center justify-end gap-2 pt-2 border-t border-gray-200/60 flex-wrap">
+              <button type="button" onclick="window.pmgPricing.applyAiCompetitorPrices('${sku.id}', ${superP}, ${chainP}, '${compName.replace(/'/g, "\\'")}', '${promoNote.replace(/'/g, "\\'")}')"
+                class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-xs rounded-xl transition shadow-xs whitespace-nowrap flex items-center gap-1.5 cursor-pointer">
+                <i class="fa-solid fa-check-double text-indigo-200"></i> Apply Live Price (RM ${chainP.toFixed(2)}) to Matrix
+              </button>
+              ${pmgSp > 0 && Math.abs(pmgSp - sku.standardSp) > 0.05 ? `
+              <button type="button" onclick="window.pmgPricing.applyAiCompetitorPricesAndPmgSp('${sku.id}', ${superP}, ${chainP}, '${compName.replace(/'/g, "\\'")}', '${promoNote.replace(/'/g, "\\'")}', ${pmgSp})"
+                class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs rounded-xl transition shadow-xs whitespace-nowrap flex items-center gap-1.5 cursor-pointer">
+                <i class="fa-solid fa-bolt text-emerald-200"></i> Match Competitor (Set SP RM ${pmgSp.toFixed(2)})
+              </button>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      };
+
       let apiKey = this.getValidGeminiApiKey();
 
       if (!apiKey) {
         if (resultContainer) {
           resultContainer.innerHTML = `
+            ${buildLiveStoreFallbackApplyBanner(activeSku, liveStoreData)}
+            ${buildLiveStoreEvidenceHtml(liveStoreData)}
             <div class="p-4 bg-amber-50 border border-amber-300 rounded-xl text-amber-950 text-xs">
               <h4 class="font-bold flex items-center gap-1.5 mb-1.5 text-amber-900 text-sm">
-                <i class="fa-solid fa-key text-amber-600"></i> Free Gemini API Key Required
+                <i class="fa-solid fa-key text-amber-600"></i> Free Gemini API Key Required for AI Strategic Narrative
               </h4>
               <p class="mb-3 text-gray-700 leading-relaxed">
-                To run AI competitor research and battle plans, paste your free Google AI Studio API key. Google provides <b>Gemini 3.5 Flash-Lite &amp; Gemini 3.8 Flash</b> on a <b>100% Free Tier</b> (up to 500 requests/day, RM 0 budget).
+                To run full AI strategic analysis alongside live store prices, paste your free Google AI Studio API key. Google provides <b>Gemini 3.5 Flash-Lite &amp; Gemini 3.8 Flash</b> on a <b>100% Free Tier</b> (up to 500 requests/day, RM 0 budget).
               </p>
               <div class="flex items-center gap-2 mb-2">
                 <input type="text" id="pricingInlineApiKeyInput" placeholder="Paste your API key here (AIzaSy...)"
@@ -3770,24 +4317,36 @@ Our strategic objective:
             </div>
           `;
         }
-        if (statusPill) statusPill.textContent = 'Key Required';
+        if (statusPill) statusPill.textContent = liveStoreData?.lowestPrice > 0 ? 'Live Store Prices Ready' : 'Key Required';
         return;
-      }
-
-      if (resultContainer) {
-        resultContainer.innerHTML = `
-          <div class="p-8 text-center text-gray-500 text-xs">
-            <i class="fa-solid fa-circle-notch fa-spin text-2xl text-purple-600 mb-2 block"></i>
-            <span>Evaluating market pricing, hypermarket dynamics, and 7-outlet strategy via Gemini 3.5 Flash-Lite & 3.8 Flash…</span>
-          </div>
-        `;
       }
 
       if (statusPill) statusPill.textContent = 'Searching Web & Grounding…';
 
-      // Active models confirmed available in user Google AI Studio (500 RPD on Flash-Lite, 20 RPD on Flash 3.8 / 3.6)
-      // Obsolete models (gemini-2.0-flash-lite, gemini-2.0-flash, gemini-2.5-flash, gemini-1.5-*) are completely excluded.
-      const modelsToTry = [
+      // Inject verified live competitor store prices directly into the prompt so Gemini never hallucinates RRP
+      let effectivePromptText = promptText;
+      if (liveStoreData && liveStoreData.matches.length > 0) {
+        const liveLines = liveStoreData.matches.map(m =>
+          `- ${m.storeName}: RM ${m.price.toFixed(2)}${m.normalPrice ? ' (Normal Price: RM ' + m.normalPrice.toFixed(2) + ')' : ''} — Exact Listing: "${m.title}" (${m.url})`
+        ).join('\n');
+        effectivePromptText = `VERIFIED REAL-TIME E-COMMERCE PRICES (SCRAPED LIVE JUST NOW FROM COMPETITOR ONLINE STORES):
+${liveLines}
+- Lowest Verified Chain Pharmacy Price: RM ${liveStoreData.lowestPrice.toFixed(2)} (${liveStoreData.competitorSummary})
+- Formatted Promo Note: "${liveStoreData.promoNote}"
+MANDATORY INSTRUCTION: You MUST use these verified live online prices (RM ${liveStoreData.lowestPrice.toFixed(2)}) as the authoritative "chainPharmacyPrice" and include all store prices in "promoNote" ("${liveStoreData.promoNote}"). DO NOT report a higher manufacturer RRP!
+
+${promptText}`;
+      }
+
+      // Active models confirmed available in user Google AI Studio
+      // Pass 1 prioritizes models that support Live Google Search Grounding before falling back to ungrounded generation
+      const groundedModelsOrder = [
+        { code: 'gemini-3.8-flash',      name: 'Gemini 3.8 Flash' },
+        { code: 'gemini-3.6-flash',      name: 'Gemini 3.6 Flash' },
+        { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
+        { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' }
+      ];
+      const standardModelsOrder = [
         { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite (Primary: 500 RPD)' },
         { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite (Secondary: 500 RPD)' },
         { code: 'gemini-3.8-flash',      name: 'Gemini 3.8 Flash' },
@@ -3801,112 +4360,126 @@ Our strategic objective:
       let groundingMetadata = null;
       const modelAttemptErrors = [];
 
-      // Iterate through active models: try with Google Search Grounding first, gracefully fallback to standard generateContent & Interactions API
-      for (const m of modelsToTry) {
+      // PASS 1: Try Google Search Grounding FIRST across all models (generateContent + googleSearch, then Interactions API + google_search)
+      for (const m of groundedModelsOrder) {
         if (isKeyBlocked || responseText) break;
+        try {
+          const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.code}:generateContent?key=${apiKey}`;
+          const reqBody = {
+            contents: [{ role: 'user', parts: [{ text: effectivePromptText }] }],
+            generationConfig: { temperature: 0.1, maxOutputTokens: 2500 },
+            tools: [{ googleSearch: {} }]
+          };
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(reqBody)
+          });
 
-        // Tool variants: Try search tools first, then standard evaluation
-        const toolVariants = [
-          [{ googleSearch: {} }],
-          null
-        ];
-
-        for (const tools of toolVariants) {
-          try {
-            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.code}:generateContent?key=${apiKey}`;
-            const reqBody = {
-              contents: [{
-                role: 'user',
-                parts: [{ text: promptText }]
-              }],
-              generationConfig: {
-                temperature: 0.1,
-                maxOutputTokens: 2500
-              }
-            };
-            if (tools) reqBody.tools = tools;
-
-            const res = await fetch(endpoint, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(reqBody)
-            });
-
-            if (res.ok) {
-              const data = await res.json();
-              const parts = data.candidates?.[0]?.content?.parts || [];
-              // Extract non-thought text parts (safely handle thinking models)
-              const nonThought = parts.filter(p => !p.thought && p.text).map(p => p.text);
-              const text = nonThought.length > 0 ? nonThought.join('\n') : parts.map(p => p.text || '').join('\n');
-              if (text && text.trim()) {
-                responseText = text.trim();
-                usedModel = m.name + (tools ? ' (Live Search Grounded)' : ' (Market Intelligence)');
-                groundingMetadata = data.candidates?.[0]?.groundingMetadata || null;
-                break;
-              }
-            } else {
-              const errData = await res.json().catch(() => ({}));
-              const errMsg = errData.error?.message || `HTTP ${res.status}`;
-              lastErrorMsg = errMsg;
-              console.warn(`[PMG Pricing AI] ${m.code} (tools: ${!!tools}) error (${res.status}):`, errMsg);
-
-              if (errMsg.toLowerCase().includes('leaked')) {
-                isKeyBlocked = true;
-                break;
-              }
-
-              // IF WITH-TOOLS FAILED (e.g. 403 on Free Tier or 400 unsupported), DO NOT SKIP THE MODEL!
-              // Immediately retry without tools on this EXACT SAME MODEL:
-              if (tools) {
-                console.info(`[PMG Pricing AI] Tools restricted on ${m.code} (${res.status}). Retrying without tools...`);
-                continue; // Next variant in toolVariants is null (no tools) on this same model
-              }
-
-              modelAttemptErrors.push(`${m.name}: ${errMsg}`);
-              // If rate-limited (429), model unavailable (404), or service error (503), break to next candidate model
-              if (res.status === 429 || res.status === 404 || res.status === 503) {
-                break;
-              }
+          if (res.ok) {
+            const data = await res.json();
+            const parts = data.candidates?.[0]?.content?.parts || [];
+            const nonThought = parts.filter(p => !p.thought && p.text).map(p => p.text);
+            const text = nonThought.length > 0 ? nonThought.join('\n') : parts.map(p => p.text || '').join('\n');
+            if (text && text.trim()) {
+              responseText = text.trim();
+              usedModel = m.name + (liveStoreData?.lowestPrice > 0 ? ' (Live Store + Google Grounded)' : ' (Live Search Grounded)');
+              groundingMetadata = data.candidates?.[0]?.groundingMetadata || null;
+              break;
             }
-          } catch (e) {
-            lastErrorMsg = e.message;
-            console.warn(`[PMG Pricing AI] Network error on ${m.code}:`, e);
-            if (tools) continue;
-            break;
+          } else {
+            const errData = await res.json().catch(() => ({}));
+            const errMsg = errData.error?.message || `HTTP ${res.status}`;
+            if (errMsg.toLowerCase().includes('leaked')) {
+              lastErrorMsg = errMsg;
+              isKeyBlocked = true;
+              break;
+            }
           }
-        }
+        } catch (_) {}
 
-        // Secondary fallback for this model: If generateContent failed, try Interactions API
+        // Also try Interactions API with google_search tool
         if (!responseText && !isKeyBlocked) {
           try {
             const intEndpoint = `https://generativelanguage.googleapis.com/v1beta/interactions?key=${apiKey}`;
             const intRes = await fetch(intEndpoint, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                'Api-Revision': '2026-05-20'
+              },
               body: JSON.stringify({
                 model: m.code,
-                input: promptText
+                input: effectivePromptText,
+                tools: [{ type: 'google_search' }]
               })
             });
             if (intRes.ok) {
               const intData = await intRes.json();
-              const steps = intData.steps || [];
-              for (const step of steps) {
-                if (step.type === 'model_output' && Array.isArray(step.content)) {
-                  for (const c of step.content) {
-                    if (c.type === 'text' && c.text && c.text.trim()) {
-                      responseText = c.text.trim();
-                      usedModel = m.name + ' (Interactions API)';
-                      break;
+              const outputs = intData.outputs || [];
+              for (const out of outputs) {
+                if (out.type === 'text' && out.text && out.text.trim()) {
+                  responseText = out.text.trim();
+                  usedModel = m.name + ' (Interactions Google Search)';
+                  break;
+                }
+              }
+              if (!responseText && Array.isArray(intData.steps)) {
+                for (const step of intData.steps) {
+                  if (step.type === 'model_output' && Array.isArray(step.content)) {
+                    for (const c of step.content) {
+                      if (c.type === 'text' && c.text && c.text.trim()) {
+                        responseText = c.text.trim();
+                        usedModel = m.name + ' (Interactions Google Search)';
+                        break;
+                      }
                     }
                   }
+                  if (responseText) break;
                 }
-                if (responseText) break;
               }
             }
-          } catch (intErr) {
-            console.warn(`[PMG Pricing AI] Interactions fallback error on ${m.code}:`, intErr.message);
+          } catch (_) {}
+        }
+      }
+
+      // PASS 2: If search-grounded tools were restricted on free tier, run standard generateContent (with liveStoreData already injected in effectivePromptText!)
+      for (const m of standardModelsOrder) {
+        if (isKeyBlocked || responseText) break;
+        try {
+          const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.code}:generateContent?key=${apiKey}`;
+          const reqBody = {
+            contents: [{ role: 'user', parts: [{ text: effectivePromptText }] }],
+            generationConfig: { temperature: 0.1, maxOutputTokens: 2500 }
+          };
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(reqBody)
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            const parts = data.candidates?.[0]?.content?.parts || [];
+            const nonThought = parts.filter(p => !p.thought && p.text).map(p => p.text);
+            const text = nonThought.length > 0 ? nonThought.join('\n') : parts.map(p => p.text || '').join('\n');
+            if (text && text.trim()) {
+              responseText = text.trim();
+              usedModel = m.name + (liveStoreData?.lowestPrice > 0 ? ' (Live Store Grounded)' : ' (Market Intelligence)');
+              break;
+            }
+          } else {
+            const errData = await res.json().catch(() => ({}));
+            const errMsg = errData.error?.message || `HTTP ${res.status}`;
+            lastErrorMsg = errMsg;
+            if (errMsg.toLowerCase().includes('leaked')) {
+              isKeyBlocked = true;
+              break;
+            }
+            modelAttemptErrors.push(`${m.name}: ${errMsg}`);
           }
+        } catch (e) {
+          lastErrorMsg = e.message;
         }
       }
 
@@ -3916,8 +4489,10 @@ Our strategic objective:
 
       if (!responseText) {
         if (resultContainer) {
+          const liveFallbackHtml = `${buildLiveStoreFallbackApplyBanner(activeSku, liveStoreData)}${buildLiveStoreEvidenceHtml(liveStoreData)}`;
           if (isKeyBlocked) {
             resultContainer.innerHTML = `
+              ${liveFallbackHtml}
               <div class="p-4 bg-amber-50 border border-amber-300 rounded-xl text-amber-950 text-xs">
                 <h4 class="font-bold mb-1 text-amber-900 text-sm flex items-center gap-1.5">
                   <i class="fa-solid fa-triangle-exclamation text-amber-600"></i> API Key Reported as Leaked or Expired
@@ -3944,9 +4519,10 @@ Our strategic objective:
             `;
           } else {
             resultContainer.innerHTML = `
+              ${liveFallbackHtml}
               <div class="p-4 bg-rose-50 border border-rose-300 rounded-xl text-rose-900 text-xs">
                 <h4 class="font-bold mb-1 flex items-center gap-1.5">
-                  <i class="fa-solid fa-circle-exclamation text-rose-600"></i> AI Request Failed
+                  <i class="fa-solid fa-circle-exclamation text-rose-600"></i> AI Narrative Request Failed
                 </h4>
                 <p class="mb-2 text-rose-800">${lastErrorMsg || 'Could not connect to Gemini API. Please check your network or API key quota.'}</p>
                 <div class="flex items-center gap-2 mt-2">
@@ -3961,7 +4537,7 @@ Our strategic objective:
             `;
           }
         }
-        if (statusPill) statusPill.textContent = 'Error';
+        if (statusPill) statusPill.textContent = liveStoreData?.lowestPrice > 0 ? 'Live Store Prices Ready' : 'Error';
         return;
       }
 
@@ -3982,6 +4558,19 @@ Our strategic objective:
         // Not a JSON block or invalid JSON, ignore
       }
 
+      // If AI didn't return a JSON block but we have liveStoreData, synthesize parsedJson from liveStoreData
+      if (!parsedJson && liveStoreData && liveStoreData.lowestPrice > 0 && activeSku) {
+        parsedJson = {
+          supermarketPrice: isActiveRx ? null : (activeSku.supermarketPrice || null),
+          chainPharmacyPrice: liveStoreData.lowestPrice,
+          competitorName: liveStoreData.competitorSummary,
+          promoNote: liveStoreData.promoNote,
+          normalRetailPrice: liveStoreData.normalPrice,
+          promotionalPrice: liveStoreData.lowestPrice,
+          hasActivePromo: liveStoreData.hasPromo
+        };
+      }
+
       let applyBannerHtml = '';
       if (parsedJson && this.selectedSkuForAi) {
         const sku = this.selectedSkuForAi;
@@ -3989,17 +4578,39 @@ Our strategic objective:
         const isRx = !isHB && this.isScheduledPrescriptionDrug(sku);
         let superP = (isHB || isRx) ? 0 : (parseFloat(parsedJson.supermarketPrice) || 0);
         let chainP = isHB ? 0 : (parseFloat(parsedJson.chainPharmacyPrice) || 0);
-        let compName = isHB ? 'N/A (Exclusive PMG House Brand)' : (parsedJson.competitorName || 'Alpro / Ting Pharmacy').replace(/"/g, '&quot;');
+        let compName = isHB ? 'N/A (Exclusive PMG House Brand)' : (parsedJson.competitorName || 'Alpro / BIG / Caring').replace(/"/g, '&quot;');
         let promoNote = isHB ? 'Exclusive Private Label • 50-60% Margin Lock' : (parsedJson.promoNote || '').replace(/"/g, '&quot;');
-        const pmgSp = parseFloat(parsedJson.suggestedPmgSp) || 0;
-        const hasPromo = !isHB && !!(parsedJson.hasActivePromo || parsedJson.promotionalPrice || (promoNote && /promo|sale|11\.11|discount|rebate/i.test(promoNote)));
-        const normalP = parseFloat(parsedJson.normalRetailPrice) || 0;
-        const promoP = parseFloat(parsedJson.promotionalPrice) || (hasPromo ? chainP : 0);
+        let pmgSp = parseFloat(parsedJson.suggestedPmgSp) || 0;
+        let normalP = parseFloat(parsedJson.normalRetailPrice) || 0;
+        const promoP = parseFloat(parsedJson.promotionalPrice) || 0;
 
         // If promotional price was detected, ensure chainP reflects the active promo
-        if (!isHB && promoP > 0 && promoP < chainP) {
+        if (!isHB && promoP > 0 && (chainP === 0 || promoP < chainP)) {
           chainP = promoP;
         }
+
+        // AUTHORITATIVE OVERRIDE: If live competitor store prices were scraped from Alpro / BIG / Caring,
+        // ALWAYS enforce the real verified store checkout price over any higher AI estimate!
+        if (!isHB && liveStoreData && liveStoreData.lowestPrice > 0) {
+          chainP = liveStoreData.lowestPrice;
+          if (liveStoreData.normalPrice > 0) normalP = liveStoreData.normalPrice;
+          compName = liveStoreData.competitorSummary.replace(/"/g, '&quot;');
+          promoNote = liveStoreData.promoNote.replace(/"/g, '&quot;');
+          if (pmgSp === 0 || pmgSp > chainP * 1.05) {
+            const cost = sku.costPrice > 0 ? sku.costPrice : 0;
+            pmgSp = (cost > 0 && chainP > cost * 1.02)
+              ? +Math.min(chainP, Math.max(cost * 1.05, chainP - 0.10)).toFixed(2)
+              : chainP;
+          }
+        }
+
+        const hasPromo = !isHB && !!(
+          (liveStoreData && liveStoreData.hasPromo) ||
+          parsedJson.hasActivePromo ||
+          parsedJson.promotionalPrice ||
+          (normalP > chainP && chainP > 0) ||
+          (promoNote && /promo|sale|11\.11|discount|rebate|np rm/i.test(promoNote))
+        );
 
         // Ensure Poisons Act 1952 compliance for prescription items
         if (isRx || isHB) {
@@ -4067,7 +4678,7 @@ Our strategic objective:
                   <span class="text-blue-950 font-extrabold text-xs">${sku.name}</span>
                 </div>
                 <div class="text-[11px] text-gray-500 font-medium">
-                  Live Grounded Market Intelligence
+                  ${liveStoreData?.lowestPrice > 0 ? 'Verified Live Competitor Webstore + AI Intelligence' : 'Live Grounded Market Intelligence'}
                 </div>
               </div>
 
@@ -4098,7 +4709,8 @@ Our strategic objective:
         }
       }
 
-      // Live Grounding Sources Banner
+      // Live Store Evidence + Google Search Grounding Sources Banner
+      const liveStoreHtml = buildLiveStoreEvidenceHtml(liveStoreData);
       let groundingHtml = '';
       if (groundingMetadata) {
         const queries = groundingMetadata.webSearchQueries || [];
@@ -4129,6 +4741,7 @@ Our strategic objective:
       if (resultContainer) {
         resultContainer.innerHTML = `
           ${applyBannerHtml}
+          ${liveStoreHtml}
           ${groundingHtml}
           <div class="prose prose-sm max-w-none text-xs text-gray-800 leading-relaxed space-y-2">
             ${formattedHtml}
@@ -4213,10 +4826,6 @@ Our strategic objective:
 
     async startBatchCompetitorScan() {
       const apiKey = this.getValidGeminiApiKey();
-      if (!apiKey) {
-        alert('Please paste a free Google AI Studio Gemini API key first using the single item research modal or settings.');
-        return;
-      }
 
       // Determine selected scope
       const scopeRadios = document.getElementsByName('batchScope');
@@ -4279,8 +4888,13 @@ Our strategic objective:
         chunks.push(targetSkus.slice(i, i + CHUNK_SIZE));
       }
 
-      // Active models confirmed available in user Google AI Studio (500 RPD on Flash-Lite, 20 RPD on Flash 3.8 / 3.6)
-      const modelsToTry = [
+      const groundedModelsOrder = [
+        { code: 'gemini-3.8-flash',      name: 'Gemini 3.8 Flash' },
+        { code: 'gemini-3.6-flash',      name: 'Gemini 3.6 Flash' },
+        { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
+        { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' }
+      ];
+      const standardModelsOrder = [
         { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite (Primary: 500 RPD)' },
         { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite (Secondary: 500 RPD)' },
         { code: 'gemini-3.8-flash',      name: 'Gemini 3.8 Flash' },
@@ -4295,10 +4909,23 @@ Our strategic objective:
         const chunkEnd = Math.min((c + 1) * CHUNK_SIZE, totalItems);
 
         if (progressLabel) {
-          progressLabel.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-indigo-600 mr-1.5"></i> Live Search Grounding items ${chunkStart} to ${chunkEnd} of ${totalItems}…`;
+          progressLabel.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-indigo-600 mr-1.5"></i> Scraping Live Webstores (Alpro / BIG / Caring) + Grounding items ${chunkStart} to ${chunkEnd} of ${totalItems}…`;
         }
 
-        // Build chunk prompt (UNANCHORED - NEVER include user selling price)
+        // 1. Fetch live competitor store prices in parallel for all non-HB items in the chunk
+        const liveStoreMap = {};
+        await Promise.all(currentChunk.map(async (s) => {
+          if (!this.isPmgHouseBrand(s)) {
+            try {
+              const storeRes = await this.fetchLiveCompetitorStorePrices(s);
+              if (storeRes && storeRes.lowestPrice > 0) {
+                liveStoreMap[s.id] = storeRes;
+              }
+            } catch (_) {}
+          }
+        }));
+
+        // Build chunk prompt (UNANCHORED - NEVER include user selling price, but include verified live store prices)
         let itemListText = '';
         currentChunk.forEach((s, idx) => {
           const isHB = this.isPmgHouseBrand(s);
@@ -4312,7 +4939,11 @@ Our strategic objective:
           const genericHint = this.getGenericDrugHint(s);
           const costHint = s.costPrice > 0 ? `Trade Cost: RM ${s.costPrice.toFixed(2)}` : 'Trade Cost: Standard';
           const codeVal = (s.code && !['N/A', 'NONE', '-', 'NULL', ''].includes(String(s.code).trim().toUpperCase())) ? s.code : 'None';
-          itemListText += `${idx + 1}. [ITEM_ID: "${s.id}"] | Code: "${codeVal}" | Product: "${s.name}"${genericHint ? ' (' + genericHint + ')' : ''} | Category: "${s.category}"${tagLabel} | ${costHint}\n`;
+          const liveHit = liveStoreMap[s.id];
+          const livePriceHint = liveHit
+            ? ` | VERIFIED LIVE STORE PRICE: RM ${liveHit.lowestPrice.toFixed(2)} (${liveHit.promoNote})`
+            : '';
+          itemListText += `${idx + 1}. [ITEM_ID: "${s.id}"] | Code: "${codeVal}" | Product: "${s.name}"${genericHint ? ' (' + genericHint + ')' : ''} | Category: "${s.category}"${tagLabel} | ${costHint}${livePriceHint}\n`;
         });
 
         const prompt = `You are the Senior Commercial Pharmacy Pricing Director for PMG Pharmacy (7 Outlets in Kuching & Padawan, Sarawak, Malaysia).
@@ -4321,9 +4952,10 @@ Search Google for current retail selling prices in Malaysian private community p
 DO NOT anchor to any assumed markups. Search for actual live market prices.
 
 CRITICAL RULES & ACTIVE PROMOTIONS:
-1. PROMOTIONAL PRICING: Check for active promotions and campaign sales (such as 11.11, Payday Sale, clearance, instant rebates, member price, multi-pack).
-   - If an item is on promo (e.g. Alpro normal RM 17.50, promo RM 16.50), ALWAYS use the active promotional price for "chainPharmacyPrice"!
-   - State the promotion in "promoNote" (e.g. "Alpro 11.11 Promo RM 16.50 (Normal RM 17.50)").
+1. VERIFIED LIVE STORE PRICES & PROMOTIONS:
+   - If an item includes "VERIFIED LIVE STORE PRICE", you MUST use that exact verified live price as "chainPharmacyPrice" and include its breakdown in "promoNote".
+   - For all other items, check for active promotions and campaign sales (such as 11.11, Payday Sale, clearance, instant rebates, member price).
+   - State the promotion in "promoNote" (e.g. "Alpro RM 84.10 (NP RM 113.00) · BIG RM 86.90").
 2. SUPERMARKETS: Supermarkets (Farley Supermarket, Emart Hypermarket, Everwin) CANNOT legally sell scheduled prescription poisons. For items tagged [PRESCRIPTION POISON], you MUST set "supermarketPrice": null.
    - For adult/baby diapers, nutrition milk (Ensure, Glucerna, Pediasure), and OTC: Supermarkets DO sell them. Benchmark realistic Farley Kuching/Emart retail prices.
 3. PMG HOUSE BRANDS / PRIVATE LABELS: For items tagged [EXCLUSIVE PMG HOUSE BRAND / PRIVATE LABEL]:
@@ -4351,20 +4983,17 @@ Respond STRICTLY with a valid JSON array of objects. Use the exact ITEM_ID provi
 \`\`\``;
 
         let responseText = '';
-        for (const m of modelsToTry) {
-          const toolVariants = [
-            [{ googleSearch: {} }],
-            null
-          ];
-          for (const tools of toolVariants) {
+        if (apiKey) {
+          // PASS 1: Try Google Search Grounded models first
+          for (const m of groundedModelsOrder) {
+            if (responseText) break;
             try {
               const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.code}:generateContent?key=${apiKey}`;
               const reqBody = {
                 contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                generationConfig: { temperature: 0.1, maxOutputTokens: 2500 }
+                generationConfig: { temperature: 0.1, maxOutputTokens: 2500 },
+                tools: [{ googleSearch: {} }]
               };
-              if (tools) reqBody.tools = tools;
-
               const res = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -4379,46 +5008,72 @@ Respond STRICTLY with a valid JSON array of objects. Use the exact ITEM_ID provi
                   responseText = text.trim();
                   break;
                 }
-              } else {
-                const errData = await res.json().catch(() => ({}));
-                console.warn(`[PMG Batch AI] Error on model ${m.code} (${res.status}) [tools=${!!tools}]:`, errData.error?.message || res.status);
-                // If with-tools failed, immediately retry without tools on this same model
-                if (tools) continue;
               }
-            } catch (e) {
-              console.warn(`[PMG Batch AI] Error on model ${m.code}:`, e);
-              if (tools) continue;
-            }
-            if (responseText) break;
-          }
-          if (responseText) break;
+            } catch (_) {}
 
-          // Interactions API fallback for batch if generateContent failed
-          if (!responseText) {
-            try {
-              const intEndpoint = `https://generativelanguage.googleapis.com/v1beta/interactions?key=${apiKey}`;
-              const intRes = await fetch(intEndpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model: m.code, input: prompt })
-              });
-              if (intRes.ok) {
-                const intData = await intRes.json();
-                for (const step of intData.steps || []) {
-                  if (step.type === 'model_output' && Array.isArray(step.content)) {
-                    for (const c of step.content) {
-                      if (c.type === 'text' && c.text && c.text.trim()) {
-                        responseText = c.text.trim();
-                        break;
-                      }
+            if (!responseText) {
+              try {
+                const intEndpoint = `https://generativelanguage.googleapis.com/v1beta/interactions?key=${apiKey}`;
+                const intRes = await fetch(intEndpoint, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Api-Revision': '2026-05-20'
+                  },
+                  body: JSON.stringify({ model: m.code, input: prompt, tools: [{ type: 'google_search' }] })
+                });
+                if (intRes.ok) {
+                  const intData = await intRes.json();
+                  for (const out of intData.outputs || []) {
+                    if (out.type === 'text' && out.text && out.text.trim()) {
+                      responseText = out.text.trim();
+                      break;
                     }
                   }
-                  if (responseText) break;
+                  if (!responseText) {
+                    for (const step of intData.steps || []) {
+                      if (step.type === 'model_output' && Array.isArray(step.content)) {
+                        for (const c of step.content) {
+                          if (c.type === 'text' && c.text && c.text.trim()) {
+                            responseText = c.text.trim();
+                            break;
+                          }
+                        }
+                      }
+                      if (responseText) break;
+                    }
+                  }
+                }
+              } catch (_) {}
+            }
+          }
+
+          // PASS 2: Fallback to standard generation if search grounding tools were restricted
+          for (const m of standardModelsOrder) {
+            if (responseText) break;
+            try {
+              const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m.code}:generateContent?key=${apiKey}`;
+              const reqBody = {
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                generationConfig: { temperature: 0.1, maxOutputTokens: 2500 }
+              };
+              const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(reqBody)
+              });
+              if (res.ok) {
+                const data = await res.json();
+                const parts = data.candidates?.[0]?.content?.parts || [];
+                const nonThought = parts.filter(p => !p.thought && p.text).map(p => p.text);
+                const text = nonThought.length > 0 ? nonThought.join('\n') : parts.map(p => p.text || '').join('\n');
+                if (text && text.trim()) {
+                  responseText = text.trim();
+                  break;
                 }
               }
             } catch (_) {}
           }
-          if (responseText) break;
         }
 
         // Parse results
@@ -4459,6 +5114,7 @@ Respond STRICTLY with a valid JSON array of objects. Use the exact ITEM_ID provi
 
           const isHB = this.isPmgHouseBrand(sku);
           const isRx = !isHB && this.isScheduledPrescriptionDrug(sku);
+          const liveHit = liveStoreMap[sku.id];
 
           let detectedChainPrice = null;
           let detectedSuperPrice = null;
@@ -4488,6 +5144,13 @@ Respond STRICTLY with a valid JSON array of objects. Use the exact ITEM_ID provi
               }
               detectedCompName = r.competitorName || '';
               detectedPromoNote = r.promoNote || '';
+            }
+
+            // Enforce authoritative live store price from Alpro Oneclick / BIG Pharmacy / Caring Pharmacy
+            if (liveHit && liveHit.lowestPrice > 0) {
+              detectedChainPrice = liveHit.lowestPrice;
+              detectedCompName = liveHit.competitorSummary;
+              detectedPromoNote = liveHit.promoNote;
             }
 
             // Supermarket rule for Rx per Poisons Act 1952
