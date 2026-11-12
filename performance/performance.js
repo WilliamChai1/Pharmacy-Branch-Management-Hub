@@ -37,8 +37,61 @@ const STORAGE_KEYS = {
   ROLES:            'pmg_perf_teammate_roles_v1',
   AI_REPORT:        'pmg_perf_ai_report_v1',
   GEMINI_KEY:       'pmg_gemini_key',
-  MONTHLY_ARCHIVES: 'pmg_perf_monthly_archives_v1' // Continuous historical snapshots
+  MONTHLY_ARCHIVES: 'pmg_perf_monthly_archives_v1', // Continuous historical snapshots
+  ACTION_PLANS:     'pmg_perf_sku_action_plans'     // Persistent SKU-level aging action plans
 };
+
+// ─── INDEXEDDB PERSISTENCE ENGINE (ZERO 5MB QUOTA LIMITATION) ──────────────
+const PERF_IDB_NAME = 'pmg_performance_db';
+const PERF_IDB_VERSION = 1;
+const PERF_IDB_STORE = 'perf_store';
+
+function openPerfIndexedDb() {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      return reject(new Error('IndexedDB not supported'));
+    }
+    const req = indexedDB.open(PERF_IDB_NAME, PERF_IDB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(PERF_IDB_STORE)) {
+        db.createObjectStore(PERF_IDB_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function getPerfIdb(key) {
+  try {
+    const db = await openPerfIndexedDb();
+    return new Promise((resolve) => {
+      const tx = db.transaction(PERF_IDB_STORE, 'readonly');
+      const store = tx.objectStore(PERF_IDB_STORE);
+      const req = store.get(key);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    });
+  } catch (e) {
+    return null;
+  }
+}
+
+async function setPerfIdb(key, val) {
+  try {
+    const db = await openPerfIndexedDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(PERF_IDB_STORE, 'readwrite');
+      const store = tx.objectStore(PERF_IDB_STORE);
+      const req = store.put(val, key);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    return false;
+  }
+}
 
 // Known Kota Sentosa role mapping (can be customized in UI)
 const DEFAULT_ROLE_MAP = {
@@ -530,7 +583,7 @@ function setTabSort(tabName, col) {
       tab4SortState.dir = tab4SortState.dir === 'asc' ? 'desc' : 'asc';
     } else {
       tab4SortState.col = col;
-      tab4SortState.dir = (col === 'itemName' || col === 'category') ? 'asc' : 'desc';
+      tab4SortState.dir = (col === 'itemName' || col === 'category' || col === 'actionPlan') ? 'asc' : 'desc';
     }
     renderTab4SkusAndAging();
   }
@@ -3020,50 +3073,98 @@ async function syncPerformanceWithCloud(showToastFeedback = false) {
     const cloudUpdated = cloudMeta?.lastUpdated || 0;
     const localUpdated = perfState?.meta?.lastUpdated || 0;
     const isSample = !!(perfState?.meta?.isPreloadedSample);
+    const targetCoreDocId = cloudMeta?.coreDocId || cloudMeta?.stateDocId;
 
     // If cloud has valid pointer and (cloud is newer OR local is blank/sample)
-    if (cloudMeta && cloudMeta.stateDocId && (cloudUpdated > localUpdated || isSample || !perfState?.dailySalesLatest?.rows?.length)) {
-      console.log('[Performance Cloud Sync] Pulling newer data from cloud... (Cloud TS:', new Date(cloudUpdated).toISOString(), ')');
+    if (cloudMeta && targetCoreDocId && (cloudUpdated > localUpdated || isSample || !perfState?.dailySalesLatest?.rows?.length)) {
+      console.log('[Performance Cloud Sync] Pulling newer modular documents from cloud... (Cloud TS:', new Date(cloudUpdated).toISOString(), ')');
 
-      // Fetch chunked active_state from vault
-      const stateRes = await fetch(`${PMG_SCHEDULE_API_URL}?action=getApplicantDoc&docId=${encodeURIComponent(cloudMeta.stateDocId)}`);
+      // 1. Fetch modular core_state from vault
+      const stateRes = await fetch(`${PMG_SCHEDULE_API_URL}?action=getApplicantDoc&docId=${encodeURIComponent(targetCoreDocId)}`);
       const stateJson = await stateRes.json();
+      if (!stateJson || !stateJson.success || !stateJson.data) {
+        throw new Error('Core performance state document not found or unreadable');
+      }
 
-      let cloudArchives = null;
-      if (cloudMeta.archivesDocId) {
-        const archRes = await fetch(`${PMG_SCHEDULE_API_URL}?action=getApplicantDoc&docId=${encodeURIComponent(cloudMeta.archivesDocId)}`);
-        const archJson = await archRes.json();
-        if (archJson && archJson.success && archJson.data) {
-          try { cloudArchives = JSON.parse(archJson.data); } catch (_) {}
+      let parsedCore = null;
+      try {
+        parsedCore = JSON.parse(stateJson.data);
+      } catch (errJson) {
+        throw new Error(`Failed to parse core state: ${errJson.message}`);
+      }
+
+      // 2. Fetch modular stock_aging (if pointer exists)
+      if (cloudMeta.agingDocId) {
+        try {
+          const agingRes = await fetch(`${PMG_SCHEDULE_API_URL}?action=getApplicantDoc&docId=${encodeURIComponent(cloudMeta.agingDocId)}`);
+          const agingJson = await agingRes.json();
+          if (agingJson && agingJson.success && agingJson.data) {
+            parsedCore.stockAgingLatest = JSON.parse(agingJson.data);
+          }
+        } catch (eAging) {
+          console.warn('[Performance Cloud Sync] Aging document fetch warning:', eAging.message);
         }
       }
 
-      if (stateJson && stateJson.success && stateJson.data) {
-        const parsedState = JSON.parse(stateJson.data);
-        if (parsedState && typeof parsedState === 'object') {
-          perfState = parsedState;
-          perfState.meta = perfState.meta || {};
-          perfState.meta.isPreloadedSample = false;
-          perfState.meta.lastUpdated = cloudUpdated;
-          localStorage.setItem(STORAGE_KEYS.STATE, JSON.stringify(perfState));
-          localStorage.setItem(STORAGE_KEYS.HIDE_SAMPLE, '1');
-
-          if (cloudArchives && typeof cloudArchives === 'object') {
-            const localArchives = loadMonthlyArchives();
-            const merged = { ...localArchives, ...cloudArchives };
-            localStorage.setItem(STORAGE_KEYS.MONTHLY_ARCHIVES, JSON.stringify(merged));
+      // 3. Fetch modular item_sales (if pointer exists)
+      if (cloudMeta.itemSalesDocId) {
+        try {
+          const salesRes = await fetch(`${PMG_SCHEDULE_API_URL}?action=getApplicantDoc&docId=${encodeURIComponent(cloudMeta.itemSalesDocId)}`);
+          const salesJson = await salesRes.json();
+          if (salesJson && salesJson.success && salesJson.data) {
+            const parsedSales = JSON.parse(salesJson.data);
+            if (parsedSales) {
+              parsedCore.itemSalesLatest = parsedSales.latest || parsedCore.itemSalesLatest;
+              parsedCore.itemSalesPrevYear = parsedSales.prevYear || parsedCore.itemSalesPrevYear;
+            }
           }
-
-          computeAllMetrics();
-          refreshAllViews();
-          lastPerfCloudSyncTime = new Date();
-          updateCloudSyncUiBadge('synced');
-
-          if (showToastFeedback && typeof showToast === 'function') {
-            showToast(`✅ Synced with latest uploaded documents from other PCs! (${perfState.meta?.latestPeriodLabel || 'Latest Month'})`, 'success');
-          }
-          return;
+        } catch (eSales) {
+          console.warn('[Performance Cloud Sync] Sales document fetch warning:', eSales.message);
         }
+      }
+
+      // 4. Fetch modular monthly_archives (if pointer exists)
+      if (cloudMeta.archivesDocId) {
+        try {
+          const archRes = await fetch(`${PMG_SCHEDULE_API_URL}?action=getApplicantDoc&docId=${encodeURIComponent(cloudMeta.archivesDocId)}`);
+          const archJson = await archRes.json();
+          if (archJson && archJson.success && archJson.data) {
+            const cloudArchives = JSON.parse(archJson.data);
+            if (cloudArchives && typeof cloudArchives === 'object') {
+              const localArchives = loadMonthlyArchives();
+              const merged = { ...localArchives, ...cloudArchives };
+              localStorage.setItem(STORAGE_KEYS.MONTHLY_ARCHIVES, JSON.stringify(merged));
+            }
+          }
+        } catch (eArch) {}
+      }
+
+      if (parsedCore && typeof parsedCore === 'object') {
+        perfState = parsedCore;
+        perfState.meta = perfState.meta || {};
+        perfState.meta.isPreloadedSample = false;
+        perfState.meta.lastUpdated = cloudUpdated;
+
+        // Persist full unconstrained dataset to IndexedDB
+        if (typeof setPerfIdb === 'function') {
+          setPerfIdb('active_state', perfState);
+          if (perfState.stockAgingLatest) setPerfIdb('stock_aging_latest', perfState.stockAgingLatest);
+          if (perfState.skuActionPlans) setPerfIdb('sku_action_plans', perfState.skuActionPlans);
+        }
+
+        // Save compact state to localStorage & set HIDE_SAMPLE
+        saveActiveState();
+        localStorage.setItem(STORAGE_KEYS.HIDE_SAMPLE, '1');
+
+        computeAllMetrics();
+        refreshAllViews();
+        lastPerfCloudSyncTime = new Date();
+        updateCloudSyncUiBadge('synced');
+
+        if (showToastFeedback && typeof showToast === 'function') {
+          showToast(`✅ Synced with latest uploaded documents from other PCs! (${perfState.meta?.latestPeriodLabel || 'Latest Month'})`, 'success');
+        }
+        return;
       }
     } else if (perfState && !isSample && localUpdated > cloudUpdated && perfState.dailySalesLatest?.rows?.length) {
       // Local has real data that is newer than cloud -> push local up to cloud!
@@ -3103,31 +3204,115 @@ async function pushPerformanceToCloud(showToastFeedback = false) {
     perfState.meta.lastUpdatedIso = new Date(nowTime).toISOString();
     perfState.meta.isPreloadedSample = false;
 
-    const statePayload = JSON.stringify(perfState);
-    const archives = loadMonthlyArchives();
-    const archivesPayload = JSON.stringify(archives);
+    // 1. Prepare modular core_state (omitting large SKU arrays to keep payload well under 80KB / 2 chunks)
+    const coreState = {
+      meta: perfState.meta,
+      dailySalesLatest: perfState.dailySalesLatest,
+      dailySalesPrevYear: perfState.dailySalesPrevYear,
+      dailySalesM1: perfState.dailySalesM1,
+      dailySalesM2: perfState.dailySalesM2,
+      personalGpLatest: perfState.personalGpLatest,
+      personalGpPrevYear: perfState.personalGpPrevYear,
+      customersServedLatest: perfState.customersServedLatest,
+      customersServedPrevYear: perfState.customersServedPrevYear,
+      categoryGpLatest: perfState.categoryGpLatest,
+      categoryGpPrevYear: perfState.categoryGpPrevYear,
+      stockClosingLatest: perfState.stockClosingLatest,
+      skuActionPlans: perfState.skuActionPlans || {},
+      videoWalkthroughReport: perfState.videoWalkthroughReport || '',
+      stockAgingMeta: {
+        dateTo: perfState.stockAgingLatest?.dateTo || '',
+        itemsCount: perfState.stockAgingLatest?.items?.length || 0
+      },
+      itemSalesLatestMeta: {
+        dateRange: perfState.itemSalesLatest?.dateRange || '',
+        fileGrandTotal: perfState.itemSalesLatest?.fileGrandTotal || null,
+        itemsCount: perfState.itemSalesLatest?.items?.length || 0
+      },
+      itemSalesPrevYearMeta: {
+        dateRange: perfState.itemSalesPrevYear?.dateRange || '',
+        fileGrandTotal: perfState.itemSalesPrevYear?.fileGrandTotal || null,
+        itemsCount: perfState.itemSalesPrevYear?.items?.length || 0
+      }
+    };
+    const corePayload = JSON.stringify(coreState);
 
-    // 1. Upload chunked active_state to Applicant_Documents vault
-    const stateUploadRes = await fetch(PMG_SCHEDULE_API_URL, {
+    // Upload modular core_state to vault
+    const coreUploadRes = await fetch(PMG_SCHEDULE_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'uploadApplicantDoc',
         appId: 'PMG_PERF_KS01',
         doc: {
-          field: 'active_state',
-          name: 'active_state.json',
+          field: 'core_state',
+          name: 'perf_core_state.json',
           type: 'application/json',
-          data: statePayload,
-          size: statePayload.length
+          data: corePayload,
+          size: corePayload.length
         }
       }),
       redirect: 'follow'
     });
-    const stateUploadJson = await stateUploadRes.json();
-    const stateDocId = stateUploadJson.docId;
+    const coreUploadJson = await coreUploadRes.json();
+    const coreDocId = coreUploadJson.docId;
 
-    // 2. Upload chunked monthly_archives to vault
+    // 2. Upload modular stock_aging (if loaded)
+    let agingDocId = null;
+    if (perfState.stockAgingLatest && Array.isArray(perfState.stockAgingLatest.items) && perfState.stockAgingLatest.items.length > 0) {
+      const agingPayload = JSON.stringify(perfState.stockAgingLatest);
+      const agingUploadRes = await fetch(PMG_SCHEDULE_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'uploadApplicantDoc',
+          appId: 'PMG_PERF_KS01',
+          doc: {
+            field: 'stock_aging',
+            name: 'perf_stock_aging.json',
+            type: 'application/json',
+            data: agingPayload,
+            size: agingPayload.length
+          }
+        }),
+        redirect: 'follow'
+      });
+      const agingUploadJson = await agingUploadRes.json();
+      agingDocId = agingUploadJson.docId;
+    }
+
+    // 3. Upload modular item_sales (if loaded)
+    let itemSalesDocId = null;
+    const hasLatestItems = perfState.itemSalesLatest && Array.isArray(perfState.itemSalesLatest.items) && perfState.itemSalesLatest.items.length > 0;
+    const hasPrevItems = perfState.itemSalesPrevYear && Array.isArray(perfState.itemSalesPrevYear.items) && perfState.itemSalesPrevYear.items.length > 0;
+    if (hasLatestItems || hasPrevItems) {
+      const salesPayload = JSON.stringify({
+        latest: perfState.itemSalesLatest || null,
+        prevYear: perfState.itemSalesPrevYear || null
+      });
+      const salesUploadRes = await fetch(PMG_SCHEDULE_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'uploadApplicantDoc',
+          appId: 'PMG_PERF_KS01',
+          doc: {
+            field: 'item_sales',
+            name: 'perf_item_sales.json',
+            type: 'application/json',
+            data: salesPayload,
+            size: salesPayload.length
+          }
+        }),
+        redirect: 'follow'
+      });
+      const salesUploadJson = await salesUploadRes.json();
+      itemSalesDocId = salesUploadJson.docId;
+    }
+
+    // 4. Upload modular monthly_archives to vault
+    const archives = loadMonthlyArchives();
+    const archivesPayload = JSON.stringify(archives);
     const archUploadRes = await fetch(PMG_SCHEDULE_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
@@ -3136,7 +3321,7 @@ async function pushPerformanceToCloud(showToastFeedback = false) {
         appId: 'PMG_PERF_KS01',
         doc: {
           field: 'monthly_archives',
-          name: 'monthly_archives.json',
+          name: 'perf_archives.json',
           type: 'application/json',
           data: archivesPayload,
           size: archivesPayload.length
@@ -3147,7 +3332,7 @@ async function pushPerformanceToCloud(showToastFeedback = false) {
     const archUploadJson = await archUploadRes.json();
     const archivesDocId = archUploadJson.docId;
 
-    // 3. Save atomic pointers and metadata in Staff_Preferences sheet (branch: 'KS01_PERF_META')
+    // 5. Save atomic pointers and metadata in Staff_Preferences sheet (branch: 'KS01_PERF_META')
     const session = typeof getSession === 'function' ? getSession() : null;
     const updatedBy = (session && session.displayName) || localStorage.getItem('pmg_user_name') || 'Pharmacist';
 
@@ -3158,8 +3343,11 @@ async function pushPerformanceToCloud(showToastFeedback = false) {
         action: 'saveStaffPreferences',
         branch: 'KS01_PERF_META',
         preferences: [{
-          stateDocId: stateDocId,
+          coreDocId: coreDocId,
+          agingDocId: agingDocId,
+          itemSalesDocId: itemSalesDocId,
           archivesDocId: archivesDocId,
+          stateDocId: coreDocId, // backward compatibility
           lastUpdated: nowTime,
           lastUpdatedIso: new Date(nowTime).toISOString(),
           periodKey: getArchivePeriodKey(perfState),
@@ -3174,7 +3362,7 @@ async function pushPerformanceToCloud(showToastFeedback = false) {
 
     lastPerfCloudSyncTime = new Date();
     updateCloudSyncUiBadge('synced');
-    console.log('[Performance Cloud Push] ✅ State & Archives safely pushed to Google Cloud.');
+    console.log('[Performance Cloud Push] ✅ Modular State, Stock Aging, and Archives safely pushed to Google Cloud.');
 
     if (showToastFeedback && typeof showToast === 'function') {
       showToast('☁️ Performance data uploaded and synced across all PCs!', 'success');
@@ -3505,11 +3693,18 @@ async function exportAgingStockCountExcel(targetCategory) {
     row.getCell(11).value = { formula: `IF(ISBLANK(J${rIdx}), "", J${rIdx}-E${rIdx})` }; // Variance
     row.getCell(12).value = ''; // Shelf Expiry (Blank)
 
-    let defaultAction = '';
-    if ((item.above1Yr || 0) > 0) defaultAction = 'SSJ Return / Aging Recall';
-    else if ((item.agedValue || 0) > 200) defaultAction = 'Push Promo / Bundle Discount';
-    else defaultAction = 'FIFO Front Facing & Reposition';
-    row.getCell(13).value = defaultAction;
+    const userPlanObj = (perfState?.skuActionPlans && perfState.skuActionPlans[item.itemCode]) || null;
+    let actionRemarks = '';
+    if (userPlanObj && (userPlanObj.plan || userPlanObj.note)) {
+      actionRemarks = [userPlanObj.plan, userPlanObj.note].filter(Boolean).join(' - ');
+    } else if ((item.above1Yr || 0) > 0) {
+      actionRemarks = 'SSJ Return / Aging Recall';
+    } else if ((item.agedValue || 0) > 200) {
+      actionRemarks = 'Push Promo / Bundle Discount';
+    } else {
+      actionRemarks = 'FIFO Front Facing & Reposition';
+    }
+    row.getCell(13).value = actionRemarks;
 
     const isEven = idx % 2 === 0;
     const bgArgb = isEven ? 'FFFFFFFF' : 'FFF8FAFC';
@@ -3624,8 +3819,60 @@ function createEmptyState() {
     itemSalesLatest: { dateRange: '', items: [], fileGrandTotal: null },
     itemSalesPrevYear: { dateRange: '', items: [], fileGrandTotal: null },
     stockAgingLatest: { items: [] },
+    skuActionPlans: {},
     videoWalkthroughReport: ''
   };
+}
+
+async function loadStateFromIdb() {
+  try {
+    const idbState = await getPerfIdb('active_state');
+    let updated = false;
+
+    if (idbState && typeof idbState === 'object') {
+      // If IndexedDB has real user data uploaded and local perfState was still on sample, replace it completely!
+      if (!idbState.meta?.isPreloadedSample && (idbState.stockAgingLatest?.items?.length > 0 || idbState.dailySalesLatest?.rows?.length > 0)) {
+        perfState = { ...perfState, ...idbState };
+        localStorage.setItem(STORAGE_KEYS.HIDE_SAMPLE, '1');
+        updated = true;
+      }
+
+      if (Array.isArray(idbState.stockAgingLatest?.items) && idbState.stockAgingLatest.items.length > 0) {
+        perfState.stockAgingLatest = idbState.stockAgingLatest;
+        updated = true;
+      }
+      if (Array.isArray(idbState.itemSalesLatest?.items) && idbState.itemSalesLatest.items.length > 0) {
+        perfState.itemSalesLatest = idbState.itemSalesLatest;
+        updated = true;
+      }
+      if (Array.isArray(idbState.itemSalesPrevYear?.items) && idbState.itemSalesPrevYear.items.length > 0) {
+        perfState.itemSalesPrevYear = idbState.itemSalesPrevYear;
+        updated = true;
+      }
+      if (idbState.skuActionPlans && typeof idbState.skuActionPlans === 'object') {
+        perfState.skuActionPlans = { ...perfState.skuActionPlans, ...idbState.skuActionPlans };
+      }
+    }
+
+    const idbAging = await getPerfIdb('stock_aging_latest');
+    if (idbAging && Array.isArray(idbAging.items) && idbAging.items.length > 0) {
+      perfState.stockAgingLatest = idbAging;
+      updated = true;
+    }
+
+    const idbPlans = await getPerfIdb('sku_action_plans');
+    if (idbPlans && typeof idbPlans === 'object') {
+      perfState.skuActionPlans = { ...perfState.skuActionPlans, ...idbPlans };
+    }
+
+    if (updated) {
+      console.log('[IDB] Restored full unconstrained datasets from IndexedDB: Stock Aging SKUs:', perfState.stockAgingLatest?.items?.length || 0);
+      computeAllMetrics();
+      refreshAllViews();
+    }
+  } catch (err) {
+    console.warn('[IDB] Could not load state from IndexedDB:', err);
+  }
 }
 
 function loadInitialState() {
@@ -3640,6 +3887,12 @@ function loadInitialState() {
     const savedAi = localStorage.getItem(STORAGE_KEYS.AI_REPORT);
     if (savedAi) activeAiReport = JSON.parse(savedAi);
   } catch (e) { activeAiReport = null; }
+
+  let savedActionPlans = {};
+  try {
+    const actionPlansRaw = localStorage.getItem(STORAGE_KEYS.ACTION_PLANS);
+    if (actionPlansRaw) savedActionPlans = JSON.parse(actionPlansRaw);
+  } catch (_) {}
 
   const hideSample = localStorage.getItem(STORAGE_KEYS.HIDE_SAMPLE) === '1';
 
@@ -3662,6 +3915,13 @@ function loadInitialState() {
     }
   }
 
+  if (!perfState.skuActionPlans) {
+    perfState.skuActionPlans = savedActionPlans;
+  }
+
+  // Asynchronously restore full unconstrained datasets from IndexedDB
+  loadStateFromIdb();
+
   // Automatically check Google Cloud for latest uploaded performance documents across all PCs
   setTimeout(() => {
     if (typeof syncPerformanceWithCloud === 'function') {
@@ -3671,18 +3931,100 @@ function loadInitialState() {
 }
 
 function saveActiveState() {
-  try {
-    // Save lightweight state to localStorage (if item arrays are huge, trim only if quota exceeded)
-    localStorage.setItem(STORAGE_KEYS.STATE, JSON.stringify(perfState));
-  } catch (err) {
-    console.warn('Quota reached saving full SKU arrays to localStorage; saving core KPI tables:', err.message);
+  if (!perfState) return;
+
+  if (perfState.meta && !perfState.meta.isPreloadedSample) {
     try {
-      const compact = { ...perfState };
-      localStorage.setItem(STORAGE_KEYS.STATE, JSON.stringify(compact));
-    } catch (e2) { /* ignore */ }
+      localStorage.setItem(STORAGE_KEYS.HIDE_SAMPLE, '1');
+    } catch (_) {}
   }
 
+  // 1. Save unconstrained full state to IndexedDB (zero quota limitations)
+  if (typeof setPerfIdb === 'function') {
+    setPerfIdb('active_state', perfState).catch(err => console.warn('IDB active_state save error:', err));
+    if (perfState.stockAgingLatest) {
+      setPerfIdb('stock_aging_latest', perfState.stockAgingLatest).catch(() => {});
+    }
+    if (perfState.skuActionPlans) {
+      setPerfIdb('sku_action_plans', perfState.skuActionPlans).catch(() => {});
+    }
+  }
+
+  // 2. Save compact metadata and summary tables to localStorage (strictly < 50KB, never triggers quota errors)
+  try {
+    const safeCompactState = {
+      ...perfState,
+      stockAgingLatest: {
+        dateTo: perfState.stockAgingLatest?.dateTo || '',
+        itemsCount: perfState.stockAgingLatest?.items?.length || 0,
+        _inIdb: true
+      },
+      itemSalesLatest: {
+        dateRange: perfState.itemSalesLatest?.dateRange || '',
+        fileGrandTotal: perfState.itemSalesLatest?.fileGrandTotal || null,
+        itemsCount: perfState.itemSalesLatest?.items?.length || 0,
+        _inIdb: true
+      },
+      itemSalesPrevYear: {
+        dateRange: perfState.itemSalesPrevYear?.dateRange || '',
+        fileGrandTotal: perfState.itemSalesPrevYear?.fileGrandTotal || null,
+        itemsCount: perfState.itemSalesPrevYear?.items?.length || 0,
+        _inIdb: true
+      }
+    };
+    localStorage.setItem(STORAGE_KEYS.STATE, JSON.stringify(safeCompactState));
+  } catch (err) {
+    console.warn('LocalStorage save warning:', err.message);
+  }
+
+  // 3. Save SKU action plans to dedicated localStorage key for quick access
+  try {
+    if (perfState.skuActionPlans) {
+      localStorage.setItem(STORAGE_KEYS.ACTION_PLANS, JSON.stringify(perfState.skuActionPlans));
+    }
+  } catch (_) {}
+
   // Automatically replicate state to Google Cloud (debounced)
+  if (typeof debouncedCloudPush === 'function') {
+    debouncedCloudPush();
+  }
+}
+
+// ─── SKU ACTION PLANS MANAGEMENT ─────────────────────────────────────────────
+function setSkuActionPlanPreset(itemCode, presetVal) {
+  if (!perfState.skuActionPlans) perfState.skuActionPlans = {};
+  const current = perfState.skuActionPlans[itemCode] || { plan: '', note: '', updatedAt: '' };
+  current.plan = presetVal || '';
+  current.updatedAt = new Date().toISOString();
+  if (!current.plan && !current.note) {
+    delete perfState.skuActionPlans[itemCode];
+  } else {
+    perfState.skuActionPlans[itemCode] = current;
+  }
+  persistSkuActionPlans();
+}
+
+function setSkuActionPlanNote(itemCode, noteVal) {
+  if (!perfState.skuActionPlans) perfState.skuActionPlans = {};
+  const current = perfState.skuActionPlans[itemCode] || { plan: '', note: '', updatedAt: '' };
+  current.note = (noteVal || '').trim();
+  current.updatedAt = new Date().toISOString();
+  if (!current.plan && !current.note) {
+    delete perfState.skuActionPlans[itemCode];
+  } else {
+    perfState.skuActionPlans[itemCode] = current;
+  }
+  persistSkuActionPlans();
+}
+
+function persistSkuActionPlans() {
+  if (typeof setPerfIdb === 'function') {
+    setPerfIdb('sku_action_plans', perfState.skuActionPlans || {});
+    setPerfIdb('active_state', perfState);
+  }
+  try {
+    localStorage.setItem(STORAGE_KEYS.ACTION_PLANS, JSON.stringify(perfState.skuActionPlans || {}));
+  } catch (_) {}
   if (typeof debouncedCloudPush === 'function') {
     debouncedCloudPush();
   }
@@ -3692,6 +4034,12 @@ function clearPreloadedSampleData() {
   localStorage.setItem(STORAGE_KEYS.HIDE_SAMPLE, '1');
   localStorage.removeItem(STORAGE_KEYS.STATE);
   localStorage.removeItem(STORAGE_KEYS.AI_REPORT);
+  localStorage.removeItem(STORAGE_KEYS.ACTION_PLANS);
+  if (typeof setPerfIdb === 'function') {
+    setPerfIdb('active_state', null);
+    setPerfIdb('stock_aging_latest', null);
+    setPerfIdb('sku_action_plans', {});
+  }
   activeAiReport = null;
   perfState = createEmptyState();
   refreshAllViews();
@@ -3709,8 +4057,14 @@ function restorePreloadedSampleData() {
   localStorage.removeItem(STORAGE_KEYS.HIDE_SAMPLE);
   localStorage.removeItem(STORAGE_KEYS.STATE);
   localStorage.removeItem(STORAGE_KEYS.AI_REPORT);
+  localStorage.removeItem(STORAGE_KEYS.ACTION_PLANS);
   activeAiReport = null;
   perfState = JSON.parse(JSON.stringify(window.PMG_PERFORMANCE_SAMPLE_DATA));
+  if (typeof setPerfIdb === 'function') {
+    setPerfIdb('active_state', perfState);
+    if (perfState.stockAgingLatest) setPerfIdb('stock_aging_latest', perfState.stockAgingLatest);
+    setPerfIdb('sku_action_plans', {});
+  }
   refreshAllViews();
   if (typeof pushPerformanceToCloud === 'function') {
     pushPerformanceToCloud(false).catch(() => {});
@@ -4876,12 +5230,23 @@ function renderTab4SkusAndAging() {
     filtered = filtered.filter(s => s.priceLatest >= 200 && s.pricePrev >= 200 && s.gpDiffPP !== null && s.gpDiffPP < -1.5);
   } else if (skuFilterState.mode === 'AGED_6M') {
     filtered = filtered.filter(s => (s.agedQty6MPlus || 0) > 0 || (s.agedValueRm || 0) > 0);
+  } else if (skuFilterState.mode === 'HAS_ACTION') {
+    filtered = filtered.filter(s => !!(perfState.skuActionPlans && perfState.skuActionPlans[s.itemCode] && (perfState.skuActionPlans[s.itemCode].plan || perfState.skuActionPlans[s.itemCode].note)));
+  } else if (skuFilterState.mode === 'NEEDS_ACTION') {
+    filtered = filtered.filter(s => ((s.agedQty6MPlus || 0) > 0 || (s.agedValueRm || 0) > 0) && !(perfState.skuActionPlans && perfState.skuActionPlans[s.itemCode] && perfState.skuActionPlans[s.itemCode].plan));
   }
 
   // Multi-column sorting applied to filtered SKU list
   const sortCol = tab4SortState.col || 'priceLatest';
   const sortDir = tab4SortState.dir === 'asc' ? 1 : -1;
   filtered = [...filtered].sort((a, b) => {
+    if (sortCol === 'actionPlan') {
+      const planA = perfState.skuActionPlans?.[a.itemCode]?.plan || '';
+      const planB = perfState.skuActionPlans?.[b.itemCode]?.plan || '';
+      if (!planA && planB) return 1;
+      if (planA && !planB) return -1;
+      return sortDir * planA.localeCompare(planB);
+    }
     let va = a[sortCol];
     let vb = b[sortCol];
     if (typeof va === 'string') {
@@ -4974,6 +5339,8 @@ function renderTab4SkusAndAging() {
         <button onclick="updateSkuFilter('mode', 'BLEEDERS')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${skuFilterState.mode === 'BLEEDERS' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">Top YoY Sales Drops</button>
         <button onclick="updateSkuFilter('mode', 'MARGIN_DROP')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${skuFilterState.mode === 'MARGIN_DROP' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">GP% Margin Eroded</button>
         <button onclick="updateSkuFilter('mode', 'AGED_6M')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${skuFilterState.mode === 'AGED_6M' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">In 6-Month Aging Report</button>
+        <button onclick="updateSkuFilter('mode', 'HAS_ACTION')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${skuFilterState.mode === 'HAS_ACTION' ? 'bg-indigo-900 text-white' : 'bg-indigo-50 text-indigo-800 border border-indigo-200 hover:bg-indigo-100'}">With Action Plan (${fmtNum(Object.keys(perfState.skuActionPlans || {}).length)})</button>
+        <button onclick="updateSkuFilter('mode', 'NEEDS_ACTION')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${skuFilterState.mode === 'NEEDS_ACTION' ? 'bg-amber-900 text-white' : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'}">Aged SKUs Needing Action</button>
       </div>
 
       <div class="flex items-center gap-2 flex-wrap">
@@ -5069,11 +5436,19 @@ function renderTab4SkusAndAging() {
                   ${getSortIndicator(tab4SortState.col, 'agedValueRm', tab4SortState.dir)}
                 </div>
               </th>
+              <th onclick="setTabSort('tab4', 'actionPlan')" class="py-2.5 px-3 cursor-pointer hover:bg-slate-800 transition select-none min-w-[210px]">
+                <div class="flex items-center">
+                  <span>Action Plan</span>
+                  ${getSortIndicator(tab4SortState.col, 'actionPlan', tab4SortState.dir)}
+                </div>
+              </th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 text-slate-800">
             ${pageItems.map(s => {
               const isNonMoving = s.qtyLatest === 0 && s.qtyPrev === 0 && ((s.agedQty6MPlus || 0) > 0 || (s.agedValueRm || 0) > 0);
+              const planObj = (perfState.skuActionPlans && perfState.skuActionPlans[s.itemCode]) || null;
+              const hasPlan = !!(planObj && planObj.plan);
               return `
               <tr class="hover:bg-slate-50 ${isNonMoving ? 'bg-amber-50/20' : ''}">
                 <td class="py-2 px-3">
@@ -5115,6 +5490,22 @@ function renderTab4SkusAndAging() {
                     <div class="font-bold text-amber-900">${fmtRM(s.agedValueRm)}</div>
                     <div class="text-[10px] text-slate-500 font-semibold mt-0.5">${fmtNum(s.agedQty6MPlus)} aged / ${fmtNum(s.ohQty)} OH</div>
                   ` : `<span class="text-slate-300">—</span>`}
+                </td>
+                <td class="py-2 px-2.5 min-w-[210px]">
+                  <div class="flex flex-col gap-1">
+                    <select onchange="setSkuActionPlanPreset('${escapeHtml(s.itemCode)}', this.value)" class="text-[11px] font-bold py-1 px-1.5 rounded-lg border cursor-pointer ${hasPlan ? 'border-indigo-400 bg-indigo-50/80 text-indigo-950 font-extrabold' : 'border-slate-200 bg-white text-slate-700'} focus:outline-none focus:ring-1 focus:ring-indigo-400">
+                      <option value="">— Select Action Plan —</option>
+                      <option value="Clearance Promo" ${planObj?.plan === 'Clearance Promo' ? 'selected' : ''}>🏷️ Clearance Promo (5-15% Off)</option>
+                      <option value="Push to Clinic" ${planObj?.plan === 'Push to Clinic' ? 'selected' : ''}>🏥 Push to Clinic / Doctor Order</option>
+                      <option value="Front Counter Push" ${planObj?.plan === 'Front Counter Push' ? 'selected' : ''}>🛒 Front Counter Display / Cashier Push</option>
+                      <option value="Staff Incentive" ${planObj?.plan === 'Staff Incentive' ? 'selected' : ''}>👥 Staff Push & Target Incentive</option>
+                      <option value="Supplier Return" ${planObj?.plan === 'Supplier Return' ? 'selected' : ''}>🔄 Supplier Return / Credit Note</option>
+                      <option value="Bundle HB" ${planObj?.plan === 'Bundle HB' ? 'selected' : ''}>🎁 Bundle with House Brand</option>
+                      <option value="Close Monitoring" ${planObj?.plan === 'Close Monitoring' ? 'selected' : ''}>👁️ Close Monitoring</option>
+                      <option value="Custom Plan" ${planObj?.plan === 'Custom Plan' ? 'selected' : ''}>✏️ Custom Plan</option>
+                    </select>
+                    <input type="text" value="${escapeHtml(planObj?.note || '')}" placeholder="Action note / target date..." onchange="setSkuActionPlanNote('${escapeHtml(s.itemCode)}', this.value)" class="text-[10px] py-0.5 px-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-400">
+                  </div>
                 </td>
               </tr>
               `;
@@ -5519,6 +5910,8 @@ async function handleBatchCsvFiles(fileList) {
   }
 
   if (loadedCount > 0) {
+    localStorage.setItem(STORAGE_KEYS.HIDE_SAMPLE, '1');
+    computeAllMetrics();
     saveActiveState();
     saveCurrentMonthSnapshot(true);
     if (typeof pushPerformanceToCloud === 'function') {
@@ -5575,6 +5968,15 @@ function applyParsedCsvToState(type, periodSlot, text, fileName) {
     else perfState.itemSalesPrevYear = parsed;
   } else if (type === 'STOCK_AGING') {
     perfState.stockAgingLatest = parseAgingCsv(text);
+    // User requirement: Action plans are saved UNTIL user inputs a new stock aging report
+    perfState.skuActionPlans = {};
+    if (typeof setPerfIdb === 'function') {
+      setPerfIdb('sku_action_plans', {});
+    }
+    try {
+      localStorage.removeItem(STORAGE_KEYS.ACTION_PLANS);
+    } catch (_) {}
+    showToast('New Stock Aging Report applied! Previous action plans reset for this new aging cycle.', 'info');
   } else {
     throw new Error(`Unrecognized PMG CSV format in ${fileName}`);
   }
@@ -5595,7 +5997,9 @@ async function handleSlotFileUpload(type, periodSlot, inputEl) {
   try {
     const text = await file.text();
     perfState.meta.isPreloadedSample = false;
+    localStorage.setItem(STORAGE_KEYS.HIDE_SAMPLE, '1');
     applyParsedCsvToState(type, periodSlot, text, file.name);
+    computeAllMetrics();
     saveActiveState();
     saveCurrentMonthSnapshot(true);
     if (typeof pushPerformanceToCloud === 'function') {
@@ -5875,11 +6279,19 @@ if (typeof window !== 'undefined') {
   window.handleBatchCsvFiles = handleBatchCsvFiles;
   window.syncPerformanceWithCloud = syncPerformanceWithCloud;
   window.pushPerformanceToCloud = pushPerformanceToCloud;
+  window.setSkuActionPlanPreset = setSkuActionPlanPreset;
+  window.setSkuActionPlanNote = setSkuActionPlanNote;
+  window.persistSkuActionPlans = persistSkuActionPlans;
+  window.loadStateFromIdb = loadStateFromIdb;
+  window.exportAgingStockCountExcel = exportAgingStockCountExcel;
 }
 
 if (typeof document !== 'undefined') {
-  document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('DOMContentLoaded', async () => {
     loadInitialState();
+    try {
+      await loadStateFromIdb();
+    } catch (_) {}
     refreshAllViews();
     switchPerfTab('tab1');
   });
