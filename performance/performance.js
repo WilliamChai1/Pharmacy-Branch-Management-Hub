@@ -3010,8 +3010,11 @@ function updateTaskSyncUiState(inProgress, isSuccess = true) {
 
 // ─── GOOGLE CLOUD CROSS-PC PERFORMANCE DATA REPLICATION ─────────────────────
 let isSyncingPerformanceCloud = false;
+let isPushingPerformanceCloud = false;
 let lastPerfCloudSyncTime = null;
+let lastActionPlansSyncTime = null;
 let cloudPushDebounceTimer = null;
+let actionPlansPushDebounceTimer = null;
 
 function updateCloudSyncUiBadge(status) {
   const btn = document.getElementById('btnPerfCloudSync');
@@ -3051,11 +3054,164 @@ function updateCloudSyncUiBadge(status) {
   }
 }
 
+function updateSkuActionPlanSyncBadge(status) {
+  const badge = document.getElementById('skuActionPlanSyncBadge');
+  const text = document.getElementById('skuActionPlanSyncText');
+  if (!badge || !text) return;
+
+  const count = Object.keys(perfState?.skuActionPlans || {}).length;
+  if (status === 'syncing') {
+    badge.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold shadow-2xs';
+    text.innerHTML = `<span class="animate-pulse">⏳ Syncing Action Plans (${count})...</span>`;
+  } else if (status === 'synced') {
+    const timeStr = lastActionPlansSyncTime ? lastActionPlansSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Live';
+    badge.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold shadow-2xs';
+    text.innerHTML = `<span>☁️ Action Plans Cloud Synced (${count} saved • ${timeStr})</span>`;
+  } else if (status === 'error') {
+    badge.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold shadow-2xs';
+    text.innerHTML = `<span>⚠️ Action Plans Local (${count} saved)</span>`;
+  }
+}
+
 function debouncedCloudPush() {
   clearTimeout(cloudPushDebounceTimer);
   cloudPushDebounceTimer = setTimeout(() => {
     pushPerformanceToCloud(false).catch(() => {});
-  }, 1500);
+  }, 1200);
+}
+
+function debouncedActionPlansCloudPush() {
+  clearTimeout(actionPlansPushDebounceTimer);
+  updateSkuActionPlanSyncBadge('syncing');
+  actionPlansPushDebounceTimer = setTimeout(() => {
+    pushSkuActionPlansToCloud(false).catch(() => {});
+  }, 800);
+}
+
+// ── FAST DEDICATED SKU ACTION PLANS CLOUD SYNC (<2s latency, ~2KB payload) ────
+async function pushSkuActionPlansToCloud(showToastFeedback = false) {
+  if (!PMG_SCHEDULE_API_URL) return;
+  try {
+    if (!perfState) perfState = createEmptyState();
+    const plans = perfState.skuActionPlans || {};
+    const count = Object.keys(plans).length;
+    const nowTime = Date.now();
+    const session = typeof getSession === 'function' ? getSession() : null;
+    const updatedBy = (session && session.displayName) || localStorage.getItem('pmg_user_name') || 'Pharmacist';
+
+    // Update in-memory and local storage metadata
+    if (!perfState.meta) perfState.meta = {};
+    perfState.meta.lastUpdated = nowTime;
+    perfState.meta.lastUpdatedIso = new Date(nowTime).toISOString();
+
+    const payload = {
+      action: 'saveStaffPreferences',
+      branch: 'KS01_PERF_ACTION_PLANS',
+      preferences: [{
+        plansJson: JSON.stringify(plans),
+        plansCount: count,
+        lastUpdated: nowTime,
+        lastUpdatedIso: new Date(nowTime).toISOString(),
+        updatedBy: updatedBy
+      }],
+      lastUpdated: new Date(nowTime).toISOString(),
+      updatedBy: updatedBy
+    };
+
+    const res = await fetch(PMG_SCHEDULE_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+      redirect: 'follow'
+    });
+
+    if (res.ok) {
+      lastActionPlansSyncTime = new Date();
+      updateSkuActionPlanSyncBadge('synced');
+      console.log(`[Action Plans Cloud Sync] ✅ Synced ${count} action plans to Google Cloud.`);
+      if (showToastFeedback && typeof showToast === 'function') {
+        showToast(`☁️ Synced ${count} SKU action plans to Google Cloud!`, 'success');
+      }
+    }
+  } catch (err) {
+    console.warn('[Action Plans Cloud Sync] Warning:', err.message);
+    updateSkuActionPlanSyncBadge('error');
+  }
+}
+
+async function syncSkuActionPlansWithCloud(showToastFeedback = false) {
+  if (!PMG_SCHEDULE_API_URL) return;
+  updateSkuActionPlanSyncBadge('syncing');
+  try {
+    if (!perfState) perfState = createEmptyState();
+    const res = await fetch(`${PMG_SCHEDULE_API_URL}?action=getStaffPreferences&branch=KS01_PERF_ACTION_PLANS`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    const cloudPref = Array.isArray(json?.preferences) && json.preferences[0] ? json.preferences[0] : null;
+
+    if (cloudPref && cloudPref.plansJson) {
+      let cloudPlans = {};
+      try {
+        cloudPlans = JSON.parse(cloudPref.plansJson);
+      } catch (_) {}
+
+      if (cloudPlans && typeof cloudPlans === 'object') {
+        if (!perfState.skuActionPlans) perfState.skuActionPlans = {};
+        let mergedCount = 0;
+
+        // Smart merge: apply cloud plans, preserving newer local plans if any
+        for (const [code, planObj] of Object.entries(cloudPlans)) {
+          const localPlan = perfState.skuActionPlans[code];
+          if (!localPlan) {
+            perfState.skuActionPlans[code] = planObj;
+            mergedCount++;
+          } else {
+            const cloudTs = new Date(planObj.updatedAt || 0).getTime();
+            const localTs = new Date(localPlan.updatedAt || 0).getTime();
+            if (cloudTs >= localTs) {
+              perfState.skuActionPlans[code] = planObj;
+              mergedCount++;
+            }
+          }
+        }
+
+        // Persist to IDB and localStorage
+        if (typeof setPerfIdb === 'function') {
+          setPerfIdb('sku_action_plans', perfState.skuActionPlans);
+          setPerfIdb('active_state', perfState);
+        }
+        try {
+          localStorage.setItem(STORAGE_KEYS.ACTION_PLANS, JSON.stringify(perfState.skuActionPlans));
+        } catch (_) {}
+
+        lastActionPlansSyncTime = new Date();
+        updateSkuActionPlanSyncBadge('synced');
+
+        // Refresh Tab 4 table if currently visible
+        const tab4Container = document.getElementById('tab4SkuContainer');
+        if (tab4Container && tab4Container.innerHTML) {
+          renderSkuSalesAgingSection();
+        }
+
+        if (showToastFeedback && typeof showToast === 'function') {
+          showToast(`✅ Synced ${Object.keys(perfState.skuActionPlans).length} SKU action plans from Google Cloud!`, 'success');
+        }
+        return;
+      }
+    }
+
+    lastActionPlansSyncTime = new Date();
+    updateSkuActionPlanSyncBadge('synced');
+    if (showToastFeedback && typeof showToast === 'function') {
+      showToast('Action plans are up to date.', 'info');
+    }
+  } catch (err) {
+    console.warn('[Action Plans Pull] Warning:', err.message);
+    updateSkuActionPlanSyncBadge('error');
+    if (showToastFeedback && typeof showToast === 'function') {
+      showToast('Could not reach Google Cloud for action plans.', 'warning');
+    }
+  }
 }
 
 async function syncPerformanceWithCloud(showToastFeedback = false) {
@@ -3063,10 +3219,47 @@ async function syncPerformanceWithCloud(showToastFeedback = false) {
   isSyncingPerformanceCloud = true;
   updateCloudSyncUiBadge('syncing');
 
+  // If user clicked the button, force pull latest cloud state unconditionally
+  const forcePull = showToastFeedback === true;
+
   try {
-    // Step 1: Query atomic pointer from Staff_Preferences sheet (branch: 'KS01_PERF_META')
-    const metaRes = await fetch(`${PMG_SCHEDULE_API_URL}?action=getStaffPreferences&branch=KS01_PERF_META`);
-    if (!metaRes.ok) throw new Error(`HTTP ${metaRes.status}`);
+    // Step 1: Query atomic pointers and action plans in parallel
+    const [metaRes, plansRes] = await Promise.all([
+      fetch(`${PMG_SCHEDULE_API_URL}?action=getStaffPreferences&branch=KS01_PERF_META`).catch(() => null),
+      fetch(`${PMG_SCHEDULE_API_URL}?action=getStaffPreferences&branch=KS01_PERF_ACTION_PLANS`).catch(() => null)
+    ]);
+
+    // Fast-sync Action Plans first
+    if (plansRes && plansRes.ok) {
+      try {
+        const plansJson = await plansRes.json();
+        const cloudPref = Array.isArray(plansJson?.preferences) && plansJson.preferences[0] ? plansJson.preferences[0] : null;
+        if (cloudPref && cloudPref.plansJson) {
+          const cloudPlans = JSON.parse(cloudPref.plansJson);
+          if (cloudPlans && typeof cloudPlans === 'object') {
+            if (!perfState.skuActionPlans) perfState.skuActionPlans = {};
+            for (const [code, planObj] of Object.entries(cloudPlans)) {
+              const localPlan = perfState.skuActionPlans[code];
+              if (!localPlan || (new Date(planObj.updatedAt || 0).getTime() >= new Date(localPlan.updatedAt || 0).getTime())) {
+                perfState.skuActionPlans[code] = planObj;
+              }
+            }
+            if (typeof setPerfIdb === 'function') {
+              setPerfIdb('sku_action_plans', perfState.skuActionPlans);
+            }
+            try {
+              localStorage.setItem(STORAGE_KEYS.ACTION_PLANS, JSON.stringify(perfState.skuActionPlans));
+            } catch (_) {}
+            lastActionPlansSyncTime = new Date();
+            updateSkuActionPlanSyncBadge('synced');
+          }
+        }
+      } catch (ePlans) {
+        console.warn('[Cloud Sync Action Plans]', ePlans.message);
+      }
+    }
+
+    if (!metaRes || !metaRes.ok) throw new Error(`HTTP ${metaRes ? metaRes.status : 'Network'}`);
     const metaJson = await metaRes.json();
 
     const cloudMeta = Array.isArray(metaJson?.preferences) && metaJson.preferences[0] ? metaJson.preferences[0] : null;
@@ -3075,8 +3268,8 @@ async function syncPerformanceWithCloud(showToastFeedback = false) {
     const isSample = !!(perfState?.meta?.isPreloadedSample);
     const targetCoreDocId = cloudMeta?.coreDocId || cloudMeta?.stateDocId;
 
-    // If cloud has valid pointer and (cloud is newer OR local is blank/sample)
-    if (cloudMeta && targetCoreDocId && (cloudUpdated > localUpdated || isSample || !perfState?.dailySalesLatest?.rows?.length)) {
+    // Pull from cloud if forcePull OR cloud is newer OR local is blank/sample
+    if (cloudMeta && targetCoreDocId && (forcePull || cloudUpdated > localUpdated || isSample || !perfState?.dailySalesLatest?.rows?.length)) {
       console.log('[Performance Cloud Sync] Pulling newer modular documents from cloud... (Cloud TS:', new Date(cloudUpdated).toISOString(), ')');
 
       // 1. Fetch modular core_state from vault
@@ -3093,55 +3286,75 @@ async function syncPerformanceWithCloud(showToastFeedback = false) {
         throw new Error(`Failed to parse core state: ${errJson.message}`);
       }
 
-      // 2. Fetch modular stock_aging (if pointer exists)
+      // Preserve document IDs in meta so subsequent pushes don't re-upload unmodified 1.5MB files
+      parsedCore.meta = parsedCore.meta || {};
+      parsedCore.meta.coreDocId = cloudMeta.coreDocId || targetCoreDocId;
+      parsedCore.meta.agingDocId = cloudMeta.agingDocId || null;
+      parsedCore.meta.itemSalesDocId = cloudMeta.itemSalesDocId || null;
+      parsedCore.meta.archivesDocId = cloudMeta.archivesDocId || null;
+      parsedCore.meta.agingDirty = false;
+      parsedCore.meta.itemSalesDirty = false;
+      parsedCore.meta.archivesDirty = false;
+
+      // Fetch modular child documents (stock aging, item sales, archives) IN PARALLEL for max speed
+      const docPromises = [];
       if (cloudMeta.agingDocId) {
-        try {
-          const agingRes = await fetch(`${PMG_SCHEDULE_API_URL}?action=getApplicantDoc&docId=${encodeURIComponent(cloudMeta.agingDocId)}`);
-          const agingJson = await agingRes.json();
-          if (agingJson && agingJson.success && agingJson.data) {
-            parsedCore.stockAgingLatest = JSON.parse(agingJson.data);
-          }
-        } catch (eAging) {
-          console.warn('[Performance Cloud Sync] Aging document fetch warning:', eAging.message);
-        }
+        docPromises.push(
+          fetch(`${PMG_SCHEDULE_API_URL}?action=getApplicantDoc&docId=${encodeURIComponent(cloudMeta.agingDocId)}`)
+            .then(r => r.json())
+            .then(j => {
+              if (j && j.success && j.data) {
+                parsedCore.stockAgingLatest = JSON.parse(j.data);
+              }
+            })
+            .catch(e => console.warn('[Performance Cloud Sync] Aging fetch error:', e.message))
+        );
       }
-
-      // 3. Fetch modular item_sales (if pointer exists)
       if (cloudMeta.itemSalesDocId) {
-        try {
-          const salesRes = await fetch(`${PMG_SCHEDULE_API_URL}?action=getApplicantDoc&docId=${encodeURIComponent(cloudMeta.itemSalesDocId)}`);
-          const salesJson = await salesRes.json();
-          if (salesJson && salesJson.success && salesJson.data) {
-            const parsedSales = JSON.parse(salesJson.data);
-            if (parsedSales) {
-              parsedCore.itemSalesLatest = parsedSales.latest || parsedCore.itemSalesLatest;
-              parsedCore.itemSalesPrevYear = parsedSales.prevYear || parsedCore.itemSalesPrevYear;
-            }
-          }
-        } catch (eSales) {
-          console.warn('[Performance Cloud Sync] Sales document fetch warning:', eSales.message);
-        }
+        docPromises.push(
+          fetch(`${PMG_SCHEDULE_API_URL}?action=getApplicantDoc&docId=${encodeURIComponent(cloudMeta.itemSalesDocId)}`)
+            .then(r => r.json())
+            .then(j => {
+              if (j && j.success && j.data) {
+                const parsedSales = JSON.parse(j.data);
+                if (parsedSales) {
+                  parsedCore.itemSalesLatest = parsedSales.latest || parsedCore.itemSalesLatest;
+                  parsedCore.itemSalesPrevYear = parsedSales.prevYear || parsedCore.itemSalesPrevYear;
+                }
+              }
+            })
+            .catch(e => console.warn('[Performance Cloud Sync] Sales fetch error:', e.message))
+        );
+      }
+      if (cloudMeta.archivesDocId) {
+        docPromises.push(
+          fetch(`${PMG_SCHEDULE_API_URL}?action=getApplicantDoc&docId=${encodeURIComponent(cloudMeta.archivesDocId)}`)
+            .then(r => r.json())
+            .then(j => {
+              if (j && j.success && j.data) {
+                const cloudArchives = JSON.parse(j.data);
+                if (cloudArchives && typeof cloudArchives === 'object') {
+                  const localArchives = loadMonthlyArchives();
+                  const merged = { ...localArchives, ...cloudArchives };
+                  localStorage.setItem(STORAGE_KEYS.MONTHLY_ARCHIVES, JSON.stringify(merged));
+                }
+              }
+            })
+            .catch(() => {})
+        );
       }
 
-      // 4. Fetch modular monthly_archives (if pointer exists)
-      if (cloudMeta.archivesDocId) {
-        try {
-          const archRes = await fetch(`${PMG_SCHEDULE_API_URL}?action=getApplicantDoc&docId=${encodeURIComponent(cloudMeta.archivesDocId)}`);
-          const archJson = await archRes.json();
-          if (archJson && archJson.success && archJson.data) {
-            const cloudArchives = JSON.parse(archJson.data);
-            if (cloudArchives && typeof cloudArchives === 'object') {
-              const localArchives = loadMonthlyArchives();
-              const merged = { ...localArchives, ...cloudArchives };
-              localStorage.setItem(STORAGE_KEYS.MONTHLY_ARCHIVES, JSON.stringify(merged));
-            }
-          }
-        } catch (eArch) {}
-      }
+      await Promise.all(docPromises);
 
       if (parsedCore && typeof parsedCore === 'object') {
+        // Merge SKU Action Plans: combine existing in-memory plans with cloud core_state plans
+        if (parsedCore.skuActionPlans && typeof parsedCore.skuActionPlans === 'object') {
+          if (!perfState.skuActionPlans) perfState.skuActionPlans = {};
+          perfState.skuActionPlans = { ...parsedCore.skuActionPlans, ...perfState.skuActionPlans };
+          parsedCore.skuActionPlans = perfState.skuActionPlans;
+        }
+
         perfState = parsedCore;
-        perfState.meta = perfState.meta || {};
         perfState.meta.isPreloadedSample = false;
         perfState.meta.lastUpdated = cloudUpdated;
 
@@ -3162,12 +3375,12 @@ async function syncPerformanceWithCloud(showToastFeedback = false) {
         updateCloudSyncUiBadge('synced');
 
         if (showToastFeedback && typeof showToast === 'function') {
-          showToast(`✅ Synced with latest uploaded documents from other PCs! (${perfState.meta?.latestPeriodLabel || 'Latest Month'})`, 'success');
+          showToast(`✅ Synced with latest uploaded documents from outlet PC! (${perfState.meta?.latestPeriodLabel || 'Latest Month'})`, 'success');
         }
         return;
       }
-    } else if (perfState && !isSample && localUpdated > cloudUpdated && perfState.dailySalesLatest?.rows?.length) {
-      // Local has real data that is newer than cloud -> push local up to cloud!
+    } else if (perfState && !isSample && localUpdated > cloudUpdated && perfState.dailySalesLatest?.rows?.length && perfState.meta?.userInitiatedUpload) {
+      // Local has genuine newer data from an active upload session -> push up to cloud!
       await pushPerformanceToCloud(false);
       lastPerfCloudSyncTime = new Date();
       updateCloudSyncUiBadge('synced');
@@ -3194,7 +3407,8 @@ async function syncPerformanceWithCloud(showToastFeedback = false) {
 }
 
 async function pushPerformanceToCloud(showToastFeedback = false) {
-  if (!PMG_SCHEDULE_API_URL || !perfState) return;
+  if (!PMG_SCHEDULE_API_URL || !perfState || isPushingPerformanceCloud) return;
+  isPushingPerformanceCloud = true;
   try {
     updateCloudSyncUiBadge('uploading');
 
@@ -3256,10 +3470,12 @@ async function pushPerformanceToCloud(showToastFeedback = false) {
     });
     const coreUploadJson = await coreUploadRes.json();
     const coreDocId = coreUploadJson.docId;
+    perfState.meta.coreDocId = coreDocId;
 
-    // 2. Upload modular stock_aging (if loaded)
-    let agingDocId = null;
-    if (perfState.stockAgingLatest && Array.isArray(perfState.stockAgingLatest.items) && perfState.stockAgingLatest.items.length > 0) {
+    // 2. Upload modular stock_aging (ONLY if newly uploaded / dirty, else reuse existing pointer)
+    let agingDocId = perfState.meta.agingDocId || null;
+    const shouldUploadAging = perfState.meta.agingDirty || !agingDocId;
+    if (shouldUploadAging && perfState.stockAgingLatest && Array.isArray(perfState.stockAgingLatest.items) && perfState.stockAgingLatest.items.length > 0) {
       const agingPayload = JSON.stringify(perfState.stockAgingLatest);
       const agingUploadRes = await fetch(PMG_SCHEDULE_API_URL, {
         method: 'POST',
@@ -3278,14 +3494,17 @@ async function pushPerformanceToCloud(showToastFeedback = false) {
         redirect: 'follow'
       });
       const agingUploadJson = await agingUploadRes.json();
-      agingDocId = agingUploadJson.docId;
+      agingDocId = agingUploadJson.docId || agingDocId;
+      perfState.meta.agingDocId = agingDocId;
+      perfState.meta.agingDirty = false;
     }
 
-    // 3. Upload modular item_sales (if loaded)
-    let itemSalesDocId = null;
+    // 3. Upload modular item_sales (ONLY if newly uploaded / dirty, else reuse existing pointer)
+    let itemSalesDocId = perfState.meta.itemSalesDocId || null;
+    const shouldUploadSales = perfState.meta.itemSalesDirty || !itemSalesDocId;
     const hasLatestItems = perfState.itemSalesLatest && Array.isArray(perfState.itemSalesLatest.items) && perfState.itemSalesLatest.items.length > 0;
     const hasPrevItems = perfState.itemSalesPrevYear && Array.isArray(perfState.itemSalesPrevYear.items) && perfState.itemSalesPrevYear.items.length > 0;
-    if (hasLatestItems || hasPrevItems) {
+    if (shouldUploadSales && (hasLatestItems || hasPrevItems)) {
       const salesPayload = JSON.stringify({
         latest: perfState.itemSalesLatest || null,
         prevYear: perfState.itemSalesPrevYear || null
@@ -3307,30 +3526,37 @@ async function pushPerformanceToCloud(showToastFeedback = false) {
         redirect: 'follow'
       });
       const salesUploadJson = await salesUploadRes.json();
-      itemSalesDocId = salesUploadJson.docId;
+      itemSalesDocId = salesUploadJson.docId || itemSalesDocId;
+      perfState.meta.itemSalesDocId = itemSalesDocId;
+      perfState.meta.itemSalesDirty = false;
     }
 
-    // 4. Upload modular monthly_archives to vault
-    const archives = loadMonthlyArchives();
-    const archivesPayload = JSON.stringify(archives);
-    const archUploadRes = await fetch(PMG_SCHEDULE_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
-        action: 'uploadApplicantDoc',
-        appId: 'PMG_PERF_KS01',
-        doc: {
-          field: 'monthly_archives',
-          name: 'perf_archives.json',
-          type: 'application/json',
-          data: archivesPayload,
-          size: archivesPayload.length
-        }
-      }),
-      redirect: 'follow'
-    });
-    const archUploadJson = await archUploadRes.json();
-    const archivesDocId = archUploadJson.docId;
+    // 4. Upload modular monthly_archives to vault (ONLY if dirty or missing)
+    let archivesDocId = perfState.meta.archivesDocId || null;
+    if (perfState.meta.archivesDirty || !archivesDocId) {
+      const archives = loadMonthlyArchives();
+      const archivesPayload = JSON.stringify(archives);
+      const archUploadRes = await fetch(PMG_SCHEDULE_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'uploadApplicantDoc',
+          appId: 'PMG_PERF_KS01',
+          doc: {
+            field: 'monthly_archives',
+            name: 'perf_archives.json',
+            type: 'application/json',
+            data: archivesPayload,
+            size: archivesPayload.length
+          }
+        }),
+        redirect: 'follow'
+      });
+      const archUploadJson = await archUploadRes.json();
+      archivesDocId = archUploadJson.docId || archivesDocId;
+      perfState.meta.archivesDocId = archivesDocId;
+      perfState.meta.archivesDirty = false;
+    }
 
     // 5. Save atomic pointers and metadata in Staff_Preferences sheet (branch: 'KS01_PERF_META')
     const session = typeof getSession === 'function' ? getSession() : null;
@@ -3360,9 +3586,12 @@ async function pushPerformanceToCloud(showToastFeedback = false) {
       redirect: 'follow'
     });
 
+    // Also push action plans to dedicated branch in background
+    pushSkuActionPlansToCloud(false).catch(() => {});
+
     lastPerfCloudSyncTime = new Date();
     updateCloudSyncUiBadge('synced');
-    console.log('[Performance Cloud Push] ✅ Modular State, Stock Aging, and Archives safely pushed to Google Cloud.');
+    console.log('[Performance Cloud Push] ✅ State pointers safely pushed to Google Cloud in fast modular mode.');
 
     if (showToastFeedback && typeof showToast === 'function') {
       showToast('☁️ Performance data uploaded and synced across all PCs!', 'success');
@@ -3370,6 +3599,8 @@ async function pushPerformanceToCloud(showToastFeedback = false) {
   } catch (err) {
     console.warn('[Performance Cloud Push] Warning:', err.message);
     updateCloudSyncUiBadge('error');
+  } finally {
+    isPushingPerformanceCloud = false;
   }
 }
 
@@ -3992,6 +4223,7 @@ function saveActiveState() {
 
 // ─── SKU ACTION PLANS MANAGEMENT ─────────────────────────────────────────────
 function setSkuActionPlanPreset(itemCode, presetVal) {
+  if (!perfState) perfState = createEmptyState();
   if (!perfState.skuActionPlans) perfState.skuActionPlans = {};
   const current = perfState.skuActionPlans[itemCode] || { plan: '', note: '', updatedAt: '' };
   current.plan = presetVal || '';
@@ -4005,6 +4237,7 @@ function setSkuActionPlanPreset(itemCode, presetVal) {
 }
 
 function setSkuActionPlanNote(itemCode, noteVal) {
+  if (!perfState) perfState = createEmptyState();
   if (!perfState.skuActionPlans) perfState.skuActionPlans = {};
   const current = perfState.skuActionPlans[itemCode] || { plan: '', note: '', updatedAt: '' };
   current.note = (noteVal || '').trim();
@@ -4025,6 +4258,12 @@ function persistSkuActionPlans() {
   try {
     localStorage.setItem(STORAGE_KEYS.ACTION_PLANS, JSON.stringify(perfState.skuActionPlans || {}));
   } catch (_) {}
+
+  // Fast direct push for SKU action plans (<2 seconds)
+  if (typeof debouncedActionPlansCloudPush === 'function') {
+    debouncedActionPlansCloudPush();
+  }
+  // Secondary debounced push for full state metadata
   if (typeof debouncedCloudPush === 'function') {
     debouncedCloudPush();
   }
@@ -5344,6 +5583,10 @@ function renderTab4SkusAndAging() {
       </div>
 
       <div class="flex items-center gap-2 flex-wrap">
+        <div id="skuActionPlanSyncBadge" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold shadow-2xs">
+          <span id="skuActionPlanSyncText">☁️ Action Plans Cloud Synced (${fmtNum(Object.keys(perfState.skuActionPlans || {}).length)} saved)</span>
+          <button type="button" onclick="syncSkuActionPlansWithCloud(true)" class="ml-1 px-2 py-0.5 rounded-lg bg-white hover:bg-emerald-100 border border-emerald-300 text-[11px] text-emerald-800 font-extrabold cursor-pointer transition shadow-2xs" title="Force sync action plans with Google Cloud">Sync Now</button>
+        </div>
         <select onchange="updateSkuFilter('category', this.value)" class="px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-bold bg-white text-slate-800">
           <option value="ALL" ${skuFilterState.category === 'ALL' ? 'selected' : ''}>All 12 Categories</option>
           ${ALL_12_CATEGORIES.map(c => `<option value="${c}" ${skuFilterState.category === c ? 'selected' : ''}>${c}</option>`).join('')}
@@ -6271,7 +6514,11 @@ function showToast(msg, type = 'info') {
 
 // ─── INITIALIZE ON DOM READY ────────────────────────────────────────────────
 if (typeof window !== 'undefined') {
-  window.perfState = perfState;
+  Object.defineProperty(window, 'perfState', {
+    get() { return perfState; },
+    set(v) { perfState = v; },
+    configurable: true
+  });
   window.refreshAllViews = refreshAllViews;
   window.computeAllMetrics = computeAllMetrics;
   window.buildDynamicBaselineReport = buildDynamicBaselineReport;
@@ -6279,6 +6526,8 @@ if (typeof window !== 'undefined') {
   window.handleBatchCsvFiles = handleBatchCsvFiles;
   window.syncPerformanceWithCloud = syncPerformanceWithCloud;
   window.pushPerformanceToCloud = pushPerformanceToCloud;
+  window.pushSkuActionPlansToCloud = pushSkuActionPlansToCloud;
+  window.syncSkuActionPlansWithCloud = syncSkuActionPlansWithCloud;
   window.setSkuActionPlanPreset = setSkuActionPlanPreset;
   window.setSkuActionPlanNote = setSkuActionPlanNote;
   window.persistSkuActionPlans = persistSkuActionPlans;
