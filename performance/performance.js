@@ -1125,6 +1125,21 @@ function autoDetectCsvTypeAndPeriod(fileName, text) {
   return { type, year, slot };
 }
 
+// ── HELPER: Check whether an SKU's aged stock is resolved / cleared / returned ──
+function isAgedStockCleared(planObj) {
+  if (!planObj) return false;
+  if (planObj.cleared === true || planObj.isCleared === true || planObj.status === 'completed') return true;
+  if (planObj.cleared === false || planObj.isCleared === false) return false;
+  const p = (planObj.plan || '').toLowerCase();
+  const n = (planObj.note || '').toLowerCase();
+  // Clear physical resolution signals: DO done, supplier return, stock lost/written off, sold, cleared
+  if (p === 'supplier return' && (n.includes('done') || n.includes('do') || n.includes('complete') || n.includes('returned') || n.includes('sent') || !n)) return true;
+  if (p === 'stock cleared' || p === 'stock written off') return true;
+  if (p.includes('cleared') || p.includes('written off') || p.includes('lost') || p.includes('sold')) return true;
+  if (n.includes('done') || n.includes('lost') || n.includes('cleared') || n.includes('sold') || n.includes('written off') || n.includes('do done') || n.includes('returned')) return true;
+  return false;
+}
+
 // ─── CORE QUANTITATIVE ENGINE (COMPUTES ALL 10 KPIs + SKU YOY + AGING) ──────
 function computeAllMetrics(state) {
   if (!state) return null;
@@ -1171,12 +1186,23 @@ function computeAllMetrics(state) {
   const catMapP = new Map(catP.map(r => [r.category.toUpperCase(), r]));
   const closeMap = new Map(closeL.map(r => [r.category.toUpperCase(), r]));
 
-  // Aggregate aging by category as well
+  // Aggregate aging by category as well (including Gross vs Cleared / Net Active)
   const agingByCat = new Map();
   agingL.forEach(it => {
     const c = (it.category || 'OTHER').toUpperCase().trim();
     if (!agingByCat.has(c)) {
-      agingByCat.set(c, { skuCount: 0, ohQty: 0, agedQty6MPlus: 0, agedValue: 0, totalOhValue: 0 });
+      agingByCat.set(c, {
+        skuCount: 0,
+        ohQty: 0,
+        agedQty6MPlus: 0,
+        agedValue: 0,
+        totalOhValue: 0,
+        clearedAgedValue: 0,
+        clearedSkuCount: 0,
+        actionedAgedValue: 0,
+        actionedSkuCount: 0,
+        netAgedValue: 0
+      });
     }
     const g = agingByCat.get(c);
     g.skuCount += 1;
@@ -1184,6 +1210,18 @@ function computeAllMetrics(state) {
     g.agedQty6MPlus += it.agedQty6MPlus;
     g.agedValue = +(g.agedValue + it.agedValue).toFixed(2);
     g.totalOhValue = +(g.totalOhValue + it.totalOhValue).toFixed(2);
+
+    const rawCode = (it.itemCode || '').split(' - ')[0].trim();
+    const planObj = (state.skuActionPlans && (state.skuActionPlans[it.itemCode] || state.skuActionPlans[rawCode])) || null;
+    if (planObj && (planObj.plan || planObj.note)) {
+      g.actionedSkuCount += 1;
+      g.actionedAgedValue = +(g.actionedAgedValue + (it.agedValue || 0)).toFixed(2);
+      if (isAgedStockCleared(planObj)) {
+        g.clearedSkuCount += 1;
+        g.clearedAgedValue = +(g.clearedAgedValue + (it.agedValue || 0)).toFixed(2);
+      }
+    }
+    g.netAgedValue = Math.max(0, +(g.agedValue - g.clearedAgedValue).toFixed(2));
   });
 
   const categories = ALL_12_CATEGORIES.map(catName => {
@@ -1626,11 +1664,30 @@ function computeAllMetrics(state) {
     .sort((a, b) => a.profitDiffRm - b.profitDiffRm)
     .slice(0, 15);
 
+  let totalClearedAgedValueRm = 0;
+  let totalClearedAgedSkus = 0;
+  let totalActionedAgedValueRm = 0;
+  let totalActionedAgedSkus = 0;
+
+  agingL.forEach(it => {
+    const rawCode = (it.itemCode || '').split(' - ')[0].trim();
+    const planObj = (state.skuActionPlans && (state.skuActionPlans[it.itemCode] || state.skuActionPlans[rawCode])) || null;
+    if (planObj && (planObj.plan || planObj.note)) {
+      totalActionedAgedSkus += 1;
+      totalActionedAgedValueRm += (Number(it.agedValue) || 0);
+      if (isAgedStockCleared(planObj)) {
+        totalClearedAgedSkus += 1;
+        totalClearedAgedValueRm += (Number(it.agedValue) || 0);
+      }
+    }
+  });
+
   const totalAgedSkus = agingL.length;
   const totalAgedQty6MPlus = agingL.reduce((s, a) => s + a.agedQty6MPlus, 0);
   const totalAgedValueRm = +agingL.reduce((s, a) => s + a.agedValue, 0).toFixed(2);
   const totalAbove1YrQty = agingL.reduce((s, a) => s + a.above1Yr, 0);
   const totalAbove1YrValueRm = +agingL.reduce((s, a) => s + (a.above1Yr * a.avgCost), 0).toFixed(2);
+  const netAgedValueRm = Math.max(0, +(totalAgedValueRm - totalClearedAgedValueRm).toFixed(2));
 
   // 3-Month Trend (M-2, M-1, Latest Month)
   let m2 = state.dailySalesM2 && state.dailySalesM2.ts ? { ...state.dailySalesM2 } : null;
@@ -1721,6 +1778,12 @@ function computeAllMetrics(state) {
       totalAgedSkus,
       totalAgedQty6MPlus,
       totalAgedValueRm,
+      grossAgedValueRm: totalAgedValueRm,
+      clearedAgedValueRm: +totalClearedAgedValueRm.toFixed(2),
+      clearedAgedSkus: totalClearedAgedSkus,
+      actionedAgedValueRm: +totalActionedAgedValueRm.toFixed(2),
+      actionedAgedSkus: totalActionedAgedSkus,
+      netAgedValueRm,
       totalAbove1YrQty,
       totalAbove1YrValueRm,
       byCategory: Array.from(agingByCat.entries()).map(([category, data]) => ({ category, ...data })).sort((a, b) => b.agedValue - a.agedValue)
@@ -3347,32 +3410,41 @@ async function syncPerformanceWithCloud(showToastFeedback = false) {
       await Promise.all(docPromises);
 
       if (parsedCore && typeof parsedCore === 'object') {
-        // Merge SKU Action Plans: combine existing in-memory plans with cloud core_state plans
-        if (parsedCore.skuActionPlans && typeof parsedCore.skuActionPlans === 'object') {
-          if (!perfState.skuActionPlans) perfState.skuActionPlans = {};
-          perfState.skuActionPlans = { ...parsedCore.skuActionPlans, ...perfState.skuActionPlans };
-          parsedCore.skuActionPlans = perfState.skuActionPlans;
-        }
+        // Merge SKU Action Plans: ensure plans are NEVER wiped or lost across PC syncs
+        const inMemPlans = (perfState && perfState.skuActionPlans) || {};
+        const corePlans = (parsedCore.skuActionPlans && typeof parsedCore.skuActionPlans === 'object') ? parsedCore.skuActionPlans : {};
+        const savedLocalPlans = (() => {
+          try {
+            const raw = localStorage.getItem(STORAGE_KEYS.ACTION_PLANS);
+            return raw ? JSON.parse(raw) : {};
+          } catch (_) { return {}; }
+        })();
+        const mergedPlans = { ...corePlans, ...savedLocalPlans, ...inMemPlans };
 
         perfState = parsedCore;
+        perfState.skuActionPlans = mergedPlans;
         perfState.meta.isPreloadedSample = false;
         perfState.meta.lastUpdated = cloudUpdated;
 
         // Persist full unconstrained dataset to IndexedDB
         if (typeof setPerfIdb === 'function') {
-          setPerfIdb('active_state', perfState);
-          if (perfState.stockAgingLatest) setPerfIdb('stock_aging_latest', perfState.stockAgingLatest);
-          if (perfState.skuActionPlans) setPerfIdb('sku_action_plans', perfState.skuActionPlans);
+          setPerfIdb('active_state', perfState).catch(() => {});
+          if (perfState.stockAgingLatest) setPerfIdb('stock_aging_latest', perfState.stockAgingLatest).catch(() => {});
+          if (perfState.skuActionPlans) setPerfIdb('sku_action_plans', perfState.skuActionPlans).catch(() => {});
         }
 
         // Save compact state to localStorage & set HIDE_SAMPLE
         saveActiveState();
+        try {
+          localStorage.setItem(STORAGE_KEYS.ACTION_PLANS, JSON.stringify(mergedPlans));
+        } catch (_) {}
         localStorage.setItem(STORAGE_KEYS.HIDE_SAMPLE, '1');
 
         computeAllMetrics();
         refreshAllViews();
         lastPerfCloudSyncTime = new Date();
         updateCloudSyncUiBadge('synced');
+        updateSkuActionPlanSyncBadge('synced');
 
         if (showToastFeedback && typeof showToast === 'function') {
           showToast(`✅ Synced with latest uploaded documents from outlet PC! (${perfState.meta?.latestPeriodLabel || 'Latest Month'})`, 'success');
@@ -4228,12 +4300,18 @@ function setSkuActionPlanPreset(itemCode, presetVal) {
   const current = perfState.skuActionPlans[itemCode] || { plan: '', note: '', updatedAt: '' };
   current.plan = presetVal || '';
   current.updatedAt = new Date().toISOString();
+  // Auto-detect cleared status based on new preset
+  if (isAgedStockCleared(current)) {
+    current.cleared = true;
+  }
   if (!current.plan && !current.note) {
     delete perfState.skuActionPlans[itemCode];
   } else {
     perfState.skuActionPlans[itemCode] = current;
   }
   persistSkuActionPlans();
+  computeAllMetrics();
+  renderTab4SkusAndAging();
 }
 
 function setSkuActionPlanNote(itemCode, noteVal) {
@@ -4242,12 +4320,34 @@ function setSkuActionPlanNote(itemCode, noteVal) {
   const current = perfState.skuActionPlans[itemCode] || { plan: '', note: '', updatedAt: '' };
   current.note = (noteVal || '').trim();
   current.updatedAt = new Date().toISOString();
+  // Auto-detect cleared status if note indicates DO DONE, LOST, etc.
+  if (isAgedStockCleared(current)) {
+    current.cleared = true;
+  }
   if (!current.plan && !current.note) {
     delete perfState.skuActionPlans[itemCode];
   } else {
     perfState.skuActionPlans[itemCode] = current;
   }
   persistSkuActionPlans();
+  computeAllMetrics();
+  renderTab4SkusAndAging();
+}
+
+function toggleSkuActionPlanCleared(itemCode) {
+  if (!perfState) perfState = createEmptyState();
+  if (!perfState.skuActionPlans) perfState.skuActionPlans = {};
+  const current = perfState.skuActionPlans[itemCode] || { plan: '', note: '', updatedAt: '' };
+  const wasCleared = isAgedStockCleared(current);
+  current.cleared = !wasCleared;
+  current.updatedAt = new Date().toISOString();
+  perfState.skuActionPlans[itemCode] = current;
+  persistSkuActionPlans();
+  computeAllMetrics();
+  renderTab4SkusAndAging();
+  if (typeof showToast === 'function') {
+    showToast(`${itemCode} marked as ${current.cleared ? 'Cleared / Resolved ✅ (-deducted from aging alert)' : 'Action Pending ⏳'}`, 'info');
+  }
 }
 
 function persistSkuActionPlans() {
@@ -5425,7 +5525,9 @@ function filterAgingCategory(cat) {
   skuFilterState.page = 1;
   renderTab4SkusAndAging();
 }
-window.filterAgingCategory = filterAgingCategory;
+if (typeof window !== 'undefined') {
+  window.filterAgingCategory = filterAgingCategory;
+}
 
 function updateSkuFilter(field, val) {
   skuFilterState[field] = val;
@@ -5471,6 +5573,11 @@ function renderTab4SkusAndAging() {
     filtered = filtered.filter(s => (s.agedQty6MPlus || 0) > 0 || (s.agedValueRm || 0) > 0);
   } else if (skuFilterState.mode === 'HAS_ACTION') {
     filtered = filtered.filter(s => !!(perfState.skuActionPlans && perfState.skuActionPlans[s.itemCode] && (perfState.skuActionPlans[s.itemCode].plan || perfState.skuActionPlans[s.itemCode].note)));
+  } else if (skuFilterState.mode === 'CLEARED') {
+    filtered = filtered.filter(s => {
+      const plan = perfState.skuActionPlans?.[s.itemCode];
+      return isAgedStockCleared(plan);
+    });
   } else if (skuFilterState.mode === 'NEEDS_ACTION') {
     filtered = filtered.filter(s => ((s.agedQty6MPlus || 0) > 0 || (s.agedValueRm || 0) > 0) && !(perfState.skuActionPlans && perfState.skuActionPlans[s.itemCode] && perfState.skuActionPlans[s.itemCode].plan));
   }
@@ -5532,10 +5639,23 @@ function renderTab4SkusAndAging() {
       </div>
 
       <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
-        <div class="text-xs font-bold text-amber-800 uppercase">6-Month+ Stock Aging Alert</div>
-        <div class="text-xl font-extrabold text-slate-900 mt-1">${fmtRM(agSum.totalAgedValueRm)} <span class="text-xs font-normal text-slate-500">(${fmtNum(agSum.totalAgedSkus)} SKUs)</span></div>
+        <div class="flex items-center justify-between">
+          <div class="text-xs font-bold text-amber-800 uppercase">6-Month+ Stock Aging Alert</div>
+          ${agSum.clearedAgedValueRm > 0 ? `
+            <span class="text-[10px] font-extrabold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
+              -${fmtRM(agSum.clearedAgedValueRm)} Actioned
+            </span>
+          ` : ''}
+        </div>
+        <div class="text-xl font-extrabold text-slate-900 mt-1">
+          ${fmtRM(agSum.netAgedValueRm)}
+          <span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">Net Active Alert</span>
+        </div>
         <div class="text-xs text-slate-500 mt-1">
-          Aged &gt;1 Year: <strong class="text-slate-800">${fmtRM(agSum.totalAbove1YrValueRm)}</strong> (${fmtNum(agSum.totalAbove1YrQty)} units)
+          Gross Aged: <strong>${fmtRM(agSum.totalAgedValueRm)}</strong> (${fmtNum(agSum.totalAgedSkus)} SKUs) | Cleared: <strong class="text-emerald-700">-${fmtRM(agSum.clearedAgedValueRm)}</strong> (${agSum.clearedAgedSkus} SKUs)
+        </div>
+        <div class="text-[11px] text-slate-500 mt-0.5">
+          Under Action Plan: <strong>${fmtRM(agSum.actionedAgedValueRm)}</strong> (${agSum.actionedAgedSkus} SKUs) | Aged &gt;1 Year: <strong class="text-slate-800">${fmtRM(agSum.totalAbove1YrValueRm)}</strong> (${fmtNum(agSum.totalAbove1YrQty)} units)
         </div>
       </div>
     </div>
@@ -5562,8 +5682,12 @@ function renderTab4SkusAndAging() {
                 <span>${escapeHtml(c.category)}</span>
                 <span class="text-[10px] px-1.5 py-0.5 rounded ${isSelected ? 'bg-indigo-200 text-indigo-900' : 'bg-slate-200 text-slate-800'} font-bold">${fmtNum(c.skuCount)} SKUs</span>
               </div>
-              <div class="text-sm font-extrabold ${isSelected ? 'text-indigo-950' : 'text-slate-900'} mt-1">${fmtRM(c.agedValue)}</div>
-              <div class="text-[10px] ${isSelected ? 'text-indigo-700' : 'text-slate-500'}">Aged Qty: ${fmtNum(c.agedQty6MPlus)} units</div>
+              <div class="text-sm font-extrabold ${isSelected ? 'text-indigo-950' : 'text-slate-900'} mt-1">
+                ${c.clearedAgedValue > 0 ? `${fmtRM(c.netAgedValue)} <span class="text-[10px] font-normal text-emerald-700 font-bold">Net</span>` : fmtRM(c.agedValue)}
+              </div>
+              <div class="text-[10px] ${isSelected ? 'text-indigo-700' : 'text-slate-500'}">
+                ${c.clearedAgedValue > 0 ? `Gross: ${fmtRM(c.agedValue)} (-${fmtRM(c.clearedAgedValue)})` : `Aged Qty: ${fmtNum(c.agedQty6MPlus)} units`}
+              </div>
             </div>
           `;
         }).join('')}
@@ -5579,6 +5703,7 @@ function renderTab4SkusAndAging() {
         <button onclick="updateSkuFilter('mode', 'MARGIN_DROP')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${skuFilterState.mode === 'MARGIN_DROP' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">GP% Margin Eroded</button>
         <button onclick="updateSkuFilter('mode', 'AGED_6M')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${skuFilterState.mode === 'AGED_6M' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">In 6-Month Aging Report</button>
         <button onclick="updateSkuFilter('mode', 'HAS_ACTION')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${skuFilterState.mode === 'HAS_ACTION' ? 'bg-indigo-900 text-white' : 'bg-indigo-50 text-indigo-800 border border-indigo-200 hover:bg-indigo-100'}">With Action Plan (${fmtNum(Object.keys(perfState.skuActionPlans || {}).length)})</button>
+        <button onclick="updateSkuFilter('mode', 'CLEARED')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${skuFilterState.mode === 'CLEARED' ? 'bg-emerald-900 text-white' : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'}">Cleared / Returned (${fmtNum(agSum.clearedAgedSkus || 0)})</button>
         <button onclick="updateSkuFilter('mode', 'NEEDS_ACTION')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${skuFilterState.mode === 'NEEDS_ACTION' ? 'bg-amber-900 text-white' : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'}">Aged SKUs Needing Action</button>
       </div>
 
@@ -5734,19 +5859,28 @@ function renderTab4SkusAndAging() {
                     <div class="text-[10px] text-slate-500 font-semibold mt-0.5">${fmtNum(s.agedQty6MPlus)} aged / ${fmtNum(s.ohQty)} OH</div>
                   ` : `<span class="text-slate-300">—</span>`}
                 </td>
-                <td class="py-2 px-2.5 min-w-[210px]">
+                <td class="py-2 px-2.5 min-w-[240px]">
                   <div class="flex flex-col gap-1">
-                    <select onchange="setSkuActionPlanPreset('${escapeHtml(s.itemCode)}', this.value)" class="text-[11px] font-bold py-1 px-1.5 rounded-lg border cursor-pointer ${hasPlan ? 'border-indigo-400 bg-indigo-50/80 text-indigo-950 font-extrabold' : 'border-slate-200 bg-white text-slate-700'} focus:outline-none focus:ring-1 focus:ring-indigo-400">
-                      <option value="">— Select Action Plan —</option>
-                      <option value="Clearance Promo" ${planObj?.plan === 'Clearance Promo' ? 'selected' : ''}>🏷️ Clearance Promo (5-15% Off)</option>
-                      <option value="Push to Clinic" ${planObj?.plan === 'Push to Clinic' ? 'selected' : ''}>🏥 Push to Clinic / Doctor Order</option>
-                      <option value="Front Counter Push" ${planObj?.plan === 'Front Counter Push' ? 'selected' : ''}>🛒 Front Counter Display / Cashier Push</option>
-                      <option value="Staff Incentive" ${planObj?.plan === 'Staff Incentive' ? 'selected' : ''}>👥 Staff Push & Target Incentive</option>
-                      <option value="Supplier Return" ${planObj?.plan === 'Supplier Return' ? 'selected' : ''}>🔄 Supplier Return / Credit Note</option>
-                      <option value="Bundle HB" ${planObj?.plan === 'Bundle HB' ? 'selected' : ''}>🎁 Bundle with House Brand</option>
-                      <option value="Close Monitoring" ${planObj?.plan === 'Close Monitoring' ? 'selected' : ''}>👁️ Close Monitoring</option>
-                      <option value="Custom Plan" ${planObj?.plan === 'Custom Plan' ? 'selected' : ''}>✏️ Custom Plan</option>
-                    </select>
+                    <div class="flex items-center gap-1.5">
+                      <select onchange="setSkuActionPlanPreset('${escapeHtml(s.itemCode)}', this.value)" class="text-[11px] font-bold py-1 px-1.5 rounded-lg border cursor-pointer flex-1 ${hasPlan ? 'border-indigo-400 bg-indigo-50/80 text-indigo-950 font-extrabold' : 'border-slate-200 bg-white text-slate-700'} focus:outline-none focus:ring-1 focus:ring-indigo-400">
+                        <option value="">— Select Action Plan —</option>
+                        <option value="Clearance Promo" ${planObj?.plan === 'Clearance Promo' ? 'selected' : ''}>🏷️ Clearance Promo (5-15% Off)</option>
+                        <option value="Push to Clinic" ${planObj?.plan === 'Push to Clinic' ? 'selected' : ''}>🏥 Push to Clinic / Doctor Order</option>
+                        <option value="Front Counter Push" ${planObj?.plan === 'Front Counter Push' ? 'selected' : ''}>🛒 Front Counter Display / Cashier Push</option>
+                        <option value="Staff Incentive" ${planObj?.plan === 'Staff Incentive' ? 'selected' : ''}>👥 Staff Push & Target Incentive</option>
+                        <option value="Supplier Return" ${planObj?.plan === 'Supplier Return' ? 'selected' : ''}>🔄 Supplier Return / Credit Note</option>
+                        <option value="Stock Cleared" ${planObj?.plan === 'Stock Cleared' ? 'selected' : ''}>✅ Stock Cleared / Sold</option>
+                        <option value="Stock Written Off" ${planObj?.plan === 'Stock Written Off' ? 'selected' : ''}>⚠️ Stock Written Off / Lost</option>
+                        <option value="Bundle HB" ${planObj?.plan === 'Bundle HB' ? 'selected' : ''}>🎁 Bundle with House Brand</option>
+                        <option value="Close Monitoring" ${planObj?.plan === 'Close Monitoring' ? 'selected' : ''}>👁️ Close Monitoring</option>
+                        <option value="Custom Plan" ${planObj?.plan === 'Custom Plan' ? 'selected' : ''}>✏️ Custom Plan</option>
+                      </select>
+                      ${hasPlan ? `
+                        <button type="button" onclick="toggleSkuActionPlanCleared('${escapeHtml(s.itemCode)}')" class="px-1.5 py-1 rounded text-[10px] font-extrabold border cursor-pointer transition whitespace-nowrap ${isAgedStockCleared(planObj) ? 'bg-emerald-100 text-emerald-900 border-emerald-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-300'}" title="${isAgedStockCleared(planObj) ? 'Aged stock cleared and deducted from alert' : 'Click to mark this SKU as cleared/returned to deduct from alert'}">
+                          ${isAgedStockCleared(planObj) ? '✅ Cleared' : '⏳ Pending'}
+                        </button>
+                      ` : ''}
+                    </div>
                     <input type="text" value="${escapeHtml(planObj?.note || '')}" placeholder="Action note / target date..." onchange="setSkuActionPlanNote('${escapeHtml(s.itemCode)}', this.value)" class="text-[10px] py-0.5 px-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-400">
                   </div>
                 </td>
@@ -6158,7 +6292,7 @@ async function handleBatchCsvFiles(fileList) {
     saveActiveState();
     saveCurrentMonthSnapshot(true);
     if (typeof pushPerformanceToCloud === 'function') {
-      pushPerformanceToCloud(true).catch(() => {});
+      await pushPerformanceToCloud(true).catch(() => {});
     }
     activeAiReport = null; // Regenerate dynamic baseline report with new data
     refreshAllViews();
@@ -6209,8 +6343,14 @@ function applyParsedCsvToState(type, periodSlot, text, fileName) {
     parsedDateRange = parsed.dateRange;
     if (periodSlot === 'LATEST') perfState.itemSalesLatest = parsed;
     else perfState.itemSalesPrevYear = parsed;
+    if (!perfState.meta) perfState.meta = {};
+    perfState.meta.itemSalesDirty = true;
+    perfState.meta.itemSalesDocId = null;
   } else if (type === 'STOCK_AGING') {
     perfState.stockAgingLatest = parseAgingCsv(text);
+    if (!perfState.meta) perfState.meta = {};
+    perfState.meta.agingDirty = true;
+    perfState.meta.agingDocId = null; // Force new document upload so new aging file syncs across PCs
     // User requirement: Action plans are saved UNTIL user inputs a new stock aging report
     perfState.skuActionPlans = {};
     if (typeof setPerfIdb === 'function') {
@@ -6223,6 +6363,12 @@ function applyParsedCsvToState(type, periodSlot, text, fileName) {
   } else {
     throw new Error(`Unrecognized PMG CSV format in ${fileName}`);
   }
+
+  // Ensure metadata reflects fresh upload timestamp
+  if (!perfState.meta) perfState.meta = {};
+  perfState.meta.lastUpdated = Date.now();
+  perfState.meta.lastUpdatedIso = new Date().toISOString();
+  perfState.meta.userInitiatedUpload = true;
 
   // Automatically update the header period labels dynamically from the parsed dates!
   if (parsedDateRange) {
@@ -6246,7 +6392,7 @@ async function handleSlotFileUpload(type, periodSlot, inputEl) {
     saveActiveState();
     saveCurrentMonthSnapshot(true);
     if (typeof pushPerformanceToCloud === 'function') {
-      pushPerformanceToCloud(false).catch(() => {});
+      await pushPerformanceToCloud(true).catch(() => {});
     }
     activeAiReport = null;
     refreshAllViews();
@@ -6491,6 +6637,12 @@ function switchPerfTab(tabId) {
       }
     }
   });
+
+  if (tabId === 'tab4') {
+    if (typeof syncSkuActionPlansWithCloud === 'function') {
+      syncSkuActionPlansWithCloud(false).catch(() => {});
+    }
+  }
 }
 
 function showToast(msg, type = 'info') {
@@ -6530,6 +6682,8 @@ if (typeof window !== 'undefined') {
   window.syncSkuActionPlansWithCloud = syncSkuActionPlansWithCloud;
   window.setSkuActionPlanPreset = setSkuActionPlanPreset;
   window.setSkuActionPlanNote = setSkuActionPlanNote;
+  window.toggleSkuActionPlanCleared = toggleSkuActionPlanCleared;
+  window.isAgedStockCleared = isAgedStockCleared;
   window.persistSkuActionPlans = persistSkuActionPlans;
   window.loadStateFromIdb = loadStateFromIdb;
   window.exportAgingStockCountExcel = exportAgingStockCountExcel;
