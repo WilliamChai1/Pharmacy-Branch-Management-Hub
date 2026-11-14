@@ -1,0 +1,23 @@
+{
+  "name": "pmg-management-hub",
+  "version": "2.0.0",
+  "private": true,
+  "description": "PMG Pharmacy Kota Sentosa (KS01) Hybrid Antigravity Cloud Management Hub with PDPA Patient Medical Isolation",
+  "main": "index.html",
+  "scripts": {
+    "test": "node scripts/verify_cloud_pdpa_suite.js",
+    "verify:cloud-pdpa": "node scripts/verify_cloud_pdpa_suite.js",
+    "syntax-check": "node -e \"const fs=require('fs'),cp=require('child_process');['js','promo','performance','scripts'].forEach(d=>{if(fs.existsSync(d))fs.readdirSync(d).filter(f=>f.endsWith('.js')).forEach(f=>cp.execFileSync('node',['-c',d+'/'+f],{stdio:'inherit'}))});\"",
+    "sync:sheets": "node scripts/google_sheets_sync.js list",
+    "deck:build": "python scripts/generate_monthly_deck.py"
+  },
+  "dependencies": {
+    "googleapis": "^140.0.0"
+  },
+  "devDependencies": {
+    "xlsx": "^0.18.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

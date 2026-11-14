@@ -12,6 +12,136 @@ let baseProductTrendMap = new Map(); // Key: uppercase baseCode -> { direction, 
 let stockAgingStatus = { connected: false, skuCount: 0, agedCount: 0, totalAgedValue: 0, source: 'None' };
 let invActiveFilterPill = 'ALL'; // 'ALL', 'REORDER', 'MOMENTUM', 'STOCKOUT', 'AGING_LOCKED', 'SURPLUS'
 
+// ─── GOOGLE CLOUD ECOSYSTEM SYNC CONFIG (NON-PATIENT OPERATIONS) ─────────────
+const PMG_INV_CLOUD_URL = (typeof window !== 'undefined' && window.PMG_SCHEDULE_API_URL) || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+const INV_CLOUD_VAULT_KEY = 'PMG_INVENTORY_REPLENISHMENT_VAULT_KS01';
+const STORAGE_INV_SUPPLIER_OVERRIDES = 'pmg_inv_supplier_overrides';
+const STORAGE_INV_PARAMS = 'pmg_inv_params_v1';
+const STORAGE_INV_PO_HISTORY = 'pmg_inv_po_history_v1';
+let invSupplierOverrides = {};
+let invPoHistoryLog = [];
+let invCloudPushTimer = null;
+
+function loadInventoryCloudPrefs() {
+  try {
+    const supRaw = localStorage.getItem(STORAGE_INV_SUPPLIER_OVERRIDES);
+    if (supRaw) invSupplierOverrides = JSON.parse(supRaw) || {};
+  } catch (_) { invSupplierOverrides = {}; }
+  try {
+    const poRaw = localStorage.getItem(STORAGE_INV_PO_HISTORY);
+    if (poRaw) invPoHistoryLog = JSON.parse(poRaw) || [];
+  } catch (_) { invPoHistoryLog = []; }
+  try {
+    const paramRaw = localStorage.getItem(STORAGE_INV_PARAMS);
+    if (paramRaw && typeof document !== 'undefined') {
+      const p = JSON.parse(paramRaw);
+      ['paramSalesWindow', 'paramLeadTime', 'paramSafetyDays', 'paramTargetDays'].forEach(id => {
+        const el = document.getElementById(id);
+        const keyMap = {
+          paramSalesWindow: 'salesWindow',
+          paramLeadTime: 'leadTime',
+          paramSafetyDays: 'safetyDays',
+          paramTargetDays: 'targetDays'
+        };
+        if (el && p && p[keyMap[id]]) el.value = p[keyMap[id]];
+      });
+    }
+  } catch (_) {}
+}
+
+function saveInventoryParamsToLocal() {
+  try {
+    const p = getParams();
+    p.updatedAt = new Date().toISOString();
+    localStorage.setItem(STORAGE_INV_PARAMS, JSON.stringify(p));
+    localStorage.setItem(STORAGE_INV_SUPPLIER_OVERRIDES, JSON.stringify(invSupplierOverrides));
+    localStorage.setItem(STORAGE_INV_PO_HISTORY, JSON.stringify(invPoHistoryLog.slice(0, 50)));
+    scheduleInventoryCloudPush();
+  } catch (_) {}
+}
+
+function scheduleInventoryCloudPush() {
+  if (typeof window === 'undefined' || !PMG_INV_CLOUD_URL) return;
+  if (invCloudPushTimer) clearTimeout(invCloudPushTimer);
+  invCloudPushTimer = setTimeout(() => {
+    pushInventoryConfigToGoogleCloud(true).catch(() => {});
+  }, 1500);
+}
+
+async function pushInventoryConfigToGoogleCloud(silent = true) {
+  if (!PMG_INV_CLOUD_URL) return false;
+  try {
+    const session = typeof getSession === 'function' ? getSession() : null;
+    const updatedBy = (session && session.displayName) || 'Pharmacist';
+    const nowIso = new Date().toISOString();
+    const payload = {
+      version: '1.0',
+      lastUpdated: nowIso,
+      updatedBy,
+      params: typeof getParams === 'function' ? getParams() : {},
+      supplierOverrides: invSupplierOverrides || {},
+      poHistory: (invPoHistoryLog || []).slice(0, 50)
+    };
+    const res = await fetch(PMG_INV_CLOUD_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        branch: INV_CLOUD_VAULT_KEY,
+        schedule: payload,
+        updatedBy
+      }),
+      redirect: 'follow'
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return true;
+  } catch (err) {
+    if (!silent) console.warn('[PMG Inventory Cloud Push]', err.message);
+    return false;
+  }
+}
+
+async function syncInventoryConfigWithGoogleCloud(silent = true) {
+  if (!PMG_INV_CLOUD_URL) return false;
+  try {
+    const res = await fetch(`${PMG_INV_CLOUD_URL}?branch=${encodeURIComponent(INV_CLOUD_VAULT_KEY)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const cloudCfg = (data && data.success && data.schedule) ? data.schedule : null;
+    if (cloudCfg && typeof cloudCfg === 'object') {
+      if (cloudCfg.supplierOverrides && typeof cloudCfg.supplierOverrides === 'object') {
+        invSupplierOverrides = { ...cloudCfg.supplierOverrides, ...invSupplierOverrides };
+        localStorage.setItem(STORAGE_INV_SUPPLIER_OVERRIDES, JSON.stringify(invSupplierOverrides));
+      }
+      if (Array.isArray(cloudCfg.poHistory) && cloudCfg.poHistory.length > 0) {
+        const seen = new Set(invPoHistoryLog.map(x => x.id));
+        cloudCfg.poHistory.forEach(item => {
+          if (item && item.id && !seen.has(item.id)) {
+            invPoHistoryLog.push(item);
+            seen.add(item.id);
+          }
+        });
+        invPoHistoryLog.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+        invPoHistoryLog = invPoHistoryLog.slice(0, 50);
+        localStorage.setItem(STORAGE_INV_PO_HISTORY, JSON.stringify(invPoHistoryLog));
+      }
+      if (cloudCfg.params && typeof cloudCfg.params === 'object') {
+        localStorage.setItem(STORAGE_INV_PARAMS, JSON.stringify(cloudCfg.params));
+        if (typeof document !== 'undefined') {
+          ['paramSalesWindow', 'paramLeadTime', 'paramSafetyDays', 'paramTargetDays'].forEach(id => {
+            const el = document.getElementById(id);
+            const k = id === 'paramSalesWindow' ? 'salesWindow' : id === 'paramLeadTime' ? 'leadTime' : id === 'paramSafetyDays' ? 'safetyDays' : 'targetDays';
+            if (el && cloudCfg.params[k]) el.value = cloudCfg.params[k];
+          });
+        }
+      }
+    }
+    return true;
+  } catch (err) {
+    if (!silent) console.warn('[PMG Inventory Cloud Sync]', err.message);
+    return false;
+  }
+}
+
 // ─── UNIVERSAL PACKAGING SPECIFICATION & UOM MULTIPLIER PARSER ────────────────
 /**
  * Normalizes UOM strings to standard catalog formats
@@ -554,12 +684,17 @@ function initInventory() {
     });
   }
 
-  // Auto-sync Stock Aging from Performance Suite / LocalStorage on startup
+  // Load local overrides & sync non-patient inventory config from Google Cloud
+  loadInventoryCloudPrefs();
   syncStockAgingFromStorage();
+  syncInventoryConfigWithGoogleCloud(true).catch(() => {});
 
   ['paramSalesWindow','paramLeadTime','paramSafetyDays','paramTargetDays'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.addEventListener('change', () => { if (inventoryData.length) recalcInventory(); });
+    if (el) el.addEventListener('change', () => {
+      saveInventoryParamsToLocal();
+      if (inventoryData.length) recalcInventory();
+    });
   });
 
   const searchEl = document.getElementById('invSearch');
@@ -1217,6 +1352,14 @@ function updateApprovedQtyByRowIndex(origIdx, val) {
 
 // Global exposure for UI buttons & cross-module integration
 if (typeof window !== 'undefined') {
+  window.initInventoryModule = initInventory;
+  window.syncInventoryConfigWithGoogleCloud = syncInventoryConfigWithGoogleCloud;
+  window.pushInventoryConfigToGoogleCloud = pushInventoryConfigToGoogleCloud;
+  window.getInventoryCloudConfig = () => ({
+    params: typeof getParams === 'function' ? getParams() : {},
+    supplierOverrides: invSupplierOverrides,
+    poHistory: invPoHistoryLog
+  });
   window.syncStockAgingFromStorage = syncStockAgingFromStorage;
   window.handleAgingFileUpload = handleAgingFileUpload;
   window.ingestStockAgingItems = ingestStockAgingItems;
@@ -1554,6 +1697,17 @@ async function generatePOZip() {
 
   const blob = await zip.generateAsync({ type: 'blob' });
   saveAs(blob, `Purchase_Orders_By_Vendor_${dateStr}.zip`);
+
+  // Record PO generation in cloud-synced history log
+  try {
+    invPoHistoryLog.unshift({
+      id: 'PO_' + Date.now(),
+      timestamp: new Date().toISOString(),
+      fileCount: totalFilesGenerated,
+      skuCount: approved.length
+    });
+    saveInventoryParamsToLocal();
+  } catch (_) {}
 
   const dlBtn = document.getElementById('invDownloadBtn');
   if (dlBtn) {

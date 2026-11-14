@@ -273,6 +273,11 @@ let promoPreviewCustomerId = null;
 let promoCurrentPage = 1;
 const PROMO_PAGE_SIZE = 50;
 
+const PMG_PROMO_CLOUD_URL = (typeof window !== 'undefined' && window.PMG_SCHEDULE_API_URL) || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+const PROMO_CLOUD_VAULT_KEY = 'PMG_PROMO_BROADCAST_VAULT_KS01';
+let promoGoogleCloudSynced = false;
+let promoCloudPushTimer = null;
+
 // ─── INITIALIZATION ───────────────────────────────────────────────────────────
 function initPromoBroadcastModule() {
   loadPromoCampaigns();
@@ -280,8 +285,9 @@ function initPromoBroadcastModule() {
   loadPromoProgress();
   loadPromoPoster();
   renderPromoBroadcastUI();
-  // Auto check OneDrive sync in background
+  // Auto check OneDrive & Google Cloud sync in background
   checkOneDriveSyncStatusQuiet();
+  pullPromoBroadcastFromGoogleCloud(true).catch(() => {});
 }
 window.initPromoBroadcastModule = initPromoBroadcastModule;
 
@@ -311,6 +317,7 @@ function saveCustomPromoCampaigns() {
   try {
     const customOnly = promoCampaigns.filter(c => !c.isPreset);
     localStorage.setItem(STORAGE_PROMO_CAMPAIGNS, JSON.stringify(customOnly));
+    schedulePromoGoogleCloudPush();
   } catch (e) {
     console.error('[PMG Promo] Failed to save custom campaigns:', e);
   }
@@ -343,7 +350,9 @@ function loadPromoComposerState() {
 
 function savePromoComposerState() {
   try {
+    promoComposerState._updatedAt = new Date().toISOString();
     localStorage.setItem(STORAGE_PROMO_COMPOSER, JSON.stringify(promoComposerState));
+    schedulePromoGoogleCloudPush();
   } catch (e) {
     console.warn('[PMG Promo] Error saving composer state:', e);
   }
@@ -426,6 +435,7 @@ function loadPromoProgress() {
 function savePromoProgress() {
   try {
     localStorage.setItem(STORAGE_PROMO_PROGRESS, JSON.stringify(promoProgressMap));
+    schedulePromoGoogleCloudPush();
   } catch (e) {
     console.error('[PMG Promo] Error saving progress:', e);
   }
@@ -1653,51 +1663,253 @@ function exportPromoCustomerListCsv() {
 }
 window.exportPromoCustomerListCsv = exportPromoCustomerListCsv;
 
-// ─── CROSS-COMPUTER SYNC (ONEDRIVE + JSON BACKUP/RESTORE) ─────────────────────
+// ─── CROSS-COMPUTER SYNC (GOOGLE CLOUD + ONEDRIVE + JSON BACKUP/RESTORE) ─────
+function mergePromoCloudData(cloudData) {
+  if (!cloudData || typeof cloudData !== 'object') return false;
+  let changed = false;
+
+  if (cloudData.progressMap && typeof cloudData.progressMap === 'object') {
+    for (const campId in cloudData.progressMap) {
+      if (!promoProgressMap[campId]) promoProgressMap[campId] = {};
+      for (const custId in cloudData.progressMap[campId]) {
+        const cloudItem = cloudData.progressMap[campId][custId];
+        const localItem = promoProgressMap[campId][custId];
+        if (!localItem || (cloudItem.sentAt && (!localItem.sentAt || cloudItem.sentAt > localItem.sentAt))) {
+          promoProgressMap[campId][custId] = cloudItem;
+          changed = true;
+        }
+      }
+    }
+  }
+
+  if (Array.isArray(cloudData.customCampaigns)) {
+    cloudData.customCampaigns.forEach(c => {
+      if (c && c.id && c.id !== NUTRI_ALPHA_PRESET_CAMPAIGN.id) {
+        if (!promoCampaigns.some(existing => existing.id === c.id)) {
+          promoCampaigns.push(c);
+          changed = true;
+        }
+      }
+    });
+  }
+
+  if (cloudData.composerState && typeof cloudData.composerState === 'object') {
+    const cloudTs = cloudData.composerState._updatedAt || cloudData.lastUpdated || '';
+    const localTs = promoComposerState._updatedAt || '';
+    if (!localTs || (cloudTs && cloudTs > localTs)) {
+      const preservedPosterUrl = promoComposerState.posterUrl || '';
+      const preservedPosterName = promoComposerState.posterFileName || '';
+      promoComposerState = {
+        ...promoComposerState,
+        ...cloudData.composerState,
+        posterUrl: preservedPosterUrl,
+        posterFileName: preservedPosterName
+      };
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+function buildPromoCloudPayload() {
+  const nowIso = new Date().toISOString();
+  return {
+    version: '2.1',
+    lastUpdated: nowIso,
+    updatedBy: promoComposerState.pharmacistName || 'Pharmacist',
+    branch: promoComposerState.branchName || 'Kota Sentosa',
+    progressMap: promoProgressMap,
+    composerState: {
+      offerDetails: promoComposerState.offerDetails,
+      offerDetailsEn: promoComposerState.offerDetailsEn,
+      offerDetailsBm: promoComposerState.offerDetailsBm,
+      offerDetailsZh: promoComposerState.offerDetailsZh,
+      promoPeriod: promoComposerState.promoPeriod,
+      shopPhone: promoComposerState.shopPhone,
+      pharmacistPhone: promoComposerState.pharmacistPhone,
+      pharmacistName: promoComposerState.pharmacistName,
+      branchName: promoComposerState.branchName,
+      templates: promoComposerState.templates,
+      reuseWaTab: promoComposerState.reuseWaTab,
+      _updatedAt: promoComposerState._updatedAt || nowIso
+    },
+    customCampaigns: promoCampaigns.filter(c => !c.isPreset)
+  };
+}
+
+function schedulePromoGoogleCloudPush() {
+  if (typeof window === 'undefined' || !PMG_PROMO_CLOUD_URL) return;
+  if (promoCloudPushTimer) clearTimeout(promoCloudPushTimer);
+  promoCloudPushTimer = setTimeout(() => {
+    pushPromoBroadcastToGoogleCloud(true).catch(() => {});
+  }, 1500);
+}
+
+async function pullPromoBroadcastFromGoogleCloud(silent = true) {
+  if (!PMG_PROMO_CLOUD_URL) return false;
+  if (!silent) updateSyncBadgeState('SYNCING');
+  try {
+    const res = await fetch(`${PMG_PROMO_CLOUD_URL}?branch=${encodeURIComponent(PROMO_CLOUD_VAULT_KEY)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    let cloudData = (data && data.success && data.schedule) ? data.schedule : null;
+
+    if (cloudData && cloudData.docId && !cloudData.progressMap) {
+      const docRes = await fetch(`${PMG_PROMO_CLOUD_URL}?action=getApplicantDoc&docId=${encodeURIComponent(cloudData.docId)}`);
+      if (docRes.ok) {
+        const docJson = await docRes.json();
+        if (docJson && docJson.success && docJson.data) {
+          cloudData = JSON.parse(docJson.data);
+        }
+      }
+    }
+
+    promoGoogleCloudSynced = true;
+    if (cloudData) {
+      const changed = mergePromoCloudData(cloudData);
+      if (changed) {
+        try {
+          localStorage.setItem(STORAGE_PROMO_PROGRESS, JSON.stringify(promoProgressMap));
+          localStorage.setItem(STORAGE_PROMO_COMPOSER, JSON.stringify(promoComposerState));
+          localStorage.setItem(STORAGE_PROMO_CAMPAIGNS, JSON.stringify(promoCampaigns.filter(c => !c.isPreset)));
+        } catch (_) {}
+        renderPromoBroadcastUI();
+      }
+    }
+    updateSyncBadgeState(silent ? 'IDLE' : 'SUCCESS');
+    return true;
+  } catch (err) {
+    console.warn('[PMG Promo Google Cloud Pull]', err.message);
+    if (!silent) updateSyncBadgeState('ERROR');
+    return false;
+  }
+}
+
+async function pushPromoBroadcastToGoogleCloud(silent = true) {
+  if (!PMG_PROMO_CLOUD_URL) return false;
+  try {
+    const payload = buildPromoCloudPayload();
+    const serialized = JSON.stringify(payload);
+    let scheduleSlot = payload;
+
+    if (serialized.length > 40000) {
+      const uploadRes = await fetch(PMG_PROMO_CLOUD_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'uploadApplicantDoc',
+          appId: 'PMG_PROMO_KS01',
+          doc: {
+            field: 'promo_vault',
+            name: 'promo_broadcast_master.json',
+            type: 'application/json',
+            data: serialized,
+            size: serialized.length
+          }
+        }),
+        redirect: 'follow'
+      });
+      const uploadJson = await uploadRes.json().catch(() => null);
+      if (uploadJson && uploadJson.docId) {
+        scheduleSlot = {
+          version: '2.1',
+          docId: uploadJson.docId,
+          lastUpdated: payload.lastUpdated,
+          updatedBy: payload.updatedBy,
+          customCampaignCount: payload.customCampaigns.length
+        };
+      }
+    }
+
+    const res = await fetch(PMG_PROMO_CLOUD_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        branch: PROMO_CLOUD_VAULT_KEY,
+        schedule: scheduleSlot,
+        updatedBy: payload.updatedBy
+      }),
+      redirect: 'follow'
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    promoGoogleCloudSynced = true;
+    updateSyncBadgeState(silent ? 'IDLE' : 'SUCCESS');
+    return true;
+  } catch (err) {
+    console.warn('[PMG Promo Google Cloud Push]', err.message);
+    if (!silent) updateSyncBadgeState('ERROR');
+    return false;
+  }
+}
+
+async function syncPromoBroadcastWithGoogleCloud(silent = false) {
+  updateSyncBadgeState('SYNCING');
+  const pulled = await pullPromoBroadcastFromGoogleCloud(true);
+  const pushed = await pushPromoBroadcastToGoogleCloud(true);
+  if (pulled || pushed) {
+    updateSyncBadgeState('SUCCESS');
+    if (!silent) {
+      showPromoToast('✅ Cloud Sync Complete: Campaign progress synced with Google Cloud!');
+    }
+    setTimeout(() => updateSyncBadgeState('IDLE'), 3000);
+    return true;
+  }
+  updateSyncBadgeState('ERROR');
+  return false;
+}
+window.pushPromoBroadcastToGoogleCloud = pushPromoBroadcastToGoogleCloud;
+window.pullPromoBroadcastFromGoogleCloud = pullPromoBroadcastFromGoogleCloud;
+window.syncPromoBroadcastWithGoogleCloud = syncPromoBroadcastWithGoogleCloud;
+window.syncPromoBroadcastWithCloud = syncPromoBroadcastWithGoogleCloud;
+
 function updateSyncBadgeState(status = 'IDLE') {
   const syncBtn = document.getElementById('promoCloudSyncBtn');
   const syncLabel = document.getElementById('promoCloudSyncLabel');
   if (!syncBtn || !syncLabel) return;
 
-  const isConnected = Boolean(window.pmgOneDriveSync && window.pmgOneDriveSync.rootHandle && window.pmgOneDriveSync.mode !== 'DISCONNECTED');
-  if (!isConnected) {
-    syncLabel.textContent = 'OneDrive (Not Connected)';
-    syncBtn.className = 'px-3 py-2 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-500 border border-gray-300 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer';
-    return;
-  }
+  const hasOneDrive = Boolean(window.pmgOneDriveSync && window.pmgOneDriveSync.rootHandle && window.pmgOneDriveSync.mode !== 'DISCONNECTED');
 
   if (status === 'SYNCING') {
     syncLabel.textContent = 'Syncing...';
     syncBtn.className = 'px-3 py-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-300 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer animate-pulse';
   } else if (status === 'SUCCESS') {
-    syncLabel.textContent = 'Synced ✅';
+    syncLabel.textContent = hasOneDrive ? 'Cloud + OneDrive ✅' : 'Google Cloud Synced ✅';
     syncBtn.className = 'px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-300 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer';
-  } else {
-    syncLabel.textContent = 'OneDrive Synced';
+  } else if (status === 'ERROR') {
+    syncLabel.textContent = 'Cloud Sync Retry';
+    syncBtn.className = 'px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer';
+  } else if (hasOneDrive) {
+    syncLabel.textContent = promoGoogleCloudSynced ? 'Cloud + OneDrive' : 'OneDrive Synced';
     syncBtn.className = 'px-3 py-2 rounded-xl bg-sky-50 text-sky-700 border border-sky-300 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer';
+  } else {
+    syncLabel.textContent = promoGoogleCloudSynced ? 'Google Cloud Synced' : 'Google Cloud Sync';
+    syncBtn.className = 'px-3 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-300 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer';
   }
 }
 
 async function checkOneDriveSyncStatusQuiet() {
   if (typeof window === 'undefined') return;
-  if (window.pmgOneDriveSync && window.pmgOneDriveSync.rootHandle && window.pmgOneDriveSync.mode !== 'DISCONNECTED') {
-    updateSyncBadgeState('IDLE');
-  } else {
-    updateSyncBadgeState('DISCONNECTED');
-  }
+  updateSyncBadgeState('IDLE');
 }
 
 async function syncPromoBroadcastWithOneDrive() {
-  if (!window.pmgOneDriveSync || !window.pmgOneDriveSync.rootHandle || window.pmgOneDriveSync.mode === 'DISCONNECTED') {
-    if (typeof openOneDriveSyncModal === 'function') {
-      openOneDriveSyncModal();
+  updateSyncBadgeState('SYNCING');
+  const googleSynced = await syncPromoBroadcastWithGoogleCloud(true);
+
+  const hasOneDrive = Boolean(window.pmgOneDriveSync && window.pmgOneDriveSync.rootHandle && window.pmgOneDriveSync.mode !== 'DISCONNECTED');
+  if (!hasOneDrive) {
+    if (googleSynced) {
+      updateSyncBadgeState('SUCCESS');
+      showPromoToast('✅ Cloud Sync Complete: Campaign progress synced with Google Cloud!');
+      setTimeout(() => updateSyncBadgeState('IDLE'), 3000);
     } else {
-      alert('OneDrive is not connected yet. Please connect your PMG OneDrive folder using the top sync button.');
+      updateSyncBadgeState('ERROR');
+      showPromoToast('⚠️ Could not reach Google Cloud. Please check internet connection.');
     }
     return;
   }
 
-  updateSyncBadgeState('SYNCING');
   try {
     const branchFolder = window.pmgOneDriveSync.activeBranchFolder || 'KOTA SENTOSA';
     const dirHandle = await window.pmgOneDriveSync._getTargetBranchDirectoryHandle(branchFolder);
@@ -1715,54 +1927,29 @@ async function syncPromoBroadcastWithOneDrive() {
       // File does not exist yet
     }
 
-    if (cloudData && cloudData.progressMap) {
-      // Merge cloud progress map into local progress map
-      for (const campId in cloudData.progressMap) {
-        if (!promoProgressMap[campId]) promoProgressMap[campId] = {};
-        for (const custId in cloudData.progressMap[campId]) {
-          const cloudItem = cloudData.progressMap[campId][custId];
-          const localItem = promoProgressMap[campId][custId];
-          if (!localItem || (cloudItem.sentAt && (!localItem.sentAt || cloudItem.sentAt > localItem.sentAt))) {
-            promoProgressMap[campId][custId] = cloudItem;
-          }
-        }
-      }
+    if (cloudData) {
+      mergePromoCloudData(cloudData);
     }
 
-    // Prepare unified payload to write back to OneDrive
-    const payload = {
-      version: '2.0',
-      lastUpdated: nowIso,
-      updatedBy: promoComposerState.pharmacistName || 'Pharmacist',
-      branch: branchFolder,
-      progressMap: promoProgressMap,
-      composerState: {
-        offerDetails: promoComposerState.offerDetails,
-        offerDetailsEn: promoComposerState.offerDetailsEn,
-        offerDetailsBm: promoComposerState.offerDetailsBm,
-        offerDetailsZh: promoComposerState.offerDetailsZh,
-        promoPeriod: promoComposerState.promoPeriod,
-        shopPhone: promoComposerState.shopPhone,
-        pharmacistPhone: promoComposerState.pharmacistPhone
-      },
-      customCampaigns: promoCampaigns.filter(c => !c.isPreset)
-    };
+    const payload = buildPromoCloudPayload();
+    payload.lastUpdated = nowIso;
 
     const outFh = await dirHandle.getFileHandle('promo_broadcast_master.json', { create: true });
     const writable = await outFh.createWritable();
     await writable.write(JSON.stringify(payload, null, 2));
     await writable.close();
 
-    savePromoProgress();
+    localStorage.setItem(STORAGE_PROMO_PROGRESS, JSON.stringify(promoProgressMap));
+    await pushPromoBroadcastToGoogleCloud(true);
     renderPromoKpis();
     renderPromoCustomerTable();
     updateSyncBadgeState('SUCCESS');
-    showPromoToast('✅ Cloud Sync Complete: Campaign progress updated with OneDrive!');
+    showPromoToast('✅ Cloud Sync Complete: Campaign progress synced across Google Cloud & OneDrive!');
     setTimeout(() => updateSyncBadgeState('IDLE'), 3000);
   } catch (err) {
     console.error('[PMG Promo Sync]', err);
-    updateSyncBadgeState('ERROR');
-    alert('Sync error: ' + err.message);
+    updateSyncBadgeState(googleSynced ? 'SUCCESS' : 'ERROR');
+    showPromoToast(googleSynced ? '✅ Synced with Google Cloud (OneDrive skipped).' : ('Sync error: ' + err.message));
   }
 }
 window.syncPromoBroadcastWithOneDrive = syncPromoBroadcastWithOneDrive;

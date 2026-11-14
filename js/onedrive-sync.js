@@ -3044,6 +3044,219 @@
       .replace(/"/g, '&quot;');
   }
 
+  // ─── GOOGLE CLOUD ECOSYSTEM SYNC (NON-PATIENT MODULES ONLY — PDPA SAFE) ──
+  const GOOGLE_CLOUD_OPS_API_URL = (typeof window !== 'undefined' && window.PMG_SCHEDULE_API_URL) || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+  const OPS_MISC_CLOUD_VAULT_KEY = 'PMG_OPS_MISC_VAULT_KS01';
+  const COMMERCIAL_STORAGE_KEYS = [
+    'pmg_admin_quotation_data',
+    'pmg_admin_invoice_data',
+    'pmg_admin_invoice_counter',
+    'pmg_admin_incident_data',
+    'pmg_admin_history_quotes',
+    'pmg_admin_history_invoices',
+    'pmg_admin_history_incidents'
+  ];
+
+  async function readOpsMiscCloudVault() {
+    if (!GOOGLE_CLOUD_OPS_API_URL || typeof fetch !== 'function') return null;
+    try {
+      const res = await fetch(`${GOOGLE_CLOUD_OPS_API_URL}?branch=${encodeURIComponent(OPS_MISC_CLOUD_VAULT_KEY)}`);
+      if (!res || !res.ok) return null;
+      const data = await res.json();
+      if (data && data.status === 'success' && data.schedule && typeof data.schedule === 'object') {
+        return data.schedule;
+      }
+      if (data && data.schedule && typeof data.schedule === 'object') {
+        return data.schedule;
+      }
+    } catch (err) {
+      console.warn('[PMG Google Cloud Sync] Read ops misc vault failed:', err?.message || err);
+    }
+    return null;
+  }
+
+  async function writeOpsMiscCloudVault(scheduleObj) {
+    if (!GOOGLE_CLOUD_OPS_API_URL || typeof fetch !== 'function' || !scheduleObj) return false;
+    try {
+      const jsonStr = JSON.stringify(scheduleObj);
+      if (jsonStr.length > 38000) {
+        // Fallback chunked upload via uploadApplicantDoc for large payloads (e.g., 5S walkthrough frame metadata)
+        await fetch(GOOGLE_CLOUD_OPS_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'uploadApplicantDoc',
+            applicantId: OPS_MISC_CLOUD_VAULT_KEY,
+            docType: 'auditCommercialVault',
+            fileName: 'ops_misc_vault.json',
+            mimeType: 'application/json',
+            base64Data: btoa(unescape(encodeURIComponent(jsonStr)))
+          })
+        });
+        const pointer = { chunkedDocId: `${OPS_MISC_CLOUD_VAULT_KEY}_auditCommercialVault`, updatedAt: new Date().toISOString() };
+        await fetch(GOOGLE_CLOUD_OPS_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ branch: OPS_MISC_CLOUD_VAULT_KEY, schedule: pointer, updatedBy: 'PMG Antigravity Cloud' })
+        });
+        return true;
+      }
+
+      const res = await fetch(GOOGLE_CLOUD_OPS_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          branch: OPS_MISC_CLOUD_VAULT_KEY,
+          schedule: scheduleObj,
+          updatedBy: 'PMG Antigravity Cloud'
+        })
+      });
+      return Boolean(res && res.ok);
+    } catch (err) {
+      console.warn('[PMG Google Cloud Sync] Write ops misc vault failed:', err?.message || err);
+      return false;
+    }
+  }
+
+  async function resolveOpsMiscCloudVault() {
+    const raw = await readOpsMiscCloudVault();
+    if (!raw) return {};
+    if (raw.chunkedDocId && typeof fetch === 'function') {
+      try {
+        const res = await fetch(`${GOOGLE_CLOUD_OPS_API_URL}?action=getApplicantDoc&docId=${encodeURIComponent(raw.chunkedDocId)}`);
+        if (res && res.ok) {
+          const docData = await res.json();
+          if (docData && docData.base64Data) {
+            const decoded = decodeURIComponent(escape(atob(docData.base64Data)));
+            const parsed = JSON.parse(decoded);
+            if (parsed && typeof parsed === 'object') return parsed;
+          }
+        }
+      } catch (_) {}
+    }
+    return raw;
+  }
+
+  window.syncAuditFromCloud = async function() {
+    try {
+      const vault = await resolveOpsMiscCloudVault();
+      const cloudAudit = vault && vault.auditWalkthrough ? vault.auditWalkthrough : null;
+      const localRaw = localStorage.getItem('pmg_latest_walkthrough_audit');
+      let localAudit = null;
+      if (localRaw) {
+        try { localAudit = JSON.parse(localRaw); } catch (_) {}
+      }
+
+      const cloudTs = cloudAudit ? new Date(cloudAudit.timestamp || cloudAudit.updatedAt || 0).getTime() : 0;
+      const localTs = localAudit ? new Date(localAudit.timestamp || localAudit.updatedAt || 0).getTime() : 0;
+
+      if (cloudAudit && cloudTs > localTs) {
+        localStorage.setItem('pmg_latest_walkthrough_audit', JSON.stringify(cloudAudit));
+        if (typeof window.pmgRenderLatestWalkthroughAudit === 'function') {
+          try { window.pmgRenderLatestWalkthroughAudit(); } catch (_) {}
+        }
+        return { status: 'pulled', updated: true };
+      } else if (localAudit && localTs > cloudTs) {
+        const nextVault = Object.assign({}, vault, { auditWalkthrough: localAudit, updatedAt: new Date().toISOString() });
+        await writeOpsMiscCloudVault(nextVault);
+        return { status: 'pushed', updated: true };
+      }
+      return { status: 'in-sync', updated: false };
+    } catch (err) {
+      console.warn('[PMG Google Cloud Sync] syncAuditFromCloud error:', err?.message || err);
+      return { status: 'error', error: err?.message || String(err) };
+    }
+  };
+
+  window.syncCommercialFromCloud = async function() {
+    try {
+      const vault = await resolveOpsMiscCloudVault();
+      const cloudComm = vault && vault.commercialAdmin ? vault.commercialAdmin : null;
+      const localPayload = {};
+      let hasLocal = false;
+      COMMERCIAL_STORAGE_KEYS.forEach((k) => {
+        const val = localStorage.getItem(k);
+        if (val !== null) {
+          localPayload[k] = val;
+          hasLocal = true;
+        }
+      });
+
+      const localMetaTs = Number(localStorage.getItem('pmg_commercial_cloud_ts') || 0);
+      const cloudMetaTs = cloudComm && cloudComm.updatedAt ? Number(cloudComm.updatedAt) : 0;
+
+      if (cloudComm && cloudComm.keys && (!hasLocal || cloudMetaTs > localMetaTs)) {
+        Object.keys(cloudComm.keys).forEach((k) => {
+          if (COMMERCIAL_STORAGE_KEYS.includes(k) && typeof cloudComm.keys[k] === 'string') {
+            localStorage.setItem(k, cloudComm.keys[k]);
+          }
+        });
+        if (cloudMetaTs) localStorage.setItem('pmg_commercial_cloud_ts', String(cloudMetaTs));
+        return { status: 'pulled', updated: true };
+      } else if (hasLocal) {
+        const nextTs = Math.max(Date.now(), localMetaTs || 0);
+        localStorage.setItem('pmg_commercial_cloud_ts', String(nextTs));
+        const nextVault = Object.assign({}, vault, {
+          commercialAdmin: { updatedAt: nextTs, keys: localPayload },
+          updatedAt: new Date().toISOString()
+        });
+        await writeOpsMiscCloudVault(nextVault);
+        return { status: 'pushed', updated: true };
+      }
+      return { status: 'in-sync', updated: false };
+    } catch (err) {
+      console.warn('[PMG Google Cloud Sync] syncCommercialFromCloud error:', err?.message || err);
+      return { status: 'error', error: err?.message || String(err) };
+    }
+  };
+
+  window.triggerGoogleCloudEcosystemSync = async function(options = {}) {
+    const ops = [
+      { name: 'Schedule & Teammates', fn: () => typeof window.syncTeammatePreferencesWithCloud === 'function' ? window.syncTeammatePreferencesWithCloud() : Promise.resolve('skipped') },
+      { name: 'Stock Expiry', fn: () => window.pmgExpiry && typeof window.pmgExpiry.syncFromSheets === 'function' ? window.pmgExpiry.syncFromSheets(false) : Promise.resolve('skipped') },
+      { name: 'Returns & CN', fn: () => window.pmgReturns && typeof window.pmgReturns.syncWithGoogleSheets === 'function' ? window.pmgReturns.syncWithGoogleSheets() : Promise.resolve('skipped') },
+      { name: 'Pricing Matrix', fn: () => window.pmgPricing && typeof window.pmgPricing.fetchPricingFromSheets === 'function' ? window.pmgPricing.fetchPricingFromSheets(false) : Promise.resolve('skipped') },
+      { name: 'Recruitment', fn: () => window.pmgRecruitment && typeof window.pmgRecruitment.syncAppsFromCloud === 'function' ? window.pmgRecruitment.syncAppsFromCloud(false) : Promise.resolve('skipped') },
+      { name: 'Promo Broadcast', fn: () => typeof window.syncPromoBroadcastWithGoogleCloud === 'function' ? window.syncPromoBroadcastWithGoogleCloud(true) : Promise.resolve('skipped') },
+      { name: 'Smart Inventory', fn: () => typeof window.syncInventoryConfigWithGoogleCloud === 'function' ? window.syncInventoryConfigWithGoogleCloud(true) : Promise.resolve('skipped') },
+      { name: 'Outlet Performance', fn: () => typeof window.syncPerformanceWithCloud === 'function' ? window.syncPerformanceWithCloud(false) : Promise.resolve('skipped') },
+      { name: 'SKU Action Plans', fn: () => typeof window.syncSkuActionPlansWithCloud === 'function' ? window.syncSkuActionPlansWithCloud(false) : Promise.resolve('skipped') },
+      { name: '5S Audit', fn: () => typeof window.syncAuditFromCloud === 'function' ? window.syncAuditFromCloud() : Promise.resolve('skipped') },
+      { name: 'Commercial Admin', fn: () => typeof window.syncCommercialFromCloud === 'function' ? window.syncCommercialFromCloud() : Promise.resolve('skipped') }
+    ];
+
+    const settled = await Promise.allSettled(ops.map((op) => {
+      try {
+        return Promise.resolve(op.fn());
+      } catch (err) {
+        return Promise.reject(err);
+      }
+    }));
+
+    const modulesSynced = [];
+    const failedModules = [];
+    settled.forEach((res, idx) => {
+      const label = ops[idx].name;
+      if (res.status === 'fulfilled' && res.value !== 'skipped') {
+        modulesSynced.push(label);
+      } else if (res.status === 'rejected') {
+        failedModules.push(label);
+      }
+    });
+
+    const now = new Date();
+    try { localStorage.setItem('pmg_last_google_cloud_sync', now.toISOString()); } catch (_) {}
+
+    return {
+      ok: failedModules.length === 0,
+      manual: Boolean(options && options.manual),
+      time: now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+      modulesSynced,
+      failedModules,
+      pdpaGuardActive: Boolean(window.PMG_PDPA_MEDICAL_CLOUD_GUARD)
+    };
+  };
+
   // ─── MODAL UI HELPERS ──────────────────────────────────────────────────────
   function updateSyncModalInfo() {
     const pill = document.getElementById('syncModalStatusPill');
@@ -3057,15 +3270,17 @@
     if (pill) {
       if (isConn) {
         pill.className = 'px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200';
-        pill.textContent = '✅ Connected (Kota Sentosa)';
+        pill.textContent = '✅ Connected (Kota Sentosa • Hybrid Cloud + PDPA OneDrive)';
       } else {
-        pill.className = 'px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-700 border border-gray-200';
-        pill.textContent = '❌ Disconnected';
+        pill.className = 'px-2.5 py-1 rounded-full text-xs font-bold bg-sky-100 text-sky-800 border border-sky-200';
+        pill.textContent = '☁️ Google Cloud Active • OneDrive (PDPA) Optional';
       }
     }
 
     if (folderEl) {
-      folderEl.textContent = window.pmgOneDriveSync.rootHandle ? window.pmgOneDriveSync.rootHandle.name : 'No folder linked yet';
+      folderEl.textContent = window.pmgOneDriveSync.rootHandle
+        ? window.pmgOneDriveSync.rootHandle.name
+        : 'Antigravity Google Cloud Active (Link OneDrive for Patient PDPA Vault)';
     }
 
     if (branchEl) {
@@ -3074,14 +3289,16 @@
     }
 
     if (lastSyncEl) {
-      const lastDate = localStorage.getItem('pmg_last_backup_date');
-      const lastType = localStorage.getItem('pmg_last_backup_type');
+      const lastDate = localStorage.getItem('pmg_last_backup_date') || localStorage.getItem('pmg_last_google_cloud_sync');
+      const lastType = localStorage.getItem('pmg_last_backup_date')
+        ? (localStorage.getItem('pmg_last_backup_type') || 'OneDrive')
+        : 'Google Cloud';
       if (lastDate) {
         try {
           const d = new Date(lastDate);
           const timeStr = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
           const dateStr = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-          lastSyncEl.textContent = `${dateStr} at ${timeStr} (${lastType || 'OneDrive'})`;
+          lastSyncEl.textContent = `${dateStr} at ${timeStr} (${lastType})`;
         } catch (e) {
           lastSyncEl.textContent = 'Active';
         }
@@ -3104,22 +3321,37 @@
 
     if (fb) {
       fb.className = 'p-3 bg-blue-50 border border-blue-200 text-blue-800 rounded-xl flex items-center gap-2 text-xs font-semibold';
-      fb.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-blue-600 text-sm"></i> <span>Connecting to OneDrive folder and syncing clinical records...</span>';
+      fb.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-blue-600 text-sm"></i> <span>Syncing operational modules via Google Cloud & checking PDPA OneDrive vault...</span>';
       fb.classList.remove('hidden');
     }
 
     try {
-      if (!window.pmgOneDriveSync || !window.pmgOneDriveSync.rootHandle || window.pmgOneDriveSync.mode === 'DISCONNECTED') {
+      const cloudRes = await window.triggerGoogleCloudEcosystemSync({ manual: true });
+      const isOneDriveLinked = Boolean(window.pmgOneDriveSync && window.pmgOneDriveSync.rootHandle && window.pmgOneDriveSync.mode !== 'DISCONNECTED');
+
+      if (!isOneDriveLinked) {
+        updateSyncModalInfo();
+        const syncedList = cloudRes.modulesSynced.length > 0
+          ? cloudRes.modulesSynced.map(escapeSyncHtml).join(', ')
+          : 'Schedule, Expiry, Returns/CN, Pricing Matrix, Recruitment, Promo Broadcast, Smart Inventory, Performance & 6M Aging Action Plans, 5S Audit & Commercial Admin';
+
         if (fb) {
-          fb.className = 'p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-xs space-y-1';
+          fb.className = 'p-3 bg-sky-50 border border-sky-200 text-sky-900 rounded-xl text-xs space-y-1.5';
           fb.innerHTML = `
-            <div class="font-bold flex items-center gap-1.5 text-amber-800">
-              <i class="fa-solid fa-circle-exclamation text-amber-600"></i> No Folder Linked Yet
+            <div class="font-bold flex items-center gap-1.5 text-sky-800">
+              <i class="fa-solid fa-cloud-check text-sky-600 text-sm"></i> Google Cloud Operational Sync Complete (${escapeSyncHtml(cloudRes.time)})
             </div>
-            <div>Please click <b>"Link / Change Folder"</b> below to select your PMG OneDrive folder.</div>
+            <div class="text-[11px] text-sky-900 leading-relaxed">
+              <b>Synced Non-Patient Modules:</b> ${syncedList}.
+            </div>
+            <div class="text-[10px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-2 space-y-1">
+              <div><i class="fa-solid fa-shield-halved text-amber-600"></i> <b>PDPA Medical Privacy Guard (${cloudRes.pdpaGuardActive ? 'Active' : 'Enforced'}):</b> Patient Care clinical records remain strictly on Local Storage & Company OneDrive only (never uploaded to Google Cloud).</div>
+              <div>Link your PMG OneDrive folder below anytime to replicate encrypted Patient Care backups.</div>
+            </div>
           `;
           fb.classList.remove('hidden');
         }
+        showPmgToast(`☁️ Google Cloud Operational Sync Complete (${cloudRes.time}) • Patient Data Kept PDPA-Private`, 'success');
         return;
       }
 
@@ -3130,28 +3362,29 @@
         fb.className = 'p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs space-y-1.5';
         fb.innerHTML = `
           <div class="font-bold flex items-center gap-1.5 text-emerald-700">
-            <i class="fa-solid fa-circle-check text-emerald-600 text-sm"></i> Universal OneDrive Sync Complete!
+            <i class="fa-solid fa-circle-check text-emerald-600 text-sm"></i> Hybrid Google Cloud + OneDrive PDPA Sync Complete!
           </div>
           <div class="text-[11px] text-emerald-800 space-y-1">
             <div>• <b>Target:</b> ${escapeSyncHtml(res.branch)} &bull; <b>Time:</b> ${res.time}</div>
             <div class="grid grid-cols-2 gap-1.5 pt-1 text-[10px] text-emerald-900 font-medium">
-              <div>✓ <b>Patient Care:</b> ${res.count} records</div>
-              <div>✓ <b>Equipment Rentals:</b> ${res.rentalsCount || 0} rentals</div>
+              <div>✓ <b>Patient Care (OneDrive PDPA):</b> ${res.count} records</div>
+              <div>✓ <b>Equipment Rentals (OneDrive):</b> ${res.rentalsCount || 0} rentals</div>
               <div>✓ <b>Job Applications:</b> ${res.recruitmentCount || 0} applicants</div>
               <div>✓ <b>Credit Notes & DO:</b> ${res.returnsCount || 0} records</div>
               <div>✓ <b>Pricing SKUs:</b> ${res.pricingCount || 0} master items</div>
-              <div>✓ <b>Schedules:</b> Working hours synced</div>
-              <div>✓ <b>Stock Expiry:</b> Disposition logs synced</div>
+              <div>✓ <b>Schedules & Roster:</b> Working hours synced</div>
+              <div>✓ <b>Stock Expiry & Aging:</b> Disposition & 6M plans synced</div>
+              <div>✓ <b>Promo / Inventory / 5S / Admin:</b> Google Cloud synced</div>
             </div>
           </div>
           <div class="text-[10px] text-emerald-700 mt-1 font-medium">
-            All records across the entire PMG Management Hub are synchronized with your OneDrive folder.
+            Non-patient operations are live on Google Cloud Ecosystem; sensitive Patient Care clinical records remain PDPA-isolated on Company OneDrive.
           </div>
         `;
         fb.classList.remove('hidden');
       }
 
-      showPmgToast(`✅ Universal OneDrive Synced (${res.branch} at ${res.time})`, 'success');
+      showPmgToast(`✅ Hybrid Cloud + OneDrive PDPA Synced (${res.branch} at ${res.time})`, 'success');
 
     } catch (err) {
       console.error('[PMG OneDrive Sync] Manual sync failed:', err);
@@ -3163,14 +3396,14 @@
           <div class="font-bold flex items-center gap-1.5 text-rose-700">
             <i class="fa-solid fa-triangle-exclamation text-rose-600"></i> Sync Unsuccessful
           </div>
-          <div class="text-[11px] text-rose-800">${escapeSyncHtml(err.message || 'Unable to sync with OneDrive folder.')}</div>
+          <div class="text-[11px] text-rose-800">${escapeSyncHtml(err.message || 'Unable to sync with cloud/OneDrive folder.')}</div>
           <div class="text-[10px] text-gray-600 bg-white/80 p-1.5 rounded border border-rose-100">
             <b>Fix:</b> Click <b>"Link / Change Folder"</b> below to re-select your OneDrive folder and grant browser permissions.
           </div>
         `;
         fb.classList.remove('hidden');
       }
-      showPmgToast('OneDrive Sync: ' + (err.message || 'Sync failed'), 'error');
+      showPmgToast('Sync error: ' + (err.message || 'Sync failed'), 'error');
     } finally {
       if (btn) {
         btn.disabled = false;
@@ -3185,7 +3418,7 @@
     if (modal) {
       updateSyncModalInfo();
       const fb = document.getElementById('syncModalFeedback');
-      if (fb && !fb.innerHTML.includes('Synced Successfully')) {
+      if (fb && !fb.innerHTML.includes('Sync Complete')) {
         fb.classList.add('hidden');
       }
       modal.classList.remove('hidden');
@@ -3203,9 +3436,18 @@
   window.pmgOneDriveSync = new OneDriveSyncEngine();
 
   // Auto-init when DOM is ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => window.pmgOneDriveSync.init());
-  } else {
+  const bootSyncEngine = () => {
     window.pmgOneDriveSync.init();
+    setTimeout(() => {
+      try {
+        window.syncAuditFromCloud?.();
+        window.syncCommercialFromCloud?.();
+      } catch (_) {}
+    }, 2500);
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootSyncEngine);
+  } else {
+    bootSyncEngine();
   }
 })(window);

@@ -65,6 +65,44 @@ if (typeof openUniversalWhatsApp !== 'function') {
 const PATIENTS_STORAGE_KEY = 'pmg_patients_data_v1';
 var PMG_SCHEDULE_API_URL = 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
 
+// ─── STRICT PDPA MEDICAL PRIVACY GUARD ───────────────────────────────────────
+// Patient clinical profiles, SOAP notes, POCT blood panels, medications,
+// allergies, NRIC, and clinical PDFs are strictly isolated to Local Storage /
+// IndexedDB + Company OneDrive (patients_master.json & CLINICAL_DOCS/).
+// They must NEVER be transmitted to Google Sheets or Google Drive.
+if (typeof window !== 'undefined') {
+  window.PMG_PDPA_MEDICAL_CLOUD_GUARD = true;
+}
+const PMG_PDPA_FORBIDDEN_CLOUD_FIELDS = new Set([
+  'patients', 'encounters', 'vitals', 'lipidPanel', 'liverPanel',
+  'kidneyPanel', 'glycemicHeme', 'medications', 'conditions',
+  'chronicConditions', 'allergies', 'documents', 'attachedDocs', 'hpi',
+  'preDiagnostic', 'planMedications', 'planSupplements', 'planCounselling',
+  'referral', 'specialtyScans', 'customTests', 'ic', 'patientIc',
+  'clinicalNotes', 'chiefComplaint', 'soapNotes', 'poctData'
+]);
+
+function sanitizePayloadForGoogleCloud(payload) {
+  if (payload === null || payload === undefined) return payload;
+  if (Array.isArray(payload)) {
+    return payload.map(item => sanitizePayloadForGoogleCloud(item));
+  }
+  if (typeof payload === 'object') {
+    const out = {};
+    for (const [key, val] of Object.entries(payload)) {
+      if (PMG_PDPA_FORBIDDEN_CLOUD_FIELDS.has(key)) {
+        continue;
+      }
+      out[key] = sanitizePayloadForGoogleCloud(val);
+    }
+    return out;
+  }
+  return payload;
+}
+if (typeof window !== 'undefined') {
+  window.sanitizePayloadForGoogleCloud = sanitizePayloadForGoogleCloud;
+}
+
 // Helper to get formatted date string (YYYY-MM-DD)
 function getTodayDateString(offsetDays = 0) {
   const d = new Date();
@@ -6441,18 +6479,18 @@ async function deleteCurrentPatientProfile() {
       const session = typeof getSession === 'function' ? getSession() : null;
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 12000);
+      const safeDeletePayload = sanitizePayloadForGoogleCloud({
+        action: 'deletePatient',
+        patientId: pid,
+        patientName: p.name || '',
+        patientPhone: p.phone || '',
+        branch: p.branch || 'Kota Sentosa',
+        updatedBy: session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist'
+      });
       const res = await fetch(PMG_SCHEDULE_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({
-          action: 'deletePatient',
-          patientId: pid,
-          patientIc: p.ic || '',
-          patientName: p.name || '',
-          patientPhone: p.phone || '',
-          branch: p.branch || 'Kota Sentosa',
-          updatedBy: session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist'
-        }),
+        body: JSON.stringify(safeDeletePayload),
         redirect: 'follow',
         signal: controller.signal
       });
@@ -9498,11 +9536,11 @@ async function pushScheduleToSheets(branchCode, scheduleObj) {
   if (!PMG_SCHEDULE_API_URL || !scheduleObj) return;
   try {
     const session = typeof getSession === 'function' ? getSession() : null;
-    const payload = {
+    const payload = sanitizePayloadForGoogleCloud({
       branch: branchCode,
       schedule: scheduleObj,
       updatedBy: (session && session.displayName) || scheduleObj.updatedBy || 'Pharmacist'
-    };
+    });
     const res = await fetch(PMG_SCHEDULE_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
@@ -10751,11 +10789,11 @@ async function pushBookingToCloud(bookingData) {
     if (sched.onlineBookings.length > 200) {
       sched.onlineBookings = sched.onlineBookings.slice(0, 200);
     }
-    const payload = {
+    const payload = sanitizePayloadForGoogleCloud({
       branch: branchCode,
       schedule: sched,
       updatedBy: `Customer: ${bookingData.patientName || 'Online Booking'}`
-    };
+    });
     await fetch(PMG_SCHEDULE_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
@@ -10782,7 +10820,7 @@ async function updateAppointmentStatusInCloud(appointmentId, newStatus, branchCo
     const session = typeof getSession === 'function' ? getSession() : null;
     const nowIso = new Date().toISOString();
 
-    const postPayload = {
+    const postPayload = sanitizePayloadForGoogleCloud({
       action: 'updateAppointmentStatus',
       appointmentId: appointmentId,
       status: newStatus,
@@ -10794,7 +10832,6 @@ async function updateAppointmentStatusInCloud(appointmentId, newStatus, branchCo
         patientId: (patientData && patientData.id) || '',
         patientName: (patientData && patientData.name) || '',
         patientPhone: (patientData && patientData.phone) || '',
-        patientIc: (patientData && patientData.ic) || '',
         branch: branch,
         date: (aptData && aptData.date) || getTodayDateString(0),
         time: (aptData && aptData.time) || '',
@@ -10806,7 +10843,7 @@ async function updateAppointmentStatusInCloud(appointmentId, newStatus, branchCo
         bookingType: (aptData && aptData.bookingType) || 'in_person',
         createdAt: (aptData && aptData.createdAt) || nowIso
       }
-    };
+    });
 
     // 1. Post to update Appointment in Patient_Appointments tab on Google Sheets
     await fetch(PMG_SCHEDULE_API_URL, {
@@ -10827,11 +10864,11 @@ async function updateAppointmentStatusInCloud(appointmentId, newStatus, branchCo
           await fetch(PMG_SCHEDULE_API_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({
+            body: JSON.stringify(sanitizePayloadForGoogleCloud({
               branch: branch,
               schedule: sched,
               updatedBy: (session && session.displayName) || 'Pharmacist'
-            }),
+            })),
             redirect: 'follow'
           });
         }
@@ -13870,11 +13907,11 @@ async function pushRentalsToCloud(rentals) {
     sched.rentals = rentals;
     sched.rentalsLastUpdated = new Date().toISOString();
 
-    const payload = {
+    const payload = sanitizePayloadForGoogleCloud({
       branch: branchCode,
       schedule: sched,
       updatedBy: (session && session.displayName) || 'Pharmacist'
-    };
+    });
 
     await fetch(PMG_SCHEDULE_API_URL, {
       method: 'POST',

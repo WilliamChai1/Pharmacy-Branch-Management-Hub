@@ -1,36 +1,82 @@
 /**
- * PMG Management Hub - Google Sheets Sync Utility
- * Powered by Google Cloud Service Account
+ * PMG Management Hub - Portable Google Sheets Sync Utility
+ * Supports Antigravity Cloud env secrets, GOOGLE_APPLICATION_CREDENTIALS, or local service account JSON.
+ * Patient medical data is NEVER managed through this Google Sheets utility (PDPA isolation).
  */
 const fs = require('fs');
 const path = require('path');
-const { google } = require('C:\\Users\\User\\AppData\\Roaming\\npm\\node_modules\\mcp-google-sheets\\node_modules\\googleapis');
 
-// Locate service account credentials
-const credsPath = path.join(__dirname, '..', 'gen-lang-client-0473802065-d916c4cdb024.json');
-
-if (!fs.existsSync(credsPath)) {
-  console.error('[GoogleSheetsSync] Error: Credentials file not found at:', credsPath);
-  process.exit(1);
+function loadGoogleApis() {
+  const candidates = [
+    () => require('googleapis'),
+    () => process.env.GOOGLEAPIS_PATH ? require(process.env.GOOGLEAPIS_PATH) : null,
+    () => process.env.APPDATA
+      ? require(path.join(process.env.APPDATA, 'npm', 'node_modules', 'mcp-google-sheets', 'node_modules', 'googleapis'))
+      : null,
+    () => require('/usr/local/lib/node_modules/mcp-google-sheets/node_modules/googleapis')
+  ];
+  for (const loader of candidates) {
+    try {
+      const mod = loader();
+      if (mod && mod.google) return mod.google;
+    } catch (_) {}
+  }
+  return null;
 }
 
-const key = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+function loadServiceAccountCredentials() {
+  if (process.env.PMG_GOOGLE_SERVICE_ACCOUNT_JSON) {
+    return JSON.parse(process.env.PMG_GOOGLE_SERVICE_ACCOUNT_JSON);
+  }
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS && fs.existsSync(process.env.GOOGLE_APPLICATION_CREDENTIALS)) {
+    return JSON.parse(fs.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, 'utf8'));
+  }
 
-const auth = new google.auth.JWT(
-  key.client_email,
-  null,
-  key.private_key,
-  [
-    'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/drive',
-    'https://www.googleapis.com/auth/drive.readonly'
-  ]
-);
+  const rootDir = path.join(__dirname, '..');
+  const preferredPath = path.join(rootDir, 'gen-lang-client-0473802065-d916c4cdb024.json');
+  if (fs.existsSync(preferredPath)) {
+    return JSON.parse(fs.readFileSync(preferredPath, 'utf8'));
+  }
 
-const sheets = google.sheets({ version: 'v4', auth });
-const drive = google.drive({ version: 'v3', auth });
+  // Fallback scan for any gitignored local service account file (zero hardcoded filenames required)
+  try {
+    const files = fs.readdirSync(rootDir);
+    const match = files.find((f) => /^(gen-lang-client-.*|.*service[-_]account.*)\.json$/i.test(f));
+    if (match) {
+      return JSON.parse(fs.readFileSync(path.join(rootDir, match), 'utf8'));
+    }
+  } catch (_) {}
 
-// Known sheets registry
+  throw new Error(
+    'Google Service Account credentials not found. Set PMG_GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_APPLICATION_CREDENTIALS.'
+  );
+}
+
+let cachedClients = null;
+function getSheetsClient() {
+  if (cachedClients) return cachedClients;
+  const google = loadGoogleApis();
+  if (!google) {
+    throw new Error('Cannot resolve "googleapis" package. Run "npm install" or set GOOGLEAPIS_PATH.');
+  }
+  const key = loadServiceAccountCredentials();
+  const auth = new google.auth.JWT(
+    key.client_email,
+    null,
+    key.private_key,
+    [
+      'https://www.googleapis.com/auth/spreadsheets',
+      'https://www.googleapis.com/auth/drive',
+      'https://www.googleapis.com/auth/drive.readonly'
+    ]
+  );
+  const sheets = google.sheets({ version: 'v4', auth });
+  const drive = google.drive({ version: 'v3', auth });
+  cachedClients = { auth, sheets, drive, clientEmail: key.client_email };
+  return cachedClients;
+}
+
+// Known sheets registry (Non-patient operational sheets only)
 const KNOWN_SHEETS = {
   'rymnet': '1HVpF66K59fbNOmyvouih5knTPMBwoCZ_lGLczD5QaB0',
   'rymnet conversion': '1HVpF66K59fbNOmyvouih5knTPMBwoCZ_lGLczD5QaB0',
@@ -39,6 +85,7 @@ const KNOWN_SHEETS = {
 };
 
 async function resolveSpreadsheetId(identifier) {
+  const { drive, clientEmail } = getSheetsClient();
   if (KNOWN_SHEETS[identifier.toLowerCase()]) {
     return KNOWN_SHEETS[identifier.toLowerCase()];
   }
@@ -53,10 +100,11 @@ async function resolveSpreadsheetId(identifier) {
   if (res.data.files && res.data.files.length > 0) {
     return res.data.files[0].id;
   }
-  throw new Error(`Spreadsheet "${identifier}" not found or not shared with ${key.client_email}`);
+  throw new Error(`Spreadsheet "${identifier}" not found or not shared with ${clientEmail}`);
 }
 
 async function listSpreadsheets() {
+  const { sheets, drive } = getSheetsClient();
   const res = await drive.files.list({
     q: "mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false",
     fields: 'files(id, name, modifiedTime)'
@@ -77,6 +125,7 @@ async function listSpreadsheets() {
 }
 
 async function readSheet(sheetIdentifier, tabName, range) {
+  const { sheets } = getSheetsClient();
   const id = await resolveSpreadsheetId(sheetIdentifier);
   const targetRange = tabName ? (range ? `${tabName}!${range}` : tabName) : (range || 'A1:Z100');
   const res = await sheets.spreadsheets.values.get({
@@ -87,6 +136,7 @@ async function readSheet(sheetIdentifier, tabName, range) {
 }
 
 async function writeRange(sheetIdentifier, range, values) {
+  const { sheets } = getSheetsClient();
   const id = await resolveSpreadsheetId(sheetIdentifier);
   const res = await sheets.spreadsheets.values.update({
     spreadsheetId: id,
@@ -98,6 +148,7 @@ async function writeRange(sheetIdentifier, range, values) {
 }
 
 async function appendRows(sheetIdentifier, range, values) {
+  const { sheets } = getSheetsClient();
   const id = await resolveSpreadsheetId(sheetIdentifier);
   const res = await sheets.spreadsheets.values.append({
     spreadsheetId: id,
@@ -110,15 +161,13 @@ async function appendRows(sheetIdentifier, range, values) {
 }
 
 module.exports = {
-  auth,
-  sheets,
-  drive,
+  getSheetsClient,
   listSpreadsheets,
   readSheet,
   writeRange,
   appendRows,
   resolveSpreadsheetId,
-  clientEmail: key.client_email
+  KNOWN_SHEETS
 };
 
 // CLI Execution Support
