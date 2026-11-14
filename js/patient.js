@@ -2728,8 +2728,24 @@ function getPatientLanguageByRace(patient) {
 }
 
 /**
+ * Sanitizes TCA purpose text for customer-facing WhatsApp reminders by removing
+ * specific drug indications, dose notations, and supplement references.
+ */
+function cleanTcaPurposeForWa(purpose, lang = 'English') {
+  if (!purpose) return '';
+  const pStr = String(purpose).trim();
+  if (!pStr) return '';
+  if (/refill\s+due/i.test(pStr) || /\b(mg|tab|capsule|od|bd|tds|sachet)\b/i.test(pStr) || /supplement|suplemen|保健品/i.test(pStr)) {
+    return '';
+  }
+  return pStr;
+}
+
+/**
  * Calculates medication supply countdown and generates natural phrasing
  * informing the patient that their supply is running out / due for refill.
+ * NOTE: Specific medication names and supplement lists are intentionally omitted
+ * to avoid customer confusion or anxiety.
  */
 function getPatientSupplySummary(patient, lang) {
   const meds = Array.isArray(patient.medications) ? patient.medications.filter(m => m && m.name) : [];
@@ -2754,33 +2770,29 @@ function getPatientSupplySummary(patient, lang) {
       }
     });
 
-    const medNamesZh = meds.slice(0, 3).map(m => m.name).join('、') + (meds.length > 3 ? ' 等' : '');
-    const medNamesMy = meds.slice(0, 3).map(m => m.name).join(', ') + (meds.length > 3 ? ' dll.' : '');
-    const medNamesEn = meds.slice(0, 3).map(m => m.name).join(', ') + (meds.length > 3 ? ' etc.' : '');
-
     if (minDaysLeft <= 0) {
       if (lang === 'Chinese') {
-        return `根据我们的配药系统记录，您的常规药物【${medNamesZh}】药量预计已经用完或已到期续药。为保持血压与血糖指标平稳，切勿中断用药。`;
+        return `根据我们的配药系统记录，您的常规慢病用药周期已到期或药量预计已经用完。为保持健康指标平稳，切勿中断用药，建议您尽快安排复诊与续药。`;
       } else if (lang === 'Malay') {
-        return `Berdasarkan rekod sistem pengeluaran ubat kami, baki bekalan ubat rutin anda [${medNamesMy}] dijangka telah habis atau sudah tiba tarikh ulangan (refill). Jangan biarkan rawatan anda terputus demi memastikan kesihatan sentiasa terkawal.`;
+        return `Berdasarkan rekod sistem pengeluaran ubat kami, bekalan ubat rutin anda dijangka telah habis atau sudah tiba tarikh ulangan (refill). Jangan biarkan rawatan anda terputus demi memastikan kesihatan kekal terkawal.`;
       } else {
-        return `Based on our dispensing records, your regular medication supply [${medNamesEn}] is now due for refill or running out. Maintaining consistent medication adherence is vital for your health control.`;
+        return `Based on our dispensing records, your regular medication supply is now due for refill or running out. Maintaining consistent medication adherence is vital for your health control, and we recommend arranging your refill soon.`;
       }
     } else if (minDaysLeft <= 7) {
       if (lang === 'Chinese') {
-        return `根据我们的配药系统记录，您的常规药物【${medNamesZh}】预计大约在 ${minDaysLeft} 天内即将用完。建议您提前安排预约，以确保按时补足药量。`;
+        return `根据我们的配药系统记录，您的常规慢病用药预计大约在 ${minDaysLeft} 天内即将用完。建议您提前安排预约，以确保按时补足药量与进行指标复查。`;
       } else if (lang === 'Malay') {
-        return `Berdasarkan semakan sistem kami, bekalan ubat rutin anda [${medNamesMy}] dijangka akan habis dalam masa lebih kurang ${minDaysLeft} hari lagi. Anda disarankan membuat tempahan awal sebelum ubat habis.`;
+        return `Berdasarkan semakan sistem kami, bekalan ubat rutin anda dijangka akan habis dalam masa lebih kurang ${minDaysLeft} hari lagi. Anda disarankan membuat tempahan awal sebelum bekalan ubat habis.`;
       } else {
-        return `According to our records, your regular medication supply [${medNamesEn}] is estimated to finish in about ${minDaysLeft} day(s). We recommend booking your refill appointment in advance.`;
+        return `According to our records, your regular medication supply is estimated to finish in about ${minDaysLeft} day(s). We recommend booking your refill appointment in advance.`;
       }
     } else {
       if (lang === 'Chinese') {
-        return `根据我们的配药系统记录，您的常规用药【${medNamesZh}】即将需要续药。我们随时为您做好药物准备与健康指标复查。`;
+        return `根据我们的配药系统记录，您的常规慢病用药即将需要进行定期续药与健康随访。我们随时为您做好药物准备与健康指标复查。`;
       } else if (lang === 'Malay') {
-        return `Berdasarkan rekod kami, bekalan ubat rutin anda [${medNamesMy}] akan tiba masa untuk ulangan bekalan seterusnya bersama sesi semakan kesihatan.`;
+        return `Berdasarkan rekod kami, bekalan ubat rutin anda akan tiba masa untuk ulangan bekalan seterusnya bersama sesi semakan kesihatan.`;
       } else {
-        return `Based on our records, your regular medication supply [${medNamesEn}] will soon be due for its next scheduled refill and review.`;
+        return `Based on our records, your regular medication supply will soon be due for its next scheduled refill and review.`;
       }
     }
   }
@@ -2789,21 +2801,21 @@ function getPatientSupplySummary(patient, lang) {
   const encs = Array.isArray(patient.encounters) && patient.encounters.length > 0 ? patient.encounters[0] : null;
   if (encs && (encs.planMedications || encs.planSupplements)) {
     if (lang === 'Chinese') {
-      return `根据您上次来访的健康随访记录，您的日常慢病药物与保健品预计快要用完了。建议您及时回来复查并补充所需用药。`;
+      return `根据您上次来访的健康随访记录，您的日常慢病用药预计快要用完了。建议您及时回来复查并补充所需用药。`;
     } else if (lang === 'Malay') {
-      return `Berdasarkan rekod konsultasi anda sebelum ini, bekalan ubat dan suplemen kesihatan harian anda dijangka akan habis tidak lama lagi. Anda digalakkan datang untuk semakan semula.`;
+      return `Berdasarkan rekod konsultasi anda sebelum ini, bekalan ubat rutin harian anda dijangka akan habis tidak lama lagi. Anda digalakkan datang untuk semakan semula.`;
     } else {
-      return `Based on your recent consultation records, your regular medication and health supplement supply should be finishing soon.`;
+      return `Based on your recent consultation records, your regular medication supply should be finishing soon.`;
     }
   }
 
   // General fallback
   if (lang === 'Chinese') {
-    return `温馨提醒您，根据您的用药周期计算，您的日常药物与健康补充品应该快用完了。建议您提前预约药剂师进行健康指标复查与用药咨询。`;
+    return `温馨提醒您，根据您的用药周期计算，您的日常常规用药应该快用完了。建议您提前预约药剂师进行健康指标复查与用药咨询。`;
   } else if (lang === 'Malay') {
-    return `Peringatan mesra, berdasarkan kitaran rawatan anda, bekalan ubat dan suplemen harian anda mungkin akan habis tidak lama lagi. Anda dialu-alukan membuat temujanji untuk semakan kesihatan.`;
+    return `Peringatan mesra, berdasarkan kitaran rawatan anda, bekalan ubat rutin harian anda mungkin akan habis tidak lama lagi. Anda dialu-alukan membuat temujanji untuk semakan kesihatan.`;
   } else {
-    return `Friendly reminder that based on your supply cycle, your daily medication and wellness supplements should be finishing soon.`;
+    return `Friendly reminder that based on your supply cycle, your daily routine medication should be finishing soon.`;
   }
 }
 
@@ -2888,9 +2900,13 @@ function buildPatientSupplyBookingMessage(patient) {
   const bookingUrl = getPatientSelfBookingUrl(patient);
   const patientName = patient.name || 'Pelanggan';
 
-  const tcaReminderZh = patient.nextTcaDate ? `\n\n*建议复查/续药提醒日期：* ${patient.nextTcaDate}${patient.nextTcaPurpose ? ' (' + patient.nextTcaPurpose + ')' : ''}` : '';
-  const tcaReminderMy = patient.nextTcaDate ? `\n\n*Cadangan Tarikh Temujanji/Ulangan:* ${patient.nextTcaDate}${patient.nextTcaPurpose ? ' (' + patient.nextTcaPurpose + ')' : ''}` : '';
-  const tcaReminderEn = patient.nextTcaDate ? `\n\n*Recommended Follow-up/Refill Date:* ${patient.nextTcaDate}${patient.nextTcaPurpose ? ' (' + patient.nextTcaPurpose + ')' : ''}` : '';
+  const cleanPurposeZh = cleanTcaPurposeForWa(patient.nextTcaPurpose, 'Chinese');
+  const cleanPurposeMy = cleanTcaPurposeForWa(patient.nextTcaPurpose, 'Malay');
+  const cleanPurposeEn = cleanTcaPurposeForWa(patient.nextTcaPurpose, 'English');
+
+  const tcaReminderZh = patient.nextTcaDate ? `\n\n*建议复查/续药提醒日期：* ${patient.nextTcaDate}${cleanPurposeZh ? ' (' + cleanPurposeZh + ')' : ''}` : '';
+  const tcaReminderMy = patient.nextTcaDate ? `\n\n*Cadangan Tarikh Temujanji/Ulangan:* ${patient.nextTcaDate}${cleanPurposeMy ? ' (' + cleanPurposeMy + ')' : ''}` : '';
+  const tcaReminderEn = patient.nextTcaDate ? `\n\n*Recommended Follow-up/Refill Date:* ${patient.nextTcaDate}${cleanPurposeEn ? ' (' + cleanPurposeEn + ')' : ''}` : '';
 
   if (lang === 'Chinese') {
     return `您好 *${patientName}*，这里是 *${branchName}*（${openTime} - ${closeTime}）。\n\n${supplyText}${tcaReminderZh}\n\n为确保您的健康指标控制平稳并避免断药，我们建议您提前安排。\n\n• *您可以直接点击下方专属链接，选择适合您的时间到店面诊，或直接申请1个月慢病续药：*\n${bookingUrl}\n\n如果您有任何用药疑问，或需要我们提前备妥药物，欢迎直接回复此 WhatsApp。\n\nPMG 药剂师团队祝您与家人身体健康！`;
@@ -2899,6 +2915,12 @@ function buildPatientSupplyBookingMessage(patient) {
   } else {
     return `Dear *${patientName}*, warm greetings from *${branchName}* (${openTime} - ${closeTime}).\n\n${supplyText}${tcaReminderEn}\n\nTo ensure your health metrics stay in optimal control and prevent any medication disruption, we recommend planning ahead.\n\n• *You can click your personalized link below to select a convenient appointment time, or request a 1-month refill extension:*\n${bookingUrl}\n\nIf you have any questions or would like us to prepare your medications in advance, feel free to reply directly.\n\nWishing you good health from your PMG Pharmacy team!`;
   }
+}
+
+if (typeof window !== 'undefined') {
+  window.cleanTcaPurposeForWa = cleanTcaPurposeForWa;
+  window.getPatientSupplySummary = getPatientSupplySummary;
+  window.buildPatientSupplyBookingMessage = buildPatientSupplyBookingMessage;
 }
 
 /**
@@ -2941,7 +2963,13 @@ function buildWhatsAppMessage(patient, appointment) {
   const name = patient.name;
   const date = appointment.date;
   const time = appointment.time || '10:00';
-  const purpose = appointment.purpose || 'Follow-up Consultation';
+  let purpose = appointment.purpose || 'Follow-up Consultation';
+  // Strip specific drug indications or supplement terms to prevent patient confusion
+  if (/refill\s+due/i.test(purpose) || /\b(mg|tab|capsule|od|bd|tds|sachet)\b/i.test(purpose) || /supplement|suplemen|保健品/i.test(purpose)) {
+    if (lang === 'Chinese') purpose = '健康咨询与常规续药';
+    else if (lang === 'Malay') purpose = 'Rundingan Kesihatan & Ulangan Ubat';
+    else purpose = 'Health Consultation & Refill';
+  }
   const bookingUrl = typeof getPatientSelfBookingUrl === 'function' ? getPatientSelfBookingUrl(patient) : window.location.href;
 
   if (lang === 'Chinese') {
@@ -11687,9 +11715,9 @@ function approveRefillExtension(patientId, appointmentId) {
   const confirmWa = confirm(`✅ 1-Month Extension Approved!\n\nPatient: ${p.name}\nNew Next TCA Reminder: ${newTcaDateStr}\n\nWould you like to send WhatsApp confirmation to the patient now?`);
   if (confirmWa) {
     const waText = `您好 *${p.name}*，这里是 *PMG Pharmacy (${p.branch})* 药剂关怀团队。\n\n` +
-      `您的常规慢病药物与保健品续药及【顺延 1 个月复诊】申请已审核通过！\n\n` +
+      `您的常规慢病药物续药及【顺延 1 个月复诊】申请已审核通过！\n\n` +
       `• *更新后下一次复诊/随访提醒日期：* ${newTcaDateStr}\n` +
-      `• *常规用药与保健品：* 药剂师已为您备妥常规用药，您可在方便时间前往分店取药。\n\n` +
+      `• *常规用药：* 药剂师已为您备妥常规用药，您可在方便时间前往分店取药。\n\n` +
       `如有任何用药疑问或需要安排送药服务，欢迎随时联系我们。祝您身体健康，生活顺心！`;
 
     const cleanPhone = formatPhoneForWa(p.phone);

@@ -211,6 +211,59 @@ function createBrowserSandbox(fetchImpl) {
     assert(rentalIdx !== -1 && src.slice(rentalIdx, rentalIdx + 250).includes('sanitizePayloadForGoogleCloud('), 'pushRentalsToCloud must sanitize payload');
   });
 
+  test('Patient follow-up and overdue WhatsApp reminders omit medication and supplement lists', () => {
+    const src = fs.readFileSync(path.join(ROOT, 'js', 'patient.js'), 'utf8');
+
+    // Static source checks
+    assert(!src.includes('medNamesZh'), 'medNamesZh must not be present in getPatientSupplySummary');
+    assert(!src.includes('medNamesMy'), 'medNamesMy must not be present in getPatientSupplySummary');
+    assert(!src.includes('medNamesEn'), 'medNamesEn must not be present in getPatientSupplySummary');
+    assert(!src.includes('日常慢病药物与保健品'), 'Supplements must not be mentioned in patient supply summaries');
+    assert(!src.includes('suplemen kesihatan harian'), 'Supplements must not be mentioned in patient supply summaries');
+
+    // Runtime behavioral check for overdue & due-soon reminders
+    const sb = createBrowserSandbox();
+    const scheds = {
+      'Kota Sentosa': { name: 'PMG Pharmacy Kota Sentosa', open: '08:00', close: '17:00', pharmacist: 'William Chai' }
+    };
+    sb.ctx.BRANCH_SCHEDULES = sb.win.BRANCH_SCHEDULES = scheds;
+    sb.ctx.getPharmacistSchedule = sb.win.getPharmacistSchedule = () => null;
+    sb.ctx.normalizeBranchCode = sb.win.normalizeBranchCode = () => 'Kota Sentosa';
+    sb.ctx.getPatientLanguageByRace = sb.win.getPatientLanguageByRace = () => 'Chinese';
+    sb.ctx.URLSearchParams = sb.win.URLSearchParams = URLSearchParams;
+    sb.ctx.location = sb.win.location = { origin: 'https://pmg.example', pathname: '/patient/index.html' };
+
+    const startIdx = src.indexOf('function cleanTcaPurposeForWa');
+    const endIdx = src.indexOf('function sendPatientBookingWhatsApp');
+    assert(startIdx !== -1 && endIdx > startIdx, 'Could not locate WhatsApp message builders');
+    vm.runInContext(src.slice(startIdx, endIdx), sb.ctx);
+
+    const overduePatient = {
+      name: 'Tan Ah Kow',
+      branch: 'KS01',
+      nextTcaDate: '2026-10-01',
+      nextTcaPurpose: 'Refill Due: Metformin 500mg, Omma apple cider',
+      medications: [{ name: 'Metformin 500mg', nextRefillDate: '2026-10-01' }],
+      supplements: [{ name: 'Omma apple cider' }]
+    };
+
+    const overdueMsgZh = sb.win.buildPatientSupplyBookingMessage(overduePatient);
+    assert(!overdueMsgZh.includes('Metformin'), 'Overdue Chinese WhatsApp message must not leak medication name');
+    assert(!overdueMsgZh.includes('500mg'), 'Overdue Chinese WhatsApp message must not leak dosage');
+    assert(!overdueMsgZh.includes('apple cider'), 'Overdue Chinese WhatsApp message must not leak supplement name');
+    assert(!overdueMsgZh.includes('保健品'), 'Overdue Chinese WhatsApp message must not mention supplements');
+
+    sb.ctx.getPatientLanguageByRace = sb.win.getPatientLanguageByRace = () => 'English';
+    const overdueMsgEn = sb.win.buildPatientSupplyBookingMessage(overduePatient);
+    assert(!overdueMsgEn.includes('Metformin'), 'Overdue English WhatsApp message must not leak medication name');
+    assert(!overdueMsgEn.includes('supplement'), 'Overdue English WhatsApp message must not mention supplements');
+
+    sb.ctx.getPatientLanguageByRace = sb.win.getPatientLanguageByRace = () => 'Malay';
+    const overdueMsgMs = sb.win.buildPatientSupplyBookingMessage(overduePatient);
+    assert(!overdueMsgMs.includes('Metformin'), 'Overdue Malay WhatsApp message must not leak medication name');
+    assert(!overdueMsgMs.includes('suplemen'), 'Overdue Malay WhatsApp message must not mention supplements');
+  });
+
   // 4. Promo Broadcast & Smart Inventory Google Cloud Vault Tests
   await testAsync('Promo Broadcast Cloud Vault exports & push/pull logic (js/promo-broadcast.js & promo/promo.js)', async () => {
     for (const rel of ['js/promo-broadcast.js', 'promo/promo.js']) {
