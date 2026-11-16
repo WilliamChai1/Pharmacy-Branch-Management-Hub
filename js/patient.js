@@ -2348,6 +2348,11 @@ function renderTodayQueue(items) {
               <i class="fa-solid fa-check"></i> Done
             </button>
           `}
+          <button type="button" onclick="openRescheduleModal('${p.id}', '${apt.id}')"
+            class="bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 transition mr-1 shadow-2xs"
+            title="Reschedule appointment date or time slot (e.g. if customer booked the wrong time)">
+            <i class="fa-solid fa-calendar-pen text-indigo-600"></i> Reschedule
+          </button>
           <a href="${waUrl}" target="_blank" rel="noopener"
             class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 transition mr-1"
             title="Send WhatsApp Reminder">
@@ -2424,6 +2429,11 @@ function renderUpcomingQueue(items) {
               <i class="fa-solid fa-check"></i> Done
             </button>
           `}
+          <button type="button" onclick="openRescheduleModal('${p.id}', '${apt.id}')"
+            class="bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 transition mr-1 shadow-2xs"
+            title="Reschedule appointment date or time slot (e.g. if customer booked the wrong time)">
+            <i class="fa-solid fa-calendar-pen text-indigo-600"></i> Reschedule
+          </button>
           <a href="${waUrl}" target="_blank" rel="noopener"
             class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 transition"
             title="Send WhatsApp Reminder">
@@ -2479,6 +2489,13 @@ function renderOverdueQueue(items) {
           <span class="bg-rose-50 text-rose-700 text-xs font-bold px-2 py-0.5 rounded">Requires Follow-up</span>
         </td>
         <td class="px-4 py-3 text-right whitespace-nowrap">
+          ${apt ? `
+            <button type="button" onclick="openRescheduleModal('${p.id}', '${apt.id}')"
+              class="bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 transition mr-1 shadow-2xs"
+              title="Reschedule missed appointment (e.g. customer requested another slot)">
+              <i class="fa-solid fa-calendar-pen text-indigo-600"></i> Reschedule
+            </button>
+          ` : ''}
           <button onclick="clearOverdueRecord('${p.id}', '${cleanRecordId}', '${item.type}')"
             class="bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 text-xs font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 transition mr-1"
             title="Mark as Completed / Clear from Overdue">
@@ -3805,6 +3822,14 @@ function setReschedQuickTime(timeStr) {
   }
 }
 
+function setReschedReason(reasonText) {
+  const el = document.getElementById('reschedReason');
+  if (el) {
+    el.value = reasonText;
+    updateRescheduleMessagePreview();
+  }
+}
+
 function buildRescheduleWhatsAppMessage(patient, originalApt, newDate, newTime, newPharm, reason, lang) {
   const patientName = patient?.name || 'Pelanggan';
   let rawBranch = patient?.branch || 'Kota Sentosa';
@@ -3817,13 +3842,23 @@ function buildRescheduleWhatsAppMessage(patient, originalApt, newDate, newTime, 
 
   const origSlot = originalApt ? `${originalApt.date} (${originalApt.time || '10:00'})` : '原定时间';
   const reasonText = reason ? reason.trim() : '';
+  const isCustomerReq = /(customer|client|wrong|顾客|客户|选错|误选|改期|salah|pelanggan|request|minta)/i.test(reasonText);
 
   if (lang === 'Chinese') {
+    if (isCustomerReq) {
+      return `您好 *${patientName}*，这里是 *PMG Pharmacy (${branchName})*。\n\n根据您的改期要求/时间调整确认${reasonText ? '（' + reasonText + '）' : ''}，我们已为您将原定于 *${origSlot}* 的预约更新为：\n\n• *新预约日期：* ${newDate}\n• *新预约时间：* ${newTime}\n• *主理药剂师：* ${dutyPharm}\n\n如以上新时间无误，请回复确认即可。\n若您后续还需要调整时间，也可以随时点击专属预约链接进行安排：\n${bookingUrl}\n\n感谢您的配合！祝您身体健康！\n*PMG Pharmacy*`;
+    }
     return `您好 *${patientName}*，这里是 *PMG Pharmacy (${branchName})*。\n\n由于药剂师执勤排班调动（Shift Adjustment）${reasonText ? '（' + reasonText + '）' : ''}，您原定于 *${origSlot}* 的咨询/续药预约需要改期。\n\n现为您调整安排至：\n• *新预约日期：* ${newDate}\n• *新预约时间：* ${newTime}\n• *主理药剂师：* ${dutyPharm}\n\n如以上新时间方便您，请回复确认即可。\n若此时间对您不便，您也可以点击以下专属预约链接，自行选择最方便您的日期与时间：\n${bookingUrl}\n\n给您带来不便，我们深表歉意！感谢您的理解与支持。\n祝您身体健康！\n*PMG Pharmacy*`;
   } else if (lang === 'Malay') {
+    if (isCustomerReq) {
+      return `Salam sejahtera *${patientName}*, kami dari *PMG Pharmacy (${branchName})*.\n\nBerdasarkan permintaan penukaran masa temujanji anda${reasonText ? ' (' + reasonText + ')' : ''}, kami telah mengemas kini temujanji anda yang asal pada *${origSlot}* kepada:\n\n• *Tarikh Baharu:* ${newDate}\n• *Masa Baharu:* ${newTime}\n• *Ahli Farmasi Bertugas:* ${dutyPharm}\n\nSila balas mesej ini untuk pengesahan sekiranya masa baharu ini tepat.\nJika anda memerlukan sebarang perubahan lagi, anda juga boleh menggunakan pautan tempahan anda di sini:\n${bookingUrl}\n\nTerima kasih atas kerjasama anda!\nSemoga sihat sejahtera,\n*PMG Pharmacy*`;
+    }
     return `Salam sejahtera *${patientName}*, kami dari *PMG Pharmacy (${branchName})*.\n\nHarap maklum bahawa disebabkan perubahan jadual syif ahli farmasi kami (Shift Adjustment)${reasonText ? ' (' + reasonText + ')' : ''}, temujanji rundingan kesihatan/ulangan ubat anda yang asal pada *${origSlot}* perlu dijadualkan semula.\n\nKami cadangkan tarikh & masa baharu seperti berikut:\n• *Tarikh Baharu:* ${newDate}\n• *Masa Baharu:* ${newTime}\n• *Ahli Farmasi Bertugas:* ${dutyPharm}\n\nSekiranya masa ini sesuai, sila balas mesej ini untuk pengesahan.\nJika masa ini kurang sesuai, anda juga boleh klik pautan khas di bawah untuk memilih sendiri tarikh & masa yang paling mudah untuk anda:\n${bookingUrl}\n\nKami memohon maaf atas sebarang kesulitan. Terima kasih atas pemahaman anda!\nSemoga sihat sejahtera,\n*PMG Pharmacy*`;
   } else {
     // English
+    if (isCustomerReq) {
+      return `Hello *${patientName}*, this is *PMG Pharmacy (${branchName})*.\n\nPer your request to adjust your appointment${reasonText ? ' (' + reasonText + ')' : ''}, we have updated your booking originally scheduled on *${origSlot}* to:\n\n• *New Date:* ${newDate}\n• *New Time:* ${newTime}\n• *Duty Pharmacist:* ${dutyPharm}\n\nPlease reply to confirm if this updated time suits you.\nIf you ever need to reschedule again, you can also easily select a time slot using your personal booking link below:\n${bookingUrl}\n\nThank you for choosing PMG Pharmacy!\nBest regards,\n*PMG Pharmacy*`;
+    }
     return `Hello *${patientName}*, this is *PMG Pharmacy (${branchName})*.\n\nPlease be informed that due to a pharmacist duty shift adjustment${reasonText ? ' (' + reasonText + ')' : ''}, your consultation/refill appointment originally scheduled on *${origSlot}* needs to be rescheduled.\n\nWe have updated your tentative slot to:\n• *New Date:* ${newDate}\n• *New Time:* ${newTime}\n• *Duty Pharmacist:* ${dutyPharm}\n\nIf this updated time works for you, simply reply to confirm.\nIf you prefer a different slot, you can easily choose a convenient date and time using your personal booking link below:\n${bookingUrl}\n\nWe sincerely apologize for any inconvenience caused and appreciate your kind understanding.\nBest regards,\n*PMG Pharmacy*`;
   }
 }
@@ -3892,9 +3927,38 @@ function saveReschedule(sendWhatsApp = false) {
   if (apt.status !== 'Completed') {
     apt.status = 'Scheduled';
   }
+  apt.statusUpdatedAt = new Date().toISOString();
 
   // Persist patient record
   savePatientsData();
+
+  // Also update pmg_customer_bookings in localStorage so local bookings stay consistently updated
+  try {
+    const custBookings = JSON.parse(localStorage.getItem('pmg_customer_bookings') || '[]');
+    let cbChanged = false;
+    custBookings.forEach(cb => {
+      if (cb.ref === aptId || cb.id === aptId) {
+        cb.status = apt.status;
+        cb.date = newDate;
+        cb.time = newTime;
+        if (newPharm) cb.pharmacist = newPharm;
+        cb.statusUpdatedAt = apt.statusUpdatedAt;
+        cbChanged = true;
+      }
+    });
+    if (cbChanged) {
+      localStorage.setItem('pmg_customer_bookings', JSON.stringify(custBookings));
+    }
+  } catch (e) {
+    console.warn('[saveReschedule] Could not update pmg_customer_bookings:', e);
+  }
+
+  // Push status and new date/time update to cloud in background so other devices stay in sync
+  if (typeof updateAppointmentStatusInCloud === 'function') {
+    updateAppointmentStatusInCloud(aptId, apt.status, p.branch, apt, p).catch(err => {
+      console.warn('[saveReschedule] Cloud status update failed:', err);
+    });
+  }
 
   if (sendWhatsApp) {
     let cleanPhone = (p.phone || '').replace(/\D/g, '');
@@ -3920,6 +3984,17 @@ function saveReschedule(sendWhatsApp = false) {
 
 function whatsappRescheduleCustomer(patientId, appointmentId) {
   openRescheduleModal(patientId, appointmentId, true);
+}
+
+if (typeof window !== 'undefined') {
+  window.openRescheduleModal = openRescheduleModal;
+  window.closeRescheduleModal = closeRescheduleModal;
+  window.setReschedQuickTime = setReschedQuickTime;
+  window.setReschedReason = setReschedReason;
+  window.buildRescheduleWhatsAppMessage = buildRescheduleWhatsAppMessage;
+  window.updateRescheduleMessagePreview = updateRescheduleMessagePreview;
+  window.saveReschedule = saveReschedule;
+  window.whatsappRescheduleCustomer = whatsappRescheduleCustomer;
 }
 
 // ─── MALAYSIAN IC AUTO AGE & GENDER PARSER ──────────────────────────────────
@@ -7557,6 +7632,11 @@ function renderProfileApts(p) {
               <i class="fa-solid fa-check text-sm"></i> Approve (+1 Mo)
             </button>
           ` : (apt.status === 'Scheduled' ? `
+            <button onclick="openRescheduleModal('${p.id}', '${apt.id}')"
+              class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold px-2.5 py-1 rounded-lg inline-flex items-center gap-1 mr-2 transition"
+              title="Reschedule appointment date or time slot">
+              <i class="fa-solid fa-calendar-pen text-indigo-600 text-[11px]"></i> Reschedule
+            </button>
             <button onclick="markAppointmentStatus('${p.id}', '${apt.id}', 'Completed')"
               class="text-green-700 hover:underline font-bold mr-3 text-xs">Mark Done</button>
             <button onclick="markAppointmentStatus('${p.id}', '${apt.id}', 'Missed')"

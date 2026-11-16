@@ -1934,8 +1934,22 @@ Date visit: 06.01.2026
         <!-- Shift Change / Reschedule Reason -->
         <div>
           <label class="block font-bold text-gray-700 mb-1">Reason for Rescheduling / Shift Change</label>
+          <div class="flex flex-wrap gap-1.5 mb-1.5">
+            <button type="button" onclick="setReschedReason('Customer booked wrong time / 顾客误选时段')"
+              class="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded text-[11px] font-semibold border border-indigo-200 transition">
+              <i class="fa-solid fa-clock-rotate-left text-[10px]"></i> Customer booked wrong time
+            </button>
+            <button type="button" onclick="setReschedReason('Customer requested time change / 顾客改期要求')"
+              class="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded text-[11px] font-semibold border border-indigo-200 transition">
+              <i class="fa-solid fa-user-pen text-[10px]"></i> Customer requested change
+            </button>
+            <button type="button" onclick="setReschedReason('Pharmacist duty shift changed / 药剂师排班调动')"
+              class="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded text-[11px] font-semibold border border-gray-200 transition">
+              <i class="fa-solid fa-user-doctor text-[10px]"></i> Shift changed
+            </button>
+          </div>
           <input type="text" id="reschedReason" oninput="updateRescheduleMessagePreview()"
-            placeholder="e.g. Pharmacist duty shift changed, Public holiday adjustment, Emergency duty cover"
+            placeholder="e.g. Customer booked wrong time, Customer requested change, Shift adjustment"
             class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none">
         </div>
 

@@ -264,6 +264,54 @@ function createBrowserSandbox(fetchImpl) {
     assert(!overdueMsgMs.includes('suplemen'), 'Overdue Malay WhatsApp message must not mention supplements');
   });
 
+  test('Patient appointment reschedule actions in Upcoming/Today queues & customer wrong-time wording', () => {
+    const patientSrc = fs.readFileSync(path.join(ROOT, 'js', 'patient.js'), 'utf8');
+    const htmlSrc = fs.readFileSync(path.join(ROOT, 'patient', 'index.html'), 'utf8');
+
+    // UI & button presence checks
+    assert(htmlSrc.includes('setReschedReason(\'Customer booked wrong time'), 'patient/index.html must have Customer booked wrong time button');
+    assert(patientSrc.includes('renderUpcomingQueue') && patientSrc.includes('openRescheduleModal(\'${p.id}\', \'${apt.id}\')'), 'Upcoming queue must have Reschedule button');
+    assert(patientSrc.includes('renderTodayQueue') && patientSrc.includes('openRescheduleModal(\'${p.id}\', \'${apt.id}\')'), 'Today queue must have Reschedule button');
+    assert(patientSrc.includes('renderProfileApts') && patientSrc.includes('openRescheduleModal(\'${p.id}\', \'${apt.id}\')'), 'Profile appointments must have Reschedule button');
+
+    // Runtime behavior for customer wrong-time reschedule messages
+    const sb = createBrowserSandbox();
+    const scheds = {
+      'Kota Sentosa': { name: 'PMG Pharmacy Kota Sentosa', open: '08:00', close: '17:00', pharmacist: 'William Chai Yee Sian (Pharmacist)' }
+    };
+    sb.ctx.BRANCH_SCHEDULES = sb.win.BRANCH_SCHEDULES = scheds;
+    sb.ctx.getPharmacistSchedule = sb.win.getPharmacistSchedule = () => null;
+    sb.ctx.normalizeBranchCode = sb.win.normalizeBranchCode = () => 'Kota Sentosa';
+    sb.ctx.normalizePharmacistName = sb.win.normalizePharmacistName = (n) => n || 'William Chai Yee Sian (Pharmacist)';
+    sb.ctx.getPatientSelfBookingUrl = sb.win.getPatientSelfBookingUrl = () => 'https://pmg.example/booking';
+
+    const startIdx = patientSrc.indexOf('function buildRescheduleWhatsAppMessage');
+    const endIdx = patientSrc.indexOf('function updateRescheduleMessagePreview');
+    assert(startIdx !== -1 && endIdx > startIdx, 'Could not locate buildRescheduleWhatsAppMessage');
+    vm.runInContext(patientSrc.slice(startIdx, endIdx), sb.ctx);
+
+    const testPatient = { name: 'Ahmad bin Ali', branch: 'KS01' };
+    const originalApt = { date: '2026-03-25', time: '14:00', pharmacist: 'William Chai Yee Sian (Pharmacist)' };
+    const buildMsg = sb.win.buildRescheduleWhatsAppMessage || sb.ctx.buildRescheduleWhatsAppMessage;
+    assert.strictEqual(typeof buildMsg, 'function', 'buildRescheduleWhatsAppMessage must be a function');
+
+    // 1. Customer wrong time in Chinese
+    const zhMsgWrong = buildMsg(testPatient, originalApt, '2026-03-26', '16:00', 'William Chai', 'Customer booked wrong time / 顾客误选时段', 'Chinese');
+    assert(zhMsgWrong.includes('根据您的改期要求/时间调整确认'), 'Customer wrong-time Chinese message must reflect customer request');
+    assert(!zhMsgWrong.includes('由于药剂师执勤排班调动'), 'Customer wrong-time message must not falsely claim duty shift adjustment');
+    assert(zhMsgWrong.includes('2026-03-26'), 'New date must be present');
+    assert(zhMsgWrong.includes('16:00'), 'New time must be present');
+
+    // 2. Customer wrong time in English
+    const enMsgWrong = buildMsg(testPatient, originalApt, '2026-03-26', '16:00', 'William Chai', 'Customer requested time change', 'English');
+    assert(enMsgWrong.includes('Per your request to adjust your appointment'), 'Customer wrong-time English message must reflect customer request');
+    assert(!enMsgWrong.includes('due to a pharmacist duty shift adjustment'), 'Customer wrong-time English message must not falsely claim shift adjustment');
+
+    // 3. Shift adjustment fallback
+    const zhMsgShift = buildMsg(testPatient, originalApt, '2026-03-26', '16:00', 'William Chai', 'Pharmacist duty shift changed', 'Chinese');
+    assert(zhMsgShift.includes('由于药剂师执勤排班调动'), 'Shift change message should explain shift adjustment');
+  });
+
   // 4. Promo Broadcast & Smart Inventory Google Cloud Vault Tests
   await testAsync('Promo Broadcast Cloud Vault exports & push/pull logic (js/promo-broadcast.js & promo/promo.js)', async () => {
     for (const rel of ['js/promo-broadcast.js', 'promo/promo.js']) {
