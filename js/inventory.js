@@ -43,8 +43,12 @@ function loadInventoryCloudPrefs() {
           paramSafetyDays: 'safetyDays',
           paramTargetDays: 'targetDays'
         };
-        if (el && p && p[keyMap[id]]) el.value = p[keyMap[id]];
+        if (el && p && p[keyMap[id]] !== undefined) el.value = p[keyMap[id]];
       });
+      const strictEl = document.getElementById('paramZeroSalesStrict');
+      if (strictEl && p && typeof p.zeroSalesStrict === 'boolean') {
+        strictEl.checked = p.zeroSalesStrict;
+      }
     }
   } catch (_) {}
 }
@@ -130,8 +134,12 @@ async function syncInventoryConfigWithGoogleCloud(silent = true) {
           ['paramSalesWindow', 'paramLeadTime', 'paramSafetyDays', 'paramTargetDays'].forEach(id => {
             const el = document.getElementById(id);
             const k = id === 'paramSalesWindow' ? 'salesWindow' : id === 'paramLeadTime' ? 'leadTime' : id === 'paramSafetyDays' ? 'safetyDays' : 'targetDays';
-            if (el && cloudCfg.params[k]) el.value = cloudCfg.params[k];
+            if (el && cloudCfg.params[k] !== undefined) el.value = cloudCfg.params[k];
           });
+          if (typeof cloudCfg.params.zeroSalesStrict === 'boolean') {
+            const strictEl = document.getElementById('paramZeroSalesStrict');
+            if (strictEl) strictEl.checked = cloudCfg.params.zeroSalesStrict;
+          }
         }
       }
     }
@@ -577,12 +585,14 @@ function detectItemSalesTrend(row, baselineAds, rowUom) {
   const mLatest = parseFloat(resolveCol(row, ['Sales_Latest', 'Latest Qty', 'Qty_Latest', 'Current Month Qty'])) || 0;
 
   if (m1 > 0 || mLatest > 0) {
-    const prior = m1 || m2 || 1;
-    const diffPct = ((mLatest - prior) / prior) * 100;
+    const prior = m1 || m2 || 0;
+    const diffPct = prior > 0 ? ((mLatest - prior) / prior) * 100 : (mLatest > 0 ? 100 : 0);
     return {
       direction: diffPct >= 10 ? 'UP' : (diffPct <= -10 ? 'DOWN' : 'FLAT'),
       momentumPct: diffPct,
       unconstrainedAds: prior > 0 ? (prior / 30) : baselineAds,
+      prevQty: prior,
+      latestQty: mLatest,
       isZeroRecent: mLatest === 0,
       uom: pack.orderUom
     };
@@ -634,7 +644,9 @@ function detectItemSalesTrend(row, baselineAds, rowUom) {
     return {
       direction: 'ZERO',
       momentumPct: -100,
-      unconstrainedAds: 0.5,
+      unconstrainedAds: 0,
+      prevQty: 0,
+      latestQty: 0,
       isZeroRecent: true,
       uom: pack.orderUom
     };
@@ -644,6 +656,8 @@ function detectItemSalesTrend(row, baselineAds, rowUom) {
     direction: 'FLAT',
     momentumPct: 0,
     unconstrainedAds: baselineAds,
+    prevQty: salesQty,
+    latestQty: salesQty,
     isZeroRecent: false,
     uom: pack.orderUom
   };
@@ -651,11 +665,13 @@ function detectItemSalesTrend(row, baselineAds, rowUom) {
 
 // ─── PARAMETERS (user-editable) ──────────────────────────────────────────────
 function getParams() {
+  const strictEl = document.getElementById('paramZeroSalesStrict');
   return {
-    salesWindow: parseInt(document.getElementById('paramSalesWindow')?.value, 10) || 180, // Default 180 days (6 months) as configured in UI
-    leadTime:    parseInt(document.getElementById('paramLeadTime')?.value,    10) || 7,
-    safetyDays:  parseInt(document.getElementById('paramSafetyDays')?.value,  10) || 30,
-    targetDays:  parseInt(document.getElementById('paramTargetDays')?.value,  10) || 60, // HQ Standard: 2.0 months (60 days buffer)
+    salesWindow:     parseInt(document.getElementById('paramSalesWindow')?.value, 10) || 180, // Default 180 days (6 months) as configured in UI
+    leadTime:        parseInt(document.getElementById('paramLeadTime')?.value,    10) || 7,
+    safetyDays:      parseInt(document.getElementById('paramSafetyDays')?.value,  10) || 30,
+    targetDays:      parseInt(document.getElementById('paramTargetDays')?.value,  10) || 60, // HQ Standard: 2.0 months (60 days buffer)
+    zeroSalesStrict: strictEl ? strictEl.checked : true, // Strict guard active by default
   };
 }
 
@@ -696,6 +712,14 @@ function initInventory() {
       if (inventoryData.length) recalcInventory();
     });
   });
+
+  const strictCheck = document.getElementById('paramZeroSalesStrict');
+  if (strictCheck) {
+    strictCheck.addEventListener('change', () => {
+      saveInventoryParamsToLocal();
+      if (inventoryData.length) recalcInventory();
+    });
+  }
 
   const searchEl = document.getElementById('invSearch');
   if (searchEl) searchEl.addEventListener('input', renderInventoryGrid);
@@ -961,20 +985,51 @@ function recalcInventory() {
         // ─── RULE 3: SMART STOCKOUT (PHANTOM DROP) VS TRUE CONTRACTION ───────
         else if (trend.direction === 'DOWN' || baselineAds === 0 || trend.isZeroRecent || trend.direction === 'ZERO') {
           if (soh <= 0) {
-            // RULE 3A: PHANTOM DROP / OOS MISSED ORDERING
-            // Demand did not vanish; shelf was empty!
-            effectiveAds = Math.max(trend.unconstrainedAds || 0, baselineAds, 0.5);
-            const rop = effectiveAds * (p.leadTime + p.safetyDays);
-            const targetMax = effectiveAds * targetDays;
-            suggestedOrder = (ip <= rop && isActive) ? Math.ceil(targetMax - ip) : 0;
-            // CRITICAL USER REQUIREMENT: Suggest at least 1 unit of Order UOM!
-            if (isActive && suggestedOrder < 1) {
-              suggestedOrder = 1;
+            // Check whether item has verified prior demand
+            const hasVerifiedPriorDemand = (trend && typeof trend.prevQty === 'number' && trend.prevQty > 0) ||
+                                           (baselineAds > 0) ||
+                                           (salesQty > 0);
+
+            if (!hasVerifiedPriorDemand) {
+              if (p.zeroSalesStrict !== false) {
+                // Strict Zero-Demand Guard: No past sales & No current stock -> Suppress reorders to prevent aged dead stock
+                suggestedOrder = 0;
+                effectiveAds = 0;
+                ruleApplied = 'RULE_3_ZERO_DEMAND';
+                badge = '⏸️ ZERO DEMAND (No Order)';
+                badgeColor = 'bg-slate-100 text-slate-600 border-slate-200';
+                reason = 'Sales quantity is 0 with 0 Quantity On Hand and no verified prior demand. Automated reorder suppressed to prevent dead stock accumulation.';
+              } else {
+                // Pharmacist manually unticked Strict Guard -> Allow 1 starter trial unit
+                effectiveAds = 0.05;
+                suggestedOrder = isActive ? 1 : 0;
+                ruleApplied = 'RULE_3A_SAMPLE_STARTER';
+                badge = `⚠️ ZERO DEMAND TRIAL (Min 1 ${uom})`;
+                badgeColor = 'bg-amber-100 text-amber-900 border-amber-300';
+                reason = `Sales quantity is 0 and SOH is 0. Strict zero-demand guard disabled; ordering 1 ${uom} starter unit for trial display.`;
+              }
+            } else {
+              // RULE 3A: VERIFIED OOS RECOVERY (Shelf was empty, but prior demand is proven)
+              const priorDemandAds = (trend && trend.unconstrainedAds > 0)
+                ? trend.unconstrainedAds
+                : (trend && typeof trend.prevQty === 'number' && trend.prevQty > 0)
+                  ? (trend.prevQty / 30)
+                  : baselineAds;
+
+              // Damped recovery run-rate (50% buffer recovery test)
+              effectiveAds = Math.max(0.05, priorDemandAds * 0.5);
+              const recoveryTargetDays = Math.min(targetDays, 30); // Cap at 30 days buffer max (1-month recovery test)
+              const rop = effectiveAds * (p.leadTime + p.safetyDays);
+              const targetMax = effectiveAds * recoveryTargetDays;
+              suggestedOrder = (ip <= rop && isActive) ? Math.max(1, Math.ceil(targetMax - ip)) : 0;
+              ruleApplied = 'RULE_3A_VERIFIED_OOS';
+              const priorSoldText = (trend && typeof trend.prevQty === 'number' && trend.prevQty > 0)
+                ? `${Math.round(trend.prevQty)} Prior Sold`
+                : `${salesQty} Window Sold`;
+              badge = `⚠️ VERIFIED OOS RECOVERY (${priorSoldText})`;
+              badgeColor = 'bg-amber-100 text-amber-900 border-amber-300';
+              reason = `Quantity On Hand is 0, but verified prior sales were documented (${priorSoldText}). Restocking conservatively at 1-month recovery rate (${effectiveAds.toFixed(2)} ${uom}/day) to restore shelf availability without risk of overstocking.`;
             }
-            ruleApplied = 'RULE_3A_PHANTOM_DROP';
-            badge = `⚠️ OOS PHANTOM DROP (Min 1 ${uom})`;
-            badgeColor = 'bg-amber-100 text-amber-900 border-amber-300';
-            reason = `Quantity On Hand is 0 with zero/contracted sales. Zero sales caused by stockout / missed ordering, not lack of demand. Ordering min 1 ${uom} to test replenishment and restore shelf availability.`;
           } else {
             // RULE 3B: TRUE CONTRACTION (Stock was available, but demand fell)
             const decayedAds = Math.max(0.01, baselineAds * Math.max(0.4, 1 - Math.abs(trend.momentumPct || 25) / 100));
@@ -1031,6 +1086,7 @@ function recalcInventory() {
         packDisplayTag: packSpec.displayTag,
         unitType: packSpec.unitType,
         ads: +effectiveAds.toFixed(3),
+        effectiveAds: +effectiveAds.toFixed(3),
         baselineAds: +baselineAds.toFixed(3),
         ip,
         rop: +ropFinal.toFixed(1),
@@ -1131,7 +1187,7 @@ function updateInventoryKPIs() {
   const totalUnits  = inventoryGrid.reduce((s, r) => s + (r.approvedQty || 0), 0);
   const agingLocked = inventoryGrid.filter(r => r.ruleApplied === 'RULE_1_AGING_LOCKED').length;
   const momentum    = inventoryGrid.filter(r => r.ruleApplied === 'RULE_2_MOMENTUM_BOOST').length;
-  const stockout    = inventoryGrid.filter(r => r.ruleApplied === 'RULE_3A_PHANTOM_DROP').length;
+  const stockout    = inventoryGrid.filter(r => r.ruleApplied === 'RULE_3A_PHANTOM_DROP' || r.ruleApplied === 'RULE_3A_VERIFIED_OOS' || r.ruleApplied === 'RULE_3A_SAMPLE_STARTER').length;
 
   setText('kpiTotalSKUs',   totalSKUs);
   setText('kpiToReorder',   toReorder);
@@ -1211,7 +1267,7 @@ function renderInventoryGrid() {
     // Filter pill logic
     if (invActiveFilterPill === 'REORDER' && row.approvedQty === 0 && row.suggestedOrder === 0) return false;
     if (invActiveFilterPill === 'MOMENTUM' && row.ruleApplied !== 'RULE_2_MOMENTUM_BOOST') return false;
-    if (invActiveFilterPill === 'STOCKOUT' && row.ruleApplied !== 'RULE_3A_PHANTOM_DROP') return false;
+    if (invActiveFilterPill === 'STOCKOUT' && row.ruleApplied !== 'RULE_3A_PHANTOM_DROP' && row.ruleApplied !== 'RULE_3A_VERIFIED_OOS' && row.ruleApplied !== 'RULE_3A_SAMPLE_STARTER') return false;
     if (invActiveFilterPill === 'AGING_LOCKED' && row.ruleApplied !== 'RULE_1_AGING_LOCKED') return false;
     if (invActiveFilterPill === 'SURPLUS' && row.ruleApplied !== 'RULE_3B_SURPLUS_HALT') return false;
 

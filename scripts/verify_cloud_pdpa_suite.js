@@ -59,6 +59,7 @@ function createBrowserSandbox(fetchImpl) {
     textContent: '',
     innerHTML: '',
     value: '',
+    checked: false,
     disabled: false,
     classList: {
       add: () => {},
@@ -646,6 +647,71 @@ function createBrowserSandbox(fetchImpl) {
     assert.strictEqual(checkResult.childBlocked, false, 'Deleting a relative must not tombstone caretaker phone number for child patient');
     assert.strictEqual(checkResult.hasGrandpa, true, 'Grandpa Lim booking should have its own patient record');
     assert.strictEqual(checkResult.hasBaby, true, 'Baby Lim booking should have its own separate patient record');
+  });
+
+  // 11. Smart Inventory Engine Zero-Demand Guard vs Verified OOS Damped Recovery
+  test('Smart Inventory Engine suppresses reorders for 0 sales & 0 SOH without demand, and applies damped recovery for verified OOS', () => {
+    const { ctx, doc } = createBrowserSandbox();
+    const invSrc = fs.readFileSync(path.join(ROOT, 'js', 'inventory.js'), 'utf8');
+
+    // Set parameter inputs in mock DOM
+    doc.getElementById('paramSalesWindow').value = '180';
+    doc.getElementById('paramLeadTime').value = '7';
+    doc.getElementById('paramSafetyDays').value = '30';
+    doc.getElementById('paramTargetDays').value = '60';
+    doc.getElementById('paramZeroSalesStrict').checked = true;
+
+    vm.runInContext(invSrc, ctx);
+
+    // Scenario A: Unverified Zero Sales & Zero SOH with strict guard ON (User's reported 30-unit bug)
+    const deadStockRow = {
+      'Item Code': 'DEAD-SKU-001',
+      'Description': 'Discontinued Vitamin C 100s',
+      'Preferred Vendor': 'TEST_VENDOR',
+      'Quantity On Hand': '0',
+      'Sales Qty': '0',
+      'Order UOM': 'BOT',
+      'Active': 'Active'
+    };
+
+    ctx.window.setInventoryData([deadStockRow]);
+    ctx.window.recalcInventory();
+    const gridA = ctx.window.getInventoryGrid();
+    assert.strictEqual(gridA.length, 1, 'Inventory grid should have 1 item');
+    assert.strictEqual(gridA[0].suggestedOrder, 0, 'Zero-demand SKU with 0 sales and 0 SOH must NOT generate 30 units (must be 0)');
+    assert.strictEqual(gridA[0].effectiveAds, 0, 'Effective ADS for zero-demand SKU must be 0');
+    assert.strictEqual(gridA[0].ruleApplied, 'RULE_3_ZERO_DEMAND', 'Rule applied should be RULE_3_ZERO_DEMAND');
+
+    // Scenario B: Pharmacist disables Strict Guard (allows 1 starter trial unit)
+    doc.getElementById('paramZeroSalesStrict').checked = false;
+    ctx.window.recalcInventory();
+    const gridB = ctx.window.getInventoryGrid();
+    assert.strictEqual(gridB[0].suggestedOrder, 1, 'Disabling strict guard allows trial starter display of 1 unit');
+    assert.strictEqual(gridB[0].ruleApplied, 'RULE_3A_SAMPLE_STARTER', 'Rule applied should be RULE_3A_SAMPLE_STARTER');
+
+    // Scenario C: True Out-of-Stock (Verified prior demand with multi-month sales)
+    doc.getElementById('paramZeroSalesStrict').checked = true;
+    const verifiedOosRow = {
+      'Item Code': 'AMLODIPINE-5MG',
+      'Description': 'Amlodipine 5mg Tablet 100s',
+      'Preferred Vendor': 'DUOPHARMA',
+      'Quantity On Hand': '0',
+      'Sales Qty': '0',
+      'Sales_M1': '30', // Sold 30 units last month before going OOS
+      'Sales_Latest': '0',
+      'Order UOM': 'BOX',
+      'Active': 'Active'
+    };
+
+    ctx.window.setInventoryData([verifiedOosRow]);
+    ctx.window.recalcInventory();
+    const gridC = ctx.window.getInventoryGrid();
+    assert.strictEqual(gridC.length, 1);
+    // Prior run-rate: 30 / 30 = 1.0/day. Damped recovery rate: 1.0 * 0.5 = 0.5/day.
+    // Recovery buffer capped at 30 days: 0.5 * 30 = 15 units.
+    assert.strictEqual(gridC[0].ruleApplied, 'RULE_3A_VERIFIED_OOS', 'Verified prior demand must trigger RULE_3A_VERIFIED_OOS');
+    assert.strictEqual(gridC[0].effectiveAds, 0.5, 'Effective recovery ADS should be damped by 50%');
+    assert.strictEqual(gridC[0].suggestedOrder, 15, 'Recovery order should be capped at 30-day buffer (15 units) instead of blind 30 units');
   });
 
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);
