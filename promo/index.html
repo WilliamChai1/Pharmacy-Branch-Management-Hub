@@ -345,47 +345,119 @@
             </div>
           </div>
 
-          <!-- Promotional Poster Image Card (NEW) -->
-          <div id="promoPosterCard" class="bg-amber-50/50 p-3 rounded-xl border border-amber-200 space-y-2">
-            <div class="flex items-center justify-between">
+          <!-- Promotional Poster Image Card (Dual Language Support: EN/BM & 华语) -->
+          <div id="promoPosterCard" class="bg-amber-50/50 p-3 rounded-xl border border-amber-200 space-y-2.5">
+            <div class="flex items-center justify-between flex-wrap gap-1">
               <span class="text-[11px] font-bold text-amber-900">
-                <i class="fa-solid fa-image text-amber-600 mr-1"></i> Promotional Poster / Picture:
+                <i class="fa-solid fa-images text-amber-600 mr-1"></i> Promotional Posters (Auto-Matches Customer Language):
               </span>
-              <span class="text-[10px] text-amber-700 font-medium">Auto-Copy on WhatsApp Click</span>
+              <span class="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold border border-amber-200">
+                🇲🇾 EN/BM + 🇨🇳 华语 Dual Poster
+              </span>
             </div>
 
-            <!-- Empty State -->
-            <div id="promoPosterEmptyState" class="border-2 border-dashed border-amber-300 rounded-xl p-3 text-center bg-white/70 hover:bg-white transition cursor-pointer"
-              onclick="document.getElementById('promoPosterFileInput').click()">
-              <i class="fa-solid fa-cloud-arrow-up text-amber-500 text-xl mb-1"></i>
-              <p class="text-xs font-bold text-gray-700">Click to Upload Poster Picture (JPG / PNG)</p>
-              <p class="text-[10px] text-gray-400">Can be copied to clipboard and pasted (Ctrl+V) directly into WhatsApp!</p>
-            </div>
-            <input type="file" id="promoPosterFileInput" accept="image/*" class="hidden" onchange="handlePosterFileSelected(event)">
+            <!-- Dual Language Poster Slots (EN/BM & Chinese) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <!-- Slot 1: English / BM Poster -->
+              <div class="bg-white p-2.5 rounded-xl border border-blue-200 shadow-2xs flex flex-col justify-between space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="text-[10px] font-extrabold text-blue-800 flex items-center gap-1">
+                    <span>🇲🇾🇬🇧 EN / BM Poster</span>
+                  </span>
+                  <span class="text-[9px] text-gray-400">For BM / English</span>
+                </div>
 
-            <!-- Active Poster State -->
-            <div id="promoPosterActiveState" class="hidden flex items-center justify-between gap-3 bg-white p-2 rounded-xl border border-amber-200 shadow-2xs">
-              <div class="flex items-center gap-2.5 min-w-0">
-                <img id="promoPosterThumb" src="" alt="Poster" class="w-12 h-12 object-cover rounded-lg border border-gray-200 flex-shrink-0">
-                <div class="min-w-0">
-                  <p id="promoPosterName" class="text-xs font-bold text-gray-800 truncate">promo_poster.png</p>
-                  <p class="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
-                    <i class="fa-solid fa-circle-check"></i> Ready to paste in WhatsApp
-                  </p>
+                <!-- Empty State EN/BM -->
+                <div id="promoPosterEmptyStateBm" class="border-2 border-dashed border-blue-200 rounded-lg p-2.5 text-center bg-blue-50/30 hover:bg-blue-50/70 transition cursor-pointer"
+                  onclick="document.getElementById('promoPosterFileInputBm').click()">
+                  <i class="fa-solid fa-cloud-arrow-up text-blue-500 text-base mb-0.5"></i>
+                  <p class="text-[11px] font-bold text-gray-700">Upload EN/BM Poster</p>
+                  <p class="text-[9px] text-gray-400">Click to select image</p>
+                </div>
+                <input type="file" id="promoPosterFileInputBm" accept="image/*" class="hidden" onchange="handlePosterFileSelected(event, 'bm')">
+                <!-- Legacy single input alias for backwards compatibility -->
+                <input type="file" id="promoPosterFileInput" accept="image/*" class="hidden" onchange="handlePosterFileSelected(event, 'bm')">
+
+                <!-- Active State EN/BM -->
+                <div id="promoPosterActiveStateBm" class="hidden space-y-2">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <img id="promoPosterThumbBm" src="" alt="EN/BM Poster" class="w-12 h-14 object-cover rounded-lg border border-blue-200 flex-shrink-0 bg-gray-50">
+                    <div class="min-w-0 flex-1">
+                      <p id="promoPosterNameBm" class="text-[11px] font-bold text-gray-800 truncate">sheep-placenta-en.jpg</p>
+                      <p class="text-[10px] text-emerald-600 font-semibold flex items-center gap-1 mt-0.5">
+                        <i class="fa-solid fa-circle-check"></i> Auto-sent to BM/EN
+                      </p>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <button type="button" onclick="copyPosterToClipboard('bm')"
+                      class="flex-1 py-1 px-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] flex items-center justify-center gap-1 shadow-2xs transition cursor-pointer"
+                      title="Copy EN/BM poster image to clipboard now">
+                      <i class="fa-regular fa-copy"></i>
+                      <span>Copy EN/BM</span>
+                    </button>
+                    <button type="button" onclick="document.getElementById('promoPosterFileInputBm').click()"
+                      class="px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-[10px] transition cursor-pointer"
+                      title="Replace EN/BM poster">
+                      <i class="fa-solid fa-arrows-rotate"></i>
+                    </button>
+                    <button type="button" onclick="removePromoPoster('bm')"
+                      class="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 text-[10px] transition cursor-pointer"
+                      title="Remove EN/BM poster">
+                      <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div class="flex items-center gap-1.5 flex-shrink-0">
-                <button type="button" onclick="copyPosterToClipboard()"
-                  class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer"
-                  title="Copy poster image to clipboard now">
-                  <i class="fa-regular fa-copy"></i>
-                  <span>Copy Poster</span>
-                </button>
-                <button type="button" onclick="removePromoPoster()"
-                  class="w-7 h-7 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center text-xs transition cursor-pointer"
-                  title="Remove poster">
-                  <i class="fa-solid fa-trash-can"></i>
-                </button>
+
+              <!-- Slot 2: Chinese (华语) Poster -->
+              <div class="bg-white p-2.5 rounded-xl border border-red-200 shadow-2xs flex flex-col justify-between space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="text-[10px] font-extrabold text-red-800 flex items-center gap-1">
+                    <span>🇨🇳 华语 (Chinese) Poster</span>
+                  </span>
+                  <span class="text-[9px] text-gray-400">For 华语 Customers</span>
+                </div>
+
+                <!-- Empty State ZH -->
+                <div id="promoPosterEmptyStateZh" class="border-2 border-dashed border-red-200 rounded-lg p-2.5 text-center bg-red-50/30 hover:bg-red-50/70 transition cursor-pointer"
+                  onclick="document.getElementById('promoPosterFileInputZh').click()">
+                  <i class="fa-solid fa-cloud-arrow-up text-red-500 text-base mb-0.5"></i>
+                  <p class="text-[11px] font-bold text-gray-700">Upload 华语 Poster</p>
+                  <p class="text-[9px] text-gray-400">Click to select image</p>
+                </div>
+                <input type="file" id="promoPosterFileInputZh" accept="image/*" class="hidden" onchange="handlePosterFileSelected(event, 'zh')">
+
+                <!-- Active State ZH -->
+                <div id="promoPosterActiveStateZh" class="hidden space-y-2">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <img id="promoPosterThumbZh" src="" alt="Chinese Poster" class="w-12 h-14 object-cover rounded-lg border border-red-200 flex-shrink-0 bg-gray-50">
+                    <div class="min-w-0 flex-1">
+                      <p id="promoPosterNameZh" class="text-[11px] font-bold text-gray-800 truncate">sheep-placenta-zh.jpg</p>
+                      <p class="text-[10px] text-emerald-600 font-semibold flex items-center gap-1 mt-0.5">
+                        <i class="fa-solid fa-circle-check"></i> Auto-sent to 华语
+                      </p>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <button type="button" onclick="copyPosterToClipboard('zh')"
+                      class="flex-1 py-1 px-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-[10px] flex items-center justify-center gap-1 shadow-2xs transition cursor-pointer"
+                      title="Copy Chinese poster image to clipboard now">
+                      <i class="fa-regular fa-copy"></i>
+                      <span>Copy 华语</span>
+                    </button>
+                    <button type="button" onclick="document.getElementById('promoPosterFileInputZh').click()"
+                      class="px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-[10px] transition cursor-pointer"
+                      title="Replace Chinese poster">
+                      <i class="fa-solid fa-arrows-rotate"></i>
+                    </button>
+                    <button type="button" onclick="removePromoPoster('zh')"
+                      class="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 text-[10px] transition cursor-pointer"
+                      title="Remove Chinese poster">
+                      <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -393,7 +465,7 @@
             <label class="flex items-center gap-2 text-[11px] font-semibold text-gray-700 cursor-pointer pt-0.5">
               <input type="checkbox" id="promoAutoCopyPosterCheckbox" onchange="toggleAutoCopyPoster(this)" checked
                 class="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500">
-              <span>Automatically copy poster to clipboard when clicking "Send WhatsApp" (Press <strong>Ctrl+V</strong> in chat!)</span>
+              <span>Automatically copy customer's language poster when clicking "Send" (Press <strong>Ctrl+V</strong> in WhatsApp!)</span>
             </label>
           </div>
 
@@ -653,14 +725,14 @@
         </div>
 
         <p class="text-xs text-gray-500 leading-relaxed">
-          Upload any CSV exported from your POS system for any product. The broadcaster will automatically extract Customer Names, Mobile Numbers, Purchase Quantities, and Dates.
+          Upload any CSV exported from your POS system (including files with <code>@@##Write Time</code> headers and <code>Client Name</code> / <code>Recipient Contact</code> / <code>Client Mobile</code> columns). The broadcaster will automatically extract Customer Names, Mobile Numbers, Purchase Quantities, and Dates.
         </p>
 
         <div class="border-2 border-dashed border-gray-300 hover:border-emerald-500 rounded-2xl p-6 text-center transition cursor-pointer bg-gray-50 hover:bg-emerald-50/30"
           onclick="document.getElementById('promoCsvModalFileInput').click()">
           <i class="fa-solid fa-cloud-arrow-up text-3xl text-emerald-600 mb-2"></i>
           <p class="text-xs font-bold text-gray-700">Click to Choose or Drag CSV File Here</p>
-          <p class="text-[10px] text-gray-400 mt-1">Supports standard retail sales CSV exports</p>
+          <p class="text-[10px] text-gray-400 mt-1">Supports standard retail POS sales CSV exports</p>
           <input type="file" id="promoCsvModalFileInput" accept=".csv" class="hidden" onchange="handlePromoCsvFileInput(event)">
         </div>
 
@@ -677,13 +749,13 @@
 
   <!-- TOAST NOTIFICATIONS -->
   <div id="promoToast"
-    class="fixed bottom-5 right-5 z-50 bg-gray-900/95 text-white text-xs px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none max-w-sm backdrop-blur-xs">
+    class="fixed bottom-5 right-5 z-50 bg-gray-900/95 text-white text-xs px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 transform translate-y-3 opacity-0 transition-all duration-300 pointer-events-none max-w-sm backdrop-blur-xs">
     <i class="fa-solid fa-circle-check text-emerald-400"></i>
     <span id="promoToastMsg">Action completed</span>
   </div>
 
   <!-- PROMO SCRIPTS -->
-  <script src="promo.js?v=20261028_standalone_v1"></script>
+  <script src="promo.js?v=20261116_sheep_placenta_v2"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       if (typeof initPromoBroadcastModule === 'function') {

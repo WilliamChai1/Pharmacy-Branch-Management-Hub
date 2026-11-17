@@ -11,7 +11,33 @@ const NUTRI_ALPHA_PRESET_CAMPAIGN = {
   defaultPrice: 115,
   isPreset: true,
   createdAt: '2026-10-28T00:00:00.000Z',
+  defaultOfferDetails: 'Beli 2 Tin RM210 (Jimat RM20) + Percuma Shaker / 买2罐特惠 RM210（节省 RM20）+ 免费赠送摇摇杯，存货有限售完即止',
+  defaultOfferDetailsEn: 'Buy 2 Tins at RM210 (Save RM20) + Free Shaker Cup, while stocks last',
+  defaultOfferDetailsBm: 'Beli 2 Tin pada harga RM210 (Jimat RM20) + Percuma Shaker Cup, sementara stok masih ada',
+  defaultOfferDetailsZh: '买2罐特惠 RM210（节省 RM20）+ 免费赠送摇摇杯，存货有限售完即止',
+  defaultPromoPeriod: 'Sementara Stok Masih Ada / 存货有限，售完即止',
   customers: [{"id":"CUST_1","name":"LAI JON SEN","phone":"601121093229","totalQty":9,"totalSpent":1145,"lastDate":"30-08-26 0:00","firstDate":"28-01-26 0:00","salespersons":["NURHAFIZAH BINTI PAULI","LOLITA WONG LIN","JONG PEI CHOO","Muhammad Nur Farizin Bin Abdullah","KENIX LING WANG YING"],"history":[{"date":"28-01-26 0:00","price":115},{"date":"20-02-26 0:00","price":115},{"date":"14-04-26 0:00","price":115},{"date":"30-04-26 0:00","price":115},{"date":"17-05-26 0:00","price":115},{"date":"24-06-26 0:00","price":115},{"date":"12-07-26 0:00","price":115},{"date":"30-07-26 0:00","price":115},{"date":"30-08-26 0:00","price":225}]},{"id":"CUST_2","name":"RADIN MOHD NOR ABD QUDDUS BIN RADIN KADRI","phone":"60192111965","totalQty":1,"totalSpent":115,"lastDate":"30-01-26 0:00","firstDate":"30-01-26 0:00","salespersons":["FIONA FIENA ANAK JAMES"],"history":[{"date":"30-01-26 0:00","price":115}]},{"id":"CUST_3","name":"EDMUND BANYOI ANAK GADAH","phone":"60198692892","totalQty":1,"totalSpent":115,"lastDate":"31-01-26 0:00","firstDate":"31-01-26 0:00","salespersons":["JONG PEI CHOO"],"history":[{"date":"31-01-26 0:00","price":115}]},{"id":"CUST_4","name":"NG CHUN BEE","phone":"60168597418","totalQty":2,"totalSpent":450,"lastDate":"10-06-26 0:00","firstDate":"31-01-26 0:00","salespersons":["LOLITA WONG LIN","CHAI YEE SIAN"],"history":[{"date":"31-01-26 0:00","price":225},{"date":"10-06-26 0:00","price":225}]},{"id":"CUST_5","name":"OLIVIA ANAK TARANG","phone":"60138459331","totalQty":1,"totalSpent":115,"lastDate":"31-01-26 0:00","firstDate":"31-01-26 0:00","salespersons":["LOLITA WONG LIN"],"history":[{"date":"31-01-26 0:00","price":115}]},{"id":"CUST_6","name":"JONATHAN JANA ANAK ANGAT","phone":"60199008678","totalQty":1,"totalSpent":115,"lastDate":"31-01-26 0:00","firstDate":"31-01-26 0:00","salespersons":["JONG PEI CHOO"],"history":[{"date":"31-01-26 0:00","price":115}]},{"id":"CUST_7","name":"AZZY BINTI HASBI","phone":"60199915015","totalQty":1,"totalSpent":115,"lastDate":"31-01-26 0:00","firstDate":"31-01-26 0:00","salespersons":["FIONA FIENA ANAK JAMES"],"history":[{"date":"31-01-26 0:00","price":115}]},{"id":"CUST_8","name":"CHELSEA COHEN ANAK JOHNESS","phone":"60172707616","totalQty":1,"totalSpent":115,"lastDate":"14-02-26 0:00","firstDate":"14-02-26 0:00","salespersons":["JONG PEI CHOO"],"history":[{"date":"14-02-26 0:00","price":115}]},{"id":"CUST_9","name":"TIONG TECK ONG","phone":"60168958065","totalQty":1,"totalSpent":115,"lastDate":"15-02-26 0:00","firstDate":"15-02-26 0:00","salespersons":["NURHAFIZAH BINTI PAULI"],"history":[{"date":"15-02-26 0:00","price":115}]},{"id":"CUST_10","name":"MONICA PHILIP ANGKOK","phone":"60128567492","totalQty":1,"totalSpent":225,"lastDate":"16-02-26 0:00","firstDate":"16-02-26 0:00","salespersons":["JONG PEI CHOO"],"history":[{"date":"16-02-26 0:00","price":225}]},{"id":"CUST_11","name":"ANGELIA MYRA BINTI JIMMY","phone":"601131997165","totalQty":1,"totalSpent":225,"lastDate":"18-02-26 0:00","firstDate":"18-02-26 0:00","salespersons":["FIONA FIENA ANAK JAMES"],"history":[{"date":"18-02-26 0:00","price":225}]},{"id":"CUST_12","name":"NOR SAFRINA BINTI SEPUNI","phone":"60169338307","totalQty":1,"totalSpent":115,"lastDate":"18-02-26 0:00","firstDate":"18-02-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"18-02-26 0:00","price":115}]},{"id":"CUST_13","name":"TOMMY ANAK JION","phone":"60136146261","totalQty":2,"totalSpent":230,"lastDate":"12-03-26 0:00","firstDate":"20-02-26 0:00","salespersons":["FIONA FIENA ANAK JAMES","CHAI YEE SIAN"],"history":[{"date":"20-02-26 0:00","price":115},{"date":"12-03-26 0:00","price":115}]},{"id":"CUST_14","name":"TAY MOI TZE","phone":"60138166338","totalQty":1,"totalSpent":115,"lastDate":"26-02-26 0:00","firstDate":"26-02-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"26-02-26 0:00","price":115}]},{"id":"CUST_15","name":"JULIE WONG PEK SIONG","phone":"60124423108","totalQty":1,"totalSpent":115,"lastDate":"28-02-26 0:00","firstDate":"28-02-26 0:00","salespersons":["CHAI YEE SIAN"],"history":[{"date":"28-02-26 0:00","price":115}]},{"id":"CUST_16","name":"YEO KOK SENG","phone":"60198880882","totalQty":5,"totalSpent":795,"lastDate":"10-06-26 0:00","firstDate":"10-03-26 0:00","salespersons":["CHAI YEE SIAN","JONG PEI CHOO","LOLITA WONG LIN"],"history":[{"date":"10-03-26 0:00","price":225},{"date":"17-05-26 0:00","price":225},{"date":"10-06-26 0:00","price":115},{"date":"10-06-26 0:00","price":115}]},{"id":"CUST_17","name":"LAI JIUNG HIAN","phone":"60107756556","totalQty":2,"totalSpent":230,"lastDate":"21-10-26 0:00","firstDate":"10-03-26 0:00","salespersons":["CHAI YEE SIAN"],"history":[{"date":"10-03-26 0:00","price":115},{"date":"21-10-26 0:00","price":115}]},{"id":"CUST_18","name":"LEE KUOK CHING","phone":"60168986300","totalQty":1,"totalSpent":225,"lastDate":"11-03-26 0:00","firstDate":"11-03-26 0:00","salespersons":["CHAI YEE SIAN"],"history":[{"date":"11-03-26 0:00","price":225}]},{"id":"CUST_19","name":"HO CHOU FANG","phone":"60122809029","totalQty":3,"totalSpent":675,"lastDate":"24-06-26 0:00","firstDate":"12-03-26 0:00","salespersons":["CHAI YEE SIAN","HANIESHA LOUNA ANAK DAGENG","JONG PEI CHOO"],"history":[{"date":"12-03-26 0:00","price":225},{"date":"12-04-26 0:00","price":225},{"date":"24-06-26 0:00","price":225}]},{"id":"CUST_20","name":"TING YUNG HUA","phone":"601110668658","totalQty":1,"totalSpent":225,"lastDate":"13-03-26 0:00","firstDate":"13-03-26 0:00","salespersons":["CHAI YEE SIAN"],"history":[{"date":"13-03-26 0:00","price":225}]},{"id":"CUST_21","name":"TIEW YIEN YIEN","phone":"60168870506","totalQty":1,"totalSpent":225,"lastDate":"13-03-26 0:00","firstDate":"13-03-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"13-03-26 0:00","price":225}]},{"id":"CUST_22","name":"MUHAMAD BIN ZULKIPLI","phone":"60138176441","totalQty":1,"totalSpent":115,"lastDate":"15-03-26 0:00","firstDate":"15-03-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"15-03-26 0:00","price":115}]},{"id":"CUST_23","name":"CHIA NYAT LIAN","phone":"60168513478","totalQty":1,"totalSpent":225,"lastDate":"15-03-26 0:00","firstDate":"15-03-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"15-03-26 0:00","price":225}]},{"id":"CUST_24","name":"ABANG ISNAINI GAPOR","phone":"601121888813","totalQty":3,"totalSpent":345,"lastDate":"10-10-26 0:00","firstDate":"16-03-26 0:00","salespersons":["LAI PEY SHYAN","KENIX LING WANG YING","FIONA FIENA ANAK JAMES"],"history":[{"date":"16-03-26 0:00","price":115},{"date":"30-06-26 0:00","price":115},{"date":"10-10-26 0:00","price":115}]},{"id":"CUST_25","name":"SIGAN ANAK INDAH","phone":"60198158151","totalQty":1,"totalSpent":225,"lastDate":"16-03-26 0:00","firstDate":"16-03-26 0:00","salespersons":["NURHAFIZAH BINTI PAULI"],"history":[{"date":"16-03-26 0:00","price":225}]},{"id":"CUST_26","name":"TING SING YIUNG","phone":"60135789228","totalQty":1,"totalSpent":115,"lastDate":"17-03-26 0:00","firstDate":"17-03-26 0:00","salespersons":["FIONA FIENA ANAK JAMES"],"history":[{"date":"17-03-26 0:00","price":115}]},{"id":"CUST_27","name":"MOHAMAD SEZIKI BIN RABIAN","phone":"60146769843","totalQty":2,"totalSpent":230,"lastDate":"30-09-26 0:00","firstDate":"18-03-26 0:00","salespersons":["FIONA FIENA ANAK JAMES","NURHAFIZAH BINTI PAULI"],"history":[{"date":"18-03-26 0:00","price":115},{"date":"30-09-26 0:00","price":115}]},{"id":"CUST_28","name":"LEE SUK JOO","phone":"60138259188","totalQty":1,"totalSpent":225,"lastDate":"18-03-26 0:00","firstDate":"18-03-26 0:00","salespersons":["LOLITA WONG LIN"],"history":[{"date":"18-03-26 0:00","price":225}]},{"id":"CUST_29","name":"LIM ENG HUI","phone":"60146919831","totalQty":3,"totalSpent":675,"lastDate":"20-07-26 0:00","firstDate":"20-03-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG","JONG PEI CHOO"],"history":[{"date":"20-03-26 0:00","price":225},{"date":"20-07-26 0:00","price":225}]},{"id":"CUST_30","name":"MICK ANAK SEMBONG","phone":"601112035053","totalQty":1,"totalSpent":115,"lastDate":"20-03-26 0:00","firstDate":"20-03-26 0:00","salespersons":["Daniela Janet Anak Mustapha"],"history":[{"date":"20-03-26 0:00","price":115}]},{"id":"CUST_31","name":"CHONG NYUK NGO","phone":"60165795448","totalQty":4,"totalSpent":570,"lastDate":"23-09-26 0:00","firstDate":"20-03-26 0:00","salespersons":["LOLITA WONG LIN","CHAI YEE SIAN"],"history":[{"date":"20-03-26 0:00","price":225},{"date":"23-09-26 0:00","price":115},{"date":"23-09-26 0:00","price":115}]},{"id":"CUST_32","name":"DABBIE ANAK ANDIN","phone":"60128527715","totalQty":1,"totalSpent":225,"lastDate":"21-03-26 0:00","firstDate":"21-03-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"21-03-26 0:00","price":225}]},{"id":"CUST_33","name":"BONG KUI NYUK","phone":"60178513829","totalQty":1,"totalSpent":115,"lastDate":"23-03-26 0:00","firstDate":"23-03-26 0:00","salespersons":["LOLITA WONG LIN"],"history":[{"date":"23-03-26 0:00","price":115}]},{"id":"CUST_34","name":"UNAI ANAK CHUNGAT","phone":"60138164594","totalQty":1,"totalSpent":115,"lastDate":"24-03-26 0:00","firstDate":"24-03-26 0:00","salespersons":["Daniela Janet Anak Mustapha"],"history":[{"date":"24-03-26 0:00","price":115}]},{"id":"CUST_35","name":"CHAI NYUK FAH","phone":"60138133363","totalQty":2,"totalSpent":230,"lastDate":"24-08-26 0:00","firstDate":"26-03-26 0:00","salespersons":["JONG PEI CHOO","Daniela Janet Anak Mustapha"],"history":[{"date":"26-03-26 0:00","price":115},{"date":"24-08-26 0:00","price":115}]},{"id":"CUST_36","name":"LIKIN  ANAK JAGA","phone":"60198271486","totalQty":2,"totalSpent":340,"lastDate":"28-04-26 0:00","firstDate":"27-03-26 0:00","salespersons":["JONG PEI CHOO","NURHAFIZAH BINTI PAULI"],"history":[{"date":"27-03-26 0:00","price":115},{"date":"28-04-26 0:00","price":225}]},{"id":"CUST_37","name":"LIAW KIM SIONG","phone":"60138126168","totalQty":1,"totalSpent":115,"lastDate":"27-03-26 0:00","firstDate":"27-03-26 0:00","salespersons":["Daniela Janet Anak Mustapha"],"history":[{"date":"27-03-26 0:00","price":115}]},{"id":"CUST_38","name":"TIONG MING","phone":"60198168181","totalQty":1,"totalSpent":655,"lastDate":"28-03-26 0:00","firstDate":"28-03-26 0:00","salespersons":["LAI PEY SHYAN"],"history":[{"date":"28-03-26 0:00","price":655}]},{"id":"CUST_39","name":"LEE TING BIU","phone":"60198776739","totalQty":1,"totalSpent":115,"lastDate":"28-03-26 0:00","firstDate":"28-03-26 0:00","salespersons":["JONG PEI CHOO"],"history":[{"date":"28-03-26 0:00","price":115}]},{"id":"CUST_40","name":"PIROS ANAK RINIP","phone":"60198878991","totalQty":4,"totalSpent":460,"lastDate":"18-09-26 0:00","firstDate":"28-03-26 0:00","salespersons":["CHAI YEE SIAN","FIONA FIENA ANAK JAMES","JONG PEI CHOO","NURHAFIZAH BINTI PAULI"],"history":[{"date":"28-03-26 0:00","price":115},{"date":"23-06-26 0:00","price":115},{"date":"20-08-26 0:00","price":115},{"date":"18-09-26 0:00","price":115}]},{"id":"CUST_41","name":"PHANG SEN","phone":"60198844594","totalQty":1,"totalSpent":115,"lastDate":"11-04-26 0:00","firstDate":"11-04-26 0:00","salespersons":["LOLITA WONG LIN"],"history":[{"date":"11-04-26 0:00","price":115}]},{"id":"CUST_42","name":"CHOO CHENG SIANG","phone":"60198360379","totalQty":1,"totalSpent":115,"lastDate":"11-04-26 0:00","firstDate":"11-04-26 0:00","salespersons":["JONG PEI CHOO"],"history":[{"date":"11-04-26 0:00","price":115}]},{"id":"CUST_43","name":"LO NYET JIN","phone":"60165762536","totalQty":1,"totalSpent":225,"lastDate":"12-04-26 0:00","firstDate":"12-04-26 0:00","salespersons":["Connie Voon Zhi Yin"],"history":[{"date":"12-04-26 0:00","price":225}]},{"id":"CUST_44","name":"HO NYUK LI","phone":"60168445119","totalQty":2,"totalSpent":230,"lastDate":"18-07-26 0:00","firstDate":"13-04-26 0:00","salespersons":["Connie Voon Zhi Yin","Muhammad Nur Farizin Bin Abdullah"],"history":[{"date":"13-04-26 0:00","price":115},{"date":"18-07-26 0:00","price":115}]},{"id":"CUST_45","name":"YUSUF BIN AWI","phone":"60178113871","totalQty":1,"totalSpent":115,"lastDate":"16-04-26 0:00","firstDate":"16-04-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"16-04-26 0:00","price":115}]},{"id":"CUST_46","name":"TAY LIP CHORNG","phone":"601125040518","totalQty":2,"totalSpent":230,"lastDate":"10-07-26 0:00","firstDate":"16-04-26 0:00","salespersons":["JONG PEI CHOO"],"history":[{"date":"16-04-26 0:00","price":115},{"date":"10-07-26 0:00","price":115}]},{"id":"CUST_47","name":"MOHAMAD HAFEAZAL","phone":"60198522962","totalQty":1,"totalSpent":115,"lastDate":"18-04-26 0:00","firstDate":"18-04-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"18-04-26 0:00","price":115}]},{"id":"CUST_48","name":"HON KAH KANG","phone":"60109720718","totalQty":1,"totalSpent":115,"lastDate":"21-04-26 0:00","firstDate":"21-04-26 0:00","salespersons":["Daniela Janet Anak Mustapha"],"history":[{"date":"21-04-26 0:00","price":115}]},{"id":"CUST_49","name":"LAW HUA LIANG","phone":"60198764018","totalQty":1,"totalSpent":115,"lastDate":"21-04-26 0:00","firstDate":"21-04-26 0:00","salespersons":["FIONA FIENA ANAK JAMES"],"history":[{"date":"21-04-26 0:00","price":115}]},{"id":"CUST_50","name":"NORLELA BINTI RAZALI","phone":"601135937008","totalQty":4,"totalSpent":460,"lastDate":"26-09-26 0:00","firstDate":"21-04-26 0:00","salespersons":["FIONA FIENA ANAK JAMES","JONG PEI CHOO"],"history":[{"date":"21-04-26 0:00","price":115},{"date":"13-05-26 0:00","price":115},{"date":"27-07-26 0:00","price":115},{"date":"26-09-26 0:00","price":115}]},{"id":"CUST_51","name":"JOSEPHINE ANAK RIANG","phone":"60178536431","totalQty":2,"totalSpent":230,"lastDate":"30-05-26 0:00","firstDate":"24-04-26 0:00","salespersons":["FIONA FIENA ANAK JAMES","HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"24-04-26 0:00","price":115},{"date":"30-05-26 0:00","price":115}]},{"id":"CUST_52","name":"SATINA ANAK BERINAU","phone":"60138275056","totalQty":1,"totalSpent":115,"lastDate":"24-04-26 0:00","firstDate":"24-04-26 0:00","salespersons":["CHAI YEE SIAN"],"history":[{"date":"24-04-26 0:00","price":115}]},{"id":"CUST_53","name":"MOK YONG YU","phone":"60193133159","totalQty":1,"totalSpent":115,"lastDate":"30-04-26 0:00","firstDate":"30-04-26 0:00","salespersons":["CHAI YEE SIAN"],"history":[{"date":"30-04-26 0:00","price":115}]},{"id":"CUST_54","name":"LIEW JANG FOONG","phone":"60194678802","totalQty":1,"totalSpent":225,"lastDate":"30-04-26 0:00","firstDate":"30-04-26 0:00","salespersons":["LOLITA WONG LIN"],"history":[{"date":"30-04-26 0:00","price":225}]},{"id":"CUST_55","name":"LIEW JOON TAK","phone":"60194594509","totalQty":1,"totalSpent":115,"lastDate":"10-05-26 0:00","firstDate":"10-05-26 0:00","salespersons":["FIONA FIENA ANAK JAMES"],"history":[{"date":"10-05-26 0:00","price":115}]},{"id":"CUST_56","name":"RADZIAH BINTI TINDI","phone":"60165079610","totalQty":1,"totalSpent":115,"lastDate":"11-05-26 0:00","firstDate":"11-05-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"11-05-26 0:00","price":115}]},{"id":"CUST_57","name":"TAJUL AKBAR","phone":"60138341944","totalQty":1,"totalSpent":115,"lastDate":"11-05-26 0:00","firstDate":"11-05-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"11-05-26 0:00","price":115}]},{"id":"CUST_58","name":"HO AH NYAIN","phone":"60168797658","totalQty":1,"totalSpent":115,"lastDate":"11-05-26 0:00","firstDate":"11-05-26 0:00","salespersons":["JONG PEI CHOO"],"history":[{"date":"11-05-26 0:00","price":115}]},{"id":"CUST_59","name":"WEI CHUI PING","phone":"60198890178","totalQty":1,"totalSpent":225,"lastDate":"13-05-26 0:00","firstDate":"13-05-26 0:00","salespersons":["NURHAFIZAH BINTI PAULI"],"history":[{"date":"13-05-26 0:00","price":225}]},{"id":"CUST_60","name":"NIGEL YEO SEE KEE","phone":"601116652510","totalQty":1,"totalSpent":225,"lastDate":"18-05-26 0:00","firstDate":"18-05-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"18-05-26 0:00","price":225}]},{"id":"CUST_61","name":"MORIE ANAK DUNGGAU","phone":"60143685474","totalQty":1,"totalSpent":115,"lastDate":"18-05-26 0:00","firstDate":"18-05-26 0:00","salespersons":["FIONA FIENA ANAK JAMES"],"history":[{"date":"18-05-26 0:00","price":115}]},{"id":"CUST_62","name":"CHANG LEE CHIN","phone":"60128807008","totalQty":1,"totalSpent":115,"lastDate":"18-05-26 0:00","firstDate":"18-05-26 0:00","salespersons":["JONG PEI CHOO"],"history":[{"date":"18-05-26 0:00","price":115}]},{"id":"CUST_63","name":"HILDA FLORA ANAK RINAH","phone":"60198769074","totalQty":1,"totalSpent":225,"lastDate":"20-05-26 0:00","firstDate":"20-05-26 0:00","salespersons":["FIONA FIENA ANAK JAMES"],"history":[{"date":"20-05-26 0:00","price":225}]},{"id":"CUST_64","name":"UH LEE LEE","phone":"60168970302","totalQty":1,"totalSpent":115,"lastDate":"20-05-26 0:00","firstDate":"20-05-26 0:00","salespersons":["LOLITA WONG LIN"],"history":[{"date":"20-05-26 0:00","price":115}]},{"id":"CUST_65","name":"LIN SHER LI","phone":"60176781558","totalQty":1,"totalSpent":115,"lastDate":"21-05-26 0:00","firstDate":"21-05-26 0:00","salespersons":["LOLITA WONG LIN"],"history":[{"date":"21-05-26 0:00","price":115}]},{"id":"CUST_66","name":"HASNAN BIN HASSAN","phone":"60198287300","totalQty":1,"totalSpent":115,"lastDate":"22-05-26 0:00","firstDate":"22-05-26 0:00","salespersons":["LOLITA WONG LIN"],"history":[{"date":"22-05-26 0:00","price":115}]},{"id":"CUST_67","name":"MISNA ANAK GUMBEK","phone":"60198875294","totalQty":6,"totalSpent":1130,"lastDate":"18-09-26 0:00","firstDate":"24-05-26 0:00","salespersons":["FIONA FIENA ANAK JAMES","Daniela Janet Anak Mustapha","JONG PEI CHOO","NURHAFIZAH BINTI PAULI","Ting Kwang Yu"],"history":[{"date":"24-05-26 0:00","price":225},{"date":"29-06-26 0:00","price":115},{"date":"29-06-26 0:00","price":225},{"date":"26-07-26 0:00","price":225},{"date":"18-09-26 0:00","price":115},{"date":"18-09-26 0:00","price":225}]},{"id":"CUST_68","name":"Hiew Tze Mui","phone":"60168765993","totalQty":10,"totalSpent":1150,"lastDate":"25-05-26 0:00","firstDate":"25-05-26 0:00","salespersons":["CHAI YEE SIAN"],"history":[{"date":"25-05-26 0:00","price":115},{"date":"25-05-26 0:00","price":115},{"date":"25-05-26 0:00","price":115},{"date":"25-05-26 0:00","price":115}]},{"id":"CUST_69","name":"YEO SIEW CHING","phone":"60128941838","totalQty":1,"totalSpent":225,"lastDate":"26-05-26 0:00","firstDate":"26-05-26 0:00","salespersons":["FIONA FIENA ANAK JAMES"],"history":[{"date":"26-05-26 0:00","price":225}]},{"id":"CUST_70","name":"Lucy Anak Andil","phone":"60198893215","totalQty":6,"totalSpent":690,"lastDate":"27-05-26 0:00","firstDate":"27-05-26 0:00","salespersons":["FIONA FIENA ANAK JAMES"],"history":[{"date":"27-05-26 0:00","price":115}]},{"id":"CUST_71","name":"KHIEW SUI JIN","phone":"60138225828","totalQty":3,"totalSpent":345,"lastDate":"28-05-26 0:00","firstDate":"28-05-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"28-05-26 0:00","price":115}]},{"id":"CUST_72","name":"CHAI WAN CHIN","phone":"60147867976","totalQty":1,"totalSpent":115,"lastDate":"29-05-26 0:00","firstDate":"29-05-26 0:00","salespersons":["JONG PEI CHOO"],"history":[{"date":"29-05-26 0:00","price":115}]},{"id":"CUST_73","name":"TING SHYH SHENG","phone":"60128099801","totalQty":1,"totalSpent":115,"lastDate":"31-05-26 0:00","firstDate":"31-05-26 0:00","salespersons":["LOLITA WONG LIN"],"history":[{"date":"31-05-26 0:00","price":115}]},{"id":"CUST_74","name":"Chu Suk Lin","phone":"60168908023","totalQty":1,"totalSpent":115,"lastDate":"12-06-26 0:00","firstDate":"12-06-26 0:00","salespersons":["CHAI YEE SIAN"],"history":[{"date":"12-06-26 0:00","price":115}]},{"id":"CUST_75","name":"YEO YEE KANG","phone":"60198355168","totalQty":1,"totalSpent":115,"lastDate":"13-06-26 0:00","firstDate":"13-06-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"13-06-26 0:00","price":115}]},{"id":"CUST_76","name":"Chung May Kin","phone":"60168094286","totalQty":3,"totalSpent":345,"lastDate":"17-06-26 0:00","firstDate":"17-06-26 0:00","salespersons":["JONG PEI CHOO"],"history":[{"date":"17-06-26 0:00","price":115},{"date":"17-06-26 0:00","price":115}]},{"id":"CUST_77","name":"CHAI KHEK HIUN","phone":"601155505583","totalQty":2,"totalSpent":230,"lastDate":"18-10-26 0:00","firstDate":"21-06-26 0:00","salespersons":["FIONA FIENA ANAK JAMES","NURHAFIZAH BINTI PAULI"],"history":[{"date":"21-06-26 0:00","price":115},{"date":"18-10-26 0:00","price":115}]},{"id":"CUST_78","name":"RADIAH ANAK JANGGOT","phone":"60198864658","totalQty":1,"totalSpent":115,"lastDate":"21-06-26 0:00","firstDate":"21-06-26 0:00","salespersons":["Daniela Janet Anak Mustapha"],"history":[{"date":"21-06-26 0:00","price":115}]},{"id":"CUST_79","name":"SEMRY ANAK SEMTIN","phone":"60138278157","totalQty":1,"totalSpent":225,"lastDate":"24-06-26 0:00","firstDate":"24-06-26 0:00","salespersons":["Muhammad Nur Farizin Bin Abdullah"],"history":[{"date":"24-06-26 0:00","price":225}]},{"id":"CUST_80","name":"ROSEMARY ANAK SIRET","phone":"60138095857","totalQty":1,"totalSpent":115,"lastDate":"25-06-26 0:00","firstDate":"25-06-26 0:00","salespersons":["JONG PEI CHOO"],"history":[{"date":"25-06-26 0:00","price":115}]},{"id":"CUST_81","name":"CHAI PHEI LAN","phone":"60168006763","totalQty":1,"totalSpent":115,"lastDate":"25-06-26 0:00","firstDate":"25-06-26 0:00","salespersons":["Muhammad Nur Farizin Bin Abdullah"],"history":[{"date":"25-06-26 0:00","price":115}]},{"id":"CUST_82","name":"NG MIOW NOI","phone":"60135795123","totalQty":1,"totalSpent":115,"lastDate":"28-06-26 0:00","firstDate":"28-06-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"28-06-26 0:00","price":115}]},{"id":"CUST_83","name":"TEO CHONG NGIAN","phone":"60107856939","totalQty":1,"totalSpent":225,"lastDate":"28-06-26 0:00","firstDate":"28-06-26 0:00","salespersons":["LOLITA WONG LIN"],"history":[{"date":"28-06-26 0:00","price":225}]},{"id":"CUST_84","name":"HARWANDI","phone":"60135759940","totalQty":1,"totalSpent":115,"lastDate":"29-06-26 0:00","firstDate":"29-06-26 0:00","salespersons":["JONG PEI CHOO"],"history":[{"date":"29-06-26 0:00","price":115}]},{"id":"CUST_85","name":"SIM KWANG MENG","phone":"60102897655","totalQty":2,"totalSpent":340,"lastDate":"11-07-26 0:00","firstDate":"11-07-26 0:00","salespersons":["FIONA FIENA ANAK JAMES"],"history":[{"date":"11-07-26 0:00","price":115},{"date":"11-07-26 0:00","price":225}]},{"id":"CUST_86","name":"BONG SAN MOI","phone":"60168535952","totalQty":1,"totalSpent":115,"lastDate":"12-07-26 0:00","firstDate":"12-07-26 0:00","salespersons":["Muhammad Nur Farizin Bin Abdullah"],"history":[{"date":"12-07-26 0:00","price":115}]},{"id":"CUST_87","name":"RICK METIL ANAK RIANG","phone":"601151952654","totalQty":1,"totalSpent":115,"lastDate":"14-07-26 0:00","firstDate":"14-07-26 0:00","salespersons":["Daniela Janet Anak Mustapha"],"history":[{"date":"14-07-26 0:00","price":115}]},{"id":"CUST_88","name":"MALING ANAK KALONG","phone":"6082611710","totalQty":1,"totalSpent":115,"lastDate":"15-07-26 0:00","firstDate":"15-07-26 0:00","salespersons":["LOLITA WONG LIN"],"history":[{"date":"15-07-26 0:00","price":115}]},{"id":"CUST_89","name":"BRONSON MOGGIE SULANG ANAK MURUI","phone":"60138117732","totalQty":1,"totalSpent":115,"lastDate":"15-07-26 0:00","firstDate":"15-07-26 0:00","salespersons":["CHAI YEE SIAN"],"history":[{"date":"15-07-26 0:00","price":115}]},{"id":"CUST_90","name":"LEE AH HIN","phone":"60109856838","totalQty":1,"totalSpent":115,"lastDate":"16-07-26 0:00","firstDate":"16-07-26 0:00","salespersons":["CHAI YEE SIAN"],"history":[{"date":"16-07-26 0:00","price":115}]},{"id":"CUST_91","name":"LAI JIN HIONG","phone":"60182067217","totalQty":2,"totalSpent":340,"lastDate":"10-10-26 0:00","firstDate":"16-07-26 0:00","salespersons":["KENIX LING WANG YING","JONG PEI CHOO"],"history":[{"date":"16-07-26 0:00","price":115},{"date":"10-10-26 0:00","price":225}]},{"id":"CUST_92","name":"Umi Hasma Salleh","phone":"60198378853","totalQty":1,"totalSpent":115,"lastDate":"17-07-26 0:00","firstDate":"17-07-26 0:00","salespersons":["JONG PEI CHOO"],"history":[{"date":"17-07-26 0:00","price":115}]},{"id":"CUST_93","name":"ROSLINA BT ZAKARIA @ ROSALIND AK KUJA","phone":"601125001974","totalQty":1,"totalSpent":115,"lastDate":"19-07-26 0:00","firstDate":"19-07-26 0:00","salespersons":["Daniela Janet Anak Mustapha"],"history":[{"date":"19-07-26 0:00","price":115}]},{"id":"CUST_94","name":"SALINA ANAK JAMES MALONG","phone":"60194671968","totalQty":1,"totalSpent":115,"lastDate":"19-07-26 0:00","firstDate":"19-07-26 0:00","salespersons":["NURHAFIZAH BINTI PAULI"],"history":[{"date":"19-07-26 0:00","price":115}]},{"id":"CUST_95","name":"TING PIK KIONG","phone":"60127011750","totalQty":1,"totalSpent":225,"lastDate":"20-07-26 0:00","firstDate":"20-07-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"20-07-26 0:00","price":225}]},{"id":"CUST_96","name":"Chai Joon Khim","phone":"60198577058","totalQty":3,"totalSpent":455,"lastDate":"24-09-26 0:00","firstDate":"22-07-26 0:00","salespersons":["Daniela Janet Anak Mustapha","Ting Kwang Yu"],"history":[{"date":"22-07-26 0:00","price":115},{"date":"24-09-26 0:00","price":115},{"date":"24-09-26 0:00","price":225}]},{"id":"CUST_97","name":"LU HUONG LAI","phone":"60138033738","totalQty":1,"totalSpent":115,"lastDate":"22-07-26 0:00","firstDate":"22-07-26 0:00","salespersons":["JONG PEI CHOO"],"history":[{"date":"22-07-26 0:00","price":115}]},{"id":"CUST_98","name":"CHAI KHEK HIUN","phone":"60115611","totalQty":1,"totalSpent":115,"lastDate":"26-07-26 0:00","firstDate":"26-07-26 0:00","salespersons":["Daniela Janet Anak Mustapha"],"history":[{"date":"26-07-26 0:00","price":115}]},{"id":"CUST_99","name":"THEN PIK SIA","phone":"60162319226","totalQty":1,"totalSpent":115,"lastDate":"26-07-26 0:00","firstDate":"26-07-26 0:00","salespersons":["Daniela Janet Anak Mustapha"],"history":[{"date":"26-07-26 0:00","price":115}]},{"id":"CUST_100","name":"VOON MUI JIN","phone":"601165757118","totalQty":1,"totalSpent":115,"lastDate":"28-07-26 0:00","firstDate":"28-07-26 0:00","salespersons":["CHAI YEE SIAN"],"history":[{"date":"28-07-26 0:00","price":115}]},{"id":"CUST_101","name":"WONG HONG CHIN","phone":"60168885344","totalQty":2,"totalSpent":230,"lastDate":"23-10-26 0:00","firstDate":"30-07-26 0:00","salespersons":["JONG PEI CHOO","CHAI YEE SIAN"],"history":[{"date":"30-07-26 0:00","price":115},{"date":"23-10-26 0:00","price":115}]},{"id":"CUST_102","name":"DORIS CHONG LIONG LIN","phone":"60143922912","totalQty":1,"totalSpent":115,"lastDate":"31-07-26 0:00","firstDate":"31-07-26 0:00","salespersons":["KENIX LING WANG YING"],"history":[{"date":"31-07-26 0:00","price":115}]},{"id":"CUST_103","name":"MOHAMAD JALI BIN LILI","phone":"60135792514","totalQty":1,"totalSpent":115,"lastDate":"10-08-26 0:00","firstDate":"10-08-26 0:00","salespersons":["FIONA FIENA ANAK JAMES"],"history":[{"date":"10-08-26 0:00","price":115}]},{"id":"CUST_104","name":"Sia Tay Kuek","phone":"60168521169","totalQty":4,"totalSpent":570,"lastDate":"20-09-26 0:00","firstDate":"11-08-26 0:00","salespersons":["KENIX LING WANG YING","FIONA FIENA ANAK JAMES"],"history":[{"date":"11-08-26 0:00","price":225},{"date":"20-09-26 0:00","price":115},{"date":"20-09-26 0:00","price":115}]},{"id":"CUST_105","name":"KERINE ANAK GADEP","phone":"60198393031","totalQty":2,"totalSpent":230,"lastDate":"13-10-26 0:00","firstDate":"11-08-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG","Ting Kwang Yu"],"history":[{"date":"11-08-26 0:00","price":115},{"date":"13-10-26 0:00","price":115}]},{"id":"CUST_106","name":"NG SEY MOI","phone":"60108648228","totalQty":1,"totalSpent":225,"lastDate":"14-08-26 0:00","firstDate":"14-08-26 0:00","salespersons":["JONG PEI CHOO"],"history":[{"date":"14-08-26 0:00","price":225}]},{"id":"CUST_107","name":"HAIRY BIN ALI","phone":"60178574075","totalQty":1,"totalSpent":115,"lastDate":"16-08-26 0:00","firstDate":"16-08-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"16-08-26 0:00","price":115}]},{"id":"CUST_108","name":"YONG WEE PIN","phone":"601116829106","totalQty":1,"totalSpent":115,"lastDate":"16-08-26 0:00","firstDate":"16-08-26 0:00","salespersons":["Muhammad Nur Farizin Bin Abdullah"],"history":[{"date":"16-08-26 0:00","price":115}]},{"id":"CUST_109","name":"WONG SON ENG","phone":"60102715721","totalQty":1,"totalSpent":115,"lastDate":"17-08-26 0:00","firstDate":"17-08-26 0:00","salespersons":["Daniela Janet Anak Mustapha"],"history":[{"date":"17-08-26 0:00","price":115}]},{"id":"CUST_110","name":"NGIAN ANAK SELANG","phone":"60138272850","totalQty":1,"totalSpent":115,"lastDate":"18-08-26 0:00","firstDate":"18-08-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"18-08-26 0:00","price":115}]},{"id":"CUST_111","name":"CHAI SIEW MOI","phone":"601110578128","totalQty":2,"totalSpent":340,"lastDate":"22-10-26 0:00","firstDate":"19-08-26 0:00","salespersons":["CHAI YEE SIAN"],"history":[{"date":"19-08-26 0:00","price":115},{"date":"22-10-26 0:00","price":225}]},{"id":"CUST_112","name":"GILBERT JONG SIEW HUI","phone":"60143961188","totalQty":1,"totalSpent":115,"lastDate":"21-08-26 0:00","firstDate":"21-08-26 0:00","salespersons":["NURHAFIZAH BINTI PAULI"],"history":[{"date":"21-08-26 0:00","price":115}]},{"id":"CUST_113","name":"MOHAMMED AZIZUL BIN NASSIR","phone":"60138218691","totalQty":1,"totalSpent":115,"lastDate":"23-08-26 0:00","firstDate":"23-08-26 0:00","salespersons":["Muhammad Nur Farizin Bin Abdullah"],"history":[{"date":"23-08-26 0:00","price":115}]},{"id":"CUST_114","name":"NULAI ANAK RUNDANG","phone":"60135680545","totalQty":1,"totalSpent":115,"lastDate":"23-08-26 0:00","firstDate":"23-08-26 0:00","salespersons":["FIONA FIENA ANAK JAMES"],"history":[{"date":"23-08-26 0:00","price":115}]},{"id":"CUST_115","name":"CHONG LEE CHOO","phone":"60168596678","totalQty":2,"totalSpent":230,"lastDate":"24-10-26 0:00","firstDate":"24-08-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG","JONG PEI CHOO"],"history":[{"date":"24-08-26 0:00","price":115},{"date":"24-10-26 0:00","price":115}]},{"id":"CUST_116","name":"TENG CONG XIN","phone":"60128909212","totalQty":1,"totalSpent":115,"lastDate":"27-08-26 0:00","firstDate":"27-08-26 0:00","salespersons":["CHAI YEE SIAN"],"history":[{"date":"27-08-26 0:00","price":115}]},{"id":"CUST_117","name":"KONG CHIA LING","phone":"60146884858","totalQty":2,"totalSpent":340,"lastDate":"28-08-26 0:00","firstDate":"28-08-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"28-08-26 0:00","price":115},{"date":"28-08-26 0:00","price":225}]},{"id":"CUST_118","name":"VOON TZE MIN","phone":"60138292238","totalQty":1,"totalSpent":115,"lastDate":"29-08-26 0:00","firstDate":"29-08-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"29-08-26 0:00","price":115}]},{"id":"CUST_119","name":"NGILIA ANAK LUTAM","phone":"60147541647","totalQty":1,"totalSpent":115,"lastDate":"29-08-26 0:00","firstDate":"29-08-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"29-08-26 0:00","price":115}]},{"id":"CUST_120","name":"THOMAS ANAK EMPENI","phone":"60122694138","totalQty":1,"totalSpent":115,"lastDate":"30-08-26 0:00","firstDate":"30-08-26 0:00","salespersons":["JONG PEI CHOO"],"history":[{"date":"30-08-26 0:00","price":115}]},{"id":"CUST_121","name":"TAN THUANG HUI","phone":"60165759883","totalQty":3,"totalSpent":675,"lastDate":"20-10-26 0:00","firstDate":"30-08-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG","Christina Lee Ying Ying"],"history":[{"date":"30-08-26 0:00","price":225},{"date":"30-08-26 0:00","price":225},{"date":"20-10-26 0:00","price":225}]},{"id":"CUST_122","name":"CHONG CHIEW YAN","phone":"60178992966","totalQty":2,"totalSpent":450,"lastDate":"23-10-26 0:00","firstDate":"31-08-26 0:00","salespersons":["JONG PEI CHOO","KENIX LING WANG YING"],"history":[{"date":"31-08-26 0:00","price":225},{"date":"23-10-26 0:00","price":225}]},{"id":"CUST_123","name":"LIIK HIE LOI","phone":"60168728017","totalQty":1,"totalSpent":115,"lastDate":"15-09-26 0:00","firstDate":"15-09-26 0:00","salespersons":["Daniela Janet Anak Mustapha"],"history":[{"date":"15-09-26 0:00","price":115}]},{"id":"CUST_124","name":"IMIR  TJHO","phone":"60168875905","totalQty":1,"totalSpent":115,"lastDate":"15-09-26 0:00","firstDate":"15-09-26 0:00","salespersons":["Ting Kwang Yu"],"history":[{"date":"15-09-26 0:00","price":115}]},{"id":"CUST_125","name":"CHUNG YIN LING","phone":"601116693493","totalQty":1,"totalSpent":115,"lastDate":"19-09-26 0:00","firstDate":"19-09-26 0:00","salespersons":["JONG PEI CHOO"],"history":[{"date":"19-09-26 0:00","price":115}]},{"id":"CUST_126","name":"CHUNG AH GAN","phone":"60168316258","totalQty":1,"totalSpent":225,"lastDate":"20-09-26 0:00","firstDate":"20-09-26 0:00","salespersons":["NURHAFIZAH BINTI PAULI"],"history":[{"date":"20-09-26 0:00","price":225}]},{"id":"CUST_127","name":"KOO FOO KIAW","phone":"60128090836","totalQty":1,"totalSpent":115,"lastDate":"20-09-26 0:00","firstDate":"20-09-26 0:00","salespersons":["Ting Kwang Yu"],"history":[{"date":"20-09-26 0:00","price":115}]},{"id":"CUST_128","name":"CHAI LIAN CHOO","phone":"60138941176","totalQty":1,"totalSpent":225,"lastDate":"21-09-26 0:00","firstDate":"21-09-26 0:00","salespersons":["Muhammad Nur Farizin Bin Abdullah"],"history":[{"date":"21-09-26 0:00","price":225}]},{"id":"CUST_129","name":"YEO SIEW CHIN","phone":"60198193376","totalQty":2,"totalSpent":450,"lastDate":"14-10-26 0:00","firstDate":"23-09-26 0:00","salespersons":["Ting Kwang Yu","JONG PEI CHOO"],"history":[{"date":"23-09-26 0:00","price":225},{"date":"14-10-26 0:00","price":225}]},{"id":"CUST_130","name":"TAN AI LAN","phone":"60168592845","totalQty":1,"totalSpent":115,"lastDate":"23-09-26 0:00","firstDate":"23-09-26 0:00","salespersons":["Ting Kwang Yu"],"history":[{"date":"23-09-26 0:00","price":115}]},{"id":"CUST_131","name":"MARUJU ANAK SADAGAR","phone":"60138386019","totalQty":1,"totalSpent":115,"lastDate":"24-09-26 0:00","firstDate":"24-09-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"24-09-26 0:00","price":115}]},{"id":"CUST_132","name":"LAI MUK SHIN","phone":"60168837003","totalQty":1,"totalSpent":115,"lastDate":"27-09-26 0:00","firstDate":"27-09-26 0:00","salespersons":["JONG PEI CHOO"],"history":[{"date":"27-09-26 0:00","price":115}]},{"id":"CUST_133","name":"MOHAMMAD HAZILLIE BIN SATIM","phone":"60198540516","totalQty":1,"totalSpent":115,"lastDate":"30-09-26 0:00","firstDate":"30-09-26 0:00","salespersons":["NURHAFIZAH BINTI PAULI"],"history":[{"date":"30-09-26 0:00","price":115}]},{"id":"CUST_134","name":"MOHAMMAD AIDIL","phone":"60197252715","totalQty":1,"totalSpent":115,"lastDate":"30-09-26 0:00","firstDate":"30-09-26 0:00","salespersons":["JONG PEI CHOO"],"history":[{"date":"30-09-26 0:00","price":115}]},{"id":"CUST_135","name":"CHANG AH LAT","phone":"60168901321","totalQty":1,"totalSpent":115,"lastDate":"10-10-26 0:00","firstDate":"10-10-26 0:00","salespersons":["FIONA FIENA ANAK JAMES"],"history":[{"date":"10-10-26 0:00","price":115}]},{"id":"CUST_136","name":"PHU KIM LAI","phone":"60168099102","totalQty":1,"totalSpent":115,"lastDate":"12-10-26 0:00","firstDate":"12-10-26 0:00","salespersons":["CHAI YEE SIAN"],"history":[{"date":"12-10-26 0:00","price":115}]},{"id":"CUST_137","name":"CANDY ANAK NYOMUI","phone":"60168982642","totalQty":1,"totalSpent":115,"lastDate":"13-10-26 0:00","firstDate":"13-10-26 0:00","salespersons":["FIONA FIENA ANAK JAMES"],"history":[{"date":"13-10-26 0:00","price":115}]},{"id":"CUST_138","name":"SUHARTI ANAK BIGIN","phone":"601119352830","totalQty":1,"totalSpent":115,"lastDate":"16-10-26 0:00","firstDate":"16-10-26 0:00","salespersons":["Christina Lee Ying Ying"],"history":[{"date":"16-10-26 0:00","price":115}]},{"id":"CUST_139","name":"MARIA TUBAK","phone":"60192060778","totalQty":2,"totalSpent":450,"lastDate":"18-10-26 0:00","firstDate":"18-10-26 0:00","salespersons":["KENIX LING WANG YING"],"history":[{"date":"18-10-26 0:00","price":225},{"date":"18-10-26 0:00","price":225}]},{"id":"CUST_140","name":"LAI NYIK CHOI","phone":"60177768236","totalQty":1,"totalSpent":115,"lastDate":"18-10-26 0:00","firstDate":"18-10-26 0:00","salespersons":["Christina Lee Ying Ying"],"history":[{"date":"18-10-26 0:00","price":115}]},{"id":"CUST_141","name":"CHONG FOO TECK","phone":"60128799378","totalQty":1,"totalSpent":115,"lastDate":"18-10-26 0:00","firstDate":"18-10-26 0:00","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"18-10-26 0:00","price":115}]},{"id":"CUST_142","name":"WONG LEE SIONG","phone":"60146986888","totalQty":1,"totalSpent":115,"lastDate":"19-10-26 0:00","firstDate":"19-10-26 0:00","salespersons":["CHAI YEE SIAN"],"history":[{"date":"19-10-26 0:00","price":115}]},{"id":"CUST_143","name":"ROHANA BINTI DIMIN","phone":"60168874842","totalQty":1,"totalSpent":115,"lastDate":"20-10-26 0:00","firstDate":"20-10-26 0:00","salespersons":["Muhammad Nur Farizin Bin Abdullah"],"history":[{"date":"20-10-26 0:00","price":115}]},{"id":"CUST_144","name":"SAMSOLL OBING","phone":"601119890438","totalQty":2,"totalSpent":340,"lastDate":"25-10-26 0:00","firstDate":"25-10-26 0:00","salespersons":["KENIX LING WANG YING"],"history":[{"date":"25-10-26 0:00","price":225},{"date":"25-10-26 0:00","price":115}]},{"id":"CUST_145","name":"CHIN KIT LAM","phone":"601170057400","totalQty":1,"totalSpent":115,"lastDate":"26-10-26 0:00","firstDate":"26-10-26 0:00","salespersons":["KENIX LING WANG YING"],"history":[{"date":"26-10-26 0:00","price":115}]},{"id":"CUST_146","name":"JEZAMINE FIONA ANAK RAYMOND BRAOH","phone":"60128655926","totalQty":3,"totalSpent":455,"lastDate":"26-10-26 0:00","firstDate":"26-10-26 0:00","salespersons":["KENIX LING WANG YING"],"history":[{"date":"26-10-26 0:00","price":115},{"date":"26-10-26 0:00","price":225},{"date":"26-10-26 0:00","price":115}]},{"id":"CUST_147","name":"CHAN YAW BENG","phone":"60146779535","totalQty":1,"totalSpent":115,"lastDate":"27-10-26 0:00","firstDate":"27-10-26 0:00","salespersons":["KENIX LING WANG YING"],"history":[{"date":"27-10-26 0:00","price":115}]}]
+};
+
+// ─── PRESET SEED DATA 2: NUTRIBRIDGE SHEEP PLACENTA 600MG E-STAMP PROMO (63 TRANSACTIONS, 43 CUSTOMERS) ───
+const SHEEP_PLACENTA_PRESET_CAMPAIGN = {
+  id: 'sheep-placenta-600mg',
+  name: 'NUTRIBRIDGE SHEEP PLACENTA 600MG (E-STAMP BUY 6 FREE 1)',
+  productName: 'NUTRIBRIDGE SHEEP PLACENTA 600MG WITH GRAPE SEED EXTRACT',
+  productCode: '120697',
+  defaultPrice: 299,
+  isPreset: true,
+  createdAt: '2026-11-16T00:00:00.000Z',
+  defaultOfferDetails: 'BUY 6 GET 1 FREE E-Stamp Campaign (1 BOX30 = 1 e-stamp, 1 SET90 = 3 e-stamps) | 集满 6 个电子印花，免费换领 1 盒 BOX30',
+  defaultOfferDetailsEn: 'BUY 6 GET 1 FREE (Collect 6 e-stamps on Public Medicare App, get 1 BOX30 FREE! 1 BOX30 = 1 e-stamp | 1 SET90 = 3 e-stamps. Register for the E-Stamp campaign in the App before you buy)',
+  defaultOfferDetailsBm: 'BELI 6 PERCUMA 1 (Kumpul 6 e-stamp dalam Public Medicare App, tebus 1 Kotak BOX30 PERCUMA! 1 BOX30 = 1 e-stamp | 1 SET90 = 3 e-stamp. Daftar kempen E-Stamp dalam App sebelum membeli)',
+  defaultOfferDetailsZh: '买 6 送 1 电子印花活动（集满 6 个电子印花，免费换领 1 盒 BOX30！买 1 盒 BOX30 = 1 个电子印花 | 买 1 套 SET90 = 3 个电子印花。购买前请先在 Public Medicare App 登记电子印花活动）',
+  defaultPromoPeriod: '16 Nov 2026 – 31 Dec 2027 / 2026年11月16日 – 2027年12月31日',
+  defaultPosterUrlBm: 'assets/sheep-placenta-en.jpg',
+  defaultPosterNameBm: 'sheep-placenta-en.jpg',
+  defaultPosterUrlZh: 'assets/sheep-placenta-zh.jpg',
+  defaultPosterNameZh: 'sheep-placenta-zh.jpg',
+  customers: [{"id":"SP_CUST_1","name":"CHONG WEI FONG","phone":"60198348389","totalQty":2,"totalSpent":313,"lastDate":"10-22-26","firstDate":"10-20-26","salespersons":["CHAI YEE SIAN"],"history":[{"date":"10-22-26","qty":1,"price":14,"pack":"120697 - SOFTGEL","sp":"CHAI YEE SIAN"},{"date":"10-20-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"}]},{"id":"SP_CUST_2","name":"BONG AH TIT","phone":"60142060121","totalQty":3,"totalSpent":88,"lastDate":"05-12-26","firstDate":"06-13-26","salespersons":["CHAI YEE SIAN","JONG PEI CHOO"],"history":[{"date":"05-12-26","qty":2,"price":14,"pack":"120697 - SOFTGEL","sp":"CHAI YEE SIAN"},{"date":"06-13-26","qty":1,"price":60,"pack":"120697 - 5 TAB","sp":"JONG PEI CHOO"}]},{"id":"SP_CUST_3","name":"LIEW JOO FAH","phone":"60168995891","totalQty":2,"totalSpent":170,"lastDate":"10-20-26","firstDate":"10-26-26","salespersons":["CHAI YEE SIAN","HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"10-20-26","qty":1,"price":60,"pack":"120697 - 5 TAB","sp":"CHAI YEE SIAN"},{"date":"10-26-26","qty":1,"price":110,"pack":"120697 - STRIP10","sp":"HANIESHA LOUNA ANAK DAGENG"}]},{"id":"SP_CUST_4","name":"ANNIE ANAK EVEREADY @ EVERIDI","phone":"60189865589","totalQty":1,"totalSpent":60,"lastDate":"09-02-26","firstDate":"09-02-26","salespersons":["FIONA FIENA ANAK JAMES"],"history":[{"date":"09-02-26","qty":1,"price":60,"pack":"120697 - 5 TAB","sp":"FIONA FIENA ANAK JAMES"}]},{"id":"SP_CUST_5","name":"LAI AH HIONG","phone":"60112356184","totalQty":1,"totalSpent":60,"lastDate":"07-26-26","firstDate":"07-26-26","salespersons":["FIONA FIENA ANAK JAMES"],"history":[{"date":"07-26-26","qty":1,"price":60,"pack":"120697 - 5 TAB","sp":"FIONA FIENA ANAK JAMES"}]},{"id":"SP_CUST_6","name":"MANIK MIAH","phone":"60162271874","totalQty":1,"totalSpent":60,"lastDate":"06-04-26","firstDate":"06-04-26","salespersons":["FIONA FIENA ANAK JAMES"],"history":[{"date":"06-04-26","qty":1,"price":60,"pack":"120697 - 5 TAB","sp":"FIONA FIENA ANAK JAMES"}]},{"id":"SP_CUST_7","name":"CHAN PEK YIN","phone":"60168668009","totalQty":2,"totalSpent":359,"lastDate":"05-05-26","firstDate":"06-22-26","salespersons":["CHAI YEE SIAN"],"history":[{"date":"05-05-26","qty":1,"price":60,"pack":"120697 - 5 TAB","sp":"CHAI YEE SIAN"},{"date":"06-22-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"}]},{"id":"SP_CUST_8","name":"LIEW CHOON MOY","phone":"60168668923","totalQty":2,"totalSpent":409,"lastDate":"10-14-26","firstDate":"10-02-26","salespersons":["CHAI YEE SIAN"],"history":[{"date":"10-14-26","qty":1,"price":110,"pack":"120697 - STRIP10","sp":"CHAI YEE SIAN"},{"date":"10-02-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"}]},{"id":"SP_CUST_9","name":"PATRICK ANAK SINKA","phone":"601119840883","totalQty":1,"totalSpent":110,"lastDate":"06-22-26","firstDate":"06-22-26","salespersons":["FIONA FIENA ANAK JAMES"],"history":[{"date":"06-22-26","qty":1,"price":110,"pack":"120697 - STRIP10","sp":"FIONA FIENA ANAK JAMES"}]},{"id":"SP_CUST_10","name":"JAMIYA BINTI SUMADI","phone":"996600056067","totalQty":3,"totalSpent":180,"lastDate":"05-19-26","firstDate":"05-19-26","salespersons":["CHAI YEE SIAN"],"history":[{"date":"05-19-26","qty":3,"price":60,"pack":"120697 - 5 TAB","sp":"CHAI YEE SIAN"}]},{"id":"SP_CUST_11","name":"BONG SIEW HUA","phone":"60165898855","totalQty":2,"totalSpent":568,"lastDate":"09-09-26","firstDate":"09-09-26","salespersons":["CHAI YEE SIAN","JONG PEI CHOO"],"history":[{"date":"09-09-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"},{"date":"09-09-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"JONG PEI CHOO"}]},{"id":"SP_CUST_12","name":"CHAI SHOON LEE","phone":"60198193265","totalQty":2,"totalSpent":598,"lastDate":"10-19-26","firstDate":"05-13-26","salespersons":["CHAI YEE SIAN"],"history":[{"date":"10-19-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"},{"date":"05-13-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"}]},{"id":"SP_CUST_13","name":"LAI NYIT LI","phone":"60198199463","totalQty":3,"totalSpent":897,"lastDate":"10-19-26","firstDate":"06-15-26","salespersons":["CHAI YEE SIAN"],"history":[{"date":"10-19-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"},{"date":"08-08-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"},{"date":"06-15-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"}]},{"id":"SP_CUST_14","name":"NG CHEE LICK","phone":"60143311225","totalQty":1,"totalSpent":299,"lastDate":"10-16-26","firstDate":"10-16-26","salespersons":["CHAI YEE SIAN"],"history":[{"date":"10-16-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"}]},{"id":"SP_CUST_15","name":"ANNIE LAU SIEW HEE","phone":"60168960507","totalQty":1,"totalSpent":299,"lastDate":"10-15-26","firstDate":"10-15-26","salespersons":["CHAI YEE SIAN"],"history":[{"date":"10-15-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"}]},{"id":"SP_CUST_16","name":"Hiew Tze Mui","phone":"60168765993","totalQty":1,"totalSpent":299,"lastDate":"10-14-26","firstDate":"10-14-26","salespersons":["CHAI YEE SIAN"],"history":[{"date":"10-14-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"}]},{"id":"SP_CUST_17","name":"WEE HSIAO LIANG","phone":"60148848709","totalQty":1,"totalSpent":299,"lastDate":"09-23-26","firstDate":"09-23-26","salespersons":["Ting Kwang Yu"],"history":[{"date":"09-23-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"Ting Kwang Yu"}]},{"id":"SP_CUST_18","name":"GOH SIOK FANG","phone":"601110558988","totalQty":1,"totalSpent":299,"lastDate":"09-10-26","firstDate":"09-10-26","salespersons":["CHAI YEE SIAN"],"history":[{"date":"09-10-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"}]},{"id":"SP_CUST_19","name":"LIEW LIAN FOH","phone":"60198578812","totalQty":1,"totalSpent":299,"lastDate":"09-09-26","firstDate":"09-09-26","salespersons":["JONG PEI CHOO"],"history":[{"date":"09-09-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"JONG PEI CHOO"}]},{"id":"SP_CUST_20","name":"NG SZE SOON","phone":"60126689762","totalQty":1,"totalSpent":299,"lastDate":"09-08-26","firstDate":"09-08-26","salespersons":["CHAI YEE SIAN"],"history":[{"date":"09-08-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"}]},{"id":"SP_CUST_21","name":"WONG YON HUAT","phone":"60198884489","totalQty":6,"totalSpent":3447,"lastDate":"09-08-26","firstDate":"07-03-26","salespersons":["JONG PEI CHOO","LOLITA WONG LIN","ERICA HO MING HUONG"],"history":[{"date":"09-08-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"JONG PEI CHOO"},{"date":"09-08-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"JONG PEI CHOO"},{"date":"05-29-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"LOLITA WONG LIN"},{"date":"09-08-26","qty":1,"price":850,"pack":"120697 - SET90","sp":"JONG PEI CHOO"},{"date":"08-01-26","qty":1,"price":850,"pack":"120697 - SET90","sp":"JONG PEI CHOO"},{"date":"07-03-26","qty":1,"price":850,"pack":"120697 - SET90","sp":"ERICA HO MING HUONG"}]},{"id":"SP_CUST_22","name":"BOON KIM LIONG","phone":"60440206135357","totalQty":1,"totalSpent":299,"lastDate":"09-02-26","firstDate":"09-02-26","salespersons":["CHAI YEE SIAN"],"history":[{"date":"09-02-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"}]},{"id":"SP_CUST_23","name":"FONG KHENG HUP","phone":"60139319000","totalQty":2,"totalSpent":1149,"lastDate":"08-25-26","firstDate":"09-07-26","salespersons":["JONG PEI CHOO"],"history":[{"date":"08-25-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"JONG PEI CHOO"},{"date":"09-07-26","qty":1,"price":850,"pack":"120697 - SET90","sp":"JONG PEI CHOO"}]},{"id":"SP_CUST_24","name":"HII CHAI","phone":"60138169985","totalQty":2,"totalSpent":598,"lastDate":"08-06-26","firstDate":"06-19-26","salespersons":["KENIX LING WANG YING","Daniela Janet Anak Mustapha"],"history":[{"date":"08-06-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"KENIX LING WANG YING"},{"date":"06-19-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"Daniela Janet Anak Mustapha"}]},{"id":"SP_CUST_25","name":"CHIN MIN YEN","phone":"60198772228","totalQty":1,"totalSpent":299,"lastDate":"08-06-26","firstDate":"08-06-26","salespersons":["CHAI YEE SIAN"],"history":[{"date":"08-06-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"}]},{"id":"SP_CUST_26","name":"LO KUI FAH","phone":"6082612439","totalQty":3,"totalSpent":897,"lastDate":"08-01-26","firstDate":"05-09-26","salespersons":["CHAI YEE SIAN"],"history":[{"date":"08-01-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"},{"date":"06-27-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"},{"date":"05-09-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"}]},{"id":"SP_CUST_27","name":"PHU KIM LAI","phone":"60168099102","totalQty":1,"totalSpent":299,"lastDate":"07-27-26","firstDate":"07-27-26","salespersons":["CHAI YEE SIAN"],"history":[{"date":"07-27-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"}]},{"id":"SP_CUST_28","name":"TAN POH KING","phone":"60168099313","totalQty":1,"totalSpent":299,"lastDate":"07-26-26","firstDate":"07-26-26","salespersons":["JONG PEI CHOO"],"history":[{"date":"07-26-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"JONG PEI CHOO"}]},{"id":"SP_CUST_29","name":"JACQUELYNE JINA ANAK JOSEPH HAWKER","phone":"60138229547","totalQty":1,"totalSpent":299,"lastDate":"07-23-26","firstDate":"07-23-26","salespersons":["CHAI YEE SIAN"],"history":[{"date":"07-23-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"}]},{"id":"SP_CUST_30","name":"JOLAND ANAK MAT","phone":"601115816497","totalQty":1,"totalSpent":299,"lastDate":"07-13-26","firstDate":"07-13-26","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"07-13-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"HANIESHA LOUNA ANAK DAGENG"}]},{"id":"SP_CUST_31","name":"LAI JIT SEN","phone":"60198877189","totalQty":1,"totalSpent":299,"lastDate":"07-08-26","firstDate":"07-08-26","salespersons":["FIONA FIENA ANAK JAMES"],"history":[{"date":"07-08-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"FIONA FIENA ANAK JAMES"}]},{"id":"SP_CUST_32","name":"SIM HENG CHOO","phone":"60198394742","totalQty":1,"totalSpent":299,"lastDate":"07-03-26","firstDate":"07-03-26","salespersons":["LOLITA WONG LIN"],"history":[{"date":"07-03-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"LOLITA WONG LIN"}]},{"id":"SP_CUST_33","name":"CHAN SOI HWA","phone":"60198899606","totalQty":1,"totalSpent":299,"lastDate":"07-03-26","firstDate":"07-03-26","salespersons":["ERICA HO MING HUONG"],"history":[{"date":"07-03-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"ERICA HO MING HUONG"}]},{"id":"SP_CUST_34","name":"LAI FUNG LAN","phone":"60143212982","totalQty":1,"totalSpent":299,"lastDate":"06-10-26","firstDate":"06-10-26","salespersons":["CHAI YEE SIAN"],"history":[{"date":"06-10-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"}]},{"id":"SP_CUST_35","name":"LEE THAI LIN","phone":"60168075525","totalQty":1,"totalSpent":299,"lastDate":"06-01-26","firstDate":"06-01-26","salespersons":["JONG PEI CHOO"],"history":[{"date":"06-01-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"JONG PEI CHOO"}]},{"id":"SP_CUST_36","name":"CHONG FOONG SIEW","phone":"60135653009","totalQty":2,"totalSpent":1149,"lastDate":"05-31-26","firstDate":"09-28-26","salespersons":["KENIX LING WANG YING","CHAI YEE SIAN"],"history":[{"date":"05-31-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"KENIX LING WANG YING"},{"date":"09-28-26","qty":1,"price":850,"pack":"120697 - SET90","sp":"CHAI YEE SIAN"}]},{"id":"SP_CUST_37","name":"CHANGAI ANAK BAKIR","phone":"60145788344","totalQty":1,"totalSpent":299,"lastDate":"05-03-26","firstDate":"05-03-26","salespersons":["HANIESHA LOUNA ANAK DAGENG"],"history":[{"date":"05-03-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"HANIESHA LOUNA ANAK DAGENG"}]},{"id":"SP_CUST_38","name":"CHAI SIEW KIM","phone":"60138058164","totalQty":1,"totalSpent":299,"lastDate":"05-02-26","firstDate":"05-02-26","salespersons":["CHAI YEE SIAN"],"history":[{"date":"05-02-26","qty":1,"price":299,"pack":"120697 - BOX30","sp":"CHAI YEE SIAN"}]},{"id":"SP_CUST_39","name":"KUEH CHUI SAI","phone":"601120588871","totalQty":1,"totalSpent":800,"lastDate":"05-10-26","firstDate":"05-10-26","salespersons":["JONG PEI CHOO"],"history":[{"date":"05-10-26","qty":1,"price":850,"pack":"120697 - SET90","sp":"JONG PEI CHOO"}]},{"id":"SP_CUST_40","name":"LING SIEW HONG","phone":"60126121962","totalQty":1,"totalSpent":820,"lastDate":"08-28-26","firstDate":"08-28-26","salespersons":["CHAI YEE SIAN"],"history":[{"date":"08-28-26","qty":1,"price":850,"pack":"120697 - SET90","sp":"CHAI YEE SIAN"}]},{"id":"SP_CUST_41","name":"CHOO CHIANG LAN","phone":"60178025131","totalQty":1,"totalSpent":850,"lastDate":"09-30-26","firstDate":"09-30-26","salespersons":["JONG PEI CHOO"],"history":[{"date":"09-30-26","qty":1,"price":850,"pack":"120697 - SET90","sp":"JONG PEI CHOO"}]},{"id":"SP_CUST_42","name":"LEE KHIAN SENG","phone":"60168863104","totalQty":1,"totalSpent":850,"lastDate":"09-23-26","firstDate":"09-23-26","salespersons":["Ting Kwang Yu"],"history":[{"date":"09-23-26","qty":1,"price":850,"pack":"120697 - SET90","sp":"Ting Kwang Yu"}]},{"id":"SP_CUST_43","name":"PHANG THAU HUA","phone":"60198380515","totalQty":2,"totalSpent":1700,"lastDate":"09-22-26","firstDate":"08-05-26","salespersons":["HANIESHA LOUNA ANAK DAGENG","JONG PEI CHOO"],"history":[{"date":"09-22-26","qty":1,"price":850,"pack":"120697 - SET90","sp":"HANIESHA LOUNA ANAK DAGENG"},{"date":"08-05-26","qty":1,"price":850,"pack":"120697 - SET90","sp":"JONG PEI CHOO"}]}]
 };
 
 // ─── SURNAMES & MALAYSIAN NAME CLASSIFIER ─────────────────────────────────────
@@ -234,24 +260,34 @@ const STORAGE_PROMO_ACTIVE_ID = 'pmg_promo_active_campaign_id';
 const STORAGE_PROMO_PROGRESS   = 'pmg_promo_broadcast_progress';
 const STORAGE_PROMO_COMPOSER   = 'pmg_promo_composer_state';
 const STORAGE_PROMO_POSTER     = 'pmg_promo_poster_data';
+const STORAGE_PROMO_POSTER_BM  = 'pmg_promo_poster_data_bm';
+const STORAGE_PROMO_POSTER_ZH  = 'pmg_promo_poster_data_zh';
+const STORAGE_SHEEP_SEEDED_V1  = 'pmg_promo_sheep_placenta_seeded_v1';
 
 let promoCampaigns = [];
 let promoActiveCampaign = null;
 let promoCachedPosterBlob = null;
+let promoCachedPosterBlobBm = null;
+let promoCachedPosterBlobZh = null;
 let promoComposerState = {
   language: 'auto', // 'auto' (smart customer match) | 'bm' | 'zh' | 'bilingual' | 'en' | 'custom'
-  offerDetails: 'Beli 2 Tin RM210 (Jimat RM20) + Percuma Shaker / 买2罐特惠 RM210（节省 RM20）+ 免费赠送摇摇杯，存货有限售完即止',
-  offerDetailsEn: 'Buy 2 Tins at RM210 (Save RM20) + Free Shaker Cup, while stocks last',
-  offerDetailsBm: 'Beli 2 Tin pada harga RM210 (Jimat RM20) + Percuma Shaker Cup, sementara stok masih ada',
-  offerDetailsZh: '买2罐特惠 RM210（节省 RM20）+ 免费赠送摇摇杯，存货有限售完即止',
-  promoPeriod: 'Sementara Stok Masih Ada / 存货有限，售完即止',
+  offerDetails: SHEEP_PLACENTA_PRESET_CAMPAIGN.defaultOfferDetails,
+  offerDetailsEn: SHEEP_PLACENTA_PRESET_CAMPAIGN.defaultOfferDetailsEn,
+  offerDetailsBm: SHEEP_PLACENTA_PRESET_CAMPAIGN.defaultOfferDetailsBm,
+  offerDetailsZh: SHEEP_PLACENTA_PRESET_CAMPAIGN.defaultOfferDetailsZh,
+  promoPeriod: SHEEP_PLACENTA_PRESET_CAMPAIGN.defaultPromoPeriod,
   branchName: 'Kota Sentosa',
   shopPhone: '+60149773924',
   pharmacistPhone: '01110990693',
   pharmacistName: 'William',
-  posterUrl: '',
-  posterFileName: '',
+  posterUrl: SHEEP_PLACENTA_PRESET_CAMPAIGN.defaultPosterUrlBm,
+  posterFileName: SHEEP_PLACENTA_PRESET_CAMPAIGN.defaultPosterNameBm,
+  posterUrlBm: SHEEP_PLACENTA_PRESET_CAMPAIGN.defaultPosterUrlBm,
+  posterFileNameBm: SHEEP_PLACENTA_PRESET_CAMPAIGN.defaultPosterNameBm,
+  posterUrlZh: SHEEP_PLACENTA_PRESET_CAMPAIGN.defaultPosterUrlZh,
+  posterFileNameZh: SHEEP_PLACENTA_PRESET_CAMPAIGN.defaultPosterNameZh,
   autoCopyPoster: true,
+  reuseWaTab: true,
   customText: '',
   templates: {
     bm: '',
@@ -278,6 +314,22 @@ const PROMO_CLOUD_VAULT_KEY = 'PMG_PROMO_BROADCAST_VAULT_KS01';
 let promoGoogleCloudSynced = false;
 let promoCloudPushTimer = null;
 
+function resolvePromoAssetUrl(assetPath) {
+  if (!assetPath) return '';
+  if (assetPath.startsWith('data:') || assetPath.startsWith('http') || assetPath.startsWith('blob:') || assetPath.startsWith('/')) {
+    return assetPath;
+  }
+  if (typeof window !== 'undefined' && window.location && window.location.pathname) {
+    if (window.location.pathname.includes('/promo/')) {
+      return assetPath.replace(/^promo\//, '');
+    }
+    if (!assetPath.startsWith('promo/')) {
+      return 'promo/' + assetPath;
+    }
+  }
+  return assetPath;
+}
+
 // ─── INITIALIZATION ───────────────────────────────────────────────────────────
 function initPromoBroadcastModule() {
   loadPromoCampaigns();
@@ -291,15 +343,42 @@ function initPromoBroadcastModule() {
 }
 window.initPromoBroadcastModule = initPromoBroadcastModule;
 
+function isPresetCampaignId(id) {
+  return id === SHEEP_PLACENTA_PRESET_CAMPAIGN.id || id === NUTRI_ALPHA_PRESET_CAMPAIGN.id;
+}
+
+function applyCampaignDefaultsToComposer(campaign, saveState = true) {
+  if (!campaign) return;
+  if (campaign.defaultOfferDetailsEn) promoComposerState.offerDetailsEn = campaign.defaultOfferDetailsEn;
+  if (campaign.defaultOfferDetailsBm) promoComposerState.offerDetailsBm = campaign.defaultOfferDetailsBm;
+  if (campaign.defaultOfferDetailsZh) promoComposerState.offerDetailsZh = campaign.defaultOfferDetailsZh;
+  if (campaign.defaultOfferDetails) promoComposerState.offerDetails = campaign.defaultOfferDetails;
+  if (campaign.defaultPromoPeriod) promoComposerState.promoPeriod = campaign.defaultPromoPeriod;
+
+  if (campaign.defaultPosterUrlBm !== undefined) {
+    promoComposerState.posterUrlBm = campaign.defaultPosterUrlBm;
+    promoComposerState.posterFileNameBm = campaign.defaultPosterNameBm || 'poster-en.jpg';
+    promoComposerState.posterUrl = campaign.defaultPosterUrlBm;
+    promoComposerState.posterFileName = campaign.defaultPosterNameBm || 'poster-en.jpg';
+    preparePosterBlobForSlot('bm', promoComposerState.posterUrlBm);
+  }
+  if (campaign.defaultPosterUrlZh !== undefined) {
+    promoComposerState.posterUrlZh = campaign.defaultPosterUrlZh;
+    promoComposerState.posterFileNameZh = campaign.defaultPosterNameZh || 'poster-zh.jpg';
+    preparePosterBlobForSlot('zh', promoComposerState.posterUrlZh);
+  }
+  if (saveState) savePromoComposerState();
+}
+
 function loadPromoCampaigns() {
-  promoCampaigns = [NUTRI_ALPHA_PRESET_CAMPAIGN];
+  promoCampaigns = [SHEEP_PLACENTA_PRESET_CAMPAIGN, NUTRI_ALPHA_PRESET_CAMPAIGN];
   try {
     const raw = localStorage.getItem(STORAGE_PROMO_CAMPAIGNS);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
         parsed.forEach(c => {
-          if (c && c.id && c.id !== NUTRI_ALPHA_PRESET_CAMPAIGN.id) {
+          if (c && c.id && !isPresetCampaignId(c.id)) {
             promoCampaigns.push(c);
           }
         });
@@ -309,8 +388,16 @@ function loadPromoCampaigns() {
     console.warn('[PMG Promo] Error loading custom campaigns:', e);
   }
 
-  const activeId = localStorage.getItem(STORAGE_PROMO_ACTIVE_ID) || NUTRI_ALPHA_PRESET_CAMPAIGN.id;
-  promoActiveCampaign = promoCampaigns.find(c => c.id === activeId) || promoCampaigns[0] || NUTRI_ALPHA_PRESET_CAMPAIGN;
+  let activeId = localStorage.getItem(STORAGE_PROMO_ACTIVE_ID);
+  try {
+    if (localStorage.getItem(STORAGE_SHEEP_SEEDED_V1) !== '1') {
+      activeId = SHEEP_PLACENTA_PRESET_CAMPAIGN.id;
+      localStorage.setItem(STORAGE_PROMO_ACTIVE_ID, activeId);
+    }
+  } catch (_) {}
+
+  if (!activeId) activeId = SHEEP_PLACENTA_PRESET_CAMPAIGN.id;
+  promoActiveCampaign = promoCampaigns.find(c => c.id === activeId) || promoCampaigns[0] || SHEEP_PLACENTA_PRESET_CAMPAIGN;
 }
 
 function saveCustomPromoCampaigns() {
@@ -332,6 +419,12 @@ function loadPromoComposerState() {
       if (saved.templates && typeof saved.templates === 'object') {
         promoComposerState.templates = { ...promoComposerState.templates, ...saved.templates };
       }
+    }
+    // First-time seed for Sheep Placenta campaign defaults so existing localStorage switches cleanly
+    if (localStorage.getItem(STORAGE_SHEEP_SEEDED_V1) !== '1') {
+      applyCampaignDefaultsToComposer(SHEEP_PLACENTA_PRESET_CAMPAIGN, false);
+      localStorage.setItem(STORAGE_SHEEP_SEEDED_V1, '1');
+      localStorage.setItem(STORAGE_PROMO_COMPOSER, JSON.stringify(promoComposerState));
     }
   } catch (e) {
     console.warn('[PMG Promo] Error loading composer state:', e);
@@ -359,19 +452,30 @@ function savePromoComposerState() {
 }
 
 async function preparePosterBlob(dataUrl) {
+  return preparePosterBlobForSlot('bm', dataUrl);
+}
+
+async function preparePosterBlobForSlot(langSlot, dataUrl) {
+  const slot = (langSlot === 'zh') ? 'zh' : 'bm';
   if (!dataUrl) {
-    promoCachedPosterBlob = null;
+    if (slot === 'zh') promoCachedPosterBlobZh = null;
+    else {
+      promoCachedPosterBlobBm = null;
+      promoCachedPosterBlob = null;
+    }
     return null;
   }
+  const resolvedUrl = resolvePromoAssetUrl(dataUrl);
   try {
-    const res = await fetch(dataUrl);
+    const res = await fetch(resolvedUrl);
     let blob = await res.blob();
-    if (blob.type !== 'image/png') {
+    if (blob.type !== 'image/png' && typeof Image !== 'undefined' && typeof document !== 'undefined') {
       const img = new Image();
+      img.crossOrigin = 'anonymous';
       await new Promise((resolve, reject) => {
         img.onload = resolve;
         img.onerror = reject;
-        img.src = dataUrl;
+        img.src = resolvedUrl;
       });
       const canvas = document.createElement('canvas');
       canvas.width = img.naturalWidth;
@@ -380,45 +484,121 @@ async function preparePosterBlob(dataUrl) {
       ctx.drawImage(img, 0, 0);
       blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
     }
-    promoCachedPosterBlob = blob;
+    if (slot === 'zh') {
+      promoCachedPosterBlobZh = blob;
+    } else {
+      promoCachedPosterBlobBm = blob;
+      promoCachedPosterBlob = blob;
+    }
     return blob;
   } catch (err) {
-    console.warn('[Promo Poster Pre-Cache]', err);
+    console.warn(`[Promo Poster Pre-Cache ${slot}]`, err);
     return null;
   }
 }
 
 function loadPromoPoster() {
   try {
-    const data = localStorage.getItem(STORAGE_PROMO_POSTER);
-    if (data) {
-      const parsed = JSON.parse(data);
-      if (parsed && parsed.dataUrl) {
-        promoComposerState.posterUrl = parsed.dataUrl;
-        promoComposerState.posterFileName = parsed.fileName || 'promo_poster.png';
-        preparePosterBlob(parsed.dataUrl);
+    // Load EN/BM poster from localStorage or active campaign default
+    const rawBm = localStorage.getItem(STORAGE_PROMO_POSTER_BM) || localStorage.getItem(STORAGE_PROMO_POSTER);
+    if (rawBm) {
+      const parsedBm = JSON.parse(rawBm);
+      if (parsedBm && parsedBm.dataUrl) {
+        promoComposerState.posterUrlBm = parsedBm.dataUrl;
+        promoComposerState.posterFileNameBm = parsedBm.fileName || 'promo_poster_bm.png';
+        promoComposerState.posterUrl = parsedBm.dataUrl;
+        promoComposerState.posterFileName = parsedBm.fileName || 'promo_poster_bm.png';
       }
+    } else if (promoActiveCampaign && promoActiveCampaign.defaultPosterUrlBm) {
+      promoComposerState.posterUrlBm = promoActiveCampaign.defaultPosterUrlBm;
+      promoComposerState.posterFileNameBm = promoActiveCampaign.defaultPosterNameBm || 'sheep-placenta-en.jpg';
+      promoComposerState.posterUrl = promoActiveCampaign.defaultPosterUrlBm;
+      promoComposerState.posterFileName = promoActiveCampaign.defaultPosterNameBm || 'sheep-placenta-en.jpg';
+    }
+
+    // Load Chinese poster from localStorage or active campaign default
+    const rawZh = localStorage.getItem(STORAGE_PROMO_POSTER_ZH);
+    if (rawZh) {
+      const parsedZh = JSON.parse(rawZh);
+      if (parsedZh && parsedZh.dataUrl) {
+        promoComposerState.posterUrlZh = parsedZh.dataUrl;
+        promoComposerState.posterFileNameZh = parsedZh.fileName || 'promo_poster_zh.png';
+      }
+    } else if (promoActiveCampaign && promoActiveCampaign.defaultPosterUrlZh) {
+      promoComposerState.posterUrlZh = promoActiveCampaign.defaultPosterUrlZh;
+      promoComposerState.posterFileNameZh = promoActiveCampaign.defaultPosterNameZh || 'sheep-placenta-zh.jpg';
+    }
+
+    if (promoComposerState.posterUrlBm) {
+      preparePosterBlobForSlot('bm', promoComposerState.posterUrlBm);
+    }
+    if (promoComposerState.posterUrlZh) {
+      preparePosterBlobForSlot('zh', promoComposerState.posterUrlZh);
     }
   } catch (e) {
     console.warn('[PMG Promo] Error loading poster:', e);
   }
 }
 
-function savePromoPoster(dataUrl, fileName) {
+function savePromoPoster(dataUrl, fileName, langSlot = 'bm') {
+  const slot = (langSlot === 'zh') ? 'zh' : 'bm';
   try {
-    promoComposerState.posterUrl = dataUrl || '';
-    promoComposerState.posterFileName = fileName || '';
-    if (dataUrl) {
-      localStorage.setItem(STORAGE_PROMO_POSTER, JSON.stringify({ dataUrl, fileName }));
-      preparePosterBlob(dataUrl);
+    if (slot === 'zh') {
+      promoComposerState.posterUrlZh = dataUrl || '';
+      promoComposerState.posterFileNameZh = fileName || '';
+      if (dataUrl) {
+        localStorage.setItem(STORAGE_PROMO_POSTER_ZH, JSON.stringify({ dataUrl, fileName }));
+        preparePosterBlobForSlot('zh', dataUrl);
+      } else {
+        promoCachedPosterBlobZh = null;
+        localStorage.removeItem(STORAGE_PROMO_POSTER_ZH);
+      }
     } else {
-      promoCachedPosterBlob = null;
-      localStorage.removeItem(STORAGE_PROMO_POSTER);
+      promoComposerState.posterUrlBm = dataUrl || '';
+      promoComposerState.posterFileNameBm = fileName || '';
+      promoComposerState.posterUrl = dataUrl || '';
+      promoComposerState.posterFileName = fileName || '';
+      if (dataUrl) {
+        localStorage.setItem(STORAGE_PROMO_POSTER_BM, JSON.stringify({ dataUrl, fileName }));
+        localStorage.setItem(STORAGE_PROMO_POSTER, JSON.stringify({ dataUrl, fileName }));
+        preparePosterBlobForSlot('bm', dataUrl);
+      } else {
+        promoCachedPosterBlobBm = null;
+        promoCachedPosterBlob = null;
+        localStorage.removeItem(STORAGE_PROMO_POSTER_BM);
+        localStorage.removeItem(STORAGE_PROMO_POSTER);
+      }
     }
   } catch (e) {
     console.warn('[PMG Promo] Poster image too large for localStorage, keeping in session:', e);
   }
 }
+
+function getPosterForLanguage(effLang) {
+  if (effLang === 'zh') {
+    const url = promoComposerState.posterUrlZh || promoComposerState.posterUrlBm || promoComposerState.posterUrl || '';
+    const fileName = promoComposerState.posterFileNameZh || promoComposerState.posterFileNameBm || promoComposerState.posterFileName || '';
+    const isZhPoster = Boolean(promoComposerState.posterUrlZh);
+    return {
+      langSlot: isZhPoster ? 'zh' : 'bm',
+      url: resolvePromoAssetUrl(url),
+      rawUrl: url,
+      fileName,
+      blob: isZhPoster ? promoCachedPosterBlobZh : (promoCachedPosterBlobBm || promoCachedPosterBlob)
+    };
+  }
+  const url = promoComposerState.posterUrlBm || promoComposerState.posterUrl || promoComposerState.posterUrlZh || '';
+  const fileName = promoComposerState.posterFileNameBm || promoComposerState.posterFileName || promoComposerState.posterFileNameZh || '';
+  const isBmPoster = Boolean(promoComposerState.posterUrlBm || promoComposerState.posterUrl);
+  return {
+    langSlot: isBmPoster ? 'bm' : 'zh',
+    url: resolvePromoAssetUrl(url),
+    rawUrl: url,
+    fileName,
+    blob: isBmPoster ? (promoCachedPosterBlobBm || promoCachedPosterBlob) : promoCachedPosterBlobZh
+  };
+}
+window.getPosterForLanguage = getPosterForLanguage;
 
 function loadPromoProgress() {
   try {
@@ -880,8 +1060,8 @@ function insertPromoPlaceholder(tag) {
 }
 window.insertPromoPlaceholder = insertPromoPlaceholder;
 
-// ─── POSTER IMAGE UPLOADER & CLIPBOARD ─────────────────────────────────────────
-function handlePosterFileSelected(event) {
+// ─── POSTER IMAGE UPLOADER & CLIPBOARD (DUAL LANGUAGE: EN/BM & 华语) ─────────
+function handlePosterFileSelected(event, langSlot = 'bm') {
   const file = event.target.files && event.target.files[0];
   if (!file) return;
 
@@ -895,25 +1075,30 @@ function handlePosterFileSelected(event) {
     alert('Image file is large. Converting and optimizing to ensure fast performance...');
   }
 
+  const slot = (langSlot === 'zh') ? 'zh' : 'bm';
   const reader = new FileReader();
   reader.onload = (e) => {
     const dataUrl = e.target.result;
-    savePromoPoster(dataUrl, file.name);
+    savePromoPoster(dataUrl, file.name, slot);
     renderPosterPreviewUI();
     renderPromoChatPreview();
-    showPromoToast('🖼️ Promotional poster attached successfully!');
+    showPromoToast(`🖼️ ${slot === 'zh' ? '华语 (Chinese)' : 'EN / BM'} promotional poster attached!`);
   };
   reader.readAsDataURL(file);
 }
 window.handlePosterFileSelected = handlePosterFileSelected;
 
-function removePromoPoster() {
-  savePromoPoster('', '');
-  const fileInput = document.getElementById('promoPosterFileInput');
+function removePromoPoster(langSlot = 'bm') {
+  const slot = (langSlot === 'zh') ? 'zh' : 'bm';
+  savePromoPoster('', '', slot);
+  const inputId = slot === 'zh' ? 'promoPosterFileInputZh' : 'promoPosterFileInputBm';
+  const fileInput = document.getElementById(inputId);
   if (fileInput) fileInput.value = '';
+  const legacyInput = document.getElementById('promoPosterFileInput');
+  if (legacyInput && slot === 'bm') legacyInput.value = '';
   renderPosterPreviewUI();
   renderPromoChatPreview();
-  showPromoToast('Poster removed.');
+  showPromoToast(`${slot === 'zh' ? '华语' : 'EN/BM'} poster removed.`);
 }
 window.removePromoPoster = removePromoPoster;
 
@@ -923,48 +1108,85 @@ function toggleAutoCopyPoster(checkbox) {
 }
 window.toggleAutoCopyPoster = toggleAutoCopyPoster;
 
-function renderPosterPreviewUI() {
-  const card = document.getElementById('promoPosterCard');
-  const previewImg = document.getElementById('promoPosterThumb');
-  const nameEl = document.getElementById('promoPosterName');
-  const emptyState = document.getElementById('promoPosterEmptyState');
-  const activeState = document.getElementById('promoPosterActiveState');
+function toggleReuseWaTab(checkbox) {
+  promoComposerState.reuseWaTab = Boolean(checkbox.checked);
+  savePromoComposerState();
+}
+window.toggleReuseWaTab = toggleReuseWaTab;
 
+function renderPosterPreviewUI() {
+  if (typeof document === 'undefined') return;
+  const card = document.getElementById('promoPosterCard');
   if (!card) return;
 
-  if (promoComposerState.posterUrl) {
-    if (previewImg) previewImg.src = promoComposerState.posterUrl;
-    if (nameEl) nameEl.textContent = promoComposerState.posterFileName || 'promo_poster.png';
-    if (emptyState) emptyState.classList.add('hidden');
-    if (activeState) activeState.classList.remove('hidden');
+  // 1. EN / BM Poster Slot
+  const bmUrl = promoComposerState.posterUrlBm || promoComposerState.posterUrl || '';
+  const bmName = promoComposerState.posterFileNameBm || promoComposerState.posterFileName || 'poster-en.jpg';
+  const previewImgBm = document.getElementById('promoPosterThumbBm') || document.getElementById('promoPosterThumb');
+  const nameElBm = document.getElementById('promoPosterNameBm') || document.getElementById('promoPosterName');
+  const emptyStateBm = document.getElementById('promoPosterEmptyStateBm') || document.getElementById('promoPosterEmptyState');
+  const activeStateBm = document.getElementById('promoPosterActiveStateBm') || document.getElementById('promoPosterActiveState');
+
+  if (bmUrl) {
+    if (previewImgBm) previewImgBm.src = resolvePromoAssetUrl(bmUrl);
+    if (nameElBm) nameElBm.textContent = bmName;
+    if (emptyStateBm) emptyStateBm.classList.add('hidden');
+    if (activeStateBm) activeStateBm.classList.remove('hidden');
   } else {
-    if (emptyState) emptyState.classList.remove('hidden');
-    if (activeState) activeState.classList.add('hidden');
+    if (emptyStateBm) emptyStateBm.classList.remove('hidden');
+    if (activeStateBm) activeStateBm.classList.add('hidden');
+  }
+
+  // 2. Chinese (华语) Poster Slot
+  const zhUrl = promoComposerState.posterUrlZh || '';
+  const zhName = promoComposerState.posterFileNameZh || 'poster-zh.jpg';
+  const previewImgZh = document.getElementById('promoPosterThumbZh');
+  const nameElZh = document.getElementById('promoPosterNameZh');
+  const emptyStateZh = document.getElementById('promoPosterEmptyStateZh');
+  const activeStateZh = document.getElementById('promoPosterActiveStateZh');
+
+  if (zhUrl) {
+    if (previewImgZh) previewImgZh.src = resolvePromoAssetUrl(zhUrl);
+    if (nameElZh) nameElZh.textContent = zhName;
+    if (emptyStateZh) emptyStateZh.classList.add('hidden');
+    if (activeStateZh) activeStateZh.classList.remove('hidden');
+  } else {
+    if (emptyStateZh) emptyStateZh.classList.remove('hidden');
+    if (activeStateZh) activeStateZh.classList.add('hidden');
   }
 }
 
-async function copyPosterToClipboard() {
-  if (!promoCachedPosterBlob && promoComposerState.posterUrl) {
-    await preparePosterBlob(promoComposerState.posterUrl);
+async function copyPosterToClipboard(langSlot = 'bm', silent = false) {
+  const slot = (langSlot === 'zh') ? 'zh' : 'bm';
+  const posterInfo = getPosterForLanguage(slot);
+
+  let blob = posterInfo.blob;
+  if (!blob && posterInfo.rawUrl) {
+    blob = await preparePosterBlobForSlot(posterInfo.langSlot, posterInfo.rawUrl);
   }
-  if (!promoCachedPosterBlob) {
-    showPromoToast('No poster uploaded yet.');
+  if (!blob) {
+    if (!silent) showPromoToast('No poster uploaded for this language slot yet.');
     return false;
   }
 
   try {
     if (navigator.clipboard && navigator.clipboard.write) {
       await navigator.clipboard.write([
-        new ClipboardItem({ 'image/png': promoCachedPosterBlob })
+        new ClipboardItem({ 'image/png': blob })
       ]);
-      showPromoToast('📋 Poster copied to clipboard! In WhatsApp, just press Ctrl+V to attach.');
+      const label = posterInfo.langSlot === 'zh' ? '🇨🇳 华语 Poster' : '🇲🇾🇬🇧 EN/BM Poster';
+      if (!silent) {
+        showPromoToast(`📋 ${label} copied to clipboard! In WhatsApp, just press Ctrl+V to attach.`);
+      }
       return true;
     } else {
       throw new Error('Clipboard API not supported in this browser context.');
     }
   } catch (err) {
     console.warn('[Promo Poster] Failed to copy poster to clipboard:', err);
-    showPromoToast('⚠️ Could not auto-copy image. You can drag the poster image directly into WhatsApp chat.');
+    if (!silent) {
+      showPromoToast('⚠️ Could not auto-copy image. You can drag the poster image directly into WhatsApp chat.');
+    }
     return false;
   }
 }
@@ -972,6 +1194,7 @@ window.copyPosterToClipboard = copyPosterToClipboard;
 
 // ─── CHAT PREVIEW ─────────────────────────────────────────────────────────────
 function renderPromoChatPreview() {
+  if (typeof document === 'undefined') return;
   const container = document.getElementById('promoChatPreviewContent');
   const badge = document.getElementById('promoPreviewCustomerBadge');
   const posterPreview = document.getElementById('promoChatPreviewPoster');
@@ -990,17 +1213,22 @@ function renderPromoChatPreview() {
   }
 
   const effLang = getCustomerEffectiveLanguage(sample);
-  const langLabel = effLang === 'zh' ? '🇨🇳 华语 (Mandarin)' : '🇲🇾 Bahasa Malaysia';
+  const langLabel = effLang === 'zh' ? '🇨🇳 华语 (Mandarin)' : '🇲🇾 Bahasa Malaysia / EN';
+  const posterInfo = getPosterForLanguage(effLang);
+  const posterTag = posterInfo.url
+    ? (posterInfo.langSlot === 'zh' ? ' · 🖼️ 华语 Poster' : ' · 🖼️ EN/BM Poster')
+    : '';
 
   if (badge) {
-    badge.innerHTML = `Previewing for: <strong>${formatTitleCase(sample.name)}</strong> (${sample.phone || 'No phone'}) · <span class="font-bold text-emerald-800">${langLabel}</span>`;
+    badge.innerHTML = `Previewing for: <strong>${formatTitleCase(sample.name)}</strong> (${sample.phone || 'No phone'}) · <span class="font-bold text-emerald-800">${langLabel}${posterTag}</span>`;
   }
 
-  // Poster preview in mockup
+  // Poster preview in mockup (automatically switches between EN/BM & Chinese poster based on customer language!)
   if (posterPreview) {
-    if (promoComposerState.posterUrl) {
+    if (posterInfo.url) {
       posterPreview.classList.remove('hidden');
-      posterPreview.querySelector('img').src = promoComposerState.posterUrl;
+      const imgEl = posterPreview.querySelector('img');
+      if (imgEl) imgEl.src = posterInfo.url;
     } else {
       posterPreview.classList.add('hidden');
     }
@@ -1104,8 +1332,8 @@ function renderPromoCustomerTable() {
     // Language badge with 1-click toggle
     const effLang = getCustomerEffectiveLanguage(c);
     const langBadge = effLang === 'zh'
-      ? `<button type="button" onclick="toggleCustomerLangPref('${safeId}')" title="Click to switch between BM and 华语" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition inline-flex items-center gap-1 cursor-pointer"><span>🇨🇳 华语</span> <i class="fa-solid fa-arrow-right-arrow-left text-[8px] opacity-60"></i></button>`
-      : `<button type="button" onclick="toggleCustomerLangPref('${safeId}')" title="Click to switch between BM and 华语" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition inline-flex items-center gap-1 cursor-pointer"><span>🇲🇾 BM</span> <i class="fa-solid fa-arrow-right-arrow-left text-[8px] opacity-60"></i></button>`;
+      ? `<button type="button" onclick="toggleCustomerLangPref('${safeId}')" title="Click to switch between BM and 华语 (also switches poster)" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition inline-flex items-center gap-1 cursor-pointer"><span>🇨🇳 华语</span> <i class="fa-solid fa-arrow-right-arrow-left text-[8px] opacity-60"></i></button>`
+      : `<button type="button" onclick="toggleCustomerLangPref('${safeId}')" title="Click to switch between BM and 华语 (also switches poster)" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition inline-flex items-center gap-1 cursor-pointer"><span>🇲🇾 BM</span> <i class="fa-solid fa-arrow-right-arrow-left text-[8px] opacity-60"></i></button>`;
 
     let statusBadge = '';
     if (isSent) {
@@ -1161,7 +1389,7 @@ function renderPromoCustomerTable() {
 
         <td class="p-3 text-center">
           <span class="font-extrabold text-xs text-gray-800">${totalQty}</span>
-          <span class="text-[10px] text-gray-400 block">cans</span>
+          <span class="text-[10px] text-gray-400 block">units</span>
         </td>
 
         <td class="p-3 text-center promo-status-cell">
@@ -1172,14 +1400,14 @@ function renderPromoCustomerTable() {
           <div class="flex items-center justify-center gap-1.5">
             <button type="button" data-action="promo-send" onclick="sendCustomerPromoWhatsApp('${safeId}')"
               class="promo-send-btn px-3 py-1.5 rounded-lg ${isSent ? 'bg-gray-100 hover:bg-emerald-50 text-gray-700 hover:text-emerald-700 border border-gray-300' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'} font-bold text-xs flex items-center gap-1 transition cursor-pointer"
-              title="Open WhatsApp chat with prefilled personalized message">
+              title="Open WhatsApp chat with prefilled personalized message and auto-copied language poster">
               <i class="fa-brands fa-whatsapp text-sm"></i>
               <span>${isSent ? 'Resend' : 'Send'}</span>
             </button>
 
             <button type="button" onclick="previewPromoCustomerMessageModal('${safeId}')"
               class="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center text-xs transition cursor-pointer"
-              title="Preview message text for this customer">
+              title="Preview message & language poster for this customer">
               <i class="fa-regular fa-eye"></i>
             </button>
 
@@ -1228,8 +1456,9 @@ function toggleCustomerLangPref(customerId) {
 
   const current = getCustomerEffectiveLanguage(cust);
   const nextLang = current === 'zh' ? 'bm' : 'zh';
+  promoPreviewCustomerId = customerId;
   setCustomerLanguageOverride(campaignId, customerId, nextLang);
-  showPromoToast(`Language for ${formatTitleCase(cust.name)} set to ${nextLang === 'zh' ? '华语' : 'Bahasa Malaysia'}`);
+  showPromoToast(`Language & Poster for ${formatTitleCase(cust.name)} set to ${nextLang === 'zh' ? '🇨🇳 华语' : '🇲🇾 Bahasa Malaysia / EN'}`);
 }
 window.toggleCustomerLangPref = toggleCustomerLangPref;
 
@@ -1249,45 +1478,55 @@ function sendCustomerPromoWhatsApp(customerId) {
     return;
   }
 
+  promoPreviewCustomerId = cust.id;
+  const effLang = getCustomerEffectiveLanguage(cust);
+
   // 1. Generate personalized message synchronously (with user updates and diamond sanitizing)
   const msg = generatePersonalizedMessage(cust).replace(/\uFFFD/g, '•');
 
   // 2. Direct WhatsApp URL
-  const baseUrl = 'https://api.whatsapp.com/send';
-  const waUrl = `${baseUrl}?phone=${val.cleanPhone}&text=${encodeURIComponent(msg)}`;
+  const waUrl = (typeof buildUniversalWhatsAppUrl === 'function')
+    ? buildUniversalWhatsAppUrl(val.cleanPhone, msg)
+    : `https://api.whatsapp.com/send?phone=${val.cleanPhone}&text=${encodeURIComponent(msg)}`;
 
-  // 3. Open WhatsApp Web / App with Single-Tab Reuse to cap PC RAM usage (~400MB total instead of 20GB!)
+  // 3. Open WhatsApp Web / App
   const targetWindow = (promoComposerState.reuseWaTab !== false) ? 'pmg_whatsapp_chat_window' : '_blank';
-  let waWindow = null;
-  try {
-    waWindow = window.open(waUrl, targetWindow);
-    if (waWindow) {
-      if (typeof waWindow.focus === 'function') waWindow.focus();
+  if (typeof openUniversalWhatsApp === 'function') {
+    openUniversalWhatsApp(val.cleanPhone, msg);
+  } else {
+    try {
+      const win = window.open(waUrl, targetWindow);
+      if (!win) {
+        const a = document.createElement('a');
+        a.href = waUrl;
+        a.target = targetWindow;
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { if (a.parentNode) a.parentNode.removeChild(a); }, 100);
+      }
+    } catch (_) {
+      window.open(waUrl, targetWindow);
     }
-  } catch (_) {}
-
-  // Fallback anchor click ONLY if window.open was intercepted by popup blocker
-  if (!waWindow) {
-    const a = document.createElement('a');
-    a.href = waUrl;
-    a.target = targetWindow;
-    a.rel = 'noopener noreferrer';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      if (a.parentNode) a.parentNode.removeChild(a);
-    }, 100);
   }
 
-  // 4. Auto-copy poster to clipboard in background (non-blocking, 0ms lag!)
+  // 4. Auto-copy customer's language-matched poster to clipboard in background (non-blocking, 0ms lag!)
   if (promoComposerState.autoCopyPoster) {
-    if (promoCachedPosterBlob && navigator.clipboard && navigator.clipboard.write) {
+    const posterInfo = getPosterForLanguage(effLang);
+    const posterLangLabel = posterInfo.langSlot === 'zh' ? '🇨🇳 华语 Poster' : '🇲🇾🇬🇧 EN/BM Poster';
+    if (posterInfo.blob && navigator.clipboard && navigator.clipboard.write) {
       navigator.clipboard.write([
-        new ClipboardItem({ 'image/png': promoCachedPosterBlob })
+        new ClipboardItem({ 'image/png': posterInfo.blob })
       ]).then(() => {
-        showPromoToast(`Poster copied! Opening WhatsApp for ${formatTitleCase(cust.name)}... (Press Ctrl + V in chat to attach poster)`);
+        showPromoToast(`${posterLangLabel} copied! Opening WhatsApp for ${formatTitleCase(cust.name)}... (Press Ctrl + V in chat to paste poster)`);
       }).catch(err => {
         console.warn('[PMG Promo] Clipboard copy failed:', err);
+      });
+    } else if (posterInfo.rawUrl) {
+      copyPosterToClipboard(posterInfo.langSlot, true).then((copied) => {
+        if (copied) {
+          showPromoToast(`${posterLangLabel} copied! Opening WhatsApp for ${formatTitleCase(cust.name)}... (Press Ctrl + V in chat to paste poster)`);
+        }
       });
     }
   }
@@ -1330,6 +1569,9 @@ function previewPromoCustomerMessageModal(customerId) {
   const cust = (promoActiveCampaign.customers || []).find(c => c.id === customerId);
   if (!cust) return;
 
+  promoPreviewCustomerId = customerId;
+  renderPromoChatPreview();
+
   const msg = generatePersonalizedMessage(cust).replace(/\uFFFD/g, '•');
   const modal = document.getElementById('promoPreviewModal');
   const modalTitle = document.getElementById('promoModalCustomerTitle');
@@ -1337,7 +1579,9 @@ function previewPromoCustomerMessageModal(customerId) {
   const modalSendBtn = document.getElementById('promoModalSendBtn');
 
   if (modal && modalBody) {
-    if (modalTitle) modalTitle.textContent = `${cust.name} (${cust.phone})`;
+    const effLang = getCustomerEffectiveLanguage(cust);
+    const posterLabel = effLang === 'zh' ? '🇨🇳 华语 Poster' : '🇲🇾🇬🇧 EN/BM Poster';
+    if (modalTitle) modalTitle.textContent = `${cust.name} (${cust.phone}) · ${posterLabel}`;
     modalBody.value = msg;
     if (modalSendBtn) {
       modalSendBtn.onclick = () => {
@@ -1432,15 +1676,18 @@ function switchPromoCampaign(campaignId) {
   promoCurrentPage = 1;
   promoPreviewCustomerId = null;
 
+  applyCampaignDefaultsToComposer(found, true);
+
   renderPromoCampaignHeader();
   renderPromoKpis();
-  renderPromoChatPreview();
+  renderPromoComposer();
   renderPromoCustomerTable();
 }
 window.switchPromoCampaign = switchPromoCampaign;
 
 // ─── TOAST NOTIFICATIONS ──────────────────────────────────────────────────────
 function showPromoToast(msg) {
+  if (typeof document === 'undefined') return;
   let toast = document.getElementById('promoToast');
   if (!toast) {
     toast = document.createElement('div');
@@ -1469,7 +1716,7 @@ function closeUploadCustomerCsvModal() {
 window.closeUploadCustomerCsvModal = closeUploadCustomerCsvModal;
 
 function parseCsvFileToCustomers(csvText) {
-  const lines = csvText.split(/\r?\n/).filter(l => l.trim().length > 0);
+  const lines = String(csvText || '').split(/\r?\n/).filter(l => l.trim().length > 0);
   if (lines.length < 2) throw new Error('CSV file is empty or does not contain data.');
 
   function parseLine(text) {
@@ -1490,46 +1737,87 @@ function parseCsvFileToCustomers(csvText) {
     return res;
   }
 
-  const rawHeaders = parseLine(lines[0]).map(h => h.toLowerCase().trim());
+  // Scan the first 15 rows to locate the actual column header row (skips POS metadata like "@@##Write Time:17112026 100240")
+  let headerLineIdx = 0;
+  let rawHeaders = [];
+  let nameIdx = -1;
+  let phoneIdx = -1;
 
-  const findCol = (...keywords) => {
+  const findColInHeaders = (headers, ...keywords) => {
     for (const kw of keywords) {
-      const idx = rawHeaders.findIndex(h => h === kw || h.includes(kw));
+      const idx = headers.findIndex(h => h === kw || h.includes(kw));
       if (idx !== -1) return idx;
     }
     return -1;
   };
 
-  const nameIdx = findCol('client name', 'customer name', 'nama pelanggan', 'pelanggan', 'name', 'nama');
-  const phoneIdx = findCol('client mobile', 'mobile', 'no tel', 'phone', 'tel', 'hp', 'contact');
+  const maxScan = Math.min(lines.length, 15);
+  for (let idx = 0; idx < maxScan; idx++) {
+    const candidateHeaders = parseLine(lines[idx]).map(h => h.toLowerCase().trim());
+    if (candidateHeaders.length < 2) continue;
+    const candidateNameIdx = findColInHeaders(candidateHeaders, 'client name', 'customer name', 'nama pelanggan', 'pelanggan', 'customer', 'name', 'nama');
+    const candidatePhoneIdx = findColInHeaders(candidateHeaders, 'recipient contact', 'client mobile', 'customer mobile', 'mobile', 'no tel', 'phone', 'tel', 'hp', 'contact');
+    if (candidateNameIdx !== -1 || candidatePhoneIdx !== -1) {
+      headerLineIdx = idx;
+      rawHeaders = candidateHeaders;
+      nameIdx = candidateNameIdx;
+      phoneIdx = candidatePhoneIdx;
+      break;
+    }
+  }
+
+  if (nameIdx === -1 && phoneIdx === -1) {
+    throw new Error('Could not detect "Client Name" or "Client Mobile" / "Recipient Contact" columns in this CSV.');
+  }
+
+  const findCol = (...keywords) => findColInHeaders(rawHeaders, ...keywords);
+
+  const statusIdx = findCol('sales status', 'status');
   const dateIdx = findCol('sales date', 'tarikh jualan', 'date', 'tarikh');
   const itemIdx = findCol('item name', 'product name', 'nama item', 'nama produk', 'item description', 'description', 'product', 'produk');
+  const descIdx = findCol('description');
   const codeIdx = findCol('item code', 'product code', 'kod item', 'kod produk', 'sku', 'code', 'kod');
   const priceIdx = findCol('unit price', 'price', 'harga seunit', 'harga', 'amount');
+  const subTotalIdx = findCol('sub total (incl tax)', 'sub total', 'subtotal', 'total amount');
   const qtyIdx = findCol('sales quantity', 'quantity', 'kuantiti jualan', 'kuantiti', 'qty');
   const spIdx = findCol('sales item person', 'salesperson', 'staff', 'pic');
 
-  if (nameIdx === -1 && phoneIdx === -1) {
-    throw new Error('Could not detect "Client Name" or "Client Mobile" columns in this CSV.');
-  }
-
   const customerMap = new Map();
   const productCountMap = {};
+  let detectedProductCode = '';
 
-  for (let i = 1; i < lines.length; i++) {
+  for (let i = headerLineIdx + 1; i < lines.length; i++) {
     const row = parseLine(lines[i]);
     if (row.length < 2) continue;
 
-    const rawName = nameIdx !== -1 ? row[nameIdx] : 'Customer ' + i;
-    const rawPhone = phoneIdx !== -1 ? cleanPhoneForWhatsApp(row[phoneIdx]) : '';
-    const rawDate = dateIdx !== -1 ? row[dateIdx] : '';
-    const rawItem = itemIdx !== -1 ? row[itemIdx] : 'Special Offer Product';
-    const rawCode = codeIdx !== -1 ? row[codeIdx] : '';
-    const rawPrice = priceIdx !== -1 ? (parseFloat(row[priceIdx]) || 0) : 0;
-    const rawQty = qtyIdx !== -1 ? (parseFloat(row[qtyIdx]) || 1) : 1;
-    const rawSp = spIdx !== -1 ? row[spIdx] : '';
+    if (statusIdx !== -1 && row[statusIdx]) {
+      const stVal = row[statusIdx].toLowerCase().trim();
+      if (stVal && stVal !== 'completed' && (stVal.includes('cancel') || stVal.includes('void') || stVal === 'sales status')) {
+        continue;
+      }
+    }
+
+    const rawName = (nameIdx !== -1 && row[nameIdx] !== undefined)
+      ? String(row[nameIdx]).replace(/^\*+/, '').trim()
+      : '';
+    const rawPhone = (phoneIdx !== -1 && row[phoneIdx] !== undefined)
+      ? cleanPhoneForWhatsApp(row[phoneIdx])
+      : '';
+    const rawDate = (dateIdx !== -1 && row[dateIdx] !== undefined) ? row[dateIdx] : '';
+    const rawItem = (itemIdx !== -1 && row[itemIdx] !== undefined) ? row[itemIdx] : 'Special Offer Product';
+    const rawDesc = (descIdx !== -1 && row[descIdx] !== undefined) ? row[descIdx] : '';
+    const rawCode = (codeIdx !== -1 && row[codeIdx] !== undefined) ? row[codeIdx] : '';
+    const rawPrice = (priceIdx !== -1 && row[priceIdx] !== undefined) ? (parseFloat(row[priceIdx]) || 0) : 0;
+    const rawQty = (qtyIdx !== -1 && row[qtyIdx] !== undefined) ? (parseFloat(row[qtyIdx]) || 1) : 1;
+    const rawSubTotal = (subTotalIdx !== -1 && row[subTotalIdx] !== undefined)
+      ? (parseFloat(row[subTotalIdx]) || (rawPrice * rawQty))
+      : (rawPrice * rawQty);
+    const rawSp = (spIdx !== -1 && row[spIdx] !== undefined) ? row[spIdx] : '';
 
     if (!rawName && !rawPhone) continue;
+    if (rawName.toLowerCase() === 'total' || rawName.toLowerCase() === 'client name') continue;
+
+    if (rawCode && !detectedProductCode) detectedProductCode = rawCode;
 
     if (rawItem) {
       productCountMap[rawItem] = (productCountMap[rawItem] || 0) + 1;
@@ -1543,7 +1831,7 @@ function parseCsvFileToCustomers(csvText) {
         name: rawName || 'Valued Customer',
         phone: rawPhone,
         totalQty: rawQty,
-        totalSpent: rawPrice * rawQty,
+        totalSpent: rawSubTotal,
         lastDate: rawDate,
         firstDate: rawDate,
         salespersons: rawSp ? [rawSp] : [],
@@ -1551,19 +1839,21 @@ function parseCsvFileToCustomers(csvText) {
           date: rawDate,
           qty: rawQty,
           price: rawPrice,
+          pack: rawDesc,
           sp: rawSp
         }]
       });
     } else {
       const existing = customerMap.get(key);
       existing.totalQty += rawQty;
-      existing.totalSpent += rawPrice * rawQty;
+      existing.totalSpent += rawSubTotal;
       if (rawDate) existing.lastDate = rawDate;
       if (rawSp && !existing.salespersons.includes(rawSp)) existing.salespersons.push(rawSp);
       existing.history.push({
         date: rawDate,
         qty: rawQty,
         price: rawPrice,
+        pack: rawDesc,
         sp: rawSp
       });
     }
@@ -1581,7 +1871,7 @@ function parseCsvFileToCustomers(csvText) {
   const customers = Array.from(customerMap.values());
   return {
     productName: dominantProduct,
-    productCode: codeIdx !== -1 ? 'POS_EXTRACT' : '',
+    productCode: detectedProductCode || (codeIdx !== -1 ? 'POS_EXTRACT' : ''),
     customers
   };
 }
@@ -1604,6 +1894,8 @@ function handlePromoCsvFileInput(event) {
       const campaignName = prompt('Enter a name for this Promotional Campaign:', parsed.productName || 'New Campaign');
       if (!campaignName) return;
 
+      const isSheepPlacenta = /sheep\s*placenta/i.test(parsed.productName) || parsed.productCode === '120697';
+
       const newCampaign = {
         id: 'camp_' + Date.now(),
         name: campaignName.trim(),
@@ -1611,6 +1903,17 @@ function handlePromoCsvFileInput(event) {
         productCode: parsed.productCode,
         isPreset: false,
         createdAt: new Date().toISOString(),
+        ...(isSheepPlacenta ? {
+          defaultOfferDetails: SHEEP_PLACENTA_PRESET_CAMPAIGN.defaultOfferDetails,
+          defaultOfferDetailsEn: SHEEP_PLACENTA_PRESET_CAMPAIGN.defaultOfferDetailsEn,
+          defaultOfferDetailsBm: SHEEP_PLACENTA_PRESET_CAMPAIGN.defaultOfferDetailsBm,
+          defaultOfferDetailsZh: SHEEP_PLACENTA_PRESET_CAMPAIGN.defaultOfferDetailsZh,
+          defaultPromoPeriod: SHEEP_PLACENTA_PRESET_CAMPAIGN.defaultPromoPeriod,
+          defaultPosterUrlBm: SHEEP_PLACENTA_PRESET_CAMPAIGN.defaultPosterUrlBm,
+          defaultPosterNameBm: SHEEP_PLACENTA_PRESET_CAMPAIGN.defaultPosterNameBm,
+          defaultPosterUrlZh: SHEEP_PLACENTA_PRESET_CAMPAIGN.defaultPosterUrlZh,
+          defaultPosterNameZh: SHEEP_PLACENTA_PRESET_CAMPAIGN.defaultPosterNameZh
+        } : {}),
         customers: parsed.customers
       };
 
@@ -1633,7 +1936,7 @@ function exportPromoCustomerListCsv() {
   const customers = filterPromoCustomers();
   const campaignId = promoActiveCampaign.id;
 
-  const headers = ['No', 'Customer Name', 'Phone Number', 'Phone Status', 'Total Cans', 'Total Spent (RM)', 'Last Purchase Date', 'Broadcast Status', 'Sent Timestamp'];
+  const headers = ['No', 'Customer Name', 'Phone Number', 'Phone Status', 'Total Units', 'Total Spent (RM)', 'Last Purchase Date', 'Broadcast Status', 'Sent Timestamp'];
   const rows = customers.map((c, idx) => {
     const st = getCustomerSentStatus(campaignId, c.id);
     const isSent = Boolean(st && st.sent);
@@ -1684,7 +1987,7 @@ function mergePromoCloudData(cloudData) {
 
   if (Array.isArray(cloudData.customCampaigns)) {
     cloudData.customCampaigns.forEach(c => {
-      if (c && c.id && c.id !== NUTRI_ALPHA_PRESET_CAMPAIGN.id) {
+      if (c && c.id && !isPresetCampaignId(c.id)) {
         if (!promoCampaigns.some(existing => existing.id === c.id)) {
           promoCampaigns.push(c);
           changed = true;
@@ -1699,11 +2002,19 @@ function mergePromoCloudData(cloudData) {
     if (!localTs || (cloudTs && cloudTs > localTs)) {
       const preservedPosterUrl = promoComposerState.posterUrl || '';
       const preservedPosterName = promoComposerState.posterFileName || '';
+      const preservedPosterUrlBm = promoComposerState.posterUrlBm || '';
+      const preservedPosterNameBm = promoComposerState.posterFileNameBm || '';
+      const preservedPosterUrlZh = promoComposerState.posterUrlZh || '';
+      const preservedPosterNameZh = promoComposerState.posterFileNameZh || '';
       promoComposerState = {
         ...promoComposerState,
         ...cloudData.composerState,
         posterUrl: preservedPosterUrl,
-        posterFileName: preservedPosterName
+        posterFileName: preservedPosterName,
+        posterUrlBm: preservedPosterUrlBm,
+        posterFileNameBm: preservedPosterNameBm,
+        posterUrlZh: preservedPosterUrlZh,
+        posterFileNameZh: preservedPosterNameZh
       };
       changed = true;
     }
@@ -1864,6 +2175,7 @@ window.syncPromoBroadcastWithGoogleCloud = syncPromoBroadcastWithGoogleCloud;
 window.syncPromoBroadcastWithCloud = syncPromoBroadcastWithGoogleCloud;
 
 function updateSyncBadgeState(status = 'IDLE') {
+  if (typeof document === 'undefined') return;
   const syncBtn = document.getElementById('promoCloudSyncBtn');
   const syncLabel = document.getElementById('promoCloudSyncLabel');
   if (!syncBtn || !syncLabel) return;
@@ -1996,7 +2308,7 @@ function handleImportPromoJson(event) {
       }
       if (data && Array.isArray(data.campaigns)) {
         data.campaigns.forEach(c => {
-          if (c && c.id && c.id !== NUTRI_ALPHA_PRESET_CAMPAIGN.id) {
+          if (c && c.id && !isPresetCampaignId(c.id)) {
             if (!promoCampaigns.some(existing => existing.id === c.id)) {
               promoCampaigns.push(c);
             }
@@ -2022,6 +2334,7 @@ window.handleImportPromoJson = handleImportPromoJson;
 // ─── EXPOSE GLOBALS FOR WINDOW & TESTS ─────────────────────────────────────────
 if (typeof window !== 'undefined') {
   window.NUTRI_ALPHA_PRESET_CAMPAIGN = NUTRI_ALPHA_PRESET_CAMPAIGN;
+  window.SHEEP_PLACENTA_PRESET_CAMPAIGN = SHEEP_PLACENTA_PRESET_CAMPAIGN;
   window.PROMO_DEFAULT_TEMPLATES = PROMO_DEFAULT_TEMPLATES;
   window.formatTitleCase = formatTitleCase;
   window.cleanPhoneForWhatsApp = cleanPhoneForWhatsApp;
@@ -2033,6 +2346,7 @@ if (typeof window !== 'undefined') {
   window.setCustomerSentStatus = setCustomerSentStatus;
   window.parseCsvFileToCustomers = parseCsvFileToCustomers;
   window.copyPosterToClipboard = copyPosterToClipboard;
+  window.getPosterForLanguage = getPosterForLanguage;
   Object.defineProperty(window, 'promoActiveCampaign', {
     get: () => promoActiveCampaign,
     set: (v) => { promoActiveCampaign = v; },

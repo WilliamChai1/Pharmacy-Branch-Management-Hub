@@ -332,6 +332,47 @@ function createBrowserSandbox(fetchImpl) {
     }
   });
 
+  test('Promo Broadcast Sheep Placenta preset, POS CSV multi-line header parser & dual language posters (js/promo-broadcast.js & promo/promo.js)', () => {
+    assert(fs.existsSync(path.join(ROOT, 'promo', 'assets', 'sheep-placenta-en.jpg')), 'Missing promo/assets/sheep-placenta-en.jpg');
+    assert(fs.existsSync(path.join(ROOT, 'promo', 'assets', 'sheep-placenta-zh.jpg')), 'Missing promo/assets/sheep-placenta-zh.jpg');
+
+    for (const rel of ['js/promo-broadcast.js', 'promo/promo.js']) {
+      const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+      const sb = createBrowserSandbox();
+      vm.runInContext(src, sb.ctx);
+
+      // 1. Verify Sheep Placenta preset campaign is loaded with 43 unique customers
+      const preset = sb.win.SHEEP_PLACENTA_PRESET_CAMPAIGN;
+      assert(preset && preset.id === 'sheep-placenta-600mg', `${rel} missing SHEEP_PLACENTA_PRESET_CAMPAIGN`);
+      assert.strictEqual(preset.customers.length, 43, `${rel} Sheep Placenta preset should have 43 unique customers`);
+
+      // 2. Verify language-matched poster resolution (EN/BM vs Chinese)
+      const zhPoster = sb.win.getPosterForLanguage('zh');
+      const bmPoster = sb.win.getPosterForLanguage('bm');
+      assert.strictEqual(zhPoster.langSlot, 'zh', `${rel} zh customer should get zh poster slot`);
+      assert(zhPoster.url.includes('sheep-placenta-zh.jpg'), `${rel} zh customer should get sheep-placenta-zh.jpg`);
+      assert.strictEqual(bmPoster.langSlot, 'bm', `${rel} bm customer should get bm poster slot`);
+      assert(bmPoster.url.includes('sheep-placenta-en.jpg'), `${rel} bm customer should get sheep-placenta-en.jpg`);
+
+      // 3. Verify CSV parser handles POS "@@##Write Time:..." preamble, "Recipient Contact", and "*NG SZE SOON"
+      const samplePosCsv = [
+        '@@##Write Time:17112026 100240 ',
+        'Sales Status,Sales Date,Sales No.,Sales Item Sales Type,Client Name,Client ID,Item Code,Item Name,Description ,Price ,Sales Quantity,Cost ,Sub Total (Incl Tax),Total Profit,Total Profit (Excl Tax),Sales Item Person,Recipient Contact',
+        'Completed,10-22-26,KS0112202610220069, Normal ,CHONG WEI FONG,996600083688,120697,NUTRIBRIDGE SHEEP PLACENTA 600MG WITH GRAPE SEED EXTRACT,120697 - SOFTGEL,14.0000,1,8.6667,14.0000,5.3333,5.33,CHAI YEE SIAN,0198348389',
+        'Completed,09-02-26,KS0102202609020031, Normal ,ANNIE ANAK EVEREADY @ EVERIDI,996600043188,120697,NUTRIBRIDGE SHEEP PLACENTA 600MG WITH GRAPE SEED EXTRACT,120697 - 5 TAB,60.0000,1,43.3333,60.0000,16.6667,16.67,FIONA FIENA ANAK JAMES,0189865589',
+        'Completed,09-29-26,KS0101202609290049, Normal ,*NG SZE SOON,996600072882,120697,NUTRIBRIDGE SHEEP PLACENTA 600MG WITH GRAPE SEED EXTRACT,120697 - BOX30,299.0000,1,260.0000,299.0000,39.0000,39.00,CHAI YEE SIAN,0146816639'
+      ].join('\r\n');
+
+      const parsed = sb.win.parseCsvFileToCustomers(samplePosCsv);
+      assert.strictEqual(parsed.customers.length, 3, 'Should parse 3 customers after skipping @@##Write Time line');
+      assert.strictEqual(parsed.customers[0].name, 'CHONG WEI FONG');
+      assert.strictEqual(parsed.customers[0].phone, '60198348389');
+      assert.strictEqual(parsed.customers[2].name, 'NG SZE SOON', 'Leading asterisk should be stripped from *NG SZE SOON');
+      assert.strictEqual(sb.win.detectCustomerLanguagePreference(parsed.customers[0].name), 'zh');
+      assert.strictEqual(sb.win.detectCustomerLanguagePreference(parsed.customers[1].name), 'bm');
+    }
+  });
+
   await testAsync('Smart Inventory Cloud Vault exports & push logic (js/inventory.js)', async () => {
     const src = fs.readFileSync(path.join(ROOT, 'js', 'inventory.js'), 'utf8');
     const posted = [];
