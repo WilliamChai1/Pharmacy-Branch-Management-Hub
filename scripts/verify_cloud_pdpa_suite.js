@@ -513,6 +513,77 @@ function createBrowserSandbox(fetchImpl) {
     }
   });
 
+  // 9. December 2026 KS01 Timetable Rebalancing (Christina Lee Removed & 7-Staff Solver Balanced)
+  test('December 2026 KS01 Timetable removes Christina Lee & rebalances 7-person team with 0 shortage days', () => {
+    const { ctx, doc } = createBrowserSandbox();
+    const schedSrc = fs.readFileSync(path.join(ROOT, 'js', 'scheduler.js'), 'utf8');
+    vm.runInContext(schedSrc, ctx);
+
+    // Check November 2026 preserves Christina Lee (8 staff)
+    doc.getElementById('sched-month').value = '2026-11';
+    vm.runInContext(`loadTeammates('KS01', '2026-11', true);`, ctx);
+    const novTeam = vm.runInContext(`currentTeammates.map(t => ({ empNo: t.empNo, nickname: t.nickname }))`, ctx);
+    assert.strictEqual(novTeam.length, 8, 'November 2026 KS01 should retain 8 teammates including Christina');
+    assert(novTeam.some(t => t.empNo === 'PMG03033'), 'November 2026 KS01 should include Christina Lee (PMG03033)');
+
+    // Check December 2026 removes Christina Lee and rebalances 7 staff with 7 unique RDs and 7 unique HDs
+    doc.getElementById('sched-month').value = '2026-12';
+    vm.runInContext(`loadTeammates('KS01', '2026-12', true);`, ctx);
+    const decTeam = vm.runInContext(`currentTeammates.map(t => ({ empNo: t.empNo, nickname: t.nickname, restDayPref: t.restDayPref, halfDayPref: t.halfDayPref }))`, ctx);
+    assert.strictEqual(decTeam.length, 7, 'December 2026 KS01 must have 7 active teammates');
+    assert(!decTeam.some(t => t.empNo === 'PMG03033' || t.nickname === 'CHRISTINA'), 'Christina Lee must be removed from December 2026 onwards');
+
+    const rdDays = new Set(decTeam.map(t => t.restDayPref));
+    const hdDays = new Set(decTeam.map(t => t.halfDayPref.split(' ')[0]));
+    assert.strictEqual(rdDays.size, 7, 'All 7 days of the week must have exactly 1 unique Rest Day');
+    assert.strictEqual(hdDays.size, 7, 'All 7 days of the week must have exactly 1 unique Morning Half Day');
+
+    // Run December 2026 heuristic schedule generator and verify floor headcount, 0 fatigue, and peer parity
+    const decSched = vm.runInContext(`runHeuristicScheduleGenerator('KS01', 2026, 12, 31)`, ctx);
+    const decMonthDays = decSched.days.filter(d => d.date.startsWith('2026-12'));
+    assert.strictEqual(decMonthDays.length, 31, 'December 2026 schedule must contain all 31 December days');
+
+    let shortageDays = 0;
+    let fatigueCount = 0;
+    const rotatingEmpNos = ['PMG01294', 'PMG02694', 'PMG01780', 'PMG02070', 'PMG03375', 'PMG04331'];
+    const amTotals = {};
+    const pmTotals = {};
+    rotatingEmpNos.forEach(id => { amTotals[id] = 0; pmTotals[id] = 0; });
+
+    decSched.days.forEach((d, idx) => {
+      assert(!('PMG03033' in d.shifts), `Christina Lee found in shift assignments on ${d.date}`);
+      let am = 0, fullAm = 0, pm = 0;
+      Object.values(d.shifts).forEach(s => {
+        if (s === '8H_0730-1630' || s === '4H_0730-1130' || s === '5H_0730-1230') am++;
+        if (s === '8H_0730-1630') fullAm++;
+        if (s === '8H_1230-2130') pm++;
+      });
+      // Non-Christmas days must have 3 AM (with >= 2 Full AM) and 3 PM
+      if (d.date !== '2026-12-25' && d.date !== '2027-01-01') {
+        if (am < 3 || fullAm < 2 || pm < 3) shortageDays++;
+      }
+      rotatingEmpNos.forEach(id => {
+        const s = d.shifts[id];
+        if (s === '8H_0730-1630' || s === '4H_0730-1130' || s === '5H_0730-1230') amTotals[id]++;
+        if (s === '8H_1230-2130') pmTotals[id]++;
+        if (idx > 0) {
+          const prevS = decSched.days[idx - 1].shifts[id];
+          if (prevS === '8H_1230-2130' && s === '8H_0730-1630') fatigueCount++;
+        }
+      });
+    });
+
+    assert.strictEqual(shortageDays, 0, `Expected 0 manpower shortage days in Dec 2026, got ${shortageDays}`);
+    assert.strictEqual(fatigueCount, 0, `Expected 0 turnaround fatigue violations in Dec 2026, got ${fatigueCount}`);
+
+    const amVals = Object.values(amTotals);
+    const pmVals = Object.values(pmTotals);
+    const amSpread = Math.max(...amVals) - Math.min(...amVals);
+    const pmSpread = Math.max(...pmVals) - Math.min(...pmVals);
+    assert(amSpread <= 2, `Expected rotating AM shift spread <= 2 across peers, got ${amSpread}`);
+    assert(pmSpread <= 2, `Expected rotating PM shift spread <= 2 across peers, got ${pmSpread}`);
+  });
+
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);
   process.exit(failed > 0 ? 1 : 0);
 })();
