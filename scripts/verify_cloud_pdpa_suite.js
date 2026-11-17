@@ -584,6 +584,70 @@ function createBrowserSandbox(fetchImpl) {
     assert(pmSpread <= 2, `Expected rotating PM shift spread <= 2 across peers, got ${pmSpread}`);
   });
 
+  // 10. Caretaker Shared Phone Number Support in Patient Care (Elderly / Child Dependents)
+  test('Patient Care allows multiple distinct patients (elderly/children) to share the same caretaker phone number', () => {
+    const { ctx } = createBrowserSandbox();
+    const patientSrc = fs.readFileSync(path.join(ROOT, 'js', 'patient.js'), 'utf8');
+    vm.runInContext(patientSrc, ctx);
+
+    const checkResult = vm.runInContext(`
+      (() => {
+        const caretakerPhone = '+60128889999';
+        const pElderly = { id: 'PT-9901', name: 'Mdm Wong Ah Mei', ic: '450101-13-5002', phone: caretakerPhone, age: 81 };
+        const pChild = { id: 'PT-9902', name: 'Master Wong Jun Kai', ic: '', phone: caretakerPhone, age: 7 };
+        const pSubstringName = { id: 'PT-9903', name: 'Wong Ah', ic: '', phone: caretakerPhone, age: 50 };
+
+        const same1 = areSamePatientRecord(pElderly, pChild);
+        const same2 = areSamePatientRecord(pElderly, pSubstringName);
+        const consolidated = consolidatePatientList([pElderly, pChild, pSubstringName]);
+
+        // Also verify deleting one patient with caretakerPhone does not tombstone other dependents with caretakerPhone
+        addDeletedPatientRecord('PT-9999', '990101-13-9999', caretakerPhone, 'Deleted Relative');
+        const elderlyBlocked = isPatientDeleted(pElderly.id, pElderly.ic, pElderly.phone, pElderly.name);
+        const childBlocked = isPatientDeleted(pChild.id, pChild.ic, pChild.phone, pChild.name);
+
+        // Verify booking import for two dependents sharing caretakerPhone creates two separate patient records
+        importSingleBooking({
+          ref: 'PMG-BK-CARE1',
+          patientName: 'Grandpa Lim',
+          patientPhone: caretakerPhone,
+          date: '2026-12-10',
+          time: '09:00',
+          branchName: 'Kota Sentosa'
+        }, false);
+        importSingleBooking({
+          ref: 'PMG-BK-CARE2',
+          patientName: 'Baby Lim',
+          patientPhone: caretakerPhone,
+          date: '2026-12-10',
+          time: '09:30',
+          branchName: 'Kota Sentosa'
+        }, false);
+
+        const hasGrandpa = patientsData.some(p => p.name === 'Grandpa Lim');
+        const hasBaby = patientsData.some(p => p.name === 'Baby Lim');
+
+        return {
+          same1,
+          same2,
+          consolidatedCount: consolidated.length,
+          elderlyBlocked,
+          childBlocked,
+          hasGrandpa,
+          hasBaby
+        };
+      })()
+    `, ctx);
+
+    assert.strictEqual(checkResult.same1, false, 'Elderly and child sharing caretaker phone must not be treated as same patient');
+    assert.strictEqual(checkResult.same2, false, 'Family members with prefix/substring names sharing caretaker phone must not be merged');
+    assert.strictEqual(checkResult.consolidatedCount, 3, 'All 3 distinct patients sharing caretaker phone must remain separate after consolidation');
+    assert.strictEqual(checkResult.elderlyBlocked, false, 'Deleting a relative must not tombstone caretaker phone number for elderly patient');
+    assert.strictEqual(checkResult.childBlocked, false, 'Deleting a relative must not tombstone caretaker phone number for child patient');
+    assert.strictEqual(checkResult.hasGrandpa, true, 'Grandpa Lim booking should have its own patient record');
+    assert.strictEqual(checkResult.hasBaby, true, 'Baby Lim booking should have its own separate patient record');
+  });
+
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);
   process.exit(failed > 0 ? 1 : 0);
 })();

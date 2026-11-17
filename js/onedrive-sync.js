@@ -2603,8 +2603,7 @@
         if (p.status === 'DELETED' || String(p.status).toUpperCase() === 'DELETED') return true;
         if (deletedSet.has(String(p.id).toLowerCase().trim())) return true;
         if (cleanIc && deletedSet.has(cleanIc)) return true;
-        const cleanPhone = String(p.phone || '').replace(/\D/g, '');
-        if (cleanPhone && deletedSet.has(cleanPhone)) return true;
+        // Do NOT check phone number against deletedSet so elderly/child dependents sharing a caretaker phone number are never purged
         return false;
       };
 

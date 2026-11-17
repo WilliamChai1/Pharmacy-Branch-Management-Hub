@@ -969,8 +969,7 @@ function addDeletedPatientRecord(patientId, ic = null, phone = null, name = null
     if (patientId) set.add(String(patientId).toLowerCase().trim());
     const cleanIc = String(ic || '').replace(/\D/g, '');
     if (cleanIc) set.add(cleanIc);
-    const cleanPhone = String(phone || '').replace(/\D/g, '');
-    if (cleanPhone) set.add(cleanPhone);
+    // Note: Do NOT tombstone by phone number so multiple patients (e.g., elderly/children) can share a caretaker's phone number
     if (name) set.add(String(name).toLowerCase().trim());
     localStorage.setItem(DELETED_PATIENTS_STORAGE_KEY, JSON.stringify(Array.from(set)));
   } catch (e) {
@@ -1001,8 +1000,7 @@ function isPatientDeleted(patientId, ic = null, phone = null, name = null) {
   if (patientId && set.has(String(patientId).toLowerCase().trim())) return true;
   const cleanIc = String(ic || '').replace(/\D/g, '');
   if (cleanIc && set.has(cleanIc)) return true;
-  const cleanPhone = String(phone || '').replace(/\D/g, '');
-  if (cleanPhone && set.has(cleanPhone)) return true;
+  // Never treat a patient as deleted based on phone number alone, as caretakers share phone numbers across elderly/child dependents
   if (name && set.has(String(name).toLowerCase().trim())) return true;
   return false;
 }
@@ -1032,25 +1030,27 @@ function normalizeNameForMatching(name) {
 
 function areSamePatientRecord(p1, p2) {
   if (!p1 || !p2) return false;
-  if (p1.id === p2.id) return true;
-  if (p1.aliasIds && p1.aliasIds.includes(p2.id)) return true;
-  if (p2.aliasIds && p2.aliasIds.includes(p1.id)) return true;
 
   const ic1 = normalizeIcForMatching(p1.ic);
   const ic2 = normalizeIcForMatching(p2.ic);
+  // Different non-empty ICs always represent different patients
+  if (ic1 && ic2 && ic1 !== ic2) return false;
+
+  const nm1 = normalizeNameForMatching(p1.name);
+  const nm2 = normalizeNameForMatching(p2.name);
+  // Different non-empty names always represent different patients (allows elderly/children to share a caretaker's phone number)
+  if (nm1 && nm2 && nm1 !== nm2) return false;
+
+  if (p1.id && p2.id && p1.id === p2.id) return true;
+  if (p1.aliasIds && p1.aliasIds.includes(p2.id)) return true;
+  if (p2.aliasIds && p2.aliasIds.includes(p1.id)) return true;
+
   if (ic1 && ic2 && ic1 === ic2) return true;
 
   const ph1 = normalizePhoneForMatching(p1.phone);
   const ph2 = normalizePhoneForMatching(p2.phone);
-  const nm1 = normalizeNameForMatching(p1.name);
-  const nm2 = normalizeNameForMatching(p2.name);
 
-  // If phones match and are valid Malaysian numbers (at least 8 digits)
-  if (ph1 && ph2 && ph1.length >= 8 && ph1 === ph2) {
-    if (!nm1 || !nm2 || nm1 === nm2 || nm1.includes(nm2) || nm2.includes(nm1)) return true;
-  }
-
-  // If exact normalized names match
+  // If exact normalized names match (and phone numbers either match or one is missing)
   if (nm1 && nm2 && nm1 === nm2) {
     if (!ph1 || !ph2 || ph1 === ph2 || ph1.includes(ph2) || ph2.includes(ph1)) return true;
   }
@@ -1222,7 +1222,20 @@ function consolidatePatientList(patientList) {
     if (!incoming) return;
     const idx = result.findIndex(existing => areSamePatientRecord(existing, incoming));
     if (idx === -1) {
-      result.push(JSON.parse(JSON.stringify(incoming)));
+      const copy = JSON.parse(JSON.stringify(incoming));
+      // If a different patient already uses copy.id (e.g. legacy phone-derived ID shared by family members), assign a unique ID
+      if (copy.id && result.some(r => r.id === copy.id || (r.aliasIds && r.aliasIds.includes(copy.id)))) {
+        let maxNum = 1100;
+        result.forEach(p => {
+          const m = String(p.id || '').match(/^PT-(\d+)$/i);
+          if (m) {
+            const num = parseInt(m[1], 10);
+            if (num < 100000 && num > maxNum) maxNum = num;
+          }
+        });
+        copy.id = 'PT-' + (maxNum + 1);
+      }
+      result.push(copy);
     } else {
       result[idx] = mergeTwoPatientRecords(result[idx], incoming);
     }
@@ -4251,6 +4264,7 @@ function saveNewPatient() {
       }
 
       savePatientsData();
+      removeDeletedPatientRecord(p.id, p.ic, p.phone, p.name);
       const pidToReturn = returnToProfilePatientId || editingPatientId;
       returnToProfilePatientId = null;
       editingPatientId = null;
@@ -4294,6 +4308,7 @@ function saveNewPatient() {
     appointments: []
   };
 
+  removeDeletedPatientRecord(newPatient.id, newPatient.ic, newPatient.phone, newPatient.name);
   patientsData.unshift(newPatient);
   savePatientsData();
   closeNewPatientModal();
@@ -8822,17 +8837,16 @@ function confirmLarkImport() {
     const existingIdx = patientsData.findIndex(p => {
       const icA = String(p.ic || '').replace(/\D/g, '');
       const icB = String(newPt.ic || '').replace(/\D/g, '');
-      if (icA && icB && icA === icB) return true;
-
-      const phoneA = normalizePhoneForMatching(p.phone);
-      const phoneB = normalizePhoneForMatching(newPt.phone);
-      if (phoneA && phoneB && phoneA === phoneB) return true;
+      if (icA && icB && icA !== icB) return false;
 
       const nameA = normalizeNameForMatching(p.name);
       const nameB = normalizeNameForMatching(newPt.name);
+      if (nameA && nameB && nameA !== nameB) return false;
+
+      if (icA && icB && icA === icB) return true;
       if (nameA && nameB && nameA === nameB) return true;
 
-      return (p.id === newPt.id);
+      return (p.id === newPt.id && (!nameA || !nameB || nameA === nameB));
     });
 
     if (existingIdx >= 0) {
@@ -8858,6 +8872,10 @@ function confirmLarkImport() {
       }
       updatedCount++;
     } else {
+      if (patientsData.some(p => p.id === newPt.id)) {
+        newPt.id = generateUniquePatientId(newPt.ic);
+      }
+      removeDeletedPatientRecord(newPt.id, newPt.ic, newPt.phone, newPt.name);
       patientsData.unshift(newPt);
       addedCount++;
     }
@@ -8869,7 +8887,7 @@ function confirmLarkImport() {
 
   const firstPt = pendingLarkPatients[0];
   if (firstPt) {
-    const matched = patientsData.find(p => p.name === firstPt.name || p.phone === firstPt.phone || (p.ic && p.ic === firstPt.ic));
+    const matched = patientsData.find(p => normalizeNameForMatching(p.name) === normalizeNameForMatching(firstPt.name) || (p.ic && firstPt.ic && p.ic === firstPt.ic));
     if (matched) viewPatientProfile(matched.id);
   }
 
@@ -9247,7 +9265,10 @@ function parseLarkCustomer(text, defaultBranch = 'Kota Sentosa') {
     return meds;
   })();
 
-  const patientId = 'PT-' + (formattedIc ? formattedIc.replace(/\D/g, '').slice(-6) : (rawPhone ? rawPhone.replace(/\D/g, '').slice(-6) : Date.now().toString(36)));
+  const cleanIcDigits = formattedIc ? formattedIc.replace(/\D/g, '') : '';
+  const patientId = cleanIcDigits.length >= 6
+    ? ('PT-' + cleanIcDigits.slice(-6))
+    : generateUniquePatientId('');
 
   const patientObj = {
     id: patientId,
@@ -11142,9 +11163,20 @@ async function handleCustomerBookingSubmit(e) {
   custBookings.unshift(bookingData);
   localStorage.setItem('pmg_customer_bookings', JSON.stringify(custBookings));
 
-  // Attach to patientsData (match phone or ic, else create entry)
-  const cleanPhone = phone.replace(/\D/g, '');
-  let patient = patientsData.find(p => (p.phone && p.phone.replace(/\D/g, '') === cleanPhone) || (ic && p.ic === ic));
+  // Attach to patientsData (match IC or exact normalized name, allowing multiple patients to share a caretaker phone number)
+  const cleanPhone = normalizePhoneForMatching(phone);
+  const cleanIc = normalizeIcForMatching(ic);
+  const cleanName = normalizeNameForMatching(name);
+  let patient = patientsData.find(p => {
+    const pIc = normalizeIcForMatching(p.ic);
+    const pName = normalizeNameForMatching(p.name);
+    const pPhone = normalizePhoneForMatching(p.phone);
+    if (cleanIc && pIc && cleanIc !== pIc) return false;
+    if (cleanName && pName && cleanName !== pName) return false;
+    if (cleanIc && pIc && cleanIc === pIc) return true;
+    if (cleanName && pName && cleanName === pName && (!cleanPhone || !pPhone || cleanPhone === pPhone)) return true;
+    return false;
+  });
   if (patient) {
     if (!patient.appointments) patient.appointments = [];
     patient.appointments.unshift({
@@ -11373,7 +11405,7 @@ function sendCustomerBookingWaToPharmacist() {
 function importSingleBooking(booking, showNotification = false) {
   if (!booking || !booking.patientName) return false;
   if (booking.status === 'DELETED' || String(booking.status).toUpperCase() === 'DELETED') return false;
-  if (isPatientDeleted(booking.patientId || booking.id || booking.ref, booking.patientIc, booking.patientPhone)) {
+  if (isPatientDeleted(booking.patientId || booking.id || booking.ref, booking.patientIc, booking.patientPhone, booking.patientName)) {
     console.log(`[PMG Patient] Skipped booking for deleted patient: ${booking.patientName}`);
     return false;
   }
@@ -11399,26 +11431,24 @@ function importSingleBooking(booking, showNotification = false) {
   }
   localStorage.setItem('pmg_customer_bookings', JSON.stringify(custBookings));
 
-  // 2. Locate patient in patientsData using robust fuzzy & alias normalization
+  // 2. Locate patient in patientsData (preserve separate profiles when different patients share a caretaker phone number)
   const cleanPhone = normalizePhoneForMatching(booking.patientPhone);
   const cleanIc = normalizeIcForMatching(booking.patientIc);
   const cleanName = normalizeNameForMatching(booking.patientName);
 
   let patient = patientsData.find(p => {
-    if (booking.patientId && (p.id === booking.patientId || (p.aliasIds && p.aliasIds.includes(booking.patientId)))) return true;
+    const hasApt = (p.appointments || []).some(a => a.id === ref);
+    if (hasApt) return true;
     const pPhone = normalizePhoneForMatching(p.phone);
     const pIc = normalizeIcForMatching(p.ic);
     const pName = normalizeNameForMatching(p.name);
-    const hasApt = (p.appointments || []).some(a => a.id === ref);
-    if (hasApt) return true;
+    if (cleanIc && pIc && cleanIc !== pIc) return false;
+    if (cleanName && pName && cleanName !== pName) return false;
+    if (booking.patientId && (p.id === booking.patientId || (p.aliasIds && p.aliasIds.includes(booking.patientId)))) return true;
     if (cleanIc && pIc && cleanIc === pIc) return true;
-    if (cleanPhone && pPhone && cleanPhone.length >= 8 && cleanPhone === pPhone) {
-      if (!cleanName || !pName || cleanName === pName || cleanName.includes(pName) || pName.includes(cleanName)) return true;
-    }
     if (cleanName && pName && cleanName === pName) {
       if (!cleanPhone || !pPhone || cleanPhone === pPhone) return true;
     }
-    if (p.id === 'PT-JONGHUIWAN' && cleanName.includes('jong')) return true;
     return false;
   });
 
