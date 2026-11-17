@@ -935,13 +935,20 @@ Return ONLY valid JSON. No markdown, no extra text.`;
 // ─────────────────────────────────────────────────────────────────────────────
 function extractDriveFileId(url) {
   if (!url || typeof url !== 'string') return null;
-  const m1 = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  // Never match data URIs, blob URIs, or internal sheet pointers
+  if (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('sheet:')) return null;
+
+  // Must be an actual Google Drive or Google Docs web URL
+  if (!/drive\.google\.com|docs\.google\.com|googleusercontent\.com/i.test(url)) return null;
+
+  // Genuine Google Drive file IDs are alphanumeric with hyphens/underscores, >= 20 characters
+  const m1 = url.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
   if (m1 && m1[1]) return m1[1];
-  const m2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  const m2 = url.match(/[?&]id=([a-zA-Z0-9_-]{20,})/);
   if (m2 && m2[1]) return m2[1];
-  const m3 = url.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/);
+  const m3 = url.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]{20,})/);
   if (m3 && m3[1]) return m3[1];
-  const m4 = url.match(/drive\.google\.com\/uc\?(?:[^&]+&)*id=([a-zA-Z0-9_-]+)/);
+  const m4 = url.match(/drive\.google\.com\/uc\?(?:[^&]+&)*id=([a-zA-Z0-9_-]{20,})/);
   if (m4 && m4[1]) return m4[1];
   return null;
 }
@@ -1006,6 +1013,25 @@ async function fetchDocumentBase64(doc) {
     const parts = doc.data.split('base64,');
     const mime = (doc.data.split(';')[0].replace('data:', '') || doc.type || 'image/jpeg').trim();
     return { base64: parts[1], mimeType: mime, previewUrl: doc.data };
+  }
+
+  // Case 1B: Stored in Applicant_Documents cloud vault
+  if (doc.url && doc.url.startsWith('sheet://doc/')) {
+    try {
+      const docId = doc.url.replace('sheet://doc/', '');
+      const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+      const vaultRes = await fetch(`${apiUrl}?action=getApplicantDoc&docId=${encodeURIComponent(docId)}`);
+      if (vaultRes.ok) {
+        const json = await vaultRes.json();
+        if (json && json.success && json.data) {
+          const parts = json.data.split('base64,');
+          const mime = (json.data.split(';')[0].replace('data:', '') || json.mimeType || 'image/jpeg').trim();
+          return { base64: parts[1], mimeType: mime, previewUrl: json.data };
+        }
+      }
+    } catch (vaultErr) {
+      console.warn('[Vision Scanner] Cloud vault fetch error:', vaultErr);
+    }
   }
 
   const targetUrl = doc.url || (doc.data && doc.data.startsWith('http') ? doc.data : null);
@@ -4449,6 +4475,7 @@ function exportAppPdf(appId) {
 // ─────────────────────────────────────────────────────────────────────────────
 let _currentDocViewerAbortController = null;
 let _activeDocViewerKey = null;
+let _activeBlobUrl = null;
 
 function viewDoc(appId, docIdx) {
   const apps = loadApps();
@@ -4470,6 +4497,12 @@ function viewDoc(appId, docIdx) {
 
   const currentKey = `${appId}_${docIdx}`;
   _activeDocViewerKey = currentKey;
+
+  // Revoke prior blob URL to avoid memory leak
+  if (_activeBlobUrl) {
+    try { URL.revokeObjectURL(_activeBlobUrl); } catch (_) {}
+    _activeBlobUrl = null;
+  }
 
   // Abort any prior in-flight document fetch
   if (_currentDocViewerAbortController) {
@@ -4497,9 +4530,12 @@ function viewDoc(appId, docIdx) {
     fileSource = app.spm;
   }
 
-  // 1. Check if source is a Google Drive Link
-  const driveFileId = extractDriveFileId(fileSource);
-  if (driveFileId) {
+  // 1. Direct local data: if base64 data URI or blob URL is already present, bypass Google Drive completely!
+  const isDirectData = Boolean(fileSource && (fileSource.startsWith('data:') || fileSource.startsWith('blob:')));
+
+  // 2. Check if source is a Google Drive link (ONLY if not direct data)
+  const driveFileId = (!isDirectData && (fileSource || doc.url)) ? extractDriveFileId(fileSource || doc.url || '') : null;
+  if (!isDirectData && driveFileId) {
     const drivePreviewUrl = `https://drive.google.com/file/d/${driveFileId}/preview`;
     const driveViewUrl    = `https://drive.google.com/file/d/${driveFileId}/view?usp=sharing`;
     const driveDlUrl      = `https://drive.google.com/uc?export=download&id=${driveFileId}`;
@@ -4547,7 +4583,7 @@ function viewDoc(appId, docIdx) {
     return;
   }
 
-  // 2. If no valid file source, attempt async fetch from Applicant_Documents cloud vault
+  // 3. If no valid file source, attempt async fetch from Applicant_Documents cloud vault
   if (!fileSource) {
     if (dlBtn) dlBtn.removeAttribute('href');
     if (openExternalBtn) openExternalBtn.classList.add('hidden');
@@ -4562,8 +4598,9 @@ function viewDoc(appId, docIdx) {
     const controller = new AbortController();
     _currentDocViewerAbortController = controller;
     const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+    const docIdParam = doc.docId || (doc.url && doc.url.startsWith('sheet://doc/') ? doc.url.replace('sheet://doc/', '') : '');
 
-    fetch(`${apiUrl}?action=getApplicantDoc&appId=${encodeURIComponent(app.id)}&field=${encodeURIComponent(doc.field || '')}&name=${encodeURIComponent(doc.name || '')}`, {
+    fetch(`${apiUrl}?action=getApplicantDoc&appId=${encodeURIComponent(app.id)}&field=${encodeURIComponent(doc.field || '')}&name=${encodeURIComponent(doc.name || '')}&docId=${encodeURIComponent(docIdParam)}`, {
       signal: controller.signal
     })
       .then(r => r.json())
@@ -4608,7 +4645,7 @@ function viewDoc(appId, docIdx) {
     return;
   }
 
-  // 3. Render valid image or PDF
+  // 4. Render valid image or PDF (offline capable, zero Google account login required)
   const isImage = fileSource.startsWith('data:image/') ||
                   /\.(jpeg|jpg|png|webp|gif|svg)($|\?)/i.test(fileSource) ||
                   (doc.type && doc.type.toLowerCase().includes('image')) ||
@@ -4617,52 +4654,70 @@ function viewDoc(appId, docIdx) {
   const isPdf = fileSource.startsWith('data:application/pdf') ||
                 /\.pdf($|\?)/i.test(fileSource) ||
                 (doc.type && doc.type.toLowerCase().includes('pdf')) ||
-                (doc.name && doc.name.toLowerCase().endsWith('.pdf'));
+                (doc.name && doc.name.toLowerCase().endsWith('.pdf')) ||
+                fileSource.startsWith('data:application/octet-stream');
 
-  if (dlBtn) {
-    dlBtn.href = fileSource;
-    dlBtn.download = docDisplayName;
-    dlBtn.removeAttribute('target');
-  }
-  if (openExternalBtn) {
-    if (fileSource.startsWith('http') || fileSource.startsWith('blob:')) {
-      openExternalBtn.href = fileSource;
-      openExternalBtn.target = '_blank';
-      openExternalBtn.classList.remove('hidden');
-      openExternalBtn.classList.add('flex');
-    } else {
-      openExternalBtn.classList.add('hidden');
-    }
-  }
+  let activeUrl = fileSource;
 
-  if (isImage) {
-    body.innerHTML = `
-      <div class="w-full h-full flex flex-col items-center justify-center overflow-auto p-3">
-        <img src="${fileSource}" alt="${sanitize(docDisplayName)}" class="max-h-[80vh] max-w-full object-contain rounded-xl shadow-md border border-slate-200 bg-white">
-      </div>`;
-  } else if (isPdf) {
-    let pdfUrl = fileSource;
-    if (fileSource.startsWith('data:application/pdf')) {
+  if (isPdf) {
+    if (fileSource.startsWith('data:')) {
       try {
         const parts = fileSource.split(',');
         const b64 = atob(parts[1]);
         const u8arr = new Uint8Array(b64.length);
         for (let i = 0; i < b64.length; i++) u8arr[i] = b64.charCodeAt(i);
         const blob = new Blob([u8arr], { type: 'application/pdf' });
-        pdfUrl = URL.createObjectURL(blob);
+        activeUrl = URL.createObjectURL(blob);
+        _activeBlobUrl = activeUrl;
       } catch (e) {
-        pdfUrl = fileSource;
+        activeUrl = fileSource;
       }
     }
     body.innerHTML = `
-      <iframe src="${pdfUrl}" class="w-full h-full rounded-lg border border-slate-300 bg-white" title="${sanitize(docDisplayName)}">
-        <p class="p-4 text-center text-sm text-gray-500">Browser does not support inline PDF preview. <a href="${fileSource}" download="${sanitize(docDisplayName)}" class="text-blue-600 underline font-bold">Download file</a>.</p>
+      <iframe src="${activeUrl}" class="w-full h-full rounded-lg border border-slate-300 bg-white" title="${sanitize(docDisplayName)}">
+        <p class="p-4 text-center text-sm text-gray-500">Browser does not support inline PDF preview. <a href="${activeUrl}" download="${sanitize(docDisplayName)}" class="text-blue-600 underline font-bold">Download file</a>.</p>
       </iframe>`;
+  } else if (isImage) {
+    if (fileSource.startsWith('data:application/octet-stream')) {
+      try {
+        const parts = fileSource.split(',');
+        const b64 = atob(parts[1]);
+        const u8arr = new Uint8Array(b64.length);
+        for (let i = 0; i < b64.length; i++) u8arr[i] = b64.charCodeAt(i);
+        const blob = new Blob([u8arr], { type: 'image/jpeg' });
+        activeUrl = URL.createObjectURL(blob);
+        _activeBlobUrl = activeUrl;
+      } catch (e) {
+        activeUrl = fileSource;
+      }
+    }
+    body.innerHTML = `
+      <div class="w-full h-full flex flex-col items-center justify-center overflow-auto p-3">
+        <img src="${activeUrl}" alt="${sanitize(docDisplayName)}" class="max-h-[80vh] max-w-full object-contain rounded-xl shadow-md border border-slate-200 bg-white">
+      </div>`;
   } else {
     body.innerHTML = `
-      <iframe src="${fileSource}" class="w-full h-full rounded-lg border border-slate-300 bg-white" title="${sanitize(docDisplayName)}">
-        <p class="p-4 text-center text-sm text-gray-500">Preview not supported inline. <a href="${fileSource}" target="_blank" class="text-blue-600 underline font-bold">Download or view file</a>.</p>
+      <iframe src="${activeUrl}" class="w-full h-full rounded-lg border border-slate-300 bg-white" title="${sanitize(docDisplayName)}">
+        <p class="p-4 text-center text-sm text-gray-500">Preview not supported inline. <a href="${activeUrl}" target="_blank" class="text-blue-600 underline font-bold">Download or view file</a>.</p>
       </iframe>`;
+  }
+
+  if (dlBtn) {
+    dlBtn.href = activeUrl;
+    dlBtn.download = docDisplayName;
+    dlBtn.removeAttribute('target');
+    dlBtn.title = `Download ${docDisplayName}`;
+  }
+  if (openExternalBtn) {
+    if (activeUrl.startsWith('http') || activeUrl.startsWith('blob:')) {
+      openExternalBtn.href = activeUrl;
+      openExternalBtn.target = '_blank';
+      openExternalBtn.classList.remove('hidden');
+      openExternalBtn.classList.add('flex');
+      openExternalBtn.title = 'Open in New Tab';
+    } else {
+      openExternalBtn.classList.add('hidden');
+    }
   }
 
   modal.classList.remove('hidden');
@@ -4806,6 +4861,10 @@ async function attachDocManually(event, appId, docIdx) {
 
 function closeDocViewer() {
   _activeDocViewerKey = null;
+  if (_activeBlobUrl) {
+    try { URL.revokeObjectURL(_activeBlobUrl); } catch (_) {}
+    _activeBlobUrl = null;
+  }
   if (_currentDocViewerAbortController) {
     try { _currentDocViewerAbortController.abort(); } catch (_) {}
     _currentDocViewerAbortController = null;
@@ -5152,10 +5211,12 @@ window.pmgRecruitment = {
   compressAndOptimizeDocFile,
   docUploadCache,
   getCandidatePassportPhoto,
+  extractDriveFileId,
 };
 
 // Global aliases
 window.attachDocManually = attachDocManually;
+window.extractDriveFileId = extractDriveFileId;
 
 // Auto-init when DOM ready
 if (document.readyState === 'loading') {

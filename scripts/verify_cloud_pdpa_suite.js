@@ -69,6 +69,8 @@ function createBrowserSandbox(fetchImpl) {
     parentNode: null,
     appendChild: () => {},
     removeChild: () => {},
+    setAttribute: () => {},
+    removeAttribute: () => {},
     querySelectorAll: () => [],
     addEventListener: () => {}
   });
@@ -113,6 +115,9 @@ function createBrowserSandbox(fetchImpl) {
     escape,
     encodeURIComponent,
     decodeURIComponent,
+    URLSearchParams,
+    URL,
+    Blob,
     requestAnimationFrame: (fn) => fn(),
     indexedDB: { open: () => ({}) },
     alert: () => {},
@@ -712,6 +717,55 @@ function createBrowserSandbox(fetchImpl) {
     assert.strictEqual(gridC[0].ruleApplied, 'RULE_3A_VERIFIED_OOS', 'Verified prior demand must trigger RULE_3A_VERIFIED_OOS');
     assert.strictEqual(gridC[0].effectiveAds, 0.5, 'Effective recovery ADS should be damped by 50%');
     assert.strictEqual(gridC[0].suggestedOrder, 15, 'Recovery order should be capped at 30-day buffer (15 units) instead of blind 30 units');
+  });
+
+  // 12. Recruitment Document Viewer: Native PDF/Image Rendering Without Google Account Login
+  test('Recruitment Document Viewer renders cloud-vaulted base64 PDFs natively as blobs and prevents Google Drive 404 interception', () => {
+    const { ctx, doc } = createBrowserSandbox();
+    const recSrc = fs.readFileSync(path.join(ROOT, 'js', 'recruitment.js'), 'utf8');
+
+    // Add Blob and URL.createObjectURL mock to sandbox
+    ctx.Blob = function(chunks, opts) { this.chunks = chunks; this.type = opts ? opts.type : ''; };
+    ctx.URL = {
+      createObjectURL: (blob) => 'blob:https://pmg-hub.local/mock-pdf-blob',
+      revokeObjectURL: () => {}
+    };
+
+    vm.runInContext(recSrc, ctx);
+
+    // 1. Verify extractDriveFileId ignores base64 strings and non-Drive URLs
+    const base64PdfWithSlashD2 = 'data:application/pdf;base64,JVBERi-something/d/2-morebase64';
+    assert.strictEqual(ctx.window.extractDriveFileId(base64PdfWithSlashD2), null, 'extractDriveFileId must return null for base64 data URIs');
+    assert.strictEqual(ctx.window.extractDriveFileId('sheet://doc/APP-MWKMNL70-EF7_fileDegree_4'), null, 'extractDriveFileId must return null for sheet:// pointers');
+    assert.strictEqual(ctx.window.extractDriveFileId('https://example.com/item?id=2'), null, 'extractDriveFileId must return null for non-Google URLs');
+
+    const realDriveUrl = 'https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view?usp=sharing';
+    assert.strictEqual(ctx.window.extractDriveFileId(realDriveUrl), '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms', 'extractDriveFileId must extract 33+ char ID from real Drive URL');
+
+    // 2. Verify viewDoc() with candidate vaulted base64 PDF
+    const testApp = {
+      id: 'APP-MWKMNL70-EF7',
+      name: 'Sneeha A/P Rajenderew',
+      docs: [
+        {
+          field: 'fileDegree',
+          name: 'STPM.pdf',
+          size: 1260305,
+          type: 'application/pdf',
+          data: base64PdfWithSlashD2
+        }
+      ]
+    };
+
+    ctx.window.pmgRecruitment.saveApps([testApp]);
+    ctx.window.pmgRecruitment.viewDoc('APP-MWKMNL70-EF7', 0);
+
+    const bodyHtml = doc.getElementById('recDocModalBody').innerHTML;
+    assert(!bodyHtml.includes('https://drive.google.com/file/d/2/preview'), 'Must NOT embed Google Drive /d/2/preview iframe!');
+    assert(bodyHtml.includes('blob:https://pmg-hub.local/mock-pdf-blob'), 'Must embed native blob URL in iframe for local PDF rendering');
+
+    const dlHref = doc.getElementById('recDocModalDownloadBtn').href;
+    assert.strictEqual(dlHref, 'blob:https://pmg-hub.local/mock-pdf-blob', 'Download button must point to the native blob URL');
   });
 
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);
