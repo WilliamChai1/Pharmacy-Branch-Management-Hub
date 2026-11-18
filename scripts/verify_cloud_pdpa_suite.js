@@ -901,6 +901,11 @@ function createBrowserSandbox(fetchImpl) {
     const { ctx, doc } = createBrowserSandbox(fetchImpl);
     const recSrc = fs.readFileSync(path.join(ROOT, 'js', 'recruitment.js'), 'utf8');
 
+    // Load local jsPDF into sandbox
+    const jspdfModule = require('../js/jspdf.umd.min.js');
+    ctx.jspdf = jspdfModule;
+    ctx.window.jspdf = jspdfModule;
+
     // Setup Blob, URL and immediate setTimeout mock
     ctx.setTimeout = (fn) => {
       if (typeof fn === 'function') fn();
@@ -949,10 +954,13 @@ function createBrowserSandbox(fetchImpl) {
     // Verify recruitment export functions exist
     assert.strictEqual(typeof ctx.window.pmgRecruitment.downloadAllApplicantDocs, 'function', 'downloadAllApplicantDocs must be exported on pmgRecruitment');
     assert.strictEqual(typeof ctx.window.pmgRecruitment.downloadAllActiveApplicantDocs, 'function', 'downloadAllActiveApplicantDocs must be exported on pmgRecruitment');
+    assert.strictEqual(typeof ctx.window.pmgRecruitment.generateApplicantSummaryPdf, 'function', 'generateApplicantSummaryPdf must be exported on pmgRecruitment');
+    assert.strictEqual(typeof ctx.window.pmgRecruitment.parseSpmDetails, 'function', 'parseSpmDetails must be exported on pmgRecruitment');
+    assert.strictEqual(typeof ctx.window.pmgRecruitment.formatSpmSummaryText, 'function', 'formatSpmSummaryText must be exported on pmgRecruitment');
     assert.strictEqual(typeof ctx.window.downloadAllApplicantDocs, 'function', 'downloadAllApplicantDocs must be attached to window');
     assert.strictEqual(typeof ctx.window.downloadAllActiveApplicantDocs, 'function', 'downloadAllActiveApplicantDocs must be attached to window');
 
-    // Create candidate with photoThumbnail, local base64 IC, and cloud-vaulted SPM
+    // Create candidate with comma-separated single-row SPM (as reported by user)
     const candidateApp = {
       id: 'APP-TEST-ZIP-001',
       name: 'Tan Mei Ling',
@@ -963,6 +971,7 @@ function createBrowserSandbox(fetchImpl) {
       email: 'meiling.tan@example.com',
       highestQual: 'Diploma in Pharmacy',
       status: 'shortlisted',
+      spm: 'School: SMK SUNGAI TAPANG  (2023)\nResults: Bahasa Melayu: B, Bahasa Inggeris: B, Sejarah: C+, Matematik: C, Sains: C+, Pendidikan Moral: A-',
       photoThumbnail: 'data:image/jpeg;base64,' + Buffer.from('JPEG Passport Photo Candidate').toString('base64'),
       docs: [
         {
@@ -987,6 +996,22 @@ function createBrowserSandbox(fetchImpl) {
       }
     };
 
+    // Verify SPM parser splits comma-separated string into distinct separate rows
+    const parsedSpm = ctx.window.pmgRecruitment.parseSpmDetails(candidateApp);
+    assert.strictEqual(parsedSpm.school, 'SMK SUNGAI TAPANG', 'School must be extracted');
+    assert.strictEqual(parsedSpm.year, '2023', 'Year must be extracted');
+    assert.strictEqual(parsedSpm.subjects.length, 6, 'Must parse 6 separate subject rows from comma-separated string');
+    assert.strictEqual(parsedSpm.subjects[0].subject, 'Bahasa Melayu');
+    assert.strictEqual(parsedSpm.subjects[0].grade, 'B');
+    assert.strictEqual(parsedSpm.subjects[3].subject, 'Matematik');
+    assert.strictEqual(parsedSpm.subjects[3].grade, 'C');
+
+    // Verify formatted SPM text summary displays each subject in a separate line
+    const spmFormattedText = ctx.window.pmgRecruitment.formatSpmSummaryText(candidateApp);
+    assert(spmFormattedText.includes('01. Bahasa Melayu'), 'Subject 1 must be on its own line');
+    assert(spmFormattedText.includes('04. Matematik'), 'Subject 4 must be on its own line');
+    assert(spmFormattedText.includes(': C'), 'Grade must be aligned in row');
+
     ctx.window.pmgRecruitment.saveApps([candidateApp]);
 
     // 1. Test downloadAllApplicantDocs directly with JSZip
@@ -996,14 +1021,23 @@ function createBrowserSandbox(fetchImpl) {
     const zip = zipInstances[0];
     const zipFileNames = Object.keys(zip.files);
 
-    // Verify manifest summary file
-    const summaryFileName = '00_Applicant_Summary_Tan_Mei_Ling.txt';
-    assert(zipFileNames.includes(summaryFileName), 'ZIP must contain 00_Applicant_Summary manifest text file');
-    const summaryContent = zip.files[summaryFileName];
+    // Verify primary PDF summary file
+    const summaryPdfName = '00_Applicant_Summary_Tan_Mei_Ling.pdf';
+    assert(zipFileNames.includes(summaryPdfName), 'ZIP must contain 00_Applicant_Summary PDF document');
+    const pdfBytes = zip.files[summaryPdfName];
+    assert(pdfBytes instanceof Uint8Array, 'PDF must be Uint8Array');
+    const pdfHeader = Buffer.from(pdfBytes.slice(0, 5)).toString();
+    assert.strictEqual(pdfHeader, '%PDF-', 'PDF summary must have valid PDF header %PDF-');
+
+    // Verify companion TXT summary file with separate SPM subject rows
+    const summaryTxtName = '00_Applicant_Summary_Tan_Mei_Ling.txt';
+    assert(zipFileNames.includes(summaryTxtName), 'ZIP must contain companion 00_Applicant_Summary text file');
+    const summaryContent = zip.files[summaryTxtName];
     assert(summaryContent.includes('Tan Mei Ling'), 'Summary text must contain candidate name');
     assert(summaryContent.includes('APP-TEST-ZIP-001'), 'Summary text must contain candidate ID');
     assert(summaryContent.includes('88/100'), 'Summary text must contain AI score');
-    assert(summaryContent.includes('Recommended for Interview'), 'Summary text must contain AI verdict');
+    assert(summaryContent.includes('01. Bahasa Melayu'), 'Summary manifest text must display each SPM subject on separate row');
+    assert(summaryContent.includes('04. Matematik'), 'Summary manifest text must display Matematik on separate row');
     assert(summaryContent.includes('01_Passport_Photo.jpg'), 'Summary manifest must list passport photo');
     assert(summaryContent.includes('02_MyKad_IC.pdf'), 'Summary manifest must list IC document');
 
@@ -1046,9 +1080,10 @@ function createBrowserSandbox(fetchImpl) {
     downloadedFiles.length = 0;
 
     await ctx.window.pmgRecruitment.downloadAllApplicantDocs(candidateApp.id);
-    assert.strictEqual(downloadedFiles.length, 4, 'Fallback must download all 4 files sequentially');
+    assert.strictEqual(downloadedFiles.length, 5, 'Fallback must download all 5 files sequentially (PDF, TXT, Photo, IC, SPM)');
     const fallbackNames = downloadedFiles.map(f => f.download);
-    assert(fallbackNames.includes('00_Applicant_Summary_Tan_Mei_Ling.txt'), 'Fallback must download summary txt');
+    assert(fallbackNames.includes('00_Applicant_Summary_Tan_Mei_Ling.pdf'), 'Fallback must download summary PDF');
+    assert(fallbackNames.includes('00_Applicant_Summary_Tan_Mei_Ling.txt'), 'Fallback must download summary TXT');
     assert(fallbackNames.includes('01_Passport_Photo.jpg'), 'Fallback must download passport photo');
     assert(fallbackNames.includes('02_MyKad_IC.pdf'), 'Fallback must download IC');
     assert(fallbackNames.includes('03_SPM_Result.pdf'), 'Fallback must download SPM');

@@ -2985,7 +2985,7 @@ async function submitPublicForm(e) {
 
   const spmCombinedText = [
     spmSchool ? `School: ${spmSchool}${spmYear ? ` (${spmYear})` : ''}` : '',
-    spmSubjects.length > 0 ? `Results: ${spmSubjects.join(', ')}` : (get('spm') || '')
+    spmSubjects.length > 0 ? ('Results:\n' + spmSubjects.map(s => `  • ${s}`).join('\n')) : (get('spm') || '')
   ].filter(Boolean).join('\n');
 
   const app = {
@@ -3320,6 +3320,7 @@ function viewApp(appId) {
 
   const m = STATUS_META[app.status] || STATUS_META.new;
   const missingCore = detectMissingSpmCoreSubjects(app.spm || '', app.spmSubjects || []);
+  const parsedSpm = parseSpmDetails(app);
 
   // Render AI report section
   let aiSection = '';
@@ -3809,9 +3810,39 @@ ${spmVisionSectionHtml}
       </p>
     </div>
   </div>` : ''}
-  <div class="bg-amber-50 rounded-lg p-3 mb-3">
-    <p class="text-[10px] text-amber-700 font-bold uppercase mb-1">SPM Results</p>
-    <p class="text-xs text-gray-800 whitespace-pre-line">${sanitize(app.spm||'Not provided')}</p>
+  <div class="bg-amber-50 rounded-lg p-3 mb-3 border border-amber-200">
+    <div class="flex items-center justify-between flex-wrap gap-1 mb-2">
+      <p class="text-[10px] text-amber-800 font-bold uppercase tracking-wider flex items-center gap-1.5">
+        <i class="fa-solid fa-graduation-cap text-amber-600"></i>Declared SPM Results
+      </p>
+      ${(parsedSpm.school || parsedSpm.year) ? `
+      <span class="text-[11px] font-semibold text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded border border-amber-300/60">
+        ${sanitize(parsedSpm.school || 'School')}${parsedSpm.year ? ` (${sanitize(parsedSpm.year)})` : ''}
+      </span>` : ''}
+    </div>
+    ${parsedSpm.subjects.length > 0 ? `
+    <div class="overflow-x-auto rounded-lg border border-amber-200 bg-white">
+      <table class="w-full text-xs text-left border-collapse">
+        <thead>
+          <tr class="bg-amber-100/60 text-amber-900 font-bold border-b border-amber-200 text-[11px]">
+            <th class="py-1 px-2.5 w-10 text-center">No.</th>
+            <th class="py-1 px-2.5">SPM Subject (Matapelajaran)</th>
+            <th class="py-1 px-2.5 w-24 text-center">Grade (Gred)</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-amber-100">
+          ${parsedSpm.subjects.map((s, idx) => `
+          <tr class="${idx % 2 === 0 ? 'bg-white' : 'bg-amber-50/30'}">
+            <td class="py-1 px-2.5 text-center text-slate-400 font-mono text-[11px]">${String(idx + 1).padStart(2, '0')}</td>
+            <td class="py-1 px-2.5 font-medium text-slate-800">${sanitize(s.subject)}</td>
+            <td class="py-1 px-2.5 text-center font-bold font-mono ${/^A/i.test(s.grade) ? 'text-emerald-600' : (/^[BC]/i.test(s.grade) ? 'text-blue-600' : (/^[DG]/i.test(s.grade) || /fail|gagal/i.test(s.grade) ? 'text-rose-600' : 'text-slate-700'))}">${sanitize(s.grade)}</td>
+          </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>` : `
+    <p class="text-xs text-gray-800 whitespace-pre-line">${sanitize(app.spm || 'Not provided')}</p>
+    `}
   </div>
   <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs mb-2">
     <div><p class="text-[10px] text-gray-400 uppercase">Highest Qual</p><p class="font-medium">${sanitize(app.highestQual||'—')}</p></div>
@@ -4274,7 +4305,34 @@ function printApp(appId) {
       </div>
     `;
   } else {
-    spmPrintHtml = `<div style="white-space: pre-line; font-family: monospace, sans-serif; font-size: 9pt;">${sanitize(app.spm || 'Not specified')}</div>`;
+    const parsedSpm = parseSpmDetails(app);
+    if (parsedSpm.subjects.length > 0) {
+      spmPrintHtml = `
+        <div style="font-family: sans-serif; font-size: 8.5pt;">
+          ${(parsedSpm.school || parsedSpm.year) ? `<div style="font-weight: 700; color: #475569; margin-bottom: 4px;">School: ${sanitize(parsedSpm.school || '')}${parsedSpm.year ? ` (${sanitize(parsedSpm.year)})` : ''}</div>` : ''}
+          <table class="data-table" style="font-size: 8.5pt; width: 100%; border-collapse: collapse; margin-bottom: 4px;">
+            <thead>
+              <tr style="background: #f1f5f9; color: #334155; font-weight: 700;">
+                <th style="width: 40px; text-align: center; padding: 4px 6px;">No.</th>
+                <th style="text-align: left; padding: 4px 8px;">Subject / Matapelajaran</th>
+                <th style="width: 80px; text-align: center; padding: 4px 6px;">Grade</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${parsedSpm.subjects.map((s, idx) => `
+              <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'}; border-bottom: 1px solid #f1f5f9;">
+                <td style="text-align: center; color: #64748b; padding: 3px 6px;">${String(idx + 1).padStart(2, '0')}</td>
+                <td style="font-weight: 500; color: #0f172a; padding: 3px 8px;">${sanitize(s.subject)}</td>
+                <td style="text-align: center; font-weight: 700; padding: 3px 6px; ${/^A/i.test(s.grade) ? 'color: #059669;' : (/^[BC]/i.test(s.grade) ? 'color: #2563eb;' : '')}">${sanitize(s.grade)}</td>
+              </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    } else {
+      spmPrintHtml = `<div style="white-space: pre-line; font-family: monospace, sans-serif; font-size: 9pt;">${sanitize(app.spm || 'Not specified')}</div>`;
+    }
   }
 
   const html = `<!DOCTYPE html>
@@ -4943,8 +5001,490 @@ function triggerBlobDownload(blob, filename) {
   }
 }
 
+function parseSpmDetails(app) {
+  if (!app) return { school: '', year: '', subjects: [] };
+
+  let school = app.spmSchool || '';
+  let year = app.spmYear || '';
+  let subjects = []; // Array of { subject: string, grade: string }
+
+  // 1. Check if spmSubjects array is present
+  if (Array.isArray(app.spmSubjects) && app.spmSubjects.length > 0) {
+    app.spmSubjects.forEach(item => {
+      if (typeof item === 'object' && item && item.subject) {
+        subjects.push({ subject: String(item.subject).trim(), grade: String(item.grade || '—').trim() });
+      } else if (typeof item === 'string') {
+        const parts = item.split(/[:\-–—]\s*/);
+        if (parts.length >= 2) {
+          subjects.push({ subject: parts[0].trim(), grade: parts.slice(1).join(':').trim() });
+        } else {
+          subjects.push({ subject: item.trim(), grade: '—' });
+        }
+      }
+    });
+  }
+
+  // 2. Check if spmVisionData.grades_table is present
+  if (subjects.length === 0 && app.spmVisionData && Array.isArray(app.spmVisionData.grades_table)) {
+    if (!year && app.spmVisionData.spm_year) year = app.spmVisionData.spm_year;
+    app.spmVisionData.grades_table.forEach(g => {
+      if (g.subject) {
+        subjects.push({ subject: String(g.subject).trim(), grade: String(g.grade || '—').trim() });
+      }
+    });
+  }
+
+  // 3. Parse from app.spm string if subjects still empty
+  const spmText = (typeof app.spm === 'string') ? app.spm.trim() : '';
+  if (spmText) {
+    if (!school) {
+      const schMatch = spmText.match(/School:\s*([^\n\r(]+)/i);
+      if (schMatch) school = schMatch[1].trim();
+    }
+    if (!year) {
+      const yrMatch = spmText.match(/\((20\d\d|19\d\d)\)/) || spmText.match(/Year:\s*(20\d\d|19\d\d)/i);
+      if (yrMatch) year = yrMatch[1].trim();
+    }
+
+    if (subjects.length === 0) {
+      let resultsChunk = spmText;
+      const resMatch = spmText.match(/Results:\s*([\s\S]+)/i);
+      if (resMatch) {
+        resultsChunk = resMatch[1].trim();
+      }
+
+      const lines = resultsChunk.split(/\r?\n/).map(l => l.replace(/^[\s•\-\*0-9.]+\s*/, '').trim()).filter(Boolean);
+      let parsedLines = false;
+      if (lines.length > 1) {
+        const temp = [];
+        for (const line of lines) {
+          const m = line.match(/^(.+?)[:\-–—]\s*([A-G][+\-]?(?:\s*\([^)]+\))?|[A-G]|TH|Lulus|Gagal|Pass|Fail)$/i) || line.split(/[:\-–—]\s*/);
+          if (Array.isArray(m) && m.length >= 2) {
+            temp.push({ subject: m[1].trim(), grade: m[2] ? m[2].trim() : m.slice(1).join(':').trim() });
+          }
+        }
+        if (temp.length >= 2) {
+          subjects = temp;
+          parsedLines = true;
+        }
+      }
+
+      if (!parsedLines) {
+        const commaItems = resultsChunk.split(/,\s*/);
+        commaItems.forEach(item => {
+          const cleanItem = item.replace(/^[\s•\-\*0-9.]+\s*/, '').trim();
+          if (!cleanItem) return;
+          const colonIdx = cleanItem.lastIndexOf(':');
+          if (colonIdx > 0) {
+            const subj = cleanItem.slice(0, colonIdx).trim();
+            const gr = cleanItem.slice(colonIdx + 1).trim();
+            subjects.push({ subject: subj, grade: gr });
+          } else {
+            const dashIdx = cleanItem.lastIndexOf('-');
+            if (dashIdx > 0) {
+              subjects.push({ subject: cleanItem.slice(0, dashIdx).trim(), grade: cleanItem.slice(dashIdx + 1).trim() });
+            } else {
+              subjects.push({ subject: cleanItem, grade: '—' });
+            }
+          }
+        });
+      }
+    }
+  }
+
+  return { school, year, subjects };
+}
+
+function formatSpmSummaryText(app) {
+  const parsed = parseSpmDetails(app);
+  const lines = [];
+  if (parsed.school || parsed.year) {
+    lines.push(`School: ${parsed.school || '—'}${parsed.year ? ` (${parsed.year})` : ''}`);
+  }
+  if (parsed.subjects && parsed.subjects.length > 0) {
+    lines.push('Subjects & Grades:');
+    parsed.subjects.forEach((s, idx) => {
+      const num = String(idx + 1).padStart(2, '0');
+      const subjPadded = s.subject.padEnd(28, ' ');
+      lines.push(`  ${num}. ${subjPadded} : ${s.grade}`);
+    });
+  } else if (app.spm) {
+    lines.push(app.spm);
+  } else {
+    lines.push('Not specified');
+  }
+  return lines.join('\n');
+}
+
+function getJsPdfConstructor() {
+  if (typeof window !== 'undefined') {
+    if (window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
+    if (typeof window.jsPDF !== 'undefined') return window.jsPDF;
+  }
+  if (typeof global !== 'undefined') {
+    if (global.jspdf && global.jspdf.jsPDF) return global.jspdf.jsPDF;
+    if (typeof global.jsPDF !== 'undefined') return global.jsPDF;
+  }
+  if (typeof jspdf !== 'undefined' && jspdf.jsPDF) return jspdf.jsPDF;
+  if (typeof jsPDF !== 'undefined') return jsPDF;
+  return null;
+}
+
+function generateApplicantSummaryPdf(app, manifestLines = []) {
+  const JsPdfConstructor = getJsPdfConstructor();
+  if (!JsPdfConstructor) return null;
+
+  const doc = new JsPdfConstructor({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  const pageWidth = 210;
+  const pageHeight = 297;
+  const margin = 14;
+  const contentWidth = pageWidth - (margin * 2);
+  let y = 14;
+
+  function checkPageBreak(neededHeight) {
+    if (y + neededHeight > pageHeight - 16) {
+      doc.addPage();
+      y = 14;
+      drawHeaderSmall();
+    }
+  }
+
+  function drawHeaderSmall() {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`PMG PHARMACY — APPLICANT DOSSIER: ${app.name || 'Candidate'} (${app.id || '—'})`, margin, y);
+    doc.setDrawColor(226, 232, 240);
+    doc.line(margin, y + 2, pageWidth - margin, y + 2);
+    y += 8;
+  }
+
+  // --- HEADER BANNER ---
+  doc.setFillColor(15, 23, 42); // slate-900
+  doc.roundedRect(margin, y, contentWidth, 24, 2, 2, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.setTextColor(255, 255, 255);
+  doc.text('PMG PHARMACY (PUBLIC MEDICARE GROUP)', margin + 6, y + 8);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(148, 163, 184); // slate-400
+  doc.text('CONFIDENTIAL JOB APPLICANT DOSSIER & PROFILE SUMMARY', margin + 6, y + 13.5);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(56, 189, 248); // sky-400
+  doc.text(`KOTA SENTOSA (KS01) • REF: ${app.id || '—'} • APPLIED: ${fmtDateTime(app.appliedAt)}`, margin + 6, y + 18.5);
+
+  // Status / Score Box in header
+  const ai = app.aiReport;
+  if (ai && ai.score !== undefined) {
+    doc.setFillColor(30, 41, 59);
+    doc.roundedRect(pageWidth - margin - 42, y + 3, 38, 18, 1.5, 1.5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(52, 211, 153); // emerald-400
+    doc.text(`${ai.score}/100`, pageWidth - margin - 23, y + 10.5, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(203, 213, 225);
+    doc.text('FIT SCORE', pageWidth - margin - 23, y + 15.5, { align: 'center' });
+  }
+
+  y += 28;
+
+  // --- CANDIDATE MAIN META ---
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(203, 213, 225);
+  doc.roundedRect(margin, y, contentWidth, 18, 1.5, 1.5, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(15, 23, 42);
+  doc.text(app.name || 'Candidate Name', margin + 4, y + 5.5);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(37, 99, 235); // blue-600
+  doc.text(`Position: ${app.position || 'Pharmacy Assistant'}`, margin + 4, y + 10.5);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Preferred Branch: ${app.preferredBranch || 'Kota Sentosa (KS01)'}  •  Status: ${(STATUS_META[app.status]?.label || app.status || 'NEW').toUpperCase()}`, margin + 4, y + 15);
+
+  y += 22;
+
+  // Helper for Section Titles
+  function drawSectionTitle(title) {
+    checkPageBreak(14);
+    doc.setFillColor(241, 245, 249);
+    doc.setDrawColor(203, 213, 225);
+    doc.rect(margin, y, contentWidth, 6, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(30, 41, 59);
+    doc.text(title.toUpperCase(), margin + 3, y + 4.2);
+    y += 7.5;
+  }
+
+  // Helper for 2-column key-value rows with full-width support
+  function drawKeyValueGrid(items) {
+    const colW = contentWidth / 2;
+    let i = 0;
+    while (i < items.length) {
+      const item = items[i];
+      if (item.length === 3 && item[2] === true) {
+        // Full width row
+        checkPageBreak(6);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(item[0] + ':', margin + 2, y + 3.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(15, 23, 42);
+        const splitVal = doc.splitTextToSize(String(item[1] || '—'), contentWidth - 36);
+        doc.text(splitVal, margin + 34, y + 3.5);
+        y += Math.max(5, (splitVal.length * 4) + 1.5);
+        i++;
+      } else {
+        const left = items[i];
+        const right = items[i + 1];
+        checkPageBreak(5.5);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(left[0] + ':', margin + 2, y + 3.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(15, 23, 42);
+        const leftVal = doc.splitTextToSize(String(left[1] || '—'), colW - 34);
+        doc.text(leftVal[0] || '—', margin + 30, y + 3.5);
+
+        if (right) {
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(100, 116, 139);
+          doc.text(right[0] + ':', margin + colW + 2, y + 3.5);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(15, 23, 42);
+          const rightVal = doc.splitTextToSize(String(right[1] || '—'), colW - 34);
+          doc.text(rightVal[0] || '—', margin + colW + 32, y + 3.5);
+        }
+        y += 4.8;
+        i += 2;
+      }
+    }
+    y += 1.5;
+  }
+
+  // --- SECTION 1: PERSONAL PARTICULARS ---
+  drawSectionTitle('1. Personal Particulars');
+  drawKeyValueGrid([
+    ['IC / MyKad', `${app.ic || '—'} (${app.icColour || 'Blue'} / ${app.citizenship || 'Malaysian'})`],
+    ['Date of Birth', `${app.dob || '—'} (Age: ${app.age || '—'})`],
+    ['Gender / Marital', `${app.gender || '—'} / ${app.maritalStatus || '—'}`],
+    ['Race / Religion', `${app.race || '—'} / ${app.religion || '—'}`],
+    ['Phone Number', app.phone || '—'],
+    ['Email Address', app.email || '—'],
+    ['Physical Profile', `Height: ${app.height ? app.height + ' cm' : '—'}, Weight: ${app.weight ? app.weight + ' kg' : '—'}`],
+    ['Driving License', app.drivingLicense || '—'],
+    ['Residential Addr', app.address || '—', true],
+    ['Emergency Contact', app.emergencyContact || '—', true]
+  ]);
+
+  // --- SECTION 2: ACADEMIC QUALIFICATIONS & SPM RESULTS ---
+  drawSectionTitle('2. Academic Qualifications & SPM Results');
+  drawKeyValueGrid([
+    ['Highest Qual', app.highestQual || '—'],
+    ['Institution', app.institution || '—'],
+    ['CGPA / Grade', app.cgpa || '—'],
+    ['Additional Certs', app.additionalCerts || '—']
+  ]);
+
+  // SPM Results Section with EACH subject and grade on a separate row!
+  checkPageBreak(25);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(30, 41, 59);
+  doc.text('Declared SPM Results:', margin + 2, y + 4);
+  y += 5.5;
+
+  // Parse SPM subjects
+  const parsedSpm = parseSpmDetails(app);
+
+  if (parsedSpm.school || parsedSpm.year) {
+    checkPageBreak(6);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`School: ${parsedSpm.school || '—'}${parsedSpm.year ? `  (${parsedSpm.year})` : ''}`, margin + 4, y + 3);
+    y += 5;
+  }
+
+  if (parsedSpm.subjects.length > 0) {
+    checkPageBreak(12);
+    // Table Header
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.rect(margin + 4, y, contentWidth - 8, 5.5, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text('NO.', margin + 7, y + 4);
+    doc.text('SPM SUBJECT (MATAPELAJARAN)', margin + 18, y + 4);
+    doc.text('GRADE (GRED)', margin + contentWidth - 36, y + 4);
+    y += 5.5;
+
+    parsedSpm.subjects.forEach((subjItem, idx) => {
+      checkPageBreak(6);
+      const isEven = idx % 2 === 0;
+      doc.setFillColor(isEven ? 255 : 248, isEven ? 255 : 250, isEven ? 255 : 252);
+      doc.setDrawColor(241, 245, 249);
+      doc.rect(margin + 4, y, contentWidth - 8, 5.5, 'FD');
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(String(idx + 1).padStart(2, '0'), margin + 7, y + 4);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text(subjItem.subject, margin + 18, y + 4);
+
+      // Grade formatting
+      doc.setFont('helvetica', 'bold');
+      const gr = (subjItem.grade || '—').trim();
+      if (/^A/i.test(gr)) {
+        doc.setTextColor(16, 185, 129); // green
+      } else if (/^[BC]/i.test(gr)) {
+        doc.setTextColor(37, 99, 235); // blue
+      } else if (/^[DG]/i.test(gr) || /fail|gagal/i.test(gr)) {
+        doc.setTextColor(225, 29, 72); // rose
+      } else {
+        doc.setTextColor(15, 23, 42);
+      }
+      doc.text(gr, margin + contentWidth - 30, y + 4);
+
+      y += 5.5;
+    });
+    y += 3;
+  } else {
+    checkPageBreak(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(app.spm || 'No SPM details declared.', margin + 4, y + 4);
+    y += 7;
+  }
+
+  // --- SECTION 3: WORK HISTORY & PRE-EMPLOYMENT SCREENING ---
+  drawSectionTitle('3. Work History & Pre-Employment Screening');
+  if (app.workHistory) {
+    checkPageBreak(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text('Work Experience History:', margin + 2, y + 3);
+    y += 4.5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(15, 23, 42);
+    const splitExp = doc.splitTextToSize(app.workHistory, contentWidth - 4);
+    splitExp.forEach(line => {
+      checkPageBreak(5);
+      doc.text(line, margin + 4, y + 3);
+      y += 4.2;
+    });
+    y += 2;
+  }
+
+  drawKeyValueGrid([
+    ['Notice Period', app.noticeRequired || 'Immediate'],
+    ['Skills / IT', `${app.skills || '—'} / ${app.itSkills || '—'}`],
+    ['Transportation', app.hasTransport || '—'],
+    ['Branch Travel', app.ableToTravel || '—'],
+    ['AM/PM Shift Work', app.canDoShift || '—'],
+    ['3-Year Contract', app.accept3yr || '—'],
+    ['Future Plans', `${app.futurePlan || '—'} ${app.futurePlanDetail ? '(' + app.futurePlanDetail + ')' : ''}`],
+    ['Smoke / Vape', app.smokes || 'Non-smoker'],
+    ['Health / Surgery', `Issues: ${app.healthIssues || 'None'}, Meds: ${app.depressionMeds || 'No'}, Surgery: ${app.recentSurgery || 'No'}`],
+    ['PMG Relatives', `${app.relativesAtPmg || 'No'} ${app.relativesAtPmgDetail ? '(' + app.relativesAtPmgDetail + ')' : ''}`]
+  ]);
+
+  // --- SECTION 4: AI EVALUATION REPORT ---
+  if (ai) {
+    drawSectionTitle('4. Gemini AI Evaluation Report');
+    drawKeyValueGrid([
+      ['Fit Score', `${ai.score || '—'} / 100`],
+      ['Hiring Verdict', ai.verdict || '—'],
+      ['Retention Risk', ai.retentionRisk || '—'],
+      ['Model Used', ai._modelUsed || 'Gemini 3.5 Flash-Lite']
+    ]);
+
+    if (ai.summary) {
+      checkPageBreak(12);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text('Evaluation Summary:', margin + 2, y + 3);
+      y += 4.5;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(15, 23, 42);
+      const splitSumm = doc.splitTextToSize(ai.summary, contentWidth - 4);
+      splitSumm.forEach(line => {
+        checkPageBreak(5);
+        doc.text(line, margin + 4, y + 3);
+        y += 4;
+      });
+      y += 2;
+    }
+  }
+
+  // --- SECTION 5: ATTACHED DOCUMENTS MANIFEST ---
+  drawSectionTitle('5. Attached Documents & Pictures in this ZIP Package');
+  if (manifestLines.length > 0) {
+    manifestLines.forEach(line => {
+      checkPageBreak(5.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(51, 65, 85);
+      doc.text(line, margin + 4, y + 3.5);
+      y += 4.2;
+    });
+  } else {
+    checkPageBreak(6);
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text('No attached documents registered.', margin + 4, y + 3.5);
+    y += 5;
+  }
+
+  // Add Page Numbers and Footer to all pages
+  const totalPages = doc.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`Public Medicare Group (PMG) • Kota Sentosa (KS01) PIC Portal • Confidential`, margin, pageHeight - 8);
+    doc.text(`Page ${p} of ${totalPages}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
+  }
+
+  return doc;
+}
+
 function buildApplicantSummaryText(app, manifestLines = []) {
   const r = app.aiReport;
+  const spmText = formatSpmSummaryText(app);
   return `========================================================================
 PMG PHARMACY (PUBLIC MEDICARE GROUP) — JOB APPLICANT PROFILE SUMMARY
 ========================================================================
@@ -4977,7 +5517,7 @@ CGPA / Grade      : ${app.cgpa || '—'}
 Additional Certs  : ${app.additionalCerts || '—'}
 
 Declared SPM Results:
-${app.spm || 'Not specified'}
+${spmText}
 
 3. WORK HISTORY & PRE-EMPLOYMENT SCREENING
 ------------------------------------------------------------------------
@@ -5134,9 +5674,23 @@ async function downloadAllApplicantDocs(appId) {
     }
   }
 
-  // Add 00_Applicant_Summary text file
+  // 1. Generate 00_Applicant_Summary PDF (Primary formatted dossier)
+  try {
+    const summaryPdfDoc = generateApplicantSummaryPdf(app, manifestLines);
+    if (summaryPdfDoc) {
+      const pdfArrayBuffer = summaryPdfDoc.output('arraybuffer');
+      filesToPack.unshift({
+        name: `00_Applicant_Summary_${candidateSafeName}.pdf`,
+        content: new Uint8Array(pdfArrayBuffer)
+      });
+    }
+  } catch (pdfErr) {
+    console.warn('[Download All] Could not generate summary PDF:', pdfErr);
+  }
+
+  // 2. Also include companion 00_Applicant_Summary text file with separate row SPM subjects
   const summaryText = buildApplicantSummaryText(app, manifestLines);
-  filesToPack.unshift({
+  filesToPack.push({
     name: `00_Applicant_Summary_${candidateSafeName}.txt`,
     content: summaryText
   });
@@ -5157,7 +5711,7 @@ async function downloadAllApplicantDocs(appId) {
       });
       const zipFileName = `PMG_Applicant_${candidateSafeName}_${app.id}_All_Documents.zip`;
       triggerBlobDownload(zipBlob, zipFileName);
-      toast(`✅ Berjaya memuat turun ${filesToPack.length - 1} dokumen & gambar untuk ${candidateName}!`, 'success');
+      toast(`✅ Berjaya memuat turun ${filesToPack.length} fail (termasuk Ringkasan PDF & TXT) untuk ${candidateName}!`, 'success');
       return;
     } catch (err) {
       console.error('[Download All ZIP Error]', err);
@@ -5169,7 +5723,7 @@ async function downloadAllApplicantDocs(appId) {
   for (const item of filesToPack) {
     let blob = null;
     if (item.content instanceof Uint8Array) {
-      blob = new Blob([item.content]);
+      blob = new Blob([item.content], { type: item.name.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream' });
     } else if (typeof item.content === 'string') {
       blob = new Blob([item.content], { type: 'text/plain;charset=utf-8' });
     } else {
@@ -5500,6 +6054,9 @@ window.pmgRecruitment = {
   closeDocViewer,
   downloadAllApplicantDocs,
   downloadAllActiveApplicantDocs,
+  generateApplicantSummaryPdf,
+  parseSpmDetails,
+  formatSpmSummaryText,
   attachDocManually,
   renderMissingDocFallback,
   renderCandidateUploadPortal,
@@ -5533,6 +6090,9 @@ window.pmgRecruitment = {
 // Global aliases
 window.attachDocManually = attachDocManually;
 window.extractDriveFileId = extractDriveFileId;
+window.parseSpmDetails = parseSpmDetails;
+window.formatSpmSummaryText = formatSpmSummaryText;
+window.generateApplicantSummaryPdf = generateApplicantSummaryPdf;
 
 // Auto-init when DOM ready
 if (document.readyState === 'loading') {
