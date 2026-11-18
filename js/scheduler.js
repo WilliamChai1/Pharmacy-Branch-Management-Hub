@@ -455,17 +455,17 @@ const WILLIAM_CONTRACT_PH = {
 };
 
 // ─── DEFAULT TEAMMATES DATA FOR KOTA SENTOSA (KS01) ──────────────────────────
-// Staffing configuration (Effective 1/12/2026):
+// Staffing configuration (Effective 1/12/2026 matching user settings in 5.JPG):
 // 1. Effective 1/11/2026: Ting Kwang Yu (BM), Kenix Ling (Pharmacist), & Meylina (Staff) left PMG Kota Sentosa; Vanessa Anak Blaise joined.
 // 2. Effective 1/12/2026: Christina Lee Ying Ying (PRP, PMG03033) left PMG Kota Sentosa.
 // 3. Rebalanced 7-Person Team (1 Fixed Anchor + 6 Rotating Staff = 1 unique RD & 1 unique HD every day Mon–Sun):
 //    - Chai Yee Sian (William): Licensed Pharmacist, FIXED Morning anchor (Sun RD, Sat 4H Half Day).
-//    - Haniesha Louna (ABM): Rotating pool (Thu RD, Wed 5H Half Day).
-//    - Penny (Staff): Rotating pool (Tue RD, Mon 5H Half Day).
-//    - Fiona (Staff): Rotating pool (Sat RD, Thu 5H Half Day).
-//    - Nurhafizah (Staff): Rotating pool (Mon RD, Fri 5H Half Day).
+//    - Haniesha Louna (ABM): Rotating pool (Wed RD, Thu 5H Half Day).
+//    - Penny (Staff): Rotating pool (Tue RD, Fri 5H Half Day).
+//    - Fiona (Staff): Rotating pool (Thu RD, Wed 5H Half Day).
+//    - Nurhafizah (Staff): Rotating pool (Mon RD, Sun 5H Half Day).
 //    - Farizin (Staff): Rotating pool (Fri RD, Tue 5H Half Day).
-//    - Vanessa (Trainee): Rotating pool (Wed RD, Sun 5H Half Day).
+//    - Vanessa (Trainee): Rotating pool (Flexible AI RD / Sat, Flexible AI HD / Mon).
 const DEFAULT_KS01_TEAMMATES = [
   {
     empNo: 'PMG00831',
@@ -503,16 +503,16 @@ const DEFAULT_KS01_TEAMMATES = [
     scheduleMode: 'Rotating',
     race: 'Iban / Bidayuh',
     shiftPref: 'Flexible',
-    restDayPref: 'Thursday',
-    halfDayPref: 'Monday Morning (5H)',
+    restDayPref: 'Wednesday',
+    halfDayPref: 'Thursday Morning (5H)',
     dayPrefs: {
-      Monday: 'Morning Half (5H)',
-      Tuesday: 'Flexible',
-      Wednesday: 'Flexible',
-      Thursday: 'RD',
-      Friday: 'Flexible',
-      Saturday: 'Flexible',
-      Sunday: 'Flexible'
+      Monday: 'Morning Preferred',
+      Tuesday: 'Night Preferred',
+      Wednesday: 'RD',
+      Thursday: 'Morning Half (5H)',
+      Friday: 'Night Preferred',
+      Saturday: 'Night Preferred',
+      Sunday: 'Morning Preferred'
     }
   },
   {
@@ -529,11 +529,11 @@ const DEFAULT_KS01_TEAMMATES = [
     dayPrefs: {
       Monday: 'Flexible',
       Tuesday: 'RD',
-      Wednesday: 'Flexible',
-      Thursday: 'Flexible',
+      Wednesday: 'Morning Preferred',
+      Thursday: 'Night Preferred',
       Friday: 'Morning Half (5H)',
-      Saturday: 'Flexible',
-      Sunday: 'Flexible'
+      Saturday: 'Morning Preferred',
+      Sunday: 'Night Preferred'
     }
   },
   {
@@ -545,16 +545,16 @@ const DEFAULT_KS01_TEAMMATES = [
     scheduleMode: 'Rotating',
     race: 'Iban / Bidayuh',
     shiftPref: 'Flexible',
-    restDayPref: 'Saturday',
+    restDayPref: 'Thursday',
     halfDayPref: 'Wednesday Morning (5H)',
     dayPrefs: {
-      Monday: 'Flexible',
-      Tuesday: 'Flexible',
+      Monday: 'Night Preferred',
+      Tuesday: 'Morning Preferred',
       Wednesday: 'Morning Half (5H)',
-      Thursday: 'Flexible',
-      Friday: 'Flexible',
-      Saturday: 'RD',
-      Sunday: 'Flexible'
+      Thursday: 'RD',
+      Friday: 'Night Preferred',
+      Saturday: 'Morning Preferred',
+      Sunday: 'Night Preferred'
     }
   },
   {
@@ -567,15 +567,15 @@ const DEFAULT_KS01_TEAMMATES = [
     race: 'Malay',
     shiftPref: 'Flexible',
     restDayPref: 'Monday',
-    halfDayPref: 'Thursday Morning (5H)',
+    halfDayPref: 'Sunday Morning (5H)',
     dayPrefs: {
       Monday: 'RD',
-      Tuesday: 'Flexible',
-      Wednesday: 'Flexible',
-      Thursday: 'Morning Half (5H)',
-      Friday: 'Flexible',
-      Saturday: 'Flexible',
-      Sunday: 'Flexible'
+      Tuesday: 'Night Preferred',
+      Wednesday: 'Morning Preferred',
+      Thursday: 'Night Preferred',
+      Friday: 'Morning Preferred',
+      Saturday: 'Night Preferred',
+      Sunday: 'Morning Half (5H)'
     }
   },
   {
@@ -590,13 +590,13 @@ const DEFAULT_KS01_TEAMMATES = [
     restDayPref: 'Friday',
     halfDayPref: 'Tuesday Morning (5H)',
     dayPrefs: {
-      Monday: 'Flexible',
+      Monday: 'Night Preferred',
       Tuesday: 'Morning Half (5H)',
-      Wednesday: 'Flexible',
-      Thursday: 'Flexible',
+      Wednesday: 'Night Preferred',
+      Thursday: 'Morning Preferred',
       Friday: 'RD',
-      Saturday: 'Flexible',
-      Sunday: 'Flexible'
+      Saturday: 'Morning Preferred',
+      Sunday: 'Night Preferred'
     }
   },
   {
@@ -608,19 +608,19 @@ const DEFAULT_KS01_TEAMMATES = [
     scheduleMode: 'Rotating',
     race: 'Iban / Bidayuh',
     shiftPref: 'Flexible',
-    restDayPref: 'Wednesday',
-    halfDayPref: 'Sunday Morning (5H)',
+    restDayPref: 'Flexible',
+    halfDayPref: 'Flexible',
     notes: 'Joined PMG Kota Sentosa 1/11/2026. Experienced at Peace & Joy Pharmacy Kuching. Culture adaptation phase.',
     adaptationPhase: true,
     isTrainee: true,
     dayPrefs: {
       Monday: 'Flexible',
       Tuesday: 'Flexible',
-      Wednesday: 'RD',
+      Wednesday: 'Flexible',
       Thursday: 'Flexible',
       Friday: 'Flexible',
       Saturday: 'Flexible',
-      Sunday: 'Morning Half (5H)'
+      Sunday: 'Flexible'
     }
   }
 ];
@@ -946,10 +946,10 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
     // 5. December 2026 Staff Realignment: Christina Lee Ying Ying (PRP, PMG03033) departure & 7-Staff RD/HD Rebalancing
     const applyDec2026Rebalance = (arr) => {
       const rebalanceMap = {
-        PMG01294: { rd: 'Thursday', hd: 'Monday', prevHds: ['Wednesday'] },
+        PMG01294: { rd: 'Wednesday', hd: 'Thursday', prevRds: ['Thursday'], prevHds: ['Monday', 'Wednesday'] },
         PMG02694: { rd: 'Tuesday', hd: 'Friday', prevHds: ['Monday'] },
-        PMG01780: { rd: 'Saturday', hd: 'Wednesday', prevRds: ['Sunday'], prevHds: ['Thursday'] },
-        PMG02070: { rd: 'Monday', hd: 'Thursday', prevHds: ['Saturday', 'Friday'] }
+        PMG01780: { rd: 'Thursday', hd: 'Wednesday', prevRds: ['Sunday', 'Saturday'], prevHds: ['Thursday'] },
+        PMG02070: { rd: 'Monday', hd: 'Sunday', prevHds: ['Saturday', 'Friday', 'Thursday'] }
       };
       Object.entries(rebalanceMap).forEach(([empNo, cfg]) => {
         const tm = arr.find(t => t.empNo === empNo);
@@ -1838,10 +1838,11 @@ async function generateTimetable() {
 // ─── PRESET LOCK GUARD HELPERS ────────────────────────────────────────────────
 function canSwapShift(teammate, dayOfWeek) {
   const pref = (teammate && teammate.dayPrefs && dayOfWeek) ? teammate.dayPrefs[dayOfWeek] : 'Flexible';
-  // If the user preset this day (Morning, Night, Half Day, or RD), lock it
-  if (pref && pref !== 'Flexible') {
+  // Immovable locks: Strict Morning Only, Night Only, RD, and Half Day
+  if (pref === 'Morning Only' || pref === 'Night Only' || pref === 'RD' || pref.includes('Half') || pref.includes('4H') || pref.includes('5H')) {
     return false;
   }
+  // 'Morning Preferred' and 'Night Preferred' can be flexibly adapted when needed to guarantee minimum 3 AM / 3 PM floor
   return true;
 }
 
@@ -3466,9 +3467,11 @@ function generateLegalWeeklyPatterns(tm, weekDays, prevSundayShift, prevNightStr
     return matchesTeammatePresets(pattern, tm.dayPrefs, weekDays);
   });
 
-  // CRITICAL FIX: Ensure 1 or 2 matching preset patterns are NOT discarded
+  // Prioritize matching preset patterns first, but retain diverse legal patterns so solver can satisfy minimum floor requirements (>= 3 AM, >= 3 PM)
   if (nonViolating.length >= 1) {
-    return nonViolating;
+    const nonViolatingKeys = new Set(nonViolating.map(p => p.seq.join('|')));
+    const others = legalPatterns.filter(p => !nonViolatingKeys.has(p.seq.join('|')));
+    return [...nonViolating, ...others];
   }
 
   return legalPatterns;
