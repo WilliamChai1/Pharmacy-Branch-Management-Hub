@@ -3288,8 +3288,8 @@ ${!apiKey ? `
             </td>
             <td class="p-3"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${m.color}"><i class="fa-solid ${m.icon} mr-1"></i>${m.label}</span></td>
             <td class="p-3">
-              <div class="flex items-center gap-1">
                 <button onclick="window.pmgRecruitment.viewApp('${app.id}')" title="View Profile" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg cursor-pointer"><i class="fa-solid fa-eye"></i></button>
+                <button onclick="window.pmgRecruitment.downloadAllApplicantDocs('${app.id}')" title="Download All Attached Documents & Picture (ZIP)" class="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg cursor-pointer"><i class="fa-solid fa-file-zipper"></i></button>
                 ${app.resumeUrl ? `<a href="${sanitize(app.resumeUrl)}" target="_blank" title="Open Cloud Resume / Document" class="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"><i class="fa-solid fa-file-pdf"></i></a>` : ''}
                 ${!app.aiReport && app.status === 'new' ? `<button onclick="window.pmgRecruitment.runAI('${app.id}')" title="Run AI Evaluation" class="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg cursor-pointer"><i class="fa-solid fa-robot"></i></button>` : ''}
                 ${app.status === 'shortlist' ? `
@@ -3470,12 +3470,17 @@ function viewApp(appId) {
 ${cloudResumeBanner}
 ${app.docs && app.docs.length > 0 ? `
 <div class="mb-4">
-  <div class="flex items-center justify-between mb-2">
+  <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
     <h4 class="text-xs font-bold text-gray-700 flex items-center gap-1"><i class="fa-solid fa-paperclip text-gray-400"></i>Uploaded Documents (${app.docs.length})</h4>
-    <label class="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-[11px] font-bold cursor-pointer transition flex items-center gap-1">
-      <i class="fa-solid fa-cloud-arrow-up text-blue-600"></i> Lampirkan Fail / Upload File
-      <input type="file" accept="image/*,application/pdf" class="hidden" onchange="window.pmgRecruitment.attachDocManually(event, '${app.id}', 0)">
-    </label>
+    <div class="flex items-center gap-2 flex-wrap">
+      <button type="button" onclick="window.pmgRecruitment.downloadAllApplicantDocs('${app.id}')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-bold cursor-pointer transition flex items-center gap-1 shadow-2xs" title="Muat turun semua dokumen & gambar pasport sebagai ZIP (Download all documents & photo as ZIP)">
+        <i class="fa-solid fa-file-zipper"></i> Muat Turun Semua / Download All (ZIP)
+      </button>
+      <label class="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-[11px] font-bold cursor-pointer transition flex items-center gap-1">
+        <i class="fa-solid fa-cloud-arrow-up text-blue-600"></i> Lampirkan Fail / Upload File
+        <input type="file" accept="image/*,application/pdf" class="hidden" onchange="window.pmgRecruitment.attachDocManually(event, '${app.id}', 0)">
+      </label>
+    </div>
   </div>
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
     ${app.docs.map((d,i)=>`
@@ -3866,6 +3871,7 @@ ${docsSection}
   <button onclick="window.pmgRecruitment.updateStatus('${appId}','rejected')" class="px-4 py-2 bg-red-600 text-white text-xs font-bold rounded-xl hover:bg-red-700 transition cursor-pointer"><i class="fa-solid fa-times mr-1"></i>Reject</button>
   <button onclick="window.pmgRecruitment.printApp('${appId}')" class="px-4 py-2 bg-gray-700 text-white text-xs font-bold rounded-xl hover:bg-gray-800 transition cursor-pointer"><i class="fa-solid fa-print mr-1"></i>Print</button>
   <button onclick="window.pmgRecruitment.exportAppPdf('${appId}')" class="px-4 py-2 bg-slate-600 text-white text-xs font-bold rounded-xl hover:bg-slate-700 transition cursor-pointer"><i class="fa-solid fa-file-pdf mr-1"></i>Export PDF</button>
+  <button onclick="window.pmgRecruitment.downloadAllApplicantDocs('${appId}')" class="px-4 py-2 bg-emerald-700 text-white text-xs font-bold rounded-xl hover:bg-emerald-800 transition flex items-center gap-1.5 shadow-xs cursor-pointer" title="Muat turun semua dokumen & gambar pasport sebagai fail ZIP"><i class="fa-solid fa-file-zipper mr-1"></i>Download All Documents & Picture (ZIP)</button>
 </div>`;
 
   switchRecTab('detail');
@@ -4476,6 +4482,7 @@ function exportAppPdf(appId) {
 let _currentDocViewerAbortController = null;
 let _activeDocViewerKey = null;
 let _activeBlobUrl = null;
+let _activeDocViewerAppId = null;
 
 function viewDoc(appId, docIdx) {
   const apps = loadApps();
@@ -4497,6 +4504,7 @@ function viewDoc(appId, docIdx) {
 
   const currentKey = `${appId}_${docIdx}`;
   _activeDocViewerKey = currentKey;
+  _activeDocViewerAppId = appId;
 
   // Revoke prior blob URL to avoid memory leak
   if (_activeBlobUrl) {
@@ -4861,6 +4869,7 @@ async function attachDocManually(event, appId, docIdx) {
 
 function closeDocViewer() {
   _activeDocViewerKey = null;
+  _activeDocViewerAppId = null;
   if (_activeBlobUrl) {
     try { URL.revokeObjectURL(_activeBlobUrl); } catch (_) {}
     _activeBlobUrl = null;
@@ -4877,9 +4886,314 @@ function closeDocViewer() {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DOWNLOAD ALL ATTACHED APPLICANT DOCUMENTS & PICTURES (ZIP PACKAGE)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function sanitizeDocFileName(name) {
+  return String(name || 'document')
+    .replace(/[\\/:*?"<>|]+/g, '_')
+    .replace(/\s+/g, '_')
+    .trim();
+}
+
+function base64ToUint8Array(base64Data) {
+  let rawB64 = base64Data;
+  if (rawB64.includes(',')) {
+    rawB64 = rawB64.split(',')[1];
+  }
+  rawB64 = rawB64.replace(/\s/g, '');
+  const binaryString = atob(rawB64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function getExtensionFromMimeOrData(mimeType, dataUri) {
+  const m = (mimeType || (dataUri && dataUri.split(';')[0].replace('data:', '')) || '').toLowerCase();
+  if (m.includes('pdf')) return '.pdf';
+  if (m.includes('jpeg') || m.includes('jpg')) return '.jpg';
+  if (m.includes('png')) return '.png';
+  if (m.includes('webp')) return '.webp';
+  if (m.includes('gif')) return '.gif';
+  if (m.includes('svg')) return '.svg';
+  if (m.includes('word') || m.includes('docx')) return '.docx';
+  return '.bin';
+}
+
+function triggerBlobDownload(blob, filename) {
+  if (typeof saveAs === 'function') {
+    saveAs(blob, filename);
+  } else if (typeof window !== 'undefined' && typeof window.saveAs === 'function') {
+    window.saveAs(blob, filename);
+  } else {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 1500);
+  }
+}
+
+function buildApplicantSummaryText(app, manifestLines = []) {
+  const r = app.aiReport;
+  return `========================================================================
+PMG PHARMACY (PUBLIC MEDICARE GROUP) — JOB APPLICANT PROFILE SUMMARY
+========================================================================
+Candidate Name    : ${app.name || '—'}
+Reference ID      : ${app.id}
+Position Applied  : ${app.position || 'Pharmacy Assistant'}
+Preferred Branch  : ${app.preferredBranch || 'Kota Sentosa (KS01)'}
+Application Date  : ${fmtDateTime(app.appliedAt)}
+Current Status    : ${(STATUS_META[app.status]?.label || app.status).toUpperCase()}
+
+1. PERSONAL PARTICULARS
+------------------------------------------------------------------------
+IC / MyKad No.    : ${app.ic || '—'} (${app.icColour || 'Blue'} / ${app.citizenship || 'Malaysian'})
+Date of Birth     : ${app.dob || '—'} (Age: ${app.age || '—'})
+Gender / Marital  : ${app.gender || '—'} / ${app.maritalStatus || '—'}
+Race / Religion   : ${app.race || '—'} / ${app.religion || '—'}
+Place of Birth    : ${app.placeOfBirth || '—'}
+Physical Profile  : Height ${app.height ? app.height + ' cm' : '—'}, Weight ${app.weight ? app.weight + ' kg' : '—'}
+Driving License   : ${app.drivingLicense || '—'}
+Phone Number      : ${app.phone || '—'}
+Email Address     : ${app.email || '—'}
+Residential Addr  : ${app.address || '—'}
+Emergency Contact : ${app.emergencyContact || '—'}
+
+2. ACADEMIC QUALIFICATIONS & SPM RESULTS
+------------------------------------------------------------------------
+Highest Qual      : ${app.highestQual || '—'}
+Institution       : ${app.institution || '—'}
+CGPA / Grade      : ${app.cgpa || '—'}
+Additional Certs  : ${app.additionalCerts || '—'}
+
+Declared SPM Results:
+${app.spm || 'Not specified'}
+
+3. WORK HISTORY & PRE-EMPLOYMENT SCREENING
+------------------------------------------------------------------------
+Work History:
+${app.workHistory || 'No previous employment declared.'}
+
+Notice Period     : ${app.noticeRequired || 'Immediate'}
+Skills / IT       : ${app.skills || '—'} / ${app.itSkills || '—'}
+Transportation    : ${app.hasTransport || '—'}
+Branch Travel     : ${app.ableToTravel || '—'}
+Shift Work (AM/PM): ${app.canDoShift || '—'}
+3-Year Contract   : ${app.accept3yr || '—'}
+Future Plans      : ${app.futurePlan || '—'} ${app.futurePlanDetail ? '(' + app.futurePlanDetail + ')' : ''}
+Smoking / Vaping  : ${app.smokes || 'Non-smoker'}
+Health / Surgery  : Issues: ${app.healthIssues || 'None'}, Meds: ${app.depressionMeds || 'No'}, Surgery: ${app.recentSurgery || 'No'}
+PMG Relatives     : ${app.relativesAtPmg || 'No'} ${app.relativesAtPmgDetail ? '(' + app.relativesAtPmgDetail + ')' : ''}
+Languages         : ${app.languages || '—'}
+
+${r ? `4. GEMINI AI EVALUATION REPORT (${r._modelUsed || 'Gemini 3.5 Flash-Lite'})
+------------------------------------------------------------------------
+Overall Score     : ${r.score}/100
+Hiring Verdict    : ${r.verdict}
+Retention Risk    : ${r.retentionRisk || '—'}
+Summary Evaluation:
+${r.summary || '—'}
+` : ''}
+5. ATTACHED DOCUMENTS & PICTURES IN THIS ZIP PACKAGE
+------------------------------------------------------------------------
+${manifestLines.length > 0 ? manifestLines.join('\n') : '• No attached files'}
+
+========================================================================
+Generated by PMG Branch Management Hub & Antigravity Cloud
+Confidential — For PMG HR & Management pre-employment review only.
+========================================================================`;
+}
+
+async function downloadAllApplicantDocs(appId) {
+  const apps = loadApps();
+  const app = apps.find(a => a.id === appId);
+  if (!app) {
+    toast('Applicant not found', 'error');
+    return;
+  }
+
+  // Gather list of documents and picture
+  const docsList = Array.isArray(app.docs) ? [...app.docs] : [];
+
+  // Check if passport photo exists in docsList; if not, check app.photoThumbnail or getCandidatePassportPhoto(app)
+  const hasPhotoDoc = docsList.some(d => 
+    (d.field && d.field.toLowerCase() === 'filephoto') ||
+    (d.name && /passport|photo|gambar/i.test(d.name))
+  );
+  if (!hasPhotoDoc) {
+    const candidatePhoto = app.photoThumbnail || getCandidatePassportPhoto(app);
+    if (candidatePhoto) {
+      docsList.unshift({
+        field: 'filePhoto',
+        name: 'Passport_Photo.jpg',
+        data: candidatePhoto,
+        type: 'image/jpeg'
+      });
+    }
+  }
+
+  // Check if app.resumeUrl exists and is not already in docsList
+  if (app.resumeUrl && !docsList.some(d => d.url === app.resumeUrl || (d.field && d.field.toLowerCase() === 'fileresume'))) {
+    docsList.push({
+      field: 'fileResume',
+      name: 'Cloud_Resume.pdf',
+      url: app.resumeUrl,
+      type: 'application/pdf'
+    });
+  }
+
+  if (docsList.length === 0) {
+    toast('No attached documents or photos found for this applicant.', 'warning');
+    return;
+  }
+
+  const candidateName = (app.name || 'Applicant').trim();
+  const candidateSafeName = sanitizeDocFileName(candidateName);
+  toast(`Mengumpul fail untuk ${candidateName}... / Preparing files for ${candidateName}...`, 'info');
+
+  const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+
+  const filesToPack = [];
+  const manifestLines = [];
+
+  for (let i = 0; i < docsList.length; i++) {
+    const doc = docsList[i];
+    const fieldLabel = (doc.field || 'Document').replace('file', '').toUpperCase();
+    let docRawName = doc.name || `${fieldLabel}_${i + 1}`;
+    
+    // Resolve file source
+    let fileSource = '';
+    if (doc.data && (doc.data.startsWith('data:') || doc.data.startsWith('blob:'))) {
+      fileSource = doc.data;
+    } else if (doc.url && doc.url.startsWith('sheet://doc/')) {
+      try {
+        const docId = doc.url.replace('sheet://doc/', '');
+        const vaultRes = await fetch(`${apiUrl}?action=getApplicantDoc&appId=${encodeURIComponent(app.id)}&field=${encodeURIComponent(doc.field || '')}&name=${encodeURIComponent(doc.name || '')}&docId=${encodeURIComponent(docId)}`);
+        if (vaultRes.ok) {
+          const json = await vaultRes.json();
+          if (json && json.success && json.data) {
+            fileSource = json.data;
+            doc.data = json.data; // cache locally
+          }
+        }
+      } catch (err) {
+        console.warn(`[Download All] Could not fetch ${docRawName} from cloud:`, err);
+      }
+    } else if (doc.url && (doc.url.startsWith('http://') || doc.url.startsWith('https://'))) {
+      fileSource = doc.url;
+    }
+
+    // Determine extension
+    let ext = '';
+    if (/\.[a-zA-Z0-9]{2,5}$/.test(docRawName)) {
+      ext = docRawName.match(/\.[a-zA-Z0-9]{2,5}$/)[0];
+      docRawName = docRawName.slice(0, -ext.length);
+    } else {
+      ext = getExtensionFromMimeOrData(doc.type, fileSource);
+    }
+
+    const cleanBase = sanitizeDocFileName(docRawName);
+    const orderPrefix = String(i + 1).padStart(2, '0');
+    const finalFileName = `${orderPrefix}_${cleanBase}${ext}`;
+
+    if (fileSource.startsWith('data:')) {
+      try {
+        const bytes = base64ToUint8Array(fileSource);
+        filesToPack.push({ name: finalFileName, content: bytes });
+        manifestLines.push(`• [${fieldLabel}] ${finalFileName} (${Math.round(bytes.length / 1024)} KB)`);
+      } catch (err) {
+        console.warn(`[Download All] Base64 conversion failed for ${finalFileName}:`, err);
+      }
+    } else if (fileSource.startsWith('http://') || fileSource.startsWith('https://')) {
+      const driveFileId = extractDriveFileId(fileSource);
+      const downloadTarget = driveFileId ? `https://drive.google.com/uc?export=download&id=${driveFileId}` : fileSource;
+      try {
+        const fRes = await fetch(downloadTarget);
+        if (fRes.ok) {
+          const ab = await fRes.arrayBuffer();
+          filesToPack.push({ name: finalFileName, content: new Uint8Array(ab) });
+          manifestLines.push(`• [${fieldLabel}] ${finalFileName} (${Math.round(ab.byteLength / 1024)} KB)`);
+        } else {
+          filesToPack.push({ name: `${finalFileName}.url.txt`, content: `External Document Download Link:\n${fileSource}\n` });
+          manifestLines.push(`• [${fieldLabel}] ${finalFileName} (Cloud Link included: ${fileSource})`);
+        }
+      } catch (_) {
+        filesToPack.push({ name: `${finalFileName}.url.txt`, content: `External Document Download Link:\n${fileSource}\n` });
+        manifestLines.push(`• [${fieldLabel}] ${finalFileName} (Cloud Link included: ${fileSource})`);
+      }
+    }
+  }
+
+  // Add 00_Applicant_Summary text file
+  const summaryText = buildApplicantSummaryText(app, manifestLines);
+  filesToPack.unshift({
+    name: `00_Applicant_Summary_${candidateSafeName}.txt`,
+    content: summaryText
+  });
+
+  // Package into ZIP using JSZip if available
+  const ZipConstructor = (typeof JSZip !== 'undefined') ? JSZip : (typeof window !== 'undefined' ? window.JSZip : null);
+
+  if (ZipConstructor) {
+    try {
+      const zip = new ZipConstructor();
+      filesToPack.forEach(f => {
+        zip.file(f.name, f.content);
+      });
+      const zipBlob = await zip.generateAsync({
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 }
+      });
+      const zipFileName = `PMG_Applicant_${candidateSafeName}_${app.id}_All_Documents.zip`;
+      triggerBlobDownload(zipBlob, zipFileName);
+      toast(`✅ Berjaya memuat turun ${filesToPack.length - 1} dokumen & gambar untuk ${candidateName}!`, 'success');
+      return;
+    } catch (err) {
+      console.error('[Download All ZIP Error]', err);
+    }
+  }
+
+  // Fallback: If JSZip not available or failed, sequentially download files with safe delay
+  toast(`Memuat turun fail secara berasingan (${filesToPack.length} fail)...`, 'info');
+  for (const item of filesToPack) {
+    let blob = null;
+    if (item.content instanceof Uint8Array) {
+      blob = new Blob([item.content]);
+    } else if (typeof item.content === 'string') {
+      blob = new Blob([item.content], { type: 'text/plain;charset=utf-8' });
+    } else {
+      blob = item.content;
+    }
+    triggerBlobDownload(blob, item.name);
+    await new Promise(r => setTimeout(r, 350));
+  }
+  toast(`✅ Berjaya memuat turun dokumen untuk ${candidateName}!`, 'success');
+}
+
+function downloadAllActiveApplicantDocs() {
+  if (!_activeDocViewerAppId) {
+    toast('No active applicant selected', 'error');
+    return;
+  }
+  downloadAllApplicantDocs(_activeDocViewerAppId);
+}
+
 // Global window aliases
 window.viewDoc = viewDoc;
 window.closeDocViewer = closeDocViewer;
+window.downloadAllApplicantDocs = downloadAllApplicantDocs;
+window.downloadAllActiveApplicantDocs = downloadAllActiveApplicantDocs;
 
 function strAppHash(s) {
   let h = 0;
@@ -5184,6 +5498,8 @@ window.pmgRecruitment = {
   onIcInput,
   viewDoc,
   closeDocViewer,
+  downloadAllApplicantDocs,
+  downloadAllActiveApplicantDocs,
   attachDocManually,
   renderMissingDocFallback,
   renderCandidateUploadPortal,

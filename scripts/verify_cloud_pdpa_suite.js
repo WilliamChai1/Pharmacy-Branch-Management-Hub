@@ -881,6 +881,179 @@ function createBrowserSandbox(fetchImpl) {
     }
   });
 
+  // 14. Recruitment: 1-Click Download All Attached Documents & Picture as ZIP
+  test('Recruitment 1-Click Download All Attached Documents & Picture as ZIP packages candidate dossier with summary manifest', async () => {
+    let cloudPushedAction = null;
+    const fetchImpl = async (url) => {
+      if (url.includes('action=getApplicantDoc')) {
+        cloudPushedAction = 'getApplicantDoc';
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: 'data:application/pdf;base64,' + Buffer.from('PDF SPM Result Cloud Vaulted').toString('base64')
+          })
+        };
+      }
+      return { ok: true, json: async () => ({ status: 'success' }) };
+    };
+
+    const { ctx, doc } = createBrowserSandbox(fetchImpl);
+    const recSrc = fs.readFileSync(path.join(ROOT, 'js', 'recruitment.js'), 'utf8');
+
+    // Setup Blob, URL and immediate setTimeout mock
+    ctx.setTimeout = (fn) => {
+      if (typeof fn === 'function') fn();
+      return 0;
+    };
+    ctx.Blob = function(chunks, opts) {
+      this.chunks = chunks;
+      this.type = opts ? opts.type : '';
+      this.size = chunks.reduce((acc, c) => acc + (c.length || (c.byteLength || 0)), 0);
+    };
+    ctx.URL = {
+      createObjectURL: (blob) => 'blob:https://pmg-hub.local/mock-zip-blob',
+      revokeObjectURL: () => {}
+    };
+
+    const downloadedFiles = [];
+    const origCreateEl = doc.createElement;
+    doc.createElement = (tag) => {
+      const el = origCreateEl(tag);
+      if (tag === 'a') {
+        el.click = () => {
+          downloadedFiles.push({ download: el.download, href: el.href });
+        };
+      }
+      return el;
+    };
+
+    const zipInstances = [];
+    function MockJSZip() {
+      this.files = {};
+      zipInstances.push(this);
+    }
+    MockJSZip.prototype.file = function(name, content) {
+      this.files[name] = content;
+      return this;
+    };
+    MockJSZip.prototype.generateAsync = async function(opts) {
+      return new ctx.Blob([JSON.stringify(Object.keys(this.files))], { type: 'application/zip' });
+    };
+
+    ctx.JSZip = MockJSZip;
+    ctx.window.JSZip = MockJSZip;
+
+    vm.runInContext(recSrc, ctx);
+
+    // Verify recruitment export functions exist
+    assert.strictEqual(typeof ctx.window.pmgRecruitment.downloadAllApplicantDocs, 'function', 'downloadAllApplicantDocs must be exported on pmgRecruitment');
+    assert.strictEqual(typeof ctx.window.pmgRecruitment.downloadAllActiveApplicantDocs, 'function', 'downloadAllActiveApplicantDocs must be exported on pmgRecruitment');
+    assert.strictEqual(typeof ctx.window.downloadAllApplicantDocs, 'function', 'downloadAllApplicantDocs must be attached to window');
+    assert.strictEqual(typeof ctx.window.downloadAllActiveApplicantDocs, 'function', 'downloadAllActiveApplicantDocs must be attached to window');
+
+    // Create candidate with photoThumbnail, local base64 IC, and cloud-vaulted SPM
+    const candidateApp = {
+      id: 'APP-TEST-ZIP-001',
+      name: 'Tan Mei Ling',
+      ic: '980101-13-5556',
+      position: 'Pharmacy Assistant',
+      preferredBranch: 'Kota Sentosa (KS01)',
+      phone: '016-1234567',
+      email: 'meiling.tan@example.com',
+      highestQual: 'Diploma in Pharmacy',
+      status: 'shortlisted',
+      photoThumbnail: 'data:image/jpeg;base64,' + Buffer.from('JPEG Passport Photo Candidate').toString('base64'),
+      docs: [
+        {
+          field: 'fileIc',
+          name: 'MyKad_IC.pdf',
+          size: 20480,
+          type: 'application/pdf',
+          data: 'data:application/pdf;base64,' + Buffer.from('PDF MyKad IC Local').toString('base64')
+        },
+        {
+          field: 'fileSpm',
+          name: 'SPM_Result.pdf',
+          size: 51200,
+          type: 'application/pdf',
+          url: 'sheet://doc/APP-TEST-ZIP-001_fileSpm_1'
+        }
+      ],
+      aiReport: {
+        score: 88,
+        verdict: 'Recommended for Interview',
+        summary: 'Solid community pharmacy dispensing experience and good interpersonal communication.'
+      }
+    };
+
+    ctx.window.pmgRecruitment.saveApps([candidateApp]);
+
+    // 1. Test downloadAllApplicantDocs directly with JSZip
+    await ctx.window.pmgRecruitment.downloadAllApplicantDocs(candidateApp.id);
+
+    assert.strictEqual(zipInstances.length, 1, 'JSZip must be instantiated');
+    const zip = zipInstances[0];
+    const zipFileNames = Object.keys(zip.files);
+
+    // Verify manifest summary file
+    const summaryFileName = '00_Applicant_Summary_Tan_Mei_Ling.txt';
+    assert(zipFileNames.includes(summaryFileName), 'ZIP must contain 00_Applicant_Summary manifest text file');
+    const summaryContent = zip.files[summaryFileName];
+    assert(summaryContent.includes('Tan Mei Ling'), 'Summary text must contain candidate name');
+    assert(summaryContent.includes('APP-TEST-ZIP-001'), 'Summary text must contain candidate ID');
+    assert(summaryContent.includes('88/100'), 'Summary text must contain AI score');
+    assert(summaryContent.includes('Recommended for Interview'), 'Summary text must contain AI verdict');
+    assert(summaryContent.includes('01_Passport_Photo.jpg'), 'Summary manifest must list passport photo');
+    assert(summaryContent.includes('02_MyKad_IC.pdf'), 'Summary manifest must list IC document');
+
+    // Verify passport photo bundled
+    assert(zipFileNames.includes('01_Passport_Photo.jpg'), 'ZIP must contain 01_Passport_Photo.jpg');
+    assert(zip.files['01_Passport_Photo.jpg'] instanceof Uint8Array, 'Passport photo must be decoded as Uint8Array');
+
+    // Verify local base64 doc bundled
+    assert(zipFileNames.includes('02_MyKad_IC.pdf'), 'ZIP must contain 02_MyKad_IC.pdf');
+    assert(zip.files['02_MyKad_IC.pdf'] instanceof Uint8Array, 'IC doc must be decoded as Uint8Array');
+
+    // Verify cloud-vaulted doc hydrated and bundled
+    assert(zipFileNames.includes('03_SPM_Result.pdf'), 'ZIP must fetch and bundle cloud vaulted 03_SPM_Result.pdf');
+    assert(zip.files['03_SPM_Result.pdf'] instanceof Uint8Array, 'SPM doc must be decoded as Uint8Array');
+    assert.strictEqual(cloudPushedAction, 'getApplicantDoc', 'Cloud vault getApplicantDoc must be triggered');
+
+    // Verify downloaded ZIP blob name
+    assert.strictEqual(downloadedFiles.length, 1, 'Trigger download must be called once for the ZIP');
+    assert.strictEqual(downloadedFiles[0].download, 'PMG_Applicant_Tan_Mei_Ling_APP-TEST-ZIP-001_All_Documents.zip', 'Downloaded ZIP file name format must be exact');
+
+    // 2. Test downloadAllActiveApplicantDocs via Viewer Modal
+    ctx.window.pmgRecruitment.viewDoc(candidateApp.id, 0);
+    downloadedFiles.length = 0;
+    zipInstances.length = 0;
+
+    await ctx.window.pmgRecruitment.downloadAllActiveApplicantDocs();
+    assert.strictEqual(zipInstances.length, 1, 'Active viewer download must instantiate JSZip');
+    assert.strictEqual(downloadedFiles.length, 1, 'Active viewer download must trigger ZIP download');
+    assert.strictEqual(downloadedFiles[0].download, 'PMG_Applicant_Tan_Mei_Ling_APP-TEST-ZIP-001_All_Documents.zip');
+
+    // Close modal and verify active ID is cleared
+    ctx.window.pmgRecruitment.closeDocViewer();
+    downloadedFiles.length = 0;
+    await ctx.window.pmgRecruitment.downloadAllActiveApplicantDocs();
+    assert.strictEqual(downloadedFiles.length, 0, 'No download when viewer is closed');
+
+    // 3. Test Fallback when JSZip is unavailable
+    delete ctx.JSZip;
+    delete ctx.window.JSZip;
+    downloadedFiles.length = 0;
+
+    await ctx.window.pmgRecruitment.downloadAllApplicantDocs(candidateApp.id);
+    assert.strictEqual(downloadedFiles.length, 4, 'Fallback must download all 4 files sequentially');
+    const fallbackNames = downloadedFiles.map(f => f.download);
+    assert(fallbackNames.includes('00_Applicant_Summary_Tan_Mei_Ling.txt'), 'Fallback must download summary txt');
+    assert(fallbackNames.includes('01_Passport_Photo.jpg'), 'Fallback must download passport photo');
+    assert(fallbackNames.includes('02_MyKad_IC.pdf'), 'Fallback must download IC');
+    assert(fallbackNames.includes('03_SPM_Result.pdf'), 'Fallback must download SPM');
+  });
+
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);
   process.exit(failed > 0 ? 1 : 0);
 })();
