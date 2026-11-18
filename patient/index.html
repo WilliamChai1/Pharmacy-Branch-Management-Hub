@@ -353,7 +353,7 @@
         <!-- Top Toolbar & View Mode Switcher -->
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4 border-b border-gray-200">
           <!-- View Toggle Switcher -->
-          <div class="inline-flex p-1.5 bg-gray-200/80 rounded-2xl border border-gray-300 shadow-2xs">
+          <div class="inline-flex p-1.5 bg-gray-200/80 rounded-2xl border border-gray-300 shadow-2xs flex-wrap gap-1">
             <button type="button" id="schedTabBtn_booked" onclick="switchSchedViewMode('booked')"
               class="px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs bg-white text-indigo-900 flex items-center gap-2">
               <i class="fa-solid fa-calendar-check text-indigo-600"></i>
@@ -365,6 +365,12 @@
               <i class="fa-regular fa-bell text-amber-600"></i>
               <span>Appointment Reminder Dates (TCA / Refill)</span>
               <span id="schedCountRemindersBadge" class="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">0</span>
+            </button>
+            <button type="button" id="schedTabBtn_refillQueue" onclick="switchSchedViewMode('refillQueue')"
+              class="px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 hover:text-gray-900 transition flex items-center gap-2">
+              <i class="fa-solid fa-box-open text-emerald-600"></i>
+              <span>Medication Refill & Packing Queue</span>
+              <span id="schedCountRefillQueueBadge" class="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">0</span>
             </button>
           </div>
 
@@ -556,6 +562,85 @@
                 </tr>
               </thead>
               <tbody id="schedRemindersBody" class="divide-y divide-gray-100"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ══════════════════════════════════════════════════════════════════
+             PART 3: MEDICATION REFILL & PACKING QUEUE (Customer Refill Orders)
+        ══════════════════════════════════════════════════════════════════ -->
+        <div id="schedSection_refillQueue" class="hidden">
+          <!-- Overview Card -->
+          <div class="bg-gradient-to-r from-emerald-50/90 via-teal-50/70 to-blue-50/60 border border-emerald-200 rounded-2xl p-4 sm:p-5 mb-5 shadow-xs">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h4 class="text-sm sm:text-base font-extrabold text-emerald-950 flex items-center gap-2">
+                  <i class="fa-solid fa-box-open text-emerald-600"></i> Medication Refill & Packing Queue (药剂打包与配药队列)
+                </h4>
+                <p class="text-xs text-emerald-900/80 mt-1">
+                  When customers receive follow-up WhatsApp reminders and request refills (e.g. 2 weeks, 1 month, 2 months, or custom duration), their requests appear here. Pack the medication in advance, then click <b>"Mark Packed & WhatsApp Patient"</b> to notify them for collection.
+                </p>
+              </div>
+            </div>
+
+            <!-- KPI Summary Strip for Refill Queue -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-4 border-t border-emerald-200/60">
+              <div class="bg-white/90 rounded-xl p-3 border border-emerald-100 shadow-xs">
+                <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Total Refill Requests</span>
+                <span id="refillKpiTotal" class="text-xl font-black text-emerald-700">0</span>
+              </div>
+              <div class="bg-white/90 rounded-xl p-3 border border-emerald-100 shadow-xs">
+                <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">To Pack (Pending)</span>
+                <span id="refillKpiPending" class="text-xl font-black text-amber-600">0</span>
+              </div>
+              <div class="bg-white/90 rounded-xl p-3 border border-emerald-100 shadow-xs">
+                <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Packing in Progress</span>
+                <span id="refillKpiPacking" class="text-xl font-black text-blue-600">0</span>
+              </div>
+              <div class="bg-white/90 rounded-xl p-3 border border-emerald-100 shadow-xs">
+                <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Packed & Ready</span>
+                <span id="refillKpiPacked" class="text-xl font-black text-emerald-600">0</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Filter Controls for Refill Queue -->
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-4 bg-gray-50/80 p-3 rounded-xl border border-gray-200 text-xs">
+            <div class="flex flex-wrap items-center gap-2.5 flex-1">
+              <div class="flex items-center gap-1.5">
+                <label class="font-bold text-gray-700 whitespace-nowrap"><i class="fa-solid fa-filter text-emerald-600 mr-1"></i> Refill Status:</label>
+                <select id="refillFilterStatus" onchange="renderPharmacistScheduleTab()" class="border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white font-medium outline-none text-xs">
+                  <option value="all" selected>All Requests (Active & Completed)</option>
+                  <option value="needs_packing">Needs Packing (To Pack & In Progress)</option>
+                  <option value="packed">Packed & Ready for Collection</option>
+                  <option value="completed">Completed / Picked Up</option>
+                  <option value="no_refill">Customer Has Stock (No Refill)</option>
+                </select>
+              </div>
+            </div>
+            <div class="w-full sm:w-64">
+              <div class="relative">
+                <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-gray-400"></i>
+                <input type="text" id="refillSearchInput" oninput="renderPharmacistScheduleTab()" placeholder="Search patient, duration, phone..."
+                  class="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-lg text-xs outline-none focus:ring-1 focus:ring-emerald-500 bg-white">
+              </div>
+            </div>
+          </div>
+
+          <!-- Refill Queue Table -->
+          <div class="border border-gray-200 rounded-xl overflow-hidden shadow-xs">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200 uppercase tracking-wider text-[11px]">
+                <tr>
+                  <th class="px-4 py-3">Order / Pickup Date</th>
+                  <th class="px-4 py-3">Patient Details</th>
+                  <th class="px-4 py-3">Requested Refill Duration</th>
+                  <th class="px-4 py-3">Customer Notes / Details</th>
+                  <th class="px-4 py-3">Status</th>
+                  <th class="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="schedRefillQueueBody" class="divide-y divide-gray-100"></tbody>
             </table>
           </div>
         </div>
@@ -1601,33 +1686,37 @@ Date visit: 06.01.2026
                 class="w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm sm:text-base focus:ring-2 focus:ring-emerald-500 outline-none">
             </div>
 
-            <!-- Next TCA Date Reminder -->
+            <!-- Next TCA & Medication Refill Date Reminders (Supports Multiple Dates) -->
             <div class="bg-indigo-50/80 border border-indigo-200 rounded-xl p-4 mt-2">
-              <div class="flex items-center justify-between mb-2.5 flex-wrap gap-2">
-                <span class="font-bold text-indigo-900 text-sm sm:text-base flex items-center gap-1.5">
-                  <i class="fa-regular fa-bell text-indigo-600"></i> Next TCA Date Reminder (预计复诊/提醒日期)
-                </span>
-                <span class="text-xs text-indigo-700 font-semibold bg-indigo-100/80 px-2.5 py-1 rounded-md">Customer self-books exact slot via link</span>
-              </div>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
                 <div>
-                  <label class="block text-xs sm:text-sm text-gray-700 font-semibold mb-1">Next TCA Date Reminder</label>
-                  <input type="date" id="encTcaDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base bg-white outline-none focus:ring-1 focus:ring-indigo-500 font-semibold">
+                  <span class="font-bold text-indigo-900 text-sm sm:text-base flex items-center gap-1.5">
+                    <i class="fa-regular fa-bell text-indigo-600"></i> Next TCA & Refill Date Reminders (复诊与续药提醒日期)
+                  </span>
+                  <p class="text-xs text-indigo-700 mt-0.5">Input multiple reminder dates if patient purchases shorter interim supply (e.g. 2 weeks) before main clinical review.</p>
                 </div>
-                <div>
-                  <label class="block text-xs sm:text-sm text-gray-700 font-semibold mb-1">Quick Supply Intervals</label>
-                  <div class="grid grid-cols-4 gap-1.5">
-                    <button type="button" onclick="setQuickTca(14)" class="px-2 py-2 bg-white border border-indigo-200 hover:bg-indigo-100 rounded-lg text-xs sm:text-sm font-bold text-indigo-700 transition text-center shadow-xs">+2 Wks</button>
-                    <button type="button" onclick="setQuickTca(30)" class="px-2 py-2 bg-white border border-indigo-200 hover:bg-indigo-100 rounded-lg text-xs sm:text-sm font-bold text-indigo-700 transition text-center shadow-xs">+1 Mo</button>
-                    <button type="button" onclick="setQuickTca(60)" class="px-2 py-2 bg-white border border-indigo-200 hover:bg-indigo-100 rounded-lg text-xs sm:text-sm font-bold text-indigo-700 transition text-center shadow-xs">+2 Mos</button>
-                    <button type="button" onclick="setQuickTca(90)" class="px-2 py-2 bg-white border border-indigo-200 hover:bg-indigo-100 rounded-lg text-xs sm:text-sm font-bold text-indigo-700 transition text-center shadow-xs">+3 Mos</button>
-                  </div>
-                </div>
+                <button type="button" onclick="addEncounterTcaRow()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-xs font-bold transition shadow-xs flex items-center gap-1.5">
+                  <i class="fa-solid fa-plus"></i> Add Date
+                </button>
               </div>
-              <div class="mt-3">
-                <label class="block text-xs sm:text-sm text-gray-700 font-semibold mb-1">TCA Purpose / Reason to Return (复诊目的)</label>
-                <input type="text" id="encTcaPurpose" placeholder="e.g. Chronic Medication Refill & Repeat BP / Lipid Review" class="w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm sm:text-base bg-white outline-none focus:ring-1 focus:ring-indigo-500">
+
+              <!-- Quick Interval Adder Bar -->
+              <div class="flex items-center gap-1.5 mb-3 flex-wrap bg-white/90 p-2 rounded-lg border border-indigo-100">
+                <span class="text-xs font-bold text-indigo-900 mr-1 flex items-center gap-1"><i class="fa-solid fa-bolt text-amber-500"></i> Quick Add:</span>
+                <button type="button" onclick="addQuickTcaReminder(14, '2-Week Interim Medication Refill Check', 'refill')" class="px-2.5 py-1 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 rounded-md text-xs font-bold text-emerald-800 transition shadow-2xs">+2 Wks (Refill)</button>
+                <button type="button" onclick="addQuickTcaReminder(30, '1-Month Routine Medication Refill', 'refill')" class="px-2.5 py-1 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 rounded-md text-xs font-bold text-emerald-800 transition shadow-2xs">+1 Mo (Refill)</button>
+                <button type="button" onclick="addQuickTcaReminder(60, '2-Month Clinical Follow-up & Refill', 'clinical')" class="px-2.5 py-1 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 rounded-md text-xs font-bold text-indigo-800 transition shadow-2xs">+2 Mos (Clinical)</button>
+                <button type="button" onclick="addQuickTcaReminder(90, '3-Month Comprehensive Health Review', 'clinical')" class="px-2.5 py-1 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 rounded-md text-xs font-bold text-indigo-800 transition shadow-2xs">+3 Mos (Review)</button>
               </div>
+
+              <!-- Dynamic Multi-Date Container -->
+              <div id="encTcaRemindersList" class="space-y-2">
+                <!-- Dynamically generated rows -->
+              </div>
+
+              <!-- Hidden inputs kept synchronized for backward compatibility -->
+              <input type="hidden" id="encTcaDate">
+              <input type="hidden" id="encTcaPurpose">
             </div>
           </div>
         </div>
@@ -2977,6 +3066,170 @@ Date visit: 06.01.2026
     </header>
 
     <main class="max-w-3xl mx-auto px-4 py-6 sm:py-8">
+      <!-- Interactive Customer Refill Portal Card -->
+      <div id="customerRefillInteractiveCard" class="hidden bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden mb-8">
+        <div class="bg-gradient-to-r from-emerald-800 via-teal-800 to-indigo-900 px-6 sm:px-8 py-5 text-white">
+          <div class="flex items-center justify-between flex-wrap gap-2 mb-1">
+            <h2 id="custRefillCardTitle" class="text-lg sm:text-xl font-bold flex items-center gap-2.5">
+              <i class="fa-solid fa-box-open text-emerald-400 text-xl"></i> PMG Medication Refill & Review Service
+            </h2>
+            <span class="inline-flex items-center text-xs text-emerald-200 bg-white/10 px-2.5 py-1 rounded-full border border-white/20">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 mr-1.5 animate-pulse"></span>
+              <span>Kota Sentosa Pharmacist Team</span>
+            </span>
+          </div>
+          <p id="custRefillCardSubtitle" class="text-sm text-emerald-100 mt-1">
+            Please let us know if you would like us to pack your routine medication refill.
+          </p>
+        </div>
+
+        <form id="customerRefillForm" onsubmit="handleCustomerRefillSubmit(event)" class="p-6 sm:p-8 space-y-6">
+          <!-- Step 1: Decision - Refill vs No Refill -->
+          <div class="space-y-3">
+            <label class="block text-base sm:text-lg font-extrabold text-gray-900 flex items-center gap-2">
+              <span class="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-black">1</span>
+              <span id="custRefillDecisionTitle">Do you need a medication refill? (Adakah anda perlukan ulangan ubat / 是否需要续药？)</span>
+            </label>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <!-- Choice 1: Yes, Refill -->
+              <label id="refillChoiceLabelYes" class="border-2 border-emerald-500 bg-emerald-50/70 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 cursor-pointer transition hover:border-emerald-600 ring-2 ring-emerald-500/50 shadow-xs">
+                <input type="radio" name="custRefillChoice" value="yes" checked onchange="toggleRefillDecision(true)" class="mt-1 w-5 h-5 text-emerald-600 focus:ring-emerald-500">
+                <div class="flex-1">
+                  <div class="font-black text-base text-emerald-950 flex items-center gap-1.5">
+                    <span>🟢 Yes, I Want to Refill</span>
+                  </div>
+                  <div class="text-xs text-emerald-800 mt-1 font-medium">Ya, Saya Ingin Mengulang Ubat / 是的，我需要续药</div>
+                  <p class="text-xs text-gray-600 mt-1">Our pharmacist will pack your medication in advance for quick pickup.</p>
+                </div>
+              </label>
+
+              <!-- Choice 2: No Refill Needed -->
+              <label id="refillChoiceLabelNo" class="border-2 border-gray-200 bg-gray-50/60 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 cursor-pointer transition hover:border-gray-400 shadow-xs">
+                <input type="radio" name="custRefillChoice" value="no" onchange="toggleRefillDecision(false)" class="mt-1 w-5 h-5 text-amber-600 focus:ring-amber-500">
+                <div class="flex-1">
+                  <div class="font-black text-base text-gray-900 flex items-center gap-1.5">
+                    <span>⚪ No Refill Needed / Have Stock</span>
+                  </div>
+                  <div class="text-xs text-gray-700 mt-1 font-medium">Tidak Perlu / Bekalan Masih Ada / 暂不需要续药</div>
+                  <p class="text-xs text-gray-600 mt-1">Let us know if you still have enough supply at home.</p>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Section A: When Choice is "Yes, Refill" -->
+          <div id="custRefillYesSection" class="space-y-6 pt-2">
+            <!-- Step 2: Refill Duration Selection -->
+            <div class="space-y-3">
+              <label class="block text-base sm:text-lg font-extrabold text-gray-900 flex items-center gap-2">
+                <span class="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-black">2</span>
+                <span id="custRefillDurationTitle">How much medication supply do you need? (Berapa lama tempoh bekalan / 您需要多少药量？)</span>
+              </label>
+
+              <!-- Duration Pill Buttons -->
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5" id="custRefillDurationButtons">
+                <button type="button" onclick="setRefillDuration('2 Weeks (14 Days)')" data-dur="2 Weeks (14 Days)"
+                  class="dur-pill p-3 border-2 border-emerald-500 bg-emerald-50 rounded-xl text-center transition font-bold text-xs sm:text-sm text-emerald-900 shadow-xs hover:border-emerald-600">
+                  <div class="text-base">⚡ 2 Weeks</div>
+                  <div class="text-[11px] font-normal text-emerald-700">14 Hari / 2周</div>
+                </button>
+                <button type="button" onclick="setRefillDuration('1 Month (30 Days)')" data-dur="1 Month (30 Days)"
+                  class="dur-pill p-3 border-2 border-gray-200 bg-white rounded-xl text-center transition font-bold text-xs sm:text-sm text-gray-800 shadow-xs hover:border-emerald-500">
+                  <div class="text-base">📅 1 Month</div>
+                  <div class="text-[11px] font-normal text-gray-500">30 Hari / 1个月</div>
+                </button>
+                <button type="button" onclick="setRefillDuration('2 Months (60 Days)')" data-dur="2 Months (60 Days)"
+                  class="dur-pill p-3 border-2 border-gray-200 bg-white rounded-xl text-center transition font-bold text-xs sm:text-sm text-gray-800 shadow-xs hover:border-emerald-500">
+                  <div class="text-base">📦 2 Months</div>
+                  <div class="text-[11px] font-normal text-gray-500">60 Hari / 2个月</div>
+                </button>
+                <button type="button" onclick="setRefillDuration('Custom')" data-dur="Custom"
+                  class="dur-pill p-3 border-2 border-gray-200 bg-white rounded-xl text-center transition font-bold text-xs sm:text-sm text-gray-800 shadow-xs hover:border-emerald-500">
+                  <div class="text-base">✏️ Custom</div>
+                  <div class="text-[11px] font-normal text-gray-500">Lain-lain / 自定义</div>
+                </button>
+              </div>
+
+              <!-- Selected Duration Hidden / Custom Input -->
+              <input type="hidden" id="custSelectedDuration" value="2 Weeks (14 Days)">
+              <div id="custCustomDurationContainer" class="hidden mt-2">
+                <input type="text" id="custCustomDurationInput" placeholder="e.g. 3 Weeks, 10 Days, 2 Boxes (Sila nyatakan tempoh / 填写周期)"
+                  class="w-full border-2 border-emerald-400 rounded-xl px-4 py-2.5 text-sm font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
+              </div>
+            </div>
+
+            <!-- Step 3: Preferred Pickup Date & Window -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm sm:text-base font-bold text-gray-700 mb-1.5 flex items-center gap-1.5">
+                  <i class="fa-regular fa-calendar text-emerald-600"></i> Preferred Collection Date (Tarikh Ambil / 取药日期)
+                </label>
+                <input type="date" id="custRefillPickupDate" required
+                  class="w-full border-2 border-gray-300 rounded-2xl px-4 py-3 text-base font-bold text-gray-800 focus:ring-2 focus:ring-emerald-500 outline-none">
+              </div>
+              <div>
+                <label class="block text-sm sm:text-base font-bold text-gray-700 mb-1.5 flex items-center gap-1.5">
+                  <i class="fa-regular fa-clock text-emerald-600"></i> Collection Window (Waktu Ambil / 取药时间)
+                </label>
+                <select id="custRefillPickupWindow" class="w-full border-2 border-gray-300 rounded-2xl px-4 py-3 text-base font-bold text-gray-800 focus:ring-2 focus:ring-emerald-500 outline-none bg-white">
+                  <option value="Anytime (08:00 - 17:00)" selected>Anytime (08:00 AM – 05:00 PM)</option>
+                  <option value="Morning (08:00 - 12:30)">Morning (08:00 AM – 12:30 PM)</option>
+                  <option value="Afternoon (13:30 - 17:00)">Afternoon (01:30 PM – 05:00 PM)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section B: When Choice is "No Refill Needed" -->
+          <div id="custRefillNoSection" class="hidden p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-sm space-y-2">
+            <div class="font-bold flex items-center gap-2">
+              <i class="fa-solid fa-circle-info text-amber-600 text-base"></i>
+              <span>No Refill Needed Confirmation (Pengesahan Bekalan Masih Ada / 药量充足确认)</span>
+            </div>
+            <p class="text-xs sm:text-sm text-amber-800">
+              Thank you for letting us know! We will record in our system that you still have sufficient medication, so you won't be bothered with unnecessary follow-up reminders.
+            </p>
+          </div>
+
+          <!-- Step 4: Customer Details & Notes -->
+          <div class="space-y-4 pt-4 border-t border-gray-100">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-bold text-gray-700 mb-1.5">Full Name (Nama Penuh / 姓名) <span class="text-rose-500">*</span></label>
+                <input type="text" id="custRefillName" required placeholder="e.g. Tan Ah Kow"
+                  class="w-full border-2 border-gray-300 rounded-2xl px-4 py-3 text-base font-semibold text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none">
+              </div>
+              <div>
+                <label class="block text-sm font-bold text-gray-700 mb-1.5">WhatsApp Number (Nombor Telefon / 手机号码) <span class="text-rose-500">*</span></label>
+                <input type="tel" id="custRefillPhone" required placeholder="e.g. 011-10990693"
+                  class="w-full border-2 border-gray-300 rounded-2xl px-4 py-3 text-base font-semibold text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none">
+              </div>
+              <div class="sm:col-span-2">
+                <label class="block text-sm font-bold text-gray-700 mb-1.5">Special Request / Notes (Catatan Tambahan / 补充备注 - Optional)</label>
+                <input type="text" id="custRefillNotes" placeholder="e.g. Please add Vitamin C, or only refill Amlodipine"
+                  class="w-full border-2 border-gray-300 rounded-2xl px-4 py-3 text-sm font-semibold text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none">
+              </div>
+            </div>
+          </div>
+
+          <!-- Submit Button -->
+          <div class="pt-2">
+            <button type="submit" id="custRefillSubmitBtn" class="w-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-black py-4 px-6 rounded-2xl text-base sm:text-lg shadow-lg transition flex items-center justify-center gap-2.5">
+              <i class="fa-solid fa-paper-plane text-xl"></i>
+              <span id="custRefillSubmitBtnText">Submit Refill Request & Notify Pharmacist to Pack</span>
+            </button>
+          </div>
+
+          <!-- Switch to Book Appointment link -->
+          <div class="text-center pt-2">
+            <button type="button" onclick="switchToCustomerBookingForm()" class="text-xs sm:text-sm text-blue-600 hover:text-blue-800 font-bold hover:underline inline-flex items-center gap-1.5">
+              <i class="fa-regular fa-calendar-check"></i>
+              <span>Need an in-person consultation or health screening instead? Click here to book an appointment slot</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
       <!-- Booking Form Card -->
       <div id="customerBookingFormCard" class="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden">
         <div class="bg-gradient-to-r from-blue-800 to-indigo-900 px-6 sm:px-8 py-5 text-white">
@@ -3127,6 +3380,14 @@ Date visit: 06.01.2026
             <button type="submit" id="custBookSubmitBtn" class="w-full bg-blue-700 hover:bg-blue-800 active:bg-blue-900 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black py-4 px-6 rounded-2xl text-base sm:text-lg shadow-lg transition flex items-center justify-center gap-2.5">
               <i class="fa-solid fa-calendar-check text-xl"></i>
               <span id="custBookSubmitText">Confirm & Book Appointment</span>
+            </button>
+          </div>
+
+          <!-- Switch to Refill Form link -->
+          <div class="text-center pt-1">
+            <button type="button" onclick="switchToCustomerRefillForm()" class="text-xs sm:text-sm text-emerald-700 hover:text-emerald-900 font-bold hover:underline inline-flex items-center gap-1.5">
+              <i class="fa-solid fa-box-open"></i>
+              <span>Looking to request a medication refill instead? Click here to select refill duration</span>
             </button>
           </div>
         </form>
@@ -3330,7 +3591,7 @@ Date visit: 06.01.2026
     // Standalone Initialization
     document.addEventListener('DOMContentLoaded', async () => {
       const urlParams = new URLSearchParams(window.location.search);
-      const isBookingMode = urlParams.get('book') === '1' || urlParams.get('action') === 'book';
+      const isBookingMode = urlParams.get('book') === '1' || urlParams.get('action') === 'book' || urlParams.get('refill') === '1' || urlParams.get('action') === 'refill';
 
       if (isBookingMode) {
         // Customer Booking Mode: Hide staff UI, show booking view, and stop staff initialization

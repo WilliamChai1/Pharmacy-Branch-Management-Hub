@@ -768,6 +768,119 @@ function createBrowserSandbox(fetchImpl) {
     assert.strictEqual(dlHref, 'blob:https://pmg-hub.local/mock-pdf-blob', 'Download button must point to the native blob URL');
   });
 
+  // 13. Multi-Date TCA Reminders, Customer Interactive Refill Portal & Pharmacist Packing Queue
+  test('Multi-Date TCA Reminders, Customer Interactive Refill Portal & Pharmacist Packing Queue', async () => {
+    let cloudPushedPayload = null;
+    const fetchImpl = async (url, opts) => {
+      if (opts && opts.body) {
+        cloudPushedPayload = JSON.parse(opts.body);
+      }
+      return { ok: true, json: async () => ({ status: 'success' }) };
+    };
+
+    const { ctx, doc } = createBrowserSandbox(fetchImpl);
+    const patientSrc = fs.readFileSync(path.join(ROOT, 'js', 'patient.js'), 'utf8');
+    vm.runInContext(patientSrc, ctx);
+
+    // Part A: Multi-Date TCA Reminders in Consultation Modal
+    const p1 = {
+      id: 'PT-TEST-001',
+      name: 'Chong Wei Ping',
+      phone: '012-8881234',
+      ic: '850505-13-5555',
+      branch: 'Kota Sentosa',
+      language: 'English',
+      encounters: [],
+      appointments: []
+    };
+    ctx.window.patientsData = [p1];
+
+    // Select patient in encounter modal
+    doc.getElementById('encounterPatientSelect').value = p1.id;
+    doc.getElementById('encDate').value = '2026-11-20';
+
+    // Add multi-date reminders: 2 weeks for refill check, 2 months for clinical POCT review
+    ctx.window.tempEncounterTcaReminders = [];
+    ctx.window.addEncounterTcaRow('2026-12-05', 'Interim 2-Week Medication Refill Check', 'refill');
+    ctx.window.addEncounterTcaRow('2027-01-20', 'Routine Health & POCT Review', 'clinical');
+
+    assert.strictEqual(ctx.window.tempEncounterTcaReminders.length, 2, 'Must have 2 reminder dates staged');
+
+    // Save encounter
+    await ctx.window.saveNewEncounter();
+
+    // Verify encounter & patient received both dates and nextTcaDate is the earliest
+    assert(p1.encounters.length > 0, 'Encounter must be saved');
+    assert.strictEqual(p1.tcaReminders.length, 2, 'Patient record must store 2 tcaReminders');
+    assert.strictEqual(p1.nextTcaDate, '2026-12-05', 'Patient nextTcaDate must point to earliest upcoming date');
+    assert.strictEqual(p1.encounters[0].tcaReminders.length, 2, 'Encounter record must store 2 tcaReminders');
+
+    // Part B: WhatsApp Invitation with Refill Portal URL
+    const refillUrl = ctx.window.getPatientSelfRefillUrl(p1, '2026-12-05', 'Interim 2-Week Medication Refill Check');
+    assert(refillUrl.includes('refill=1'), 'URL must contain refill=1 parameter');
+    assert(refillUrl.includes('tcaDate=2026-12-05'), 'URL must include tcaDate parameter');
+
+    const refillWaMsg = ctx.window.buildPatientSupplyBookingMessage(p1, { isRefill: true, reminderDate: '2026-12-05' });
+    assert(refillWaMsg.includes('refill') || refillWaMsg.includes('Refill'), 'Message should mention refill invitation');
+    assert(refillWaMsg.includes('2026-12-05'), 'Message should mention reminder date');
+    assert(refillWaMsg.includes('refill=1'), 'Message should contain the refill URL');
+
+    // Part C: Interactive Customer Refill Portal Submission
+    // 1. Submit Refill Request: Yes + 2 Weeks
+    doc.getElementById('custRefillName').value = p1.name;
+    doc.getElementById('custRefillPhone').value = p1.phone;
+    doc.getElementById('custRefillPickupDate').value = '2026-12-06';
+    doc.getElementById('custRefillPickupWindow').value = 'Morning (08:00 - 12:30)';
+    ctx.window.setRefillDuration('2 Weeks (14 Days)');
+
+    const mockEvt1 = { preventDefault: () => {} };
+    doc.querySelector = (sel) => {
+      if (sel === 'input[name="custRefillChoice"]:checked') {
+        return { value: 'yes' };
+      }
+      return null;
+    };
+
+    await ctx.window.handleCustomerRefillSubmit(mockEvt1);
+
+    const savedBookings = JSON.parse(ctx.window.localStorage.getItem('pmg_customer_bookings') || '[]');
+    assert(savedBookings.length > 0, 'Refill order must be saved to pmg_customer_bookings');
+    const order1 = savedBookings[0];
+    assert.strictEqual(order1.status, 'REFILL_REQUESTED', 'Order status must be REFILL_REQUESTED');
+    assert.strictEqual(order1.refillDuration, '2 Weeks (14 Days)', 'Refill duration must be recorded');
+    assert.strictEqual(order1.type, 'med_refill_order', 'Order type must be med_refill_order');
+
+    // Part D: Medication Refill & Packing Queue (Pharmacist workflow)
+    ctx.window.renderPharmacistScheduleTab();
+
+    const kpiTotalEl = doc.getElementById('refillKpiTotal');
+    const kpiPendEl = doc.getElementById('refillKpiPending');
+    assert(parseInt(kpiTotalEl.textContent, 10) >= 1, 'Refill KPI Total should be at least 1');
+    assert(parseInt(kpiPendEl.textContent, 10) >= 1, 'Refill KPI Pending should be at least 1');
+
+    // Transition 1: Pharmacist starts packing
+    await ctx.window.startPackingRefill(order1.id);
+    const orderPacking = JSON.parse(ctx.window.localStorage.getItem('pmg_customer_bookings') || '[]')[0];
+    assert.strictEqual(orderPacking.status, 'PACKING', 'Status should transition to PACKING');
+
+    // Transition 2: Pharmacist marks packed & sends WA
+    await ctx.window.markRefillPackedAndNotifyWa(order1.id);
+    const orderPacked = JSON.parse(ctx.window.localStorage.getItem('pmg_customer_bookings') || '[]')[0];
+    assert.strictEqual(orderPacked.status, 'PACKED', 'Status should transition to PACKED');
+
+    // Transition 3: Patient picks up
+    await ctx.window.markRefillPickedUp(order1.id);
+    const orderDone = JSON.parse(ctx.window.localStorage.getItem('pmg_customer_bookings') || '[]')[0];
+    assert.strictEqual(orderDone.status, 'PICKED_UP', 'Status should transition to PICKED_UP');
+
+    // Part E: PDPA Compliance Check
+    if (cloudPushedPayload) {
+      assert(!cloudPushedPayload.ic, 'PDPA Violation: Patient IC must never be pushed to cloud relay');
+      assert(!cloudPushedPayload.vitals, 'PDPA Violation: Vitals must never be pushed to cloud relay');
+      assert(!cloudPushedPayload.encounters, 'PDPA Violation: Encounters must never be pushed to cloud relay');
+    }
+  });
+
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);
   process.exit(failed > 0 ? 1 : 0);
 })();

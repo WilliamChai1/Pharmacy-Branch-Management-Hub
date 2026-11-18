@@ -2888,10 +2888,22 @@ function getPatientSelfBookingUrl(patient) {
 }
 
 /**
- * Constructs the complete multilingual WhatsApp booking message.
+ * Builds the personalized customer refill portal URL with ?refill=1 and prefilled details.
+ */
+function getPatientSelfRefillUrl(patient, reminderDate, reminderPurpose) {
+  let url = getPatientSelfBookingUrl(patient);
+  url += '&refill=1';
+  if (reminderDate) url += `&tcaDate=${encodeURIComponent(reminderDate)}`;
+  const cleanPurp = cleanTcaPurposeForWa(reminderPurpose, 'English');
+  if (cleanPurp) url += `&purpose=${encodeURIComponent(cleanPurp)}`;
+  return url;
+}
+
+/**
+ * Constructs the complete multilingual WhatsApp booking & refill reminder message.
  * Formatted with clean universal markdown and spacing (no broken symbols).
  */
-function buildPatientSupplyBookingMessage(patient) {
+function buildPatientSupplyBookingMessage(patient, options = {}) {
   let rawBranch = patient?.branch;
   if (!rawBranch || rawBranch === 'ALL' || rawBranch === 'ALLBRANCHES') {
     rawBranch = (typeof getSession === 'function' && getSession()?.branch) || 'Kota Sentosa';
@@ -2923,21 +2935,35 @@ function buildPatientSupplyBookingMessage(patient) {
   }
   const openTime = activeOpen || (branchInfo ? branchInfo.open : '08:00');
   const closeTime = activeClose || (branchInfo ? branchInfo.close : '17:00');
-  const pharmacistName = sched ? (sched.defaultPharmacist || branchInfo?.pharmacist) : (branchInfo ? branchInfo.pharmacist : 'William Chai (Pharmacist)');
 
   const lang = getPatientLanguageByRace(patient);
   const supplyText = getPatientSupplySummary(patient, lang);
-  const bookingUrl = getPatientSelfBookingUrl(patient);
   const patientName = patient.name || 'Pelanggan';
 
-  const cleanPurposeZh = cleanTcaPurposeForWa(patient.nextTcaPurpose, 'Chinese');
-  const cleanPurposeMy = cleanTcaPurposeForWa(patient.nextTcaPurpose, 'Malay');
-  const cleanPurposeEn = cleanTcaPurposeForWa(patient.nextTcaPurpose, 'English');
+  const remDate = options.reminderDate || patient.nextTcaDate;
+  const remPurpose = options.reminderPurpose || patient.nextTcaPurpose;
+  const isRefillReminder = options.isRefill || (options.reminderType === 'med_refill') || (remPurpose && remPurpose.toLowerCase().includes('refill'));
 
-  const tcaReminderZh = patient.nextTcaDate ? `\n\n*建议复查/续药提醒日期：* ${patient.nextTcaDate}${cleanPurposeZh ? ' (' + cleanPurposeZh + ')' : ''}` : '';
-  const tcaReminderMy = patient.nextTcaDate ? `\n\n*Cadangan Tarikh Temujanji/Ulangan:* ${patient.nextTcaDate}${cleanPurposeMy ? ' (' + cleanPurposeMy + ')' : ''}` : '';
-  const tcaReminderEn = patient.nextTcaDate ? `\n\n*Recommended Follow-up/Refill Date:* ${patient.nextTcaDate}${cleanPurposeEn ? ' (' + cleanPurposeEn + ')' : ''}` : '';
+  const cleanPurposeZh = cleanTcaPurposeForWa(remPurpose, 'Chinese');
+  const cleanPurposeMy = cleanTcaPurposeForWa(remPurpose, 'Malay');
+  const cleanPurposeEn = cleanTcaPurposeForWa(remPurpose, 'English');
 
+  const tcaReminderZh = remDate ? `\n\n*建议复查/续药提醒日期：* ${remDate}${cleanPurposeZh ? ' (' + cleanPurposeZh + ')' : ''}` : '';
+  const tcaReminderMy = remDate ? `\n\n*Cadangan Tarikh Temujanji/Ulangan:* ${remDate}${cleanPurposeMy ? ' (' + cleanPurposeMy + ')' : ''}` : '';
+  const tcaReminderEn = remDate ? `\n\n*Recommended Follow-up/Refill Date:* ${remDate}${cleanPurposeEn ? ' (' + cleanPurposeEn + ')' : ''}` : '';
+
+  if (isRefillReminder) {
+    const refillUrl = getPatientSelfRefillUrl(patient, remDate, remPurpose);
+    if (lang === 'Chinese') {
+      return `您好 *${patientName}*，这里是 *${branchName}*（${openTime} - ${closeTime}）。\n\n${supplyText}${tcaReminderZh}\n\n为确保您的健康指标控制平稳并避免断药，我们建议您提前安排。\n\n• *请点击下方专属链接，直接告知我们您是否需要续药（可自选续药周期如2周、1个月、2个月或自定义）：*\n${refillUrl}\n\n如需续药，药剂师将提前为您打包备妥药物；若家中药量充足，点击“暂不需要”即可告知我们。\n\nPMG 药剂师团队祝您与家人身体健康！`;
+    } else if (lang === 'Malay') {
+      return `Salam sejahtera *${patientName}*, ini pesanan daripada *${branchName}* (${openTime} - ${closeTime}).\n\n${supplyText}${tcaReminderMy}\n\nBagi memastikan kesihatan anda kekal terkawal tanpa gangguan bekalan ubat, kami mencadangkan anda merancang lebih awal.\n\n• *Sila klik pautan peribadi di bawah untuk maklumkan sama ada anda ingin mengulang ubat (boleh pilih tempoh seperti 2 minggu, 1 bulan, 2 bulan dsb) atau tidak:*\n${refillUrl}\n\nJika anda ingin mengulang ubat, ahli farmasi kami akan membungkus dan menyediakan ubat siap-siap untuk anda ambil; jika bekalan masih mencukupi, anda boleh pilih "Tidak Perlu".\n\nPasukan Farmasi PMG sentiasa sedia membantu!`;
+    } else {
+      return `Dear *${patientName}*, warm greetings from *${branchName}* (${openTime} - ${closeTime}).\n\n${supplyText}${tcaReminderEn}\n\nTo ensure your health metrics stay in optimal control and prevent any medication disruption, we recommend planning ahead.\n\n• *Please click your personalized link below to select whether you would like to refill (choose 2 weeks, 1 month, 2 months, or custom duration) or not:*\n${refillUrl}\n\nIf you choose to refill, our pharmacist will pack and prepare your medications in advance for quick pickup; if you still have sufficient stock, simply choose "No refill needed".\n\nWishing you good health from your PMG Pharmacy team!`;
+    }
+  }
+
+  const bookingUrl = getPatientSelfBookingUrl(patient);
   if (lang === 'Chinese') {
     return `您好 *${patientName}*，这里是 *${branchName}*（${openTime} - ${closeTime}）。\n\n${supplyText}${tcaReminderZh}\n\n为确保您的健康指标控制平稳并避免断药，我们建议您提前安排。\n\n• *您可以直接点击下方专属链接，选择适合您的时间到店面诊，或直接申请1个月慢病续药：*\n${bookingUrl}\n\n如果您有任何用药疑问，或需要我们提前备妥药物，欢迎直接回复此 WhatsApp。\n\nPMG 药剂师团队祝您与家人身体健康！`;
   } else if (lang === 'Malay') {
@@ -2950,6 +2976,7 @@ function buildPatientSupplyBookingMessage(patient) {
 if (typeof window !== 'undefined') {
   window.cleanTcaPurposeForWa = cleanTcaPurposeForWa;
   window.getPatientSupplySummary = getPatientSupplySummary;
+  window.getPatientSelfRefillUrl = getPatientSelfRefillUrl;
   window.buildPatientSupplyBookingMessage = buildPatientSupplyBookingMessage;
 }
 
@@ -3085,33 +3112,44 @@ function markAppointmentStatus(patientId, appointmentId, newStatus) {
 
 // ─── PHARMACIST SCHEDULE & BOOKINGS ROSTER ───────────────────────────────────
 
-let currentSchedViewMode = 'booked'; // 'booked' or 'reminders'
+let currentSchedViewMode = 'booked'; // 'booked', 'reminders', or 'refillQueue'
 
 function switchSchedViewMode(mode) {
   currentSchedViewMode = mode;
   const btnBooked = document.getElementById('schedTabBtn_booked');
   const btnRemind = document.getElementById('schedTabBtn_reminders');
+  const btnRefill = document.getElementById('schedTabBtn_refillQueue');
   const secBooked = document.getElementById('schedSection_booked');
   const secRemind = document.getElementById('schedSection_reminders');
+  const secRefill = document.getElementById('schedSection_refillQueue');
+
+  const activeBookedClass = 'px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs bg-white text-indigo-900 flex items-center gap-2';
+  const activeRemindClass = 'px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs bg-white text-amber-900 flex items-center gap-2';
+  const activeRefillClass = 'px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs bg-white text-emerald-950 flex items-center gap-2';
+  const inactiveClass = 'px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 hover:text-gray-900 transition flex items-center gap-2';
 
   if (mode === 'booked') {
-    if (btnBooked) {
-      btnBooked.className = 'px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs bg-white text-indigo-900 flex items-center gap-2';
-    }
-    if (btnRemind) {
-      btnRemind.className = 'px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 hover:text-gray-900 transition flex items-center gap-2';
-    }
+    if (btnBooked) btnBooked.className = activeBookedClass;
+    if (btnRemind) btnRemind.className = inactiveClass;
+    if (btnRefill) btnRefill.className = inactiveClass;
     if (secBooked) secBooked.classList.remove('hidden');
     if (secRemind) secRemind.classList.add('hidden');
-  } else {
-    if (btnBooked) {
-      btnBooked.className = 'px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 hover:text-gray-900 transition flex items-center gap-2';
-    }
-    if (btnRemind) {
-      btnRemind.className = 'px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs bg-white text-amber-900 flex items-center gap-2';
-    }
+    if (secRefill) secRefill.classList.add('hidden');
+  } else if (mode === 'reminders') {
+    if (btnBooked) btnBooked.className = inactiveClass;
+    if (btnRemind) btnRemind.className = activeRemindClass;
+    if (btnRefill) btnRefill.className = inactiveClass;
     if (secBooked) secBooked.classList.add('hidden');
     if (secRemind) secRemind.classList.remove('hidden');
+    if (secRefill) secRefill.classList.add('hidden');
+  } else {
+    // refillQueue
+    if (btnBooked) btnBooked.className = inactiveClass;
+    if (btnRemind) btnRemind.className = inactiveClass;
+    if (btnRefill) btnRefill.className = activeRefillClass;
+    if (secBooked) secBooked.classList.add('hidden');
+    if (secRemind) secRemind.classList.add('hidden');
+    if (secRefill) secRefill.classList.remove('hidden');
   }
 
   renderPharmacistScheduleTab();
@@ -3130,24 +3168,43 @@ function getFormattedDateWithDay(dateStr) {
 function renderPharmacistScheduleTab(patientsList) {
   const tbodyBooked = document.getElementById('schedBookingsBody');
   const tbodyRemind = document.getElementById('schedRemindersBody');
-  if (!tbodyBooked && !tbodyRemind) return;
+  const tbodyRefill = document.getElementById('schedRefillQueueBody');
+  if (!tbodyBooked && !tbodyRemind && !tbodyRefill) return;
 
   // Keep active view mode synchronized so background updates don't hide or collapse active sections
   const secBooked = document.getElementById('schedSection_booked');
   const secRemind = document.getElementById('schedSection_reminders');
+  const secRefill = document.getElementById('schedSection_refillQueue');
   const btnBooked = document.getElementById('schedTabBtn_booked');
   const btnRemind = document.getElementById('schedTabBtn_reminders');
+  const btnRefill = document.getElementById('schedTabBtn_refillQueue');
+
+  const activeBookedClass = 'px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs bg-white text-indigo-900 flex items-center gap-2';
+  const activeRemindClass = 'px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs bg-white text-amber-900 flex items-center gap-2';
+  const activeRefillClass = 'px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs bg-white text-emerald-950 flex items-center gap-2';
+  const inactiveClass = 'px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 hover:text-gray-900 transition flex items-center gap-2';
 
   if (currentSchedViewMode === 'reminders') {
     if (secBooked) secBooked.classList.add('hidden');
     if (secRemind) secRemind.classList.remove('hidden');
-    if (btnBooked) btnBooked.className = 'px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 hover:text-gray-900 transition flex items-center gap-2';
-    if (btnRemind) btnRemind.className = 'px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs bg-white text-amber-900 flex items-center gap-2';
+    if (secRefill) secRefill.classList.add('hidden');
+    if (btnBooked) btnBooked.className = inactiveClass;
+    if (btnRemind) btnRemind.className = activeRemindClass;
+    if (btnRefill) btnRefill.className = inactiveClass;
+  } else if (currentSchedViewMode === 'refillQueue') {
+    if (secBooked) secBooked.classList.add('hidden');
+    if (secRemind) secRemind.classList.add('hidden');
+    if (secRefill) secRefill.classList.remove('hidden');
+    if (btnBooked) btnBooked.className = inactiveClass;
+    if (btnRemind) btnRemind.className = inactiveClass;
+    if (btnRefill) btnRefill.className = activeRefillClass;
   } else {
     if (secBooked) secBooked.classList.remove('hidden');
     if (secRemind) secRemind.classList.add('hidden');
-    if (btnBooked) btnBooked.className = 'px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs bg-white text-indigo-900 flex items-center gap-2';
-    if (btnRemind) btnRemind.className = 'px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 hover:text-gray-900 transition flex items-center gap-2';
+    if (secRefill) secRefill.classList.add('hidden');
+    if (btnBooked) btnBooked.className = activeBookedClass;
+    if (btnRemind) btnRemind.className = inactiveClass;
+    if (btnRefill) btnRefill.className = inactiveClass;
   }
 
   const pts = (patientsList && patientsList.length > 0) ? patientsList : (typeof patientsData !== 'undefined' ? patientsData : []);
@@ -3407,36 +3464,44 @@ function renderPharmacistScheduleTab(patientsList) {
     const bookedApt = (p.appointments || []).find(a => a.date >= todayStr && (a.status === 'Scheduled' || a.status === 'Pending Approval'));
     const isBooked = !!bookedApt;
 
-    // 1. Next TCA Date from Consult & POCT / SOAP
-    if (p.nextTcaDate) {
-      const isPast = p.nextTcaDate < todayStr;
-      const isTod = p.nextTcaDate === todayStr;
-      const isSoon = p.nextTcaDate > todayStr && p.nextTcaDate <= next7DaysStr;
+    // 1. Next TCA & Medication Refill Dates from Consult & POCT / SOAP
+    const patientReminders = (Array.isArray(p.tcaReminders) && p.tcaReminders.length > 0)
+      ? p.tcaReminders
+      : (p.nextTcaDate ? [{ date: p.nextTcaDate, purpose: p.nextTcaPurpose || 'Follow-up Consultation & Refill', type: 'tca' }] : []);
+
+    patientReminders.forEach((rem, remIdx) => {
+      if (!rem.date) return;
+      const isPast = rem.date < todayStr;
+      const isTod = rem.date === todayStr;
+      const isSoon = rem.date > todayStr && rem.date <= next7DaysStr;
 
       remindTotal++;
       if (isTod) remindToday++;
       if (isSoon) remindNext7++;
       if (isPast) remindOverdue++;
 
-      const isLinkSent = !!(p.tcaBookingLinkSent || p.bookingLinkSent);
-      const linkSentAt = p.tcaBookingLinkSentAt || p.bookingLinkSentAt || null;
+      const isLinkSent = !!(rem.linkSent || (rem.date === p.tcaBookingLinkSentDate && p.tcaBookingLinkSent) || p.bookingLinkSent);
+      const linkSentAt = rem.linkSentAt || p.tcaBookingLinkSentAt || p.bookingLinkSentAt || null;
+      const isRefill = rem.type === 'refill' || (rem.purpose && rem.purpose.toLowerCase().includes('refill'));
 
       reminderItems.push({
         patient: p,
-        date: p.nextTcaDate,
-        purpose: p.nextTcaPurpose || 'Follow-up Consultation & Refill',
+        date: rem.date,
+        purpose: rem.purpose || (isRefill ? 'Medication Refill Check' : 'Clinical Follow-up & Review'),
         source: p.nextTcaRecordedBy ? `Consultation SOAP (by ${p.nextTcaRecordedBy})` : 'Consultation SOAP Assessment',
-        type: 'tca',
+        type: isRefill ? 'med_refill' : 'tca',
+        isRefill: isRefill,
+        remIndex: remIdx,
         isBooked,
         bookedSlot: bookedApt ? `${bookedApt.date} (${bookedApt.time || '10:00'})` : null,
         linkSent: isLinkSent,
         linkSentAt: linkSentAt
       });
-    }
+    });
 
     // 2. Chronic medication refill due dates
     (p.medications || []).forEach(med => {
-      if (med.nextRefillDate && med.nextRefillDate !== p.nextTcaDate) {
+      if (med.nextRefillDate && !patientReminders.some(r => r.date === med.nextRefillDate)) {
         const isPast = med.nextRefillDate < todayStr;
         const isTod = med.nextRefillDate === todayStr;
         const isSoon = med.nextRefillDate > todayStr && med.nextRefillDate <= next7DaysStr;
@@ -3595,7 +3660,10 @@ function renderPharmacistScheduleTab(patientsList) {
 
             <!-- Purpose & Source -->
             <td class="px-4 py-3.5">
-              <div class="font-bold text-gray-900">${escHtml(item.purpose)}</div>
+              <div class="font-bold text-gray-900 flex items-center gap-1.5 flex-wrap">
+                ${item.isRefill ? '<span class="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full shadow-2xs"><i class="fa-solid fa-pills mr-1"></i>MED REFILL</span>' : '<span class="bg-indigo-100 text-indigo-800 text-[10px] font-black px-2 py-0.5 rounded-full shadow-2xs"><i class="fa-solid fa-stethoscope mr-1"></i>CLINICAL</span>'}
+                <span>${escHtml(item.purpose)}</span>
+              </div>
               <div class="text-[11px] text-gray-500 mt-0.5 italic">${escHtml(item.source)}</div>
             </td>
 
@@ -3613,18 +3681,18 @@ function renderPharmacistScheduleTab(patientsList) {
                     <i class="fa-solid fa-circle-check text-emerald-600"></i>
                     <span>Done (Link Sent)</span>
                   </span>
-                  <button type="button" onclick="sendReminderBookingLinkWa('${p.id}', '${item.type}', '${item.medId || ''}')"
+                  <button type="button" onclick="sendReminderBookingLinkWa('${p.id}', '${item.type}', '${item.medId || ''}', '${item.date}', '${escHtml(item.purpose || '')}')"
                     class="text-xs text-gray-500 hover:text-emerald-700 hover:underline px-1 py-1 font-semibold transition"
                     title="Send WhatsApp booking link again">
                     Re-send
                   </button>
                 ` : `
-                  <!-- Send WhatsApp Booking Link -->
-                  <button type="button" onclick="sendReminderBookingLinkWa('${p.id}', '${item.type}', '${item.medId || ''}')"
+                  <!-- Send WhatsApp Booking / Refill Link -->
+                  <button type="button" onclick="sendReminderBookingLinkWa('${p.id}', '${item.type}', '${item.medId || ''}', '${item.date}', '${escHtml(item.purpose || '')}')"
                     class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs transition shadow-2xs flex items-center gap-1.5"
-                    title="Send WhatsApp invitation with customer self-booking link">
+                    title="${item.isRefill ? 'Send WhatsApp invitation with customer medication refill options' : 'Send WhatsApp invitation with customer self-booking link'}">
                     <i class="fa-brands fa-whatsapp text-sm"></i>
-                    <span>Send Booking Link</span>
+                    <span>${item.isRefill ? 'Send Refill Link' : 'Send Booking Link'}</span>
                   </button>
                 `}
 
@@ -3636,6 +3704,255 @@ function renderPharmacistScheduleTab(patientsList) {
                   <span>Book Slot</span>
                 </button>
               </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PART 3: MEDICATION REFILL & PACKING QUEUE (Customer Refill Requests)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const refillMap = new Map();
+
+  // 1. Gather all refill requests from patientsData appointments
+  pts.forEach(p => {
+    (p.appointments || []).forEach(apt => {
+      const isRefillOrder = (apt.type === 'med_refill_order') || (apt.bookingType === 'med_refill_order') ||
+        ['REFILL_REQUESTED', 'PACKING', 'PACKED', 'NO_REFILL_NEEDED'].includes(apt.status) ||
+        (apt.service && apt.service.toLowerCase().includes('refill')) ||
+        (apt.refillDuration);
+
+      if (isRefillOrder) {
+        const key = apt.id || apt.ref || (p.id + '-' + apt.date);
+        refillMap.set(key, {
+          id: apt.id || apt.ref,
+          patient: p,
+          patientName: apt.patientName || p.name,
+          patientPhone: apt.patientPhone || p.phone,
+          branch: p.branch || 'Kota Sentosa',
+          date: apt.date || apt.pickupDate || getTodayDateString(0),
+          time: apt.time || apt.pickupTime || 'Anytime',
+          service: apt.service || 'Medication Refill',
+          purpose: apt.purpose || 'Medication Refill',
+          refillDuration: apt.refillDuration || '2 Weeks (14 Days)',
+          notes: apt.notes || '',
+          status: apt.status || 'REFILL_REQUESTED',
+          createdAt: apt.createdAt || ''
+        });
+      }
+    });
+  });
+
+  // 2. Also check pmg_customer_bookings in localStorage
+  try {
+    const custBookings = JSON.parse(localStorage.getItem('pmg_customer_bookings') || '[]');
+    custBookings.forEach(b => {
+      if (b.bookingType === 'med_refill_order' || ['REFILL_REQUESTED', 'PACKING', 'PACKED', 'NO_REFILL_NEEDED'].includes(b.status)) {
+        const key = b.id || b.ref;
+        if (!refillMap.has(key)) {
+          const matchedPt = pts.find(p => normalizeNameForMatching(p.name) === normalizeNameForMatching(b.patientName));
+          refillMap.set(key, {
+            id: b.id || b.ref,
+            patient: matchedPt || { id: '', name: b.patientName, phone: b.patientPhone, branch: b.branchName || 'Kota Sentosa' },
+            patientName: b.patientName,
+            patientPhone: b.patientPhone,
+            branch: b.branchName || 'Kota Sentosa',
+            date: b.date || b.pickupDate || getTodayDateString(0),
+            time: b.time || b.pickupTime || 'Anytime',
+            service: b.service || 'Medication Refill',
+            purpose: b.purpose || 'Medication Refill',
+            refillDuration: b.refillDuration || '2 Weeks (14 Days)',
+            notes: b.notes || '',
+            status: b.status || 'REFILL_REQUESTED',
+            createdAt: b.createdAt || ''
+          });
+        }
+      }
+    });
+  } catch (_) {}
+
+  const allRefills = Array.from(refillMap.values());
+
+  // KPIs
+  let refKpiTotal = allRefills.length;
+  let refKpiPending = 0;
+  let refKpiPacking = 0;
+  let refKpiPacked = 0;
+
+  allRefills.forEach(r => {
+    if (r.status === 'REFILL_REQUESTED') refKpiPending++;
+    else if (r.status === 'PACKING') refKpiPacking++;
+    else if (r.status === 'PACKED') refKpiPacked++;
+  });
+
+  const elRefTotal = document.getElementById('refillKpiTotal');
+  const elRefPend = document.getElementById('refillKpiPending');
+  const elRefPack = document.getElementById('refillKpiPacking');
+  const elRefReady = document.getElementById('refillKpiPacked');
+  const elRefBadge = document.getElementById('schedCountRefillQueueBadge');
+
+  if (elRefTotal) elRefTotal.textContent = refKpiTotal;
+  if (elRefPend) elRefPend.textContent = refKpiPending;
+  if (elRefPack) elRefPack.textContent = refKpiPacking;
+  if (elRefReady) elRefReady.textContent = refKpiPacked;
+  if (elRefBadge) elRefBadge.textContent = refKpiPending;
+
+  // Filter & Render Refills
+  if (tbodyRefill) {
+    const filterStatus = document.getElementById('refillFilterStatus')?.value || 'all';
+    const searchQuery = (document.getElementById('refillSearchInput')?.value || '').toLowerCase().trim();
+
+    const filtered = allRefills.filter(r => {
+      if (filterStatus === 'needs_packing') {
+        if (!['REFILL_REQUESTED', 'PACKING'].includes(r.status)) return false;
+      } else if (filterStatus === 'packed') {
+        if (r.status !== 'PACKED') return false;
+      } else if (filterStatus === 'completed') {
+        if (r.status !== 'PICKED_UP' && r.status !== 'Completed') return false;
+      } else if (filterStatus === 'no_refill') {
+        if (r.status !== 'NO_REFILL_NEEDED') return false;
+      }
+
+      if (searchQuery) {
+        const matchName = (r.patientName || '').toLowerCase().includes(searchQuery);
+        const matchPhone = (r.patientPhone || '').includes(searchQuery);
+        const matchDur = (r.refillDuration || '').toLowerCase().includes(searchQuery);
+        const matchNotes = (r.notes || '').toLowerCase().includes(searchQuery);
+        if (!matchName && !matchPhone && !matchDur && !matchNotes) return false;
+      }
+      return true;
+    });
+
+    filtered.sort((a, b) => {
+      const prio = { 'REFILL_REQUESTED': 1, 'PACKING': 2, 'PACKED': 3, 'PICKED_UP': 4, 'NO_REFILL_NEEDED': 5 };
+      const aP = prio[a.status] || 99;
+      const bP = prio[b.status] || 99;
+      if (aP !== bP) return aP - bP;
+      return (b.date || '').localeCompare(a.date || '');
+    });
+
+    if (!filtered.length) {
+      tbodyRefill.innerHTML = `
+        <tr>
+          <td colspan="6" class="text-center py-12 text-gray-400 text-xs italic">
+            <i class="fa-solid fa-box-open text-2xl text-gray-300 block mb-2"></i>
+            No medication refill requests match the selected filters.
+          </td>
+        </tr>
+      `;
+    } else {
+      tbodyRefill.innerHTML = filtered.map(r => {
+        let cleanPhone = (r.patientPhone || '').replace(/\D/g, '');
+        if (cleanPhone.startsWith('0')) cleanPhone = '60' + cleanPhone.slice(1);
+
+        let statusBadge = '';
+        if (r.status === 'REFILL_REQUESTED') {
+          statusBadge = '<span class="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[11px] font-black px-2.5 py-1 rounded-full"><i class="fa-solid fa-hourglass-half animate-pulse"></i> To Pack</span>';
+        } else if (r.status === 'PACKING') {
+          statusBadge = '<span class="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-[11px] font-black px-2.5 py-1 rounded-full"><i class="fa-solid fa-box-archive"></i> In Progress</span>';
+        } else if (r.status === 'PACKED') {
+          statusBadge = '<span class="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[11px] font-black px-2.5 py-1 rounded-full"><i class="fa-solid fa-circle-check"></i> Packed & Ready</span>';
+        } else if (r.status === 'PICKED_UP' || r.status === 'Completed') {
+          statusBadge = '<span class="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-[11px] font-bold px-2.5 py-1 rounded-full"><i class="fa-solid fa-check-double"></i> Picked Up</span>';
+        } else if (r.status === 'NO_REFILL_NEEDED') {
+          statusBadge = '<span class="inline-flex items-center gap-1 bg-purple-100 text-purple-800 text-[11px] font-bold px-2.5 py-1 rounded-full"><i class="fa-solid fa-house-chimney-medical"></i> Stock Sufficient</span>';
+        }
+
+        let actionButtons = '';
+        if (r.status === 'REFILL_REQUESTED') {
+          actionButtons = `
+            <div class="inline-flex items-center gap-1.5">
+              <button type="button" onclick="startPackingRefill('${r.id}')"
+                class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1.5 rounded-lg text-xs transition shadow-2xs flex items-center gap-1">
+                <i class="fa-solid fa-box-archive"></i> Pack
+              </button>
+              <button type="button" onclick="markRefillPackedAndNotifyWa('${r.id}')"
+                class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2.5 py-1.5 rounded-lg text-xs transition shadow-2xs flex items-center gap-1">
+                <i class="fa-solid fa-check"></i> Packed & WA
+              </button>
+            </div>
+          `;
+        } else if (r.status === 'PACKING') {
+          actionButtons = `
+            <div class="inline-flex items-center gap-1.5">
+              <button type="button" onclick="markRefillPackedAndNotifyWa('${r.id}')"
+                class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition shadow-2xs flex items-center gap-1">
+                <i class="fa-solid fa-check"></i> Packed & WA
+              </button>
+            </div>
+          `;
+        } else if (r.status === 'PACKED') {
+          actionButtons = `
+            <div class="inline-flex items-center gap-1.5">
+              <button type="button" onclick="markRefillPickedUp('${r.id}')"
+                class="bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold px-2.5 py-1.5 rounded-lg text-xs transition shadow-2xs flex items-center gap-1 border border-gray-300">
+                <i class="fa-solid fa-circle-check text-emerald-600"></i> Collected
+              </button>
+              <button type="button" onclick="notifyPatientRefillReadyWa('${r.id}')"
+                class="text-xs text-emerald-700 hover:underline px-1 py-1 font-semibold" title="Send collection reminder again">
+                Re-send
+              </button>
+            </div>
+          `;
+        } else {
+          actionButtons = `
+            <span class="text-[11px] text-gray-400 font-medium italic">No action needed</span>
+          `;
+        }
+
+        return `
+          <tr class="hover:bg-emerald-50/40 transition text-xs">
+            <!-- Pickup Date & Window -->
+            <td class="px-4 py-3.5 whitespace-nowrap">
+              <div class="font-extrabold text-gray-900 text-xs">${getFormattedDateWithDay(r.date)}</div>
+              <div class="text-[11px] text-gray-500 font-medium mt-0.5"><i class="fa-regular fa-clock mr-1 text-gray-400"></i>${escHtml(r.time || 'Anytime')}</div>
+            </td>
+
+            <!-- Patient Details -->
+            <td class="px-4 py-3.5">
+              ${r.patient?.id ? `
+                <button type="button" onclick="viewPatientProfile('${r.patient.id}')"
+                  class="font-black text-blue-700 hover:text-blue-900 hover:underline text-xs text-left block">
+                  ${escHtml(r.patientName)}
+                </button>
+              ` : `
+                <div class="font-black text-gray-900 text-xs">${escHtml(r.patientName)}</div>
+              `}
+              <div class="flex items-center gap-1.5 mt-0.5 flex-wrap text-[11px]">
+                ${cleanPhone ? `
+                  <a href="https://wa.me/${cleanPhone}" target="_blank" rel="noopener"
+                    class="text-emerald-700 font-bold hover:underline inline-flex items-center gap-1">
+                    <i class="fa-brands fa-whatsapp text-emerald-600"></i> ${escHtml(r.patientPhone || '—')}
+                  </a>
+                ` : `<span class="text-gray-400">No phone</span>`}
+                <span class="text-gray-400 font-semibold">&bull; ${escHtml(r.branch || 'Branch')}</span>
+              </div>
+            </td>
+
+            <!-- Refill Duration Requested -->
+            <td class="px-4 py-3.5">
+              <div class="inline-flex items-center gap-1 bg-emerald-100 text-emerald-900 font-black px-2.5 py-1 rounded-xl text-xs shadow-2xs">
+                <i class="fa-solid fa-pills text-emerald-600"></i>
+                <span>${escHtml(r.refillDuration || '2 Weeks')}</span>
+              </div>
+            </td>
+
+            <!-- Notes / Details -->
+            <td class="px-4 py-3.5">
+              <div class="text-xs text-gray-800 font-medium">${escHtml(r.notes || r.service || 'Standard Refill')}</div>
+              <div class="text-[10px] text-gray-400 font-mono mt-0.5">Ref: ${escHtml(r.id)}</div>
+            </td>
+
+            <!-- Status -->
+            <td class="px-4 py-3.5 whitespace-nowrap">
+              ${statusBadge}
+            </td>
+
+            <!-- Actions -->
+            <td class="px-4 py-3.5 text-right whitespace-nowrap">
+              ${actionButtons}
             </td>
           </tr>
         `;
@@ -3681,7 +3998,7 @@ function sendDirectAppointmentReminderWa(patientId, appointmentId) {
   openUniversalWhatsApp(cleanPhone, msg);
 }
 
-function sendReminderBookingLinkWa(patientId, reminderType, medId) {
+function sendReminderBookingLinkWa(patientId, reminderType, medId, remDate, remPurpose) {
   const p = findPatientById(patientId);
   if (!p) return;
 
@@ -3696,11 +4013,24 @@ function sendReminderBookingLinkWa(patientId, reminderType, medId) {
   p.bookingLinkSent = true;
   p.bookingLinkSentAt = nowIso;
 
-  if (reminderType === 'tca') {
+  if (remDate && Array.isArray(p.tcaReminders)) {
+    const matched = p.tcaReminders.find(r => r.date === remDate);
+    if (matched) {
+      matched.linkSent = true;
+      matched.linkSentAt = nowIso;
+    }
+  }
+
+  const isRefill = reminderType === 'med_refill' || (remPurpose && remPurpose.toLowerCase().includes('refill'));
+
+  if (reminderType === 'tca' || !isRefill) {
     p.tcaBookingLinkSent = true;
     p.tcaBookingLinkSentAt = nowIso;
-    p.tcaBookingLinkSentDate = p.nextTcaDate;
-  } else if (reminderType === 'med_refill') {
+    p.tcaBookingLinkSentDate = remDate || p.nextTcaDate;
+  } else {
+    p.tcaBookingLinkSent = true;
+    p.tcaBookingLinkSentAt = nowIso;
+    p.tcaBookingLinkSentDate = remDate || p.nextTcaDate;
     if (medId && Array.isArray(p.medications)) {
       const m = p.medications.find(med => med.id === medId);
       if (m) {
@@ -3738,8 +4068,8 @@ function sendReminderBookingLinkWa(patientId, reminderType, medId) {
   }
 
   const msg = typeof buildPatientSupplyBookingMessage === 'function'
-    ? buildPatientSupplyBookingMessage(p)
-    : `Hello ${p.name}, please click this link to book your consultation appointment: ${getPatientSelfBookingUrl(p)}`;
+    ? buildPatientSupplyBookingMessage(p, { reminderDate: remDate, reminderPurpose: remPurpose, isRefill })
+    : `Hello ${p.name}, please click this link: ${getPatientSelfRefillUrl(p, remDate, remPurpose)}`;
 
   openUniversalWhatsApp(cleanPhone, msg);
 }
@@ -5001,7 +5331,22 @@ function showNewEncounterModal(patientId) {
     if (pTarget.nextTcaPurpose) {
       document.getElementById('encTcaPurpose').value = pTarget.nextTcaPurpose;
     }
+
+    if (Array.isArray(pTarget.tcaReminders) && pTarget.tcaReminders.length) {
+      tempEncounterTcaReminders = JSON.parse(JSON.stringify(pTarget.tcaReminders));
+    } else if (pTarget.nextTcaDate) {
+      tempEncounterTcaReminders = [{
+        date: pTarget.nextTcaDate,
+        purpose: pTarget.nextTcaPurpose || 'Chronic Medication Refill & Health Review',
+        type: (pTarget.nextTcaPurpose && pTarget.nextTcaPurpose.toLowerCase().includes('refill')) ? 'refill' : 'clinical'
+      }];
+    } else {
+      tempEncounterTcaReminders = [];
+    }
+  } else {
+    tempEncounterTcaReminders = [];
   }
+  renderEncounterTcaReminders();
 
   // Pre-fill CVD clinical risk parameters from patient profile
   const curPtRecord = pTarget || (curPId ? findPatientById(curPId) : null);
@@ -5275,6 +5620,27 @@ function editEncounterRecord(patientId, encounterId) {
   // Next TCA
   document.getElementById('encTcaDate').value = enc.nextTcaDate || '';
   document.getElementById('encTcaPurpose').value = enc.nextTcaPurpose || 'Chronic Medication Refill & Health Review';
+
+  if (Array.isArray(enc.tcaReminders) && enc.tcaReminders.length) {
+    tempEncounterTcaReminders = JSON.parse(JSON.stringify(enc.tcaReminders));
+  } else if (enc.nextTcaDate) {
+    tempEncounterTcaReminders = [{
+      date: enc.nextTcaDate,
+      purpose: enc.nextTcaPurpose || 'Chronic Medication Refill & Health Review',
+      type: (enc.nextTcaPurpose && enc.nextTcaPurpose.toLowerCase().includes('refill')) ? 'refill' : 'clinical'
+    }];
+  } else if (Array.isArray(p.tcaReminders) && p.tcaReminders.length) {
+    tempEncounterTcaReminders = JSON.parse(JSON.stringify(p.tcaReminders));
+  } else if (p.nextTcaDate) {
+    tempEncounterTcaReminders = [{
+      date: p.nextTcaDate,
+      purpose: p.nextTcaPurpose || 'Chronic Medication Refill & Health Review',
+      type: (p.nextTcaPurpose && p.nextTcaPurpose.toLowerCase().includes('refill')) ? 'refill' : 'clinical'
+    }];
+  } else {
+    tempEncounterTcaReminders = [];
+  }
+  renderEncounterTcaReminders();
 
   tempAttachedFiles = [];
   renderTempAttachedFiles();
@@ -6027,17 +6393,110 @@ function removeZentalogFile() {
   if (removeBtn) removeBtn.classList.add('hidden');
 }
 
-// ─── QUICK TCA (RETURN APPOINTMENT) HELPER ──────────────────────────────────
-function setQuickTca(days) {
+// ─── MULTI-DATE TCA & MEDICATION REFILL REMINDERS HELPER ────────────────────
+let tempEncounterTcaReminders = [];
+
+function renderEncounterTcaReminders() {
+  const list = document.getElementById('encTcaRemindersList');
+  if (!list) return;
+
+  if (!tempEncounterTcaReminders.length) {
+    list.innerHTML = `
+      <div class="p-3 bg-white/70 border border-dashed border-indigo-200 rounded-lg text-center text-xs text-gray-500 italic">
+        No reminder dates added yet. Click "+ Add Date" or use Quick Add buttons above.
+      </div>
+    `;
+    const dInp = document.getElementById('encTcaDate');
+    const pInp = document.getElementById('encTcaPurpose');
+    if (dInp) dInp.value = '';
+    if (pInp) pInp.value = '';
+    return;
+  }
+
+  // Sort chronologically
+  tempEncounterTcaReminders.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+  list.innerHTML = tempEncounterTcaReminders.map((rem, idx) => {
+    const isRefill = rem.type === 'refill' || (rem.purpose || '').toLowerCase().includes('refill');
+    return `
+      <div class="flex items-center gap-2 p-2.5 bg-white rounded-xl border border-indigo-200 shadow-2xs flex-wrap sm:flex-nowrap">
+        <div class="w-full sm:w-44 shrink-0">
+          <input type="date" value="${rem.date || ''}" onchange="updateEncounterTcaRow(${idx}, 'date', this.value)"
+            class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs sm:text-sm font-bold text-gray-900 bg-white outline-none focus:ring-1 focus:ring-indigo-500">
+        </div>
+        <div class="flex-1 min-w-[140px]">
+          <input type="text" value="${escHtml(rem.purpose || '')}" placeholder="Purpose e.g. 2-Week Medication Refill Check"
+            onchange="updateEncounterTcaRow(${idx}, 'purpose', this.value)"
+            class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs sm:text-sm font-medium text-gray-800 bg-white outline-none focus:ring-1 focus:ring-indigo-500">
+        </div>
+        <div class="shrink-0 flex items-center gap-1.5">
+          <select onchange="updateEncounterTcaRow(${idx}, 'type', this.value)"
+            class="border border-gray-300 rounded-lg px-2 py-1.5 text-xs font-bold ${isRefill ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-indigo-50 text-indigo-800 border-indigo-300'} outline-none">
+            <option value="refill" ${rem.type === 'refill' ? 'selected' : ''}>💊 Med Refill</option>
+            <option value="clinical" ${rem.type === 'clinical' ? 'selected' : ''}>🩺 Clinical Review</option>
+          </select>
+          <button type="button" onclick="removeEncounterTcaRow(${idx})" class="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition" title="Remove reminder date">
+            <i class="fa-solid fa-xmark text-sm"></i>
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Sync earliest upcoming date & purpose to #encTcaDate / #encTcaPurpose
+  const earliest = tempEncounterTcaReminders[0];
+  const dInp = document.getElementById('encTcaDate');
+  const pInp = document.getElementById('encTcaPurpose');
+  if (dInp && earliest) dInp.value = earliest.date || '';
+  if (pInp && earliest) pInp.value = earliest.purpose || '';
+}
+
+function addEncounterTcaRow(date = '', purpose = 'Chronic Medication Refill & Health Review', type = 'refill') {
+  if (!date) {
+    date = getTodayDateString(14);
+  }
+  tempEncounterTcaReminders.push({ date, purpose, type });
+  renderEncounterTcaReminders();
+}
+
+function removeEncounterTcaRow(idx) {
+  tempEncounterTcaReminders.splice(idx, 1);
+  renderEncounterTcaReminders();
+}
+
+function updateEncounterTcaRow(idx, field, value) {
+  if (tempEncounterTcaReminders[idx]) {
+    tempEncounterTcaReminders[idx][field] = value;
+    if (field === 'type' && !tempEncounterTcaReminders[idx].purpose) {
+      tempEncounterTcaReminders[idx].purpose = (value === 'refill') ? 'Medication Refill Check' : 'Clinical Health & POCT Review';
+    }
+    renderEncounterTcaReminders();
+  }
+}
+
+function addQuickTcaReminder(days, defaultPurpose = '', type = 'refill') {
   const target = new Date();
   target.setDate(target.getDate() + days);
   const yyyy = target.getFullYear();
   const mm = String(target.getMonth() + 1).padStart(2, '0');
   const dd = String(target.getDate()).padStart(2, '0');
-  const dateInput = document.getElementById('encTcaDate');
-  if (dateInput) {
-    dateInput.value = `${yyyy}-${mm}-${dd}`;
+  const dateStr = `${yyyy}-${mm}-${dd}`;
+
+  const purpose = defaultPurpose || (days <= 14 ? '2-Week Interim Medication Refill Check' : (days <= 30 ? '1-Month Routine Medication Refill' : 'Clinical Review & Refill'));
+  
+  // If reminder with this date already exists, update its purpose
+  const existing = tempEncounterTcaReminders.find(r => r.date === dateStr);
+  if (existing) {
+    existing.purpose = purpose;
+    existing.type = type;
+  } else {
+    tempEncounterTcaReminders.push({ date: dateStr, purpose, type });
   }
+  renderEncounterTcaReminders();
+}
+
+function setQuickTca(days) {
+  addQuickTcaReminder(days, '', (days <= 30) ? 'refill' : 'clinical');
 }
 
 // Dynamic Custom Tests
@@ -6289,14 +6748,36 @@ async function saveNewEncounter() {
         targetEnc.attachedDocs = (targetEnc.attachedDocs || []).concat(attachedDocIds);
       }
 
-      const tcaDate = document.getElementById('encTcaDate').value;
-      if (tcaDate) {
-        const tcaPurpose = document.getElementById('encTcaPurpose').value.trim() || 'Follow-up Consultation & Refill';
-        p.nextTcaDate = tcaDate;
-        p.nextTcaPurpose = tcaPurpose;
+      if (tempEncounterTcaReminders && tempEncounterTcaReminders.length > 0) {
+        tempEncounterTcaReminders.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+        targetEnc.tcaReminders = JSON.parse(JSON.stringify(tempEncounterTcaReminders));
+        p.tcaReminders = JSON.parse(JSON.stringify(tempEncounterTcaReminders));
+        const earliest = tempEncounterTcaReminders[0];
+        p.nextTcaDate = earliest.date || '';
+        p.nextTcaPurpose = earliest.purpose || 'Chronic Medication Refill & Health Review';
         p.nextTcaRecordedBy = recorder;
-        targetEnc.nextTcaDate = tcaDate;
-        targetEnc.nextTcaPurpose = tcaPurpose;
+        targetEnc.nextTcaDate = p.nextTcaDate;
+        targetEnc.nextTcaPurpose = p.nextTcaPurpose;
+      } else {
+        const tcaDate = document.getElementById('encTcaDate').value;
+        if (tcaDate) {
+          const tcaPurpose = document.getElementById('encTcaPurpose').value.trim() || 'Follow-up Consultation & Refill';
+          p.nextTcaDate = tcaDate;
+          p.nextTcaPurpose = tcaPurpose;
+          p.nextTcaRecordedBy = recorder;
+          targetEnc.nextTcaDate = tcaDate;
+          targetEnc.nextTcaPurpose = tcaPurpose;
+          const singleRem = [{ date: tcaDate, purpose: tcaPurpose, type: (tcaPurpose.toLowerCase().includes('refill') ? 'refill' : 'clinical') }];
+          targetEnc.tcaReminders = singleRem;
+          p.tcaReminders = singleRem;
+        } else {
+          p.nextTcaDate = '';
+          p.nextTcaPurpose = '';
+          targetEnc.nextTcaDate = '';
+          targetEnc.nextTcaPurpose = '';
+          targetEnc.tcaReminders = [];
+          p.tcaReminders = [];
+        }
       }
 
       // Update patient's active medications if editing the latest encounter
@@ -6390,14 +6871,29 @@ async function saveNewEncounter() {
   }
 
   // Next TCA Date Reminder (Customer will self-book exact date/time via portal link)
-  const tcaDate = document.getElementById('encTcaDate').value;
-  if (tcaDate) {
-    const tcaPurpose = document.getElementById('encTcaPurpose').value.trim() || 'Follow-up Consultation & Refill';
-    p.nextTcaDate = tcaDate;
-    p.nextTcaPurpose = tcaPurpose;
+  if (tempEncounterTcaReminders && tempEncounterTcaReminders.length > 0) {
+    tempEncounterTcaReminders.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    newEnc.tcaReminders = JSON.parse(JSON.stringify(tempEncounterTcaReminders));
+    p.tcaReminders = JSON.parse(JSON.stringify(tempEncounterTcaReminders));
+    const earliest = tempEncounterTcaReminders[0];
+    p.nextTcaDate = earliest.date || '';
+    p.nextTcaPurpose = earliest.purpose || 'Chronic Medication Refill & Health Review';
     p.nextTcaRecordedBy = recorder;
-    newEnc.nextTcaDate = tcaDate;
-    newEnc.nextTcaPurpose = tcaPurpose;
+    newEnc.nextTcaDate = p.nextTcaDate;
+    newEnc.nextTcaPurpose = p.nextTcaPurpose;
+  } else {
+    const tcaDate = document.getElementById('encTcaDate').value;
+    if (tcaDate) {
+      const tcaPurpose = document.getElementById('encTcaPurpose').value.trim() || 'Follow-up Consultation & Refill';
+      p.nextTcaDate = tcaDate;
+      p.nextTcaPurpose = tcaPurpose;
+      p.nextTcaRecordedBy = recorder;
+      newEnc.nextTcaDate = tcaDate;
+      newEnc.nextTcaPurpose = tcaPurpose;
+      const singleRem = [{ date: tcaDate, purpose: tcaPurpose, type: (tcaPurpose.toLowerCase().includes('refill') ? 'refill' : 'clinical') }];
+      newEnc.tcaReminders = singleRem;
+      p.tcaReminders = singleRem;
+    }
   }
 
   savePatientsData();
@@ -10560,6 +11056,12 @@ async function initCustomerBooking(defaultBranchCode = 'Kota Sentosa') {
 
   // ── Step 8: Render time slots using the resolved schedule ─────────────────
   updateCustBookHours();
+
+  // ── Step 9: Check if Refill Mode requested in URL ─────────────────────────
+  const isRefillParam = urlParams.get('refill') === '1' || urlParams.get('action') === 'refill';
+  if (isRefillParam) {
+    switchToCustomerRefillForm();
+  }
 }
 
 /**
@@ -11395,6 +11897,408 @@ function sendCustomerBookingWaToPharmacist() {
     `(The patient submitted this request online. Tap the link above to view and automatically register in the pharmacy appointment queue)`;
 
   openUniversalWhatsApp(targetPhone, msg);
+}
+
+// ─── INTERACTIVE CUSTOMER REFILL PORTAL HANDLERS ─────────────────────────────
+
+function switchToCustomerRefillForm() {
+  const refillCard = document.getElementById('customerRefillInteractiveCard');
+  const bookCard = document.getElementById('customerBookingFormCard');
+  if (refillCard) refillCard.classList.remove('hidden');
+  if (bookCard) bookCard.classList.add('hidden');
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const nameParam = urlParams.get('name') || '';
+  const phoneParam = urlParams.get('phone') || '';
+  const tcaDate = urlParams.get('tcaDate') || '';
+  const durParam = urlParams.get('dur') || urlParams.get('duration') || '';
+
+  const nameInp = document.getElementById('custRefillName');
+  const phoneInp = document.getElementById('custRefillPhone');
+  const dateInp = document.getElementById('custRefillPickupDate');
+
+  if (nameInp && !nameInp.value && nameParam) nameInp.value = nameParam;
+  if (phoneInp && !phoneInp.value && phoneParam) phoneInp.value = phoneParam;
+  if (dateInp) {
+    const todayStr = getTodayDateString(0);
+    dateInp.min = todayStr;
+    if (!dateInp.value) {
+      dateInp.value = (tcaDate && tcaDate >= todayStr) ? tcaDate : todayStr;
+    }
+  }
+
+  if (durParam) {
+    setRefillDuration(durParam);
+  }
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function switchToCustomerBookingForm() {
+  const refillCard = document.getElementById('customerRefillInteractiveCard');
+  const bookCard = document.getElementById('customerBookingFormCard');
+  if (refillCard) refillCard.classList.add('hidden');
+  if (bookCard) bookCard.classList.remove('hidden');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function toggleRefillDecision(isYes) {
+  const yesSection = document.getElementById('custRefillYesSection');
+  const noSection = document.getElementById('custRefillNoSection');
+  const yesLabel = document.getElementById('refillChoiceLabelYes');
+  const noLabel = document.getElementById('refillChoiceLabelNo');
+  const pickupDateInp = document.getElementById('custRefillPickupDate');
+  const submitBtnText = document.getElementById('custRefillSubmitBtnText');
+  const submitBtn = document.getElementById('custRefillSubmitBtn');
+
+  if (isYes) {
+    if (yesSection) yesSection.classList.remove('hidden');
+    if (noSection) noSection.classList.add('hidden');
+    if (pickupDateInp) pickupDateInp.required = true;
+    if (yesLabel) {
+      yesLabel.className = 'border-2 border-emerald-500 bg-emerald-50/70 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 cursor-pointer transition hover:border-emerald-600 ring-2 ring-emerald-500/50 shadow-xs';
+    }
+    if (noLabel) {
+      noLabel.className = 'border-2 border-gray-200 bg-gray-50/60 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 cursor-pointer transition hover:border-gray-400 shadow-xs';
+    }
+    if (submitBtn) {
+      submitBtn.className = 'w-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-black py-4 px-6 rounded-2xl text-base sm:text-lg shadow-lg transition flex items-center justify-center gap-2.5';
+    }
+    if (submitBtnText) {
+      submitBtnText.textContent = 'Submit Refill Request & Notify Pharmacist to Pack';
+    }
+  } else {
+    if (yesSection) yesSection.classList.add('hidden');
+    if (noSection) noSection.classList.remove('hidden');
+    if (pickupDateInp) pickupDateInp.required = false;
+    if (yesLabel) {
+      yesLabel.className = 'border-2 border-gray-200 bg-gray-50/60 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 cursor-pointer transition hover:border-gray-400 shadow-xs';
+    }
+    if (noLabel) {
+      noLabel.className = 'border-2 border-amber-500 bg-amber-50/70 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 cursor-pointer transition hover:border-amber-600 ring-2 ring-amber-500/50 shadow-xs';
+    }
+    if (submitBtn) {
+      submitBtn.className = 'w-full bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-black py-4 px-6 rounded-2xl text-base sm:text-lg shadow-lg transition flex items-center justify-center gap-2.5';
+    }
+    if (submitBtnText) {
+      submitBtnText.textContent = 'Confirm Medication Supply is Sufficient (No Refill)';
+    }
+  }
+}
+
+function setRefillDuration(durStr) {
+  const hidInput = document.getElementById('custSelectedDuration');
+  if (hidInput) hidInput.value = durStr;
+
+  const customContainer = document.getElementById('custCustomDurationContainer');
+  const customInput = document.getElementById('custCustomDurationInput');
+  if (durStr === 'Custom') {
+    if (customContainer) customContainer.classList.remove('hidden');
+    if (customInput) customInput.focus();
+  } else {
+    if (customContainer) customContainer.classList.add('hidden');
+  }
+
+  const btnContainer = document.getElementById('custRefillDurationButtons');
+  if (btnContainer) {
+    const buttons = btnContainer.querySelectorAll('.dur-pill');
+    buttons.forEach(btn => {
+      const btnDur = btn.getAttribute('data-dur');
+      if (btnDur === durStr) {
+        btn.className = 'dur-pill p-3 border-2 border-emerald-500 bg-emerald-50 rounded-xl text-center transition font-bold text-xs sm:text-sm text-emerald-900 shadow-xs ring-2 ring-emerald-500/30';
+      } else {
+        btn.className = 'dur-pill p-3 border-2 border-gray-200 bg-white rounded-xl text-center transition font-bold text-xs sm:text-sm text-gray-800 shadow-xs hover:border-emerald-500';
+      }
+    });
+  }
+}
+
+async function handleCustomerRefillSubmit(e) {
+  e.preventDefault();
+  const choiceEl = document.querySelector('input[name="custRefillChoice"]:checked');
+  const choice = choiceEl ? choiceEl.value : 'yes';
+  const isYes = (choice === 'yes');
+
+  const name = (document.getElementById('custRefillName')?.value || '').trim();
+  const phone = (document.getElementById('custRefillPhone')?.value || '').trim();
+  const notes = (document.getElementById('custRefillNotes')?.value || '').trim();
+
+  if (!name || !phone) {
+    alert('Please enter your full name and phone number so our pharmacist can identify your prescription.');
+    return;
+  }
+
+  let duration = '2 Weeks (14 Days)';
+  let pickupDate = getTodayDateString(0);
+  let pickupWindow = 'Anytime (08:00 - 17:00)';
+
+  if (isYes) {
+    const selDur = document.getElementById('custSelectedDuration')?.value || '2 Weeks (14 Days)';
+    if (selDur === 'Custom') {
+      const customVal = (document.getElementById('custCustomDurationInput')?.value || '').trim();
+      duration = customVal || 'Custom Duration';
+    } else {
+      duration = selDur;
+    }
+
+    pickupDate = document.getElementById('custRefillPickupDate')?.value || getTodayDateString(0);
+    pickupWindow = document.getElementById('custRefillPickupWindow')?.value || 'Anytime';
+  } else {
+    duration = 'None (Patient Confirmed Sufficient Stock)';
+    pickupDate = getTodayDateString(0);
+    pickupWindow = 'N/A';
+  }
+
+  const bookingRef = 'PMG-RF-' + Math.floor(100000 + Math.random() * 900000);
+  const nowIso = new Date().toISOString();
+
+  const refillData = {
+    id: bookingRef,
+    ref: bookingRef,
+    source: 'Customer Self-Service Refill Portal',
+    type: 'med_refill_order',
+    bookingType: 'med_refill_order',
+    branchCode: 'Kota Sentosa',
+    branchName: 'PMG Pharmacy Kota Sentosa',
+    pharmacist: 'William Chai Yee Sian (Pharmacist)',
+    service: isYes ? `Medication Refill (${duration})` : 'Refill Declined (Sufficient Stock)',
+    purpose: isYes ? `Prescription Refill Request: ${duration}` : 'Patient Stock Status: Supply Sufficient',
+    date: pickupDate,
+    time: pickupWindow,
+    status: isYes ? 'REFILL_REQUESTED' : 'NO_REFILL_NEEDED',
+    refillDuration: duration,
+    refillDecision: isYes ? 'REFILL_REQUESTED' : 'NO_REFILL_NEEDED',
+    patientName: name,
+    patientPhone: phone,
+    notes: notes || (isYes ? `Refill requested: ${duration}` : 'Patient confirmed medication supply is sufficient.'),
+    createdAt: nowIso
+  };
+
+  currentCustomerBooking = refillData;
+
+  const submitBtn = document.getElementById('custRefillSubmitBtn');
+  const originalHtml = submitBtn ? submitBtn.innerHTML : '';
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Submitting Refill Request...';
+  }
+
+  // 1. Sync to Google Sheets cloud relay
+  try {
+    await pushBookingToCloud(refillData);
+  } catch (err) {
+    console.warn('[PMG Cloud Refill] Sync notice:', err);
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalHtml;
+    }
+  }
+
+  // 2. Save in local customer bookings list
+  let custBookings = [];
+  try {
+    custBookings = JSON.parse(localStorage.getItem('pmg_customer_bookings') || '[]');
+  } catch (_) { custBookings = []; }
+  custBookings.unshift(refillData);
+  localStorage.setItem('pmg_customer_bookings', JSON.stringify(custBookings));
+
+  // 3. Attach to matching patient in patientsData if exists
+  const cleanPhone = normalizePhoneForMatching(phone);
+  const cleanName = normalizeNameForMatching(name);
+  let patient = (typeof patientsData !== 'undefined' ? patientsData : []).find(p => {
+    const pName = normalizeNameForMatching(p.name);
+    const pPhone = normalizePhoneForMatching(p.phone);
+    if (cleanName && pName && cleanName === pName && (!cleanPhone || !pPhone || cleanPhone === pPhone)) return true;
+    return false;
+  });
+
+  if (patient) {
+    if (!patient.appointments) patient.appointments = [];
+    patient.appointments.unshift(refillData);
+    if (typeof savePatientsData === 'function') savePatientsData();
+  }
+
+  // 4. Trigger Web Audio Alert
+  playRefillAlertChime();
+
+  // 5. Show confirmation screen
+  const confirmRef = document.getElementById('custConfirmRef');
+  const confirmName = document.getElementById('custConfirmName');
+  const confirmBranch = document.getElementById('custConfirmBranch');
+  const confirmDateTime = document.getElementById('custConfirmDateTime');
+  const confirmService = document.getElementById('custConfirmService');
+  const confirmDateLabel = document.getElementById('custConfirmDateLabel');
+  const successTitle = document.getElementById('custSuccessTitle');
+  const successSub = document.getElementById('custSuccessSubtitle');
+
+  if (confirmRef) confirmRef.textContent = bookingRef;
+  if (confirmName) confirmName.textContent = name;
+  if (confirmBranch) confirmBranch.textContent = 'PMG Pharmacy Kota Sentosa';
+  if (confirmDateTime) confirmDateTime.textContent = isYes ? `${pickupDate} (${pickupWindow})` : 'Supply Confirmed Sufficient';
+  if (confirmService) confirmService.textContent = isYes ? `Medication Refill: ${duration}` : 'Sufficient Stock (No Refill)';
+  if (confirmDateLabel) confirmDateLabel.textContent = isYes ? 'Collection Date & Window:' : 'Status:';
+  if (successTitle) successTitle.textContent = isYes ? 'Refill Request Received!' : 'Thank You for Confirming!';
+  if (successSub) {
+    successSub.textContent = isYes
+      ? `Our pharmacist has been alerted to pack your ${duration} medication supply for collection on ${pickupDate}.`
+      : 'We have recorded that your medication supply is sufficient. We will not send unnecessary reminders.';
+  }
+
+  const refillCard = document.getElementById('customerRefillInteractiveCard');
+  const successCard = document.getElementById('customerBookingSuccessCard');
+  if (refillCard) refillCard.classList.add('hidden');
+  if (successCard) successCard.classList.remove('hidden');
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ─── MEDICATION PACKING QUEUE STATE MACHINE & NOTIFICATIONS ──────────────────
+
+function playRefillAlertChime() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+    osc.frequency.setValueAtTime(880, ctx.currentTime + 0.12); // A5
+    gain.gain.setValueAtTime(0.18, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.45);
+  } catch (_) {}
+}
+
+async function startPackingRefill(bookingId) {
+  await updateRefillOrderStatus(bookingId, 'PACKING');
+  if (typeof showPmgToast === 'function') {
+    showPmgToast('📦 Refill order marked as IN PROGRESS (Packing)!', 'info');
+  }
+}
+
+async function markRefillPackedAndNotifyWa(bookingId) {
+  await updateRefillOrderStatus(bookingId, 'PACKED');
+  if (typeof showPmgToast === 'function') {
+    showPmgToast('✅ Refill packed & ready for patient pickup!', 'success');
+  }
+  notifyPatientRefillReadyWa(bookingId);
+}
+
+async function markRefillPickedUp(bookingId) {
+  await updateRefillOrderStatus(bookingId, 'PICKED_UP');
+  if (typeof showPmgToast === 'function') {
+    showPmgToast('🎉 Medication refill marked as COLLECTED / PICKED UP!', 'success');
+  }
+}
+
+async function updateRefillOrderStatus(bookingId, newStatus) {
+  if (!bookingId) return;
+
+  // 1. Update localStorage pmg_customer_bookings
+  let custBookings = [];
+  let targetBooking = null;
+  try {
+    custBookings = JSON.parse(localStorage.getItem('pmg_customer_bookings') || '[]');
+    const idx = custBookings.findIndex(b => b.id === bookingId || b.ref === bookingId);
+    if (idx >= 0) {
+      custBookings[idx].status = newStatus;
+      targetBooking = custBookings[idx];
+      localStorage.setItem('pmg_customer_bookings', JSON.stringify(custBookings));
+    }
+  } catch (_) {}
+
+  // 2. Update matching appointment in patientsData
+  if (typeof patientsData !== 'undefined') {
+    patientsData.forEach(p => {
+      (p.appointments || []).forEach(apt => {
+        if (apt.id === bookingId || apt.ref === bookingId) {
+          apt.status = newStatus;
+          if (!targetBooking) targetBooking = apt;
+        }
+      });
+    });
+    if (typeof savePatientsData === 'function') savePatientsData();
+  }
+
+  // 3. Push status update to cloud
+  if (targetBooking) {
+    try {
+      await pushBookingToCloud({ ...targetBooking, status: newStatus });
+    } catch (_) {}
+  }
+
+  // 4. Re-render schedule tab
+  if (typeof renderPharmacistScheduleTab === 'function') {
+    renderPharmacistScheduleTab();
+  }
+}
+
+function notifyPatientRefillReadyWa(bookingId) {
+  let targetBooking = null;
+  let targetPt = null;
+
+  try {
+    const custBookings = JSON.parse(localStorage.getItem('pmg_customer_bookings') || '[]');
+    targetBooking = custBookings.find(b => b.id === bookingId || b.ref === bookingId);
+  } catch (_) {}
+
+  if (typeof patientsData !== 'undefined') {
+    patientsData.forEach(p => {
+      const found = (p.appointments || []).find(apt => apt.id === bookingId || apt.ref === bookingId);
+      if (found) {
+        if (!targetBooking) targetBooking = found;
+        targetPt = p;
+      }
+    });
+  }
+
+  if (!targetBooking) return;
+
+  const phone = targetBooking.patientPhone || (targetPt && targetPt.phone);
+  if (!phone) {
+    alert('No phone number recorded for this refill request.');
+    return;
+  }
+
+  const name = targetBooking.patientName || (targetPt && targetPt.name) || 'Valued Customer';
+  const duration = targetBooking.refillDuration || 'routine';
+  const lang = (targetPt && targetPt.language ? targetPt.language.toLowerCase() : 'english');
+
+  let msg = '';
+  if (lang.includes('chi') || lang.includes('zh')) {
+    msg = `*PMG Pharmacy Kota Sentosa - 药物备齐待取通知* 📦💊\n\n` +
+      `您好 ${name}，\n` +
+      `您所申请的续药（${duration}）已经由我们的药剂师备齐并打包完毕！\n\n` +
+      `📍 *取药地点:* PMG Pharmacy Kota Sentosa (七哩分店)\n` +
+      `⏰ *营业时间:* 每日 08:00 AM – 09:30 PM\n` +
+      `🔖 *单号:* ${targetBooking.ref || targetBooking.id}\n\n` +
+      `您可以随时亲临本店柜台告知单号或姓名取药。祝您身体健康！`;
+  } else if (lang.includes('malay') || lang.includes('ms') || lang.includes('melayu')) {
+    msg = `*PMG Pharmacy Kota Sentosa - Pengesahan Ubat Siap Dibungkus* 📦💊\n\n` +
+      `Salam sejahtera ${name},\n` +
+      `Permohonan ulangan ubat anda (${duration}) telah siap dibungkus oleh ahli farmasi kami!\n\n` +
+      `📍 *Lokasi Pengambilan:* PMG Pharmacy Kota Sentosa\n` +
+      `⏰ *Waktu Operasi:* Setiap hari 08:00 AM – 09:30 PM\n` +
+      `🔖 *No. Rujukan:* ${targetBooking.ref || targetBooking.id}\n\n` +
+      `Anda boleh hadir ke farmasi pada bila-bila masa untuk mengambil ubat anda. Semoga sentiasa sihat sejahtera!`;
+  } else {
+    msg = `*PMG Pharmacy Kota Sentosa - Medication Packed & Ready for Pickup* 📦💊\n\n` +
+      `Dear ${name},\n` +
+      `Your requested medication refill (${duration}) has been packed by our pharmacist and is ready for collection!\n\n` +
+      `📍 *Pickup Location:* PMG Pharmacy Kota Sentosa\n` +
+      `⏰ *Opening Hours:* Daily 08:00 AM – 09:30 PM\n` +
+      `🔖 *Reference No:* ${targetBooking.ref || targetBooking.id}\n\n` +
+      `You may drop by the pharmacy counter anytime to collect your medications. Wishing you good health!`;
+  }
+
+  let cleanPhone = phone.replace(/\D/g, '');
+  if (cleanPhone.startsWith('0')) cleanPhone = '60' + cleanPhone.slice(1);
+  openUniversalWhatsApp(cleanPhone, msg);
 }
 
 /**
@@ -14584,3 +15488,23 @@ window.areSamePatientRecord = areSamePatientRecord;
 window.normalizeIcForMatching = normalizeIcForMatching;
 window.normalizePhoneForMatching = normalizePhoneForMatching;
 window.normalizeNameForMatching = normalizeNameForMatching;
+
+// Multi-Date TCA Reminders & Customer Refill Exports
+window.renderEncounterTcaReminders = renderEncounterTcaReminders;
+window.addEncounterTcaRow = addEncounterTcaRow;
+window.removeEncounterTcaRow = removeEncounterTcaRow;
+window.updateEncounterTcaRow = updateEncounterTcaRow;
+window.addQuickTcaReminder = addQuickTcaReminder;
+window.setQuickTca = setQuickTca;
+window.switchToCustomerRefillForm = switchToCustomerRefillForm;
+window.switchToCustomerBookingForm = switchToCustomerBookingForm;
+window.toggleRefillDecision = toggleRefillDecision;
+window.setRefillDuration = setRefillDuration;
+window.handleCustomerRefillSubmit = handleCustomerRefillSubmit;
+window.playRefillAlertChime = playRefillAlertChime;
+window.startPackingRefill = startPackingRefill;
+window.markRefillPackedAndNotifyWa = markRefillPackedAndNotifyWa;
+window.markRefillPickedUp = markRefillPickedUp;
+window.updateRefillOrderStatus = updateRefillOrderStatus;
+window.notifyPatientRefillReadyWa = notifyPatientRefillReadyWa;
+
