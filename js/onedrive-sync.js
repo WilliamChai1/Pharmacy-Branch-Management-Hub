@@ -1139,7 +1139,7 @@
       const bCode = (branchCode || 'KS01').toUpperCase();
       const localTs = localStorage.getItem(`pmg_staff_preferences_v2_${bCode}_updatedAt`);
       const cloudTs = cloudPayload.lastUpdated;
-      const data = cloudPayload.data || cloudPayload.preferences;
+      let data = cloudPayload.data || cloudPayload.preferences;
 
       if (localTs && (!cloudTs || new Date(cloudTs) <= new Date(localTs))) {
         console.log(`[Sync] Local preferences are newer or identical. Skipping cloud overwrite.`);
@@ -1148,8 +1148,29 @@
 
       if (!data || !Array.isArray(data) || data.length === 0) return false;
 
+      // One-time repair for legacy corrupted KS01 cloud snapshots saved prior to fixing the Penny prevHds revert bug
+      let effectiveTs = cloudTs || new Date().toISOString();
+      if (bCode === 'KS01' && (!cloudTs || new Date(cloudTs) < new Date('2026-11-18T13:12:00.000Z'))) {
+        data = JSON.parse(JSON.stringify(data));
+        const penny = data.find(t => t.empNo === 'PMG02694' || (t.nickname || '').toUpperCase() === 'PENNY');
+        if (penny && penny.dayPrefs &&
+            (penny.dayPrefs.Monday === 'Flexible' || !penny.dayPrefs.Monday) &&
+            penny.dayPrefs.Friday === 'Morning Half (5H)' &&
+            penny.dayPrefs.Tuesday === 'RD' &&
+            penny.dayPrefs.Wednesday === 'Morning Preferred' &&
+            penny.dayPrefs.Thursday === 'Night Preferred' &&
+            penny.dayPrefs.Saturday === 'Morning Preferred' &&
+            penny.dayPrefs.Sunday === 'Night Preferred') {
+          penny.restDayPref = 'Tuesday';
+          penny.halfDayPref = 'Monday Morning (5H)';
+          penny.dayPrefs.Monday = 'Morning Half (5H)';
+          penny.dayPrefs.Friday = 'Night Preferred';
+          effectiveTs = '2026-11-18T13:12:01.000Z';
+        }
+      }
+
       localStorage.setItem(`pmg_staff_preferences_v2_${bCode}`, JSON.stringify(data));
-      localStorage.setItem(`pmg_staff_preferences_v2_${bCode}_updatedAt`, cloudTs || new Date().toISOString());
+      localStorage.setItem(`pmg_staff_preferences_v2_${bCode}_updatedAt`, effectiveTs);
       return true;
     }
 
@@ -1228,18 +1249,17 @@
         const localUpdated = localStorage.getItem(localUpdatedKey) || '';
         const hasLocalPrefs = !!localStorage.getItem(localPrefKey);
 
-        // Conflict comparison check: Do NOT overwrite local preferences if cloudData.lastUpdated is missing, null, or older than localUpdated
-        if (hasLocalPrefs && (!cloudLastUpdated || (localUpdated && cloudLastUpdated < localUpdated))) {
-          console.log(`[PMG OneDrive Sync] Skipped overwriting local preferences for ${bCode} (cloud lastUpdated "${cloudLastUpdated || 'missing'}" is older than local "${localUpdated}")`);
+        // Conflict comparison check: Do NOT overwrite local preferences if cloudData.lastUpdated is older than or equal to localUpdated (when localUpdated exists)
+        if (hasLocalPrefs && localUpdated && (!cloudLastUpdated || new Date(cloudLastUpdated) <= new Date(localUpdated))) {
+          console.log(`[PMG OneDrive Sync] Skipped overwriting local preferences for ${bCode} (cloud lastUpdated "${cloudLastUpdated || 'missing'}" is not newer than local "${localUpdated}")`);
           return null;
         }
 
-        // Sync metadata stored in dedicated localStorage keys (never as a property on the array)
+        // Store cloud timestamp in dedicated metadata key only; caller's applyCloudPreferences will update localUpdatedKey cleanly
         try {
           const metaKey = `pmg_schedule_prefs_cloud_updatedAt_${bCode}`;
           if (cloudLastUpdated) {
             localStorage.setItem(metaKey, cloudLastUpdated);
-            localStorage.setItem(localUpdatedKey, cloudLastUpdated);
           } else {
             localStorage.removeItem(metaKey);
           }

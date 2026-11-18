@@ -64,6 +64,7 @@ function createBrowserSandbox(fetchImpl) {
     classList: {
       add: () => {},
       remove: () => {},
+      replace: () => {},
       contains: () => false
     },
     parentNode: null,
@@ -519,76 +520,158 @@ function createBrowserSandbox(fetchImpl) {
     }
   });
 
-  // 9. December 2026 KS01 Timetable Rebalancing (Christina Lee Removed & 7-Staff Solver Balanced)
-  test('December 2026 KS01 Timetable removes Christina Lee & rebalances 7-person team with 0 shortage days', () => {
+  // 9. December 2026 KS01 Timetable Rebalancing (Christina Lee Removed, Night 5H Support, Penny Prefs & 7-Staff Solver Balanced)
+  test('December 2026 KS01 Timetable removes Christina Lee & rebalances 7-person team with Night 5H & 0 shortage days', () => {
     const { ctx, doc } = createBrowserSandbox();
     const schedSrc = fs.readFileSync(path.join(ROOT, 'js', 'scheduler.js'), 'utf8');
     vm.runInContext(schedSrc, ctx);
 
-    // Check November 2026 preserves Christina Lee (8 staff)
+    // Check November 2026 preserves Christina Lee (8 staff) and produces 0 shortages
     doc.getElementById('sched-month').value = '2026-11';
+    doc.getElementById('schedulerMonth').value = '2026-11';
     vm.runInContext(`loadTeammates('KS01', '2026-11', true);`, ctx);
     const novTeam = vm.runInContext(`currentTeammates.map(t => ({ empNo: t.empNo, nickname: t.nickname }))`, ctx);
     assert.strictEqual(novTeam.length, 8, 'November 2026 KS01 should retain 8 teammates including Christina');
     assert(novTeam.some(t => t.empNo === 'PMG03033'), 'November 2026 KS01 should include Christina Lee (PMG03033)');
-
-    // Check December 2026 removes Christina Lee and rebalances 7 staff with 7 unique RDs and 7 unique HDs
-    doc.getElementById('sched-month').value = '2026-12';
-    vm.runInContext(`loadTeammates('KS01', '2026-12', true);`, ctx);
-    const decTeam = vm.runInContext(`currentTeammates.map(t => ({ empNo: t.empNo, nickname: t.nickname, restDayPref: t.restDayPref, halfDayPref: t.halfDayPref }))`, ctx);
-    assert.strictEqual(decTeam.length, 7, 'December 2026 KS01 must have 7 active teammates');
-    assert(!decTeam.some(t => t.empNo === 'PMG03033' || t.nickname === 'CHRISTINA'), 'Christina Lee must be removed from December 2026 onwards');
-
-    const rdDays = new Set(decTeam.map(t => t.restDayPref));
-    const hdDays = new Set(decTeam.map(t => t.halfDayPref.split(' ')[0]));
-    assert.strictEqual(rdDays.size, 7, 'All 7 days of the week must have exactly 1 unique Rest Day');
-    assert.strictEqual(hdDays.size, 7, 'All 7 days of the week must have exactly 1 unique Morning Half Day');
-
-    // Run December 2026 heuristic schedule generator and verify floor headcount, 0 fatigue, and peer parity
-    const decSched = vm.runInContext(`runHeuristicScheduleGenerator('KS01', 2026, 12, 31)`, ctx);
-    const decMonthDays = decSched.days.filter(d => d.date.startsWith('2026-12'));
-    assert.strictEqual(decMonthDays.length, 31, 'December 2026 schedule must contain all 31 December days');
-
-    let shortageDays = 0;
-    let fatigueCount = 0;
-    const rotatingEmpNos = ['PMG01294', 'PMG02694', 'PMG01780', 'PMG02070', 'PMG03375', 'PMG04331'];
-    const amTotals = {};
-    const pmTotals = {};
-    rotatingEmpNos.forEach(id => { amTotals[id] = 0; pmTotals[id] = 0; });
-
-    decSched.days.forEach((d, idx) => {
-      assert(!('PMG03033' in d.shifts), `Christina Lee found in shift assignments on ${d.date}`);
-      let am = 0, fullAm = 0, pm = 0;
+    const novSched = vm.runInContext(`runHeuristicScheduleGenerator('KS01', 2026, 11, 30)`, ctx);
+    let novShortages = 0;
+    novSched.days.forEach(d => {
+      let am = 0, fullAm = 0, pm = 0, fullPm = 0;
       Object.values(d.shifts).forEach(s => {
         if (s === '8H_0730-1630' || s === '4H_0730-1130' || s === '5H_0730-1230') am++;
         if (s === '8H_0730-1630') fullAm++;
-        if (s === '8H_1230-2130') pm++;
+        if (s === '8H_1230-2130' || s === '5H_1630-2130') pm++;
+        if (s === '8H_1230-2130') fullPm++;
       });
-      // Non-Christmas days must have 3 AM (with >= 2 Full AM) and 3 PM
-      if (d.date !== '2026-12-25' && d.date !== '2027-01-01') {
-        if (am < 3 || fullAm < 2 || pm < 3) shortageDays++;
+      if (am < 3 || fullAm < 2 || pm < 3 || fullPm < 2) novShortages++;
+    });
+    assert.strictEqual(novShortages, 0, `Expected 0 shortage days in Nov 2026, got ${novShortages}`);
+
+    // Check December 2026 removes Christina Lee and exposes 6 fixed RDs + 1 Flexible Trainee (Vanessa)
+    doc.getElementById('sched-month').value = '2026-12';
+    doc.getElementById('schedulerMonth').value = '2026-12';
+    vm.runInContext(`loadTeammates('KS01', '2026-12', true);`, ctx);
+    const decTeam = vm.runInContext(`currentTeammates.map(t => ({ empNo: t.empNo, nickname: t.nickname, restDayPref: t.restDayPref, halfDayPref: t.halfDayPref, dayPrefs: t.dayPrefs }))`, ctx);
+    assert.strictEqual(decTeam.length, 7, 'December 2026 KS01 must have 7 active teammates');
+    assert(!decTeam.some(t => t.empNo === 'PMG03033' || t.nickname === 'CHRISTINA'), 'Christina Lee must be removed from December 2026 onwards');
+
+    const fixedRdDays = new Set(decTeam.filter(t => t.restDayPref !== 'Flexible').map(t => t.restDayPref));
+    assert.strictEqual(fixedRdDays.size, 6, 'Fixed-RD teammates must occupy 6 distinct Rest Days (leaving Saturday for Flexible Trainee Vanessa)');
+    const vanTm = decTeam.find(t => t.empNo === 'PMG04331');
+    assert(vanTm && vanTm.restDayPref === 'Flexible' && vanTm.halfDayPref === 'Flexible', 'Vanessa (PMG04331) must default to Flexible RD & HD in Dec 2026');
+
+    const pennyTm = decTeam.find(t => t.empNo === 'PMG02694');
+    assert.strictEqual(pennyTm.dayPrefs.Monday, 'Morning Half (5H)', 'Penny Monday must be Morning Half (5H)');
+    assert.strictEqual(pennyTm.dayPrefs.Tuesday, 'RD', 'Penny Tuesday must be RD');
+    assert.strictEqual(pennyTm.dayPrefs.Wednesday, 'Morning Preferred', 'Penny Wednesday must be Morning Preferred');
+    assert.strictEqual(pennyTm.dayPrefs.Thursday, 'Night Preferred', 'Penny Thursday must be Night Preferred');
+    assert.strictEqual(pennyTm.dayPrefs.Friday, 'Night Preferred', 'Penny Friday must be Night Preferred');
+    assert.strictEqual(pennyTm.dayPrefs.Saturday, 'Morning Preferred', 'Penny Saturday must be Morning Preferred');
+    assert.strictEqual(pennyTm.dayPrefs.Sunday, 'Night Preferred', 'Penny Sunday must be Night Preferred');
+
+    // Run December 2026 heuristic schedule generator and verify floor headcount, 0 ratio/Penny/Friday violations, Night 5H & parity
+    const decSched = vm.runInContext(`runHeuristicScheduleGenerator('KS01', 2026, 12, 31)`, ctx);
+    const decMonthDays = decSched.days.filter(d => d.date.startsWith('2026-12'));
+    assert.strictEqual(decMonthDays.length, 31, 'December 2026 schedule must contain all 31 December days');
+    assert.strictEqual(decSched.days.length, 35, 'December 2026 5-week schedule must span 35 days');
+
+    let shortageDays = 0;
+    let ratioViolations = 0;
+    let traineeFriViolations = 0;
+    let pennyPrefViolations = 0;
+    let vanNight5hCount = 0;
+    let vanMorn5hCount = 0;
+    let fullTurnaroundCount = 0;
+    let nonMandatedTurnarounds = 0;
+    const peerEmpNos = ['PMG01294', 'PMG01780', 'PMG02070', 'PMG03375', 'PMG04331'];
+    const rotatingEmpNos = ['PMG01294', 'PMG02694', 'PMG01780', 'PMG02070', 'PMG03375', 'PMG04331'];
+    const amTotals = {};
+    const pmTotals = {};
+    peerEmpNos.forEach(id => { amTotals[id] = 0; pmTotals[id] = 0; });
+
+    for (let w = 0; w < 5; w++) {
+      const weekRdDays = new Set();
+      decSched.days.slice(w * 7, (w + 1) * 7).forEach(d => {
+        Object.entries(d.shifts).forEach(([id, s]) => {
+          if (s === 'RD') weekRdDays.add(`${id}:${d.dayOfWeek}`);
+        });
+      });
+      const uniqueRdsInWeek = new Set([...weekRdDays].map(entry => entry.split(':')[1]));
+      assert.strictEqual(uniqueRdsInWeek.size, 7, `Week ${w + 1} must allocate RDs cleanly across all 7 days without double-booking`);
+    }
+
+    decSched.days.forEach((d, idx) => {
+      assert(!('PMG03033' in d.shifts), `Christina Lee found in shift assignments on ${d.date}`);
+      let am = 0, fullAm = 0, pm = 0, fullPm = 0;
+      let srAm = 0, trAm = 0, srPm = 0, trPm = 0;
+      Object.entries(d.shifts).forEach(([id, s]) => {
+        const isTr = id === 'PMG04331';
+        if (s === '8H_0730-1630' || s === '4H_0730-1130' || s === '5H_0730-1230') {
+          am++;
+          if (isTr) trAm++; else srAm++;
+        }
+        if (s === '8H_0730-1630') fullAm++;
+        if (s === '8H_1230-2130' || s === '5H_1630-2130') {
+          pm++;
+          if (isTr) trPm++; else srPm++;
+        }
+        if (s === '8H_1230-2130') fullPm++;
+      });
+
+      // All non-Christmas days must achieve >= 3 AM (>= 2 Full AM) and >= 3 PM (>= 2 Full PM)
+      if (d.date !== '2026-12-25') {
+        if (am < 3 || fullAm < 2 || pm < 3 || fullPm < 2) shortageDays++;
       }
-      rotatingEmpNos.forEach(id => {
+      if (trAm > srAm || trPm > srPm) ratioViolations++;
+
+      // Vanessa (Trainee) Friday HQ Training invariant + Night Half usage
+      const vanShift = d.shifts['PMG04331'];
+      if (d.dayOfWeek === 'Friday' && vanShift !== '8H_0730-1630' && vanShift !== '8H_1230-2130') {
+        traineeFriViolations++;
+      }
+      if (vanShift === '5H_1630-2130') vanNight5hCount++;
+      if (vanShift === '5H_0730-1230') vanMorn5hCount++;
+
+      // Penny (PMG02694) exact 7-day preference adherence across all 35 days
+      const pShift = d.shifts['PMG02694'];
+      const pPref = pennyTm.dayPrefs[d.dayOfWeek];
+      if (pPref === 'Morning Half (5H)' && pShift !== '5H_0730-1230') pennyPrefViolations++;
+      else if (pPref === 'RD' && pShift !== 'RD') pennyPrefViolations++;
+      else if (pPref === 'Morning Preferred' && pShift !== '8H_0730-1630') pennyPrefViolations++;
+      else if (pPref === 'Night Preferred' && pShift !== '8H_1230-2130' && pShift !== '5H_1630-2130') pennyPrefViolations++;
+
+      peerEmpNos.forEach(id => {
         const s = d.shifts[id];
         if (s === '8H_0730-1630' || s === '4H_0730-1130' || s === '5H_0730-1230') amTotals[id]++;
-        if (s === '8H_1230-2130') pmTotals[id]++;
+        if (s === '8H_1230-2130' || s === '5H_1630-2130') pmTotals[id]++;
+      });
+
+      rotatingEmpNos.forEach(id => {
         if (idx > 0) {
           const prevS = decSched.days[idx - 1].shifts[id];
-          if (prevS === '8H_1230-2130' && s === '8H_0730-1630') fatigueCount++;
+          const curS = d.shifts[id];
+          if ((prevS === '8H_1230-2130' || prevS === '5H_1630-2130') && curS === '8H_0730-1630') {
+            fullTurnaroundCount++;
+            if (id === 'PMG01780' || id === 'PMG04331') nonMandatedTurnarounds++;
+          }
         }
       });
     });
 
     assert.strictEqual(shortageDays, 0, `Expected 0 manpower shortage days in Dec 2026, got ${shortageDays}`);
-    // Fatigue transitions are bounded and only occur when explicitly mandated by teammates' day-specific preferences (e.g. Fiona Mon Night -> Tue Morning)
-    assert(fatigueCount <= 8, `Expected turnaround fatigue <= 8 matching user-configured dayPrefs, got ${fatigueCount}`);
+    assert.strictEqual(ratioViolations, 0, `Expected 0 Senior:Trainee ratio violations in Dec 2026, got ${ratioViolations}`);
+    assert.strictEqual(traineeFriViolations, 0, `Expected 0 Trainee Friday HQ training violations in Dec 2026, got ${traineeFriViolations}`);
+    assert.strictEqual(pennyPrefViolations, 0, `Expected 0 Penny preference violations across all 35 days, got ${pennyPrefViolations}`);
+    assert.strictEqual(vanNight5hCount, 5, `Expected Vanessa to take 5 Night Half (5H_1630-2130) shifts across 5 weeks, got ${vanNight5hCount}`);
+    assert.strictEqual(vanMorn5hCount, 0, `Expected Vanessa to take 0 Morning Half shifts in Dec 2026, got ${vanMorn5hCount}`);
+    assert(nonMandatedTurnarounds <= 4, `Expected low turnarounds for Fiona & Vanessa (${nonMandatedTurnarounds}), total full turnarounds=${fullTurnaroundCount}`);
 
     const amVals = Object.values(amTotals);
     const pmVals = Object.values(pmTotals);
     const amSpread = Math.max(...amVals) - Math.min(...amVals);
     const pmSpread = Math.max(...pmVals) - Math.min(...pmVals);
-    assert(amSpread <= 2, `Expected rotating AM shift spread <= 2 across peers, got ${amSpread}`);
-    assert(pmSpread <= 2, `Expected rotating PM shift spread <= 2 across peers, got ${pmSpread}`);
+    assert(amSpread <= 2, `Expected flexible peer AM shift spread <= 2 across peers, got ${amSpread} (${JSON.stringify(amTotals)})`);
+    assert(pmSpread <= 2, `Expected flexible peer PM shift spread <= 2 across peers, got ${pmSpread} (${JSON.stringify(pmTotals)})`);
   });
 
   // 10. Caretaker Shared Phone Number Support in Patient Care (Elderly / Child Dependents)
@@ -1088,6 +1171,185 @@ function createBrowserSandbox(fetchImpl) {
     assert(fallbackNames.includes('01_Passport_Photo.jpg'), 'Fallback must download passport photo');
     assert(fallbackNames.includes('02_MyKad_IC.pdf'), 'Fallback must download IC');
     assert(fallbackNames.includes('03_SPM_Result.pdf'), 'Fallback must download SPM');
+  });
+
+  // 15. Penny (PMG02694) Preference Persistence, Pre-Fix Poisoned Snapshot Self-Heal & Stale Cloud Overwrite Protection
+  await testAsync('Penny (PMG02694) preferences self-heal legacy poisoned snapshot, persist user edits via modal, and block stale cloud overwrites', async () => {
+    const odSrc = fs.readFileSync(path.join(ROOT, 'js', 'onedrive-sync.js'), 'utf8');
+    const schedSrc = fs.readFileSync(path.join(ROOT, 'js', 'scheduler.js'), 'utf8');
+
+    const { ctx, win, doc, store } = createBrowserSandbox();
+    let mockCloudFilePayload = null;
+    const mockDirHandle = {
+      getFileHandle: async (name) => {
+        if (!mockCloudFilePayload || name !== 'schedule_preferences_KS01.json') {
+          throw new Error('File not found');
+        }
+        return {
+          getFile: async () => ({
+            text: async () => JSON.stringify(mockCloudFilePayload)
+          })
+        };
+      }
+    };
+
+    // Mock modal select queries for saveDayPrefsModal test
+    let modalSelects = [];
+    let tableRows = [];
+    const origQuerySelectorAll = doc.querySelectorAll;
+    doc.querySelectorAll = (sel) => {
+      if (sel === '#dayPrefsModalForm .day-pref-select') return modalSelects;
+      if (sel === '#schedulerTeammatesBody tr[data-emp-no]') return tableRows;
+      return origQuerySelectorAll(sel);
+    };
+
+    doc.getElementById('schedulerBranchSelect').value = 'KS01';
+    doc.getElementById('schedulerMonth').value = '2026-12';
+    doc.getElementById('sched-month').value = '2026-12';
+
+    vm.runInContext(odSrc, ctx);
+    vm.runInContext(schedSrc, ctx);
+
+    const makePoisonedSnapshot = () => {
+      vm.runInContext(`loadTeammates('KS01', '2026-12', true);`, ctx);
+      const team = JSON.parse(store.get('pmg_staff_preferences_v2_KS01'));
+      const penny = team.find(t => t.empNo === 'PMG02694');
+      penny.restDayPref = 'Tuesday';
+      penny.halfDayPref = 'Friday Morning (5H)';
+      penny.dayPrefs = {
+        Monday: 'Flexible',
+        Tuesday: 'RD',
+        Wednesday: 'Morning Preferred',
+        Thursday: 'Night Preferred',
+        Friday: 'Morning Half (5H)',
+        Saturday: 'Morning Preferred',
+        Sunday: 'Night Preferred'
+      };
+      return team;
+    };
+
+    const poisonedTeam = makePoisonedSnapshot();
+
+    // A. Pre-fix poisoned localStorage snapshot (< 2026-11-18T13:12:00.000Z) self-heals on loadTeammates('KS01', '2026-12', true)
+    store.set('pmg_staff_preferences_v2_KS01', JSON.stringify(poisonedTeam));
+    store.set('pmg_staff_preferences_v2_KS01_updatedAt', '2026-11-18T12:39:53.150Z');
+
+    vm.runInContext(`loadTeammates('KS01', '2026-12', true);`, ctx);
+    const healedTeam = JSON.parse(store.get('pmg_staff_preferences_v2_KS01'));
+    const healedPenny = healedTeam.find(t => t.empNo === 'PMG02694');
+    assert.strictEqual(healedPenny.dayPrefs.Monday, 'Morning Half (5H)', 'Self-heal must restore Penny Monday to Morning Half (5H)');
+    assert.strictEqual(healedPenny.dayPrefs.Friday, 'Night Preferred', 'Self-heal must restore Penny Friday to Night Preferred');
+    assert.strictEqual(healedPenny.halfDayPref, 'Monday Morning (5H)', 'Self-heal must restore Penny halfDayPref to Monday Morning (5H)');
+    assert.strictEqual(
+      store.get('pmg_staff_preferences_v2_KS01_updatedAt'),
+      '2026-11-18T13:12:01.000Z',
+      'Self-heal must advance _updatedAt past PENNY_REVERT_FIX_CUTOFF'
+    );
+
+    // B. Stale cloud payload (older or equal timestamp) must NEVER overwrite healed local preferences
+    const staleRejected = win.applyCloudPreferences('KS01', {
+      lastUpdated: '2026-11-18T12:39:53.150Z',
+      data: poisonedTeam
+    });
+    assert.strictEqual(staleRejected, false, 'applyCloudPreferences must reject stale cloud timestamp older than local');
+    const afterStaleTeam = JSON.parse(store.get('pmg_staff_preferences_v2_KS01'));
+    const afterStalePenny = afterStaleTeam.find(t => t.empNo === 'PMG02694');
+    assert.strictEqual(afterStalePenny.dayPrefs.Monday, 'Morning Half (5H)', 'Stale cloud push must not revert Penny Monday');
+    assert.strictEqual(afterStalePenny.dayPrefs.Friday, 'Night Preferred', 'Stale cloud push must not revert Penny Friday');
+
+    // C. User edit saved via saveDayPrefsModal persists cleanly across reloads & never self-reverts even if edited after cutoff
+    const editedDayPrefs = {
+      Monday: 'Morning Half (5H)',
+      Tuesday: 'RD',
+      Wednesday: 'Morning Preferred',
+      Thursday: 'Night Preferred',
+      Friday: 'Night Only',
+      Saturday: 'Morning Preferred',
+      Sunday: 'Night Preferred'
+    };
+    modalSelects = Object.entries(editedDayPrefs).map(([day, val]) => ({
+      value: val,
+      getAttribute: (attr) => (attr === 'data-day' ? day : null)
+    }));
+    // Provide row DOM reflecting updated Penny so saveTeammatePreferences() writes updated list
+    tableRows = healedTeam.map(tm => ({
+      getAttribute: (attr) => (attr === 'data-emp-no' ? tm.empNo : null),
+      querySelector: (cls) => {
+        if (cls === '.tm-rest-pref') return { value: tm.restDayPref };
+        if (cls === '.tm-half-pref') return { value: tm.halfDayPref.split(' ')[0] };
+        if (cls === '.tm-shift-pref') return { value: tm.shiftPref };
+        if (cls === '.tm-position') return { value: tm.position };
+        if (cls === '.tm-race') return { value: tm.race };
+        return null;
+      }
+    }));
+
+    vm.runInContext(`editingTeammateEmpNo = 'PMG02694'; saveDayPrefsModal();`, ctx);
+    const postSaveTs = store.get('pmg_staff_preferences_v2_KS01_updatedAt');
+    assert(postSaveTs && new Date(postSaveTs) >= new Date('2026-11-18T13:12:00.000Z'), 'User save must store a fresh post-fix _updatedAt timestamp');
+
+    vm.runInContext(`loadTeammates('KS01', '2026-12', true);`, ctx);
+    const reloadedPenny = vm.runInContext(`currentTeammates.find(t => t.empNo === 'PMG02694')`, ctx);
+    assert.strictEqual(reloadedPenny.dayPrefs.Friday, 'Night Only', 'Reloading after modal save must preserve user-edited Friday Night Only preference');
+    assert.strictEqual(reloadedPenny.dayPrefs.Monday, 'Morning Half (5H)', 'Reloading after modal save must preserve Penny Monday Morning Half (5H)');
+
+    // D. OneDrive sync layer: older OneDrive snapshot must NOT overwrite local or reset local _updatedAt
+    const od = win.pmgOneDriveSync;
+    od.mode = 'BRANCH';
+    od.activeBranchFolder = 'KOTA SENTOSA';
+    od.rootHandle = mockDirHandle;
+    mockCloudFilePayload = {
+      branchCode: 'KS01',
+      lastUpdated: '2026-11-18T12:00:00.000Z',
+      preferences: poisonedTeam
+    };
+    const staleOdResult = await od.loadTeammatePreferencesFromOneDrive('KS01');
+    assert.strictEqual(staleOdResult, null, 'OneDrive loader must return null when cloud snapshot is older than local');
+    assert.strictEqual(
+      store.get('pmg_staff_preferences_v2_KS01_updatedAt'),
+      postSaveTs,
+      'OneDrive loader must NOT clobber local _updatedAt with older cloud timestamp'
+    );
+
+    // E. Fresh PC with poisoned OneDrive snapshot (< cutoff) self-heals on applyCloudPreferences without sticking old timestamp
+    store.delete('pmg_staff_preferences_v2_KS01');
+    store.delete('pmg_staff_preferences_v2_KS01_updatedAt');
+    mockCloudFilePayload = {
+      branchCode: 'KS01',
+      lastUpdated: '2026-11-18T12:39:53.150Z',
+      preferences: poisonedTeam
+    };
+    const freshOdPrefs = await od.loadTeammatePreferencesFromOneDrive('KS01');
+    assert(Array.isArray(freshOdPrefs) && freshOdPrefs.length > 0, 'Fresh PC should load OneDrive preferences');
+    assert.strictEqual(
+      store.get('pmg_staff_preferences_v2_KS01_updatedAt'),
+      undefined,
+      'OneDrive loader must not pre-stamp local _updatedAt before applyCloudPreferences applies repair'
+    );
+    const odApplied = od.applyCloudPreferences('KS01', {
+      lastUpdated: store.get('pmg_schedule_prefs_cloud_updatedAt_KS01'),
+      data: freshOdPrefs
+    });
+    assert.strictEqual(odApplied, true, 'OneDrive applyCloudPreferences should apply to fresh PC');
+    const healedViaOd = JSON.parse(store.get('pmg_staff_preferences_v2_KS01')).find(t => t.empNo === 'PMG02694');
+    assert.strictEqual(healedViaOd.dayPrefs.Monday, 'Morning Half (5H)', 'OneDrive applyCloudPreferences must self-heal poisoned Penny Monday');
+    assert.strictEqual(healedViaOd.dayPrefs.Friday, 'Night Preferred', 'OneDrive applyCloudPreferences must self-heal poisoned Penny Friday');
+    assert.strictEqual(
+      store.get('pmg_staff_preferences_v2_KS01_updatedAt'),
+      '2026-11-18T13:12:01.000Z',
+      'OneDrive self-heal must advance _updatedAt past cutoff'
+    );
+
+    // F. Newer valid cloud update from another PC propagates cleanly
+    const newerTeam = JSON.parse(store.get('pmg_staff_preferences_v2_KS01'));
+    newerTeam.find(t => t.empNo === 'PMG02694').dayPrefs.Wednesday = 'Morning Only';
+    const newerAccepted = win.applyCloudPreferences('KS01', {
+      lastUpdated: '2099-01-01T00:00:00.000Z',
+      data: newerTeam
+    });
+    assert.strictEqual(newerAccepted, true, 'Newer valid cloud payload must propagate via applyCloudPreferences');
+    const syncedPenny = JSON.parse(store.get('pmg_staff_preferences_v2_KS01')).find(t => t.empNo === 'PMG02694');
+    assert.strictEqual(syncedPenny.dayPrefs.Wednesday, 'Morning Only', 'Newer cloud preference update must be reflected locally');
   });
 
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);
