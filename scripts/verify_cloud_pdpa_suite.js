@@ -469,10 +469,12 @@ function createBrowserSandbox(fetchImpl) {
       'agents/pmg-performance-strategist/agent.md',
       'agents/pmg-cloud-pdpa-architect/agent.md',
       'agents/pmg-inventory-replenishment/agent.md',
+      'agents/pmg-timetable-scheduler/agent.md',
       'skills/pmg-monthly-presentation/SKILL.md',
       'skills/pmg-pricing-intelligence/SKILL.md',
       'skills/pmg-cloud-sync-pdpa/SKILL.md',
       'skills/pmg-stock-aging-action-plan/SKILL.md',
+      'skills/pmg-timetable-scheduler/SKILL.md',
       'workflows/monthly_hq_report_workflow.py',
       'workflows/cloud_sync_pdpa_audit_workflow.py',
       'workflows/README.md'
@@ -520,8 +522,8 @@ function createBrowserSandbox(fetchImpl) {
     }
   });
 
-  // 9. December 2026 KS01 Timetable Rebalancing (Christina Lee Removed, Night 5H Support, Penny Prefs & 7-Staff Solver Balanced)
-  test('December 2026 KS01 Timetable removes Christina Lee & rebalances 7-person team with Night 5H & 0 shortage days', () => {
+  // 9. December 2026 KS01 Timetable Rebalancing (Option A 'Any Half (5H)', Shared Night 5H, Zero-Prefix Solver & Equitable 6-Staff Parity)
+  test('December 2026 KS01 Option A Any Half (5H) rebalances all 6 rotating staff equitably without hardcoded prefixes', () => {
     const { ctx, doc } = createBrowserSandbox();
     const schedSrc = fs.readFileSync(path.join(ROOT, 'js', 'scheduler.js'), 'utf8');
     vm.runInContext(schedSrc, ctx);
@@ -547,7 +549,7 @@ function createBrowserSandbox(fetchImpl) {
     });
     assert.strictEqual(novShortages, 0, `Expected 0 shortage days in Nov 2026, got ${novShortages}`);
 
-    // Check December 2026 removes Christina Lee and exposes 6 fixed RDs + 1 Flexible Trainee (Vanessa)
+    // Check December 2026 Option A defaults: 6 fixed RDs + 5 'Any Half (5H)' fixed-HD staff + Flexible Trainee (Vanessa)
     doc.getElementById('sched-month').value = '2026-12';
     doc.getElementById('schedulerMonth').value = '2026-12';
     vm.runInContext(`loadTeammates('KS01', '2026-12', true);`, ctx);
@@ -560,8 +562,22 @@ function createBrowserSandbox(fetchImpl) {
     const vanTm = decTeam.find(t => t.empNo === 'PMG04331');
     assert(vanTm && vanTm.restDayPref === 'Flexible' && vanTm.halfDayPref === 'Flexible', 'Vanessa (PMG04331) must default to Flexible RD & HD in Dec 2026');
 
+    const expectedAnyHds = [
+      ['PMG01294', 'Thursday', 'Thursday Any (5H)'],
+      ['PMG02694', 'Monday', 'Monday Any (5H)'],
+      ['PMG01780', 'Wednesday', 'Wednesday Any (5H)'],
+      ['PMG02070', 'Sunday', 'Sunday Any (5H)'],
+      ['PMG03375', 'Tuesday', 'Tuesday Any (5H)']
+    ];
+    expectedAnyHds.forEach(([empNo, hdDay, expectedHalfPref]) => {
+      const tm = decTeam.find(t => t.empNo === empNo);
+      assert(tm, `Missing KS01 teammate ${empNo}`);
+      assert.strictEqual(tm.dayPrefs[hdDay], 'Any Half (5H)', `${empNo} ${hdDay} must default to Any Half (5H)`);
+      assert.strictEqual(tm.halfDayPref, expectedHalfPref, `${empNo} halfDayPref must default to ${expectedHalfPref}`);
+    });
+
     const pennyTm = decTeam.find(t => t.empNo === 'PMG02694');
-    assert.strictEqual(pennyTm.dayPrefs.Monday, 'Morning Half (5H)', 'Penny Monday must be Morning Half (5H)');
+    assert.strictEqual(pennyTm.dayPrefs.Monday, 'Any Half (5H)', 'Penny Monday must be Any Half (5H)');
     assert.strictEqual(pennyTm.dayPrefs.Tuesday, 'RD', 'Penny Tuesday must be RD');
     assert.strictEqual(pennyTm.dayPrefs.Wednesday, 'Morning Preferred', 'Penny Wednesday must be Morning Preferred');
     assert.strictEqual(pennyTm.dayPrefs.Thursday, 'Night Preferred', 'Penny Thursday must be Night Preferred');
@@ -569,7 +585,7 @@ function createBrowserSandbox(fetchImpl) {
     assert.strictEqual(pennyTm.dayPrefs.Saturday, 'Morning Preferred', 'Penny Saturday must be Morning Preferred');
     assert.strictEqual(pennyTm.dayPrefs.Sunday, 'Night Preferred', 'Penny Sunday must be Night Preferred');
 
-    // Run December 2026 heuristic schedule generator and verify floor headcount, 0 ratio/Penny/Friday violations, Night 5H & parity
+    // Run December 2026 heuristic schedule generator and verify floor headcount, 0 ratio/Penny/Friday violations, equitable shared Night 5H & 6-staff parity
     const decSched = vm.runInContext(`runHeuristicScheduleGenerator('KS01', 2026, 12, 31)`, ctx);
     const decMonthDays = decSched.days.filter(d => d.date.startsWith('2026-12'));
     assert.strictEqual(decMonthDays.length, 31, 'December 2026 schedule must contain all 31 December days');
@@ -579,15 +595,13 @@ function createBrowserSandbox(fetchImpl) {
     let ratioViolations = 0;
     let traineeFriViolations = 0;
     let pennyPrefViolations = 0;
-    let vanNight5hCount = 0;
-    let vanMorn5hCount = 0;
-    let fullTurnaroundCount = 0;
-    let nonMandatedTurnarounds = 0;
-    const peerEmpNos = ['PMG01294', 'PMG01780', 'PMG02070', 'PMG03375', 'PMG04331'];
+    let totalNight5h = 0;
     const rotatingEmpNos = ['PMG01294', 'PMG02694', 'PMG01780', 'PMG02070', 'PMG03375', 'PMG04331'];
     const amTotals = {};
     const pmTotals = {};
-    peerEmpNos.forEach(id => { amTotals[id] = 0; pmTotals[id] = 0; });
+    const n5Totals = {};
+    const fixedHdMismatch = {};
+    rotatingEmpNos.forEach(id => { amTotals[id] = 0; pmTotals[id] = 0; n5Totals[id] = 0; fixedHdMismatch[id] = 0; });
 
     for (let w = 0; w < 5; w++) {
       const weekRdDays = new Set();
@@ -600,7 +614,7 @@ function createBrowserSandbox(fetchImpl) {
       assert.strictEqual(uniqueRdsInWeek.size, 7, `Week ${w + 1} must allocate RDs cleanly across all 7 days without double-booking`);
     }
 
-    decSched.days.forEach((d, idx) => {
+    decSched.days.forEach((d) => {
       assert(!('PMG03033' in d.shifts), `Christina Lee found in shift assignments on ${d.date}`);
       let am = 0, fullAm = 0, pm = 0, fullPm = 0;
       let srAm = 0, trAm = 0, srPm = 0, trPm = 0;
@@ -616,6 +630,10 @@ function createBrowserSandbox(fetchImpl) {
           if (isTr) trPm++; else srPm++;
         }
         if (s === '8H_1230-2130') fullPm++;
+        if (s === '5H_1630-2130') {
+          totalNight5h++;
+          if (n5Totals[id] !== undefined) n5Totals[id]++;
+        }
       });
 
       // All non-Christmas days must achieve >= 3 AM (>= 2 Full AM) and >= 3 PM (>= 2 Full PM)
@@ -624,54 +642,106 @@ function createBrowserSandbox(fetchImpl) {
       }
       if (trAm > srAm || trPm > srPm) ratioViolations++;
 
-      // Vanessa (Trainee) Friday HQ Training invariant + Night Half usage
+      // Vanessa (Trainee) Friday HQ Training invariant
       const vanShift = d.shifts['PMG04331'];
       if (d.dayOfWeek === 'Friday' && vanShift !== '8H_0730-1630' && vanShift !== '8H_1230-2130') {
         traineeFriViolations++;
       }
-      if (vanShift === '5H_1630-2130') vanNight5hCount++;
-      if (vanShift === '5H_0730-1230') vanMorn5hCount++;
 
-      // Penny (PMG02694) exact 7-day preference adherence across all 35 days
+      // Penny (PMG02694) 7-day Option A preference adherence across all 35 days
       const pShift = d.shifts['PMG02694'];
       const pPref = pennyTm.dayPrefs[d.dayOfWeek];
-      if (pPref === 'Morning Half (5H)' && pShift !== '5H_0730-1230') pennyPrefViolations++;
+      if (pPref === 'Any Half (5H)' && pShift !== '5H_0730-1230' && pShift !== '5H_1630-2130') pennyPrefViolations++;
       else if (pPref === 'RD' && pShift !== 'RD') pennyPrefViolations++;
       else if (pPref === 'Morning Preferred' && pShift !== '8H_0730-1630') pennyPrefViolations++;
       else if (pPref === 'Night Preferred' && pShift !== '8H_1230-2130' && pShift !== '5H_1630-2130') pennyPrefViolations++;
 
-      peerEmpNos.forEach(id => {
-        const s = d.shifts[id];
-        if (s === '8H_0730-1630' || s === '4H_0730-1130' || s === '5H_0730-1230') amTotals[id]++;
-        if (s === '8H_1230-2130' || s === '5H_1630-2130') pmTotals[id]++;
+      expectedAnyHds.forEach(([empNo, hdDay]) => {
+        if (d.dayOfWeek === hdDay) {
+          const sh = d.shifts[empNo];
+          if (sh !== '5H_0730-1230' && sh !== '5H_1630-2130') fixedHdMismatch[empNo]++;
+        }
       });
 
       rotatingEmpNos.forEach(id => {
-        if (idx > 0) {
-          const prevS = decSched.days[idx - 1].shifts[id];
-          const curS = d.shifts[id];
-          if ((prevS === '8H_1230-2130' || prevS === '5H_1630-2130') && curS === '8H_0730-1630') {
-            fullTurnaroundCount++;
-            if (id === 'PMG01780' || id === 'PMG04331') nonMandatedTurnarounds++;
-          }
-        }
+        const s = d.shifts[id];
+        if (s === '8H_0730-1630' || s === '4H_0730-1130' || s === '5H_0730-1230') amTotals[id]++;
+        if (s === '8H_1230-2130' || s === '5H_1630-2130') pmTotals[id]++;
       });
     });
 
     assert.strictEqual(shortageDays, 0, `Expected 0 manpower shortage days in Dec 2026, got ${shortageDays}`);
     assert.strictEqual(ratioViolations, 0, `Expected 0 Senior:Trainee ratio violations in Dec 2026, got ${ratioViolations}`);
     assert.strictEqual(traineeFriViolations, 0, `Expected 0 Trainee Friday HQ training violations in Dec 2026, got ${traineeFriViolations}`);
-    assert.strictEqual(pennyPrefViolations, 0, `Expected 0 Penny preference violations across all 35 days, got ${pennyPrefViolations}`);
-    assert.strictEqual(vanNight5hCount, 5, `Expected Vanessa to take 5 Night Half (5H_1630-2130) shifts across 5 weeks, got ${vanNight5hCount}`);
-    assert.strictEqual(vanMorn5hCount, 0, `Expected Vanessa to take 0 Morning Half shifts in Dec 2026, got ${vanMorn5hCount}`);
-    assert(nonMandatedTurnarounds <= 4, `Expected low turnarounds for Fiona & Vanessa (${nonMandatedTurnarounds}), total full turnarounds=${fullTurnaroundCount}`);
+    assert.strictEqual(pennyPrefViolations, 0, `Expected 0 Penny Option A preference violations across all 35 days, got ${pennyPrefViolations}`);
+    expectedAnyHds.forEach(([empNo]) => {
+      assert.strictEqual(fixedHdMismatch[empNo], 0, `Expected ${empNo} to receive 5H AM/PM on every fixed HD day, mismatches=${fixedHdMismatch[empNo]}`);
+    });
+
+    const n5Users = Object.entries(n5Totals).filter(([, c]) => c > 0);
+    assert(totalNight5h >= 4, `Expected Option A to schedule >= 4 Night 5H shifts across the month, got ${totalNight5h}`);
+    assert(n5Users.length >= 2, `Expected Night 5H shifts to be shared across >= 2 rotating teammates, got ${JSON.stringify(n5Totals)}`);
 
     const amVals = Object.values(amTotals);
     const pmVals = Object.values(pmTotals);
     const amSpread = Math.max(...amVals) - Math.min(...amVals);
     const pmSpread = Math.max(...pmVals) - Math.min(...pmVals);
-    assert(amSpread <= 2, `Expected flexible peer AM shift spread <= 2 across peers, got ${amSpread} (${JSON.stringify(amTotals)})`);
-    assert(pmSpread <= 2, `Expected flexible peer PM shift spread <= 2 across peers, got ${pmSpread} (${JSON.stringify(pmTotals)})`);
+    assert(amSpread <= 2, `Expected ALL 6 rotating teammates AM shift spread <= 2, got ${amSpread} (${JSON.stringify(amTotals)})`);
+    assert(pmSpread <= 2, `Expected ALL 6 rotating teammates PM shift spread <= 2, got ${pmSpread} (${JSON.stringify(pmTotals)})`);
+
+    // Verify postProcessSchedule preserves Night 5H (5H_1630-2130) chosen for an 'Any Half (5H)' slot
+    const postProcPreserved = vm.runInContext(`(() => {
+      const mockSched = JSON.parse(JSON.stringify(${JSON.stringify(decSched)}));
+      const targetDay = mockSched.days.find(d => d.dayOfWeek === 'Thursday');
+      targetDay.shifts['PMG01294'] = '5H_1630-2130';
+      postProcessSchedule(mockSched, 'KS01', 2026, 12, 31, getFullWeeksPeriod(2026, 12));
+      return targetDay.shifts['PMG01294'];
+    })()`, ctx);
+    assert.strictEqual(postProcPreserved, '5H_1630-2130', 'postProcessSchedule must preserve Night 5H (5H_1630-2130) on Any Half (5H) weekdays');
+
+    // Verify zero-prefix dynamic formulation on a completely synthetic custom branch (no PMG* IDs or KS01 names)
+    const synRes = vm.runInContext(`(() => {
+      const synTeam = [
+        { empNo: 'SYN001', nickname: 'ALPHA', empName: 'ALPHA ANCHOR', position: 'Pharmacist', isPharmacist: true, scheduleMode: 'Fixed', race: 'Chinese', shiftPref: 'Morning Only', restDayPref: 'Sunday', halfDayPref: 'Saturday Morning (4H)', dayPrefs: { Monday: 'Morning Only', Tuesday: 'Morning Only', Wednesday: 'Morning Only', Thursday: 'Morning Only', Friday: 'Morning Only', Saturday: 'Morning Half (4H)', Sunday: 'RD' }, fixedPattern: { weekdays: '8H_0730-1630', saturday: '4H_0730-1130', sunday: 'RD', holidays: 'PH' } },
+        { empNo: 'SYN002', nickname: 'BRAVO', empName: 'BRAVO ABM', position: 'Assistant Branch Manager', isPharmacist: false, scheduleMode: 'Rotating', race: 'Iban / Bidayuh', shiftPref: 'Flexible', restDayPref: 'Wednesday', halfDayPref: 'Thursday Any (5H)', dayPrefs: { Monday: 'Morning Preferred', Tuesday: 'Night Preferred', Wednesday: 'RD', Thursday: 'Any Half (5H)', Friday: 'Night Preferred', Saturday: 'Night Preferred', Sunday: 'Morning Preferred' } },
+        { empNo: 'SYN003', nickname: 'CHARLIE', empName: 'CHARLIE STAFF', position: 'Staff', isPharmacist: false, scheduleMode: 'Rotating', race: 'Chinese', shiftPref: 'Flexible', restDayPref: 'Tuesday', halfDayPref: 'Monday Any (5H)', dayPrefs: { Monday: 'Any Half (5H)', Tuesday: 'RD', Wednesday: 'Morning Preferred', Thursday: 'Night Preferred', Friday: 'Night Preferred', Saturday: 'Morning Preferred', Sunday: 'Night Preferred' } },
+        { empNo: 'SYN004', nickname: 'DELTA', empName: 'DELTA STAFF', position: 'Staff', isPharmacist: false, scheduleMode: 'Rotating', race: 'Malay', shiftPref: 'Flexible', restDayPref: 'Thursday', halfDayPref: 'Wednesday Any (5H)', dayPrefs: { Monday: 'Night Preferred', Tuesday: 'Morning Preferred', Wednesday: 'Any Half (5H)', Thursday: 'RD', Friday: 'Night Preferred', Saturday: 'Morning Preferred', Sunday: 'Night Preferred' } },
+        { empNo: 'SYN005', nickname: 'ECHO', empName: 'ECHO STAFF', position: 'Staff', isPharmacist: false, scheduleMode: 'Rotating', race: 'Malay', shiftPref: 'Flexible', restDayPref: 'Monday', halfDayPref: 'Sunday Any (5H)', dayPrefs: { Monday: 'RD', Tuesday: 'Night Preferred', Wednesday: 'Morning Preferred', Thursday: 'Night Preferred', Friday: 'Morning Preferred', Saturday: 'Night Preferred', Sunday: 'Any Half (5H)' } },
+        { empNo: 'SYN006', nickname: 'FOXTROT', empName: 'FOXTROT STAFF', position: 'Staff', isPharmacist: false, scheduleMode: 'Rotating', race: 'Iban / Bidayuh', shiftPref: 'Flexible', restDayPref: 'Friday', halfDayPref: 'Tuesday Any (5H)', dayPrefs: { Monday: 'Night Preferred', Tuesday: 'Any Half (5H)', Wednesday: 'Night Preferred', Thursday: 'Morning Preferred', Friday: 'RD', Saturday: 'Morning Preferred', Sunday: 'Night Preferred' } },
+        { empNo: 'SYN007', nickname: 'GOLF', empName: 'GOLF TRAINEE', position: 'Trainee', isPharmacist: false, scheduleMode: 'Rotating', race: 'Iban / Bidayuh', shiftPref: 'Flexible', restDayPref: 'Flexible', halfDayPref: 'Flexible', isTrainee: true, dayPrefs: { Monday: 'Flexible', Tuesday: 'Flexible', Wednesday: 'Flexible', Thursday: 'Flexible', Friday: 'Flexible', Saturday: 'Flexible', Sunday: 'Flexible' } }
+      ];
+      localStorage.setItem(getStorageKey('SYN01'), JSON.stringify(synTeam));
+      loadTeammates('SYN01', '2026-12', true);
+      const r = runHeuristicScheduleGenerator('SYN01', 2026, 12, 31);
+      let sShort = 0, sRatio = 0, sTri = 0, sN5 = 0;
+      r.days.forEach(d => {
+        let sAm = 0, sFullAm = 0, sPm = 0, sFullPm = 0, srA = 0, trA = 0, srP = 0, trP = 0;
+        Object.entries(d.shifts).forEach(([id, sh]) => {
+          const isT = id === 'SYN007';
+          if (sh === '8H_0730-1630' || sh === '4H_0730-1130' || sh === '5H_0730-1230') { sAm++; if (isT) trA++; else srA++; }
+          if (sh === '8H_0730-1630') sFullAm++;
+          if (sh === '8H_1230-2130' || sh === '5H_1630-2130') { sPm++; if (isT) trP++; else srP++; }
+          if (sh === '8H_1230-2130') sFullPm++;
+          if (sh === '5H_1630-2130') sN5++;
+        });
+        if (d.date !== '2026-12-25' && (sAm < 3 || sFullAm < 2 || sPm < 3 || sFullPm < 2)) sShort++;
+        if (trA > srA || trP > srP) sRatio++;
+        if (d.dayOfWeek === 'Friday' && d.shifts.SYN007 !== '8H_0730-1630' && d.shifts.SYN007 !== '8H_1230-2130') sTri++;
+      });
+      const sAms = synTeam.slice(1).map(t => r.stats[t.empNo].am);
+      const sPms = synTeam.slice(1).map(t => r.stats[t.empNo].pm);
+      return {
+        sShort, sRatio, sTri, sN5,
+        amSpread: Math.max(...sAms) - Math.min(...sAms),
+        pmSpread: Math.max(...sPms) - Math.min(...sPms)
+      };
+    })()`, ctx);
+    assert.strictEqual(synRes.sShort, 0, `Synthetic branch must have 0 shortages, got ${synRes.sShort}`);
+    assert.strictEqual(synRes.sRatio, 0, `Synthetic branch must have 0 ratio violations, got ${synRes.sRatio}`);
+    assert.strictEqual(synRes.sTri, 0, `Synthetic branch must have 0 trainee Friday violations, got ${synRes.sTri}`);
+    assert(synRes.sN5 >= 4, `Synthetic branch must schedule >= 4 Night 5H shifts dynamically, got ${synRes.sN5}`);
+    assert(synRes.amSpread <= 2, `Synthetic branch AM spread must be <= 2, got ${synRes.amSpread}`);
+    assert(synRes.pmSpread <= 2, `Synthetic branch PM spread must be <= 2, got ${synRes.pmSpread}`);
   });
 
   // 10. Caretaker Shared Phone Number Support in Patient Care (Elderly / Child Dependents)

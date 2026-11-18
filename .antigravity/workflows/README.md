@@ -9,11 +9,13 @@ This directory is automatically discovered by Antigravity (`.agents/`) and mirro
   - `pmg-performance-strategist` — YoY KPIs, 3M teammate tracking, 6M aging, HQ `.pptx` decks
   - `pmg-cloud-pdpa-architect` — Malaysia PDPA patient medical firewall + Google Cloud sync
   - `pmg-inventory-replenishment` — Smart Inventory POs, Stock Expiry, Returns/CN
+  - `pmg-timetable-scheduler` — Dynamic zero-prefix roster scheduling, 'Any Half (5H)', & PMG Visual Excel
 - `skills/` — On-demand domain runbooks (`SKILL.md`):
   - `pmg-monthly-presentation`
   - `pmg-pricing-intelligence`
   - `pmg-cloud-sync-pdpa`
   - `pmg-stock-aging-action-plan`
+  - `pmg-timetable-scheduler`
 - `workflows/` — Executable Antigravity `run_workflow` Python orchestration scripts:
   - `monthly_hq_report_workflow.py`
   - `cloud_sync_pdpa_audit_workflow.py`

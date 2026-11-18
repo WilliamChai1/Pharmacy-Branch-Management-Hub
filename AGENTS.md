@@ -27,8 +27,8 @@ Always use active free/current Studio models in client & script code; never rein
 
 ## 3. Antigravity Customizations (`.agents/` & `.antigravity/`)
 Custom subagents, domain `SKILL.md` skills, and Python orchestration workflows are stored in `.agents/` (and mirrored to `.antigravity/`):
-- **Agents**: `file-writer`, `pmg-pricing-analyst`, `pmg-performance-strategist`, `pmg-cloud-pdpa-architect`, `pmg-inventory-replenishment`
-- **Skills**: `pmg-monthly-presentation`, `pmg-pricing-intelligence`, `pmg-cloud-sync-pdpa`, `pmg-stock-aging-action-plan`
+- **Agents**: `file-writer`, `pmg-pricing-analyst`, `pmg-performance-strategist`, `pmg-cloud-pdpa-architect`, `pmg-inventory-replenishment`, `pmg-timetable-scheduler`
+- **Skills**: `pmg-monthly-presentation`, `pmg-pricing-intelligence`, `pmg-cloud-sync-pdpa`, `pmg-stock-aging-action-plan`, `pmg-timetable-scheduler`
 - **Workflows**: `monthly_hq_report_workflow.py`, `cloud_sync_pdpa_audit_workflow.py`
 
 ## 4. Security & Verification Commands
