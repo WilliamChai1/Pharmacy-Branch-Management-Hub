@@ -418,9 +418,12 @@ function importTimetableBackupJson(event) {
       if (parsed.teammates && Array.isArray(parsed.teammates) && parsed.teammates.length) {
         currentTeammates = parsed.teammates;
         try {
-          localStorage.setItem(getStorageKey(ttData.branch || 'KS01'), JSON.stringify(currentTeammates));
+          const bCode = (ttData.branch || 'KS01').toUpperCase();
+          localStorage.setItem(getStorageKey(bCode), JSON.stringify(currentTeammates));
+          saveLocalPreferences(bCode, currentTeammates);
         } catch (_) {}
         renderTeammatesTable();
+        saveTeammatePreferences(true);
       }
 
       // Save to localStorage and OneDrive
