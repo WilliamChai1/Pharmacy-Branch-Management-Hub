@@ -303,6 +303,7 @@ let promoFilter = {
   search: '',
   status: 'all', // 'all' | 'pending' | 'sent'
   loyalty: 'all', // 'all' | 'vip' | 'regular' | 'single'
+  language: 'all', // 'all' | 'zh' | 'bm'
   sortBy: 'recent' // 'recent' | 'qty_desc' | 'spent_desc' | 'name_asc'
 };
 let promoPreviewCustomerId = null;
@@ -881,11 +882,37 @@ function renderPromoKpis() {
   updateSendNextButton(customers, campaignId);
 }
 
+function updatePromoLangFilterDropdownCounts(customers) {
+  const select = document.getElementById('promoLangSelect');
+  if (!select || !Array.isArray(customers)) return;
+  let zhCount = 0;
+  let bmCount = 0;
+  customers.forEach(c => {
+    if (getCustomerEffectiveLanguage(c) === 'zh') zhCount++;
+    else bmCount++;
+  });
+  const optAll = select.querySelector('option[value="all"]');
+  const optZh = select.querySelector('option[value="zh"]');
+  const optBm = select.querySelector('option[value="bm"]');
+  if (optAll) optAll.textContent = `🌐 All Languages (${customers.length})`;
+  if (optZh) optZh.textContent = `🇨🇳 华语 CN (${zhCount})`;
+  if (optBm) optBm.textContent = `🇲🇾 BM / EN (${bmCount})`;
+}
+
 function updateSendNextButton(customers, campaignId) {
+  updatePromoLangFilterDropdownCounts(customers);
   const btn = document.getElementById('promoSendNextBtn');
   if (!btn) return;
 
-  const nextUnsent = customers.find(c => {
+  const langFilter = promoFilter.language || 'all';
+  const pool = langFilter === 'all'
+    ? customers
+    : customers.filter(c => {
+        const eff = getCustomerEffectiveLanguage(c);
+        return langFilter === 'zh' ? eff === 'zh' : eff !== 'zh';
+      });
+
+  const nextUnsent = pool.find(c => {
     const st = getCustomerSentStatus(campaignId, c.id);
     const val = validatePhoneNumber(c.phone);
     return (!st || !st.sent) && val.valid;
@@ -901,7 +928,8 @@ function updateSendNextButton(customers, campaignId) {
   } else {
     btn.disabled = true;
     btn.classList.add('opacity-50', 'cursor-not-allowed');
-    btn.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400"></i> <span>All ${customers.length} Customers Contacted! 🎉</span>`;
+    const langLabel = langFilter === 'zh' ? '🇨🇳 华语 ' : langFilter === 'bm' ? '🇲🇾 BM/EN ' : '';
+    btn.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400"></i> <span>All ${pool.length} ${langLabel}Customers Contacted! 🎉</span>`;
     btn.onclick = null;
   }
 }
@@ -1255,6 +1283,7 @@ function filterPromoCustomers() {
   const q = (promoFilter.search || '').trim().toLowerCase();
   const status = promoFilter.status;
   const loyalty = promoFilter.loyalty;
+  const langFilter = promoFilter.language || 'all';
 
   return rawList.filter(c => {
     // 1. Search query
@@ -1276,6 +1305,13 @@ function filterPromoCustomers() {
     if (loyalty === 'vip' && qty < 3) return false;
     if (loyalty === 'regular' && qty !== 2) return false;
     if (loyalty === 'single' && qty !== 1) return false;
+
+    // 4. Preferred Language filter
+    if (langFilter !== 'all') {
+      const effLang = getCustomerEffectiveLanguage(c);
+      if (langFilter === 'zh' && effLang !== 'zh') return false;
+      if (langFilter === 'bm' && effLang === 'zh') return false;
+    }
 
     return true;
   }).sort((a, b) => {
@@ -1654,6 +1690,42 @@ function setPromoLoyaltyFilter(val) {
   renderPromoCustomerTable();
 }
 window.setPromoLoyaltyFilter = setPromoLoyaltyFilter;
+
+function setPromoLangFilter(val) {
+  promoFilter.language = val || 'all';
+  promoCurrentPage = 1;
+
+  const select = document.getElementById('promoLangSelect');
+  if (select && select.value !== promoFilter.language) {
+    select.value = promoFilter.language;
+  }
+
+  const copyBtn = document.getElementById('promoCopyFilteredPosterBtn');
+  const copyLabel = document.getElementById('promoCopyFilteredPosterLabel');
+  if (copyBtn) {
+    if (promoFilter.language === 'zh') {
+      copyBtn.classList.remove('hidden');
+      if (copyLabel) copyLabel.textContent = 'Copy 🇨🇳 华语 Poster';
+    } else if (promoFilter.language === 'bm') {
+      copyBtn.classList.remove('hidden');
+      if (copyLabel) copyLabel.textContent = 'Copy 🇲🇾 BM/EN Poster';
+    } else {
+      copyBtn.classList.add('hidden');
+    }
+  }
+
+  renderPromoCustomerTable();
+  renderPromoKpis();
+}
+window.setPromoLangFilter = setPromoLangFilter;
+
+function copyFilteredLanguagePoster() {
+  const slot = promoFilter.language === 'zh' ? 'zh' : 'bm';
+  if (typeof copyPosterToClipboard === 'function') {
+    copyPosterToClipboard(slot, false);
+  }
+}
+window.copyFilteredLanguagePoster = copyFilteredLanguagePoster;
 
 function setPromoSortBy(val) {
   promoFilter.sortBy = val;
