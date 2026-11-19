@@ -698,11 +698,25 @@ const DEFAULT_PATIENTS_DATA = [
     ],
     appointments: [
       {
+        id: 'PMG-BK-466049',
+        ref: 'PMG-BK-466049',
+        date: '2026-11-24',
+        time: '08:00',
+        service: 'In-Person Consultation & Health Screening',
+        purpose: 'In-Person Consultation & Health Screening',
+        pharmacist: 'William Chai Yee Sian (Pharmacist)',
+        status: 'Scheduled',
+        type: 'in_person',
+        bookingType: 'in_person',
+        notes: 'Booked via Online Customer Portal (Ref: PMG-BK-466049)',
+        createdAt: '2026-11-19T01:50:00.000Z'
+      },
+      {
         id: 'APT-LPS-1',
         date: '2026-10-20',
         time: '10:00',
         purpose: 'Review BW (Weight & Body Composition Analysis)',
-        status: 'Scheduled',
+        status: 'Completed',
         notes: 'Review weight, InBody metrics, and dietary adherence.'
       }
     ]
@@ -1371,8 +1385,16 @@ function loadPatientsData() {
         if (defPt.documents && (!patientsData[idx].documents || !patientsData[idx].documents.length)) {
           patientsData[idx].documents = JSON.parse(JSON.stringify(defPt.documents));
         }
-        if (defPt.appointments && (!patientsData[idx].appointments || !patientsData[idx].appointments.length)) {
-          patientsData[idx].appointments = JSON.parse(JSON.stringify(defPt.appointments));
+        if (defPt.appointments && Array.isArray(defPt.appointments)) {
+          if (!patientsData[idx].appointments || !patientsData[idx].appointments.length) {
+            patientsData[idx].appointments = JSON.parse(JSON.stringify(defPt.appointments));
+          } else {
+            defPt.appointments.forEach(defApt => {
+              if (defApt && defApt.id && String(defApt.id).startsWith('PMG-BK-') && !patientsData[idx].appointments.some(a => a.id === defApt.id || a.ref === defApt.id)) {
+                patientsData[idx].appointments.unshift(JSON.parse(JSON.stringify(defApt)));
+              }
+            });
+          }
         }
       }
     });
@@ -10166,7 +10188,25 @@ function mergeOnlineBookingArrays(cloudBookings, localBookings) {
       }
     });
   }
-  return Array.from(map.values()).slice(0, 200);
+  return Array.from(map.values()).slice(0, 80);
+}
+
+/**
+ * Ensures PharmacistSchedule JSON payload never exceeds Google Sheets' 50,000-character cell limit.
+ * Removes legacy inline branchReturns (which now live in PMG_RETURNS_VAULT_<branch>) and trims old completed bookings if needed.
+ */
+function compactPharmacistScheduleForSheets(scheduleObj) {
+  if (!scheduleObj || typeof scheduleObj !== 'object') return scheduleObj;
+  if (scheduleObj.branchReturns) {
+    delete scheduleObj.branchReturns;
+  }
+  if (Array.isArray(scheduleObj.onlineBookings) && scheduleObj.onlineBookings.length > 80) {
+    scheduleObj.onlineBookings = scheduleObj.onlineBookings.slice(0, 80);
+  }
+  while (JSON.stringify(scheduleObj).length > 42000 && Array.isArray(scheduleObj.onlineBookings) && scheduleObj.onlineBookings.length > 20) {
+    scheduleObj.onlineBookings.pop();
+  }
+  return scheduleObj;
 }
 
 /**
@@ -10180,6 +10220,7 @@ function savePharmacistSchedule(branchCode, scheduleObj) {
   if (existingLocal && Array.isArray(existingLocal.onlineBookings)) {
     scheduleObj.onlineBookings = mergeOnlineBookingArrays(scheduleObj.onlineBookings, existingLocal.onlineBookings);
   }
+  compactPharmacistScheduleForSheets(scheduleObj);
 
   const nowIso = new Date().toISOString();
   scheduleObj.lastUpdated = nowIso;
@@ -10222,6 +10263,8 @@ async function pushScheduleToSheets(branchCode, scheduleObj) {
         }
       }
     } catch (_) {}
+
+    compactPharmacistScheduleForSheets(scheduleObj);
 
     const session = typeof getSession === 'function' ? getSession() : null;
     const payload = sanitizePayloadForGoogleCloud({
@@ -11541,9 +11584,10 @@ async function pushBookingToCloud(bookingData) {
     } else {
       sched.onlineBookings.unshift(bookingData);
     }
-    if (sched.onlineBookings.length > 200) {
-      sched.onlineBookings = sched.onlineBookings.slice(0, 200);
+    if (sched.onlineBookings.length > 80) {
+      sched.onlineBookings = sched.onlineBookings.slice(0, 80);
     }
+    compactPharmacistScheduleForSheets(sched);
     sched.lastUpdated = nowIso;
     const payload = sanitizePayloadForGoogleCloud({
       branch: branchCode,
@@ -11617,6 +11661,7 @@ async function updateAppointmentStatusInCloud(appointmentId, newStatus, branchCo
         if (idx >= 0) {
           sched.onlineBookings[idx].status = newStatus;
           sched.onlineBookings[idx].statusUpdatedAt = nowIso;
+          compactPharmacistScheduleForSheets(sched);
           await fetch(PMG_SCHEDULE_API_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain' },
@@ -15096,6 +15141,7 @@ async function pushRentalsToCloud(rentals) {
     let sched = (await fetchScheduleFromSheets(branchCode)) || getPharmacistSchedule(branchCode) || {};
     sched.rentals = rentals;
     sched.rentalsLastUpdated = new Date().toISOString();
+    compactPharmacistScheduleForSheets(sched);
 
     const payload = sanitizePayloadForGoogleCloud({
       branch: branchCode,

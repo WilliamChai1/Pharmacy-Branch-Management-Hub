@@ -1089,10 +1089,25 @@
     if (!PMG_SCHEDULE_API_URL) return;
     const rawBranch = targetBranch || getActiveBranchName() || 'Kota Sentosa';
     const branchName = normalizeBranchForSheets(rawBranch);
+    const returnsVaultKey = `PMG_RETURNS_VAULT_${branchName}`;
     try {
-      const res = await fetch(`${PMG_SCHEDULE_API_URL}?branch=${encodeURIComponent(branchName)}`);
-      if (!res.ok) return;
-      const data = await res.json();
+      // 1. Read from dedicated returns vault row first, falling back to legacy branch schedule row if vault is empty
+      let data = null;
+      try {
+        const vRes = await fetch(`${PMG_SCHEDULE_API_URL}?branch=${encodeURIComponent(returnsVaultKey)}`);
+        if (vRes.ok) {
+          const vData = await vRes.json();
+          if (vData && vData.success && vData.schedule && Array.isArray(vData.schedule.branchReturns)) {
+            data = vData;
+          }
+        }
+      } catch (_) {}
+
+      if (!data) {
+        const res = await fetch(`${PMG_SCHEDULE_API_URL}?branch=${encodeURIComponent(branchName)}`);
+        if (res.ok) data = await res.json();
+      }
+
       const deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_returns') || '["ret-ks-2609-002", "ret-lnd-2609-001"]');
       let changed = false;
 
@@ -1124,24 +1139,28 @@
         }
       }
 
-      // If local has records and cloud needs update, push back to cloud
-      if (returnsData.length > 0 && data && data.schedule) {
-        const sched = data.schedule;
-        const currentCloudIds = new Set((sched.branchReturns || []).map(r => r.id));
+      // 2. Push returns exclusively to dedicated PMG_RETURNS_VAULT_<branch> row (never bloat PharmacistSchedule cell)
+      if (returnsData.length > 0) {
+        const existingCloudReturns = (data && data.schedule && Array.isArray(data.schedule.branchReturns)) ? data.schedule.branchReturns : [];
+        const currentCloudIds = new Set(existingCloudReturns.map(r => r.id));
         const hasLocalNew = returnsData.some(r => !currentCloudIds.has(r.id));
-        if (hasLocalNew) {
-          sched.branchReturns = returnsData;
+        if (hasLocalNew || changed) {
+          const vaultSched = {
+            branchCode: branchName,
+            branchReturns: returnsData,
+            lastUpdated: new Date().toISOString()
+          };
           await fetch(PMG_SCHEDULE_API_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain' },
             body: JSON.stringify({
-              branch: branchName,
-              schedule: sched,
+              branch: returnsVaultKey,
+              schedule: vaultSched,
               updatedBy: getCurrentUserDisplayName() || 'Pharmacist'
             }),
             redirect: 'follow'
           });
-          console.log(`[PMG Returns] Synced ${returnsData.length} returns with Google Cloud for ${branchName}`);
+          console.log(`[PMG Returns] Synced ${returnsData.length} returns with dedicated Google Cloud vault (${returnsVaultKey})`);
         }
       }
     } catch (err) {
