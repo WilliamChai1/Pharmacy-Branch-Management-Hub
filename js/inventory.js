@@ -722,14 +722,20 @@ function initInventory() {
     });
   }
 
+  let invSearchDebounceTimer = null;
   const searchEl = document.getElementById('invSearch');
-  if (searchEl) searchEl.addEventListener('input', renderInventoryGrid);
+  if (searchEl) {
+    searchEl.addEventListener('input', () => {
+      clearTimeout(invSearchDebounceTimer);
+      invSearchDebounceTimer = setTimeout(() => renderInventoryGrid(false), 180);
+    });
+  }
 
   const vendorFilterEl = document.getElementById('invVendorFilter');
-  if (vendorFilterEl) vendorFilterEl.addEventListener('change', renderInventoryGrid);
+  if (vendorFilterEl) vendorFilterEl.addEventListener('change', () => renderInventoryGrid(false));
 
   const filterToggle = document.getElementById('invFilterReorder');
-  if (filterToggle) filterToggle.addEventListener('change', renderInventoryGrid);
+  if (filterToggle) filterToggle.addEventListener('change', () => renderInventoryGrid(false));
 
   const tryOutBtn = document.getElementById('invDownloadTryOutBtn');
   if (tryOutBtn) tryOutBtn.addEventListener('click', downloadTryOutCsv);
@@ -1247,36 +1253,56 @@ function overrideAgingLock(rowIdx) {
   }
 }
 
-// ─── GRID RENDER ─────────────────────────────────────────────────────────────
-function renderInventoryGrid() {
+// ─── GRID RENDER (PAGINATED O(N) FOR 5,000+ SKUs) ────────────────────────────
+const INV_PAGE_SIZE = 100;
+let invVisibleLimit = INV_PAGE_SIZE;
+
+function loadMoreInventoryRows(step = 100) {
+  invVisibleLimit += step;
+  renderInventoryGrid(true);
+}
+function loadAllInventoryRows() {
+  invVisibleLimit = Math.max(inventoryGrid.length, INV_PAGE_SIZE);
+  renderInventoryGrid(true);
+}
+if (typeof window !== 'undefined') {
+  window.loadMoreInventoryRows = loadMoreInventoryRows;
+  window.loadAllInventoryRows = loadAllInventoryRows;
+}
+
+function renderInventoryGrid(keepLimit = false) {
   const tbody = document.getElementById('invTableBody');
   if (!tbody) return;
 
-  const searchQ        = (document.getElementById('invSearch')?.value || '').toLowerCase();
+  if (keepLimit !== true) {
+    invVisibleLimit = INV_PAGE_SIZE;
+  }
+
+  const searchQ        = (document.getElementById('invSearch')?.value || '').trim().toLowerCase();
   const selectedVendor = document.getElementById('invVendorFilter')?.value || '';
   const onlyReorder    = document.getElementById('invFilterReorder')?.checked || false;
 
-  const filtered = inventoryGrid.filter(row => {
-    if (selectedVendor) {
-      if (row.vendorCode !== selectedVendor && row.orderGroup !== selectedVendor) {
-        return false;
-      }
+  const filtered = [];
+  for (let i = 0; i < inventoryGrid.length; i++) {
+    const row = inventoryGrid[i];
+    if (selectedVendor && row.vendorCode !== selectedVendor && row.orderGroup !== selectedVendor) {
+      continue;
     }
-    if (onlyReorder && row.approvedQty === 0 && row.suggestedOrder === 0) return false;
-    if (searchQ && !row.itemCode.toLowerCase().includes(searchQ) && !row.desc.toLowerCase().includes(searchQ)) return false;
+    if (onlyReorder && row.approvedQty === 0 && row.suggestedOrder === 0) continue;
+    if (searchQ && !row.itemCode.toLowerCase().includes(searchQ) && !row.desc.toLowerCase().includes(searchQ)) continue;
 
     // Filter pill logic
-    if (invActiveFilterPill === 'REORDER' && row.approvedQty === 0 && row.suggestedOrder === 0) return false;
-    if (invActiveFilterPill === 'MOMENTUM' && row.ruleApplied !== 'RULE_2_MOMENTUM_BOOST') return false;
-    if (invActiveFilterPill === 'STOCKOUT' && row.ruleApplied !== 'RULE_3A_PHANTOM_DROP' && row.ruleApplied !== 'RULE_3A_VERIFIED_OOS' && row.ruleApplied !== 'RULE_3A_SAMPLE_STARTER') return false;
-    if (invActiveFilterPill === 'AGING_LOCKED' && row.ruleApplied !== 'RULE_1_AGING_LOCKED') return false;
-    if (invActiveFilterPill === 'SURPLUS' && row.ruleApplied !== 'RULE_3B_SURPLUS_HALT') return false;
+    if (invActiveFilterPill === 'REORDER' && row.approvedQty === 0 && row.suggestedOrder === 0) continue;
+    if (invActiveFilterPill === 'MOMENTUM' && row.ruleApplied !== 'RULE_2_MOMENTUM_BOOST') continue;
+    if (invActiveFilterPill === 'STOCKOUT' && row.ruleApplied !== 'RULE_3A_PHANTOM_DROP' && row.ruleApplied !== 'RULE_3A_VERIFIED_OOS' && row.ruleApplied !== 'RULE_3A_SAMPLE_STARTER') continue;
+    if (invActiveFilterPill === 'AGING_LOCKED' && row.ruleApplied !== 'RULE_1_AGING_LOCKED') continue;
+    if (invActiveFilterPill === 'SURPLUS' && row.ruleApplied !== 'RULE_3B_SURPLUS_HALT') continue;
 
-    return true;
-  });
+    filtered.push({ row, origIdx: i });
+  }
 
-  tbody.innerHTML = filtered.map((row) => {
-    const origIdx = inventoryGrid.indexOf(row);
+  const visibleSlice = filtered.slice(0, invVisibleLimit);
+  const rowsHtml = visibleSlice.map(({ row, origIdx }) => {
     const coverClass   = row.daysCover < 14 ? 'text-red-600 font-bold'
                        : row.daysCover < 30 ? 'text-amber-600 font-semibold'
                        : 'text-green-700';
@@ -1396,7 +1422,26 @@ function renderInventoryGrid() {
 
   if (filtered.length === 0) {
     tbody.innerHTML = `<tr><td colspan="11" class="text-center py-10 text-gray-400 text-sm">No SKUs match the current filter (${invActiveFilterPill}).</td></tr>`;
+    return;
   }
+
+  let paginationRow = '';
+  if (filtered.length > visibleSlice.length) {
+    const remaining = filtered.length - visibleSlice.length;
+    paginationRow = `
+      <tr class="bg-slate-50 border-t-2 border-slate-200">
+        <td colspan="11" class="px-4 py-3 text-center">
+          <div class="flex flex-wrap items-center justify-center gap-2 text-xs">
+            <span class="text-slate-600 font-semibold">Showing <strong>${visibleSlice.length.toLocaleString()}</strong> of <strong>${filtered.length.toLocaleString()}</strong> SKUs (${remaining.toLocaleString()} more)</span>
+            <button type="button" onclick="loadMoreInventoryRows(100)" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs transition cursor-pointer">Load +100 More</button>
+            ${remaining > 100 ? `<button type="button" onclick="loadMoreInventoryRows(500)" class="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold transition cursor-pointer">Load +500</button>` : ''}
+            <button type="button" onclick="loadAllInventoryRows()" class="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-semibold transition cursor-pointer">Show All (${filtered.length.toLocaleString()})</button>
+          </div>
+        </td>
+      </tr>`;
+  }
+
+  tbody.innerHTML = rowsHtml + paginationRow;
 }
 
 function updateApprovedQtyByRowIndex(origIdx, val) {
