@@ -5541,8 +5541,8 @@ document.addEventListener('DOMContentLoaded', () => {
     return; // Exit staff app boot - do NOT prompt for staff PIN/login
   }
 
-  // Check URL parameters for Customer Self-Booking Mode (?book=1 or ?action=book)
-  if (urlParams.get('book') === '1' || urlParams.get('action') === 'book') {
+  // Check URL parameters for Customer Self-Booking / Refill Mode (?book=1, ?refill=1, ?action=book, ?action=refill)
+  if (urlParams.get('book') === '1' || urlParams.get('action') === 'book' || urlParams.get('refill') === '1' || urlParams.get('action') === 'refill') {
     window.location.replace(`patient/index.html${window.location.search}`);
     return; // Exit staff app boot
   }

@@ -2245,14 +2245,20 @@ function renderPatientModule() {
       const aptKey = `${p.id}_${apt.id}`;
       const isClearedApt = clearedOverdueSet.has(aptKey) || apt.status === 'Completed' || apt.status === 'Cancelled' || apt.cleared;
 
-      const isPending = (apt.status === 'Scheduled' || apt.status === 'Pending Approval');
+      const isPending = (
+        apt.status === 'Scheduled' ||
+        apt.status === 'Pending Approval' ||
+        apt.status === 'REFILL_REQUESTED' ||
+        apt.status === 'PACKING' ||
+        apt.status === 'PACKED'
+      );
       if (apt.date === todayStr && isPending) {
         todayAptCount++;
         todayList.push({ patient: p, appointment: apt });
-      } else if (apt.date > todayStr && apt.date <= next7DaysStr && isPending) {
+      } else if (apt.date > todayStr && isPending) {
         dueIn7DaysCount++;
         upcomingList.push({ patient: p, appointment: apt });
-      } else if (!isClearedApt && apt.date < todayStr && (apt.status === 'Scheduled' || apt.status === 'Missed' || apt.status === 'Pending Approval')) {
+      } else if (!isClearedApt && apt.date < todayStr && (apt.status === 'Scheduled' || apt.status === 'Missed' || apt.status === 'Pending Approval' || apt.status === 'REFILL_REQUESTED')) {
         overdueCount++;
         overdueList.push({ patient: p, appointment: apt, type: 'Missed Appointment' });
       }
@@ -2275,6 +2281,13 @@ function renderPatientModule() {
         }
       }
     });
+  });
+
+  todayList.sort((a, b) => (a.appointment.time || '').localeCompare(b.appointment.time || ''));
+  upcomingList.sort((a, b) => {
+    const cmpDate = (a.appointment.date || '').localeCompare(b.appointment.date || '');
+    if (cmpDate !== 0) return cmpDate;
+    return (a.appointment.time || '').localeCompare(b.appointment.time || '');
   });
 
   const kpiTodayEl = document.getElementById('kpiPatientToday');
@@ -3260,11 +3273,11 @@ function renderPharmacistScheduleTab(patientsList) {
   let kpiCompleted = 0;
 
   allBookings.forEach(({ appointment: apt }) => {
-    const isAct = (apt.status === 'Scheduled' || apt.status === 'Pending Approval');
+    const isAct = (apt.status === 'Scheduled' || apt.status === 'Pending Approval' || apt.status === 'REFILL_REQUESTED' || apt.status === 'PACKING' || apt.status === 'PACKED');
     if (apt.date >= todayStr && isAct) kpiUpcoming++;
     if (apt.date === todayStr && isAct) kpiToday++;
-    if (apt.status === 'Pending Approval') kpiPending++;
-    if (apt.status === 'Completed' || apt.status === 'Approved') kpiCompleted++;
+    if (apt.status === 'Pending Approval' || apt.status === 'REFILL_REQUESTED') kpiPending++;
+    if (apt.status === 'Completed' || apt.status === 'Approved' || apt.status === 'PICKED_UP') kpiCompleted++;
   });
 
   const kpiUpEl = document.getElementById('schedKpiUpcoming');
@@ -3301,7 +3314,7 @@ function renderPharmacistScheduleTab(patientsList) {
       }
 
       if (selStatus === 'active') {
-        if (apt.status !== 'Scheduled' && apt.status !== 'Pending Approval') return false;
+        if (apt.status !== 'Scheduled' && apt.status !== 'Pending Approval' && apt.status !== 'REFILL_REQUESTED' && apt.status !== 'PACKING' && apt.status !== 'PACKED') return false;
       } else if (selStatus !== 'all') {
         if (apt.status !== selStatus) return false;
       }
@@ -3322,8 +3335,8 @@ function renderPharmacistScheduleTab(patientsList) {
     });
 
     filteredBookings.sort((a, b) => {
-      const aIsUpcoming = (a.appointment.status === 'Scheduled' || a.appointment.status === 'Pending Approval') && a.appointment.date >= todayStr;
-      const bIsUpcoming = (b.appointment.status === 'Scheduled' || b.appointment.status === 'Pending Approval') && b.appointment.date >= todayStr;
+      const aIsUpcoming = (a.appointment.status === 'Scheduled' || a.appointment.status === 'Pending Approval' || a.appointment.status === 'REFILL_REQUESTED' || a.appointment.status === 'PACKING' || a.appointment.status === 'PACKED') && a.appointment.date >= todayStr;
+      const bIsUpcoming = (b.appointment.status === 'Scheduled' || b.appointment.status === 'Pending Approval' || b.appointment.status === 'REFILL_REQUESTED' || b.appointment.status === 'PACKING' || b.appointment.status === 'PACKED') && b.appointment.date >= todayStr;
       if (aIsUpcoming && !bIsUpcoming) return -1;
       if (!aIsUpcoming && bIsUpcoming) return 1;
       const cmpDate = (b.appointment.date || '').localeCompare(a.appointment.date || '');
@@ -10123,12 +10136,50 @@ function getPharmacistSchedule(branchCode) {
   return data;
 }
 
+function mergeOnlineBookingArrays(cloudBookings, localBookings) {
+  const map = new Map();
+  if (Array.isArray(cloudBookings)) {
+    cloudBookings.forEach(b => {
+      if (!b) return;
+      const key = b.id || b.ref;
+      if (key) map.set(key, { ...b, id: key, ref: key });
+    });
+  }
+  if (Array.isArray(localBookings)) {
+    localBookings.forEach(b => {
+      if (!b) return;
+      const key = b.id || b.ref;
+      if (!key) return;
+      if (!map.has(key)) {
+        map.set(key, { ...b, id: key, ref: key });
+      } else {
+        const existing = map.get(key);
+        const existingStatus = existing.status || 'Scheduled';
+        const localStatus = b.status || 'Scheduled';
+        if (localStatus !== 'Scheduled' && existingStatus === 'Scheduled') {
+          map.set(key, { ...existing, ...b, status: localStatus, statusUpdatedAt: b.statusUpdatedAt || existing.statusUpdatedAt });
+        } else if (existingStatus !== 'Scheduled' && localStatus === 'Scheduled') {
+          map.set(key, { ...b, ...existing, status: existingStatus, statusUpdatedAt: existing.statusUpdatedAt || b.statusUpdatedAt });
+        } else {
+          map.set(key, { ...existing, ...b });
+        }
+      }
+    });
+  }
+  return Array.from(map.values()).slice(0, 200);
+}
+
 /**
  * Saves schedule config to localStorage and automatically syncs to PMG OneDrive folder.
  */
 function savePharmacistSchedule(branchCode, scheduleObj) {
   const code = normalizeBranchCode(branchCode);
   if (!scheduleObj) return;
+
+  const existingLocal = getPharmacistSchedule(code);
+  if (existingLocal && Array.isArray(existingLocal.onlineBookings)) {
+    scheduleObj.onlineBookings = mergeOnlineBookingArrays(scheduleObj.onlineBookings, existingLocal.onlineBookings);
+  }
 
   const nowIso = new Date().toISOString();
   scheduleObj.lastUpdated = nowIso;
@@ -10160,6 +10211,18 @@ function savePharmacistSchedule(branchCode, scheduleObj) {
 async function pushScheduleToSheets(branchCode, scheduleObj) {
   if (!PMG_SCHEDULE_API_URL || !scheduleObj) return;
   try {
+    // Always merge with live cloud onlineBookings before pushing so customer self-bookings are never overwritten
+    try {
+      const liveUrl = `${PMG_SCHEDULE_API_URL}?branch=${encodeURIComponent(branchCode)}`;
+      const liveRes = await fetch(liveUrl, { method: 'GET' });
+      if (liveRes.ok) {
+        const liveData = await liveRes.json();
+        if (liveData && liveData.success && liveData.schedule && Array.isArray(liveData.schedule.onlineBookings)) {
+          scheduleObj.onlineBookings = mergeOnlineBookingArrays(liveData.schedule.onlineBookings, scheduleObj.onlineBookings);
+        }
+      }
+    } catch (_) {}
+
     const session = typeof getSession === 'function' ? getSession() : null;
     const payload = sanitizePayloadForGoogleCloud({
       branch: branchCode,
@@ -10207,7 +10270,17 @@ async function fetchScheduleFromSheets(branchCode) {
       const cloudUpdated = data.schedule.lastUpdated || data.lastUpdated || '';
       const localUpdated = (localSched && localSched.lastUpdated) || '';
 
-      // Only adopt from Google Sheets if cloud is genuinely newer or local has no weekly template
+      // Always merge onlineBookings from cloud and local so customer bookings are never dropped
+      const mergedOnlineBookings = mergeOnlineBookingArrays(
+        data.schedule.onlineBookings,
+        localSched && localSched.onlineBookings
+      );
+      data.schedule.onlineBookings = mergedOnlineBookings;
+      if (localSched) {
+        localSched.onlineBookings = mergedOnlineBookings;
+      }
+
+      // Only adopt weekly template / overrides from Google Sheets if cloud is genuinely newer or local has no weekly template
       if (!localSched || !localSched.weeklyTemplate || !localUpdated || cloudUpdated >= localUpdated) {
         const jsonStr = JSON.stringify(data.schedule);
         localStorage.setItem(`pmg_pharmacist_schedule_${code}`, jsonStr);
@@ -10218,7 +10291,13 @@ async function fetchScheduleFromSheets(branchCode) {
         console.log(`[PMG Sheets] ✅ Cached live schedule for ${branchCode} (last updated: ${cloudUpdated})`);
         return data.schedule;
       } else {
-        console.log(`[PMG Sheets] Local schedule is newer (${localUpdated}) than cloud (${cloudUpdated}) — keeping local.`);
+        const jsonStr = JSON.stringify(localSched);
+        localStorage.setItem(`pmg_pharmacist_schedule_${code}`, jsonStr);
+        if (code === 'Kota Sentosa') {
+          localStorage.setItem('pmg_pharmacist_schedule_KOTA SENTOSA', jsonStr);
+          localStorage.setItem('pmg_pharmacist_schedule_KS01', jsonStr);
+        }
+        console.log(`[PMG Sheets] Local schedule is newer (${localUpdated}) than cloud (${cloudUpdated}) — merged ${mergedOnlineBookings.length} onlineBookings into local.`);
         return localSched;
       }
     }
@@ -10458,7 +10537,10 @@ function updateShareBookingUrl() {
     descEl.innerHTML = `Consultation Schedule:<br>${scheduleSummary}<br>Duty Pharmacist: <b>${escHtml(normalizePharmacistName(dutyPharmName))}</b>${breakNote}${overrideNote}`;
   }
 
-  const baseUrl = window.location.origin + window.location.pathname;
+  let baseUrl = window.location.origin + window.location.pathname;
+  if (!baseUrl.includes('/patient/')) {
+    baseUrl = baseUrl.replace(/\/index\.html$/i, '').replace(/\/$/, '') + '/patient/index.html';
+  }
   const bookingUrl = `${baseUrl}?book=1`;
 
   const inputEl = document.getElementById('shareBookingUrlInput');
@@ -11400,26 +11482,69 @@ function updateCustBookHours() {
 
 /**
  * Pushes customer self-booking data to Google Sheets Cloud Relay.
- * Appends/updates booking in branch's onlineBookings array across devices.
+ * Appends/updates booking in branch's onlineBookings array AND permanent Patient_Appointments sheet across devices.
  */
 async function pushBookingToCloud(bookingData) {
   if (!PMG_SCHEDULE_API_URL || !bookingData) return false;
   try {
     const branchCode = normalizeBranchCode(bookingData.branchCode || bookingData.branchName || 'Kota Sentosa');
+    const ref = bookingData.ref || bookingData.id;
+    const nowIso = new Date().toISOString();
+
+    // 1. Write directly to permanent Patient_Appointments Google Sheet tab so it can never be lost or overwritten
+    try {
+      const aptPayload = sanitizePayloadForGoogleCloud({
+        action: 'updateAppointmentStatus',
+        appointmentId: ref,
+        status: bookingData.status || 'Scheduled',
+        statusUpdatedAt: nowIso,
+        branch: branchCode,
+        updatedBy: `Customer: ${bookingData.patientName || 'Online Booking'}`,
+        appointment: {
+          id: ref,
+          ref: ref,
+          patientId: bookingData.patientId || '',
+          patientName: bookingData.patientName || '',
+          patientPhone: bookingData.patientPhone || '',
+          branch: branchCode,
+          date: bookingData.date || getTodayDateString(0),
+          time: bookingData.time || '',
+          purpose: bookingData.purpose || bookingData.service || 'Consultation',
+          service: bookingData.service || bookingData.purpose || 'Consultation',
+          pharmacist: bookingData.pharmacist || 'William Chai (Pharmacist)',
+          status: bookingData.status || 'Scheduled',
+          notes: bookingData.notes || '',
+          bookingType: bookingData.bookingType || bookingData.type || 'in_person',
+          refillDuration: bookingData.refillDuration || '',
+          refillDecision: bookingData.refillDecision || '',
+          createdAt: bookingData.createdAt || nowIso
+        }
+      });
+      await fetch(PMG_SCHEDULE_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(aptPayload),
+        redirect: 'follow'
+      });
+    } catch (aptErr) {
+      console.warn('[PMG Cloud Booking] Patient_Appointments sync notice:', aptErr);
+    }
+
+    // 2. Also update PharmacistSchedule.onlineBookings with fresh timestamp
     const sched = (await fetchScheduleFromSheets(branchCode)) || getPharmacistSchedule(branchCode) || {};
     if (!Array.isArray(sched.onlineBookings)) {
       sched.onlineBookings = [];
     }
-    const ref = bookingData.ref || bookingData.id;
     const existsIdx = sched.onlineBookings.findIndex(b => b.id === ref || b.ref === ref);
     if (existsIdx >= 0) {
-      sched.onlineBookings[existsIdx] = bookingData;
+      sched.onlineBookings[existsIdx] = { ...sched.onlineBookings[existsIdx], ...bookingData };
     } else {
       sched.onlineBookings.unshift(bookingData);
     }
     if (sched.onlineBookings.length > 200) {
       sched.onlineBookings = sched.onlineBookings.slice(0, 200);
     }
+    sched.lastUpdated = nowIso;
     const payload = sanitizePayloadForGoogleCloud({
       branch: branchCode,
       schedule: sched,
@@ -12358,13 +12483,17 @@ function importSingleBooking(booking, showNotification = false) {
 
   const aptObj = {
     id: ref,
+    ref: ref,
     date: booking.date,
     time: normalizeAppointmentTime(booking.time),
     service: booking.service || booking.purpose || 'In-Person Consultation & Health Screening',
     purpose: booking.purpose || booking.service || 'In-Person Consultation & Health Screening',
     pharmacist: booking.pharmacist || 'William Chai (Pharmacist)',
     status: booking.status || 'Scheduled',
-    type: booking.bookingType || 'in_person',
+    type: booking.bookingType || booking.type || 'in_person',
+    bookingType: booking.bookingType || booking.type || 'in_person',
+    refillDuration: booking.refillDuration || '',
+    refillDecision: booking.refillDecision || '',
     notes: booking.notes || `Booked via Online Customer Portal (Ref: ${ref})`,
     createdAt: booking.createdAt || new Date().toISOString()
   };
@@ -12372,9 +12501,10 @@ function importSingleBooking(booking, showNotification = false) {
   let isNew = false;
   if (patient) {
     if (!Array.isArray(patient.appointments)) patient.appointments = [];
-    const aptIdx = patient.appointments.findIndex(a => a.id === ref);
+    const aptIdx = patient.appointments.findIndex(a => a.id === ref || a.ref === ref);
     if (aptIdx >= 0) {
-      const existingStatus = patient.appointments[aptIdx].status;
+      const prevApt = patient.appointments[aptIdx];
+      const existingStatus = prevApt.status;
       // If local is already marked Completed, strictly keep Completed!
       if (existingStatus === 'Completed') {
         aptObj.status = 'Completed';
@@ -12385,7 +12515,10 @@ function importSingleBooking(booking, showNotification = false) {
         // If local is already marked Completed or Missed, keep it!
         aptObj.status = existingStatus;
       }
-      patient.appointments[aptIdx] = { ...patient.appointments[aptIdx], ...aptObj, status: aptObj.status };
+      if (prevApt.date !== aptObj.date || prevApt.time !== aptObj.time || prevApt.status !== aptObj.status) {
+        isNew = true;
+      }
+      patient.appointments[aptIdx] = { ...prevApt, ...aptObj, status: aptObj.status };
     } else {
       patient.appointments.unshift(aptObj);
       isNew = true;
@@ -12584,6 +12717,21 @@ async function searchAndImportBookingByRef() {
     if (!branchesToCheck.includes('Matang Jaya')) branchesToCheck.push('Matang Jaya');
 
     for (const bCode of branchesToCheck) {
+      try {
+        const aptRes = await fetch(`${PMG_SCHEDULE_API_URL}?action=getAppointments&branch=${encodeURIComponent(bCode)}`);
+        const aptData = await aptRes.json();
+        if (aptData && aptData.success && Array.isArray(aptData.appointments)) {
+          const aptMatch = aptData.appointments.find(a => (a.id && String(a.id).toUpperCase() === refCode) || (a.ref && String(a.ref).toUpperCase() === refCode));
+          if (aptMatch) {
+            importSingleBooking(aptMatch, true);
+            renderPatientModule();
+            closeQuickImportBookingModal();
+            inputEl.disabled = false;
+            return;
+          }
+        }
+      } catch (_) {}
+
       try {
         const res = await fetch(`${PMG_SCHEDULE_API_URL}?branch=${encodeURIComponent(bCode)}`);
         const data = await res.json();

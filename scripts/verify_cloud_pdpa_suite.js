@@ -1422,6 +1422,152 @@ function createBrowserSandbox(fetchImpl) {
     assert.strictEqual(syncedPenny.dayPrefs.Wednesday, 'Morning Only', 'Newer cloud preference update must be reflected locally');
   });
 
+  // 13. Customer Self-Booking Cloud Persistence & Upcoming Queue Regression Test
+  await testAsync('Customer self-bookings persist to Patient_Appointments & onlineBookings, survive schedule saves, and appear in Upcoming queue (>7 days out & refill orders)', async () => {
+    const src = fs.readFileSync(path.join(ROOT, 'js', 'patient.js'), 'utf8');
+
+    // A. Static verification that renderPatientModule includes all future dates (apt.date > todayStr && isPending) and active refill statuses
+    assert(
+      src.includes("} else if (apt.date > todayStr && isPending) {"),
+      'renderPatientModule must include all future pending appointments (apt.date > todayStr && isPending) in upcomingList without capping at next7DaysStr'
+    );
+    assert(
+      src.includes("apt.status === 'REFILL_REQUESTED'"),
+      'renderPatientModule must include REFILL_REQUESTED in isPending'
+    );
+    assert(
+      src.includes('function mergeOnlineBookingArrays(cloudBookings, localBookings)'),
+      'js/patient.js must define mergeOnlineBookingArrays to prevent schedule saves from overwriting onlineBookings'
+    );
+
+    // B. Runtime test of mergeOnlineBookingArrays + pushBookingToCloud + importSingleBooking
+    const postCalls = [];
+    let cloudScheduleBlob = {
+      branchCode: 'Kota Sentosa',
+      lastUpdated: '2026-11-18T10:00:00.000Z',
+      weeklyTemplate: { '1': { isOpen: true, open: '08:00', close: '17:00' } },
+      onlineBookings: [
+        {
+          id: 'PMG-BK-111111',
+          ref: 'PMG-BK-111111',
+          patientName: 'Existing Cloud Patient',
+          patientPhone: '+60123456789',
+          date: '2026-11-25',
+          time: '10:00',
+          status: 'Scheduled'
+        }
+      ]
+    };
+
+    const sb = createBrowserSandbox(async (url, opts) => {
+      if (opts && opts.method === 'POST') {
+        const body = JSON.parse(opts.body);
+        postCalls.push(body);
+        if (body.schedule) {
+          cloudScheduleBlob = body.schedule;
+        }
+        return {
+          ok: true,
+          text: async () => JSON.stringify({ success: true, lastUpdated: new Date().toISOString() }),
+          json: async () => ({ success: true, lastUpdated: new Date().toISOString() })
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          success: true,
+          lastUpdated: cloudScheduleBlob.lastUpdated,
+          schedule: JSON.parse(JSON.stringify(cloudScheduleBlob))
+        })
+      };
+    });
+
+    // Load PDPA guard + helper functions into sandbox
+    const guardStart = src.indexOf('// ─── STRICT PDPA MEDICAL PRIVACY GUARD');
+    const guardEnd = src.indexOf('const DEFAULT_PATIENTS_DATA');
+    vm.runInContext(src.slice(guardStart, guardEnd), sb.ctx);
+
+    const mergeStart = src.indexOf('function normalizePhoneForMatching');
+    const mergeEnd = src.indexOf('function loadPatientsData');
+    vm.runInContext(src.slice(mergeStart, mergeEnd), sb.ctx);
+
+    const schedStart = src.indexOf('const BRANCH_SCHEDULES');
+    const schedEnd = src.indexOf('function openShareBookingModal');
+    sb.ctx.AbortController = AbortController;
+    vm.runInContext(src.slice(schedStart, schedEnd), sb.ctx);
+
+    const pushStart = src.indexOf('async function pushBookingToCloud');
+    const pushEnd = src.indexOf('async function handleCustomerBookingSubmit');
+    vm.runInContext(src.slice(pushStart, pushEnd), sb.ctx);
+
+    const importStart = src.indexOf('function importSingleBooking');
+    const importEnd = src.indexOf('async function syncOnlineBookingsFromCloud');
+    vm.runInContext('var PMG_SCHEDULE_API_URL = "https://example.invalid/exec"; var patientsData = []; function isPatientDeleted() { return false; } function savePatientsData() {} function normalizeAppointmentTime(t) { return t || ""; }', sb.ctx);
+    vm.runInContext(src.slice(importStart, importEnd), sb.ctx);
+
+    // Seed Liew Pay Sze into patientsData
+    vm.runInContext(`
+      patientsData = [{
+        id: 'PT-130412',
+        name: 'Liew Pay Sze',
+        ic: '021127-13-0412',
+        phone: '+601125029622',
+        branch: 'Kota Sentosa',
+        appointments: [
+          { id: 'PMG-BK-373295', date: '2026-10-23', time: '14:30', status: 'Completed' }
+        ]
+      }];
+    `, sb.ctx);
+
+    // 1. Customer Liew Pay Sze submits a new booking via WhatsApp link (e.g. 14 days in the future)
+    const lpsBooking = {
+      id: 'PMG-BK-998877',
+      ref: 'PMG-BK-998877',
+      patientName: 'Liew Pay Sze',
+      patientPhone: '011-25029622',
+      patientIc: '021127-13-0412',
+      branchCode: 'Kota Sentosa',
+      date: '2026-12-05',
+      time: '11:00',
+      service: 'In-Person Consultation & Health Screening',
+      purpose: 'In-Person Consultation & Health Screening',
+      status: 'Scheduled'
+    };
+
+    const pushOk = await sb.ctx.pushBookingToCloud(lpsBooking);
+    assert.strictEqual(pushOk, true, 'pushBookingToCloud must return true');
+    assert(postCalls.length >= 2, 'pushBookingToCloud must POST to both Patient_Appointments and PharmacistSchedule');
+
+    const aptPost = postCalls.find(p => p.action === 'updateAppointmentStatus');
+    assert(aptPost, 'pushBookingToCloud must write permanent record via action: updateAppointmentStatus');
+    assert.strictEqual(aptPost.appointmentId, 'PMG-BK-998877');
+    assert.strictEqual(aptPost.appointment.patientName, 'Liew Pay Sze');
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(aptPost.appointment, 'patientIc'), false, 'PDPA guard must strip patientIc from cloud appointment payload');
+
+    // 2. Simulate Pharmacist PC having a newer local schedule timestamp WITHOUT the new booking in local cache, then calling fetchScheduleFromSheets & pushScheduleToSheets
+    sb.store.set('pmg_pharmacist_schedule_Kota Sentosa', JSON.stringify({
+      branchCode: 'Kota Sentosa',
+      lastUpdated: '2099-01-01T00:00:00.000Z',
+      weeklyTemplate: { '1': { isOpen: true, open: '08:00', close: '17:00' } },
+      onlineBookings: []
+    }));
+
+    const fetchedSched = await sb.ctx.fetchScheduleFromSheets('Kota Sentosa');
+    assert(
+      fetchedSched.onlineBookings.some(b => b.id === 'PMG-BK-998877'),
+      'fetchScheduleFromSheets must merge cloud onlineBookings into local schedule even when local lastUpdated is newer'
+    );
+
+    // 3. Import booking into local patient registry and verify Liew Pay Sze gets the new appointment
+    const imported = sb.ctx.importSingleBooking(lpsBooking, false);
+    assert.strictEqual(imported, true, 'importSingleBooking must return true for Liew Pay Sze new appointment');
+    const lpsRecord = vm.runInContext(`patientsData.find(p => p.id === 'PT-130412')`, sb.ctx);
+    assert(
+      lpsRecord.appointments.some(a => a.id === 'PMG-BK-998877' && a.date === '2026-12-05' && a.status === 'Scheduled'),
+      'Liew Pay Sze profile must contain the newly imported upcoming appointment'
+    );
+  });
+
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);
   process.exit(failed > 0 ? 1 : 0);
 })();
