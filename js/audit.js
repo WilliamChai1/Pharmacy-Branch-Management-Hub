@@ -67,6 +67,7 @@ function initAudit() {
 
   const runBtn = document.getElementById('auditRunBtn');
   if (runBtn) runBtn.addEventListener('click', runAudit);
+  if (typeof renderAuditFy2027RiskDetector === 'function') renderAuditFy2027RiskDetector();
 }
 
 // ─── TEST API KEY (MULTI-TIER: FLASH-LITE PRIMARY, FLASH SECONDARY) ──────────
@@ -1263,8 +1264,10 @@ function renderAuditReport(report) {
     }
   }
 
-  // Store WhatsApp summary for copy button
+  // Store WhatsApp summary & report for copy button and FY2027 Risk Detector
   window._auditWhatsappSummary = report.whatsapp_summary || '';
+  window._lastAuditReport = report;
+  if (typeof renderAuditFy2027RiskDetector === 'function') renderAuditFy2027RiskDetector();
 
   container.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -1313,9 +1316,132 @@ function escHtml(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ─── FY2027 AUTO-SCORED 200-PT BRANCH COMPLIANCE AUDIT RISK DETECTOR ─────────
+const PMG_HQ_AUDIT_RUBRIC_200 = [
+  { id: 'stock_mgmt', name: '1. Stock Management', maxPts: 72, passPts: 57.6, note: '60 pts Stock Accuracy + Expiry/Cycle/Aging/Cold Chain' },
+  { id: 'cust_svc',   name: '2. Customer Service', maxPts: 6,  passPts: 4.8,  note: '3s Greeting + Special Order Book' },
+  { id: 'display',    name: '3. Display & Price Tags', maxPts: 48, passPts: 38.4, note: '30 pts Price Tag Match + Licenses + Marketing POSM' },
+  { id: 'recording',  name: '4. Recording (Poisons & Temp)', maxPts: 18, passPts: 14.4, note: 'Poison C, Codeine/Pseudoephedrine, Rx & Fridge Temp' },
+  { id: 'cleanliness',name: '5. Cleanliness', maxPts: 22, passPts: 17.6, note: 'Counters, Shelves, Gondola Dust, Fridge (No Personal Food)' },
+  { id: 'tidiness',   name: '6. Tidiness & 5S', maxPts: 14, passPts: 11.2, note: '1m Clear Walkways, No Floor Cartons, Front-Facing FIFO' },
+  { id: 'operation',  name: '7. Operation & SOP', maxPts: 16, passPts: 12.8, note: 'Petty Cash, Invoices <2d, FIFO, Cashier & Membership' },
+  { id: 'attire',     name: '8. Team Attire', maxPts: 4,  passPts: 3.2,  note: 'White Coat / Uniform + Lanyard + Closed-Toe Footwear' }
+];
+
+function computeAutoAuditRiskScore(signals = {}) {
+  const vault = signals.vault || (window.PmgFy2027Kpi ? window.PmgFy2027Kpi.loadFy2027VaultLocal() : {});
+  const videoReport = signals.videoReport || window._lastAuditReport || null;
+  const videoCats = (videoReport && Array.isArray(videoReport.categories)) ? videoReport.categories : [];
+
+  const findVideoPct = (keyword) => {
+    const c = videoCats.find(x => String(x.name || '').toLowerCase().includes(keyword));
+    if (!c || !c.max_score) return null;
+    return (Number(c.score) / Number(c.max_score));
+  };
+
+  const results = PMG_HQ_AUDIT_RUBRIC_200.map(cat => {
+    let estScore = cat.maxPts * 0.90; // baseline assumption if no deduction signal yet
+    let signalText = 'Baseline check (verify pre-audit)';
+    if (cat.id === 'stock_mgmt') {
+      const acc = vault.cycleCountAccuracyPct !== undefined && vault.cycleCountAccuracyPct !== null ? Number(vault.cycleCountAccuracyPct) : null;
+      const expBlanks = Number(vault.expiryBlankPlansCount || 0);
+      const stockAccPts = acc !== null ? (60 * (acc / 100)) : 51; // default 85% if not yet counted
+      const expiryPts = expBlanks === 0 ? 3 : 1.5;
+      estScore = Math.min(cat.maxPts, stockAccPts + expiryPts + 8);
+      signalText = acc !== null
+        ? `Auto from Cycle Count (${acc}% acc) & Expiry (${expBlanks} blanks)`
+        : `No 250-SKU Cycle Count yet (60/200 pts at risk!)`;
+    } else if (cat.id === 'cleanliness' || cat.id === 'tidiness' || cat.id === 'display' || cat.id === 'attire') {
+      const kw = cat.id === 'display' ? 'display' : cat.id;
+      const vp = findVideoPct(kw);
+      if (vp !== null) {
+        estScore = +(cat.maxPts * vp).toFixed(1);
+        signalText = `Auto from 5S AI Walkthrough (${Math.round(vp * 100)}%)`;
+      } else {
+        estScore = +(cat.maxPts * 0.85).toFixed(1);
+        signalText = 'Upload 5S walkthrough video to auto-score';
+      }
+    }
+    const pct = +((estScore / cat.maxPts) * 100).toFixed(1);
+    const isBonusKiller = pct < 80.0;
+    return { ...cat, estScore: +estScore.toFixed(1), pct, isBonusKiller, signalText };
+  });
+
+  const totalScore = +results.reduce((s, r) => s + r.estScore, 0).toFixed(1);
+  const overallPct = +((totalScore / 200) * 100).toFixed(1);
+  const bonusKillers = results.filter(r => r.isBonusKiller);
+  const tierStatus = (overallPct >= 90 && bonusKillers.length === 0)
+    ? 'EXCELLENT (≥90% + All Cats ≥80%)'
+    : (bonusKillers.length > 0 ? `BONUS AT RISK (${bonusKillers.length} cat <80%)` : 'BELOW 90% EXCELLENT TARGET');
+
+  if (window.PmgFy2027Kpi && !signals.skipSave) {
+    window.PmgFy2027Kpi.saveFy2027VaultLocal({ complianceAuditPct: overallPct });
+  }
+
+  return { results, totalScore, overallPct, bonusKillers, tierStatus };
+}
+
+function sendPreAuditFixListWhatsApp() {
+  const risk = computeAutoAuditRiskScore({ skipSave: true });
+  const priorityCats = risk.results.filter(r => r.pct < 90).sort((a, b) => a.pct - b.pct);
+  const lines = [
+    `🛡️ *PMG KOTA SENTOSA — PRE-AUDIT RISK FIX LIST (KPI #15: 15% WT)*`,
+    `📊 Projected Score: *${risk.totalScore}/200 (${risk.overallPct}%)* — ${risk.tierStatus}`,
+    `🎯 Target: *≥90% (≥180/200)* AND *every category ≥80%*`,
+    ``
+  ];
+  if (priorityCats.length === 0) {
+    lines.push('✅ All 8 HQ Audit categories currently projected ≥90%! Keep Poison C, Fridge Temp (2–8°C) & Price Tags updated daily.');
+  } else {
+    lines.push('🚨 *PRIORITY FIXES BEFORE HQ AUDIT:*');
+    priorityCats.forEach((c, i) => {
+      lines.push(`${i + 1}. *${c.name}* (${c.pct}%${c.isBonusKiller ? ' — ⚠️ BONUS KILLER <80%' : ''}): ${c.note}`);
+    });
+  }
+  window.open(`https://wa.me/?text=${encodeURIComponent(lines.join('\n'))}`, '_blank', 'noopener,noreferrer');
+}
+
+function renderAuditFy2027RiskDetector() {
+  const host = document.getElementById('auditFy2027RiskDetector');
+  if (!host) return;
+  const risk = computeAutoAuditRiskScore();
+  const isPass = risk.overallPct >= 90 && risk.bonusKillers.length === 0;
+  const cardsHtml = risk.results.map(r => `
+    <div class="p-2.5 rounded-lg border ${r.isBonusKiller ? 'bg-rose-50 border-rose-300' : (r.pct >= 90 ? 'bg-emerald-50/70 border-emerald-200' : 'bg-amber-50/70 border-amber-200')}">
+      <div class="flex items-center justify-between text-[11px] font-extrabold text-slate-900">
+        <span class="truncate">${escHtml(r.name)}</span>
+        <span class="${r.isBonusKiller ? 'text-rose-700' : (r.pct >= 90 ? 'text-emerald-700' : 'text-amber-700')}">${r.pct}%</span>
+      </div>
+      <div class="text-[10px] text-slate-500 mt-0.5">${r.estScore}/${r.maxPts} pts • ${escHtml(r.signalText)}</div>
+    </div>
+  `).join('');
+
+  host.innerHTML = `
+    <div class="bg-white rounded-xl border ${isPass ? 'border-emerald-300' : 'border-amber-300'} p-4 shadow-xs">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-slate-900 text-white">KPI #15 (15% Wt)</span>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${isPass ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${escHtml(risk.tierStatus)}</span>
+          </div>
+          <h4 class="text-sm font-extrabold text-slate-900 mt-1">Auto-Scored 200-Pt Compliance Audit Risk Detector: <span class="text-blue-700">${risk.totalScore}/200 (${risk.overallPct}%)</span></h4>
+        </div>
+        <button type="button" onclick="sendPreAuditFixListWhatsApp()" class="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold transition cursor-pointer">
+          📲 Send Pre-Audit Fix List (WhatsApp)
+        </button>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">${cardsHtml}</div>
+    </div>
+  `;
+}
+
 // Expose globals for inline HTML event handlers
 window.testGeminiApiKey = testGeminiApiKey;
 window.runAudit = runAudit;
 window.toggleChecklist = toggleChecklist;
 window.copyWhatsAppSummary = copyWhatsAppSummary;
 window.printAuditReport = printAuditReport;
+window.PMG_HQ_AUDIT_RUBRIC_200 = PMG_HQ_AUDIT_RUBRIC_200;
+window.computeAutoAuditRiskScore = computeAutoAuditRiskScore;
+window.renderAuditFy2027RiskDetector = renderAuditFy2027RiskDetector;
+window.sendPreAuditFixListWhatsApp = sendPreAuditFixListWhatsApp;

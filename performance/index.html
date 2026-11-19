@@ -109,6 +109,9 @@
       <button id="btn-tab1" onclick="switchPerfTab('tab1')" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900 text-white shadow-xs transition cursor-pointer whitespace-nowrap">
         Executive Overview & 3M Trend
       </button>
+      <button id="btn-tab8" onclick="switchPerfTab('tab8')" class="px-3.5 py-2 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition cursor-pointer whitespace-nowrap">
+        🎯 FY2027 KPI Autopilot
+      </button>
       <button id="btn-tab2" onclick="switchPerfTab('tab2')" class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer whitespace-nowrap">
         Categories & Stock Cycle
       </button>
@@ -181,6 +184,10 @@
     <section id="panel-tab7" class="hidden">
       <div id="tab7UploadContainer"></div>
     </section>
+
+    <section id="panel-tab8" class="hidden">
+      <div id="tab8Fy2027Container"></div>
+    </section>
   </main>
 
   <footer class="bg-white border-t border-slate-200 py-3 px-6 text-center text-[11px] text-slate-400 no-print">
@@ -216,10 +223,10 @@
           <button id="btnCopyGeminiPresDoc" onclick="copyGeminiPresentationDoc()" class="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs shadow-xs transition cursor-pointer flex items-center gap-1.5">
             📋 Copy Entire Prompt
           </button>
-          <button onclick="downloadGeminiPresentationDoc('md')" class="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs transition cursor-pointer flex items-center gap-1">
+          <button onclick="downloadGeminiPresentationDoc('md')" class="px-3.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs transition cursor-pointer flex items-center gap-1">
             💾 Download .md
           </button>
-          <button onclick="downloadGeminiPresentationDoc('txt')" class="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs transition cursor-pointer flex items-center gap-1">
+          <button onclick="downloadGeminiPresentationDoc('txt')" class="px-3.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs transition cursor-pointer flex items-center gap-1">
             💾 Download .txt
           </button>
         </div>
@@ -254,7 +261,8 @@
 
   <!-- Scripts -->
   <script src="../js/exceljs.min.js"></script>
+  <script src="../js/fy2027-kpi-engine.js?v=62_fy2027_kpi"></script>
   <script src="sample-data.js?v=61_cloud_sync"></script>
-  <script src="performance.js?v=61_cloud_sync"></script>
+  <script src="performance.js?v=62_fy2027_kpi"></script>
 </body>
 </html>

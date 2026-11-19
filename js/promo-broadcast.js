@@ -811,6 +811,7 @@ function renderPromoBroadcastUI() {
   renderPromoKpis();
   renderPromoComposer();
   renderPromoCustomerTable();
+  if (typeof renderPromoFy2027GrowthStudio === 'function') renderPromoFy2027GrowthStudio();
   updateSyncBadgeState();
 }
 
@@ -2331,6 +2332,298 @@ function handleImportPromoJson(event) {
 }
 window.handleImportPromoJson = handleImportPromoJson;
 
+// ─── PHASE 4: GOOGLE FLOW (@me AVATAR) VIDEO STUDIO & MINI MEMBER DAY ROI ────
+const GOOGLE_FLOW_STUDIO_URL = 'https://flow.google.com/';
+const PROMO_GEMINI_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
+
+function buildGoogleFlowAvatarPromptPack(opts = {}) {
+  const hqScript = String(opts.hqScript || '').trim();
+  const language = opts.language || 'Malaysian English';
+  const clipCount = Math.max(3, Math.min(4, Number(opts.clipCount) || 3));
+  const tone = opts.tone || 'Friendly Community Pharmacist';
+  const productName = String(opts.productName || (typeof promoActiveCampaign !== 'undefined' && promoActiveCampaign?.productName) || 'PMG Pharmacy Featured Health Topic').trim();
+
+  // Split HQ script into natural beats (preserving core story without robotic verbatim reading)
+  const rawSentences = hqScript
+    ? hqScript.split(/(?<=[.!?。！？])\s+|\n+/).map(s => s.trim()).filter(Boolean)
+    : [
+        `Have you ever wondered how to get the best value from ${productName}?`,
+        `At PMG Pharmacy Kota Sentosa, our pharmacist team recommends choosing clinically proven daily support that fits your routine.`,
+        `Drop by PMG Pharmacy Kota Sentosa today for a free consultation, free blood glucose check, and download the Public Medicare App for member rewards!`
+      ];
+
+  const beats = [];
+  const chunkSize = Math.max(1, Math.ceil(rawSentences.length / clipCount));
+  for (let i = 0; i < clipCount; i++) {
+    const slice = rawSentences.slice(i * chunkSize, (i + 1) * chunkSize).join(' ').trim();
+    if (slice) beats.push(slice);
+  }
+  while (beats.length < clipCount) {
+    beats.push(`Visit PMG Pharmacy Kota Sentosa today and download the Public Medicare App for exclusive member rewards and free blood glucose screening!`);
+  }
+
+  const shotFramings = [
+    'Medium close-up at eye level, energetic warm smile, gentle hand gesture welcoming viewer',
+    'Medium shot standing beside bright organized pharmacy supplement gondola, natural conversational posture',
+    'Slightly tighter medium close-up, confident reassuring pharmacist tone, holding subtle focus gesture',
+    'Warm closing medium shot at pharmacy consultation counter, inviting hand gesture toward camera'
+  ];
+
+  const clips = beats.map((line, idx) => {
+    const num = String(idx + 1).padStart(3, '0');
+    const framing = shotFramings[idx % shotFramings.length];
+    return `CLIP ${num} (8s, 9:16 vertical): @me wearing a crisp white PMG community pharmacist coat with official lanyard over neat smart-casual attire, inside a bright, modern, clean community pharmacy (soft natural daylight, shallow depth of field, 1 person only, direct eye contact with camera). ${framing}. Spoken in natural ${language} (${tone} tone, no ad-libbing, clear lip-sync): "${line}"`;
+  });
+
+  const masterAgentPrompt = [
+    `Create a ${clipCount}-clip 9:16 vertical TikTok/Reels pharmacist video series featuring @me as the consistent on-camera community pharmacist presenter.`,
+    `LOCKED CONTINUITY RULES:`,
+    `- Character: @me (exact face & voice likeness), wearing a crisp white pharmacist coat + lanyard in every clip.`,
+    `- Setting: Bright, tidy modern Malaysian community pharmacy (PMG Pharmacy Kota Sentosa style), consistent warm daylight lighting.`,
+    `- Style: Authentic ${tone}, natural Malaysian ${language} delivery, direct eye contact, NO ad-libbing outside the exact quoted lines.`,
+    ``,
+    `GENERATE THESE ${clipCount} SEQUENTIAL CLIPS IN ORDER:`,
+    ...clips
+  ].join('\n');
+
+  const captions = {
+    tiktok: `💊 Pharmacist Tip from PMG Pharmacy Kota Sentosa! ${productName}\n\nDrop by 7th Mile Kota Sentosa for a FREE Blood Glucose Check & personalized pharmacist advice! 🩺✨\n📲 Earn member points on Public Medicare App (iOS & Android)\n#PMGPharmacy #KotaSentosa #KuchingPharmacist #SarawakHealth #CommunityPharmacist #PharmacistTips`,
+    xhs: `【古晋7哩 PMG药剂师干货分享】💊 ${productName}\n\n不用再盲目乱买！欢迎来 PMG Pharmacy Kota Sentosa 找我们的药剂师免费咨询，顺便享受【免费血糖检测】🩸\n📱 记得下载 Public Medicare App 累积积分与专属优惠券！\n#古晋药剂行 #KotaSentosa #PMGPharmacy #砂拉越生活 #药剂师推荐 #健康科普`,
+    fbig: `🩺 Community Pharmacist Advice — PMG Pharmacy Kota Sentosa (7th Mile)\n\n${beats[0]}\n\nVisit us in-store for a complimentary Blood Glucose Check & download the Public Medicare App to earn points & vouchers!\n#PMGPharmacyKotaSentosa #Kuching #HealthTips #PublicMedicare`
+  };
+
+  return { masterAgentPrompt, clips, captions, language, clipCount, tone };
+}
+
+async function generateAiGoogleFlowVideoPack() {
+  const hqScript = document.getElementById('flowHqScriptInput')?.value.trim() || '';
+  const language = document.getElementById('flowLangSelect')?.value || 'Malaysian English';
+  const clipCount = Number(document.getElementById('flowClipCountSelect')?.value || 3);
+  const tone = document.getElementById('flowToneSelect')?.value || 'Friendly Community Pharmacist';
+  const statusEl = document.getElementById('flowAiStatus');
+
+  if (!hqScript) {
+    showPromoToast('Paste HQ script or key talking points first!');
+    return;
+  }
+
+  const apiKey = (typeof window.getGlobalGeminiKey === 'function' ? window.getGlobalGeminiKey() : '') ||
+    (typeof localStorage !== 'undefined' ? (localStorage.getItem('pmg_gemini_key') || '') : '');
+
+  // Always build deterministic fallback first so UI responds immediately even without Gemini key
+  if (!apiKey) {
+    const pack = buildGoogleFlowAvatarPromptPack({ hqScript, language, clipCount, tone });
+    renderGoogleFlowOutputPack(pack);
+    if (statusEl) statusEl.textContent = '✅ Generated Google Flow (@me) pack (instant mode — add Gemini API key in Hub for AI story rewriting).';
+    return;
+  }
+
+  if (statusEl) statusEl.textContent = '✨ Adapting HQ story naturally with Gemini 3.5 Flash-Lite...';
+  const prompt = `You are a friendly Malaysian community pharmacist (PMG Pharmacy Kota Sentosa, Kuching) creating a short ${clipCount * 8}-second vertical TikTok/Reels video.
+Rewrite the HQ script below into EXACTLY ${clipCount} natural, spoken-word beats (15–22 words per beat so each fits an 8-second Google Flow @me avatar clip).
+RULES:
+1. Keep 100% of the core medical/product story accurate — DO NOT copy stiff corporate phrasing verbatim.
+2. Language: ${language}. Tone: ${tone}.
+3. End Beat ${clipCount} with a warm CTA to visit PMG Pharmacy Kota Sentosa or download Public Medicare App.
+4. Return ONLY a JSON array of ${clipCount} strings (no markdown fences).
+
+HQ SCRIPT:
+${hqScript}`;
+
+  for (const model of PROMO_GEMINI_MODELS) {
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.6, responseMimeType: 'application/json' }
+        })
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const parsed = JSON.parse(rawText.replace(/```json|```/g, '').trim());
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const pack = buildGoogleFlowAvatarPromptPack({
+          hqScript: parsed.join('\n'),
+          language,
+          clipCount: parsed.length,
+          tone
+        });
+        renderGoogleFlowOutputPack(pack);
+        if (statusEl) statusEl.textContent = `✅ Story adapted naturally via ${model} — ready for Google Flow (@me)!`;
+        return;
+      }
+    } catch (_) {}
+  }
+
+  // Fallback if API unreachable
+  const fallbackPack = buildGoogleFlowAvatarPromptPack({ hqScript, language, clipCount, tone });
+  renderGoogleFlowOutputPack(fallbackPack);
+  if (statusEl) statusEl.textContent = '✅ Generated Google Flow (@me) pack using local story splitter.';
+}
+
+function renderGoogleFlowOutputPack(pack) {
+  const masterEl = document.getElementById('flowMasterPromptOutput');
+  const captionsEl = document.getElementById('flowCaptionsOutput');
+  const outputWrap = document.getElementById('flowOutputContainer');
+  if (masterEl) masterEl.value = pack.masterAgentPrompt;
+  if (captionsEl) {
+    captionsEl.value = `=== TIKTOK ===\n${pack.captions.tiktok}\n\n=== XIAOHONGSHU (XHS) ===\n${pack.captions.xhs}\n\n=== FB / IG REELS ===\n${pack.captions.fbig}`;
+  }
+  if (outputWrap) outputWrap.classList.remove('hidden');
+}
+
+async function copyMasterPromptAndOpenGoogleFlow() {
+  const masterEl = document.getElementById('flowMasterPromptOutput');
+  const text = masterEl ? masterEl.value.trim() : '';
+  if (!text) {
+    showPromoToast('Generate your Google Flow (@me) prompt first!');
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    showPromoToast('✅ Master @me Prompt copied! Paste into Google Flow Agent Mode.');
+  } catch (_) {}
+  window.open(GOOGLE_FLOW_STUDIO_URL, '_blank', 'noopener,noreferrer');
+}
+
+function calculateMiniMemberDayRoi(budgetRm, salesRm) {
+  const b = Math.max(0, Number(budgetRm) || 0);
+  const s = Math.max(0, Number(salesRm) || 0);
+  const roi = b > 0 ? +(s / b).toFixed(2) : 0;
+  const minSalesForExcellent = +(b * 2.50).toFixed(2);
+  const gapRm = +(Math.max(0, minSalesForExcellent - s)).toFixed(2);
+  return { budgetRm: b, salesRm: s, roi, minSalesForExcellent, gapRm, isExcellent: roi >= 2.50 };
+}
+
+function updateMiniMemberDayRoiUi() {
+  const b = document.getElementById('mmdBudgetInput')?.value;
+  const s = document.getElementById('mmdSalesInput')?.value;
+  const out = document.getElementById('mmdRoiResultBox');
+  if (!out) return;
+  const r = calculateMiniMemberDayRoi(b, s);
+  if (window.PmgFy2027Kpi && r.budgetRm > 0 && r.salesRm > 0) {
+    window.PmgFy2027Kpi.saveFy2027VaultLocal({ miniMemberDayRoi: r.roi });
+  }
+  out.innerHTML = r.budgetRm > 0
+    ? `<div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+         <span>Target Sales for <strong>2.50× Excellent ROI</strong>: <strong class="text-emerald-700">RM ${r.minSalesForExcellent.toLocaleString()}</strong></span>
+         <span class="px-2 py-0.5 rounded-full font-black ${r.isExcellent ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">Current ROI: ${r.roi.toFixed(2)}× ${r.isExcellent ? '✅ Excellent (+5% Bonus)' : `(Need +RM ${r.gapRm.toLocaleString()})`}</span>
+       </div>`
+    : `<div class="text-xs text-slate-500">Enter your Mini Member Day promo budget to auto-calculate the exact sales needed for <strong>ROI ≥ 2.50× (+5% Bonus)</strong>.</div>`;
+}
+
+function loadVipMiniMemberDayTemplateIntoComposer() {
+  const defs = (typeof window !== 'undefined' && window.FY2027_BRANCH_DEFAULTS) || {};
+  const iosUrl = defs.medicareAppIosUrl || 'https://apps.apple.com/my/app/public-medicare/id6761357301';
+  const andUrl = defs.medicareAppAndroidUrl || 'https://play.google.com/store/apps/details?id=com.pmg.publicmedicare';
+  const prod = promoActiveCampaign?.productName || 'PMG Exclusive Member Day Bundles';
+  promoComposerState.offerDetailsEn = `VIP Early-Bird Mini Member Day Pre-Order for ${prod}! Reserve your high-value bundle early to enjoy member gifts, FREE Blood Glucose Check & double rewards on Public Medicare App (iOS: ${iosUrl} | Android: ${andUrl})`;
+  promoComposerState.offerDetailsBm = `Tempahan Awal VIP Mini Member Day untuk ${prod}! Tempah awal untuk hadiah ahli, Saringan Glukosa PERCUMA & ganjaran berganda di Public Medicare App (iOS: ${iosUrl} | Android: ${andUrl})`;
+  promoComposerState.offerDetailsZh = `VIP 会员日抢先预订特惠【${prod}】！提前预订锁定超值组合与会员赠品，到店更享【免费血糖检测】及 Public Medicare App 双倍积分奖励（iOS: ${iosUrl} | Android: ${andUrl}）`;
+  savePromoComposerState();
+  renderPromoComposer();
+  showPromoToast('⚡ VIP Mini Member Day Pre-Order template loaded into WhatsApp Composer!');
+}
+
+function renderPromoFy2027GrowthStudio() {
+  const host = document.getElementById('promoFy2027GrowthStudio');
+  if (!host) return;
+  if (host.dataset.rendered === '1') return; // preserve user-typed script/budget while toggling campaign table
+  host.dataset.rendered = '1';
+
+  const vipCount = (promoActiveCampaign?.customers || []).filter(c => (Number(c.totalQty) || 0) >= 2 || (Number(c.totalSpent) || 0) >= 200).length;
+
+  host.innerHTML = `
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <!-- 1. Google Flow (@me Avatar) Automated Video Studio -->
+      <div class="bg-white rounded-2xl border border-indigo-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-3.5 bg-gradient-to-r from-indigo-950 via-purple-900 to-slate-900 text-white flex items-center justify-between gap-2">
+          <div>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-purple-400/20 text-purple-200 border border-purple-300/30">KPI #10 • Pharmacist On-Camera (≥4/mo)</span>
+            <h3 class="text-sm font-black mt-1">🎬 Google Flow (<code>@me</code> Avatar) Automated Video Studio</h3>
+          </div>
+          <a href="${GOOGLE_FLOW_STUDIO_URL}" target="_blank" rel="noopener noreferrer" class="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition whitespace-nowrap">
+            Open Flow ↗
+          </a>
+        </div>
+        <div class="p-4 space-y-3 text-xs">
+          <p class="text-slate-600">Paste HQ's raw script or talking points below. Gemini adapts the story naturally (no robotic reading) and generates a <strong>1-click Google Flow Agent Master Prompt using your <code>@me</code> avatar</strong> + 9:16 TikTok/XHS/FB captions.</p>
+          <textarea id="flowHqScriptInput" rows="3" placeholder="Paste HQ monthly video script, bullet points, or promo highlights here..." class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-400 outline-none"></textarea>
+          <div class="grid grid-cols-3 gap-2">
+            <select id="flowLangSelect" class="px-2.5 py-2 rounded-xl border border-slate-300 text-xs font-semibold bg-white">
+              <option value="Malaysian English">Malaysian English</option>
+              <option value="Mandarin (中文)">Mandarin (中文)</option>
+              <option value="Bahasa Melayu">Bahasa Melayu</option>
+              <option value="Bilingual English + Mandarin">Bilingual EN + 中文</option>
+            </select>
+            <select id="flowClipCountSelect" class="px-2.5 py-2 rounded-xl border border-slate-300 text-xs font-semibold bg-white">
+              <option value="3">~24–30s (3 Clips)</option>
+              <option value="4">~32–40s (4 Clips)</option>
+            </select>
+            <select id="flowToneSelect" class="px-2.5 py-2 rounded-xl border border-slate-300 text-xs font-semibold bg-white">
+              <option value="Friendly Community Pharmacist">Friendly Pharmacist</option>
+              <option value="Engaging Health Myth-Buster">Myth-Buster Hook</option>
+              <option value="Clear Promo Deal Explainer">Promo Explainer</option>
+            </select>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" onclick="generateAiGoogleFlowVideoPack()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black shadow-xs transition cursor-pointer">
+              ✨ Adapt Story &amp; Build @me Flow Prompt
+            </button>
+            <button type="button" onclick="copyMasterPromptAndOpenGoogleFlow()" class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition cursor-pointer">
+              🚀 Copy Master Prompt &amp; Open Google Flow
+            </button>
+          </div>
+          <div id="flowAiStatus" class="text-[11px] font-semibold text-indigo-700"></div>
+          <div id="flowOutputContainer" class="hidden space-y-2 pt-1">
+            <label class="block text-[11px] font-extrabold text-slate-700">🤖 Google Flow Agent Master Prompt (Paste into flow.google.com Agent Mode):</label>
+            <textarea id="flowMasterPromptOutput" rows="5" readonly class="w-full px-3 py-2 rounded-xl bg-slate-950 text-emerald-200 font-mono text-[11px] border border-slate-800"></textarea>
+            <label class="block text-[11px] font-extrabold text-slate-700">📝 Ready-to-Post Captions (TikTok / XHS / FB &amp; IG):</label>
+            <textarea id="flowCaptionsOutput" rows="4" readonly class="w-full px-3 py-2 rounded-xl bg-slate-50 text-slate-800 text-[11px] border border-slate-200"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Mini Member Day 2.50x ROI Planner & VIP Pre-Order Engine -->
+      <div class="bg-white rounded-2xl border border-emerald-200 shadow-sm overflow-hidden flex flex-col justify-between">
+        <div>
+          <div class="px-5 py-3.5 bg-gradient-to-r from-emerald-950 via-teal-900 to-slate-900 text-white">
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-400/20 text-emerald-200 border border-emerald-300/30">KPI #19 • +5.0% Bonus (ROI ≥ 2.50×)</span>
+            <h3 class="text-sm font-black mt-1">🎯 Mini Member Day 2.50× ROI &amp; VIP Pre-Order Engine</h3>
+          </div>
+          <div class="p-4 space-y-3 text-xs">
+            <p class="text-slate-600">Lock in high-margin VIP pre-orders <em>before</em> Member Day starts so you guarantee <strong>ROI ≥ 2.50×</strong> (+5% total branch bonus).</p>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block font-bold text-slate-700 mb-1">Event Promo Budget (RM)</label>
+                <input id="mmdBudgetInput" type="number" min="0" value="1000" oninput="updateMiniMemberDayRoiUi()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold">
+              </div>
+              <div>
+                <label class="block font-bold text-slate-700 mb-1">Projected / Actual Sales (RM)</label>
+                <input id="mmdSalesInput" type="number" min="0" value="2500" oninput="updateMiniMemberDayRoiUi()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold">
+              </div>
+            </div>
+            <div id="mmdRoiResultBox" class="p-3 rounded-xl bg-emerald-50 border border-emerald-200"></div>
+            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div class="font-extrabold text-slate-900">👑 Detected Repeat VIP Buyers in Active List: <span class="text-emerald-700">${vipCount} VIPs</span></div>
+                <div class="text-[11px] text-slate-500">Auto-loads tri-lingual VIP Pre-Order invite with Public Medicare iOS &amp; Android links into Composer above.</div>
+              </div>
+              <button type="button" onclick="loadVipMiniMemberDayTemplateIntoComposer()" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xs transition cursor-pointer">
+                ⚡ Load VIP Pre-Order Template
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  updateMiniMemberDayRoiUi();
+}
+
 // ─── EXPOSE GLOBALS FOR WINDOW & TESTS ─────────────────────────────────────────
 if (typeof window !== 'undefined') {
   window.NUTRI_ALPHA_PRESET_CAMPAIGN = NUTRI_ALPHA_PRESET_CAMPAIGN;
@@ -2347,6 +2640,13 @@ if (typeof window !== 'undefined') {
   window.parseCsvFileToCustomers = parseCsvFileToCustomers;
   window.copyPosterToClipboard = copyPosterToClipboard;
   window.getPosterForLanguage = getPosterForLanguage;
+  window.buildGoogleFlowAvatarPromptPack = buildGoogleFlowAvatarPromptPack;
+  window.generateAiGoogleFlowVideoPack = generateAiGoogleFlowVideoPack;
+  window.copyMasterPromptAndOpenGoogleFlow = copyMasterPromptAndOpenGoogleFlow;
+  window.calculateMiniMemberDayRoi = calculateMiniMemberDayRoi;
+  window.updateMiniMemberDayRoiUi = updateMiniMemberDayRoiUi;
+  window.loadVipMiniMemberDayTemplateIntoComposer = loadVipMiniMemberDayTemplateIntoComposer;
+  window.renderPromoFy2027GrowthStudio = renderPromoFy2027GrowthStudio;
   Object.defineProperty(window, 'promoActiveCampaign', {
     get: () => promoActiveCampaign,
     set: (v) => { promoActiveCampaign = v; },

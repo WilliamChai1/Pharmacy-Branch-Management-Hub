@@ -1568,6 +1568,120 @@ function createBrowserSandbox(fetchImpl) {
     );
   });
 
+  // ── 17. FY2027 KPI Automation Suite (Phases 1–4) ──────────────────────────
+  test('Phase 1: FY2027 KPI Engine (14th cut-off, EM HM+EHM, GP 30% override, Review Simulator, Morning Huddle)', () => {
+    const kpi = require(path.join(ROOT, 'js', 'fy2027-kpi-engine.js'));
+    assert.strictEqual(kpi.FY2027_BRANCH_DEFAULTS.monthlyCutOffDay, 14, 'Monthly cut-off must be 14th');
+    assert.strictEqual(kpi.FY2027_BRANCH_DEFAULTS.googleReviewUrl, 'https://g.page/r/CUU3ygRE9IC6EBM/review');
+    assert(kpi.FY2027_BRANCH_DEFAULTS.medicareAppIosUrl.includes('apps.apple.com'), 'Must include Apple App Store URL');
+    assert(kpi.FY2027_BRANCH_DEFAULTS.medicareAppAndroidUrl.includes('play.google.com'), 'Must include Google Play URL');
+
+    // Verify East Malaysia HM + EHM in performance.js computeAllMetrics
+    const perfMod = require(path.join(ROOT, 'performance', 'performance.js'));
+    const sampleMetrics = perfMod.computeAllMetrics({
+      dailySalesLatest: { rows: [{ ts: 110000, hb: 33000, hm: 12000, ehm: 4500, pb: 0, pbAmpm: 0, whm: 0, regular: 0 }] },
+      dailySalesPrevYear: { rows: [{ ts: 100000, hb: 30000, hm: 10000, ehm: 5000, pb: 0, pbAmpm: 0, whm: 0, regular: 0 }] },
+      customersServedLatest: { rows: [], grandTotal: 1020 },
+      customersServedPrevYear: { rows: [], grandTotal: 1000 },
+      categoryGpLatest: { rows: [{ category: 'OTC', netSoldPrice: 110000, netSoldProfit: 33550, gpMarginPct: 30.5 }] },
+      categoryGpPrevYear: { rows: [{ category: 'OTC', netSoldPrice: 100000, netSoldProfit: 30000, gpMarginPct: 30.0 }] },
+      stockClosingLatest: { rows: [{ category: 'OTC', customCost: 130000 }] },
+      itemSalesLatest: { items: [{ itemCode: '142499 - strip', itemName: 'FREE GLUCOSE SCREENING STRIP', netSoldPrice: 0, qty: 95 }] }
+    });
+    assert.strictEqual(sampleMetrics.outlet.hmPlusEhmLatest, 16500, 'EM High Margin must sum HM + EHM (12000 + 4500)');
+    assert.strictEqual(sampleMetrics.outlet.hmPlusEhmPrev, 15000, 'EM High Margin LY must sum HM + EHM (10000 + 5000)');
+    assert.strictEqual(sampleMetrics.outlet.hmPlusEhmDiffPct, 10, 'EM HM+EHM YoY growth must be +10%');
+
+    const sc = kpi.evaluateFy2027AutoKpis(sampleMetrics, { googleReviewCount: 200, googleReviewRating: 4.65 });
+    const b6 = sc.kpis.find(k => k.id === 'B6');
+    assert.strictEqual(sc.gpAutoOverride, true, 'GP% >= 30.00% must activate Auto-Excellent Override');
+    assert.strictEqual(b6.tier, 'Excellent', 'GP% 30.5% (+0.5pp YoY) must still score Excellent via 30% override');
+    assert.strictEqual(sc.kpis.find(k => k.id === 'A3').tier, 'Excellent', 'EM HM+EHM +10% must score Excellent');
+    assert.strictEqual(sc.kpis.find(k => k.id === 'G18').tier, 'Excellent', '95/1020 = 9.31% auto-detected free glucose must score Excellent');
+    assert(sc.totalCappedScore <= 100, 'Total branch score must be capped at 100%');
+
+    const revSim = kpi.calculateFiveStarReviewsNeeded(200, 4.65, 4.90, 250);
+    assert(revSim.fiveStarNeeded >= 50 && revSim.projectedRating >= 4.90, 'Google Review simulator must solve both >=250 count and >=4.90 rating');
+
+    const huddle = kpi.buildDailyTeamHuddleWhatsApp(sc, sampleMetrics, 'Thu, 19 Nov 2026');
+    assert(huddle.includes('PMG KOTA SENTOSA') && huddle.includes('14th Cut-Off'), 'Morning Huddle WhatsApp must include KS01 targets & 14th cut-off');
+  });
+
+  test('Phase 2: 250-SKU Cycle Count Generator, 2.0-Mo PO Cap & 200-Pt Audit Risk Detector', () => {
+    const sb = createBrowserSandbox();
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'fy2027-kpi-engine.js'), 'utf8'), sb.ctx);
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'inventory.js'), 'utf8'), sb.ctx);
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'audit.js'), 'utf8'), sb.ctx);
+
+    const mockRows = Array.from({ length: 300 }, (_, i) => ({
+      itemCode: `SKU-${1000 + i}`,
+      desc: `Item ${i}`,
+      category: 'OTC',
+      soh: i % 3 === 0 ? 50 : 10,
+      ads: 1 + (i % 5),
+      approvedQty: 200,
+      isAgingLocked: i % 10 === 0
+    }));
+    const cycleList = sb.ctx.generateMonthly250SkuCycleList(mockRows, 250);
+    assert.strictEqual(cycleList.length, 250, 'Cycle count generator must pick exactly 250 unique SKUs');
+    const uniqueCodes = new Set(cycleList.map(x => x.itemCode));
+    assert.strictEqual(uniqueCodes.size, 250, 'All 250 cycle count SKUs must be unique');
+
+    const capRes = sb.ctx.applyTwoMonthStockCyclePoCap(mockRows);
+    assert(capRes.trimmedSkus > 0 && capRes.unitsSaved > 0, '2.0-month PO cap must trim over-buffered order units');
+    assert(mockRows[0].approvedQty <= Math.max(0, Math.floor(mockRows[0].ads * 60) - mockRows[0].soh), 'Capped approvedQty must not exceed 60-day cover');
+
+    const auditRisk = sb.ctx.computeAutoAuditRiskScore({
+      vault: { cycleCountAccuracyPct: 65, expiryBlankPlansCount: 5 },
+      skipSave: true
+    });
+    assert(auditRisk.bonusKillers.some(c => c.id === 'stock_mgmt'), 'Low cycle count accuracy must flag Stock Management as a <80% Bonus Killer');
+  });
+
+  test('Phase 3: Patient Care WhatsApp Growth Multiplier (Google Review + Medicare iOS & Android + Free Glucose, PDPA-Safe)', () => {
+    const sb = createBrowserSandbox();
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'fy2027-kpi-engine.js'), 'utf8'), sb.ctx);
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'patient.js'), 'utf8'), sb.ctx);
+
+    const footerEn = sb.ctx.buildFy2027GrowthWhatsAppFooter('English', { includeFreeGlucose: true, includeMedicareApp: true, includeGoogleReview: true });
+    assert(footerEn.includes('FREE Blood Glucose'), 'English growth footer must include Free Blood Glucose invite');
+    assert(footerEn.includes('apps.apple.com/my/app/public-medicare/id6761357301'), 'Must include official Public Medicare Apple App Store link');
+    assert(footerEn.includes('play.google.com/store/apps/details?id=com.pmg.publicmedicare'), 'Must include official Public Medicare Google Play link');
+    assert(footerEn.includes('https://g.page/r/CUU3ygRE9IC6EBM/review'), 'Must include Kota Sentosa Google Review URL');
+
+    const revMsg = sb.ctx.buildGoogleReviewInviteMessage({ name: 'Tan Ah Kow', language: 'Chinese' });
+    assert(revMsg.includes('https://g.page/r/CUU3ygRE9IC6EBM/review'), '1-click Google Review invite must embed KS01 review link');
+    const appMsg = sb.ctx.buildMedicareAppInviteMessage({ name: 'Ahmad', language: 'Malay' });
+    assert(appMsg.includes('id6761357301') && appMsg.includes('com.pmg.publicmedicare'), '1-click Medicare App invite must embed both iOS & Android links');
+  });
+
+  test('Phase 4: Google Flow (@me Avatar) Video Studio, Mini Member Day 2.50x ROI & Promo JS Parity', () => {
+    const promoMain = fs.readFileSync(path.join(ROOT, 'js', 'promo-broadcast.js'), 'utf8');
+    const promoStandalone = fs.readFileSync(path.join(ROOT, 'promo', 'promo.js'), 'utf8');
+    assert.strictEqual(promoMain, promoStandalone, 'js/promo-broadcast.js and promo/promo.js must remain in 100% parity');
+
+    const sb = createBrowserSandbox();
+    vm.runInContext(promoMain, sb.ctx);
+
+    const pack = sb.ctx.buildGoogleFlowAvatarPromptPack({
+      hqScript: 'Vitamin D3 helps bone health and immunity. Many Malaysians are deficient despite sunny weather. Visit PMG Pharmacy for advice.',
+      language: 'Malaysian English',
+      clipCount: 3,
+      tone: 'Friendly Community Pharmacist'
+    });
+    assert.strictEqual(pack.clips.length, 3, 'Must produce 3 sequential 8s clips');
+    assert(pack.masterAgentPrompt.includes('@me'), 'Google Flow Master Prompt must explicitly cast @me personal avatar');
+    assert(pack.masterAgentPrompt.includes('9:16 vertical'), 'Must target 9:16 vertical TikTok/Reels format');
+    assert(pack.captions.tiktok.includes('#PMGPharmacy') && pack.captions.xhs.includes('KotaSentosa'), 'Must generate TikTok and XHS captions');
+
+    const roiOk = sb.ctx.calculateMiniMemberDayRoi(1000, 2600);
+    assert.strictEqual(roiOk.roi, 2.6, 'ROI must compute 2600/1000 = 2.60');
+    assert.strictEqual(roiOk.isExcellent, true, 'ROI >= 2.50 must be Excellent');
+    const roiLow = sb.ctx.calculateMiniMemberDayRoi(1000, 1800);
+    assert.strictEqual(roiLow.isExcellent, false, 'ROI < 2.50 must not be Excellent');
+    assert.strictEqual(roiLow.gapRm, 700, 'Gap to 2.50x ROI on RM1000 budget with RM1800 sales must be RM700');
+  });
+
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);
   process.exit(failed > 0 ? 1 : 0);
 })();

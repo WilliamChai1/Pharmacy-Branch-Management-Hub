@@ -1180,6 +1180,11 @@ function computeAllMetrics(state) {
   const hbSharePrevPct   = tsPrev > 0 ? (hbPrev / tsPrev) * 100 : 0;
   const hmShareLatestPct = tsLatest > 0 ? (hmLatest / tsLatest) * 100 : 0;
   const hmSharePrevPct   = tsPrev > 0 ? (hmPrev / tsPrev) * 100 : 0;
+  // East Malaysia FY2027 KPI: High Margin Sales = HM + EHM
+  const hmPlusEhmLatest = +(hmLatest + ehmLatest).toFixed(2);
+  const hmPlusEhmPrev   = +(hmPrev + ehmPrev).toFixed(2);
+  const hmPlusEhmShareLatestPct = tsLatest > 0 ? (hmPlusEhmLatest / tsLatest) * 100 : 0;
+  const hmPlusEhmSharePrevPct   = tsPrev > 0 ? (hmPlusEhmPrev / tsPrev) * 100 : 0;
 
   // ── 2, 7, 8, 9. Category Net Sold Price, Profit, Margin % & Stock Cycle (10) ──
   const catMapL = new Map(catL.map(r => [r.category.toUpperCase(), r]));
@@ -1749,6 +1754,10 @@ function computeAllMetrics(state) {
       hmShareLatestPct, hmSharePrevPct,
       hmShareDiffPP: +(hmShareLatestPct - hmSharePrevPct).toFixed(2),
       ehmLatest, ehmPrev,
+      hmPlusEhmLatest, hmPlusEhmPrev,
+      hmPlusEhmDiffRm: +(hmPlusEhmLatest - hmPlusEhmPrev).toFixed(2),
+      hmPlusEhmDiffPct: calcGrowthPct(hmPlusEhmLatest, hmPlusEhmPrev),
+      hmPlusEhmShareLatestPct, hmPlusEhmSharePrevPct,
       pbLatest, pbPrev,
       whmLatest, whmPrev,
       regLatest, regPrev,
@@ -2143,6 +2152,10 @@ ${staff}
 - Top Declining SKUs: ${topBleeders}
 - 6-Month Stock Aging: ${m.agingSummary?.totalAgedSkus || 0} SKUs with ≥6M aged stock totaling RM ${nFmt(m.agingSummary?.totalAgedValueRm)} (including RM ${nFmt(m.agingSummary?.totalAbove1YrValueRm)} aged >1 year).
 - Video Walkthrough Report Notes: ${state.videoWalkthroughReport || 'None provided'}
+- FY2027 KPI Scorecard Gaps (East Malaysia >6Y — Prioritize highest-weight gains):
+  * East Malaysia High Margin (HM + EHM): RM ${fmtNum(m.outlet.hmPlusEhmLatest, 2)} vs RM ${fmtNum(m.outlet.hmPlusEhmPrev, 2)} LY (${fmtPct(m.outlet.hmPlusEhmDiffPct, 2, true)}, Target ≥+10.00%)
+  * Overall GP% Auto-Excellent Override (≥30.00%): Current ${fmtPct(m.catSummaryAll12?.gpPctLatest || m.outlet.personalGpTotalLatest?.gpMarginPct || 0)} (Gap to 30.00% override: ${Math.max(0, 30 - (m.catSummaryAll12?.gpPctLatest || m.outlet.personalGpTotalLatest?.gpMarginPct || 0)).toFixed(2)}pp)
+  * Stock Cycle Optimal Band (1.50–2.00 mo): Current ${(m.catSummaryHq11?.averageStockCycle || 0).toFixed(2)} mo
 
 CRITICAL INSTRUCTION FOR TEAMMATE COACHING & PIC ALERTS:
 You must rigorously compare 3 months of personal sales (Latest vs M-1 vs M-2) for every active teammate. When any teammate shows a significant drop (such as low HB% < 30%, negative 3-month sales contraction, customer footfall drop, or GP margin compression), you MUST:
@@ -4423,6 +4436,7 @@ function refreshAllViews() {
   renderAiAnalysisSection();
   renderTaskListSection();
   renderDataStudioSlots();
+  if (typeof renderTab8Fy2027Autopilot === 'function') renderTab8Fy2027Autopilot();
   updateTaskCounterBadges();
 }
 
@@ -6619,9 +6633,218 @@ function renderDataStudioSlots() {
   `;
 }
 
+// ─── TAB 8: FY2027 KPI AUTOPILOT & MORNING TEAM HUDDLE ─────────────────────
+function renderTab8Fy2027Autopilot() {
+  const container = document.getElementById('tab8Fy2027Container');
+  if (!container) return;
+  const engine = typeof window !== 'undefined' ? window.PmgFy2027Kpi : null;
+  if (!engine || !computedMetrics) {
+    container.innerHTML = `<div class="p-8 bg-white rounded-2xl border border-slate-200 text-center text-sm text-slate-500">Loading FY2027 KPI Automation Engine...</div>`;
+    return;
+  }
+
+  const vault = engine.loadFy2027VaultLocal();
+  const sc = engine.evaluateFy2027AutoKpis(computedMetrics, vault);
+  const revSim = (vault.googleReviewCount && vault.googleReviewRating)
+    ? engine.calculateFiveStarReviewsNeeded(vault.googleReviewCount, vault.googleReviewRating, 4.90, 250)
+    : null;
+
+  const grouped = {};
+  sc.kpis.forEach(k => {
+    if (!grouped[k.section]) grouped[k.section] = [];
+    grouped[k.section].push(k);
+  });
+
+  const rowsHtml = Object.entries(grouped).map(([section, items]) => {
+    const sectionRows = items.map(k => `
+      <tr class="border-b border-slate-100 hover:bg-slate-50/80 transition">
+        <td class="px-4 py-3 text-xs font-extrabold text-slate-900">
+          ${escapeHtml(k.name)}
+          <div class="text-[10px] font-medium text-slate-400 mt-0.5">${escapeHtml(k.source)}</div>
+        </td>
+        <td class="px-3 py-3 text-xs font-bold text-center text-slate-700">${k.isBonus ? '+' : ''}${k.weight.toFixed(1)}%</td>
+        <td class="px-3 py-3 text-xs font-extrabold text-slate-900 whitespace-nowrap">${escapeHtml(k.actualDisplay)}</td>
+        <td class="px-3 py-3 text-center">
+          <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border ${k.tierBadge}">${escapeHtml(k.tier)}</span>
+        </td>
+        <td class="px-3 py-3 text-xs font-extrabold text-right ${k.weightedScore > 0 ? 'text-emerald-700' : 'text-slate-400'}">${k.weightedScore.toFixed(2)}%</td>
+        <td class="px-4 py-3 text-xs text-slate-700">${escapeHtml(k.gapText)}</td>
+      </tr>
+    `).join('');
+    return `
+      <tr class="bg-slate-100/90 border-y border-slate-200">
+        <td colspan="6" class="px-4 py-2 text-[11px] font-black uppercase tracking-wider text-slate-700">${escapeHtml(section)}</td>
+      </tr>
+      ${sectionRows}
+    `;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="space-y-5">
+      <!-- Top Hero: Live Score + Morning Huddle WhatsApp Automation -->
+      <div class="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 rounded-2xl p-5 sm:p-6 text-white shadow-md border border-emerald-800/40">
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div>
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">FY2027 Retail Branch KPI (&gt;6 Years)</span>
+              <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${sc.cutOff.isUrgent ? 'bg-rose-500/30 text-rose-200 border-rose-400/50' : 'bg-amber-500/20 text-amber-200 border-amber-400/30'} border">
+                ⏰ 14th Cut-Off: ${sc.cutOff.daysRemaining}d Left (${sc.cutOff.nextCutOffDate})
+              </span>
+              ${sc.gpAutoOverride ? `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-400 text-slate-950">★ GP% ≥30% Auto-Excellent Override Active</span>` : ''}
+            </div>
+            <h2 class="text-xl sm:text-2xl font-black mt-2 tracking-tight">Kota Sentosa (KS01) — FY2027 KPI Autopilot</h2>
+            <p class="text-xs text-emerald-100/80 mt-1">Auto-computed directly from Xilnex CSVs (including East Malaysia <strong>HM + EHM</strong> &amp; <strong>GP% ≥30% Override</strong>) and cross-module automation signals.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2.5">
+            <button onclick="openMorningHuddleWhatsApp()" class="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs shadow-sm transition cursor-pointer flex items-center gap-1.5">
+              <span>📲</span> Send Morning Team Huddle (WhatsApp)
+            </button>
+            <button onclick="copyMorningHuddleWhatsApp()" class="px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold text-xs transition cursor-pointer">
+              📋 Copy Huddle Text
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
+          <div class="bg-white/10 rounded-xl p-3.5 border border-white/10">
+            <div class="text-[11px] text-emerald-200 font-semibold">Auto-Tracked Core Score</div>
+            <div class="text-2xl font-black mt-1">${sc.coreScore.toFixed(1)}% <span class="text-xs font-semibold text-white/60">/ ${sc.coreWeightTracked.toFixed(0)}%</span></div>
+          </div>
+          <div class="bg-white/10 rounded-xl p-3.5 border border-white/10">
+            <div class="text-[11px] text-amber-200 font-semibold">Auto-Tracked Bonus Score</div>
+            <div class="text-2xl font-black mt-1">+${sc.bonusScore.toFixed(1)}% <span class="text-xs font-semibold text-white/60">/ +10%</span></div>
+          </div>
+          <div class="bg-white/10 rounded-xl p-3.5 border border-white/10">
+            <div class="text-[11px] text-sky-200 font-semibold">East MY High Margin (HM+EHM)</div>
+            <div class="text-2xl font-black mt-1">RM ${fmtNum(sc.hmPlusEhmLatest, 0)}</div>
+            <div class="text-[11px] ${sc.hmPlusEhmYoYPct >= 10 ? 'text-emerald-300' : 'text-amber-200'} font-bold">${sc.hmPlusEhmYoYPct !== null ? (sc.hmPlusEhmYoYPct >= 0 ? '+' : '') + sc.hmPlusEhmYoYPct.toFixed(2) + '% YoY' : 'N/A'}</div>
+          </div>
+          <div class="bg-white/10 rounded-xl p-3.5 border border-white/10">
+            <div class="text-[11px] text-emerald-200 font-semibold">Remaining Month Pacing</div>
+            <div class="text-2xl font-black mt-1">${sc.remainingDays} <span class="text-sm font-bold text-white/70">days left</span></div>
+            <div class="text-[11px] text-white/70">Total Capped: ${sc.totalCappedScore.toFixed(1)}% / 100%</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Editable Area Manager Baseline & Campaign SKU Auto-Matcher -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div>
+            <h3 class="text-sm font-extrabold text-slate-900">⚙️ Area Manager Baselines &amp; Auto-Matcher Settings</h3>
+            <p class="text-xs text-slate-500">Update only when Area Manager sends monthly KPI figures — saved &amp; synced across PCs (non-PII vault).</p>
+          </div>
+          <button onclick="saveFy2027PerfSettings()" class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition cursor-pointer">
+            ☁️ Save &amp; Recalculate
+          </button>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">FY2026 Unique Customer Base (KPI #9)</label>
+            <input id="fy27UniqueBase" type="number" min="0" value="${vault.fy2026UniqueCustomerBase || ''}" placeholder="e.g. 12500 (from AM)" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold">
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Medicare App New Member Tx</label>
+            <input id="fy27AppNewTx" type="number" min="0" value="${vault.medicareAppNewTx ?? ''}" placeholder="From AM report" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold">
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Google Reviews Count (Min 250)</label>
+            <input id="fy27GoogleCount" type="number" min="0" value="${vault.googleReviewCount ?? ''}" placeholder="e.g. 185" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold">
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Google Avg Rating (Target ≥4.90★)</label>
+            <input id="fy27GoogleRating" type="number" step="0.01" min="1" max="5" value="${vault.googleReviewRating ?? ''}" placeholder="e.g. 4.65" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold">
+          </div>
+        </div>
+        <div class="mt-3 grid grid-cols-1 lg:grid-cols-3 gap-3 items-start">
+          <div class="lg:col-span-2">
+            <label class="block text-xs font-bold text-slate-700 mb-1">HQ Monthly Marketing Campaign SKU Codes (Auto-Matched vs Xilnex Item Sales for KPI #7 ≥25%)</label>
+            <textarea id="fy27CampaignSkus" rows="2" placeholder="Paste Xilnex SKU codes separated by commas or new lines (e.g. 132249, 120697)..." class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono">${escapeHtml(Array.isArray(vault.campaignSkuCodes) ? vault.campaignSkuCodes.join(', ') : (vault.campaignSkuCodes || ''))}</textarea>
+          </div>
+          <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs">
+            <div class="font-extrabold text-amber-900">⭐ Google Review 5★ Gap Simulator</div>
+            ${revSim
+              ? `<div class="mt-1 text-amber-800">Current: <strong>${revSim.currentRating}★</strong> (${revSim.currentCount} reviews).<br>Need <strong>+${revSim.fiveStarNeeded} consecutive 5★ reviews</strong> to reach <strong>≥4.90★ &amp; ≥250 reviews</strong>.</div>`
+              : `<div class="mt-1 text-amber-800">Enter your current Google Review count &amp; rating above to calculate exact 5★ reviews needed.</div>`}
+            <a href="${engine.FY2027_BRANCH_DEFAULTS.googleReviewUrl}" target="_blank" rel="noopener noreferrer" class="inline-block mt-1.5 text-[11px] font-bold text-amber-900 underline">Open KS01 Review Link ↗</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Auto-Scored FY2027 KPI Table -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        <div class="px-5 py-3.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+          <h3 class="text-sm font-extrabold text-slate-900">📊 Live Auto-Computed FY2027 KPI Gaps &amp; Daily Pacing</h3>
+          <span class="text-[11px] font-semibold text-slate-500">Zero manual tracking — auto-derived from Xilnex CSVs &amp; Hub modules</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-slate-900 text-white text-[11px] uppercase tracking-wider">
+                <th class="px-4 py-3">FY2027 KPI</th>
+                <th class="px-3 py-3 text-center">Weight</th>
+                <th class="px-3 py-3">Live Actual</th>
+                <th class="px-3 py-3 text-center">Tier</th>
+                <th class="px-3 py-3 text-right">Score</th>
+                <th class="px-4 py-3">Automated Action / Gap to Excellent</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function saveFy2027PerfSettings() {
+  const engine = typeof window !== 'undefined' ? window.PmgFy2027Kpi : null;
+  if (!engine) return;
+  const rawBase = document.getElementById('fy27UniqueBase')?.value;
+  const rawAppTx = document.getElementById('fy27AppNewTx')?.value;
+  const rawGCount = document.getElementById('fy27GoogleCount')?.value;
+  const rawGRating = document.getElementById('fy27GoogleRating')?.value;
+  const rawSkus = document.getElementById('fy27CampaignSkus')?.value || '';
+  const skuList = rawSkus.split(/[\n,;\s]+/).map(s => s.trim()).filter(Boolean);
+
+  const patch = {
+    fy2026UniqueCustomerBase: rawBase !== '' ? Number(rawBase) : null,
+    medicareAppNewTx: rawAppTx !== '' ? Number(rawAppTx) : null,
+    googleReviewCount: rawGCount !== '' ? Number(rawGCount) : null,
+    googleReviewRating: rawGRating !== '' ? Number(rawGRating) : null,
+    campaignSkuCodes: skuList
+  };
+  await engine.syncFy2027KpiVault('push', patch, typeof PMG_SCHEDULE_API_URL !== 'undefined' ? PMG_SCHEDULE_API_URL : null);
+  renderTab8Fy2027Autopilot();
+  showToast('FY2027 KPI settings saved & synced to cloud!', 'success');
+}
+
+function openMorningHuddleWhatsApp() {
+  const engine = typeof window !== 'undefined' ? window.PmgFy2027Kpi : null;
+  if (!engine || !computedMetrics) return;
+  const vault = engine.loadFy2027VaultLocal();
+  const sc = engine.evaluateFy2027AutoKpis(computedMetrics, vault);
+  const text = engine.buildDailyTeamHuddleWhatsApp(sc, computedMetrics);
+  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
+}
+
+async function copyMorningHuddleWhatsApp() {
+  const engine = typeof window !== 'undefined' ? window.PmgFy2027Kpi : null;
+  if (!engine || !computedMetrics) return;
+  const vault = engine.loadFy2027VaultLocal();
+  const sc = engine.evaluateFy2027AutoKpis(computedMetrics, vault);
+  const text = engine.buildDailyTeamHuddleWhatsApp(sc, computedMetrics);
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('Morning Team Huddle copied — paste into KS01 WhatsApp group!', 'success');
+  } catch (_) {
+    showToast('Unable to copy automatically — use Send to WhatsApp button.', 'warning');
+  }
+}
+
 // ─── NAVIGATION & TOAST HELPERS ─────────────────────────────────────────────
 function switchPerfTab(tabId) {
-  const tabs = ['tab1', 'tab2', 'tab3', 'tab4', 'tab5', 'tab6', 'tab7'];
+  const tabs = ['tab1', 'tab2', 'tab3', 'tab4', 'tab5', 'tab6', 'tab7', 'tab8'];
   tabs.forEach(id => {
     const panel = document.getElementById(`panel-${id}`);
     const btn = document.getElementById(`btn-${id}`);
@@ -6632,12 +6855,17 @@ function switchPerfTab(tabId) {
     if (btn) {
       if (id === tabId) {
         btn.className = 'px-3.5 py-2 rounded-xl text-xs font-extrabold bg-slate-900 text-white shadow-xs transition cursor-pointer whitespace-nowrap';
+      } else if (id === 'tab8') {
+        btn.className = 'px-3.5 py-2 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition cursor-pointer whitespace-nowrap';
       } else {
         btn.className = 'px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer whitespace-nowrap';
       }
     }
   });
 
+  if (tabId === 'tab8') {
+    if (typeof renderTab8Fy2027Autopilot === 'function') renderTab8Fy2027Autopilot();
+  }
   if (tabId === 'tab4') {
     if (typeof syncSkuActionPlansWithCloud === 'function') {
       syncSkuActionPlansWithCloud(false).catch(() => {});

@@ -2987,25 +2987,115 @@ function buildPatientSupplyBookingMessage(patient, options = {}) {
   const tcaReminderMy = remDate ? `\n\n*Cadangan Tarikh Temujanji/Ulangan:* ${remDate}${cleanPurposeMy ? ' (' + cleanPurposeMy + ')' : ''}` : '';
   const tcaReminderEn = remDate ? `\n\n*Recommended Follow-up/Refill Date:* ${remDate}${cleanPurposeEn ? ' (' + cleanPurposeEn + ')' : ''}` : '';
 
+  const fy27Footer = buildFy2027GrowthWhatsAppFooter(lang, { includeFreeGlucose: true, includeMedicareApp: true, includeGoogleReview: false });
+
   if (isRefillReminder) {
     const refillUrl = getPatientSelfRefillUrl(patient, remDate, remPurpose);
     if (lang === 'Chinese') {
-      return `您好 *${patientName}*，这里是 *${branchName}*（${openTime} - ${closeTime}）。\n\n${supplyText}${tcaReminderZh}\n\n为确保您的健康指标控制平稳并避免断药，我们建议您提前安排。\n\n• *请点击下方专属链接，直接告知我们您是否需要续药（可自选续药周期如2周、1个月、2个月或自定义）：*\n${refillUrl}\n\n如需续药，药剂师将提前为您打包备妥药物；若家中药量充足，点击“暂不需要”即可告知我们。\n\nPMG 药剂师团队祝您与家人身体健康！`;
+      return `您好 *${patientName}*，这里是 *${branchName}*（${openTime} - ${closeTime}）。\n\n${supplyText}${tcaReminderZh}\n\n为确保您的健康指标控制平稳并避免断药，我们建议您提前安排。\n\n• *请点击下方专属链接，直接告知我们您是否需要续药（可自选续药周期如2周、1个月、2个月或自定义）：*\n${refillUrl}\n\n如需续药，药剂师将提前为您打包备妥药物；若家中药量充足，点击“暂不需要”即可告知我们。${fy27Footer}\n\nPMG 药剂师团队祝您与家人身体健康！`;
     } else if (lang === 'Malay') {
-      return `Salam sejahtera *${patientName}*, ini pesanan daripada *${branchName}* (${openTime} - ${closeTime}).\n\n${supplyText}${tcaReminderMy}\n\nBagi memastikan kesihatan anda kekal terkawal tanpa gangguan bekalan ubat, kami mencadangkan anda merancang lebih awal.\n\n• *Sila klik pautan peribadi di bawah untuk maklumkan sama ada anda ingin mengulang ubat (boleh pilih tempoh seperti 2 minggu, 1 bulan, 2 bulan dsb) atau tidak:*\n${refillUrl}\n\nJika anda ingin mengulang ubat, ahli farmasi kami akan membungkus dan menyediakan ubat siap-siap untuk anda ambil; jika bekalan masih mencukupi, anda boleh pilih "Tidak Perlu".\n\nPasukan Farmasi PMG sentiasa sedia membantu!`;
+      return `Salam sejahtera *${patientName}*, ini pesanan daripada *${branchName}* (${openTime} - ${closeTime}).\n\n${supplyText}${tcaReminderMy}\n\nBagi memastikan kesihatan anda kekal terkawal tanpa gangguan bekalan ubat, kami mencadangkan anda merancang lebih awal.\n\n• *Sila klik pautan peribadi di bawah untuk maklumkan sama ada anda ingin mengulang ubat (boleh pilih tempoh seperti 2 minggu, 1 bulan, 2 bulan dsb) atau tidak:*\n${refillUrl}\n\nJika anda ingin mengulang ubat, ahli farmasi kami akan membungkus dan menyediakan ubat siap-siap untuk anda ambil; jika bekalan masih mencukupi, anda boleh pilih "Tidak Perlu".${fy27Footer}\n\nPasukan Farmasi PMG sentiasa sedia membantu!`;
     } else {
-      return `Dear *${patientName}*, warm greetings from *${branchName}* (${openTime} - ${closeTime}).\n\n${supplyText}${tcaReminderEn}\n\nTo ensure your health metrics stay in optimal control and prevent any medication disruption, we recommend planning ahead.\n\n• *Please click your personalized link below to select whether you would like to refill (choose 2 weeks, 1 month, 2 months, or custom duration) or not:*\n${refillUrl}\n\nIf you choose to refill, our pharmacist will pack and prepare your medications in advance for quick pickup; if you still have sufficient stock, simply choose "No refill needed".\n\nWishing you good health from your PMG Pharmacy team!`;
+      return `Dear *${patientName}*, warm greetings from *${branchName}* (${openTime} - ${closeTime}).\n\n${supplyText}${tcaReminderEn}\n\nTo ensure your health metrics stay in optimal control and prevent any medication disruption, we recommend planning ahead.\n\n• *Please click your personalized link below to select whether you would like to refill (choose 2 weeks, 1 month, 2 months, or custom duration) or not:*\n${refillUrl}\n\nIf you choose to refill, our pharmacist will pack and prepare your medications in advance for quick pickup; if you still have sufficient stock, simply choose "No refill needed".${fy27Footer}\n\nWishing you good health from your PMG Pharmacy team!`;
     }
   }
 
   const bookingUrl = getPatientSelfBookingUrl(patient);
   if (lang === 'Chinese') {
-    return `您好 *${patientName}*，这里是 *${branchName}*（${openTime} - ${closeTime}）。\n\n${supplyText}${tcaReminderZh}\n\n为确保您的健康指标控制平稳并避免断药，我们建议您提前安排。\n\n• *您可以直接点击下方专属链接，选择适合您的时间到店面诊，或直接申请1个月慢病续药：*\n${bookingUrl}\n\n如果您有任何用药疑问，或需要我们提前备妥药物，欢迎直接回复此 WhatsApp。\n\nPMG 药剂师团队祝您与家人身体健康！`;
+    return `您好 *${patientName}*，这里是 *${branchName}*（${openTime} - ${closeTime}）。\n\n${supplyText}${tcaReminderZh}\n\n为确保您的健康指标控制平稳并避免断药，我们建议您提前安排。\n\n• *您可以直接点击下方专属链接，选择适合您的时间到店面诊，或直接申请1个月慢病续药：*\n${bookingUrl}\n\n如果您有任何用药疑问，或需要我们提前备妥药物，欢迎直接回复此 WhatsApp。${fy27Footer}\n\nPMG 药剂师团队祝您与家人身体健康！`;
   } else if (lang === 'Malay') {
-    return `Salam sejahtera *${patientName}*, ini pesanan daripada *${branchName}* (${openTime} - ${closeTime}).\n\n${supplyText}${tcaReminderMy}\n\nBagi memastikan kesihatan anda kekal terkawal tanpa gangguan bekalan ubat, kami mencadangkan anda merancang lebih awal.\n\n• *Sila klik pautan peribadi di bawah untuk memilih masa temujanji atau memohon lanjutan bekalan ubat 1 bulan:*\n${bookingUrl}\n\nSekiranya anda mempunyai sebarang pertanyaan mengenai ubat-ubatan, sila balas mesej ini.\n\nPasukan Farmasi PMG sentiasa sedia membantu!`;
+    return `Salam sejahtera *${patientName}*, ini pesanan daripada *${branchName}* (${openTime} - ${closeTime}).\n\n${supplyText}${tcaReminderMy}\n\nBagi memastikan kesihatan anda kekal terkawal tanpa gangguan bekalan ubat, kami mencadangkan anda merancang lebih awal.\n\n• *Sila klik pautan peribadi di bawah untuk memilih masa temujanji atau memohon lanjutan bekalan ubat 1 bulan:*\n${bookingUrl}\n\nSekiranya anda mempunyai sebarang pertanyaan mengenai ubat-ubatan, sila balas mesej ini.${fy27Footer}\n\nPasukan Farmasi PMG sentiasa sedia membantu!`;
   } else {
-    return `Dear *${patientName}*, warm greetings from *${branchName}* (${openTime} - ${closeTime}).\n\n${supplyText}${tcaReminderEn}\n\nTo ensure your health metrics stay in optimal control and prevent any medication disruption, we recommend planning ahead.\n\n• *You can click your personalized link below to select a convenient appointment time, or request a 1-month refill extension:*\n${bookingUrl}\n\nIf you have any questions or would like us to prepare your medications in advance, feel free to reply directly.\n\nWishing you good health from your PMG Pharmacy team!`;
+    return `Dear *${patientName}*, warm greetings from *${branchName}* (${openTime} - ${closeTime}).\n\n${supplyText}${tcaReminderEn}\n\nTo ensure your health metrics stay in optimal control and prevent any medication disruption, we recommend planning ahead.\n\n• *You can click your personalized link below to select a convenient appointment time, or request a 1-month refill extension:*\n${bookingUrl}\n\nIf you have any questions or would like us to prepare your medications in advance, feel free to reply directly.${fy27Footer}\n\nWishing you good health from your PMG Pharmacy team!`;
   }
+}
+
+// ─── FY2027 WHATSAPP GROWTH MULTIPLIER (LOCAL / PDPA-SAFE — ZERO CLOUD PII) ──
+function getFy2027GrowthLinks() {
+  const defs = (typeof window !== 'undefined' && window.FY2027_BRANCH_DEFAULTS) || {};
+  return {
+    googleReviewUrl: defs.googleReviewUrl || 'https://g.page/r/CUU3ygRE9IC6EBM/review',
+    medicareAppIosUrl: defs.medicareAppIosUrl || 'https://apps.apple.com/my/app/public-medicare/id6761357301',
+    medicareAppAndroidUrl: defs.medicareAppAndroidUrl || 'https://play.google.com/store/apps/details?id=com.pmg.publicmedicare'
+  };
+}
+
+function buildFy2027GrowthWhatsAppFooter(lang = 'English', opts = {}) {
+  const { includeFreeGlucose = true, includeMedicareApp = true, includeGoogleReview = false } = opts;
+  const links = getFy2027GrowthLinks();
+  const parts = [];
+
+  if (includeFreeGlucose) {
+    if (lang === 'Chinese') {
+      parts.push('🩸 *免费血糖检测福利：* 到店取药或咨询时，欢迎顺便享用我们的【免费血糖检测】，关心您的日常血糖健康！');
+    } else if (lang === 'Malay') {
+      parts.push('🩸 *Saringan Glukosa PERCUMA:* Semasa kunjungan anda ke farmasi, jemput lakukan *ujian gula darah PERCUMA* bersama pasukan kami!');
+    } else {
+      parts.push('🩸 *FREE Blood Glucose Check:* Drop by for a complimentary *FREE Blood Glucose screening* during your visit!');
+    }
+  }
+
+  if (includeMedicareApp) {
+    if (lang === 'Chinese') {
+      parts.push(`📱 *下载 Public Medicare App（赚取积分与会员优惠券）：*\n• iOS (App Store): ${links.medicareAppIosUrl}\n• Android (Google Play): ${links.medicareAppAndroidUrl}`);
+    } else if (lang === 'Malay') {
+      parts.push(`📱 *Muat Turun Public Medicare App (Kumpul Mata & Baucar Ahli):*\n• iOS (App Store): ${links.medicareAppIosUrl}\n• Android (Google Play): ${links.medicareAppAndroidUrl}`);
+    } else {
+      parts.push(`📱 *Download Public Medicare App (Earn Member Points & Vouchers):*\n• iOS (App Store): ${links.medicareAppIosUrl}\n• Android (Google Play): ${links.medicareAppAndroidUrl}`);
+    }
+  }
+
+  if (includeGoogleReview) {
+    if (lang === 'Chinese') {
+      parts.push(`⭐ *满意我们的药剂师服务吗？* 欢迎花 10 秒给我们一个 5★ 好评，您的支持是我们最大的动力：\n${links.googleReviewUrl}`);
+    } else if (lang === 'Malay') {
+      parts.push(`⭐ *Berpuas hati dengan servis kami?* Kongsikan ulasan 5★ anda di Google dalam 10 saat — sokongan anda amat bermakna:\n${links.googleReviewUrl}`);
+    } else {
+      parts.push(`⭐ *Happy with our pharmacist's care?* We would truly appreciate a quick 5★ Google Review:\n${links.googleReviewUrl}`);
+    }
+  }
+
+  return parts.length > 0 ? '\n\n' + parts.join('\n\n') : '';
+}
+
+function buildGoogleReviewInviteMessage(patient) {
+  const lang = typeof getPatientLanguageByRace === 'function' ? getPatientLanguageByRace(patient) : (patient?.language || 'English');
+  const name = patient?.name || 'Valued Customer';
+  const links = getFy2027GrowthLinks();
+  if (lang === 'Chinese') {
+    return `您好 *${name}*，感谢您今天光临 *PMG Pharmacy Kota Sentosa*！🙏\n\n希望我们药剂师团队的服务能帮助到您与家人的健康。如果您满意今天的咨询体验，欢迎点击下方链接花 10 秒给我们留下 5★ 好评：\n⭐ ${links.googleReviewUrl}\n\n也欢迎下载 *Public Medicare App* 累积会员积分与专属优惠：\n• iOS: ${links.medicareAppIosUrl}\n• Android: ${links.medicareAppAndroidUrl}\n\n祝您身体健康！`;
+  } else if (lang === 'Malay') {
+    return `Salam sejahtera *${name}*, terima kasih kerana mengunjungi *PMG Pharmacy Kota Sentosa*! 🙏\n\nSemoga perkhidmatan ahli farmasi kami membantu kesihatan anda. Jika anda berpuas hati, sudilah luangkan 10 saat untuk memberikan ulasan 5★ di Google:\n⭐ ${links.googleReviewUrl}\n\nMuat turun *Public Medicare App* untuk mata ganjaran & baucar ahli:\n• iOS: ${links.medicareAppIosUrl}\n• Android: ${links.medicareAppAndroidUrl}\n\nTerima kasih & semoga sihat selalu!`;
+  }
+  return `Hello *${name}*, thank you for visiting *PMG Pharmacy Kota Sentosa*! 🙏\n\nWe hope our pharmacist team was helpful today. If you were happy with our service, we would truly appreciate a quick 5★ Google Review (takes 10 seconds):\n⭐ ${links.googleReviewUrl}\n\nYou can also earn member points & vouchers on the *Public Medicare App*:\n• iOS: ${links.medicareAppIosUrl}\n• Android: ${links.medicareAppAndroidUrl}\n\nWishing you good health!`;
+}
+
+function buildMedicareAppInviteMessage(patient) {
+  const lang = typeof getPatientLanguageByRace === 'function' ? getPatientLanguageByRace(patient) : (patient?.language || 'English');
+  const name = patient?.name || 'Valued Customer';
+  const links = getFy2027GrowthLinks();
+  if (lang === 'Chinese') {
+    return `您好 *${name}*，这里是 *PMG Pharmacy Kota Sentosa*！📱\n\n推荐您免费下载官方 *Public Medicare App*，每次消费都能赚取会员积分、领取专属电子优惠券及参与电子印花换购活动：\n• Apple App Store (iOS): ${links.medicareAppIosUrl}\n• Google Play (Android): ${links.medicareAppAndroidUrl}\n\n下次到店结账时出示 App 会员码即可累积积分，还可顺便享用【免费血糖检测】！`;
+  } else if (lang === 'Malay') {
+    return `Salam sejahtera *${name}* daripada *PMG Pharmacy Kota Sentosa*! 📱\n\nJom muat turun *Public Medicare App* secara percuma untuk mengumpul mata ganjaran, baucar eksklusif & e-stamp ahli:\n• Apple App Store (iOS): ${links.medicareAppIosUrl}\n• Google Play (Android): ${links.medicareAppAndroidUrl}\n\nTunjukkan kod ahli App anda semasa pembayaran & jemput nikmati *Saringan Glukosa PERCUMA* apabila berkunjung!`;
+  }
+  return `Hello *${name}* from *PMG Pharmacy Kota Sentosa*! 📱\n\nDownload the free *Public Medicare App* to earn member reward points, claim exclusive app vouchers & join E-Stamp promos:\n• Apple App Store (iOS): ${links.medicareAppIosUrl}\n• Google Play (Android): ${links.medicareAppAndroidUrl}\n\nShow your App member ID at checkout & enjoy a complimentary *FREE Blood Glucose check* on your next visit!`;
+}
+
+function sendPatientGoogleReviewWhatsApp(patientId) {
+  const p = findPatientById(patientId);
+  if (!p) return;
+  const cleanPhone = (typeof formatPhoneForWa === 'function') ? formatPhoneForWa(p.phone) : (p.phone || '').replace(/\D/g, '');
+  if (!cleanPhone) { alert('No valid WhatsApp number for this patient.'); return; }
+  openUniversalWhatsApp(cleanPhone, buildGoogleReviewInviteMessage(p));
+}
+
+function sendPatientMedicareAppWhatsApp(patientId) {
+  const p = findPatientById(patientId);
+  if (!p) return;
+  const cleanPhone = (typeof formatPhoneForWa === 'function') ? formatPhoneForWa(p.phone) : (p.phone || '').replace(/\D/g, '');
+  if (!cleanPhone) { alert('No valid WhatsApp number for this patient.'); return; }
+  openUniversalWhatsApp(cleanPhone, buildMedicareAppInviteMessage(p));
 }
 
 if (typeof window !== 'undefined') {
@@ -3013,6 +3103,11 @@ if (typeof window !== 'undefined') {
   window.getPatientSupplySummary = getPatientSupplySummary;
   window.getPatientSelfRefillUrl = getPatientSelfRefillUrl;
   window.buildPatientSupplyBookingMessage = buildPatientSupplyBookingMessage;
+  window.buildFy2027GrowthWhatsAppFooter = buildFy2027GrowthWhatsAppFooter;
+  window.buildGoogleReviewInviteMessage = buildGoogleReviewInviteMessage;
+  window.buildMedicareAppInviteMessage = buildMedicareAppInviteMessage;
+  window.sendPatientGoogleReviewWhatsApp = sendPatientGoogleReviewWhatsApp;
+  window.sendPatientMedicareAppWhatsApp = sendPatientMedicareAppWhatsApp;
 }
 
 /**
@@ -3063,13 +3158,14 @@ function buildWhatsAppMessage(patient, appointment) {
     else purpose = 'Health Consultation & Refill';
   }
   const bookingUrl = typeof getPatientSelfBookingUrl === 'function' ? getPatientSelfBookingUrl(patient) : window.location.href;
+  const fy27Footer = buildFy2027GrowthWhatsAppFooter(lang, { includeFreeGlucose: true, includeMedicareApp: true, includeGoogleReview: false });
 
   if (lang === 'Chinese') {
-    return `您好 ${name}，这里是 ${branchName}。\n\n温馨提醒您，您预约的【${purpose}】时间为：\n• 日期：${date}\n• 时间：${time}\n\n如需调整时间或随时重新选择预约时段，可点击您的专属预约链接：\n${bookingUrl}\n\n请问需要我们提前为您准备好药物吗？祝您身体健康！`;
+    return `您好 ${name}，这里是 ${branchName}。\n\n温馨提醒您，您预约的【${purpose}】时间为：\n• 日期：${date}\n• 时间：${time}\n\n如需调整时间或随时重新选择预约时段，可点击您的专属预约链接：\n${bookingUrl}\n\n请问需要我们提前为您准备好药物吗？${fy27Footer}\n\n祝您身体健康！`;
   } else if (lang === 'Malay') {
-    return `Salam ${name}, ini peringatan mesra dari ${branchName}.\n\nTemujanji anda untuk [${purpose}] dijadualkan pada：\n• Tarikh: ${date}\n• Masa: ${time}\n\nSekiranya anda perlu menukar masa atau memilih waktu temujanji lain pada bila-bila masa, sila klik pautan ini：\n${bookingUrl}\n\nSila maklumkan sekiranya anda ingin kami sediakan ubat lebih awal. Terima kasih & semoga sihat selalu!`;
+    return `Salam ${name}, ini peringatan mesra dari ${branchName}.\n\nTemujanji anda untuk [${purpose}] dijadualkan pada：\n• Tarikh: ${date}\n• Masa: ${time}\n\nSekiranya anda perlu menukar masa atau memilih waktu temujanji lain pada bila-bila masa, sila klik pautan ini：\n${bookingUrl}\n\nSila maklumkan sekiranya anda ingin kami sediakan ubat lebih awal.${fy27Footer}\n\nTerima kasih & semoga sihat selalu!`;
   } else {
-    return `Hello ${name}, this is a friendly reminder from ${branchName}.\n\nYour appointment for [${purpose}] is scheduled for:\n• Date: ${date}\n• Time: ${time}\n\nIf you need to change your time or book another slot at any time, feel free to use your personal booking link:\n${bookingUrl}\n\nWould you like us to prepare your medications in advance? Thank you and stay healthy!`;
+    return `Hello ${name}, this is a friendly reminder from ${branchName}.\n\nYour appointment for [${purpose}] is scheduled for:\n• Date: ${date}\n• Time: ${time}\n\nIf you need to change your time or book another slot at any time, feel free to use your personal booking link:\n${bookingUrl}\n\nWould you like us to prepare your medications in advance?${fy27Footer}\n\nThank you and stay healthy!`;
   }
 }
 
@@ -3079,13 +3175,14 @@ function buildWhatsAppRecallMessage(patient, item) {
   const lang = patient.language || 'English';
   const name = patient.name;
   const bookingUrl = getPatientSelfBookingUrl(patient);
+  const fy27Footer = buildFy2027GrowthWhatsAppFooter(lang, { includeFreeGlucose: true, includeMedicareApp: true, includeGoogleReview: false });
 
   if (lang === 'Chinese') {
-    return `您好 *${name}*，这里是 *${branchName}*。\n\n我们注意到您的长期慢病药物已到期 / 错过了近期的复查提醒。为确保您的血压、血糖与健康指标平稳控制，建议您尽快回来复查并补充药物。\n\n• *您可以直接点击下方专属链接，选择适合您的时间到店面诊，或直接申请1个月慢病续药：*\n${bookingUrl}\n\n我们药剂师团队已准备好为您服务。如有任何疑问，欢迎随时联系我们！祝您身体健康！`;
+    return `您好 *${name}*，这里是 *${branchName}*。\n\n我们注意到您的长期慢病药物已到期 / 错过了近期的复查提醒。为确保您的血压、血糖与健康指标平稳控制，建议您尽快回来复查并补充药物。\n\n• *您可以直接点击下方专属链接，选择适合您的时间到店面诊，或直接申请1个月慢病续药：*\n${bookingUrl}${fy27Footer}\n\n我们药剂师团队已准备好为您服务。如有任何疑问，欢迎随时联系我们！祝您身体健康！`;
   } else if (lang === 'Malay') {
-    return `Salam *${name}*, ini peringatan mesra dari *${branchName}*。\n\nKami mendapati bekalan ubat kronik anda telah tamat tempoh / terlepas tarikh temujanji ulangan. Demi mengekalkan kawalan kesihatan yang baik, kami mencadangkan anda memperbaharui bekalan ubat anda secepat mungkin。\n\n• *Sila klik pautan peribadi di bawah untuk memilih masa temujanji atau memohon lanjutan bekalan ubat 1 bulan:*\n${bookingUrl}\n\nAhli farmasi kami sedia membantu anda. Terima kasih dan kekal sihat!`;
+    return `Salam *${name}*, ini peringatan mesra dari *${branchName}*。\n\nKami mendapati bekalan ubat kronik anda telah tamat tempoh / terlepas tarikh temujanji ulangan. Demi mengekalkan kawalan kesihatan yang baik, kami mencadangkan anda memperbaharui bekalan ubat anda secepat mungkin。\n\n• *Sila klik pautan peribadi di bawah untuk memilih masa temujanji atau memohon lanjutan bekalan ubat 1 bulan:*\n${bookingUrl}${fy27Footer}\n\nAhli farmasi kami sedia membantu anda. Terima kasih dan kekal sihat!`;
   } else {
-    return `Hello *${name}*, this is a friendly reminder from *${branchName}*.\n\nWe noticed that your chronic medication supply is overdue or you have missed your follow-up review. Maintaining steady medication compliance is essential for your long-term health control.\n\n• *You may click your personalized link below to select a convenient appointment time, or request a 1-month refill extension:*\n${bookingUrl}\n\nOur pharmacy team is ready to assist you. Please let us know if you have any questions!`;
+    return `Hello *${name}*, this is a friendly reminder from *${branchName}*.\n\nWe noticed that your chronic medication supply is overdue or you have missed your follow-up review. Maintaining steady medication compliance is essential for your long-term health control.\n\n• *You may click your personalized link below to select a convenient appointment time, or request a 1-month refill extension:*\n${bookingUrl}${fy27Footer}\n\nOur pharmacy team is ready to assist you. Please let us know if you have any questions!`;
   }
 }
 
@@ -7032,7 +7129,9 @@ function viewPatientProfile(patientId) {
   document.getElementById('profName').textContent = p.name;
   const cleanPhone = (typeof formatPhoneForWa === 'function') ? formatPhoneForWa(p.phone) : (p.phone || '').replace(/\D/g, '');
   const phoneHtml = cleanPhone
-    ? `<a href="https://wa.me/${cleanPhone}" target="_blank" rel="noopener" class="text-emerald-700 font-bold hover:underline inline-flex items-center gap-1" title="Open WhatsApp chat with ${escapeHtml(p.name)}"><i class="fa-brands fa-whatsapp text-emerald-600"></i> ${escapeHtml(p.phone)}</a>`
+    ? `<a href="https://wa.me/${cleanPhone}" target="_blank" rel="noopener" class="text-emerald-700 font-bold hover:underline inline-flex items-center gap-1" title="Open WhatsApp chat with ${escapeHtml(p.name)}"><i class="fa-brands fa-whatsapp text-emerald-600"></i> ${escapeHtml(p.phone)}</a>
+       <button type="button" onclick="sendPatientGoogleReviewWhatsApp('${escapeHtml(p.id)}')" class="ml-1.5 px-2 py-0.5 rounded-md bg-amber-100 hover:bg-amber-200 text-amber-900 text-[11px] font-extrabold border border-amber-300 transition cursor-pointer" title="Send 1-click 5★ Google Review WhatsApp invite">⭐ 5★ Review</button>
+       <button type="button" onclick="sendPatientMedicareAppWhatsApp('${escapeHtml(p.id)}')" class="ml-1 px-2 py-0.5 rounded-md bg-blue-100 hover:bg-blue-200 text-blue-900 text-[11px] font-extrabold border border-blue-300 transition cursor-pointer" title="Send 1-click Public Medicare App (iOS & Android) WhatsApp invite">📱 Medicare App</button>`
     : escapeHtml(p.phone || '—');
   document.getElementById('profMeta').innerHTML = `${escapeHtml(p.gender || 'Unknown')}, ${p.age != null && p.age !== '' ? p.age + ' yrs' : '—'} &bull; IC: ${escapeHtml(p.ic || '—')} &bull; Phone: ${phoneHtml} &bull; Branch: ${escapeHtml(p.branch || 'Kota Sentosa')} &bull; Language: ${escapeHtml(p.language || 'English')}`;
   document.getElementById('profConditions').innerHTML = (p.conditions || []).map(c => `

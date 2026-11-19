@@ -4414,8 +4414,125 @@ window.toggleExpiryDateSort = toggleExpiryDateSort;
 
 function renderExpiryUI() {
   renderExpiryKpis();
+  if (typeof renderExpiryFy2027ReadinessBar === 'function') renderExpiryFy2027ReadinessBar();
   renderExpiryTable();
 }
+
+function getExpiry9mBlankActionItems() {
+  const targetBranch = activeExpiryFilter.branch;
+  const isBranchAll = !targetBranch || targetBranch === 'ALL';
+  const targetBranchNorm = isBranchAll ? '' : targetBranch.toLowerCase();
+  const clearedSet = getClearedExpiryKeys();
+  const { todayMs, todayDateStr } = getTodayContext();
+  const inHorizon = [];
+  const blanks = [];
+
+  for (let i = 0; i < expiryItems.length; i++) {
+    const it = expiryItems[i];
+    if (!it) continue;
+    if (!isBranchAll) {
+      const bNorm = it._bNorm || (it._bNorm = normalizeBranchCode(it.branch).toLowerCase());
+      if (bNorm !== targetBranchNorm) continue;
+    }
+    if (isItemMarkedDoneOrCleared(it, clearedSet)) continue;
+    const h = getItemHorizon(it, todayMs, todayDateStr);
+    if (h.monthsLeft <= 9) {
+      inHorizon.push({ it, h });
+      const plan = String(it.actionPlan || '').trim();
+      if (!plan) blanks.push({ it, h });
+    }
+  }
+  return { inHorizon, blanks };
+}
+
+function autoFillBlankExpiryActionPlans() {
+  const { blanks } = getExpiry9mBlankActionItems();
+  if (blanks.length === 0) {
+    alert('✅ All ≤9-month expiry items already have Action Plans! You are 100% ready for AIC submission before the 14th.');
+    return 0;
+  }
+  let filled = 0;
+  blanks.forEach(({ it, h }) => {
+    let suggested = 'Closely monitor';
+    const policy = typeof getHqReturnPolicyForItem === 'function' ? getHqReturnPolicyForItem(it) : null;
+    if (policy && policy.returnable) {
+      suggested = 'Return to HQ / Supplier';
+    } else if (h.monthsLeft < 3) {
+      suggested = 'Clearance Promo (Near-Expiry Basket)';
+    } else if (h.monthsLeft < 6) {
+      suggested = 'Front Display & Team Push';
+    } else {
+      suggested = 'Closely monitor';
+    }
+    it.actionPlan = suggested;
+    filled++;
+  });
+  if (typeof saveLocalExpiryData === 'function') saveLocalExpiryData();
+  if (window.PmgFy2027Kpi) {
+    window.PmgFy2027Kpi.saveFy2027VaultLocal({ expiryCompliancePct: 100, expiryBlankPlansCount: 0 });
+  }
+  renderExpiryUI();
+  alert(`⚡ Auto-Filled ${filled} Blank Action Plans using PMG SOP!\n\nAction Plan Completeness is now 100% — ready to export HQ Monthly Report before the 14th cut-off.`);
+  return filled;
+}
+
+function filterExpiryBlankActionPlans() {
+  activeExpiryFilter.horizon = '9months';
+  activeExpiryFilter.actionPlan = 'blank';
+  expiryCurrentPage = 1;
+  renderExpiryUI();
+}
+
+function renderExpiryFy2027ReadinessBar() {
+  const host = document.getElementById('expiryFy2027ReadinessBar');
+  if (!host) return;
+  const cutOff = window.PmgFy2027Kpi
+    ? window.PmgFy2027Kpi.getDaysUntilMonthlyCutOff(14)
+    : { daysRemaining: 0, isUrgent: false, nextCutOffDate: '' };
+  const { inHorizon, blanks } = getExpiry9mBlankActionItems();
+  const total = inHorizon.length;
+  const blankCount = blanks.length;
+  const completenessPct = total > 0 ? Math.round(((total - blankCount) / total) * 100) : 100;
+
+  if (window.PmgFy2027Kpi) {
+    window.PmgFy2027Kpi.saveFy2027VaultLocal({
+      expiryBlankPlansCount: blankCount,
+      expiryCompliancePct: blankCount === 0 ? 100 : completenessPct
+    });
+  }
+
+  const isReady = blankCount === 0;
+  host.innerHTML = `
+    <div class="rounded-xl p-3.5 border ${isReady ? 'bg-emerald-50 border-emerald-300 text-emerald-950' : 'bg-amber-50 border-amber-300 text-amber-950'} flex flex-wrap items-center justify-between gap-3 shadow-xs">
+      <div class="flex flex-wrap items-center gap-2.5 text-xs">
+        <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${cutOff.isUrgent ? 'bg-rose-600 text-white' : 'bg-slate-900 text-white'}">
+          ⏰ 14th Cut-Off: ${cutOff.daysRemaining}d Left (${cutOff.nextCutOffDate})
+        </span>
+        <span class="font-extrabold">
+          ${isReady
+            ? `✅ KPI #14 Ready: 100% Action Plans Complete (${total}/${total} SKUs ≤9M)`
+            : `⚠️ ${blankCount} of ${total} SKUs (≤9M) Missing Action Plan (${completenessPct}% Complete)`}
+        </span>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        ${!isReady ? `
+          <button type="button" onclick="filterExpiryBlankActionPlans()" class="px-3 py-1.5 rounded-lg bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold transition cursor-pointer">
+            🔍 Filter ${blankCount} Blank
+          </button>
+          <button type="button" onclick="autoFillBlankExpiryActionPlans()" class="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xs transition cursor-pointer">
+            ⚡ Auto-Fill Blank Action Plans (PMG SOP)
+          </button>
+        ` : `
+          <span class="text-xs font-bold text-emerald-700">Ready to Export HQ Excel before 14th!</span>
+        `}
+      </div>
+    </div>
+  `;
+}
+
+window.autoFillBlankExpiryActionPlans = autoFillBlankExpiryActionPlans;
+window.filterExpiryBlankActionPlans = filterExpiryBlankActionPlans;
+window.renderExpiryFy2027ReadinessBar = renderExpiryFy2027ReadinessBar;
 
 function renderExpiryKpis() {
   let criticalCount = 0;

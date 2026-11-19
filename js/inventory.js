@@ -703,6 +703,7 @@ function initInventory() {
   // Load local overrides & sync non-patient inventory config from Google Cloud
   loadInventoryCloudPrefs();
   syncStockAgingFromStorage();
+  if (typeof renderInvFy2027AutopilotBar === 'function') renderInvFy2027AutopilotBar();
   syncInventoryConfigWithGoogleCloud(true).catch(() => {});
 
   ['paramSalesWindow','paramLeadTime','paramSafetyDays','paramTargetDays'].forEach(id => {
@@ -1773,4 +1774,237 @@ async function generatePOZip() {
     setTimeout(() => { dlBtn.innerHTML = orig; dlBtn.disabled = false; }, 3500);
   }
 }
+
+// ─── FY2027 KPI AUTOPILOT: 14TH CUT-OFF 250-SKU CYCLE COUNT & 2.0-MO PO CAP ──
+const INV_CYCLE_COUNT_STORAGE_KEY = 'pmg_ks01_cycle_count_state';
+
+function loadInvCycleCountState() {
+  try {
+    const raw = localStorage.getItem(INV_CYCLE_COUNT_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : { monthKey: '', items: [], updatedAt: null };
+  } catch (_) {
+    return { monthKey: '', items: [], updatedAt: null };
+  }
+}
+
+function saveInvCycleCountState(state) {
+  try {
+    localStorage.setItem(INV_CYCLE_COUNT_STORAGE_KEY, JSON.stringify(state));
+  } catch (_) {}
+  const counted = (state.items || []).filter(it => it.physicalQty !== null && it.physicalQty !== '' && !Number.isNaN(Number(it.physicalQty)));
+  const matched = counted.filter(it => Number(it.physicalQty) === Number(it.systemSoh));
+  const accuracyPct = counted.length > 0 ? +((matched.length / counted.length) * 100).toFixed(1) : null;
+  if (window.PmgFy2027Kpi) {
+    window.PmgFy2027Kpi.saveFy2027VaultLocal({
+      cycleCountCounted: counted.length,
+      cycleCountTarget: (state.items || []).length || 250,
+      cycleCountAccuracyPct: accuracyPct,
+      inventoryAccuracyPct: counted.length >= 200 ? 100 : (counted.length > 0 ? Math.min(90, Math.round((counted.length / 200) * 100)) : null)
+    });
+  }
+}
+
+function generateMonthly250SkuCycleList(sourceRows, targetCount = 250) {
+  const rows = Array.isArray(sourceRows) && sourceRows.length > 0 ? sourceRows : inventoryGrid;
+  if (!rows || rows.length === 0) return [];
+  const cap = Math.min(targetCount, rows.length);
+  const pickedCodes = new Set();
+  const selected = [];
+
+  const addBatch = (list, limit, reason) => {
+    for (const r of list) {
+      if (selected.length >= cap || limit <= 0) break;
+      const code = String(r.itemCode || '').trim();
+      if (!code || pickedCodes.has(code)) continue;
+      pickedCodes.add(code);
+      selected.push({
+        itemCode: code,
+        desc: r.desc || '',
+        category: r.category || '',
+        systemSoh: Number(r.soh) || 0,
+        physicalQty: null,
+        priority: reason
+      });
+      limit--;
+    }
+  };
+
+  // 1. Top 100 fast-movers (highest ADS — biggest audit & revenue impact)
+  const byFast = [...rows].sort((a, b) => (Number(b.ads) || 0) - (Number(a.ads) || 0));
+  addBatch(byFast, Math.round(cap * 0.40), 'Fast-Mover');
+
+  // 2. Up to 75 aging-locked or high-SOH items
+  const byAgingHighSoh = [...rows]
+    .filter(r => r.isAgingLocked || (Number(r.soh) || 0) >= 20)
+    .sort((a, b) => (b.isAgingLocked ? 1 : 0) - (a.isAgingLocked ? 1 : 0) || (Number(b.soh) || 0) - (Number(a.soh) || 0));
+  addBatch(byAgingHighSoh, Math.round(cap * 0.30), 'High-SOH / Aged');
+
+  // 3. Remaining rotation sample up to 250 SKUs
+  const remaining = rows.filter(r => !pickedCodes.has(String(r.itemCode || '').trim()));
+  addBatch(remaining, cap - selected.length, 'Monthly Rotation');
+
+  return selected;
+}
+
+function triggerGenerate250SkuCycleCount() {
+  if (!inventoryGrid || inventoryGrid.length === 0) {
+    alert('Upload your Xilnex Inventory CSV below first, then click Auto-Generate 250-SKU Cycle Count Sheet.');
+    return;
+  }
+  const items = generateMonthly250SkuCycleList(inventoryGrid, 250);
+  const monthKey = window.PmgFy2027Kpi ? window.PmgFy2027Kpi.getCurrentMonthKey() : new Date().toISOString().slice(0, 7);
+  const state = { monthKey, items, updatedAt: new Date().toISOString(), expanded: true };
+  saveInvCycleCountState(state);
+  renderInvFy2027AutopilotBar(true);
+}
+
+function updateCycleCountPhysicalQty(idx, val) {
+  const state = loadInvCycleCountState();
+  if (!state.items || !state.items[idx]) return;
+  state.items[idx].physicalQty = val === '' ? null : Math.max(0, Number(val));
+  state.updatedAt = new Date().toISOString();
+  saveInvCycleCountState(state);
+  renderInvFy2027AutopilotBar(true);
+}
+
+function exportCycleCountAicCsv() {
+  const state = loadInvCycleCountState();
+  if (!state.items || state.items.length === 0) {
+    alert('Generate the 250-SKU Cycle Count list first.');
+    return;
+  }
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const lines = ['No,Item Code,Description,Category,Priority,System SOH,Physical Count,Variance,Status'];
+  state.items.forEach((it, idx) => {
+    const hasPhys = it.physicalQty !== null && it.physicalQty !== '' && !Number.isNaN(Number(it.physicalQty));
+    const phys = hasPhys ? Number(it.physicalQty) : '';
+    const variance = hasPhys ? (Number(it.physicalQty) - Number(it.systemSoh)) : '';
+    const status = !hasPhys ? 'Pending' : (variance === 0 ? 'Matched' : 'Variance');
+    const esc = (s) => `"${String(s || '').replace(/"/g, '""')}"`;
+    lines.push([idx + 1, esc(it.itemCode), esc(it.desc), esc(it.category), esc(it.priority), it.systemSoh, phys, variance, status].join(','));
+  });
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  if (typeof saveAs === 'function') {
+    saveAs(blob, `KS01_AIC_CycleCount_${state.items.length}SKUs_${dateStr}.csv`);
+  }
+}
+
+/**
+ * 1-Click FY2027 Stock Cycle Guardrail: trims approved PO qty so projected cover
+ * does not exceed 60 days (2.00 months Excellent band) on fast/medium SKUs.
+ */
+function applyTwoMonthStockCyclePoCap(rowsOverride) {
+  const rows = Array.isArray(rowsOverride) ? rowsOverride : inventoryGrid;
+  if (!rows || rows.length === 0) {
+    if (!rowsOverride) alert('Upload your Xilnex Inventory CSV first.');
+    return { trimmedSkus: 0, unitsSaved: 0 };
+  }
+  let trimmedSkus = 0;
+  let unitsSaved = 0;
+  rows.forEach(r => {
+    const ads = Number(r.ads) || 0;
+    const soh = Number(r.soh) || 0;
+    const curApproved = Number(r.approvedQty) || 0;
+    if (curApproved <= 0 || ads <= 0) return;
+    const maxUnitsFor2Months = Math.floor(ads * 60); // 2.00 months cap
+    const maxAllowedOrder = Math.max(0, maxUnitsFor2Months - soh);
+    if (curApproved > maxAllowedOrder) {
+      unitsSaved += (curApproved - maxAllowedOrder);
+      r.approvedQty = maxAllowedOrder;
+      r.isOverridden = true;
+      trimmedSkus++;
+    }
+  });
+  if (!rowsOverride && typeof renderInventoryGrid === 'function') {
+    renderInventoryGrid();
+    alert(`🛡️ 2.0-Month Stock Cycle Cap Applied!\n\nTrimmed ${trimmedSkus} over-buffered SKUs (saved ${unitsSaved} excess order units) to stay inside the FY2027 1.50–2.00 months Excellent band.`);
+  }
+  return { trimmedSkus, unitsSaved };
+}
+
+function renderInvFy2027AutopilotBar(forceExpand = false) {
+  const host = document.getElementById('invFy2027AutopilotBar');
+  if (!host) return;
+  const cutOff = window.PmgFy2027Kpi
+    ? window.PmgFy2027Kpi.getDaysUntilMonthlyCutOff(14)
+    : { cutOffDay: 14, daysRemaining: 0, isUrgent: false, nextCutOffDate: '' };
+  const state = loadInvCycleCountState();
+  const total = (state.items || []).length;
+  const counted = (state.items || []).filter(it => it.physicalQty !== null && it.physicalQty !== '' && !Number.isNaN(Number(it.physicalQty))).length;
+  const matched = (state.items || []).filter(it => it.physicalQty !== null && it.physicalQty !== '' && Number(it.physicalQty) === Number(it.systemSoh)).length;
+  const accPct = counted > 0 ? ((matched / counted) * 100).toFixed(1) : '—';
+  const showTable = forceExpand || (state.expanded && total > 0);
+
+  const previewRows = (state.items || []).slice(0, 30).map((it, idx) => {
+    const hasPhys = it.physicalQty !== null && it.physicalQty !== '' && !Number.isNaN(Number(it.physicalQty));
+    const diff = hasPhys ? Number(it.physicalQty) - Number(it.systemSoh) : null;
+    const badge = !hasPhys
+      ? `<span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-bold">Pending</span>`
+      : (diff === 0
+        ? `<span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[10px] font-bold">✓ Match</span>`
+        : `<span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 text-[10px] font-bold">${diff > 0 ? '+' : ''}${diff} Var</span>`);
+    return `
+      <tr class="border-b border-slate-100 text-xs">
+        <td class="px-2.5 py-1.5 font-mono text-[11px] text-slate-600">${it.itemCode}</td>
+        <td class="px-2.5 py-1.5 font-semibold text-slate-800 max-w-[260px] truncate">${it.desc}</td>
+        <td class="px-2.5 py-1.5 text-center font-bold text-slate-700">${it.systemSoh}</td>
+        <td class="px-2.5 py-1.5 text-center">
+          <input type="number" min="0" value="${hasPhys ? it.physicalQty : ''}" onchange="updateCycleCountPhysicalQty(${idx}, this.value)"
+            placeholder="Count" class="w-16 px-2 py-1 text-center border border-slate-300 rounded-lg text-xs font-bold">
+        </td>
+        <td class="px-2.5 py-1.5 text-center">${badge}</td>
+      </tr>
+    `;
+  }).join('');
+
+  host.innerHTML = `
+    <div class="rounded-xl p-4 bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white shadow-sm border border-blue-800/50">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">FY2027 Inventory Autopilot</span>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${cutOff.isUrgent ? 'bg-rose-500/30 text-rose-200 border-rose-400/50' : 'bg-amber-500/20 text-amber-200 border-amber-400/30'} border">
+              ⏰ 14th Cut-Off: ${cutOff.daysRemaining}d Left (${cutOff.nextCutOffDate})
+            </span>
+            ${total > 0 ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/10 text-blue-200">Counted: ${counted}/${total} • Accuracy: ${accPct}%</span>` : ''}
+          </div>
+          <p class="text-xs text-slate-300 mt-1">KPI #12 Inventory Accuracy (5% + 60/200 Audit pts) &amp; KPI #13 Stock Cycle (1.50–2.00 mo band).</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" onclick="triggerGenerate250SkuCycleCount()" class="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black transition cursor-pointer">
+            ⚡ Auto-Generate 250-SKU Cycle Sheet
+          </button>
+          ${total > 0 ? `<button type="button" onclick="exportCycleCountAicCsv()" class="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white border border-white/20 text-xs font-bold transition cursor-pointer">📥 Export AIC CSV (${total} SKUs)</button>` : ''}
+          <button type="button" onclick="applyTwoMonthStockCyclePoCap()" class="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black transition cursor-pointer" title="Trim recommended PO units so projected stock stays within 2.00 months">
+            🛡️ Apply 2.0-Mo Stock Cycle PO Cap
+          </button>
+        </div>
+      </div>
+      ${showTable ? `
+        <div class="mt-3 bg-white text-slate-900 rounded-xl overflow-hidden border border-slate-200">
+          <div class="px-3 py-2 bg-slate-100 border-b border-slate-200 flex items-center justify-between text-xs">
+            <span class="font-extrabold text-slate-800">Active 250-SKU Cycle Count Sheet (Showing top 30 of ${total} — Export AIC CSV for full 250-SKU print sheet)</span>
+            <button type="button" onclick="const s=loadInvCycleCountState();s.expanded=false;saveInvCycleCountState(s);renderInvFy2027AutopilotBar(false);" class="text-slate-500 hover:text-slate-800 font-bold cursor-pointer">Hide ▲</button>
+          </div>
+          <div class="max-h-60 overflow-y-auto">
+            <table class="w-full text-left border-collapse">
+              <thead class="bg-slate-50 text-[10px] uppercase text-slate-500 sticky top-0">
+                <tr><th class="px-2.5 py-1.5">Code</th><th class="px-2.5 py-1.5">Description</th><th class="px-2.5 py-1.5 text-center">Sys SOH</th><th class="px-2.5 py-1.5 text-center">Physical</th><th class="px-2.5 py-1.5 text-center">Status</th></tr>
+              </thead>
+              <tbody>${previewRows}</tbody>
+            </table>
+          </div>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+window.generateMonthly250SkuCycleList = generateMonthly250SkuCycleList;
+window.triggerGenerate250SkuCycleCount = triggerGenerate250SkuCycleCount;
+window.updateCycleCountPhysicalQty = updateCycleCountPhysicalQty;
+window.exportCycleCountAicCsv = exportCycleCountAicCsv;
+window.applyTwoMonthStockCyclePoCap = applyTwoMonthStockCyclePoCap;
+window.renderInvFy2027AutopilotBar = renderInvFy2027AutopilotBar;
+
 
