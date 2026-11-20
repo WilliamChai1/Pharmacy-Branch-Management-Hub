@@ -145,6 +145,49 @@ function saveApps(apps) {
 }
 function loadSlots() { try { return JSON.parse(localStorage.getItem(REC_SLOTS_KEY)||'[]'); } catch { return []; } }
 function saveSlots(slots) { localStorage.setItem(REC_SLOTS_KEY, JSON.stringify(slots)); }
+function syncInterviewSlotsFromApps(apps) {
+  const appList = Array.isArray(apps) ? apps : loadApps();
+  const existingSlots = loadSlots();
+  const slotByAppId = new Map();
+  const orphanSlots = [];
+
+  existingSlots.forEach(s => {
+    if (s && s.appId) slotByAppId.set(s.appId, s);
+    else if (s) orphanSlots.push(s);
+  });
+
+  let changed = false;
+  appList.forEach(app => {
+    if (!app || !app.id) return;
+    const iDate = String(app.interviewDate || '').trim();
+    const iTime = String(app.interviewTime || '').trim();
+    if (!iDate || !iTime) return;
+
+    const prev = slotByAppId.get(app.id);
+    const loc = app.interviewLocation || (prev && prev.location) || 'PMG Pharmacy Kota Sentosa, Jalan Setia Raja, Kota Sentosa, Kuching, Sarawak';
+    if (!prev || prev.date !== iDate || prev.time !== iTime || prev.applicantName !== app.name) {
+      slotByAppId.set(app.id, {
+        id: (prev && prev.id) || genId(),
+        appId: app.id,
+        applicantName: app.name || (prev && prev.applicantName) || 'Applicant',
+        position: app.position || (prev && prev.position) || '',
+        date: iDate,
+        time: iTime,
+        location: loc,
+        notes: (prev && prev.notes) || 'Self-booked by applicant via online portal',
+        confirmed: true,
+        createdAt: app.interviewBookedAt || (prev && prev.createdAt) || now()
+      });
+      changed = true;
+    }
+  });
+
+  const mergedSlots = [...slotByAppId.values(), ...orphanSlots];
+  if (changed || mergedSlots.length !== existingSlots.length) {
+    saveSlots(mergedSlots);
+  }
+  return mergedSlots;
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // GLOBAL GEMINI KEY & ONEDRIVE INTEGRATION (Shared with Whole Program)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2803,19 +2846,27 @@ async function confirmCandidateInterview(appId) {
   app.interviewDate = date;
   app.interviewTime = time;
   app.interviewLocation = location;
-  saveApps(loadApps().map(a => a.id === app.id ? app : a));
+  app.interviewBookedAt = new Date().toISOString();
 
-  // Push update to cloud
+  const existingApps = loadApps();
+  const hasApp = existingApps.some(a => a && a.id === app.id);
+  saveApps(hasApp ? existingApps.map(a => a.id === app.id ? app : a) : [app, ...existingApps]);
+
+  // Push update to cloud (await so mobile WhatsApp navigation cannot abort the request)
   const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
-  fetch(apiUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({
-      action: 'submitJobApplication',
-      application: app
-    }),
-    redirect: 'follow'
-  }).catch(e => console.warn('[Recruitment] Cloud slot booking push error:', e));
+  try {
+    await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'submitJobApplication',
+        application: app
+      }),
+      redirect: 'follow'
+    });
+  } catch (e) {
+    console.warn('[Recruitment] Cloud slot booking push error:', e);
+  }
 
   candidateBookingState.isRescheduling = false;
   toast('Temu duga anda berjaya disahkan! (Interview confirmed!)', 'success');
@@ -3286,7 +3337,10 @@ ${!apiKey ? `
               ${app.aiScore !== null ? app.aiScore + '/100' : '<span class="text-gray-300">—</span>'}
               ${app.aiVerdict ? `<br><span class="text-[9px] font-normal text-gray-500">${sanitize(app.aiVerdict)}</span>` : ''}
             </td>
-            <td class="p-3"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${m.color}"><i class="fa-solid ${m.icon} mr-1"></i>${m.label}</span></td>
+            <td class="p-3">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${m.color}"><i class="fa-solid ${m.icon} mr-1"></i>${m.label}</span>
+              ${app.interviewDate && app.interviewTime ? `<div class="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold"><i class="fa-solid fa-calendar-check text-emerald-600"></i>${sanitize(app.interviewDate)} · ${sanitize(app.interviewTime)}</div>` : ''}
+            </td>
             <td class="p-3">
                 <button onclick="window.pmgRecruitment.viewApp('${app.id}')" title="View Profile" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg cursor-pointer"><i class="fa-solid fa-eye"></i></button>
                 <button onclick="window.pmgRecruitment.downloadAllApplicantDocs('${app.id}')" title="Download All Attached Documents & Picture (ZIP)" class="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg cursor-pointer"><i class="fa-solid fa-file-zipper"></i></button>
@@ -3690,6 +3744,22 @@ ${app.docs && app.docs.length > 0 ? `
     </select>
   </div>
 </div>
+${app.interviewDate && app.interviewTime ? `
+<div class="mb-4 p-3.5 rounded-xl bg-emerald-50 border-2 border-emerald-300 flex flex-wrap items-center justify-between gap-3">
+  <div class="flex items-center gap-3">
+    <div class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-base shrink-0 shadow-xs">
+      <i class="fa-solid fa-calendar-check"></i>
+    </div>
+    <div>
+      <p class="text-[11px] font-bold uppercase tracking-wider text-emerald-700">Confirmed Interview Appointment</p>
+      <p class="text-sm font-black text-emerald-950">${sanitize(app.interviewDate)} at ${sanitize(app.interviewTime)}</p>
+      <p class="text-[11px] text-emerald-800">${sanitize(app.interviewLocation || 'PMG Pharmacy Kota Sentosa')}</p>
+    </div>
+  </div>
+  <button type="button" onclick="window.pmgRecruitment.openScheduleModal('${app.id}')" class="px-3 py-1.5 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold transition cursor-pointer">
+    <i class="fa-solid fa-pen-to-square mr-1"></i>Reschedule
+  </button>
+</div>` : ''}
 
 ${aiSection}
 
@@ -4116,11 +4186,12 @@ function switchRecTab(tab) {
 function renderSlotsTab() {
   const container = el('recSlotsContent');
   if (!container) return;
+  syncInterviewSlotsFromApps(loadApps());
   const slots = loadSlots().sort((a,b)=>a.date>b.date?1:-1);
 
-  // Calendar grid for next 2 weeks
+  // Calendar grid for today + next 13 days
   const days = [];
-  for (let i = 1; i <= 14; i++) {
+  for (let i = 0; i < 14; i++) {
     const d = new Date(); d.setDate(d.getDate()+i);
     days.push(d);
   }
@@ -5944,14 +6015,39 @@ async function syncAppsFromCloud(force = false) {
             };
           });
 
+          const remoteHasInterview = Boolean(remoteApp.interviewDate && remoteApp.interviewTime);
+          const localHasInterview = Boolean(existing.interviewDate && existing.interviewTime);
+          const remoteBookingNewer = remoteHasInterview && (
+            !localHasInterview ||
+            (remoteApp.interviewBookedAt && (!existing.interviewBookedAt || remoteApp.interviewBookedAt > existing.interviewBookedAt))
+          );
+
+          const finalInterviewDate = remoteBookingNewer ? remoteApp.interviewDate : (existing.interviewDate || remoteApp.interviewDate || '');
+          const finalInterviewTime = remoteBookingNewer ? remoteApp.interviewTime : (existing.interviewTime || remoteApp.interviewTime || '');
+          const finalInterviewLocation = remoteBookingNewer
+            ? (remoteApp.interviewLocation || existing.interviewLocation || '')
+            : (existing.interviewLocation || remoteApp.interviewLocation || '');
+          const finalInterviewBookedAt = remoteBookingNewer
+            ? (remoteApp.interviewBookedAt || existing.interviewBookedAt || '')
+            : (existing.interviewBookedAt || remoteApp.interviewBookedAt || '');
+
+          let finalStatus = existing.status || remoteApp.status || 'screening';
+          if (finalInterviewDate && finalInterviewTime && ['new', 'screening', 'shortlist'].includes(finalStatus)) {
+            finalStatus = 'invited';
+          }
+
           const mergedApp = {
             ...remoteApp,
             ...existing,
+            interviewDate: finalInterviewDate,
+            interviewTime: finalInterviewTime,
+            interviewLocation: finalInterviewLocation,
+            interviewBookedAt: finalInterviewBookedAt,
             docs: (mergedDocs.length > 0) ? mergedDocs : (existing.docs || remoteApp.docs || []),
             photoThumbnail: existing.photoThumbnail || remoteApp.photoThumbnail || '',
             spm: (remoteApp.spm && !remoteApp.spm.startsWith('School:')) ? remoteApp.spm : (existing.spm || remoteApp.spm || ''),
             resumeUrl: remoteApp.resumeUrl || existing.resumeUrl || '',
-            status: existing.status || remoteApp.status || 'screening'
+            status: finalStatus
           };
           localMap.set(existing.id || remoteApp.id, mergedApp);
         }
@@ -5960,6 +6056,7 @@ async function syncAppsFromCloud(force = false) {
       const merged = Array.from(localMap.values());
       merged.sort((a,b) => new Date(b.appliedAt || 0) - new Date(a.appliedAt || 0));
       localStorage.setItem(REC_KEY, JSON.stringify(merged));
+      syncInterviewSlotsFromApps(merged);
 
       // Push new applicant files to OneDrive if handle available
       const engine = window.pmgOneDriveSync || window.pmgOneDrive;
@@ -5968,6 +6065,7 @@ async function syncAppsFromCloud(force = false) {
       }
 
       renderAmDashboard();
+      if (el('recSlotsContent')) renderSlotsTab();
       if (force || changesCount > 0) {
         toast(`Synced ${merged.length} application(s) from cloud.`, 'success');
       }

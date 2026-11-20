@@ -1682,6 +1682,63 @@ function createBrowserSandbox(fetchImpl) {
     assert.strictEqual(roiLow.gapRm, 700, 'Gap to 2.50x ROI on RM1000 budget with RM1800 sales must be RM700');
   });
 
+  await testAsync('Recruitment: Cloud-booked candidate interview survives local merge, promotes status to invited, and populates Interview Slots tab', async () => {
+    const fetchImpl = async (url) => {
+      if (url.includes('action=getJobApplications')) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            applications: [
+              {
+                id: 'APP-MWKMNL70-EF7',
+                name: 'Sneeha A/P Rajenderew',
+                position: 'Pharmacy Assistant (Pembantu Farmasi)',
+                status: 'invited',
+                interviewDate: '2026-11-21',
+                interviewTime: '11:30',
+                interviewLocation: 'PMG Pharmacy Kota Sentosa, Jalan Setia Raja, Kota Sentosa, Kuching, Sarawak',
+                interviewBookedAt: '2026-11-19T10:37:00.000Z',
+                appliedAt: '2026-11-18T08:00:00.000Z'
+              }
+            ]
+          })
+        };
+      }
+      return { ok: true, json: async () => ({ success: true }) };
+    };
+
+    const { ctx } = createBrowserSandbox(fetchImpl);
+    // Simulate pharmacist's PC having an older local copy (shortlisted, no interview date yet)
+    ctx.localStorage.setItem('pmg_recruitment_apps_v1', JSON.stringify([
+      {
+        id: 'APP-MWKMNL70-EF7',
+        name: 'Sneeha A/P Rajenderew',
+        position: 'Pharmacy Assistant (Pembantu Farmasi)',
+        status: 'shortlist',
+        interviewDate: '',
+        interviewTime: '',
+        appliedAt: '2026-11-18T08:00:00.000Z'
+      }
+    ]));
+
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'recruitment.js'), 'utf8'), ctx);
+    await ctx.window.pmgRecruitment.syncAppsFromCloud(false);
+
+    const syncedApps = JSON.parse(ctx.localStorage.getItem('pmg_recruitment_apps_v1') || '[]');
+    const sneeha = syncedApps.find(a => a.id === 'APP-MWKMNL70-EF7');
+    assert(sneeha, 'Sneeha application must exist after cloud sync');
+    assert.strictEqual(sneeha.interviewDate, '2026-11-21', 'Remote interviewDate must not be overwritten by empty local copy');
+    assert.strictEqual(sneeha.interviewTime, '11:30', 'Remote interviewTime must not be overwritten by empty local copy');
+    assert.strictEqual(sneeha.status, 'invited', 'Status must auto-promote from shortlist to invited when booked');
+
+    const syncedSlots = JSON.parse(ctx.localStorage.getItem('pmg_recruitment_slots_v1') || '[]');
+    const slot = syncedSlots.find(s => s.appId === 'APP-MWKMNL70-EF7');
+    assert(slot, 'Interview slot must be automatically populated in pmg_recruitment_slots_v1 for Interview Slots tab');
+    assert.strictEqual(slot.date, '2026-11-21', 'Slot date must match candidate booking');
+    assert.strictEqual(slot.time, '11:30', 'Slot time must match candidate booking');
+  });
+
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);
   process.exit(failed > 0 ? 1 : 0);
 })();
