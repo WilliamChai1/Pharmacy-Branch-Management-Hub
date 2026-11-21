@@ -1501,8 +1501,8 @@ function getRowByFilteredIdx(filteredIdx) {
   return null;
 }
 
-function applyClearanceTransfer(filteredIdx, fromBranch, availableQty, expiryDate, batchNumber) {
-  const row = getRowByFilteredIdx(filteredIdx);
+function applyClearanceTransfer(origIdx, fromBranch, availableQty, expiryDate, batchNumber) {
+  const row = inventoryGrid[origIdx] || getRowByFilteredIdx(origIdx);
   if (!row) return;
 
   const currentOrder = row.approvedQty;
@@ -1535,7 +1535,8 @@ function applyClearanceTransfer(filteredIdx, fromBranch, availableQty, expiryDat
   }
 
   updateInventoryKPIs();
-  renderInventoryGrid();
+  populateVendorDropdown();
+  renderInventoryGrid(true);
 
   const exportBtn = document.getElementById('btnExportTransfers');
   if (exportBtn) exportBtn.classList.remove('hidden');
@@ -1543,8 +1544,8 @@ function applyClearanceTransfer(filteredIdx, fromBranch, availableQty, expiryDat
   alert(`🤝 Clearance Applied!\n\n${transferQty} units of ${row.desc} will be transferred from ${fromBranch} instead of ordered from supplier.\n\nSupplier order reduced from ${currentOrder} to ${row.approvedQty}.`);
 }
 
-function cancelClearanceTransfer(filteredIdx) {
-  const row = getRowByFilteredIdx(filteredIdx);
+function cancelClearanceTransfer(origIdx) {
+  const row = inventoryGrid[origIdx] || getRowByFilteredIdx(origIdx);
   if (!row) return;
 
   row.approvedQty += row.transferredQty;
@@ -1560,7 +1561,8 @@ function cancelClearanceTransfer(filteredIdx) {
   }
 
   updateInventoryKPIs();
-  renderInventoryGrid();
+  populateVendorDropdown();
+  renderInventoryGrid(true);
 }
 
 async function exportInterBranchTransferSheet() {
@@ -1669,8 +1671,11 @@ async function downloadOrderCsv() {
 
   // If a specific vendor or sub-group was selected
   if (selectedVendor) {
-    // If user selected the parent "SSJ PHARMA SDN BHD (CPD) - TRADE" (all sub-categories)
-    if (isSSJPharmaVendor(selectedVendor) && !selectedVendor.includes(' - ')) {
+    // If user selected the parent SSJ vendor (contains multiple NFF1 sub-groups rather than a single sub-group)
+    const distinctSsjGroups = isSSJPharmaVendor(selectedVendor)
+      ? new Set(items.map(r => r.orderGroup || getOrderGroup(r.vendorCode, r.nonFunctionalField1)))
+      : new Set();
+    if (isSSJPharmaVendor(selectedVendor) && distinctSsjGroups.size > 1) {
       const subGroups = {};
       items.forEach(r => {
         const gk = r.orderGroup || getOrderGroup(r.vendorCode, r.nonFunctionalField1);
@@ -1949,10 +1954,11 @@ function applyTwoMonthStockCyclePoCap(rowsOverride) {
   rows.forEach(r => {
     const ads = Number(r.ads) || 0;
     const soh = Number(r.soh) || 0;
+    const onOrder = Number(r.onOrder) || 0;
     const curApproved = Number(r.approvedQty) || 0;
     if (curApproved <= 0 || ads <= 0) return;
     const maxUnitsFor2Months = Math.floor(ads * 60); // 2.00 months cap
-    const maxAllowedOrder = Math.max(0, maxUnitsFor2Months - soh);
+    const maxAllowedOrder = Math.max(0, maxUnitsFor2Months - (soh + onOrder));
     if (curApproved > maxAllowedOrder) {
       unitsSaved += (curApproved - maxAllowedOrder);
       r.approvedQty = maxAllowedOrder;
@@ -1961,8 +1967,10 @@ function applyTwoMonthStockCyclePoCap(rowsOverride) {
     }
   });
   if (!rowsOverride && typeof renderInventoryGrid === 'function') {
-    renderInventoryGrid();
-    alert(`🛡️ 2.0-Month Stock Cycle Cap Applied!\n\nTrimmed ${trimmedSkus} over-buffered SKUs (saved ${unitsSaved} excess order units) to stay inside the FY2027 1.50–2.00 months Excellent band.`);
+    if (typeof updateInventoryKPIs === 'function') updateInventoryKPIs();
+    if (typeof populateVendorDropdown === 'function') populateVendorDropdown();
+    renderInventoryGrid(true);
+    alert(`🛡️ 2.0-Month Stock Cycle Cap Applied!\n\nTrimmed ${trimmedSkus} over-buffered SKUs (saved ${unitsSaved} excess order units, factoring SOH + On Order) to stay inside the FY2027 1.50–2.00 months Excellent band.`);
   }
   return { trimmedSkus, unitsSaved };
 }
@@ -1990,8 +1998,8 @@ function renderInvFy2027AutopilotBar(forceExpand = false) {
         : `<span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 text-[10px] font-bold">${diff > 0 ? '+' : ''}${diff} Var</span>`);
     return `
       <tr class="border-b border-slate-100 text-xs">
-        <td class="px-2.5 py-1.5 font-mono text-[11px] text-slate-600">${it.itemCode}</td>
-        <td class="px-2.5 py-1.5 font-semibold text-slate-800 max-w-[260px] truncate">${it.desc}</td>
+        <td class="px-2.5 py-1.5 font-mono text-[11px] text-slate-600">${escHtml(it.itemCode)}</td>
+        <td class="px-2.5 py-1.5 font-semibold text-slate-800 max-w-[260px] truncate">${escHtml(it.desc)}</td>
         <td class="px-2.5 py-1.5 text-center font-bold text-slate-700">${it.systemSoh}</td>
         <td class="px-2.5 py-1.5 text-center">
           <input type="number" min="0" value="${hasPhys ? it.physicalQty : ''}" onchange="updateCycleCountPhysicalQty(${idx}, this.value)"
@@ -2019,6 +2027,7 @@ function renderInvFy2027AutopilotBar(forceExpand = false) {
           <button type="button" onclick="triggerGenerate250SkuCycleCount()" class="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black transition cursor-pointer">
             ⚡ Auto-Generate 250-SKU Cycle Sheet
           </button>
+          ${total > 0 && !showTable ? `<button type="button" onclick="const s=loadInvCycleCountState();s.expanded=true;saveInvCycleCountState(s);renderInvFy2027AutopilotBar(true);" class="px-3 py-1.5 rounded-lg bg-blue-500/25 hover:bg-blue-500/35 text-blue-100 border border-blue-400/40 text-xs font-bold transition cursor-pointer">📋 Show Sheet (${counted}/${total}) ▼</button>` : ''}
           ${total > 0 ? `<button type="button" onclick="exportCycleCountAicCsv()" class="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white border border-white/20 text-xs font-bold transition cursor-pointer">📥 Export AIC CSV (${total} SKUs)</button>` : ''}
           <button type="button" onclick="applyTwoMonthStockCyclePoCap()" class="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black transition cursor-pointer" title="Trim recommended PO units so projected stock stays within 2.00 months">
             🛡️ Apply 2.0-Mo Stock Cycle PO Cap

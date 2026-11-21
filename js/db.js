@@ -222,6 +222,7 @@ async function importAllDocuments(docsList = []) {
     let count = 0;
 
     for (const doc of docsList) {
+      if (!doc || !doc.id) continue;
       let blob = null;
       if (doc.dataUrl) {
         try {
@@ -243,8 +244,22 @@ async function importAllDocuments(docsList = []) {
         notes: doc.notes || ''
       };
 
-      store.put(record); // put overwrites or inserts
-      count++;
+      if (blob) {
+        store.put(record);
+        count++;
+      } else {
+        // Metadata-only restore: NEVER overwrite an existing local binary blob with null
+        const getReq = store.get(doc.id);
+        getReq.onsuccess = () => {
+          const existing = getReq.result;
+          if (existing && existing.blob) {
+            store.put({ ...existing, ...record, blob: existing.blob });
+          } else {
+            store.put(record);
+          }
+        };
+        count++;
+      }
     }
 
     tx.oncomplete = () => resolve(count);

@@ -3264,9 +3264,10 @@ async function syncSkuActionPlansWithCloud(showToastFeedback = false) {
         updateSkuActionPlanSyncBadge('synced');
 
         // Refresh Tab 4 table if currently visible
-        const tab4Container = document.getElementById('tab4SkuContainer');
-        if (tab4Container && tab4Container.innerHTML) {
-          renderSkuSalesAgingSection();
+        computedMetrics = computeAllMetrics(perfState);
+        const tab4Container = document.getElementById('tab4SkusContainer');
+        if (tab4Container && tab4Container.innerHTML && typeof renderTab4SkusAndAging === 'function') {
+          renderTab4SkusAndAging();
         }
 
         if (showToastFeedback && typeof showToast === 'function') {
@@ -3453,7 +3454,7 @@ async function syncPerformanceWithCloud(showToastFeedback = false) {
         } catch (_) {}
         localStorage.setItem(STORAGE_KEYS.HIDE_SAMPLE, '1');
 
-        computeAllMetrics();
+        computedMetrics = computeAllMetrics(perfState);
         refreshAllViews();
         lastPerfCloudSyncTime = new Date();
         updateCloudSyncUiBadge('synced');
@@ -4183,7 +4184,7 @@ async function loadStateFromIdb() {
 
     if (updated) {
       console.log('[IDB] Restored full unconstrained datasets from IndexedDB: Stock Aging SKUs:', perfState.stockAgingLatest?.items?.length || 0);
-      computeAllMetrics();
+      computedMetrics = computeAllMetrics(perfState);
       refreshAllViews();
     }
   } catch (err) {
@@ -4323,7 +4324,7 @@ function setSkuActionPlanPreset(itemCode, presetVal) {
     perfState.skuActionPlans[itemCode] = current;
   }
   persistSkuActionPlans();
-  computeAllMetrics();
+  computedMetrics = computeAllMetrics(perfState);
   renderTab4SkusAndAging();
 }
 
@@ -4343,7 +4344,7 @@ function setSkuActionPlanNote(itemCode, noteVal) {
     perfState.skuActionPlans[itemCode] = current;
   }
   persistSkuActionPlans();
-  computeAllMetrics();
+  computedMetrics = computeAllMetrics(perfState);
   renderTab4SkusAndAging();
 }
 
@@ -4356,7 +4357,7 @@ function toggleSkuActionPlanCleared(itemCode) {
   current.updatedAt = new Date().toISOString();
   perfState.skuActionPlans[itemCode] = current;
   persistSkuActionPlans();
-  computeAllMetrics();
+  computedMetrics = computeAllMetrics(perfState);
   renderTab4SkusAndAging();
   if (typeof showToast === 'function') {
     showToast(`${itemCode} marked as ${current.cleared ? 'Cleared / Resolved ✅ (-deducted from aging alert)' : 'Action Pending ⏳'}`, 'info');
@@ -6302,7 +6303,7 @@ async function handleBatchCsvFiles(fileList) {
 
   if (loadedCount > 0) {
     localStorage.setItem(STORAGE_KEYS.HIDE_SAMPLE, '1');
-    computeAllMetrics();
+    computedMetrics = computeAllMetrics(perfState);
     saveActiveState();
     saveCurrentMonthSnapshot(true);
     if (typeof pushPerformanceToCloud === 'function') {
@@ -6402,7 +6403,7 @@ async function handleSlotFileUpload(type, periodSlot, inputEl) {
     perfState.meta.isPreloadedSample = false;
     localStorage.setItem(STORAGE_KEYS.HIDE_SAMPLE, '1');
     applyParsedCsvToState(type, periodSlot, text, file.name);
-    computeAllMetrics();
+    computedMetrics = computeAllMetrics(perfState);
     saveActiveState();
     saveCurrentMonthSnapshot(true);
     if (typeof pushPerformanceToCloud === 'function') {
@@ -6925,6 +6926,11 @@ if (typeof document !== 'undefined') {
     } catch (_) {}
     refreshAllViews();
     switchPerfTab('tab1');
+    if (window.PmgFy2027Kpi && typeof window.PmgFy2027Kpi.syncFy2027KpiVault === 'function') {
+      window.PmgFy2027Kpi.syncFy2027KpiVault('pull').then(() => {
+        if (typeof renderTab8Fy2027Autopilot === 'function') renderTab8Fy2027Autopilot();
+      }).catch(() => {});
+    }
   });
 }
 

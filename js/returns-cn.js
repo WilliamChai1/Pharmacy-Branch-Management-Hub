@@ -1146,13 +1146,13 @@
         if (changed || returnsData.length === 0) {
           returnsData = Array.from(map.values());
           await saveAllReturnsToDb(returnsData);
-          localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
+          try { localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData)); } catch (lsErr) { console.warn('[PMG Returns] localStorage quota warning:', lsErr); }
           renderReturnsUI();
         }
       }
 
       // 2. Push returns exclusively to dedicated PMG_RETURNS_VAULT_<branch> row (never bloat PharmacistSchedule cell)
-      if (returnsData.length > 0) {
+      if (returnsData.length > 0 || forcePush) {
         const existingCloudReturns = (data && data.schedule && Array.isArray(data.schedule.branchReturns)) ? data.schedule.branchReturns : [];
         const cloudById = new Map(existingCloudReturns.filter(r => r && r.id).map(r => [r.id, r]));
         const hasLocalNewOrNewer = returnsData.some(loc => {
@@ -1445,7 +1445,9 @@
       // SKU summary preview
       const itemCount = (ret.items || []).length;
       const firstItem = ret.items && ret.items[0] ? ret.items[0].itemDescription : '';
-      const itemPreview = itemCount > 1 ? `${firstItem} <b class="text-blue-600">+${itemCount - 1} more</b>` : firstItem;
+      const safeFirstItem = escapeHtml(firstItem);
+      const itemPreview = itemCount > 1 ? `${safeFirstItem} <b class="text-blue-600">+${itemCount - 1} more</b>` : safeFirstItem;
+      const safeRetIdAttr = escapeHtml(String(ret.id || '')).replace(/'/g, '&#39;');
 
       // Check reasons for color-compliant badges
       const hasTransit = (ret.items || []).some(it => (it.reason || '').toLowerCase().includes('transit'));
@@ -1462,7 +1464,7 @@
       }
 
       const remindCnBtnHtml = canRemindCn ? `
-        <button onclick="pmgReturns.openCnReminderModal('${ret.id}')" class="px-2.5 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-xs transition flex items-center gap-1 cursor-pointer" title="WhatsApp Supplier CN Reminder with Clickable DO &amp; PRN Proof Link">
+        <button onclick="pmgReturns.openCnReminderModal('${safeRetIdAttr}')" class="px-2.5 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-xs transition flex items-center gap-1 cursor-pointer" title="WhatsApp Supplier CN Reminder with Clickable DO &amp; PRN Proof Link">
           <i class="fa-brands fa-whatsapp text-sm"></i> <span>Remind CN</span>
         </button>` : '';
 
@@ -1481,7 +1483,7 @@
             <div class="mt-1 flex flex-wrap gap-1">${prnBadges || '<span class="text-gray-400 text-xs">-</span>'}</div>
           </td>
           <td class="py-3 px-4">
-            <div class="text-xs text-gray-800 max-w-xs truncate" title="${escapeHtml(firstItem)}">${itemPreview}</div>
+            <div class="text-xs text-gray-800 max-w-xs truncate" title="${safeFirstItem}">${itemPreview}</div>
             <div class="text-[11px] text-gray-500 mt-0.5 font-medium">
               <i class="fa-solid fa-box text-amber-600"></i> ${ret.totalCartons} Carton(s) (${itemCount} SKU${itemCount > 1 ? 's' : ''})
             </div>
@@ -1498,22 +1500,22 @@
           <td class="py-3 px-4 text-right whitespace-nowrap">
             <div class="flex items-center justify-end gap-1.5">
               ${remindCnBtnHtml}
-              <button onclick="pmgReturns.openEditReturnModal('${ret.id}')" class="px-2.5 py-1.5 text-xs bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold rounded-lg border border-amber-300 transition flex items-center gap-1" title="Edit SKUs, PRN, Qty, Carton No">
+              <button onclick="pmgReturns.openEditReturnModal('${safeRetIdAttr}')" class="px-2.5 py-1.5 text-xs bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold rounded-lg border border-amber-300 transition flex items-center gap-1" title="Edit SKUs, PRN, Qty, Carton No">
                 <i class="fa-solid fa-pen-to-square"></i> <span>Edit</span>
               </button>
-              <button onclick="pmgReturns.openPrintDoModal('${ret.id}')" class="px-2.5 py-1.5 text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold rounded-lg border border-blue-200 transition flex items-center gap-1" title="View & Print PMG Delivery Order">
+              <button onclick="pmgReturns.openPrintDoModal('${safeRetIdAttr}')" class="px-2.5 py-1.5 text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold rounded-lg border border-blue-200 transition flex items-center gap-1" title="View & Print PMG Delivery Order">
                 <i class="fa-solid fa-print"></i> <span>DO Form</span>
               </button>
-              <button onclick="pmgReturns.openPrintCartonLabelModal('${ret.id}')" class="px-2.5 py-1.5 text-xs bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold rounded-lg border border-amber-300 transition flex items-center gap-1" title="Print Big Box / Carton Shipping Labels for Transporter">
+              <button onclick="pmgReturns.openPrintCartonLabelModal('${safeRetIdAttr}')" class="px-2.5 py-1.5 text-xs bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold rounded-lg border border-amber-300 transition flex items-center gap-1" title="Print Big Box / Carton Shipping Labels for Transporter">
                 <i class="fa-solid fa-tags"></i> <span>Box Labels</span>
               </button>
-              <button onclick="pmgReturns.openUploadSignedDoModal('${ret.id}')" class="px-2 py-1.5 text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 font-semibold rounded-lg border border-slate-300 transition" title="Upload Signed DO Proof (OneDrive + Cloud Link)">
+              <button onclick="pmgReturns.openUploadSignedDoModal('${safeRetIdAttr}')" class="px-2 py-1.5 text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 font-semibold rounded-lg border border-slate-300 transition" title="Upload Signed DO Proof (OneDrive + Cloud Link)">
                 <i class="fa-solid fa-cloud-arrow-up"></i>
               </button>
-              <button onclick="pmgReturns.openSettleCnModal('${ret.id}')" class="px-2 py-1.5 text-xs bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-semibold rounded-lg border border-emerald-300 transition" title="Settle Credit Note & Key Xilnex">
+              <button onclick="pmgReturns.openSettleCnModal('${safeRetIdAttr}')" class="px-2 py-1.5 text-xs bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-semibold rounded-lg border border-emerald-300 transition" title="Settle Credit Note & Key Xilnex">
                 <i class="fa-solid fa-check-double"></i>
               </button>
-              <button onclick="pmgReturns.deleteReturn('${ret.id}')" class="px-2 py-1.5 text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition" title="Delete record">
+              <button onclick="pmgReturns.deleteReturn('${safeRetIdAttr}')" class="px-2 py-1.5 text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition" title="Delete record">
                 <i class="fa-solid fa-trash-can"></i>
               </button>
             </div>
@@ -3546,18 +3548,22 @@
       let savedPath = `Local_${file.name}`;
       let oneDriveSaved = false;
 
-      // 1. Save to OneDrive if connected
+      // 1. Save to OneDrive if connected (isolated try/catch so revoked handle never skips cloud proof upload)
       if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveSignedDoProofToOneDrive === 'function') {
-        const res = await window.pmgOneDriveSync.saveSignedDoProofToOneDrive(file, activeReturnForUpload.branch, {
-          doNumber: activeReturnForUpload.doNumber,
-          vendor: activeReturnForUpload.supplier,
-          year: new Date().getFullYear(),
-          monthFolder: window.pmgOneDriveSync._formatCurrentMonthString ? window.pmgOneDriveSync._formatCurrentMonthString() : '09 - September'
-        });
+        try {
+          const res = await window.pmgOneDriveSync.saveSignedDoProofToOneDrive(file, activeReturnForUpload.branch, {
+            doNumber: activeReturnForUpload.doNumber,
+            vendor: activeReturnForUpload.supplier,
+            year: new Date().getFullYear(),
+            monthFolder: window.pmgOneDriveSync._formatCurrentMonthString ? window.pmgOneDriveSync._formatCurrentMonthString() : '09 - September'
+          });
 
-        if (res && res.success) {
-          savedPath = res.path;
-          oneDriveSaved = true;
+          if (res && res.success) {
+            savedPath = res.path;
+            oneDriveSaved = true;
+          }
+        } catch (odErr) {
+          console.warn('[PMG Returns] OneDrive proof save skipped (will still upload cloud proof):', odErr);
         }
       }
 
@@ -3582,7 +3588,7 @@
       };
 
       await saveSingleReturnToDb(activeReturnForUpload);
-      localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
+      try { localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData)); } catch (lsErr) { console.warn('[PMG Returns] localStorage quota warning:', lsErr); }
       syncReturnsWithOneDrive(activeReturnForUpload.branch);
       await syncReturnsWithGoogleSheets(activeReturnForUpload.branch, true);
 
@@ -3765,22 +3771,24 @@
       }
     }
 
-    // Open WhatsApp tab immediately on user gesture or after fast cloud push
+    // Open WhatsApp tab immediately on user gesture so Safari/iOS/strict popup blockers never block it
+    const targetReturn = activeReturnForReminder;
+    window.open(waUrl, '_blank', 'noopener');
+    closeCnReminderModal();
+
+    // Record reminder metadata & push to cloud in the background
     if (sendBtn) {
       sendBtn.disabled = true;
       sendBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Syncing Proof Link…';
     }
-    try {
-      await recordAndSyncCnReminder(activeReturnForReminder, phoneRaw, picName);
-    } finally {
-      if (sendBtn) {
-        sendBtn.disabled = false;
-        sendBtn.innerHTML = '<i class="fa-brands fa-whatsapp text-sm"></i> Send via WhatsApp';
-      }
-    }
-
-    window.open(waUrl, '_blank', 'noopener');
-    closeCnReminderModal();
+    recordAndSyncCnReminder(targetReturn, phoneRaw, picName)
+      .catch(err => console.warn('[PMG Returns] Background CN reminder sync warning:', err))
+      .finally(() => {
+        if (sendBtn) {
+          sendBtn.disabled = false;
+          sendBtn.innerHTML = '<i class="fa-brands fa-whatsapp text-sm"></i> Send via WhatsApp';
+        }
+      });
   }
 
   async function copyCnReminderMessage() {
@@ -3790,22 +3798,42 @@
     const msg = (document.getElementById('cnRemMessageBox')?.value || '').trim()
       || buildSupplierCnReminderMessage(activeReturnForReminder, { picName });
 
+    let copied = false;
     try {
-      await recordAndSyncCnReminder(activeReturnForReminder, phoneRaw, picName);
       if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
         await navigator.clipboard.writeText(msg);
+        copied = true;
+      } else {
+        const box = document.getElementById('cnRemMessageBox');
+        if (box) {
+          box.focus();
+          box.select();
+          copied = document.execCommand('copy');
+        }
       }
+    } catch (clipErr) {
+      console.warn('[PMG Returns] Clipboard write warning:', clipErr);
+    }
+
+    try {
+      await recordAndSyncCnReminder(activeReturnForReminder, phoneRaw, picName);
+    } catch (syncErr) {
+      console.warn('[PMG Returns] Reminder sync warning:', syncErr);
+    }
+
+    if (copied) {
       alert('✅ CN reminder message & clickable DO/PRN proof link copied! Paste directly into your Supplier WhatsApp chat or group.');
-    } catch (err) {
-      console.warn('[PMG Returns] Copy reminder warning:', err);
-      alert('Proof link synced. Please copy the message directly from the preview box.');
+    } else {
+      alert('Proof link synced. Clipboard access was blocked by the browser — please select and copy the message directly from the preview box.');
     }
   }
 
-  async function previewPublicDoProofInNewTab() {
+  function previewPublicDoProofInNewTab() {
     if (!activeReturnForReminder) return;
-    await syncReturnsWithGoogleSheets(activeReturnForReminder.branch, true);
-    window.open(buildPublicDoProofUrl(activeReturnForReminder), '_blank', 'noopener');
+    const proofUrl = buildPublicDoProofUrl(activeReturnForReminder);
+    const branch = activeReturnForReminder.branch;
+    window.open(proofUrl, '_blank', 'noopener');
+    syncReturnsWithGoogleSheets(branch, true).catch(err => console.warn('[PMG Returns] Background preview sync warning:', err));
   }
 
   // ─── PUBLIC SUPPLIER DO & PRN DOCUMENT OF PROOF PORTAL (?doProof=...) ────────
@@ -3987,41 +4015,47 @@
         const docRes = await fetch(`${PMG_SCHEDULE_API_URL}?action=getApplicantDoc&docId=${encodeURIComponent(ret.signedProof.cloudDocId)}`);
         const docJson = docRes.ok ? await docRes.json() : null;
         if (attBox && docJson && docJson.success && docJson.data) {
-          const mime = String(docJson.mimeType || ret.signedProof.mimeType || '').toLowerCase();
-          const fName = ret.signedProof.fileName || docJson.name || `${ret.doNumber}_Signed_DO`;
-          const isPdf = mime.includes('pdf') || docJson.data.startsWith('data:application/pdf');
-          if (isPdf) {
-            let blobUrl = docJson.data;
-            try {
-              const b64 = docJson.data.includes(',') ? docJson.data.split(',')[1] : docJson.data;
-              const bin = atob(b64);
-              const bytes = new Uint8Array(bin.length);
-              for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-              blobUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-            } catch (_) {}
-            attBox.innerHTML = `
-              <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <div class="text-xs font-black text-emerald-900 flex items-center gap-1.5">
-                  <i class="fa-solid fa-file-pdf text-rose-600 text-base"></i> Driver-Signed DO Proof (PDF)
-                </div>
-                <a href="${blobUrl}" download="${escapeHtml(fName)}" target="_blank" rel="noopener" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5">
-                  <i class="fa-solid fa-download"></i> Open / Download Signed DO
-                </a>
-              </div>
-              <iframe src="${blobUrl}" class="w-full h-[540px] rounded-xl border border-slate-300 bg-white"></iframe>
-            `;
+          const rawDataStr = String(docJson.data).trim();
+          const allowedDataUriRe = /^data:(image\/(jpeg|jpg|png|webp|gif)|application\/pdf);base64,[A-Za-z0-9+/=\s]+$/i;
+          if (!allowedDataUriRe.test(rawDataStr)) {
+            attBox.innerHTML = `<p class="text-xs text-amber-800 font-semibold"><i class="fa-solid fa-shield-halved mr-1"></i>Signed DO attachment format is unsupported for inline preview. Please refer to the verified DO &amp; PRN breakdown above.</p>`;
           } else {
-            attBox.innerHTML = `
-              <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <div class="text-xs font-black text-emerald-900 flex items-center gap-1.5">
-                  <i class="fa-solid fa-file-shield text-emerald-600 text-base"></i> Driver-Signed DO Proof Copy
+            const mime = String(docJson.mimeType || ret.signedProof.mimeType || '').toLowerCase();
+            const fName = ret.signedProof.fileName || docJson.name || `${ret.doNumber}_Signed_DO`;
+            const isPdf = mime.includes('pdf') || rawDataStr.toLowerCase().startsWith('data:application/pdf');
+            if (isPdf) {
+              let blobUrl = rawDataStr;
+              try {
+                const b64 = rawDataStr.includes(',') ? rawDataStr.split(',')[1] : rawDataStr;
+                const bin = atob(b64);
+                const bytes = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                blobUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+              } catch (_) {}
+              attBox.innerHTML = `
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <div class="text-xs font-black text-emerald-900 flex items-center gap-1.5">
+                    <i class="fa-solid fa-file-pdf text-rose-600 text-base"></i> Driver-Signed DO Proof (PDF)
+                  </div>
+                  <a href="${blobUrl}" download="${escapeHtml(fName)}" target="_blank" rel="noopener" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5">
+                    <i class="fa-solid fa-download"></i> Open / Download Signed DO
+                  </a>
                 </div>
-                <a href="${docJson.data}" download="${escapeHtml(fName)}" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5">
-                  <i class="fa-solid fa-download"></i> Download Signed DO Photo
-                </a>
-              </div>
-              <img src="${docJson.data}" alt="Driver Signed DO Proof" class="w-full max-h-[720px] object-contain rounded-xl border border-slate-300 bg-white shadow-xs">
-            `;
+                <iframe src="${blobUrl}" class="w-full h-[540px] rounded-xl border border-slate-300 bg-white"></iframe>
+              `;
+            } else {
+              attBox.innerHTML = `
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <div class="text-xs font-black text-emerald-900 flex items-center gap-1.5">
+                    <i class="fa-solid fa-file-shield text-emerald-600 text-base"></i> Driver-Signed DO Proof Copy
+                  </div>
+                  <a href="${rawDataStr}" download="${escapeHtml(fName)}" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5">
+                    <i class="fa-solid fa-download"></i> Download Signed DO Photo
+                  </a>
+                </div>
+                <img src="${rawDataStr}" alt="Driver Signed DO Proof" class="w-full max-h-[720px] object-contain rounded-xl border border-slate-300 bg-white shadow-xs">
+              `;
+            }
           }
         } else if (attBox) {
           attBox.innerHTML = `<p class="text-xs text-amber-800 font-semibold"><i class="fa-solid fa-circle-info mr-1"></i>Signed DO file (${escapeHtml(ret.signedProof.fileName)}) is archived on branch OneDrive. Refer to the verified DO &amp; PRN breakdown above.</p>`;
@@ -4087,9 +4121,9 @@
     activeReturnForCn.updatedAt = new Date().toISOString();
 
     await saveSingleReturnToDb(activeReturnForCn);
-    localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
+    try { localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData)); } catch (lsErr) { console.warn('[PMG Returns] localStorage quota warning:', lsErr); }
     syncReturnsWithOneDrive(activeReturnForCn.branch);
-    syncReturnsWithGoogleSheets(activeReturnForCn.branch);
+    syncReturnsWithGoogleSheets(activeReturnForCn.branch, true);
 
     closeSettleCnModal();
     renderReturnsUI();
@@ -4107,20 +4141,20 @@
     const deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_returns') || '["ret-ks-2609-002", "ret-lnd-2609-001"]');
     if (!deletedIds.includes(returnId)) {
       deletedIds.push(returnId);
-      localStorage.setItem('pmg_deleted_returns', JSON.stringify(deletedIds));
+      try { localStorage.setItem('pmg_deleted_returns', JSON.stringify(deletedIds)); } catch (_) {}
     }
 
     // 2. Remove from local memory and IndexedDB
     returnsData = returnsData.filter(r => r.id !== returnId);
     await deleteReturnFromDb(returnId);
-    localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
+    try { localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData)); } catch (lsErr) { console.warn('[PMG Returns] localStorage quota warning:', lsErr); }
 
     // 3. Directly overwrite OneDrive file with clean array (no re-merging old file)
     if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveReturnsDatabaseToOneDrive === 'function') {
       const branchOnlyData = returnsData.filter(r => (r.branch || '').toUpperCase() === ret.branch.toUpperCase() && !deletedIds.includes(r.id));
       await window.pmgOneDriveSync.saveReturnsDatabaseToOneDrive(ret.branch, branchOnlyData);
     }
-    syncReturnsWithGoogleSheets(ret.branch);
+    syncReturnsWithGoogleSheets(ret.branch, true);
 
     renderReturnsUI();
   }

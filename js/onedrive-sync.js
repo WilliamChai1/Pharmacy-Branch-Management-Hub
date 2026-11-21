@@ -3128,31 +3128,68 @@
     return null;
   }
 
+  // PDPA-Safe Commercial Admin Cloud Sanitizer: strips patient NRIC, patientName, and clinic/clinical refs before Google Cloud sync
+  function sanitizeCommercialValueForCloud(storageKey, rawStr) {
+    if (typeof rawStr !== 'string') return rawStr;
+    if (storageKey === 'pmg_admin_invoice_counter') return rawStr;
+    try {
+      const parsed = JSON.parse(rawStr);
+      const stripNode = (obj) => {
+        if (!obj || typeof obj !== 'object') return obj;
+        if (Array.isArray(obj)) return obj.map(stripNode);
+        const out = {};
+        Object.keys(obj).forEach((k) => {
+          const kl = k.toLowerCase();
+          if (
+            kl === 'icreg' || kl === 'ic' || kl === 'nric' || kl === 'patientic' ||
+            kl === 'patientname' || kl === 'doctorclinicref' || kl === 'clinicalnotes'
+          ) {
+            return; // Strictly omit PII / NRIC / clinical references from Google Cloud
+          }
+          out[k] = stripNode(obj[k]);
+        });
+        return out;
+      };
+      return JSON.stringify(stripNode(parsed));
+    } catch (_) {
+      return rawStr;
+    }
+  }
+
   async function writeOpsMiscCloudVault(scheduleObj) {
     if (!GOOGLE_CLOUD_OPS_API_URL || typeof fetch !== 'function' || !scheduleObj) return false;
     try {
       const jsonStr = JSON.stringify(scheduleObj);
       if (jsonStr.length > 38000) {
-        // Fallback chunked upload via uploadApplicantDoc for large payloads (e.g., 5S walkthrough frame metadata)
-        await fetch(GOOGLE_CLOUD_OPS_API_URL, {
+        // Chunked upload using exact Apps Script uploadApplicantDoc schema ({ appId, doc: { field, name, type, data } })
+        const b64Payload = btoa(unescape(encodeURIComponent(jsonStr)));
+        const uploadRes = await fetch(GOOGLE_CLOUD_OPS_API_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({
             action: 'uploadApplicantDoc',
-            applicantId: OPS_MISC_CLOUD_VAULT_KEY,
-            docType: 'auditCommercialVault',
-            fileName: 'ops_misc_vault.json',
-            mimeType: 'application/json',
-            base64Data: btoa(unescape(encodeURIComponent(jsonStr)))
-          })
+            appId: OPS_MISC_CLOUD_VAULT_KEY,
+            doc: {
+              field: 'auditCommercialVault',
+              name: 'ops_misc_vault.json',
+              type: 'application/json',
+              size: jsonStr.length,
+              data: `data:application/json;base64,${b64Payload}`
+            }
+          }),
+          redirect: 'follow'
         });
-        const pointer = { chunkedDocId: `${OPS_MISC_CLOUD_VAULT_KEY}_auditCommercialVault`, updatedAt: new Date().toISOString() };
-        await fetch(GOOGLE_CLOUD_OPS_API_URL, {
+        const uploadJson = uploadRes && uploadRes.ok ? await uploadRes.json().catch(() => null) : null;
+        if (!uploadJson || !uploadJson.success || !uploadJson.docId) return false;
+
+        const pointer = { chunkedDocId: uploadJson.docId, updatedAt: new Date().toISOString() };
+        const ptrRes = await fetch(GOOGLE_CLOUD_OPS_API_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ branch: OPS_MISC_CLOUD_VAULT_KEY, schedule: pointer, updatedBy: 'PMG Antigravity Cloud' })
+          body: JSON.stringify({ branch: OPS_MISC_CLOUD_VAULT_KEY, schedule: pointer, updatedBy: 'PMG Antigravity Cloud' }),
+          redirect: 'follow'
         });
-        return true;
+        return Boolean(ptrRes && ptrRes.ok);
       }
 
       const res = await fetch(GOOGLE_CLOUD_OPS_API_URL, {
@@ -3162,7 +3199,8 @@
           branch: OPS_MISC_CLOUD_VAULT_KEY,
           schedule: scheduleObj,
           updatedBy: 'PMG Antigravity Cloud'
-        })
+        }),
+        redirect: 'follow'
       });
       return Boolean(res && res.ok);
     } catch (err) {
@@ -3179,8 +3217,10 @@
         const res = await fetch(`${GOOGLE_CLOUD_OPS_API_URL}?action=getApplicantDoc&docId=${encodeURIComponent(raw.chunkedDocId)}`);
         if (res && res.ok) {
           const docData = await res.json();
-          if (docData && docData.base64Data) {
-            const decoded = decodeURIComponent(escape(atob(docData.base64Data)));
+          const rawB64 = docData && (docData.data || docData.base64Data);
+          if (rawB64) {
+            const cleanB64 = String(rawB64).includes(',') ? String(rawB64).split(',')[1] : String(rawB64);
+            const decoded = decodeURIComponent(escape(atob(cleanB64)));
             const parsed = JSON.parse(decoded);
             if (parsed && typeof parsed === 'object') return parsed;
           }
@@ -3230,7 +3270,8 @@
       COMMERCIAL_STORAGE_KEYS.forEach((k) => {
         const val = localStorage.getItem(k);
         if (val !== null) {
-          localPayload[k] = val;
+          // Enforce Malaysia PDPA: strip patient NRIC, patientName & clinic refs before Google Cloud upload
+          localPayload[k] = sanitizeCommercialValueForCloud(k, val);
           hasLocal = true;
         }
       });
@@ -3238,13 +3279,16 @@
       const localMetaTs = Number(localStorage.getItem('pmg_commercial_cloud_ts') || 0);
       const cloudMetaTs = cloudComm && cloudComm.updatedAt ? Number(cloudComm.updatedAt) : 0;
 
-      if (cloudComm && cloudComm.keys && (!hasLocal || cloudMetaTs > localMetaTs)) {
+      if (cloudComm && cloudComm.keys && (!hasLocal || (cloudMetaTs > localMetaTs && localMetaTs > 0))) {
         Object.keys(cloudComm.keys).forEach((k) => {
           if (COMMERCIAL_STORAGE_KEYS.includes(k) && typeof cloudComm.keys[k] === 'string') {
             localStorage.setItem(k, cloudComm.keys[k]);
           }
         });
         if (cloudMetaTs) localStorage.setItem('pmg_commercial_cloud_ts', String(cloudMetaTs));
+        if (window.pmgAdminUtils && typeof window.pmgAdminUtils.init === 'function') {
+          try { window.pmgAdminUtils.init(); } catch (_) {}
+        }
         return { status: 'pulled', updated: true };
       } else if (hasLocal) {
         const nextTs = Math.max(Date.now(), localMetaTs || 0);

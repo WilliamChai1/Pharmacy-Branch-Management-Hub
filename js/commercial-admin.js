@@ -173,14 +173,30 @@
     }
   }
 
+  let _commCloudSyncTimer = null;
+  function markCommercialUpdated() {
+    try {
+      localStorage.setItem('pmg_commercial_cloud_ts', String(Date.now()));
+    } catch (_) {}
+    if (typeof window.syncCommercialFromCloud === 'function') {
+      if (_commCloudSyncTimer) clearTimeout(_commCloudSyncTimer);
+      _commCloudSyncTimer = setTimeout(() => {
+        window.syncCommercialFromCloud().catch(() => {});
+      }, 2000);
+    }
+  }
+
   function persistQuotation() {
     try { localStorage.setItem(KEYS.QUOTATION, JSON.stringify(quotationState)); } catch(e) {}
+    markCommercialUpdated();
   }
   function persistInvoice() {
     try { localStorage.setItem(KEYS.INVOICE, JSON.stringify(invoiceState)); } catch(e) {}
+    markCommercialUpdated();
   }
   function persistIncident() {
     try { localStorage.setItem(KEYS.INCIDENT, JSON.stringify(incidentState)); } catch(e) {}
+    markCommercialUpdated();
   }
 
   function generateNextInvoiceNumber() {
@@ -203,6 +219,7 @@
       counter += 1;
       localStorage.setItem(KEYS.INVOICE_COUNTER, counter.toString());
     } catch(e) {}
+    markCommercialUpdated();
   }
 
   // ─── MAIN SUITE SHELL RENDER ─────────────────────────────────────────────────
@@ -604,10 +621,12 @@
   }
 
   function buildSingleQuotationHTML(companyKey) {
-    const comp = COMPANIES[companyKey];
+    const comp = COMPANIES[companyKey] || COMPANIES.pmg;
     const total = calculateQuoteTotal(companyKey);
-    const now = new Date(quotationState.date || new Date());
-    const validUntil = new Date(now.getTime() + (quotationState.validityDays * 86400000)).toISOString().slice(0, 10);
+    const parsedDate = quotationState.date ? new Date(quotationState.date) : new Date();
+    const now = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+    const validDays = Number(quotationState.validityDays) || 30;
+    const validUntil = new Date(now.getTime() + (validDays * 86400000)).toISOString().slice(0, 10);
     const quoteNo = `${comp.quotePrefix}-KTS-${now.getFullYear()}${String(now.getMonth()+1).padStart(2, '0')}-088`;
 
     let headerMarkup = '';
@@ -809,9 +828,11 @@
     const ampmTotal = calculateQuoteTotal('ampm');
 
     const ssjDiff = ssjTotal - pmgTotal;
-    const ssjDiffPct = ((ssjDiff / pmgTotal) * 100).toFixed(1);
+    const ssjDiffPct = pmgTotal > 0 ? ((ssjDiff / pmgTotal) * 100).toFixed(1) : '0.0';
     const ampmDiff = ampmTotal - pmgTotal;
-    const ampmDiffPct = ((ampmDiff / pmgTotal) * 100).toFixed(1);
+    const ampmDiffPct = pmgTotal > 0 ? ((ampmDiff / pmgTotal) * 100).toFixed(1) : '0.0';
+    const safeSsjVar = Number.isFinite(Number(quotationState.ssjVariancePct)) ? Number(quotationState.ssjVariancePct) : 0;
+    const safeAmpmVar = Number.isFinite(Number(quotationState.ampmVariancePct)) ? Number(quotationState.ampmVariancePct) : 0;
 
     return `
       <div class="a4-document a4-quotation-sheet" style="background:#ffffff; color:#111827; padding:28px 32px; border-radius:8px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; box-shadow:0 1px 3px rgba(0,0,0,0.08); font-size:11.5px; min-height:960px; display:flex; flex-direction:column; justify-content:space-between; box-sizing:border-box;">
@@ -859,7 +880,7 @@
                     <td style="padding:8px 8px; text-align:right; font-weight:700; color:#1e3a8a; background:#eff6ff;">${(pP * it.qty).toFixed(2)}</td>
                     <td style="padding:8px 8px; text-align:right; color:#334155; font-family:monospace;">${Math.round(sP * it.qty).toLocaleString()}</td>
                     <td style="padding:8px 8px; text-align:right; color:#334155; font-family:monospace;">${Math.round(aP * it.qty).toLocaleString()}</td>
-                    <td style="padding:8px 6px; text-align:center; font-weight:700; color:#15803d; font-size:10px;">+${quotationState.ssjVariancePct}% to +${quotationState.ampmVariancePct}%</td>
+                    <td style="padding:8px 6px; text-align:center; font-weight:700; color:#15803d; font-size:10px;">+${safeSsjVar}% to +${safeAmpmVar}%</td>
                   </tr>
                 `;
               }).join('')}

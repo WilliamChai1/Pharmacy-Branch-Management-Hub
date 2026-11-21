@@ -65,8 +65,7 @@ function initAudit() {
     });
   }
 
-  const runBtn = document.getElementById('auditRunBtn');
-  if (runBtn) runBtn.addEventListener('click', runAudit);
+  // Note: #auditRunBtn already invokes runAudit() via onclick in index.html; avoid duplicate listener double-firing Gemini API
   if (typeof renderAuditFy2027RiskDetector === 'function') renderAuditFy2027RiskDetector();
 }
 
@@ -1330,24 +1329,37 @@ const PMG_HQ_AUDIT_RUBRIC_200 = [
 
 function computeAutoAuditRiskScore(signals = {}) {
   const vault = signals.vault || (window.PmgFy2027Kpi ? window.PmgFy2027Kpi.loadFy2027VaultLocal() : {});
-  const videoReport = signals.videoReport || window._lastAuditReport || null;
+  let videoReport = signals.videoReport || window._lastAuditReport || null;
+  if (!videoReport && typeof localStorage !== 'undefined') {
+    try {
+      const saved = localStorage.getItem('pmg_latest_walkthrough_audit');
+      if (saved) videoReport = JSON.parse(saved);
+    } catch (_) {}
+  }
   const videoCats = (videoReport && Array.isArray(videoReport.categories)) ? videoReport.categories : [];
 
   const findVideoPct = (keyword) => {
     const c = videoCats.find(x => String(x.name || '').toLowerCase().includes(keyword));
-    if (!c || !c.max_score) return null;
-    return (Number(c.score) / Number(c.max_score));
+    if (!c) return null;
+    const maxPts = Number(c.max_points ?? c.max_score ?? 0);
+    if (maxPts > 0) return Number(c.score) / maxPts;
+    if (c.percentage !== undefined && c.percentage !== null) return Number(c.percentage) / 100;
+    return null;
   };
+
+  let hasLiveSignal = videoCats.length > 0;
 
   const results = PMG_HQ_AUDIT_RUBRIC_200.map(cat => {
     let estScore = cat.maxPts * 0.90; // baseline assumption if no deduction signal yet
     let signalText = 'Baseline check (verify pre-audit)';
     if (cat.id === 'stock_mgmt') {
       const acc = vault.cycleCountAccuracyPct !== undefined && vault.cycleCountAccuracyPct !== null ? Number(vault.cycleCountAccuracyPct) : null;
+      const hasExpirySignal = vault.expiryCompliancePct !== undefined && vault.expiryCompliancePct !== null;
+      if (acc !== null || hasExpirySignal) hasLiveSignal = true;
       const expBlanks = Number(vault.expiryBlankPlansCount || 0);
       const stockAccPts = acc !== null ? (60 * (acc / 100)) : 51; // default 85% if not yet counted
       const expiryPts = expBlanks === 0 ? 3 : 1.5;
-      estScore = Math.min(cat.maxPts, stockAccPts + expiryPts + 8);
+      estScore = Math.min(cat.maxPts, stockAccPts + expiryPts + 9); // 60 + 3 + 9 = 72 max pts
       signalText = acc !== null
         ? `Auto from Cycle Count (${acc}% acc) & Expiry (${expBlanks} blanks)`
         : `No 250-SKU Cycle Count yet (60/200 pts at risk!)`;
@@ -1374,11 +1386,15 @@ function computeAutoAuditRiskScore(signals = {}) {
     ? 'EXCELLENT (≥90% + All Cats ≥80%)'
     : (bonusKillers.length > 0 ? `BONUS AT RISK (${bonusKillers.length} cat <80%)` : 'BELOW 90% EXCELLENT TARGET');
 
-  if (window.PmgFy2027Kpi && !signals.skipSave) {
-    window.PmgFy2027Kpi.saveFy2027VaultLocal({ complianceAuditPct: overallPct });
+  // Only persist into KPI vault when backed by real walkthrough/cycle-count/expiry signals
+  if (window.PmgFy2027Kpi && !signals.skipSave && hasLiveSignal) {
+    window.PmgFy2027Kpi.saveFy2027VaultLocal({
+      complianceAuditPct: overallPct,
+      auditBonusKillers: bonusKillers.length
+    });
   }
 
-  return { results, totalScore, overallPct, bonusKillers, tierStatus };
+  return { results, totalScore, overallPct, bonusKillers, tierStatus, hasLiveSignal };
 }
 
 function sendPreAuditFixListWhatsApp() {

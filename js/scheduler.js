@@ -838,20 +838,11 @@ function initScheduler() {
     });
   }
 
-  if (genBtn) genBtn.addEventListener('click', generateTimetable);
-  if (savePrefBtn) savePrefBtn.addEventListener('click', saveTeammatePreferences);
+  // Note: #schedulerGenerateBtn, #schedulerSaveTimetableBtn, #schedulerSaveTimetableTopBtn, #schedulerBackupJsonBtn
+  // already invoke their handlers via inline onclick in index.html; avoid duplicate listeners double-firing API/downloads.
+  if (savePrefBtn) savePrefBtn.addEventListener('click', () => saveTeammatePreferences(false));
   if (resetPrefBtn) resetPrefBtn.addEventListener('click', resetTeammatePreferences);
   if (addStaffBtn) addStaffBtn.addEventListener('click', showAddTeammateModal);
-
-  // Timetable Save and Backup buttons
-  const saveBtn = document.getElementById('schedulerSaveTimetableBtn');
-  if (saveBtn) saveBtn.addEventListener('click', () => saveGeneratedTimetable(true));
-
-  const topSaveBtn = document.getElementById('schedulerSaveTimetableTopBtn');
-  if (topSaveBtn) topSaveBtn.addEventListener('click', () => saveGeneratedTimetable(true));
-
-  const backupJsonBtn = document.getElementById('schedulerBackupJsonBtn');
-  if (backupJsonBtn) backupJsonBtn.addEventListener('click', exportTimetableBackupJson);
 
   // Export buttons
   const dlVisualXlsxBtn = document.getElementById('schedulerDownloadVisualXlsxBtn');
@@ -1185,7 +1176,7 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
   renderTeammatesTable();
 
   // Cross-PC Cloud Synchronization for Teammate Preferences (OneDrive & Google Apps Script)
-  const syncTeammatesFromCloud = async () => {
+  const syncTeammatesFromCloud = async (forceCloud = false) => {
     const bCode = (branchCode || 'KS01').toUpperCase();
     const localUpdatedKey = `pmg_staff_preferences_v2_${bCode}_updatedAt`;
     let appliedCloud = false;
@@ -1242,7 +1233,7 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
     }
 
     // 2. Fallback to Google Apps Script cloud sync if OneDrive did not load
-    if (!appliedCloud && !skipCloudSync) {
+    if (!appliedCloud && (!skipCloudSync || forceCloud)) {
       try {
         const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
         const resp = await fetch(`${apiUrl}?action=getStaffPreferences&branch=${encodeURIComponent(bCode)}`);
@@ -1263,8 +1254,8 @@ function loadTeammates(branchCode, targetMonth = null, skipCloudSync = false) {
     }
   };
 
-  syncTeammatesFromCloud();
-  window.syncTeammatePreferencesWithCloud = syncTeammatesFromCloud;
+  syncTeammatesFromCloud(false);
+  window.syncTeammatePreferencesWithCloud = () => syncTeammatesFromCloud(true);
 }
 
 // Saving Local Preferences:
@@ -2374,7 +2365,7 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
       const surplusPm = rotatingPool.filter(t => (wStats[t.empNo].n - wStats[t.empNo].m) >= 2)
         .sort((a, b) => (wStats[b.empNo].n - wStats[b.empNo].m) - (wStats[a.empNo].n - wStats[a.empNo].m));
       const eligibleAm = rotatingPool.filter(t => (wStats[t.empNo].m >= wStats[t.empNo].n))
-        .sort((a, b) => (wStats[b.empNo].m - wStats[b.empNo].n) - (wStats[a.empNo].n - wStats[a.empNo].m));
+        .sort((a, b) => (wStats[b.empNo].m - wStats[b.empNo].n) - (wStats[a.empNo].m - wStats[a.empNo].n));
 
       for (const tPm of surplusPm) {
         for (const tAm of eligibleAm) {
@@ -2592,7 +2583,7 @@ function postProcessSchedule(schedule, branchVal, year, month, totalDays, weeks)
             if (isAnyMorningShift(s2)) wAm_m++;
             if (isNightShift(s2)) wAm_n++;
           });
-          if (Math.abs((wPm_m - 1) - (wPm_n + 1)) > 2 || Math.abs((wAm_m + 1) - (wAm_n - 1)) > 2) continue;
+          if (Math.abs((wPm_m + 1) - (wPm_n - 1)) > 2 || Math.abs((wAm_m - 1) - (wAm_n + 1)) > 2) continue;
 
           for (const d of wDays) {
             if (d.shifts[tPm.empNo] === '8H_1230-2130' && d.shifts[tAm.empNo] === '8H_0730-1630') {

@@ -1967,6 +1967,73 @@ function createBrowserSandbox(fetchImpl) {
     assert(oneDriveImmediateSaves > savesBefore, 'Lark import must immediately flush saveToOneDrive without waiting for debounce');
   });
 
+  await testAsync('Full 5-Agent Audit Regressions: 200-pt Audit max_points, FY2027 IEEE-754/Pending Data, Pricing House-Brand Guard, Promo CJK Split & Commercial PDPA Strip', async () => {
+    // 1. FY2027 KPI Engine: IEEE-754 exact ceiling & Pending Data on empty baselines
+    const kpi = require(path.join(ROOT, 'js', 'fy2027-kpi-engine.js'));
+    const revExact = kpi.calculateFiveStarReviewsNeeded(200, 4.8, 4.9, 250);
+    assert.strictEqual(revExact.fiveStarNeeded, 200, '200 reviews at 4.8★ to 4.9★ must require exactly 200 (no IEEE-754 +1 overshoot)');
+    const emptyEval = kpi.evaluateFy2027AutoKpis({ outlet: {} }, {});
+    const kpiA1 = emptyEval.kpis.find(k => k.id === 'A1');
+    const kpiB6 = emptyEval.kpis.find(k => k.id === 'B6');
+    assert.strictEqual(kpiA1.tier, 'Pending Data', 'Missing Daily Sales CSV must score Pending Data, not Poor');
+    assert(!kpiA1.gapText.includes('Excellent'), 'Missing Daily Sales CSV must not print false Excellent achieved');
+    assert.strictEqual(kpiB6.tier, 'Pending Data', 'Missing GP CSV must score Pending Data');
+
+    // 2. Audit 200-pt auto-scorer reads max_points and detects <80% bonus killers accurately
+    const sbAudit = createBrowserSandbox();
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'fy2027-kpi-engine.js'), 'utf8'), sbAudit.ctx);
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'audit.js'), 'utf8'), sbAudit.ctx);
+    const noSignalRisk = sbAudit.ctx.computeAutoAuditRiskScore({ vault: {}, videoReport: null });
+    assert.strictEqual(noSignalRisk.hasLiveSignal, false, 'Empty audit signals must not claim hasLiveSignal');
+    assert.strictEqual(sbAudit.ctx.window.PmgFy2027Kpi.loadFy2027VaultLocal().complianceAuditPct, undefined, 'Must not write phantom default complianceAuditPct into vault');
+
+    const failVideoRisk = sbAudit.ctx.computeAutoAuditRiskScore({
+      vault: { cycleCountAccuracyPct: 100, expiryCompliancePct: 100, expiryBlankPlansCount: 0 },
+      videoReport: {
+        max_score: 200,
+        categories: [
+          { name: 'Cleanliness', score: 11, max_points: 22 },
+          { name: 'Display & Price Tags', score: 48, max_points: 48 },
+          { name: 'Tidiness & 5S', score: 14, max_points: 14 },
+          { name: 'Team Attire', score: 4, max_points: 4 }
+        ]
+      }
+    });
+    const cleanCat = failVideoRisk.results.find(r => r.id === 'cleanliness');
+    const stockCat = failVideoRisk.results.find(r => r.id === 'stock_mgmt');
+    assert.strictEqual(cleanCat.pct, 50, 'Cleanliness 11/22 via max_points must score 50%');
+    assert.strictEqual(cleanCat.isBonusKiller, true, 'Cleanliness 50% must trigger <80% bonus killer');
+    assert.strictEqual(stockCat.estScore, 72, '100% cycle count + 0 expiry blanks must reach full 72/72 stock_mgmt ceiling');
+
+    // 3. Pricing Intelligence: PMG House Brands vs National margin_builder
+    const sbPrice = createBrowserSandbox();
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'pricing-intelligence.js'), 'utf8'), sbPrice.ctx);
+    const pricing = sbPrice.ctx.window.pmgPricing;
+    assert.strictEqual(pricing.isPmgHouseBrand({ name: 'VITASEN Vitamin C 1000mg', brand: 'Vitasen' }), true, 'VITASEN must be recognized as PMG house brand');
+    assert.strictEqual(pricing.isPmgHouseBrand({ name: 'NUTRIFORTE Probiotic', brand: 'Nutriforte' }), true, 'NUTRIFORTE must be recognized as PMG house brand');
+    assert.strictEqual(pricing.isPmgHouseBrand({ name: 'BLACKMORES Bio C 1000mg', brand: 'Blackmores', strategyTag: 'margin_builder' }), false, 'National brand with margin_builder tag must NOT be locked as exclusive PMG house brand');
+
+    // 4. Promo Broadcast: Chinese sentence splitting without whitespace
+    const sbPromo = createBrowserSandbox();
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'promo-broadcast.js'), 'utf8'), sbPromo.ctx);
+    const pack = sbPromo.ctx.buildGoogleFlowAvatarPromptPack({
+      hqScript: '今天为大家介绍护肝保健品。这款产品非常受欢迎！欢迎到店免费检测血糖？',
+      clipCount: 3,
+      language: 'Mandarin (中文)'
+    });
+    assert.strictEqual(pack.clips.length, 3, 'Chinese script must produce 3 clips');
+    assert(pack.clips[0].includes('护肝保健品') && !pack.clips[0].includes('免费检测血糖'), 'Chinese script must split cleanly across clips at CJK punctuation without spaces');
+
+    // 5. OneDrive Sync: Commercial cloud sync strips patient PII/NRIC fields
+    const odSrc = fs.readFileSync(path.join(ROOT, 'js', 'onedrive-sync.js'), 'utf8');
+    assert(odSrc.includes('sanitizeCommercialValueForCloud'), 'onedrive-sync.js must sanitize commercial payloads before Google Cloud upload');
+    assert(odSrc.includes("'icreg'") && odSrc.includes("'patientname'"), 'Commercial cloud sanitizer must strip icReg and patientName (case-insensitive)');
+
+    // 6. Scheduler: savePrefBtn does not pass MouseEvent as silent=true
+    const schedSrc = fs.readFileSync(path.join(ROOT, 'js', 'scheduler.js'), 'utf8');
+    assert(schedSrc.includes('savePrefBtn.addEventListener(\'click\', () => saveTeammatePreferences(false))'), 'scheduler.js must explicitly pass silent=false on savePrefBtn click');
+  });
+
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);
   process.exit(failed > 0 ? 1 : 0);
 })();

@@ -325,7 +325,7 @@ function parseSingleSheet(rawData, year, month, maxDayInMonth, unmappedNicknames
       if (!Array.isArray(row)) continue;
       for (let c = 0; c < Math.min(row.length, 4); c++) {
         const cell = String(row[c] || '').trim();
-        const dMatch = cell.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/) || cell.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
+        const dMatch = cell.match(/\b(\d{1,2})[./-](\d{1,2})[./-](\d{4})\b/) || cell.match(/\b(\d{4})[./-](\d{1,2})[./-](\d{1,2})\b/);
         if (dMatch) {
           sheetYear = dMatch[3].length === 4 ? parseInt(dMatch[3], 10) : parseInt(dMatch[1], 10);
           sheetMonth = parseInt(dMatch[2], 10);
@@ -355,7 +355,7 @@ function parseSingleSheet(rawData, year, month, maxDayInMonth, unmappedNicknames
       // Detect date in row (scan first 4 columns: col 0, 1, 2, 3)
       for (let c = 0; c < Math.min(row.length, 4); c++) {
         const cell = String(row[c] || '').trim();
-        const dMatch = cell.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/) || cell.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
+        const dMatch = cell.match(/\b(\d{1,2})[./-](\d{1,2})[./-](\d{4})\b/) || cell.match(/\b(\d{4})[./-](\d{1,2})[./-](\d{1,2})\b/);
         if (dMatch) {
           if (dMatch[3].length === 4) {
             currentDate = `${dMatch[3]}-${dMatch[2].padStart(2, '0')}-${dMatch[1].padStart(2, '0')}`;
@@ -519,7 +519,9 @@ function processRoster(targetSheet) {
 
   // Auto-detect year & month from uploaded file data if dates are present
   let detectedYear = null, detectedMonth = null;
-  const sampleData = rosterRawData || (currentWorkbook && currentWorkbook.SheetNames.length > 0 ? XLSX.utils.sheet_to_json(currentWorkbook.Sheets[currentWorkbook.SheetNames[0]], { header: 1, defval: '' }) : null);
+  const sampleData = (Array.isArray(rosterRawData) && rosterRawData.length > 0)
+    ? rosterRawData
+    : (currentWorkbook && currentWorkbook.SheetNames.length > 0 ? XLSX.utils.sheet_to_json(currentWorkbook.Sheets[currentWorkbook.SheetNames[0]], { header: 1, defval: '' }) : null);
 
   if (sampleData) {
     for (let r = 0; r < Math.min(sampleData.length, 100); r++) {
@@ -527,7 +529,7 @@ function processRoster(targetSheet) {
       if (!Array.isArray(row)) continue;
       for (let c = 0; c < Math.min(row.length, 6); c++) {
         const cell = String(row[c] || '').trim();
-        const dMatch = cell.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/) || cell.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
+        const dMatch = cell.match(/\b(\d{1,2})[./-](\d{1,2})[./-](\d{4})\b/) || cell.match(/\b(\d{4})[./-](\d{1,2})[./-](\d{1,2})\b/);
         if (dMatch) {
           if (dMatch[3].length === 4) {
             detectedYear = parseInt(dMatch[3], 10);

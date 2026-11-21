@@ -658,6 +658,7 @@ function setCustomerLanguageOverride(campaignId, customerId, lang) {
   }
   promoProgressMap[campaignId][customerId].langOverride = lang;
   savePromoProgress();
+  renderPromoKpis();
   renderPromoCustomerTable();
   renderPromoChatPreview();
 }
@@ -1611,7 +1612,7 @@ function previewPromoCustomerMessageModal(customerId) {
 
   const msg = generatePersonalizedMessage(cust).replace(/\uFFFD/g, '•');
   const modal = document.getElementById('promoPreviewModal');
-  const modalTitle = document.getElementById('promoModalCustomerTitle');
+  const modalTitle = document.getElementById('promoModalCustomerTitle') || document.getElementById('promoModalCustomerName');
   const modalBody = document.getElementById('promoModalMessageBody');
   const modalSendBtn = document.getElementById('promoModalSendBtn');
 
@@ -2417,7 +2418,7 @@ function buildGoogleFlowAvatarPromptPack(opts = {}) {
 
   // Split HQ script into natural beats (preserving core story without robotic verbatim reading)
   const rawSentences = hqScript
-    ? hqScript.split(/(?<=[.!?。！？])\s+|\n+/).map(s => s.trim()).filter(Boolean)
+    ? hqScript.split(/(?<=[。！？])|(?<=[.!?])\s+|\n+/).map(s => s.trim()).filter(Boolean)
     : [
         `Have you ever wondered how to get the best value from ${productName}?`,
         `At PMG Pharmacy Kota Sentosa, our pharmacist team recommends choosing clinically proven daily support that fits your routine.`,
@@ -2570,13 +2571,13 @@ function calculateMiniMemberDayRoi(budgetRm, salesRm) {
   return { budgetRm: b, salesRm: s, roi, minSalesForExcellent, gapRm, isExcellent: roi >= 2.50 };
 }
 
-function updateMiniMemberDayRoiUi() {
+function updateMiniMemberDayRoiUi(persistToVault = true) {
   const b = document.getElementById('mmdBudgetInput')?.value;
   const s = document.getElementById('mmdSalesInput')?.value;
   const out = document.getElementById('mmdRoiResultBox');
   if (!out) return;
   const r = calculateMiniMemberDayRoi(b, s);
-  if (window.PmgFy2027Kpi && r.budgetRm > 0 && r.salesRm > 0) {
+  if (persistToVault && window.PmgFy2027Kpi && r.budgetRm > 0 && r.salesRm > 0) {
     window.PmgFy2027Kpi.saveFy2027VaultLocal({ miniMemberDayRoi: r.roi });
   }
   out.innerHTML = r.budgetRm > 0
@@ -2671,11 +2672,11 @@ function renderPromoFy2027GrowthStudio() {
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="block font-bold text-slate-700 mb-1">Event Promo Budget (RM)</label>
-                <input id="mmdBudgetInput" type="number" min="0" value="1000" oninput="updateMiniMemberDayRoiUi()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold">
+                <input id="mmdBudgetInput" type="number" min="0" value="1000" oninput="updateMiniMemberDayRoiUi(true)" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold">
               </div>
               <div>
                 <label class="block font-bold text-slate-700 mb-1">Projected / Actual Sales (RM)</label>
-                <input id="mmdSalesInput" type="number" min="0" value="2500" oninput="updateMiniMemberDayRoiUi()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold">
+                <input id="mmdSalesInput" type="number" min="0" value="2500" oninput="updateMiniMemberDayRoiUi(true)" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold">
               </div>
             </div>
             <div id="mmdRoiResultBox" class="p-3 rounded-xl bg-emerald-50 border border-emerald-200"></div>
@@ -2693,7 +2694,7 @@ function renderPromoFy2027GrowthStudio() {
       </div>
     </div>
   `;
-  updateMiniMemberDayRoiUi();
+  updateMiniMemberDayRoiUi(false);
 }
 
 // ─── EXPOSE GLOBALS FOR WINDOW & TESTS ─────────────────────────────────────────

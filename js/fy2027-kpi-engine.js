@@ -94,7 +94,8 @@
     let ratingGap = 0;
     if (r < t) {
       // (n*r + 5*x) / (n + x) >= t  =>  x >= n*(t - r) / (5 - t)
-      ratingGap = Math.ceil((n * (t - r)) / (5 - t));
+      const rawNeeded = (n * (t - r)) / (5 - t);
+      ratingGap = Math.max(0, Math.ceil(rawNeeded - 1e-9));
     }
     const needed = Math.max(minCountGap, ratingGap);
     const projectedCount = n + needed;
@@ -236,7 +237,7 @@
     const hmPlusEhmPrev = o.hmPlusEhmPrev !== undefined
       ? Number(o.hmPlusEhmPrev)
       : round2((Number(o.hmPrev) || 0) + (Number(o.ehmPrev) || 0));
-    const hmPlusEhmYoYPct = o.hmPlusEhmDiffPct !== undefined
+    const hmPlusEhmYoYPct = (o.hmPlusEhmDiffPct !== undefined && o.hmPlusEhmDiffPct !== null && hmPlusEhmPrev > 0)
       ? Number(o.hmPlusEhmDiffPct)
       : (hmPlusEhmPrev > 0 ? round2(((hmPlusEhmLatest - hmPlusEhmPrev) / hmPlusEhmPrev) * 100) : null);
 
@@ -244,9 +245,11 @@
     const gpPctLatest = all12.gpPctLatest > 0
       ? Number(all12.gpPctLatest)
       : Number(o.personalGpTotalLatest?.gpMarginPct || 0);
-    const gpPctDiffPP = all12.gpPctLatest > 0
-      ? Number(all12.gpPctDiffPP || 0)
-      : Number(o.personalGpMarginDiffPP || 0);
+    const gpPctDiffPP = gpPctLatest > 0
+      ? (all12.gpPctLatest > 0
+          ? Number(all12.gpPctDiffPP || 0)
+          : Number(o.personalGpMarginDiffPP || 0))
+      : null;
     const gpAutoOverride = gpPctLatest >= 30.00;
 
     // Stock Cycle (HQ 11 Focus Categories)
@@ -307,7 +310,8 @@
     };
 
     // A1. SSSG — Home Brand Sales (15%)
-    const hbTier = scoreAscending(o.hbDiffPct, [
+    const hbValForTier = (o.hbPrev > 0) ? o.hbDiffPct : null;
+    const hbTier = scoreAscending(hbValForTier, [
       { min: 10.00, tier: TIERS.EXCELLENT },
       { min: 8.08,  tier: TIERS.GOOD },
       { min: 6.15,  tier: TIERS.AVERAGE },
@@ -318,11 +322,13 @@
     pushKpi('A1', 'A. Sales Growth', 'SSSG — Home Brand Sales', 15.0, false,
       o.hbPrev > 0 ? `${o.hbDiffPct >= 0 ? '+' : ''}${round2(o.hbDiffPct)}%` : 'N/A',
       hbTier,
-      hbGapRm > 0 ? `Need +RM ${hbGapRm.toLocaleString()} (RM ${Math.ceil(hbGapRm / remainingDays).toLocaleString()}/day) for Excellent (≥10%)` : '✅ Excellent (≥10%) achieved',
+      hbGapRm === null ? 'Upload Daily Sales CSV (Latest & Prev Year) to auto-calculate'
+        : (hbGapRm > 0 ? `Need +RM ${hbGapRm.toLocaleString()} (RM ${Math.ceil(hbGapRm / remainingDays).toLocaleString()}/day) for Excellent (≥10%)` : '✅ Excellent (≥10%) achieved'),
       'Auto: Xilnex Daily Sales');
 
     // A2. SSSG — Total Sales (10%)
-    const tsTier = scoreAscending(o.tsDiffPct, [
+    const tsValForTier = (o.tsPrev > 0) ? o.tsDiffPct : null;
+    const tsTier = scoreAscending(tsValForTier, [
       { min: 6.50, tier: TIERS.EXCELLENT },
       { min: 5.20, tier: TIERS.GOOD },
       { min: 3.90, tier: TIERS.AVERAGE },
@@ -333,7 +339,8 @@
     pushKpi('A2', 'A. Sales Growth', 'SSSG — Total Sales', 10.0, false,
       o.tsPrev > 0 ? `${o.tsDiffPct >= 0 ? '+' : ''}${round2(o.tsDiffPct)}%` : 'N/A',
       tsTier,
-      tsGapRm > 0 ? `Need +RM ${tsGapRm.toLocaleString()} (RM ${Math.ceil(tsGapRm / remainingDays).toLocaleString()}/day) for Excellent (≥6.5%)` : '✅ Excellent (≥6.5%) achieved',
+      tsGapRm === null ? 'Upload Daily Sales CSV (Latest & Prev Year) to auto-calculate'
+        : (tsGapRm > 0 ? `Need +RM ${tsGapRm.toLocaleString()} (RM ${Math.ceil(tsGapRm / remainingDays).toLocaleString()}/day) for Excellent (≥6.5%)` : '✅ Excellent (≥6.5%) achieved'),
       'Auto: Xilnex Daily Sales');
 
     // A3. SSSG — High Margin Sales (East Malaysia: HM + EHM) (5%)
@@ -348,11 +355,13 @@
     pushKpi('A3', 'A. Sales Growth', 'SSSG — High Margin (EM: HM + EHM)', 5.0, false,
       hmPlusEhmYoYPct !== null ? `${hmPlusEhmYoYPct >= 0 ? '+' : ''}${round2(hmPlusEhmYoYPct)}%` : 'N/A',
       hmTier,
-      hmGapRm > 0 ? `Need +RM ${hmGapRm.toLocaleString()} HM+EHM (RM ${Math.ceil(hmGapRm / remainingDays).toLocaleString()}/day) for ≥10%` : '✅ Excellent (≥10%) achieved',
+      hmGapRm === null ? 'Upload Daily Sales CSV (Latest & Prev Year) to auto-calculate HM+EHM'
+        : (hmGapRm > 0 ? `Need +RM ${hmGapRm.toLocaleString()} HM+EHM (RM ${Math.ceil(hmGapRm / remainingDays).toLocaleString()}/day) for ≥10%` : '✅ Excellent (≥10%) achieved'),
       'Auto: Xilnex HM + EHM');
 
     // A4. SSSG — Number of Customers (5%)
-    const txTier = scoreAscending(o.txDiffPct, [
+    const txValForTier = (o.txPrev > 0) ? o.txDiffPct : null;
+    const txTier = scoreAscending(txValForTier, [
       { min: 1.40, tier: TIERS.EXCELLENT },
       { min: 1.00, tier: TIERS.GOOD },
       { min: 0.60, tier: TIERS.AVERAGE },
@@ -363,11 +372,13 @@
     pushKpi('A4', 'A. Sales Growth', 'SSSG — Number of Customers', 5.0, false,
       o.txPrev > 0 ? `${o.txDiffPct >= 0 ? '+' : ''}${round2(o.txDiffPct)}%` : 'N/A',
       txTier,
-      txGap > 0 ? `Need +${txGap.toLocaleString()} receipts (+${Math.ceil(txGap / remainingDays)}/day) — use Patient Recall & Free Glucose invites` : '✅ Excellent (≥1.4%) achieved',
+      txGap === null ? 'Upload Customers Served CSV (Latest & Prev Year) to auto-calculate'
+        : (txGap > 0 ? `Need +${txGap.toLocaleString()} receipts (+${Math.ceil(txGap / remainingDays)}/day) — use Patient Recall & Free Glucose invites` : '✅ Excellent (≥1.4%) achieved'),
       'Auto: Xilnex Customers Served');
 
     // A5. SSSG — Basket Size / ATV (5%)
-    const atvTier = scoreAscending(o.basketTsDiffPct, [
+    const atvValForTier = (o.basketTsPrev > 0) ? o.basketTsDiffPct : null;
+    const atvTier = scoreAscending(atvValForTier, [
       { min: 5.00, tier: TIERS.EXCELLENT },
       { min: 3.80, tier: TIERS.GOOD },
       { min: 2.60, tier: TIERS.AVERAGE },
@@ -378,7 +389,8 @@
     pushKpi('A5', 'A. Sales Growth', 'SSSG — Basket Size / ATV', 5.0, false,
       o.basketTsPrev > 0 ? `${o.basketTsDiffPct >= 0 ? '+' : ''}${round2(o.basketTsDiffPct)}% (RM ${round2(o.basketTsLatest)})` : 'N/A',
       atvTier,
-      targetAtv && o.basketTsLatest < targetAtv ? `Need RM ${round2(targetAtv - o.basketTsLatest)} higher ATV (Target: RM ${targetAtv}) via add-on bundles` : '✅ Excellent (≥5.0%) achieved',
+      targetAtv === null ? 'Upload Daily Sales & Customers Served CSVs to auto-calculate ATV'
+        : (o.basketTsLatest < targetAtv ? `Need RM ${round2(targetAtv - o.basketTsLatest)} higher ATV (Target: RM ${targetAtv}) via add-on bundles` : '✅ Excellent (≥5.0%) achieved'),
       'Auto: Xilnex ATV');
 
     // B6. Overall GP% Improvement (10%) + Auto-Excellent Override >= 30.00%
@@ -395,9 +407,11 @@
     pushKpi('B6', 'B. Store Profitability', 'Overall GP% (Override ≥30.00% = Excellent)', 10.0, false,
       gpPctLatest > 0 ? `${round2(gpPctLatest)}% (${gpPctDiffPP >= 0 ? '+' : ''}${round2(gpPctDiffPP)}pp)${gpAutoOverride ? ' ★OVERRIDE' : ''}` : 'N/A',
       gpTier,
-      gpAutoOverride
-        ? '✅ 30.00% Auto-Excellent Override Active!'
-        : `Need +${gpOverrideGap}pp to hit 30.00% Auto-Excellent Override (or +${round2(Math.max(0, 1.80 - gpPctDiffPP))}pp YoY)`,
+      gpPctLatest <= 0
+        ? 'Upload Category GP or Personal GP CSV to auto-calculate'
+        : (gpAutoOverride
+            ? '✅ 30.00% Auto-Excellent Override Active!'
+            : `Need +${gpOverrideGap}pp to hit 30.00% Auto-Excellent Override (or +${round2(Math.max(0, 1.80 - (gpPctDiffPP || 0)))}pp YoY)`),
       'Auto: Xilnex Category GP');
 
     // C7. Sales Campaign Achievement (7.5%)
@@ -434,7 +448,9 @@
 
     // C11. Google Review (min 250 reviews) (2.5%)
     const revTier = evaluateGoogleReviewTier(vault.googleReviewCount, vault.googleReviewRating);
-    const revSim = (vault.googleReviewCount && vault.googleReviewRating)
+    const hasRevInputs = vault.googleReviewCount !== null && vault.googleReviewCount !== undefined && vault.googleReviewCount !== ''
+      && vault.googleReviewRating !== null && vault.googleReviewRating !== undefined && vault.googleReviewRating !== '';
+    const revSim = hasRevInputs
       ? calculateFiveStarReviewsNeeded(vault.googleReviewCount, vault.googleReviewRating, 4.90, 250)
       : null;
     pushKpi('C11', 'C. Marketing, CX & Digital', 'Google Review (Min 250 Reviews, 5.00★)', 2.5, false,
@@ -620,6 +636,18 @@
     return merged;
   }
 
+  function sanitizeFy2027VaultForCloud(data) {
+    if (!data || typeof data !== 'object') return {};
+    if (typeof window !== 'undefined' && typeof window.sanitizePayloadForGoogleCloud === 'function') {
+      return window.sanitizePayloadForGoogleCloud(data);
+    }
+    const clean = { ...data };
+    ['ic', 'nric', 'patientIc', 'patientName', 'clinicalNotes', 'encounters', 'medications', 'vitals', 'poct', 'allergies', 'chronicConditions'].forEach(k => {
+      delete clean[k];
+    });
+    return clean;
+  }
+
   async function syncFy2027KpiVault(mode = 'pull', patch = null, apiUrlOverride = null) {
     const apiUrl = apiUrlOverride || (typeof window !== 'undefined' && window.PMG_SCHEDULE_API_URL) || null;
     let localData = patch ? saveFy2027VaultLocal(patch) : loadFy2027VaultLocal();
@@ -627,13 +655,14 @@
 
     try {
       if (mode === 'push') {
+        const safePayload = sanitizeFy2027VaultForCloud(localData);
         const res = await fetch(apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({
             action: 'saveStaffPreferences',
             branch: FY2027_VAULT_KEY,
-            preferences: localData
+            preferences: safePayload
           })
         });
         if (res && res.ok) return localData;
@@ -643,7 +672,11 @@
           const json = await res.json();
           const remote = (json && (json.preferences || json.data)) || null;
           if (remote && typeof remote === 'object') {
-            localData = saveFy2027VaultLocal(remote);
+            const remoteTs = Date.parse(remote.updatedAt || '') || 0;
+            const localTs = Date.parse(localData.updatedAt || '') || 0;
+            if (!localTs || remoteTs >= localTs) {
+              localData = saveFy2027VaultLocal(sanitizeFy2027VaultForCloud(remote));
+            }
           }
         }
       }

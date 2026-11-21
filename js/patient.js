@@ -1009,6 +1009,8 @@ function getDeletedPatientIds() {
   }
 }
 
+const TEST_TOMBSTONE_NAMES = new Set(['tan ah kow', 'hajah fatimah binti osman', 'alexander anak stephen']);
+
 function addDeletedPatientRecord(patientId, ic = null, phone = null, name = null) {
   try {
     const list = getDeletedPatientIds();
@@ -1016,8 +1018,10 @@ function addDeletedPatientRecord(patientId, ic = null, phone = null, name = null
     if (patientId) set.add(String(patientId).toLowerCase().trim());
     const cleanIc = String(ic || '').replace(/\D/g, '');
     if (cleanIc) set.add(cleanIc);
-    // Note: Do NOT tombstone by phone number so multiple patients (e.g., elderly/children) can share a caretaker's phone number
-    if (name) set.add(String(name).toLowerCase().trim());
+    // Note: Do NOT tombstone by phone or arbitrary patient name so deleting a duplicate profile
+    // or a family member sharing a phone/name never purges the surviving patient on reload/sync.
+    const cleanName = String(name || '').toLowerCase().trim();
+    if (cleanName && TEST_TOMBSTONE_NAMES.has(cleanName)) set.add(cleanName);
     localStorage.setItem(DELETED_PATIENTS_STORAGE_KEY, JSON.stringify(Array.from(set)));
   } catch (e) {
     console.warn('[PMG Patient] Error saving deleted patient tombstone:', e);
@@ -1047,8 +1051,9 @@ function isPatientDeleted(patientId, ic = null, phone = null, name = null) {
   if (patientId && set.has(String(patientId).toLowerCase().trim())) return true;
   const cleanIc = String(ic || '').replace(/\D/g, '');
   if (cleanIc && set.has(cleanIc)) return true;
-  // Never treat a patient as deleted based on phone number alone, as caretakers share phone numbers across elderly/child dependents
-  if (name && set.has(String(name).toLowerCase().trim())) return true;
+  // Only match by name for hardcoded test patients — never purge real patients by name collision alone
+  const cleanName = String(name || '').toLowerCase().trim();
+  if (cleanName && TEST_TOMBSTONE_NAMES.has(cleanName) && set.has(cleanName)) return true;
   return false;
 }
 
@@ -5863,6 +5868,10 @@ function editEncounterRecord(patientId, encounterId) {
   document.getElementById('encPlanCounselling').value = enc.planCounselling || '';
   document.getElementById('encReferral').value = enc.referral || '';
 
+  // Preserve Other / Custom Tests Notes when editing an existing consultation
+  const otherTestsEl = document.getElementById('encOtherTestsNotes');
+  if (otherTestsEl) otherTestsEl.value = enc.customTests || '';
+
   // Next TCA
   document.getElementById('encTcaDate').value = enc.nextTcaDate || '';
   document.getElementById('encTcaPurpose').value = enc.nextTcaPurpose || 'Chronic Medication Refill & Health Review';
@@ -6856,11 +6865,12 @@ async function saveNewEncounter() {
   const session = getSession();
   const recorder = session ? `${session.displayName} (${session.role})` : 'Pharmacist';
 
-  // Save attached files into IndexedDB
+  // Save attached files into IndexedDB under canonical patient ID (p.id)
+  const canonicalPid = p.id || pId;
   const attachedDocIds = [];
   for (const file of tempAttachedFiles) {
     try {
-      const savedDoc = await savePatientDocument(pId, file, 'Uploaded during Consultation on ' + document.getElementById('encDate').value);
+      const savedDoc = await savePatientDocument(canonicalPid, file, 'Uploaded during Consultation on ' + document.getElementById('encDate').value);
       attachedDocIds.push({ id: savedDoc.id, name: savedDoc.name, size: savedDoc.size });
     } catch (err) {
       console.error('Error saving document to IndexedDB:', err);
@@ -6870,7 +6880,7 @@ async function saveNewEncounter() {
   // Save Airdoc PDF into IndexedDB if attached
   if (selectedAirdocFile) {
     try {
-      const savedAirdoc = await savePatientDocument(pId, selectedAirdocFile, 'Airdoc Retinal AI Scan Report (' + document.getElementById('encDate').value + ')');
+      const savedAirdoc = await savePatientDocument(canonicalPid, selectedAirdocFile, 'Airdoc Retinal AI Scan Report (' + document.getElementById('encDate').value + ')');
       attachedDocIds.push({ id: savedAirdoc.id, name: '[Airdoc AI Report] ' + savedAirdoc.name, size: savedAirdoc.size });
     } catch (err) {
       console.error('Error saving Airdoc PDF to IndexedDB:', err);
@@ -6880,7 +6890,7 @@ async function saveNewEncounter() {
   // Save CGM PDF into IndexedDB if attached
   if (selectedCgmFile) {
     try {
-      const savedCgm = await savePatientDocument(pId, selectedCgmFile, 'CGM Glucose Report (' + document.getElementById('encDate').value + ')');
+      const savedCgm = await savePatientDocument(canonicalPid, selectedCgmFile, 'CGM Glucose Report (' + document.getElementById('encDate').value + ')');
       attachedDocIds.push({ id: savedCgm.id, name: '[CGM Report] ' + savedCgm.name, size: savedCgm.size });
     } catch (err) {
       console.error('Error saving CGM PDF to IndexedDB:', err);
@@ -6890,7 +6900,7 @@ async function saveNewEncounter() {
   // Save Zentalog PDF into IndexedDB if attached
   if (selectedZentalogFile) {
     try {
-      const savedZenta = await savePatientDocument(pId, selectedZentalogFile, 'Zentalog Diet & Home Report (' + document.getElementById('encDate').value + ')');
+      const savedZenta = await savePatientDocument(canonicalPid, selectedZentalogFile, 'Zentalog Diet & Home Report (' + document.getElementById('encDate').value + ')');
       attachedDocIds.push({ id: savedZenta.id, name: '[Zentalog Report] ' + savedZenta.name, size: savedZenta.size });
     } catch (err) {
       console.error('Error saving Zentalog PDF to IndexedDB:', err);
@@ -9632,16 +9642,23 @@ function confirmLarkImport() {
         if (matchIdx === -1) {
           existingPt.encounters.push(enc);
         } else {
-          // Preserve existing clinician edits while filling any empty clinical fields from Lark
+          // Preserve existing non-null clinician edits while filling any empty/null clinical fields from Lark
           const cur = existingPt.encounters[matchIdx];
+          const mergeNonNull = (baseObj, prefObj) => {
+            const out = { ...(baseObj || {}) };
+            Object.entries(prefObj || {}).forEach(([k, v]) => {
+              if (v !== null && v !== undefined && v !== '') out[k] = v;
+            });
+            return out;
+          };
           existingPt.encounters[matchIdx] = {
             ...enc,
             ...cur,
-            vitals: { ...(enc.vitals || {}), ...(cur.vitals || {}) },
-            lipidPanel: { ...(enc.lipidPanel || {}), ...(cur.lipidPanel || {}) },
-            liverPanel: { ...(enc.liverPanel || {}), ...(cur.liverPanel || {}) },
-            kidneyPanel: { ...(enc.kidneyPanel || {}), ...(cur.kidneyPanel || {}) },
-            glycemicHeme: { ...(enc.glycemicHeme || {}), ...(cur.glycemicHeme || {}) }
+            vitals: mergeNonNull(enc.vitals, cur.vitals),
+            lipidPanel: mergeNonNull(enc.lipidPanel, cur.lipidPanel),
+            liverPanel: mergeNonNull(enc.liverPanel, cur.liverPanel),
+            kidneyPanel: mergeNonNull(enc.kidneyPanel, cur.kidneyPanel),
+            glycemicHeme: mergeNonNull(enc.glycemicHeme, cur.glycemicHeme)
           };
         }
       });
@@ -15863,8 +15880,10 @@ function markRentalReturned(id) {
   const rentals = loadRentals();
   const idx = rentals.findIndex(x => x.id === id);
   if (idx >= 0) {
+    const nowIso = new Date().toISOString();
     rentals[idx].status = 'Returned';
-    rentals[idx].returnedAt = new Date().toISOString();
+    rentals[idx].returnedAt = nowIso;
+    rentals[idx].updatedAt = nowIso;
     saveRentals(rentals);
     renderEquipmentRentals();
     if (typeof showExpiryToast === 'function') {

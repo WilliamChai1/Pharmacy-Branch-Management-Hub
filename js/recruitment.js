@@ -4110,17 +4110,27 @@ async function confirmInterviewSchedule() {
   const app = apps.find(a => a.id === appId);
   if (!app) return;
 
-  // Save slot
-  const slots = loadSlots();
+  // Save / replace slot (deduplicate prior slot for same applicant)
+  const slots = loadSlots().filter(s => s.appId !== appId);
   slots.push({ id: genId(), appId, applicantName: app.name, position: app.position, date, time, location, notes, confirmed: true, createdAt: now() });
   saveSlots(slots);
 
-  // Update app status
+  // Update app status & booking timestamp
   app.status = 'invited';
   app.interviewDate = date;
   app.interviewTime = time;
   app.interviewLocation = location;
+  app.interviewBookedAt = new Date().toISOString();
   saveApps(apps);
+
+  // Sync manual pharmacist schedule to Google Cloud so other PCs & candidate portal stay in sync
+  const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+  fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ action: 'submitJobApplication', application: app }),
+    redirect: 'follow'
+  }).catch(e => console.warn('[Recruitment] Cloud manual schedule push warning:', e));
 
   // Build appointment message for candidate
   const msg = `Dear ${app.name},\n\nCongratulations! You have been shortlisted for an interview at PMG Pharmacy.\n\nInterview Details:\nDate: ${date}\nTime: ${time}\nLocation: ${location}\n\nPlease bring:\n- Original IC / MyKad\n- All original academic certificates\n- Any professional certifications\n\nContact: William Chai\nPhone: +601110990693\n\nWe look forward to meeting you.\n\nBest regards,\nPMG Pharmacy HR Team`;
@@ -4254,10 +4264,35 @@ function renderSlotsTab() {
 
 function deleteSlot(slotId) {
   if (!confirm('Remove this interview slot?')) return;
-  const slots = loadSlots().filter(s => s.id !== slotId);
+  const allSlots = loadSlots();
+  const target = allSlots.find(s => s.id === slotId);
+  const slots = allSlots.filter(s => s.id !== slotId);
   saveSlots(slots);
+
+  // Clear interviewDate/interviewTime on the applicant record so syncInterviewSlotsFromApps does not resurrect the deleted slot
+  if (target && target.appId) {
+    const apps = loadApps();
+    const app = apps.find(a => a && a.id === target.appId);
+    if (app) {
+      app.interviewDate = '';
+      app.interviewTime = '';
+      app.interviewLocation = '';
+      app.interviewBookedAt = new Date().toISOString();
+      if (app.status === 'invited') app.status = 'shortlist';
+      saveApps(apps);
+      const apiUrl = window.PMG_SCHEDULE_API_URL || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+      fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'submitJobApplication', application: app }),
+        redirect: 'follow'
+      }).catch(() => {});
+    }
+  }
+
   toast('Interview slot removed', 'info');
   renderSlotsTab();
+  renderAmDashboard();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -6055,7 +6090,7 @@ async function syncAppsFromCloud(force = false) {
 
       const merged = Array.from(localMap.values());
       merged.sort((a,b) => new Date(b.appliedAt || 0) - new Date(a.appliedAt || 0));
-      localStorage.setItem(REC_KEY, JSON.stringify(merged));
+      saveApps(merged);
       syncInterviewSlotsFromApps(merged);
 
       // Push new applicant files to OneDrive if handle available

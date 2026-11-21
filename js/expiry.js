@@ -4350,10 +4350,11 @@ function filterExpiryItems() {
 
     // 3.5 Action Plan Filter (including Blank and In Write-Off Queue filter)
     if (targetActionPlan && targetActionPlan !== 'all') {
+      const rawStoredPlan = String(it.actionPlan || '').trim();
       const planRaw = String(getItemActionPlan(it) || '').trim();
       const rIdStr = String(it.rowId || '');
       if (targetActionPlan === 'blank') {
-        if (planRaw !== '') continue;
+        if (rawStoredPlan !== '') continue;
       } else if (targetActionPlan === 'in_write_off_queue') {
         if (!selectedWriteOffRowIds.has(rIdStr) && !isWriteOffActionPlan(planRaw)) continue;
       } else if (targetActionPlan === 'Write-off' || targetActionPlan === 'Write-off / Dispose') {
@@ -4451,12 +4452,16 @@ function autoFillBlankExpiryActionPlans() {
     alert('✅ All ≤9-month expiry items already have Action Plans! You are 100% ready for AIC submission before the 14th.');
     return 0;
   }
+  const nowIso = new Date().toISOString();
+  const updater = (typeof getSession === 'function' && getSession()?.displayName) || 'Pharmacist';
   let filled = 0;
+  const updatedItems = [];
   blanks.forEach(({ it, h }) => {
     let suggested = 'Closely monitor';
-    const policy = typeof getHqReturnPolicyForItem === 'function' ? getHqReturnPolicyForItem(it) : null;
-    if (policy && policy.returnable) {
-      suggested = 'Return to HQ / Supplier';
+    const policy = typeof getHqPolicyForItem === 'function' ? getHqPolicyForItem(it) : null;
+    const hqStatus = policy && policy.status ? String(policy.status).toUpperCase() : '';
+    if (hqStatus === 'RETURNABLE' || hqStatus === 'SPECIAL') {
+      suggested = hqStatus === 'SPECIAL' ? 'Returnable with Condition' : 'Return to HQ / Supplier';
     } else if (h.monthsLeft < 3) {
       suggested = 'Clearance Promo (Near-Expiry Basket)';
     } else if (h.monthsLeft < 6) {
@@ -4465,20 +4470,38 @@ function autoFillBlankExpiryActionPlans() {
       suggested = 'Closely monitor';
     }
     it.actionPlan = suggested;
+    it.lastUpdated = nowIso;
+    it.updatedBy = updater;
+    if (typeof recordUserEdit === 'function') {
+      recordUserEdit(it, { actionPlan: suggested });
+    }
+    updatedItems.push(it);
     filled++;
   });
   if (typeof saveLocalExpiryData === 'function') saveLocalExpiryData();
+  if (typeof pushBatchExpiryToSheets === 'function' && updatedItems.length > 0) {
+    pushBatchExpiryToSheets(updatedItems).catch(err => console.warn('[Expiry] Auto-fill cloud push warning:', err));
+  } else if (typeof pushExpiryUpdateToSheets === 'function') {
+    updatedItems.slice(0, 25).forEach(it => pushExpiryUpdateToSheets(it, it.status || 'ACTIVE').catch(() => {}));
+  }
   if (window.PmgFy2027Kpi) {
     window.PmgFy2027Kpi.saveFy2027VaultLocal({ expiryCompliancePct: 100, expiryBlankPlansCount: 0 });
   }
   renderExpiryUI();
-  alert(`⚡ Auto-Filled ${filled} Blank Action Plans using PMG SOP!\n\nAction Plan Completeness is now 100% — ready to export HQ Monthly Report before the 14th cut-off.`);
+  alert(`⚡ Auto-Filled ${filled} Blank Action Plans using PMG SOP & synced to cloud!\n\nAction Plan Completeness is now 100% — ready to export HQ Monthly Report before the 14th cut-off.`);
   return filled;
 }
 
 function filterExpiryBlankActionPlans() {
-  activeExpiryFilter.horizon = '9months';
-  activeExpiryFilter.actionPlan = 'blank';
+  const alreadyFilteringBlanks = activeExpiryFilter.horizon === '9months' && activeExpiryFilter.actionPlan === 'blank';
+  activeExpiryFilter.horizon = alreadyFilteringBlanks ? 'all' : '9months';
+  activeExpiryFilter.actionPlan = alreadyFilteringBlanks ? 'all' : 'blank';
+
+  const horizonSel = document.getElementById('expiryHorizonFilter');
+  const planSel = document.getElementById('expiryActionPlanFilter');
+  if (horizonSel) horizonSel.value = activeExpiryFilter.horizon;
+  if (planSel) planSel.value = activeExpiryFilter.actionPlan;
+
   expiryCurrentPage = 1;
   renderExpiryUI();
 }

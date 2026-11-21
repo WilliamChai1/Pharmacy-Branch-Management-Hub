@@ -624,15 +624,18 @@
 
               if (updated) {
                 matchedCloudKeys.add(String(updated.id || updated.code || updated.name));
-                if (updated.standardSp !== undefined && updated.standardSp !== null) s.standardSp = updated.standardSp;
-                if (updated.currentBranchSp !== undefined && updated.currentBranchSp !== null) s.currentBranchSp = updated.currentBranchSp;
-                if (updated.costPrice !== undefined && updated.costPrice !== null) s.costPrice = updated.costPrice;
-                if (updated.nonMemberSp !== undefined && updated.nonMemberSp !== null) s.nonMemberSp = updated.nonMemberSp;
+                if (updated.standardSp !== undefined && updated.standardSp !== null) s.standardSp = Number(updated.standardSp) || 0;
+                if (updated.currentBranchSp !== undefined && updated.currentBranchSp !== null) s.currentBranchSp = Number(updated.currentBranchSp) || 0;
+                if (updated.costPrice !== undefined && updated.costPrice !== null) s.costPrice = Number(updated.costPrice) || 0;
+                const incomingNonMember = updated.nonMemberSp !== undefined && updated.nonMemberSp !== null
+                  ? updated.nonMemberSp
+                  : (updated.nonMemberPrice !== undefined && updated.nonMemberPrice !== null ? updated.nonMemberPrice : null);
+                if (incomingNonMember !== null) s.nonMemberSp = Number(incomingNonMember) || 0;
                 if (updated.strategyTag) s.strategyTag = updated.strategyTag;
                 
                 const isRx = this.isScheduledPrescriptionDrug(s);
-                s.supermarketPrice = isRx ? null : (updated.supermarketPrice !== undefined ? updated.supermarketPrice : s.supermarketPrice);
-                if (updated.chainPharmacyPrice !== undefined) s.chainPharmacyPrice = updated.chainPharmacyPrice;
+                s.supermarketPrice = isRx ? null : (updated.supermarketPrice !== undefined && updated.supermarketPrice !== null && updated.supermarketPrice !== '' ? (Number(updated.supermarketPrice) || null) : s.supermarketPrice);
+                if (updated.chainPharmacyPrice !== undefined && updated.chainPharmacyPrice !== null && updated.chainPharmacyPrice !== '') s.chainPharmacyPrice = Number(updated.chainPharmacyPrice) || null;
                 if (updated.competitorName) s.competitorName = updated.competitorName;
                 if (updated.promoNote !== undefined && updated.promoNote !== null) s.promoNote = updated.promoNote;
                 if (updated.lastUpdated) s.lastUpdated = updated.lastUpdated;
@@ -644,7 +647,16 @@
             data.skus.forEach(cloudSku => {
               const cloudKey = String(cloudSku.id || cloudSku.code || cloudSku.name);
               if (!matchedCloudKeys.has(cloudKey)) {
-                this.skus.push(cloudSku);
+                const normalizedSku = {
+                  ...cloudSku,
+                  standardSp: Number(cloudSku.standardSp) || 0,
+                  currentBranchSp: Number(cloudSku.currentBranchSp) || 0,
+                  costPrice: Number(cloudSku.costPrice) || 0,
+                  nonMemberSp: Number(cloudSku.nonMemberSp ?? cloudSku.nonMemberPrice) || 0,
+                  supermarketPrice: cloudSku.supermarketPrice !== undefined && cloudSku.supermarketPrice !== null && cloudSku.supermarketPrice !== '' ? (Number(cloudSku.supermarketPrice) || null) : null,
+                  chainPharmacyPrice: cloudSku.chainPharmacyPrice !== undefined && cloudSku.chainPharmacyPrice !== null && cloudSku.chainPharmacyPrice !== '' ? (Number(cloudSku.chainPharmacyPrice) || null) : null
+                };
+                this.skus.push(normalizedSku);
               }
             });
           }
@@ -1607,11 +1619,16 @@
         return;
       }
 
+      if (!Array.isArray(snap.skus) || snap.skus.length === 0) {
+        alert('This backup snapshot contains metadata only (full SKU payload was trimmed to save browser storage). Please restore from an exported JSON/CSV backup file or click Live Cloud Sync.');
+        return;
+      }
+
       if (!confirm(`Restore pricing matrix to snapshot from ${snap.displayTime} (${snap.skuCount} SKUs)? Current changes will be replaced.`)) {
         return;
       }
 
-      this.skus = JSON.parse(JSON.stringify(snap.skus || []));
+      this.skus = JSON.parse(JSON.stringify(snap.skus));
       this.saveSkusToStorage(false);
       this.render();
       this.closeBackupHistoryModal();
@@ -1824,6 +1841,10 @@
         'MEGA SOFTGEL',
         'NUTRI ALPHA',
         'NUTRENMAX',
+        'NUTRIFORTE',
+        'VITASEN',
+        'NUTRIBRIDGE',
+        'LIVEMORE',
         'ALPHA GOLD',
         'FLEXSURE GOLD',
         'VITA C PLUS',
@@ -1847,11 +1868,6 @@
         supplier.includes('INTERNAL WAREHOUSE') ||
         supplier.includes('CENTRAL STORE')
       ) {
-        return true;
-      }
-
-      // 5. Explicitly assigned to High-Margin House Brand Builder strategic role
-      if (tag === 'margin_builder') {
         return true;
       }
 
@@ -4338,19 +4354,17 @@ MANDATORY INSTRUCTION: You MUST use these verified live online prices (RM ${live
 ${promptText}`;
       }
 
-      // Active models confirmed available in user Google AI Studio
-      // Pass 1 prioritizes models that support Live Google Search Grounding before falling back to ungrounded generation
+      // Active models confirmed available in user Google AI Studio (AGENTS.md §2 policy)
+      // Pass 1 prioritizes lightweight high-quota grounded models before deep fallback
       const groundedModelsOrder = [
-        { code: 'gemini-3.8-flash',      name: 'Gemini 3.8 Flash' },
-        { code: 'gemini-3.6-flash',      name: 'Gemini 3.6 Flash' },
         { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
-        { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' }
+        { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' },
+        { code: 'gemini-3.8-flash',      name: 'Gemini 3.8 Flash' }
       ];
       const standardModelsOrder = [
         { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite (Primary: 500 RPD)' },
         { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite (Secondary: 500 RPD)' },
-        { code: 'gemini-3.8-flash',      name: 'Gemini 3.8 Flash' },
-        { code: 'gemini-3.6-flash',      name: 'Gemini 3.6 Flash' }
+        { code: 'gemini-3.8-flash',      name: 'Gemini 3.8 Flash' }
       ];
 
       let responseText = '';
@@ -4790,6 +4804,7 @@ ${promptText}`;
     openBatchCompetitorScanModal() {
       const pageSkus = this.getFilteredSkus().slice((this.currentPage - 1) * this.pageSize, this.currentPage * this.pageSize);
       const missingCount = this.skus.filter(s => {
+        if (this.isPmgHouseBrand(s)) return false;
         const isRx = this.isScheduledPrescriptionDrug(s);
         return isRx ? !s.chainPharmacyPrice : (!s.supermarketPrice || !s.chainPharmacyPrice);
       }).length;
@@ -4843,6 +4858,7 @@ ${promptText}`;
         targetSkus = this.getFilteredSkus().slice(start, start + this.pageSize);
       } else if (selectedScope === 'missing') {
         targetSkus = this.skus.filter(s => {
+          if (this.isPmgHouseBrand(s)) return false;
           const isRx = this.isScheduledPrescriptionDrug(s);
           return isRx ? !s.chainPharmacyPrice : (!s.supermarketPrice || !s.chainPharmacyPrice);
         });
@@ -4889,16 +4905,14 @@ ${promptText}`;
       }
 
       const groundedModelsOrder = [
-        { code: 'gemini-3.8-flash',      name: 'Gemini 3.8 Flash' },
-        { code: 'gemini-3.6-flash',      name: 'Gemini 3.6 Flash' },
         { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
-        { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' }
+        { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' },
+        { code: 'gemini-3.8-flash',      name: 'Gemini 3.8 Flash' }
       ];
       const standardModelsOrder = [
         { code: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite (Primary: 500 RPD)' },
         { code: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite (Secondary: 500 RPD)' },
-        { code: 'gemini-3.8-flash',      name: 'Gemini 3.8 Flash' },
-        { code: 'gemini-3.6-flash',      name: 'Gemini 3.6 Flash' }
+        { code: 'gemini-3.8-flash',      name: 'Gemini 3.8 Flash' }
       ];
 
       for (let c = 0; c < chunks.length; c++) {
