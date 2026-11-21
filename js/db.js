@@ -277,11 +277,25 @@ function setIdbItem(key, value) {
       if (!db.objectStoreNames.contains(STORE_APP_DATA)) return resolve(false);
       const tx = db.transaction([STORE_APP_DATA], 'readwrite');
       const store = tx.objectStore(STORE_APP_DATA);
+      let settled = false;
+      const done = (ok) => {
+        if (settled) return;
+        settled = true;
+        resolve(ok);
+      };
       const req = store.put(value, key);
-      req.onsuccess = () => resolve(true);
+      tx.oncomplete = () => done(true);
+      tx.onerror = (e) => {
+        console.warn('[PMG IDB] setIdbItem tx error:', e);
+        done(false);
+      };
+      tx.onabort = (e) => {
+        console.warn('[PMG IDB] setIdbItem tx abort:', e);
+        done(false);
+      };
       req.onerror = (e) => {
         console.warn('[PMG IDB] setIdbItem error:', e);
-        resolve(false);
+        done(false);
       };
     } catch (e) {
       console.warn('[PMG IDB] setIdbItem exception:', e);
@@ -308,28 +322,36 @@ function removeIdbItem(key) {
 }
 
 /**
- * Universal safe storage helper.
- * 1. Always persists complete data to IndexedDB (zero quota limits).
- * 2. Manages localStorage with safety guards (catches QuotaExceededError and prunes if oversized).
+ * Universal safe storage helper (Zero-Data-Loss Ordering).
+ * 1. Writes localStorage SYNCHRONOUSLY FIRST (if <= 1.2MB) so an immediate tab reload/close never loses data.
+ * 2. Always persists complete data durably to IndexedDB (zero quota limits).
+ * 3. Only offloads localStorage AFTER IndexedDB write succeeds.
  */
 async function safeStorageSet(key, value) {
-  // Always persist to IndexedDB
-  await setIdbItem(key, value);
+  let serialized = null;
+  let isOversized = false;
 
-  // Safely manage localStorage
+  // Step 1: Synchronous localStorage write for payloads <= 1.2MB (survives instant reload)
   try {
-    const serialized = typeof value === 'string' ? value : JSON.stringify(value);
-    // If payload is larger than 1.2MB, offload from localStorage to avoid exhausting quota
-    if (serialized.length > 1200000) {
-      try { localStorage.removeItem(key); } catch (_) {}
-      return true;
+    serialized = typeof value === 'string' ? value : JSON.stringify(value);
+    if (serialized.length <= 1200000) {
+      localStorage.setItem(key, serialized);
+    } else {
+      isOversized = true;
     }
-    localStorage.setItem(key, serialized);
   } catch (err) {
-    console.warn(`[PMG Storage] LocalStorage quota exceeded for "${key}". Data is safely persisted in IndexedDB.`, err);
+    isOversized = true;
+    console.warn(`[PMG Storage] LocalStorage quota reached for "${key}". Persisting full dataset to IndexedDB.`, err);
+  }
+
+  // Step 2: Durable IndexedDB write
+  const idbSaved = await setIdbItem(key, value);
+
+  // Step 3: Only clear localStorage copy AFTER IndexedDB commit succeeded
+  if (isOversized && idbSaved) {
     try { localStorage.removeItem(key); } catch (_) {}
   }
-  return true;
+  return idbSaved || !isOversized;
 }
 
 /**
@@ -351,7 +373,8 @@ async function safeStorageGet(key) {
 }
 
 /**
- * Proactively clean up oversized items from localStorage to relieve quota pressure.
+ * Proactively clean up oversized items from localStorage to relieve quota pressure
+ * WITHOUT ever overwriting a richer/larger IndexedDB dataset.
  */
 async function autoRelieveLocalStorageQuota() {
   try {
@@ -360,21 +383,33 @@ async function autoRelieveLocalStorageQuota() {
     if (rawExpiry && rawExpiry.length > 800000) {
       try {
         const parsed = JSON.parse(rawExpiry);
-        await setIdbItem('pmg_stock_expiry_data', parsed);
-        localStorage.removeItem('pmg_stock_expiry_data');
-        console.log('[PMG Storage] Offloaded stock expiry data to IndexedDB to free localStorage quota.');
+        const existingIdbExp = await getIdbItem('pmg_stock_expiry_data');
+        const shouldWrite = !Array.isArray(existingIdbExp) || !Array.isArray(parsed) || parsed.length >= existingIdbExp.length;
+        const ok = shouldWrite ? await setIdbItem('pmg_stock_expiry_data', parsed) : true;
+        if (ok) {
+          localStorage.removeItem('pmg_stock_expiry_data');
+          console.log('[PMG Storage] Offloaded stock expiry data to IndexedDB to free localStorage quota.');
+        }
       } catch (_) {}
     }
 
-    // 2. Patient data (can be 1MB+)
+    // 2. Patient data (can be 1MB+) — NEVER overwrite a larger IndexedDB dataset!
     const rawPatients = localStorage.getItem('pmg_patients_data_v1');
     if (rawPatients) {
       try {
         const parsed = JSON.parse(rawPatients);
-        await setIdbItem('pmg_patients_data_v1', parsed);
-        if (rawPatients.length > 1200000) {
-          localStorage.removeItem('pmg_patients_data_v1');
-          console.log('[PMG Storage] Offloaded large patients data to IndexedDB to free localStorage quota.');
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const existingIdbPts = await getIdbItem('pmg_patients_data_v1');
+          const idbHasMore = Array.isArray(existingIdbPts) && existingIdbPts.length > parsed.length;
+          if (!idbHasMore) {
+            const ok = await setIdbItem('pmg_patients_data_v1', parsed);
+            if (ok && rawPatients.length > 1200000) {
+              localStorage.removeItem('pmg_patients_data_v1');
+              console.log('[PMG Storage] Offloaded large patients data to IndexedDB to free localStorage quota.');
+            }
+          } else if (rawPatients.length > 1200000) {
+            localStorage.removeItem('pmg_patients_data_v1');
+          }
         }
       } catch (_) {}
     }

@@ -1838,6 +1838,135 @@ function createBrowserSandbox(fetchImpl) {
     assert(attBox && attBox.innerHTML.includes('Driver-Signed DO Proof Copy'), 'Public proof portal must fetch and embed cloud-hosted driver-signed DO proof');
   });
 
+  await testAsync('Patient Care Zero-Data-Loss: Offloaded localStorage never wipes IndexedDB, Lark import & consultations preserve medications/updatedAt, and OneDrive detects edited encounters', async () => {
+    const sb = createBrowserSandbox();
+    const idbStore = new Map();
+    // Simulate a browser where localStorage was offloaded (>1.2MB) so localStorage has null,
+    // while IndexedDB holds a newly imported Lark patient (Lo Kui Fah) + existing medication regimen.
+    idbStore.set('pmg_patients_data_v1', [
+      {
+        id: 'PT-LO-KUI-FAH',
+        name: 'LO KUI FAH',
+        ic: '650101-13-5544',
+        phone: '+60128881122',
+        branch: 'Kota Sentosa',
+        updatedAt: '2026-11-21T01:00:00.000Z',
+        medications: [
+          { id: 'MED-1', name: 'Atorvastatin 20mg', dosage: '1 tab ON', supplyDays: 30, nextRefillDate: '2026-12-20' }
+        ],
+        encounters: [
+          { id: 'ENC-100', date: '2026-11-21', recordedBy: 'William Chai', chiefComplaint: 'Lipid review', lastUpdatedAt: '2026-11-21T01:00:00.000Z' }
+        ],
+        appointments: []
+      }
+    ]);
+
+    let idbOverwrittenWithSeeds = false;
+    let resolveIdbRead = null;
+    sb.ctx.safeStorageGet = (key) => new Promise(resolve => {
+      resolveIdbRead = () => resolve(idbStore.has(key) ? JSON.parse(JSON.stringify(idbStore.get(key))) : null);
+    });
+    sb.ctx.safeStorageSet = async (key, val) => {
+      if (key === 'pmg_patients_data_v1' && Array.isArray(val) && !val.some(p => p && p.id === 'PT-LO-KUI-FAH')) {
+        idbOverwrittenWithSeeds = true;
+      }
+      idbStore.set(key, JSON.parse(JSON.stringify(val)));
+      return true;
+    };
+    sb.ctx.window.safeStorageGet = sb.ctx.safeStorageGet;
+    sb.ctx.window.safeStorageSet = sb.ctx.safeStorageSet;
+
+    let oneDriveImmediateSaves = 0;
+    sb.ctx.window.location = {
+      href: 'https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/patient/',
+      origin: 'https://williamchai1.github.io',
+      pathname: '/Pharmacy-Branch-Management-Hub/patient/',
+      search: '',
+      protocol: 'https:',
+      hostname: 'williamchai1.github.io'
+    };
+    sb.ctx.location = sb.ctx.window.location;
+    sb.ctx.getSession = () => ({ displayName: 'William Chai', role: 'AM', branch: 'ALL' });
+    sb.ctx.window.getSession = sb.ctx.getSession;
+    sb.ctx.showExpiryToast = () => {};
+    sb.ctx.window.showExpiryToast = sb.ctx.showExpiryToast;
+
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'data.js'), 'utf8'), sb.ctx);
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'patient.js'), 'utf8'), sb.ctx);
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'onedrive-sync.js'), 'utf8'), sb.ctx);
+    const origOdSave = sb.ctx.window.pmgOneDriveSync.saveToOneDrive.bind(sb.ctx.window.pmgOneDriveSync);
+    sb.ctx.window.pmgOneDriveSync.saveToOneDrive = async (...args) => { oneDriveImmediateSaves++; return origOdSave(...args); };
+
+    // 1. Boot with empty localStorage — MUST NOT overwrite IndexedDB with 4 default seeds!
+    sb.ctx.initPatientModule();
+    if (sb.ctx.window._pmgCloudSyncInterval) {
+      clearInterval(sb.ctx.window._pmgCloudSyncInterval);
+      sb.ctx.window._pmgCloudSyncInterval = null;
+    }
+    // Before async IDB read resolves, IDB must NOT have been overwritten with seed data!
+    assert.strictEqual(idbOverwrittenWithSeeds, false, 'loadPatientsData must NEVER overwrite IndexedDB with default seeds when localStorage is empty/offloaded');
+    if (resolveIdbRead) resolveIdbRead();
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.strictEqual(idbOverwrittenWithSeeds, false, 'IDB hydration must preserve Lo Kui Fah without ever overwriting with seeds');
+    const hydrated = vm.runInContext('patientsData', sb.ctx) || [];
+    const lo = hydrated.find(p => p && p.name === 'LO KUI FAH');
+    assert(lo, 'Lo Kui Fah must be safely hydrated from IndexedDB after boot');
+    assert.strictEqual(lo.medications.length, 1, 'Existing medications must survive IDB hydration');
+
+    // 2. Consultation with blank Plan Medications MUST NOT wipe existing chronic medications
+    const keptMeds = sb.ctx.mergeEncounterMedicationsPreservingMetadata(lo.medications, '');
+    assert.strictEqual(keptMeds.length, 1, 'Blank consultation Plan Medications must preserve existing chronic medications');
+    assert.strictEqual(keptMeds[0].nextRefillDate, '2026-12-20', 'Existing refill date must be preserved');
+
+    const mergedMeds = sb.ctx.mergeEncounterMedicationsPreservingMetadata(lo.medications, 'Atorvastatin 20mg\nMetformin 500mg');
+    assert.strictEqual(mergedMeds.length, 2, 'New medication must merge alongside existing medication');
+    assert.strictEqual(mergedMeds.find(m => m.name === 'Atorvastatin 20mg').nextRefillDate, '2026-12-20', 'Existing medication refill metadata must not be wiped on merge');
+
+    // 3. mergeTwoPatientRecords must keep the newer edited encounter (lastUpdatedAt)
+    const olderCopy = JSON.parse(JSON.stringify(lo));
+    const newerCopy = JSON.parse(JSON.stringify(lo));
+    newerCopy.encounters[0].chiefComplaint = 'Lipid review + BP 128/80 updated';
+    newerCopy.encounters[0].lastUpdatedAt = '2026-11-21T02:30:00.000Z';
+    newerCopy.updatedAt = '2026-11-21T02:30:00.000Z';
+    const mergedPt = sb.ctx.mergeTwoPatientRecords(olderCopy, newerCopy);
+    assert.strictEqual(mergedPt.encounters[0].chiefComplaint, 'Lipid review + BP 128/80 updated', 'Newer edited encounter must win over older copy during merge');
+
+    // 4. OneDrive _arePatientArraysEqual must detect edited consultation content & lastUpdatedAt
+    const odEngine = sb.ctx.window.pmgOneDriveSync;
+    if (odEngine && typeof odEngine._arePatientArraysEqual === 'function') {
+      const sameCopy = JSON.parse(JSON.stringify([olderCopy]));
+      const editedEncCopy = JSON.parse(JSON.stringify([olderCopy]));
+      editedEncCopy[0].encounters[0].chiefComplaint = 'Edited consultation note';
+      editedEncCopy[0].encounters[0].lastUpdatedAt = '2026-11-21T03:00:00.000Z';
+      assert.strictEqual(odEngine._arePatientArraysEqual(sameCopy, editedEncCopy), false, 'OneDrive diff must detect edited encounter so disk write is never skipped');
+    }
+
+    // 5. confirmLarkImport merges into existing patient without wiping medications/encounters & flushes OneDrive immediately
+    sb.ctx.__larkPayload = [
+      {
+        id: 'PT-LARK-NEW',
+        name: 'LO KUI FAH',
+        ic: '650101-13-5544',
+        phone: '+60128881122',
+        branch: 'Kota Sentosa',
+        medications: [{ id: 'MED-2', name: 'CoQ10 100mg', dosage: '1 cap OD', nextRefillDate: '2026-12-21' }],
+        encounters: [{ id: 'ENC-200', date: '2026-11-20', recordedBy: 'Lark Import', preDiagnostic: 'Previous Lark note' }],
+        conditions: ['Dyslipidemia']
+      }
+    ];
+    vm.runInContext('pendingLarkPatients = __larkPayload;', sb.ctx);
+    const savesBefore = oneDriveImmediateSaves;
+    sb.ctx.confirmLarkImport();
+    const afterLarkList = vm.runInContext('patientsData', sb.ctx) || [];
+    const afterLark = afterLarkList.find(p => p && p.name === 'LO KUI FAH');
+    assert(afterLark, 'Lo Kui Fah must exist after Lark import');
+    assert.strictEqual(afterLark.encounters.length, 2, 'Lark import must merge encounters without losing existing consultation');
+    assert.strictEqual(afterLark.medications.length, 2, 'Lark import must merge medications without wiping Atorvastatin');
+    assert(afterLark.updatedAt, 'Lark import must stamp updatedAt');
+    assert(oneDriveImmediateSaves > savesBefore, 'Lark import must immediately flush saveToOneDrive without waiting for debounce');
+  });
+
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);
   process.exit(failed > 0 ? 1 : 0);
 })();

@@ -1033,6 +1033,14 @@
       }
     }
 
+    // Compatibility helper for immediate patient sync triggers
+    triggerSync() {
+      if (typeof patientsData !== 'undefined' && Array.isArray(patientsData)) {
+        return this.saveToOneDrive(patientsData);
+      }
+      return Promise.resolve(false);
+    }
+
     // ─── SAVE SCHEDULE CONFIG TO ONEDRIVE ────────────────────────────────────
     async saveScheduleToOneDrive(branchCode, scheduleObj) {
       if (!this.rootHandle || this.mode === 'DISCONNECTED') return false;
@@ -2490,6 +2498,7 @@
       const dirHandle = await this._getTargetBranchDirectoryHandle(targetBranch);
       if (!dirHandle) return false;
 
+      let needsOneDriveWriteBack = false;
       try {
         let fileHandle;
         this._cleanupConflictFiles(dirHandle).catch(() => {});
@@ -2571,12 +2580,9 @@
             if (typeof renderPatientModule === 'function') renderPatientModule();
           }
 
-          // If incoming file had deleted records or differences, update OneDrive file with the cleaned array
+          // Flag write-back to run AFTER releasing this.isSyncing lock so saveToOneDrive is never silently skipped
           if (!this._arePatientArraysEqual(merged, incomingPatients)) {
-            const writePerm = await this._verifyPermission(this.rootHandle, true, false);
-            if (writePerm) {
-              await this.saveToOneDrive(patientsData);
-            }
+            needsOneDriveWriteBack = true;
           }
         }
 
@@ -2593,6 +2599,18 @@
         return false;
       } finally {
         this.isSyncing = false;
+        const shouldDrain = this._pendingSaveToOneDrive || (typeof needsOneDriveWriteBack !== 'undefined' && needsOneDriveWriteBack);
+        if (shouldDrain) {
+          this._pendingSaveToOneDrive = false;
+          setTimeout(async () => {
+            try {
+              const writePerm = await this._verifyPermission(this.rootHandle, true, false);
+              if (writePerm && typeof patientsData !== 'undefined' && Array.isArray(patientsData)) {
+                await this.saveToOneDrive(patientsData);
+              }
+            } catch (_) {}
+          }, 150);
+        }
       }
     }
 
@@ -2791,12 +2809,28 @@
         if (a.age !== b.age || a.branch !== b.branch || a.race !== b.race || a.language !== b.language) return false;
         if (a.nextTcaDate !== b.nextTcaDate || a.nextTcaPurpose !== b.nextTcaPurpose) return false;
         if (a.allergies !== b.allergies || a.notes !== b.notes) return false;
+        if ((a.medicalHistory || '') !== (b.medicalHistory || '') || (a.height || '') !== (b.height || '')) return false;
         if ((a.updatedAt || '') !== (b.updatedAt || '')) return false;
 
         // Sub-array lengths
         if ((a.encounters?.length || 0) !== (b.encounters?.length || 0)) return false;
         if ((a.appointments?.length || 0) !== (b.appointments?.length || 0)) return false;
         if ((a.medications?.length || 0) !== (b.medications?.length || 0)) return false;
+        if ((a.tcaReminders?.length || 0) !== (b.tcaReminders?.length || 0)) return false;
+        if ((a.documents?.length || 0) !== (b.documents?.length || 0)) return false;
+
+        // Encounter content & edit timestamp checks (ensures edited consultations always sync to OneDrive)
+        if (a.encounters && b.encounters) {
+          for (let i = 0; i < a.encounters.length; i++) {
+            const encA = a.encounters[i];
+            const encB = b.encounters[i];
+            if (!encA || !encB) return false;
+            if ((encA.id || '') !== (encB.id || '') || (encA.date || '') !== (encB.date || '')) return false;
+            if ((encA.lastUpdatedAt || '') !== (encB.lastUpdatedAt || '')) return false;
+            if ((encA.chiefComplaint || '') !== (encB.chiefComplaint || '') || (encA.preDiagnostic || '') !== (encB.preDiagnostic || '')) return false;
+            if ((encA.planMedications || '') !== (encB.planMedications || '') || (encA.planCounselling || '') !== (encB.planCounselling || '')) return false;
+          }
+        }
 
         // Fast appointment checks
         if (a.appointments && b.appointments) {

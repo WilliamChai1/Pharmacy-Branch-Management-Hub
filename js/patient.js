@@ -924,6 +924,10 @@ let tempCustomTests = []; // For the encounter modal
 let tempAttachedFiles = []; // For the encounter modal
 let selectedAirdocFile = null; // For the Airdoc PDF report
 
+let _pmgPatientsIdbHydrated = false;
+let _pmgLoadedFromLocalStorage = false;
+let _pmgPatientsDirtyBeforeHydration = false;
+
 // ─── INITIALIZATION ──────────────────────────────────────────────────────────
 function initPatientModule() {
   loadPatientsData();
@@ -932,17 +936,46 @@ function initPatientModule() {
   updateDailyBackupBanner();
   renderPatientModule();
 
-  // Asynchronously hydrate from IndexedDB (preserves complete patient records even if localStorage was quota-capped)
+  // Asynchronously hydrate from IndexedDB (preserves complete patient records even if localStorage was offloaded/quota-capped)
   if (typeof safeStorageGet === 'function') {
     safeStorageGet(PATIENTS_STORAGE_KEY).then(idbPatients => {
+      _pmgPatientsIdbHydrated = true;
       if (Array.isArray(idbPatients) && idbPatients.length > 0) {
-        const countBefore = patientsData ? patientsData.length : 0;
-        patientsData = consolidatePatientList([...(patientsData || []), ...idbPatients]);
-        console.log(`[PMG Patient] Hydrated and consolidated from IndexedDB (${idbPatients.length} IDB records, resulting in ${patientsData.length} total profiles).`);
+        // Respect permanently deleted tombstones while preserving all non-deleted IDB records + any in-memory edits
+        const cleanIdb = idbPatients.filter(p => p && !isPatientDeleted(p.id, p.ic, p.phone, p.name));
+        const baseLocal = _pmgLoadedFromLocalStorage || _pmgPatientsDirtyBeforeHydration
+          ? (patientsData || [])
+          : [];
+        patientsData = consolidatePatientList([...baseLocal, ...cleanIdb]);
+        console.log(`[PMG Patient] Hydrated and consolidated from IndexedDB (${cleanIdb.length} IDB records, resulting in ${patientsData.length} total profiles).`);
         savePatientsData();
         renderPatientModule();
+      } else if (!_pmgLoadedFromLocalStorage || _pmgPatientsDirtyBeforeHydration) {
+        // Only write initial seed / early edits once IndexedDB is confirmed empty
+        savePatientsData();
       }
-    }).catch(err => console.warn('[PMG Patient] IDB hydration warning:', err));
+    }).catch(err => {
+      _pmgPatientsIdbHydrated = true;
+      console.warn('[PMG Patient] IDB hydration warning:', err);
+    });
+  } else {
+    _pmgPatientsIdbHydrated = true;
+  }
+
+  // Flush any pending debounced OneDrive save when user switches tab or closes page
+  if (!window._pmgPatientUnloadGuardInstalled && typeof window !== 'undefined') {
+    window._pmgPatientUnloadGuardInstalled = true;
+    const flushPendingSaves = () => {
+      if (_pmgSaveToOneDriveDebounce) {
+        clearTimeout(_pmgSaveToOneDriveDebounce);
+        _pmgSaveToOneDriveDebounce = null;
+        if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveToOneDrive === 'function') {
+          window.pmgOneDriveSync.saveToOneDrive(patientsData).catch(() => {});
+        }
+      }
+    };
+    window.addEventListener('pagehide', flushPendingSaves);
+    window.addEventListener('beforeunload', flushPendingSaves);
   }
 
   // Auto-sync customer online bookings & medical equipment rentals from cloud relay (silent background fetch + continuous polling every 60s)
@@ -1136,6 +1169,14 @@ function mergeTwoPatientRecords(primary, secondary) {
   }
   merged.allergies = newer.allergies || older.allergies || merged.allergies;
   merged.notes = newer.notes || older.notes || merged.notes;
+  merged.medicalHistory = newer.medicalHistory || older.medicalHistory || merged.medicalHistory || '';
+  if (newer.height !== undefined && newer.height !== null && newer.height !== '') merged.height = newer.height;
+  else if (older.height !== undefined && older.height !== null && older.height !== '') merged.height = older.height;
+  if (newer.smoking) merged.smoking = newer.smoking;
+  else if (!merged.smoking && older.smoking) merged.smoking = older.smoking;
+  if (typeof newer.onHtnMeds === 'boolean') merged.onHtnMeds = newer.onHtnMeds;
+  if (typeof newer.onLipidMeds === 'boolean') merged.onLipidMeds = newer.onLipidMeds;
+  if (typeof newer.hasDiabetes === 'boolean') merged.hasDiabetes = newer.hasDiabetes;
   merged.updatedAt = newer.updatedAt || older.updatedAt || new Date().toISOString();
 
   // Clinical conditions
@@ -1143,16 +1184,26 @@ function mergeTwoPatientRecords(primary, secondary) {
     .filter(c => c && c !== 'Pending Consultation');
   if (!merged.conditions.length) merged.conditions = ['General Health Review'];
 
-  // Encounters (union by encounter ID or date+author, sorted descending)
+  // Encounters (union by encounter ID or date+author+complaint; keep newer edited version if same ID)
   const encMap = new Map();
-  (other.encounters || []).forEach(e => {
-    const k = e.id || `${e.date}_${e.recordedBy}`;
-    encMap.set(k, e);
-  });
-  (merged.encounters || []).forEach(e => {
-    const k = e.id || `${e.date}_${e.recordedBy}`;
-    encMap.set(k, e);
-  });
+  const pickRicherOrNewerEncounter = (encA, encB) => {
+    if (!encA) return encB;
+    if (!encB) return encA;
+    const tA = new Date(encA.lastUpdatedAt || encA.updatedAt || 0).getTime();
+    const tB = new Date(encB.lastUpdatedAt || encB.updatedAt || 0).getTime();
+    if (tB > tA) return { ...encA, ...encB };
+    if (tA > tB) return { ...encB, ...encA };
+    const scoreA = JSON.stringify(encA).length;
+    const scoreB = JSON.stringify(encB).length;
+    return scoreB > scoreA ? { ...encA, ...encB } : { ...encB, ...encA };
+  };
+  const upsertEnc = (e, fallbackIdx) => {
+    if (!e) return;
+    const k = e.id || `${e.date || ''}_${e.recordedBy || ''}_${(e.chiefComplaint || '').slice(0, 24) || fallbackIdx}`;
+    encMap.set(k, encMap.has(k) ? pickRicherOrNewerEncounter(encMap.get(k), e) : e);
+  };
+  (other.encounters || []).forEach((e, idx) => upsertEnc(e, idx));
+  (merged.encounters || []).forEach((e, idx) => upsertEnc(e, idx));
   merged.encounters = Array.from(encMap.values()).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
   // Appointments (union by appointment ID, preserve completed/terminal statuses)
@@ -1210,15 +1261,26 @@ function mergeTwoPatientRecords(primary, secondary) {
 
   // Documents
   const docMap = new Map();
-  (other.documents || []).forEach(d => docMap.set(d.id || d.title, d));
-  (merged.documents || []).forEach(d => docMap.set(d.id || d.title, d));
+  (other.documents || []).forEach(d => docMap.set(d.id || d.title || d.name, d));
+  (merged.documents || []).forEach(d => docMap.set(d.id || d.title || d.name, d));
   merged.documents = Array.from(docMap.values());
 
-  // TCA Reminders
-  if (!merged.nextTcaDate && other.nextTcaDate) {
+  // TCA Reminders (adopt newer TCA & union multi-date reminders)
+  if (newer.nextTcaDate) {
+    merged.nextTcaDate = newer.nextTcaDate;
+    merged.nextTcaPurpose = newer.nextTcaPurpose || older.nextTcaPurpose || merged.nextTcaPurpose;
+    merged.nextTcaRecordedBy = newer.nextTcaRecordedBy || older.nextTcaRecordedBy || merged.nextTcaRecordedBy;
+  } else if (!merged.nextTcaDate && other.nextTcaDate) {
     merged.nextTcaDate = other.nextTcaDate;
     merged.nextTcaPurpose = other.nextTcaPurpose;
     merged.nextTcaRecordedBy = other.nextTcaRecordedBy;
+  }
+  const tcaMap = new Map();
+  [...(older.tcaReminders || []), ...(newer.tcaReminders || [])].forEach(r => {
+    if (r && r.date) tcaMap.set(`${r.date}_${(r.purpose || '').toLowerCase().trim()}`, r);
+  });
+  if (tcaMap.size > 0) {
+    merged.tcaReminders = Array.from(tcaMap.values()).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   }
 
   // Notes: preserve rich consultation notes
@@ -1297,20 +1359,31 @@ function loadPatientsData() {
   const saved = localStorage.getItem(PATIENTS_STORAGE_KEY);
   if (saved) {
     try {
-      patientsData = JSON.parse(saved);
+      const parsedSaved = JSON.parse(saved);
+      if (Array.isArray(parsedSaved) && parsedSaved.length > 0) {
+        patientsData = parsedSaved;
+        _pmgLoadedFromLocalStorage = true;
+      } else {
+        patientsData = JSON.parse(JSON.stringify(DEFAULT_PATIENTS_DATA));
+        _pmgLoadedFromLocalStorage = false;
+      }
     } catch {
       patientsData = JSON.parse(JSON.stringify(DEFAULT_PATIENTS_DATA));
+      _pmgLoadedFromLocalStorage = false;
     }
   } else {
+    // CRITICAL: Do NOT call savePatientsData() here!
+    // If localStorage was offloaded (>1.2MB) to IndexedDB, calling savePatientsData() synchronously
+    // would overwrite IndexedDB with the 4 seed patients before async IDB hydration runs.
     patientsData = JSON.parse(JSON.stringify(DEFAULT_PATIENTS_DATA));
-    savePatientsData();
+    _pmgLoadedFromLocalStorage = false;
   }
 
   // Consolidate duplicate records immediately on load
   if (Array.isArray(patientsData)) {
     const countBefore = patientsData.length;
     patientsData = consolidatePatientList(patientsData);
-    if (patientsData.length !== countBefore) {
+    if (_pmgLoadedFromLocalStorage && patientsData.length !== countBefore) {
       console.log(`[PMG Patient] Consolidated duplicate profiles on boot from ${countBefore} to ${patientsData.length}.`);
       savePatientsData();
     }
@@ -1347,7 +1420,7 @@ function loadPatientsData() {
       }
     });
 
-    if (patientsData.length !== prevLen) {
+    if (_pmgLoadedFromLocalStorage && patientsData.length !== prevLen) {
       savePatientsData();
       if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveToOneDrive === 'function') {
         window.pmgOneDriveSync.saveToOneDrive(patientsData).catch(() => {});
@@ -1363,9 +1436,19 @@ function loadPatientsData() {
           patientsData.push(JSON.parse(JSON.stringify(defPt)));
         }
       } else {
-        // Upgrade existing patient if default has more clinical visits or enriched fields
-        if (!patientsData[idx].encounters || patientsData[idx].encounters.length < defPt.encounters.length) {
-          patientsData[idx].encounters = JSON.parse(JSON.stringify(defPt.encounters));
+        // Union default encounters without ever deleting newly keyed consultations
+        if (Array.isArray(defPt.encounters) && defPt.encounters.length) {
+          if (!Array.isArray(patientsData[idx].encounters) || patientsData[idx].encounters.length === 0) {
+            patientsData[idx].encounters = JSON.parse(JSON.stringify(defPt.encounters));
+          } else if (patientsData[idx].encounters.length < defPt.encounters.length) {
+            const existingIds = new Set(patientsData[idx].encounters.map(e => e.id || e.date));
+            defPt.encounters.forEach(de => {
+              if (!existingIds.has(de.id || de.date)) {
+                patientsData[idx].encounters.push(JSON.parse(JSON.stringify(de)));
+              }
+            });
+            patientsData[idx].encounters.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+          }
         }
         if (defPt.medications && (!patientsData[idx].medications || !patientsData[idx].medications.length)) {
           patientsData[idx].medications = JSON.parse(JSON.stringify(defPt.medications));
@@ -1403,7 +1486,28 @@ function loadPatientsData() {
 
 let _pmgSaveToOneDriveDebounce = null;
 
-function savePatientsData() {
+function savePatientsData(options = {}) {
+  const immediateOneDrive = !!(options && options.immediateOneDrive);
+
+  // Guard: If user edits/imports before initial async IDB hydration finishes when localStorage was empty/offloaded,
+  // merge with IndexedDB first so we NEVER overwrite existing IndexedDB records with a partial array.
+  if (!_pmgPatientsIdbHydrated && !_pmgLoadedFromLocalStorage && typeof safeStorageGet === 'function') {
+    _pmgPatientsDirtyBeforeHydration = true;
+    safeStorageGet(PATIENTS_STORAGE_KEY).then(idbPatients => {
+      _pmgPatientsIdbHydrated = true;
+      if (Array.isArray(idbPatients) && idbPatients.length > 0) {
+        const cleanIdb = idbPatients.filter(p => p && !isPatientDeleted(p.id, p.ic, p.phone, p.name));
+        patientsData = consolidatePatientList([...(patientsData || []), ...cleanIdb]);
+      }
+      savePatientsData({ immediateOneDrive });
+      if (typeof renderPatientModule === 'function') renderPatientModule();
+    }).catch(() => {
+      _pmgPatientsIdbHydrated = true;
+      savePatientsData({ immediateOneDrive });
+    });
+    return;
+  }
+
   if (typeof safeStorageSet === 'function') {
     safeStorageSet(PATIENTS_STORAGE_KEY, patientsData);
   } else {
@@ -1414,12 +1518,22 @@ function savePatientsData() {
     }
   }
   if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveToOneDrive === 'function') {
-    if (_pmgSaveToOneDriveDebounce) clearTimeout(_pmgSaveToOneDriveDebounce);
-    _pmgSaveToOneDriveDebounce = setTimeout(() => {
+    if (_pmgSaveToOneDriveDebounce) {
+      clearTimeout(_pmgSaveToOneDriveDebounce);
+      _pmgSaveToOneDriveDebounce = null;
+    }
+    if (immediateOneDrive) {
       window.pmgOneDriveSync.saveToOneDrive(patientsData).catch(err => {
-        console.warn('[PMG OneDrive Sync] Auto-save error:', err);
+        console.warn('[PMG OneDrive Sync] Immediate save error:', err);
       });
-    }, 1500);
+    } else {
+      _pmgSaveToOneDriveDebounce = setTimeout(() => {
+        _pmgSaveToOneDriveDebounce = null;
+        window.pmgOneDriveSync.saveToOneDrive(patientsData).catch(err => {
+          console.warn('[PMG OneDrive Sync] Auto-save error:', err);
+        });
+      }, 800);
+    }
   }
 }
 
@@ -3376,7 +3490,7 @@ function renderPharmacistScheduleTab(patientsList) {
 
   // Populate modal pharmacist dropdown
   const reschedPharmEl = document.getElementById('reschedPharmacist');
-  if (reschedPharmEl && reschedPharmEl.options.length <= 4) {
+  if (reschedPharmEl && (!reschedPharmEl.options || reschedPharmEl.options.length <= 4)) {
     const sortedPharms = Array.from(pharmacistNames).filter(Boolean).sort();
     let mOpts = '';
     sortedPharms.forEach(ph => {
@@ -4725,8 +4839,8 @@ function saveNewPatient() {
         } catch (_) {}
       }
 
-      savePatientsData();
       removeDeletedPatientRecord(p.id, p.ic, p.phone, p.name);
+      savePatientsData({ immediateOneDrive: true });
       const pidToReturn = returnToProfilePatientId || editingPatientId;
       returnToProfilePatientId = null;
       editingPatientId = null;
@@ -4772,7 +4886,7 @@ function saveNewPatient() {
 
   removeDeletedPatientRecord(newPatient.id, newPatient.ic, newPatient.phone, newPatient.name);
   patientsData.unshift(newPatient);
-  savePatientsData();
+  savePatientsData({ immediateOneDrive: true });
   closeNewPatientModal();
 
   // Clear any active search query so the new patient is immediately visible
@@ -6703,10 +6817,41 @@ function renderTempAttachedFiles() {
   `).join('');
 }
 
+function mergeEncounterMedicationsPreservingMetadata(existingMeds, planMedsText) {
+  const existingList = Array.isArray(existingMeds) ? existingMeds : [];
+  const rawLines = String(planMedsText || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  // NEVER wipe existing chronic medications if pharmacist leaves Plan Medications blank during a POCT/review visit
+  if (rawLines.length === 0) {
+    return existingList;
+  }
+  const byName = new Map();
+  existingList.forEach(m => {
+    const k = String(m && m.name || '').toLowerCase().trim();
+    if (k) byName.set(k, { ...m });
+  });
+  rawLines.forEach((line, idx) => {
+    const k = line.toLowerCase().trim();
+    if (!k) return;
+    if (!byName.has(k)) {
+      byName.set(k, {
+        id: 'MED-' + Date.now().toString(36) + '-' + (idx + 1),
+        name: line,
+        dosage: '',
+        frequency: '',
+        indication: 'Active Consultation Regimen'
+      });
+    }
+  });
+  return Array.from(byName.values());
+}
+
 async function saveNewEncounter() {
-  const pId = document.getElementById('encounterPatientSelect').value;
-  const p = patientsData.find(pt => pt.id === pId);
-  if (!p) return;
+  const pId = document.getElementById('encounterPatientSelect')?.value || '';
+  const p = (typeof findPatientById === 'function' ? findPatientById(pId) : null) || patientsData.find(pt => pt.id === pId);
+  if (!p) {
+    alert('⚠️ Could not locate the selected patient profile. Please re-select the patient and click Save again so your consultation is not lost.');
+    return;
+  }
 
   const session = getSession();
   const recorder = session ? `${session.displayName} (${session.role})` : 'Pharmacist';
@@ -6912,23 +7057,16 @@ async function saveNewEncounter() {
         }
       }
 
-      // Update patient's active medications if editing the latest encounter
+      // Merge medications without wiping existing active regimens or refill schedules
       if (p.encounters && p.encounters[0] && p.encounters[0].id === editingEncounterId) {
-        p.medications = planMedsVal
-          ? planMedsVal.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(m => ({
-              name: m,
-              dosage: '',
-              frequency: '',
-              indication: 'Active Consultation Regimen'
-            }))
-          : [];
+        p.medications = mergeEncounterMedicationsPreservingMetadata(p.medications, planMedsVal);
       }
 
-      savePatientsData();
-      if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.triggerSync === 'function') {
-        window.pmgOneDriveSync.triggerSync();
-      }
-      const pidToReturn = returnToProfilePatientId || (viewingPatientId === pId ? pId : null);
+      p.encounters.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      p.updatedAt = new Date().toISOString();
+      removeDeletedPatientRecord(p.id, p.ic, p.phone, p.name);
+      savePatientsData({ immediateOneDrive: true });
+      const pidToReturn = returnToProfilePatientId || (viewingPatientId === p.id || viewingPatientId === pId ? p.id : null);
       returnToProfilePatientId = null;
       editingEncounterId = null;
       closeEncounterModal();
@@ -6951,6 +7089,7 @@ async function saveNewEncounter() {
     id: 'ENC-' + Date.now(),
     date: encDateVal,
     recordedBy: recorder,
+    lastUpdatedAt: new Date().toISOString(),
     chiefComplaint: chiefComplaintVal,
     hpi: hpiVal,
     medicalHistory: medHistoryVal,
@@ -6981,20 +7120,12 @@ async function saveNewEncounter() {
   p.onLipidMeds = cvdLip;
   p.hasDiabetes = cvdDm;
 
-  if (!p.encounters) p.encounters = [];
+  if (!Array.isArray(p.encounters)) p.encounters = [];
   p.encounters.unshift(newEnc);
+  p.encounters.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
-  // Update patient's active medications to strictly match the latest consultation
-  // If no medications were entered, they are no longer on those medications
-  p.medications = planMedsVal
-    ? planMedsVal.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map((m, idx) => ({
-        id: 'MED-' + Date.now().toString(36) + '-' + (idx + 1),
-        name: m,
-        dosage: '',
-        frequency: '',
-        indication: 'Active Consultation Regimen'
-      }))
-    : [];
+  // Merge newly prescribed medications while preserving existing chronic medications & refill metadata
+  p.medications = mergeEncounterMedicationsPreservingMetadata(p.medications, planMedsVal);
 
   // Update patient's preferred language if selected in encounter
   const waLangEl = document.getElementById('encWaLanguage');
@@ -7028,15 +7159,14 @@ async function saveNewEncounter() {
     }
   }
 
-  savePatientsData();
-  if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.triggerSync === 'function') {
-    window.pmgOneDriveSync.triggerSync();
-  }
+  p.updatedAt = new Date().toISOString();
+  removeDeletedPatientRecord(p.id, p.ic, p.phone, p.name);
+  savePatientsData({ immediateOneDrive: true });
   closeEncounterModal();
   renderPatientModule();
 
-  if (viewingPatientId === pId) {
-    viewPatientProfile(pId);
+  if (viewingPatientId === p.id || viewingPatientId === pId) {
+    viewPatientProfile(p.id);
   }
 
   // Prompt pharmacist to send WhatsApp Consultation Summary with Google Review & Community links
@@ -9462,8 +9592,15 @@ function confirmLarkImport() {
 
   let addedCount = 0;
   let updatedCount = 0;
+  const nowIso = new Date().toISOString();
 
   pendingLarkPatients.forEach(newPt => {
+    if (!newPt) return;
+    newPt.updatedAt = nowIso;
+    if (!Array.isArray(newPt.encounters)) newPt.encounters = [];
+    if (!Array.isArray(newPt.medications)) newPt.medications = [];
+    if (!Array.isArray(newPt.appointments)) newPt.appointments = [];
+
     const existingIdx = patientsData.findIndex(p => {
       const icA = String(p.ic || '').replace(/\D/g, '');
       const icB = String(newPt.ic || '').replace(/\D/g, '');
@@ -9480,26 +9617,81 @@ function confirmLarkImport() {
     });
 
     if (existingIdx >= 0) {
-      // Merge encounters without duplicating by date
       const existingPt = patientsData[existingIdx];
-      const existingDates = new Set((existingPt.encounters || []).map(e => e.date));
+      if (!Array.isArray(existingPt.encounters)) existingPt.encounters = [];
+      if (!Array.isArray(existingPt.medications)) existingPt.medications = [];
+      if (!Array.isArray(existingPt.appointments)) existingPt.appointments = [];
+
+      // Merge encounters safely without duplicating or losing same-day/existing consultations
       newPt.encounters.forEach(enc => {
-        if (!existingDates.has(enc.date)) {
+        if (!enc) return;
+        const matchIdx = existingPt.encounters.findIndex(e =>
+          (enc.id && e.id === enc.id) ||
+          (e.date === enc.date && String(e.preDiagnostic || '').trim() === String(enc.preDiagnostic || '').trim())
+        );
+        if (matchIdx === -1) {
           existingPt.encounters.push(enc);
+        } else {
+          // Preserve existing clinician edits while filling any empty clinical fields from Lark
+          const cur = existingPt.encounters[matchIdx];
+          existingPt.encounters[matchIdx] = {
+            ...enc,
+            ...cur,
+            vitals: { ...(enc.vitals || {}), ...(cur.vitals || {}) },
+            lipidPanel: { ...(enc.lipidPanel || {}), ...(cur.lipidPanel || {}) },
+            liverPanel: { ...(enc.liverPanel || {}), ...(cur.liverPanel || {}) },
+            kidneyPanel: { ...(enc.kidneyPanel || {}), ...(cur.kidneyPanel || {}) },
+            glycemicHeme: { ...(enc.glycemicHeme || {}), ...(cur.glycemicHeme || {}) }
+          };
         }
       });
-      existingPt.encounters.sort((a, b) => b.date.localeCompare(a.date));
-      if (newPt.nextTcaDate) {
+      existingPt.encounters.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+      // Preserve newer TCA date without clobbering a later existing TCA date
+      if (newPt.nextTcaDate && (!existingPt.nextTcaDate || newPt.nextTcaDate >= existingPt.nextTcaDate)) {
         existingPt.nextTcaDate = newPt.nextTcaDate;
-        existingPt.nextTcaPurpose = newPt.nextTcaPurpose;
+        existingPt.nextTcaPurpose = newPt.nextTcaPurpose || existingPt.nextTcaPurpose;
         existingPt.nextTcaRecordedBy = newPt.nextTcaRecordedBy || existingPt.nextTcaRecordedBy;
       }
-      if (newPt.medications?.length) existingPt.medications = newPt.medications;
-      if (newPt.phone) existingPt.phone = newPt.phone;
+
+      // Merge medications by name (NEVER wipe existing medications or refill dates)
+      if (newPt.medications.length) {
+        const medMap = new Map();
+        existingPt.medications.forEach(m => {
+          const k = String(m && m.name || '').toLowerCase().trim();
+          if (k) medMap.set(k, { ...m });
+        });
+        newPt.medications.forEach(m => {
+          const k = String(m && m.name || '').toLowerCase().trim();
+          if (k && !medMap.has(k)) {
+            medMap.set(k, { ...m });
+          }
+        });
+        existingPt.medications = Array.from(medMap.values());
+      }
+
+      // Fill missing demographics without overwriting existing curated values
+      if (newPt.phone && (!existingPt.phone || existingPt.phone === '#ERROR!')) existingPt.phone = newPt.phone;
+      if (newPt.ic && !existingPt.ic) existingPt.ic = newPt.ic;
+      if (newPt.age && !existingPt.age) existingPt.age = newPt.age;
+      if (newPt.gender && (!existingPt.gender || existingPt.gender === 'Other')) existingPt.gender = newPt.gender;
+      if (newPt.race && (!existingPt.race || existingPt.race === 'Other')) existingPt.race = newPt.race;
+      if (newPt.language && !existingPt.language) existingPt.language = newPt.language;
+      if (newPt.allergies && newPt.allergies !== 'None known' && (!existingPt.allergies || existingPt.allergies === 'None known')) {
+        existingPt.allergies = newPt.allergies;
+      }
+      if (newPt.notes && !existingPt.notes) {
+        existingPt.notes = newPt.notes;
+      } else if (newPt.notes && existingPt.notes && !existingPt.notes.includes(newPt.notes)) {
+        existingPt.notes = `${existingPt.notes}\n${newPt.notes}`;
+      }
       if (newPt.conditions?.length) {
         const set = new Set([...(existingPt.conditions || []), ...newPt.conditions]);
         existingPt.conditions = Array.from(set);
       }
+
+      existingPt.updatedAt = nowIso;
+      removeDeletedPatientRecord(existingPt.id, existingPt.ic, existingPt.phone, existingPt.name);
       updatedCount++;
     } else {
       if (patientsData.some(p => p.id === newPt.id)) {
@@ -9512,7 +9704,7 @@ function confirmLarkImport() {
   });
 
   const firstPt = pendingLarkPatients[0];
-  savePatientsData();
+  savePatientsData({ immediateOneDrive: true });
   closeLarkImportModal();
   renderPatientModule();
 
@@ -9521,7 +9713,7 @@ function confirmLarkImport() {
     if (matched) viewPatientProfile(matched.id);
   }
 
-  showExpiryToast(`✅ Imported ${addedCount + updatedCount} Lark patient(s) successfully!`);
+  showExpiryToast(`✅ Imported ${addedCount + updatedCount} Lark patient(s) safely (Saved locally + IndexedDB + OneDrive)!`);
 }
 
 /**
