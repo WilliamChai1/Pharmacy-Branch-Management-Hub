@@ -484,7 +484,17 @@ function createBrowserSandbox(fetchImpl) {
       const bPath = path.join(ROOT, '.antigravity', rel);
       assert(fs.existsSync(aPath), `Missing .agents/${rel}`);
       assert(fs.existsSync(bPath), `Missing .antigravity/${rel}`);
-      assert.strictEqual(fs.readFileSync(aPath, 'utf8'), fs.readFileSync(bPath, 'utf8'), `Mirror mismatch: ${rel}`);
+      const aContent = fs.readFileSync(aPath, 'utf8');
+      const bContent = fs.readFileSync(bPath, 'utf8');
+      assert.strictEqual(aContent, bContent, `Mirror mismatch: ${rel}`);
+      if (rel.startsWith('agents/') && rel.endsWith('agent.md')) {
+        assert(!aContent.includes('- read_file'), `Invalid legacy tool 'read_file' in ${rel}`);
+        assert(!aContent.includes('- edit_file'), `Invalid legacy tool 'edit_file' in ${rel}`);
+        assert(!aContent.includes('- write_file'), `Invalid legacy tool 'write_file' in ${rel}`);
+        assert(aContent.includes('- view_file'), `Missing 'view_file' tool in ${rel}`);
+        assert(aContent.includes('- replace_file_content'), `Missing 'replace_file_content' tool in ${rel}`);
+        assert(aContent.includes('- write_to_file'), `Missing 'write_to_file' tool in ${rel}`);
+      }
     }
 
     const gitignore = fs.readFileSync(path.join(ROOT, '.gitignore'), 'utf8');
