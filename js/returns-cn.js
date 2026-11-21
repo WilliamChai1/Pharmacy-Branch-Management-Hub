@@ -4,6 +4,8 @@
 (function(window) {
   const DB_STORE_NAME = 'pmg_returns_cn_db';
   const DB_VERSION = 1;
+  const SUPPLIER_WA_CONTACTS_KEY = 'pmg_supplier_wa_contacts_v1';
+  const PUBLIC_HUB_FALLBACK_URL = 'https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/';
 
   // ─── STATE MANAGEMENT ─────────────────────────────────────────────────────────
   let returnsData = [];
@@ -13,6 +15,7 @@
   let activeReturnForUpload = null;
   let activeReturnForCn = null;
   let activeReturnForEdit = null;
+  let activeReturnForReminder = null;
   let editDraftItems = [];
   let dbInstance = null;
 
@@ -1085,7 +1088,7 @@
     return fNorm === bNorm;
   }
 
-  async function syncReturnsWithGoogleSheets(targetBranch) {
+  async function syncReturnsWithGoogleSheets(targetBranch, forcePush = false) {
     if (!PMG_SCHEDULE_API_URL) return;
     const rawBranch = targetBranch || getActiveBranchName() || 'Kota Sentosa';
     const branchName = normalizeBranchForSheets(rawBranch);
@@ -1106,6 +1109,15 @@
       if (!data) {
         const res = await fetch(`${PMG_SCHEDULE_API_URL}?branch=${encodeURIComponent(branchName)}`);
         if (res.ok) data = await res.json();
+      }
+
+      // Merge cloud-saved supplier WhatsApp contacts if present
+      if (data && data.success && data.schedule && data.schedule.supplierWaContacts && typeof data.schedule.supplierWaContacts === 'object') {
+        try {
+          const localContacts = loadSupplierWaContacts();
+          const mergedContacts = { ...data.schedule.supplierWaContacts, ...localContacts };
+          localStorage.setItem(SUPPLIER_WA_CONTACTS_KEY, JSON.stringify(mergedContacts));
+        } catch (_) {}
       }
 
       const deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_returns') || '["ret-ks-2609-002", "ret-lnd-2609-001"]');
@@ -1142,12 +1154,23 @@
       // 2. Push returns exclusively to dedicated PMG_RETURNS_VAULT_<branch> row (never bloat PharmacistSchedule cell)
       if (returnsData.length > 0) {
         const existingCloudReturns = (data && data.schedule && Array.isArray(data.schedule.branchReturns)) ? data.schedule.branchReturns : [];
-        const currentCloudIds = new Set(existingCloudReturns.map(r => r.id));
-        const hasLocalNew = returnsData.some(r => !currentCloudIds.has(r.id));
-        if (hasLocalNew || changed) {
+        const cloudById = new Map(existingCloudReturns.filter(r => r && r.id).map(r => [r.id, r]));
+        const hasLocalNewOrNewer = returnsData.some(loc => {
+          const cld = cloudById.get(loc.id);
+          if (!cld) return true;
+          const locT = loc.updatedAt || loc.createdAt || '';
+          const cldT = cld.updatedAt || cld.createdAt || '';
+          if (locT > cldT) return true;
+          if ((loc.signedProof && loc.signedProof.cloudDocId) && !(cld.signedProof && cld.signedProof.cloudDocId)) return true;
+          if ((loc.cnReminderCount || 0) > (cld.cnReminderCount || 0)) return true;
+          return false;
+        });
+
+        if (forcePush || hasLocalNewOrNewer || changed) {
           const vaultSched = {
             branchCode: branchName,
             branchReturns: returnsData,
+            supplierWaContacts: loadSupplierWaContacts(),
             lastUpdated: new Date().toISOString()
           };
           await fetch(PMG_SCHEDULE_API_URL, {
@@ -1387,11 +1410,15 @@
         </span>`;
       }
 
+      const isTransferOrTransit = isStockTransferOrTransit(ret);
+      const canRemindCn = isEligibleForCnReminder(ret);
+
       // Signed Proof status
       let proofBadge = '';
       if (ret.signedProof && ret.signedProof.fileName) {
-        proofBadge = `<button onclick="pmgReturns.viewSignedProof('${ret.id}')" title="View signed DO proof: ${escapeHtml(ret.signedProof.fileName)}" class="text-xs text-emerald-700 hover:text-emerald-900 font-semibold inline-flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-          <i class="fa-solid fa-file-shield"></i> Proof Attached
+        const hasCloudDoc = Boolean(ret.signedProof.cloudDocId);
+        proofBadge = `<button onclick="pmgReturns.viewSignedProof('${ret.id}')" title="View DO + PRN proof: ${escapeHtml(ret.signedProof.fileName)}" class="text-xs text-emerald-700 hover:text-emerald-900 font-semibold inline-flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 cursor-pointer">
+          <i class="fa-solid ${hasCloudDoc ? 'fa-cloud-arrow-down' : 'fa-file-shield'}"></i> ${hasCloudDoc ? 'Proof Link Ready' : 'Proof Attached'}
         </button>`;
       } else {
         proofBadge = `<span class="text-[11px] text-gray-400 italic">No proof yet</span>`;
@@ -1404,8 +1431,15 @@
           <div class="font-mono text-xs font-bold text-gray-800">${escapeHtml(ret.cnNumber)}</div>
           <div class="text-[11px] text-emerald-600 font-semibold">RM ${(Number(ret.cnAmount) || 0).toFixed(2)}</div>
         `;
+      } else if (isTransferOrTransit) {
+        cnDisplay = `<span class="text-[11px] text-slate-400 italic">No CN (Transfer/Transit)</span>`;
       } else {
-        cnDisplay = `<span class="text-xs text-amber-600 font-medium italic">Pending supplier</span>`;
+        const remCount = Number(ret.cnReminderCount) || 0;
+        const remDateStr = ret.lastCnReminderAt ? new Date(ret.lastCnReminderAt).toLocaleDateString('en-MY', { day: '2-digit', month: 'short' }) : '';
+        cnDisplay = `
+          <div class="text-xs text-amber-600 font-medium italic">Pending supplier</div>
+          ${remCount > 0 ? `<div class="text-[10px] text-emerald-700 font-semibold mt-0.5"><i class="fa-brands fa-whatsapp"></i> Reminded ${remCount}x${remDateStr ? ` (${escapeHtml(remDateStr)})` : ''}</div>` : ''}
+        `;
       }
 
       // SKU summary preview
@@ -1426,6 +1460,11 @@
       } else if (hasAging) {
         typeBadge = `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black shadow-sm" style="background-color: #FFC000; color: #000; border: 1px solid #D97706;" title="Slow Moving / Aging Stock"><i class="fa-solid fa-hourglass-half"></i> AGING &gt;1YR</span>`;
       }
+
+      const remindCnBtnHtml = canRemindCn ? `
+        <button onclick="pmgReturns.openCnReminderModal('${ret.id}')" class="px-2.5 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-xs transition flex items-center gap-1 cursor-pointer" title="WhatsApp Supplier CN Reminder with Clickable DO &amp; PRN Proof Link">
+          <i class="fa-brands fa-whatsapp text-sm"></i> <span>Remind CN</span>
+        </button>` : '';
 
       return `
         <tr class="border-b border-gray-100 hover:bg-slate-50/80 transition text-sm">
@@ -1458,6 +1497,7 @@
           </td>
           <td class="py-3 px-4 text-right whitespace-nowrap">
             <div class="flex items-center justify-end gap-1.5">
+              ${remindCnBtnHtml}
               <button onclick="pmgReturns.openEditReturnModal('${ret.id}')" class="px-2.5 py-1.5 text-xs bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold rounded-lg border border-amber-300 transition flex items-center gap-1" title="Edit SKUs, PRN, Qty, Carton No">
                 <i class="fa-solid fa-pen-to-square"></i> <span>Edit</span>
               </button>
@@ -1467,7 +1507,7 @@
               <button onclick="pmgReturns.openPrintCartonLabelModal('${ret.id}')" class="px-2.5 py-1.5 text-xs bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold rounded-lg border border-amber-300 transition flex items-center gap-1" title="Print Big Box / Carton Shipping Labels for Transporter">
                 <i class="fa-solid fa-tags"></i> <span>Box Labels</span>
               </button>
-              <button onclick="pmgReturns.openUploadSignedDoModal('${ret.id}')" class="px-2 py-1.5 text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 font-semibold rounded-lg border border-slate-300 transition" title="Upload Signed DO Proof to OneDrive">
+              <button onclick="pmgReturns.openUploadSignedDoModal('${ret.id}')" class="px-2 py-1.5 text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 font-semibold rounded-lg border border-slate-300 transition" title="Upload Signed DO Proof (OneDrive + Cloud Link)">
                 <i class="fa-solid fa-cloud-arrow-up"></i>
               </button>
               <button onclick="pmgReturns.openSettleCnModal('${ret.id}')" class="px-2 py-1.5 text-xs bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-semibold rounded-lg border border-emerald-300 transition" title="Settle Credit Note & Key Xilnex">
@@ -3266,6 +3306,225 @@
     }
   }
 
+  // ─── CN REMINDER ELIGIBILITY, SUPPLIER WA CONTACTS & CLOUD PROOF VAULT ───────
+  function isStockTransferOrTransit(ret) {
+    if (!ret) return false;
+    const supplier = String(ret.supplier || '').toLowerCase();
+    const dest = String(ret.destCompany || '').toLowerCase();
+    if (
+      supplier.includes('interbranch') ||
+      supplier.includes('stock transfer') ||
+      supplier.includes('transfer') ||
+      supplier.includes('in-transit') ||
+      supplier.includes('in transit') ||
+      supplier.includes('pmg pharmacy') ||
+      supplier.includes('pmg central')
+    ) return true;
+    if (
+      dest.includes('pmg pharmacy') ||
+      dest.includes('pmg healthcare') ||
+      dest.includes('central warehouse')
+    ) return true;
+    const items = Array.isArray(ret.items) ? ret.items : [];
+    if (items.length > 0 && items.some(it => {
+      const r = String(it.reason || '').toLowerCase();
+      return r.includes('transit') || r.includes('transfer');
+    })) return true;
+    return false;
+  }
+
+  function isEligibleForCnReminder(ret) {
+    if (!ret) return false;
+    if (isStockTransferOrTransit(ret)) return false;
+    if (ret.status === 'completed') return false;
+    if (String(ret.cnNumber || '').trim() !== '') return false;
+    return true;
+  }
+
+  function getSupplierContactKey(supplierName) {
+    return String(supplierName || '').trim().toUpperCase().replace(/\s+/g, ' ');
+  }
+
+  function loadSupplierWaContacts() {
+    try {
+      const raw = localStorage.getItem(SUPPLIER_WA_CONTACTS_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return (parsed && typeof parsed === 'object') ? parsed : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function saveSupplierWaContact(supplierName, phone, picName) {
+    const key = getSupplierContactKey(supplierName);
+    if (!key) return;
+    const contacts = loadSupplierWaContacts();
+    contacts[key] = {
+      phone: String(phone || '').trim(),
+      picName: String(picName || '').trim(),
+      updatedAt: new Date().toISOString()
+    };
+    try {
+      localStorage.setItem(SUPPLIER_WA_CONTACTS_KEY, JSON.stringify(contacts));
+    } catch (_) {}
+  }
+
+  function normalizeSupplierWaPhone(rawPhone) {
+    const digits = String(rawPhone || '').replace(/\D/g, '');
+    if (!digits) return { clean: '', validMobile: false, isLandline: false };
+    let clean = digits;
+    if (clean.startsWith('0')) {
+      clean = '60' + clean.slice(1);
+    } else if (clean.startsWith('1') && clean.length >= 9 && clean.length <= 10) {
+      clean = '60' + clean;
+    }
+    const isMyLandline = /^60[3-9]\d{6,8}$/.test(clean) && !clean.startsWith('601');
+    const validMobile = /^601\d{8,9}$/.test(clean) || (clean.length >= 10 && !isMyLandline);
+    return { clean, validMobile, isLandline: isMyLandline };
+  }
+
+  function getUniquePrnNumbers(ret) {
+    return Array.from(new Set(
+      (ret && Array.isArray(ret.items) ? ret.items : [])
+        .map(it => String(it.prnNumber || '').trim())
+        .filter(Boolean)
+    ));
+  }
+
+  function buildPublicDoProofUrl(ret) {
+    if (!ret || !ret.id) return PUBLIC_HUB_FALLBACK_URL;
+    let baseUrl = PUBLIC_HUB_FALLBACK_URL;
+    try {
+      if (typeof window !== 'undefined' && window.location && /^https?:$/i.test(window.location.protocol)) {
+        const host = String(window.location.hostname || '').toLowerCase();
+        if (host && host !== 'localhost' && host !== '127.0.0.1') {
+          baseUrl = window.location.origin + window.location.pathname;
+        }
+      }
+    } catch (_) {}
+    const branchParam = normalizeBranchForSheets(ret.branch || getActiveBranchName() || 'Kota Sentosa');
+    return `${baseUrl}?doProof=${encodeURIComponent(ret.id)}&branch=${encodeURIComponent(branchParam)}`;
+  }
+
+  function buildSupplierCnReminderMessage(ret, overrides = {}) {
+    if (!ret) return '';
+    const branchName = ret.branch || 'Kota Sentosa';
+    const picName = String(overrides.picName || '').trim()
+      || String(ret.destAttn || '').trim()
+      || `${ret.supplier || 'Supplier'} Team`;
+    const prns = getUniquePrnNumbers(ret);
+    const prnText = prns.length > 0 ? prns.join(', ') : 'Refer DO Form';
+    const itemCount = (ret.items || []).length;
+    const cartons = ret.totalCartons || 1;
+    const proofUrl = buildPublicDoProofUrl(ret);
+    const senderName = getCurrentUserDisplayName() || 'Pharmacist';
+
+    const lines = [
+      `Hi ${picName},`,
+      '',
+      `Gentle reminder from *PMG Pharmacy (${branchName})* regarding our pending Credit Note (CN) for returned goods:`,
+      '',
+      `• *DO No:* ${ret.doNumber || 'N/A'}`,
+      `• *PRN No:* ${prnText}`,
+      `• *Return Date:* ${ret.date || 'N/A'}`
+    ];
+
+    if (ret.pickupBy || ret.pickupDate) {
+      lines.push(`• *Collected By:* ${ret.pickupBy || 'Driver'}${ret.pickupDate ? ` (${ret.pickupDate})` : ''}`);
+    }
+
+    lines.push(`• *Summary:* ${itemCount} SKU(s), ${cartons} Carton(s)`);
+    lines.push('');
+    lines.push(`📄 *Document of Proof (DO + PRN${ret.signedProof && ret.signedProof.cloudDocId ? ' & Signed Copy' : ''}):*`);
+    lines.push(proofUrl);
+    lines.push('');
+    lines.push(`Kindly assist to check and issue the Credit Note (CN) at your earliest convenience. Thank you!`);
+    lines.push(`— ${senderName}, PMG Pharmacy ${branchName}`);
+
+    return lines.join('\n');
+  }
+
+  function fileToCloudSafeDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      if (!file) return reject(new Error('No file provided'));
+      const mime = file.type || 'application/octet-stream';
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.onload = () => {
+        const rawDataUrl = reader.result;
+        // Compress large camera photos using canvas so cloud proof loads fast on supplier mobile
+        if (mime.startsWith('image/') && typeof document !== 'undefined' && typeof Image !== 'undefined') {
+          const img = new Image();
+          img.onload = () => {
+            try {
+              const maxDim = 1400;
+              let w = img.width;
+              let h = img.height;
+              if (w > maxDim || h > maxDim) {
+                const ratio = Math.min(maxDim / w, maxDim / h);
+                w = Math.round(w * ratio);
+                h = Math.round(h * ratio);
+              }
+              const canvas = document.createElement('canvas');
+              canvas.width = w;
+              canvas.height = h;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, w, h);
+                ctx.drawImage(img, 0, 0, w, h);
+                const compressed = canvas.toDataURL('image/jpeg', 0.78);
+                return resolve({ dataUrl: compressed, mimeType: 'image/jpeg', size: compressed.length });
+              }
+            } catch (_) {}
+            resolve({ dataUrl: rawDataUrl, mimeType: mime, size: file.size || rawDataUrl.length });
+          };
+          img.onerror = () => resolve({ dataUrl: rawDataUrl, mimeType: mime, size: file.size || rawDataUrl.length });
+          img.src = rawDataUrl;
+        } else {
+          resolve({ dataUrl: rawDataUrl, mimeType: mime, size: file.size || rawDataUrl.length });
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function uploadSignedProofToCloudVault(ret, file) {
+    if (!PMG_SCHEDULE_API_URL || !ret || !ret.id || !file) return { success: false };
+    try {
+      const { dataUrl, mimeType, size } = await fileToCloudSafeDataUrl(file);
+      if (!dataUrl || dataUrl.length > 4800000) {
+        console.warn('[PMG Returns] Signed proof exceeds cloud vault size limit (~3.5MB); skipping cloud image upload.');
+        return { success: false, reason: 'too_large' };
+      }
+      const res = await fetch(PMG_SCHEDULE_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'uploadApplicantDoc',
+          appId: `DO_PROOF_${ret.id}`,
+          doc: {
+            field: 'signedDoProof',
+            name: `${ret.doNumber || ret.id}_${file.name}`,
+            type: mimeType,
+            size: size,
+            data: dataUrl
+          }
+        }),
+        redirect: 'follow'
+      });
+      if (!res.ok) return { success: false };
+      const json = await res.json();
+      if (json && json.success && json.docId) {
+        return { success: true, docId: json.docId, fileUrl: json.fileUrl || `sheet://doc/${json.docId}`, mimeType };
+      }
+      return { success: false };
+    } catch (err) {
+      console.warn('[PMG Returns] Cloud proof vault upload warning:', err.message);
+      return { success: false };
+    }
+  }
+
   async function submitSignedDoProof() {
     if (!activeReturnForUpload) return;
 
@@ -3281,13 +3540,13 @@
 
     const file = fileInput.files[0];
     btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving to OneDrive…';
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving to OneDrive &amp; Cloud Link…';
 
     try {
       let savedPath = `Local_${file.name}`;
       let oneDriveSaved = false;
 
-      // Check OneDrive sync engine
+      // 1. Save to OneDrive if connected
       if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveSignedDoProofToOneDrive === 'function') {
         const res = await window.pmgOneDriveSync.saveSignedDoProofToOneDrive(file, activeReturnForUpload.branch, {
           doNumber: activeReturnForUpload.doNumber,
@@ -3302,39 +3561,477 @@
         }
       }
 
+      // 2. Upload compressed image/PDF to Google Cloud Proof Vault so suppliers can open it via WhatsApp link
+      const cloudRes = await uploadSignedProofToCloudVault(activeReturnForUpload, file);
+
       // Update record
       activeReturnForUpload.pickupBy = driverName || 'Transporter Driver';
       activeReturnForUpload.pickupDate = pickupDate || formatTodayDateForDo();
-      activeReturnForUpload.status = 'awaiting_cn';
+      if (activeReturnForUpload.status !== 'completed') {
+        activeReturnForUpload.status = 'awaiting_cn';
+      }
       activeReturnForUpload.updatedAt = new Date().toISOString();
       activeReturnForUpload.signedProof = {
         fileName: file.name,
         path: savedPath,
         oneDriveSynced: oneDriveSaved,
+        cloudDocId: cloudRes.success ? cloudRes.docId : '',
+        cloudFileUrl: cloudRes.success ? cloudRes.fileUrl : '',
+        mimeType: cloudRes.mimeType || file.type || '',
         timestamp: new Date().toISOString()
       };
 
       await saveSingleReturnToDb(activeReturnForUpload);
       localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
       syncReturnsWithOneDrive(activeReturnForUpload.branch);
-      syncReturnsWithGoogleSheets(activeReturnForUpload.branch);
+      await syncReturnsWithGoogleSheets(activeReturnForUpload.branch, true);
 
+      const uploadedId = activeReturnForUpload.id;
       closeUploadSignedDoModal();
       renderReturnsUI();
-      alert(`✅ Signed DO proof successfully archived to OneDrive!\nStatus updated to: "Awaiting Credit Note".`);
+
+      // If Reminder Modal is currently open for the same DO, refresh its status & preview immediately
+      if (activeReturnForReminder && activeReturnForReminder.id === uploadedId) {
+        const remModal = document.getElementById('cnReminderModal');
+        if (remModal && !remModal.classList.contains('hidden')) {
+          openCnReminderModal(uploadedId);
+        }
+      }
+
+      const cloudNote = cloudRes.success
+        ? '\n☁️ Cloud Proof Link is live — suppliers can now view this signed DO from WhatsApp!'
+        : '\n(Saved locally/OneDrive; Digital DO + PRN proof link remains active.)';
+      alert(`✅ Signed DO proof saved!${cloudNote}\nStatus updated to: "Awaiting Credit Note".`);
     } catch (err) {
       console.error('[PMG Returns] Proof upload error:', err);
       alert('Error saving signed DO. Please try again.');
     } finally {
       btn.disabled = false;
-      btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Upload & Save to OneDrive';
+      btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Upload &amp; Save Proof';
     }
   }
 
   function viewSignedProof(returnId) {
     const ret = returnsData.find(r => r.id === returnId);
     if (!ret || !ret.signedProof) return;
-    alert(`📁 Signed DO Proof Location in OneDrive:\n\nPath: ${ret.signedProof.path}\nFile: ${ret.signedProof.fileName}\nDriver: ${ret.pickupBy || 'N/A'}\nDate: ${ret.pickupDate || 'N/A'}`);
+    if (ret.signedProof.cloudDocId && typeof window !== 'undefined' && typeof window.open === 'function') {
+      window.open(buildPublicDoProofUrl(ret), '_blank', 'noopener');
+      return;
+    }
+    alert(`📁 Signed DO Proof Location:\n\nPath: ${ret.signedProof.path}\nFile: ${ret.signedProof.fileName}\nDriver: ${ret.pickupBy || 'N/A'}\nDate: ${ret.pickupDate || 'N/A'}\n\nTip: Re-upload the photo once to enable instant Cloud Proof Link preview for suppliers.`);
+  }
+
+  // ─── MODAL 4B: WHATSAPP SUPPLIER CN REMINDER ─────────────────────────────────
+  function openCnReminderModal(returnId) {
+    const ret = returnsData.find(r => r.id === returnId);
+    if (!ret) return;
+
+    if (!isEligibleForCnReminder(ret)) {
+      if (isStockTransferOrTransit(ret)) {
+        alert('Stock Transfer / Stock In-Transit records do not require supplier Credit Note reminders.');
+      } else {
+        alert('This return already has a Credit Note recorded / settled.');
+      }
+      return;
+    }
+
+    activeReturnForReminder = ret;
+    const modal = document.getElementById('cnReminderModal');
+    if (!modal) return;
+
+    const prns = getUniquePrnNumbers(ret);
+    const savedContact = loadSupplierWaContacts()[getSupplierContactKey(ret.supplier)] || {};
+
+    // Resolve best phone (record supplierWhatsapp -> mobile destPhone -> saved supplier directory)
+    let defaultPhone = String(ret.supplierWhatsapp || '').trim();
+    if (!defaultPhone && ret.destPhone) {
+      const checkDest = normalizeSupplierWaPhone(ret.destPhone);
+      if (checkDest.validMobile) defaultPhone = String(ret.destPhone).trim();
+    }
+    if (!defaultPhone && savedContact.phone) {
+      defaultPhone = savedContact.phone;
+    }
+
+    const defaultPic = String(ret.destAttn || '').trim() || savedContact.picName || '';
+
+    document.getElementById('cnRemDoNumber').textContent = ret.doNumber || 'N/A';
+    document.getElementById('cnRemPrnList').textContent = `PRN: ${prns.length > 0 ? prns.join(', ') : 'None assigned yet'}`;
+    document.getElementById('cnRemSupplier').textContent = ret.supplier || 'Supplier';
+
+    const histEl = document.getElementById('cnRemHistoryBadge');
+    if (histEl) {
+      const count = Number(ret.cnReminderCount) || 0;
+      if (count > 0) {
+        const dt = ret.lastCnReminderAt ? new Date(ret.lastCnReminderAt).toLocaleString('en-MY', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+        histEl.textContent = `Previously reminded ${count}x${dt ? ` · Last: ${dt}` : ''}`;
+      } else {
+        histEl.textContent = 'Not reminded yet';
+      }
+    }
+
+    // Proof Status Banner
+    const proofBox = document.getElementById('cnRemProofStatusBox');
+    if (proofBox) {
+      if (ret.signedProof && ret.signedProof.cloudDocId) {
+        proofBox.className = 'rounded-xl p-3 border text-xs flex flex-wrap items-center justify-between gap-2 bg-emerald-50 border-emerald-200 text-emerald-900';
+        proofBox.innerHTML = `
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-circle-check text-emerald-600 text-base"></i>
+            <div>
+              <p class="font-bold">Signed DO Proof Synced to Cloud Link</p>
+              <p class="text-[11px] text-emerald-700">Supplier will see the full DO + PRN table AND your uploaded signed DO (${escapeHtml(ret.signedProof.fileName)}).</p>
+            </div>
+          </div>
+          <button type="button" onclick="pmgReturns.openUploadSignedDoModal('${ret.id}')" class="px-2.5 py-1 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[11px] font-bold cursor-pointer">Replace File</button>
+        `;
+      } else {
+        proofBox.className = 'rounded-xl p-3 border text-xs flex flex-wrap items-center justify-between gap-2 bg-amber-50 border-amber-200 text-amber-900';
+        proofBox.innerHTML = `
+          <div class="flex items-center gap-2 flex-1 min-w-[200px]">
+            <i class="fa-solid fa-file-invoice text-amber-600 text-base"></i>
+            <div>
+              <p class="font-bold">Digital DO + PRN Link Ready ${ret.signedProof ? '(Signed scan not in cloud yet)' : '(No signed DO scan attached yet)'}</p>
+              <p class="text-[11px] text-amber-800">Supplier can already view the itemized DO &amp; PRN list via link. Optionally attach the signed DO photo so it appears on the same page.</p>
+            </div>
+          </div>
+          <button type="button" onclick="pmgReturns.openUploadSignedDoModal('${ret.id}')" class="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-bold shadow-xs cursor-pointer shrink-0">
+            <i class="fa-solid fa-camera mr-1"></i>Attach Signed DO
+          </button>
+        `;
+      }
+    }
+
+    const phoneInput = document.getElementById('cnRemPhone');
+    const picInput = document.getElementById('cnRemPicName');
+    const urlInput = document.getElementById('cnRemProofUrl');
+    if (phoneInput) phoneInput.value = defaultPhone;
+    if (picInput) picInput.value = defaultPic;
+    if (urlInput) urlInput.value = buildPublicDoProofUrl(ret);
+
+    refreshCnReminderMessagePreview();
+    modal.classList.remove('hidden');
+  }
+
+  function closeCnReminderModal() {
+    document.getElementById('cnReminderModal')?.classList.add('hidden');
+  }
+
+  function refreshCnReminderMessagePreview() {
+    if (!activeReturnForReminder) return;
+    const picName = document.getElementById('cnRemPicName')?.value || '';
+    const msgBox = document.getElementById('cnRemMessageBox');
+    if (msgBox) {
+      msgBox.value = buildSupplierCnReminderMessage(activeReturnForReminder, { picName });
+    }
+  }
+
+  async function recordAndSyncCnReminder(ret, phoneRaw, picName) {
+    if (!ret) return;
+    const cleanPhoneRaw = String(phoneRaw || '').trim();
+    const cleanPic = String(picName || '').trim();
+    if (cleanPhoneRaw || cleanPic) {
+      saveSupplierWaContact(ret.supplier, cleanPhoneRaw, cleanPic);
+    }
+    if (cleanPhoneRaw) ret.supplierWhatsapp = cleanPhoneRaw;
+    if (cleanPic && !ret.destAttn) ret.destAttn = cleanPic;
+    ret.cnReminderCount = (Number(ret.cnReminderCount) || 0) + 1;
+    ret.lastCnReminderAt = new Date().toISOString();
+    ret.updatedAt = new Date().toISOString();
+
+    await saveSingleReturnToDb(ret);
+    try {
+      localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
+    } catch (_) {}
+    await syncReturnsWithGoogleSheets(ret.branch, true);
+    renderReturnsTable();
+  }
+
+  async function sendCnReminderWhatsApp() {
+    if (!activeReturnForReminder) return;
+    const phoneRaw = (document.getElementById('cnRemPhone')?.value || '').trim();
+    const picName = (document.getElementById('cnRemPicName')?.value || '').trim();
+    const msg = (document.getElementById('cnRemMessageBox')?.value || '').trim()
+      || buildSupplierCnReminderMessage(activeReturnForReminder, { picName });
+    const sendBtn = document.getElementById('cnRemSendBtn');
+
+    let waUrl = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    if (phoneRaw) {
+      const parsed = normalizeSupplierWaPhone(phoneRaw);
+      if (parsed.isLandline) {
+        const usePicker = confirm(`"${phoneRaw}" looks like a landline number (cannot receive WhatsApp).\n\nClick OK to open WhatsApp so you can choose a Supplier Group or contact manually, or Cancel to edit the mobile number.`);
+        if (!usePicker) return;
+      } else if (parsed.clean) {
+        waUrl = `https://wa.me/${parsed.clean}?text=${encodeURIComponent(msg)}`;
+      }
+    }
+
+    // Open WhatsApp tab immediately on user gesture or after fast cloud push
+    if (sendBtn) {
+      sendBtn.disabled = true;
+      sendBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Syncing Proof Link…';
+    }
+    try {
+      await recordAndSyncCnReminder(activeReturnForReminder, phoneRaw, picName);
+    } finally {
+      if (sendBtn) {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = '<i class="fa-brands fa-whatsapp text-sm"></i> Send via WhatsApp';
+      }
+    }
+
+    window.open(waUrl, '_blank', 'noopener');
+    closeCnReminderModal();
+  }
+
+  async function copyCnReminderMessage() {
+    if (!activeReturnForReminder) return;
+    const phoneRaw = (document.getElementById('cnRemPhone')?.value || '').trim();
+    const picName = (document.getElementById('cnRemPicName')?.value || '').trim();
+    const msg = (document.getElementById('cnRemMessageBox')?.value || '').trim()
+      || buildSupplierCnReminderMessage(activeReturnForReminder, { picName });
+
+    try {
+      await recordAndSyncCnReminder(activeReturnForReminder, phoneRaw, picName);
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(msg);
+      }
+      alert('✅ CN reminder message & clickable DO/PRN proof link copied! Paste directly into your Supplier WhatsApp chat or group.');
+    } catch (err) {
+      console.warn('[PMG Returns] Copy reminder warning:', err);
+      alert('Proof link synced. Please copy the message directly from the preview box.');
+    }
+  }
+
+  async function previewPublicDoProofInNewTab() {
+    if (!activeReturnForReminder) return;
+    await syncReturnsWithGoogleSheets(activeReturnForReminder.branch, true);
+    window.open(buildPublicDoProofUrl(activeReturnForReminder), '_blank', 'noopener');
+  }
+
+  // ─── PUBLIC SUPPLIER DO & PRN DOCUMENT OF PROOF PORTAL (?doProof=...) ────────
+  async function fetchReturnRecordForProofPortal(returnId, branchHint) {
+    const cleanId = String(returnId || '').trim();
+    if (!cleanId) return null;
+
+    // 1. Try live Google Cloud Vault first so suppliers on external devices get latest record
+    const branchCandidates = Array.from(new Set([
+      branchHint ? normalizeBranchForSheets(branchHint) : '',
+      'Kota Sentosa'
+    ].filter(Boolean)));
+
+    for (const br of branchCandidates) {
+      const vaultKeys = [`PMG_RETURNS_VAULT_${br}`, br];
+      for (const vk of vaultKeys) {
+        try {
+          const res = await fetch(`${PMG_SCHEDULE_API_URL}?branch=${encodeURIComponent(vk)}`);
+          if (!res.ok) continue;
+          const data = await res.json();
+          const list = data && data.schedule && Array.isArray(data.schedule.branchReturns)
+            ? data.schedule.branchReturns : [];
+          const found = list.find(r => r && (r.id === cleanId || r.doNumber === cleanId));
+          if (found) return found;
+        } catch (_) {}
+      }
+    }
+
+    // 2. Fallback to local cache / IndexedDB / seed records
+    try {
+      const cached = JSON.parse(localStorage.getItem('pmg_returns_records_v1') || '[]');
+      const foundLocal = cached.find(r => r && (r.id === cleanId || r.doNumber === cleanId));
+      if (foundLocal) return foundLocal;
+    } catch (_) {}
+
+    const foundMem = (returnsData || []).find(r => r && (r.id === cleanId || r.doNumber === cleanId));
+    if (foundMem) return foundMem;
+
+    return SEED_RETURNS.find(r => r && (r.id === cleanId || r.doNumber === cleanId)) || null;
+  }
+
+  async function renderPublicDoProofPortal(containerId, returnId, branchHint) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    container.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-lg border border-slate-200 p-10 text-center">
+        <i class="fa-solid fa-circle-notch fa-spin text-3xl text-emerald-600 mb-3"></i>
+        <p class="text-sm font-bold text-slate-800">Loading Official PMG Delivery Order &amp; PRN Proof…</p>
+        <p class="text-xs text-slate-500 mt-1">Reference: ${escapeHtml(returnId)}</p>
+      </div>
+    `;
+
+    const ret = await fetchReturnRecordForProofPortal(returnId, branchHint);
+    if (!ret) {
+      container.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-lg border border-rose-200 p-8 text-center">
+          <i class="fa-solid fa-file-circle-xmark text-4xl text-rose-500 mb-3"></i>
+          <h2 class="text-lg font-black text-slate-900">Document of Proof Not Found</h2>
+          <p class="text-xs text-slate-600 mt-2">Reference <span class="font-mono font-bold">${escapeHtml(returnId)}</span> could not be loaded from PMG cloud records. Please contact PMG Pharmacy branch to resend the latest link.</p>
+        </div>
+      `;
+      return;
+    }
+
+    const prns = getUniquePrnNumbers(ret);
+    const items = Array.isArray(ret.items) ? ret.items : [];
+    const branchInfo = getBranchDetails(ret.branch || 'Kota Sentosa');
+    const statusLabel = ret.cnNumber
+      ? `CN Settled (${ret.cnNumber})`
+      : (ret.status === 'awaiting_cn' ? 'Collected · Awaiting Credit Note (CN)' : 'Return Logged · Pending Credit Note (CN)');
+
+    container.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+        <!-- Official Header -->
+        <div class="bg-gradient-to-r from-slate-900 via-blue-950 to-emerald-900 text-white px-6 py-5 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 text-[10px] font-bold uppercase tracking-wider mb-1.5">
+              <i class="fa-solid fa-shield-check"></i> Official Return Document of Proof
+            </div>
+            <h1 class="text-lg sm:text-xl font-black tracking-tight">${escapeHtml(ret.companyName || branchInfo.companyName)}</h1>
+            <p class="text-[11px] text-slate-300 mt-0.5 max-w-2xl">${escapeHtml(ret.companyAddress || branchInfo.address)}</p>
+          </div>
+          <div class="flex items-center gap-2 print:hidden">
+            <button type="button" onclick="window.print()" class="px-3.5 py-2 bg-white text-slate-900 hover:bg-slate-100 rounded-xl text-xs font-bold shadow cursor-pointer flex items-center gap-1.5">
+              <i class="fa-solid fa-print text-blue-700"></i> Print / Save PDF
+            </button>
+          </div>
+        </div>
+
+        <!-- DO & PRN Metadata Grid -->
+        <div class="p-6 space-y-5">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div class="bg-blue-50/70 border border-blue-200 rounded-xl p-3">
+              <div class="text-[10px] font-bold text-blue-600 uppercase">Delivery Order (DO) No.</div>
+              <div class="font-mono text-base font-black text-blue-950 mt-0.5">${escapeHtml(ret.doNumber || 'N/A')}</div>
+              <div class="text-[11px] text-blue-800 mt-0.5">Date: ${escapeHtml(ret.date || 'N/A')}</div>
+            </div>
+            <div class="bg-amber-50/80 border border-amber-300 rounded-xl p-3">
+              <div class="text-[10px] font-bold text-amber-700 uppercase">PRN Reference Slip(s)</div>
+              <div class="mt-1 flex flex-wrap gap-1">
+                ${prns.length > 0
+                  ? prns.map(p => `<span class="px-2 py-0.5 rounded bg-amber-200/80 text-amber-950 font-mono text-xs font-black border border-amber-400">${escapeHtml(p)}</span>`).join('')
+                  : '<span class="text-xs text-amber-800 font-semibold">See itemized list</span>'}
+              </div>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+              <div class="text-[10px] font-bold text-slate-500 uppercase">Supplier / Recipient</div>
+              <div class="text-xs font-black text-slate-900 mt-0.5">${escapeHtml(ret.supplier || 'N/A')}</div>
+              ${ret.destAttn ? `<div class="text-[11px] text-slate-600 mt-0.5">Attn: ${escapeHtml(ret.destAttn)}</div>` : ''}
+            </div>
+            <div class="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3">
+              <div class="text-[10px] font-bold text-emerald-700 uppercase">CN &amp; Collection Status</div>
+              <div class="text-xs font-black text-emerald-900 mt-0.5">${escapeHtml(statusLabel)}</div>
+              <div class="text-[11px] text-emerald-800 mt-0.5">${ret.pickupBy ? `Driver: ${escapeHtml(ret.pickupBy)}${ret.pickupDate ? ` (${escapeHtml(ret.pickupDate)})` : ''}` : `Cartons: ${ret.totalCartons || 1} · ${items.length} SKU(s)`}</div>
+            </div>
+          </div>
+
+          <!-- Itemized Return Goods Table -->
+          <div>
+            <h2 class="text-xs font-black uppercase tracking-wider text-slate-700 mb-2 flex items-center gap-1.5">
+              <i class="fa-solid fa-boxes-stacked text-blue-600"></i> Returned Goods Breakdown (${items.length} SKU${items.length !== 1 ? 's' : ''}, ${ret.totalCartons || 1} Carton${(ret.totalCartons || 1) !== 1 ? 's' : ''})
+            </h2>
+            <div class="overflow-x-auto border border-slate-200 rounded-xl">
+              <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr class="bg-slate-100 text-slate-600 text-[10px] font-bold uppercase border-b border-slate-200">
+                    <th class="py-2.5 px-3 text-center">Ctn</th>
+                    <th class="py-2.5 px-3">PRN No.</th>
+                    <th class="py-2.5 px-3">Item Code</th>
+                    <th class="py-2.5 px-3">Description</th>
+                    <th class="py-2.5 px-3">Batch / Expiry</th>
+                    <th class="py-2.5 px-3 text-center">Qty</th>
+                    <th class="py-2.5 px-3">Reason</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  ${items.map((it, idx) => `
+                    <tr class="${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}">
+                      <td class="py-2 px-3 text-center font-mono font-bold text-slate-600">${escapeHtml(it.cartonNo || '1')}</td>
+                      <td class="py-2 px-3 font-mono font-black text-amber-800">${escapeHtml(it.prnNumber || '—')}</td>
+                      <td class="py-2 px-3 font-mono text-slate-600">${escapeHtml(it.itemCode || '—')}</td>
+                      <td class="py-2 px-3 font-semibold text-slate-900">${escapeHtml(it.itemDescription || '')}</td>
+                      <td class="py-2 px-3 text-[11px] text-slate-600">${escapeHtml([it.batchNo, it.expiryDate].filter(Boolean).join(' · ') || '—')}</td>
+                      <td class="py-2 px-3 text-center font-bold text-slate-900">${escapeHtml(it.quantity || '1')} <span class="text-[10px] text-slate-500">${escapeHtml(it.uom || '')}</span></td>
+                      <td class="py-2 px-3"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">${escapeHtml(it.reason || 'Return')}</span></td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Driver-Signed DO Proof Attachment Section -->
+          <div id="publicDoSignedAttachmentBox" class="border border-slate-200 rounded-xl p-4 bg-slate-50">
+            ${ret.signedProof && ret.signedProof.cloudDocId ? `
+              <div class="flex items-center gap-2 text-xs font-bold text-slate-700">
+                <i class="fa-solid fa-circle-notch fa-spin text-emerald-600"></i>
+                <span>Loading driver-signed DO proof attachment (${escapeHtml(ret.signedProof.fileName)})…</span>
+              </div>
+            ` : `
+              <div class="flex items-center gap-2.5 text-xs text-slate-600">
+                <i class="fa-solid fa-file-signature text-blue-600 text-base"></i>
+                <div>
+                  <p class="font-bold text-slate-800">Verified PMG Branch Return Record</p>
+                  <p class="text-[11px] text-slate-500">Prepared / Verified By: <strong>${escapeHtml(ret.verifiedBy || 'PMG Pharmacist')}</strong>${ret.pickupBy ? ` · Driver: <strong>${escapeHtml(ret.pickupBy)}</strong> (${escapeHtml(ret.pickupDate || '')})` : ''}</p>
+                </div>
+              </div>
+            `}
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Fetch driver-signed DO scan from cloud vault if available
+    if (ret.signedProof && ret.signedProof.cloudDocId) {
+      const attBox = document.getElementById('publicDoSignedAttachmentBox');
+      try {
+        const docRes = await fetch(`${PMG_SCHEDULE_API_URL}?action=getApplicantDoc&docId=${encodeURIComponent(ret.signedProof.cloudDocId)}`);
+        const docJson = docRes.ok ? await docRes.json() : null;
+        if (attBox && docJson && docJson.success && docJson.data) {
+          const mime = String(docJson.mimeType || ret.signedProof.mimeType || '').toLowerCase();
+          const fName = ret.signedProof.fileName || docJson.name || `${ret.doNumber}_Signed_DO`;
+          const isPdf = mime.includes('pdf') || docJson.data.startsWith('data:application/pdf');
+          if (isPdf) {
+            let blobUrl = docJson.data;
+            try {
+              const b64 = docJson.data.includes(',') ? docJson.data.split(',')[1] : docJson.data;
+              const bin = atob(b64);
+              const bytes = new Uint8Array(bin.length);
+              for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+              blobUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+            } catch (_) {}
+            attBox.innerHTML = `
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div class="text-xs font-black text-emerald-900 flex items-center gap-1.5">
+                  <i class="fa-solid fa-file-pdf text-rose-600 text-base"></i> Driver-Signed DO Proof (PDF)
+                </div>
+                <a href="${blobUrl}" download="${escapeHtml(fName)}" target="_blank" rel="noopener" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5">
+                  <i class="fa-solid fa-download"></i> Open / Download Signed DO
+                </a>
+              </div>
+              <iframe src="${blobUrl}" class="w-full h-[540px] rounded-xl border border-slate-300 bg-white"></iframe>
+            `;
+          } else {
+            attBox.innerHTML = `
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div class="text-xs font-black text-emerald-900 flex items-center gap-1.5">
+                  <i class="fa-solid fa-file-shield text-emerald-600 text-base"></i> Driver-Signed DO Proof Copy
+                </div>
+                <a href="${docJson.data}" download="${escapeHtml(fName)}" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5">
+                  <i class="fa-solid fa-download"></i> Download Signed DO Photo
+                </a>
+              </div>
+              <img src="${docJson.data}" alt="Driver Signed DO Proof" class="w-full max-h-[720px] object-contain rounded-xl border border-slate-300 bg-white shadow-xs">
+            `;
+          }
+        } else if (attBox) {
+          attBox.innerHTML = `<p class="text-xs text-amber-800 font-semibold"><i class="fa-solid fa-circle-info mr-1"></i>Signed DO file (${escapeHtml(ret.signedProof.fileName)}) is archived on branch OneDrive. Refer to the verified DO &amp; PRN breakdown above.</p>`;
+        }
+      } catch (err) {
+        if (attBox) {
+          attBox.innerHTML = `<p class="text-xs text-amber-800 font-semibold"><i class="fa-solid fa-circle-info mr-1"></i>Could not load signed DO image attachment right now. Please refer to the verified DO &amp; PRN breakdown above.</p>`;
+        }
+      }
+    }
   }
 
   // ─── MODAL 4: SETTLE CREDIT NOTE & KEY XILNEX SYSTEM ─────────────────────────
@@ -3523,6 +4220,18 @@
     handleUsdFileSelected: handleUsdFileSelected,
     submitSignedDoProof: submitSignedDoProof,
     viewSignedProof: viewSignedProof,
+    isStockTransferOrTransit: isStockTransferOrTransit,
+    isEligibleForCnReminder: isEligibleForCnReminder,
+    normalizeSupplierWaPhone: normalizeSupplierWaPhone,
+    buildPublicDoProofUrl: buildPublicDoProofUrl,
+    buildSupplierCnReminderMessage: buildSupplierCnReminderMessage,
+    openCnReminderModal: openCnReminderModal,
+    closeCnReminderModal: closeCnReminderModal,
+    refreshCnReminderMessagePreview: refreshCnReminderMessagePreview,
+    sendCnReminderWhatsApp: sendCnReminderWhatsApp,
+    copyCnReminderMessage: copyCnReminderMessage,
+    previewPublicDoProofInNewTab: previewPublicDoProofInNewTab,
+    renderPublicDoProofPortal: renderPublicDoProofPortal,
     openSettleCnModal: openSettleCnModal,
     closeSettleCnModal: closeSettleCnModal,
     submitSettleCn: submitSettleCn,
@@ -3533,19 +4242,22 @@
     setReturnsData: setReturnsData,
     onCloudSync: onCloudSync,
     syncWithOneDrive: () => syncReturnsWithOneDrive(getActiveBranchName()),
-    syncWithGoogleSheets: () => syncReturnsWithGoogleSheets(getActiveBranchName())
+    syncWithGoogleSheets: (forcePush = false) => syncReturnsWithGoogleSheets(getActiveBranchName(), forcePush)
   };
 
   // Global convenience aliases
   window.openEditReturnModal = openEditReturnModal;
   window.openSettleCnModal = openSettleCnModal;
+  window.openCnReminderModal = openCnReminderModal;
   window.deleteReturnRecord = deleteReturnRecord;
   window.viewSignedProof = viewSignedProof;
   window.removeDraftItemRow = removeDraftItemRow;
   window.downloadHqExcelTemplate = downloadHqExcelTemplate;
 
-  // Auto-init on page load if container exists
+  // Auto-init on page load if container exists (skip during external ?doProof= view)
   document.addEventListener('DOMContentLoaded', () => {
+    const sp = new URLSearchParams(window.location.search || '');
+    if (sp.get('doProof') || sp.get('cnProof')) return;
     if (document.getElementById('content-returns')) {
       initReturnsModule();
     }

@@ -1739,6 +1739,105 @@ function createBrowserSandbox(fetchImpl) {
     assert.strictEqual(slot.time, '11:30', 'Slot time must match candidate booking');
   });
 
+  await testAsync('Returns & CN: WhatsApp Supplier CN Reminder excludes Stock Transfer/In-Transit & settled CNs, generates DO+PRN proof link, and renders Public Proof Portal', async () => {
+    const sampleReturn = {
+      id: 'ret-ks-2611-777',
+      doNumber: 'DO-KS-2611-777',
+      branch: 'Kota Sentosa',
+      date: '20.11.2026',
+      supplier: 'DKSH MALAYSIA SDN BHD',
+      destCompany: 'DKSH MALAYSIA SDN BHD',
+      destAttn: 'Ms Lim',
+      status: 'awaiting_cn',
+      pickupBy: 'Lian Ping Express',
+      pickupDate: '20.11.2026',
+      totalCartons: 2,
+      cnNumber: '',
+      signedProof: {
+        fileName: 'signed_do_777.jpg',
+        cloudDocId: 'DO_PROOF_ret-ks-2611-777_signedDoProof_1',
+        mimeType: 'image/jpeg'
+      },
+      items: [
+        { cartonNo: '1', itemCode: '100101', itemDescription: 'Panadol Actifast 20s', quantity: 5, uom: 'BOX', prnNumber: 'PRN-0412', reason: 'Near Expiry', batchNo: 'B123', expiryDate: '01/2027' },
+        { cartonNo: '2', itemCode: '100202', itemDescription: 'Blackmores Bio C 1000mg', quantity: 3, uom: 'BTL', prnNumber: 'PRN-0413', reason: 'Slow Moving Stock', batchNo: 'B456', expiryDate: '03/2027' }
+      ]
+    };
+
+    const fetchImpl = async (url) => {
+      if (url.includes('PMG_RETURNS_VAULT_Kota')) {
+        return {
+          ok: true,
+          json: async () => ({ success: true, schedule: { branchCode: 'Kota Sentosa', branchReturns: [sampleReturn] } })
+        };
+      }
+      if (url.includes('action=getApplicantDoc') && url.includes('DO_PROOF_ret-ks-2611-777')) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            docId: 'DO_PROOF_ret-ks-2611-777_signedDoProof_1',
+            name: 'signed_do_777.jpg',
+            mimeType: 'image/jpeg',
+            data: 'data:image/jpeg;base64,/9j/4AAQSkZJRg=='
+          })
+        };
+      }
+      return { ok: true, json: async () => ({ success: true }) };
+    };
+
+    const { ctx, doc } = createBrowserSandbox(fetchImpl);
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'returns-cn.js'), 'utf8'), ctx);
+    const api = ctx.window.pmgReturns;
+
+    // 1. Eligibility rules
+    assert.strictEqual(api.isEligibleForCnReminder(sampleReturn), true, 'Pending external supplier return with no CN must be eligible');
+    assert.strictEqual(api.isEligibleForCnReminder({
+      ...sampleReturn,
+      id: 'ret-transit-1',
+      items: [{ prnNumber: 'PRN-900', reason: 'In-Transit' }]
+    }), false, 'Stock In-Transit must be excluded from CN reminders');
+    assert.strictEqual(api.isEligibleForCnReminder({
+      ...sampleReturn,
+      id: 'ret-transfer-1',
+      supplier: 'INTERBRANCH TRANSFER',
+      destCompany: 'PMG PHARMACY (MATANG JAYA) SDN BHD',
+      items: [{ prnNumber: '', reason: 'Other' }]
+    }), false, 'Interbranch Stock Transfer must be excluded from CN reminders');
+    assert.strictEqual(api.isEligibleForCnReminder({
+      ...sampleReturn,
+      id: 'ret-done-1',
+      status: 'completed',
+      cnNumber: 'CN-DKSH-9988'
+    }), false, 'Settled/CN-issued return must be excluded from CN reminders');
+
+    // 2. Phone normalization
+    const mob = api.normalizeSupplierWaPhone('012-345 6789');
+    assert.strictEqual(mob.clean, '60123456789', 'Malaysia mobile must normalize to 601...');
+    assert.strictEqual(mob.validMobile, true, 'Normalized 012 number must be valid mobile');
+    const land = api.normalizeSupplierWaPhone('082-629888');
+    assert.strictEqual(land.isLandline, true, 'Sarawak 082 number must be flagged as landline');
+
+    // 3. Proof URL & WhatsApp Message
+    const proofUrl = api.buildPublicDoProofUrl(sampleReturn);
+    assert(proofUrl.includes('?doProof=ret-ks-2611-777'), 'Proof URL must contain ?doProof=<returnId>');
+    assert(proofUrl.includes('branch=Kota%20Sentosa'), 'Proof URL must include encoded branch parameter');
+
+    const waMsg = api.buildSupplierCnReminderMessage(sampleReturn);
+    assert(waMsg.includes('DO-KS-2611-777'), 'WhatsApp reminder must include DO Number');
+    assert(waMsg.includes('PRN-0412, PRN-0413'), 'WhatsApp reminder must include all PRN numbers');
+    assert(waMsg.includes(proofUrl), 'WhatsApp reminder must embed clickable Document of Proof link');
+
+    // 4. Public Supplier DO & PRN Proof Portal renders DO + PRNs + Signed Proof image
+    const portalContainer = doc.getElementById('publicJobAppContainer');
+    await api.renderPublicDoProofPortal('publicJobAppContainer', 'ret-ks-2611-777', 'Kota Sentosa');
+    assert(portalContainer.innerHTML.includes('DO-KS-2611-777'), 'Public proof portal must display DO Number');
+    assert(portalContainer.innerHTML.includes('PRN-0412') && portalContainer.innerHTML.includes('PRN-0413'), 'Public proof portal must display PRN slips');
+    assert(portalContainer.innerHTML.includes('Panadol Actifast 20s'), 'Public proof portal must display returned items');
+    const attBox = doc.getElementById('publicDoSignedAttachmentBox');
+    assert(attBox && attBox.innerHTML.includes('Driver-Signed DO Proof Copy'), 'Public proof portal must fetch and embed cloud-hosted driver-signed DO proof');
+  });
+
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);
   process.exit(failed > 0 ? 1 : 0);
 })();
