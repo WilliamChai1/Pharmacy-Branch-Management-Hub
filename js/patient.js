@@ -9511,11 +9511,11 @@ function confirmLarkImport() {
     }
   });
 
+  const firstPt = pendingLarkPatients[0];
   savePatientsData();
   closeLarkImportModal();
   renderPatientModule();
 
-  const firstPt = pendingLarkPatients[0];
   if (firstPt) {
     const matched = patientsData.find(p => normalizeNameForMatching(p.name) === normalizeNameForMatching(firstPt.name) || (p.ic && firstPt.ic && p.ic === firstPt.ic));
     if (matched) viewPatientProfile(matched.id);
