@@ -2065,6 +2065,144 @@ function createBrowserSandbox(fetchImpl) {
     assert(schedSrc.includes('savePrefBtn.addEventListener(\'click\', () => saveTeammatePreferences(false))'), 'scheduler.js must explicitly pass silent=false on savePrefBtn click');
   });
 
+  test('Patient Care Hepatic Steatosis Index (HSI) 4-Tier Fatty Liver Risk Calculator, Live Auto-BMI Binding, Persistence & sw.js Cache Bump', () => {
+    const swSrc = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+    assert(swSrc.includes("const CACHE_NAME = 'pmg-hub-cache-v59';"), 'sw.js CACHE_NAME must be bumped to pmg-hub-cache-v59');
+
+    const htmlSrc = fs.readFileSync(path.join(ROOT, 'patient', 'index.html'), 'utf8');
+    assert(htmlSrc.includes('id="encBcaHsiBox"') && htmlSrc.includes('id="encLftHsiBox"') && htmlSrc.includes('id="profHsiRiskContainer"'), 'patient/index.html must include live HSI triage callouts and profile summary pill');
+
+    const sb = createBrowserSandbox();
+    const patientSrc = fs.readFileSync(path.join(ROOT, 'js', 'patient.js'), 'utf8');
+    vm.runInContext(patientSrc, sb.ctx);
+
+    const calcHsi = sb.win.calculateHsiRisk;
+    assert.strictEqual(typeof calcHsi, 'function', 'calculateHsiRisk must be exported on window');
+
+    // 1. Blank / zero / missing ALT, AST, or BMI -> Neutral Pending state without throwing
+    const pendingBlank = calcHsi({});
+    assert.strictEqual(pendingBlank.isPending, true);
+    assert.strictEqual(pendingBlank.badgeLabel, 'Pending ALT / AST / BMI');
+    assert.strictEqual(pendingBlank.hsiScore, null);
+
+    const pendingZeroAst = calcHsi({ alt: 35, ast: 0, bmi: 24.5 });
+    assert.strictEqual(pendingZeroAst.isPending, true);
+    assert.strictEqual(pendingZeroAst.badgeLabel, 'Pending ALT / AST / BMI');
+
+    // 2. Low Risk (Emerald Badge): HSI < 30 and Visceral Fat < 10 or empty
+    // Male, non-diabetic, ALT 20, AST 25, BMI 22.0 -> 8*(20/25) + 22.0 = 6.4 + 22.0 = 28.4
+    const lowRisk = calcHsi({ alt: 20, ast: 25, bmi: 22.0, sex: 'Male', hasT2dm: false, visceralFat: 7 });
+    assert.strictEqual(lowRisk.isPending, false);
+    assert.strictEqual(lowRisk.hsiScore, 28.4);
+    assert.strictEqual(lowRisk.hsiTier, 'Low Risk');
+    assert(lowRisk.badgeClass.includes('emerald'), 'Low Risk must use Emerald badge styling');
+    assert(lowRisk.guidance.includes('95% negative predictive value'), 'Low Risk must include ~95% NPV guidance');
+
+    // 3. Borderline / Monitor (Amber Badge):
+    // Case A: HSI 30-36 with Visceral Fat < 10 or empty
+    // Female (+2), non-diabetic, ALT 25, AST 25 (ratio 1.0 -> 8), BMI 23.5 -> 8 + 23.5 + 2 = 33.5
+    const borderlineGray = calcHsi({ alt: 25, ast: 25, bmi: 23.5, sex: 'Female', hasT2dm: false, visceralFat: 8 });
+    assert.strictEqual(borderlineGray.hsiScore, 33.5);
+    assert.strictEqual(borderlineGray.hsiTier, 'Borderline / Monitor');
+    assert(borderlineGray.badgeClass.includes('amber'), 'Borderline / Monitor must use Amber badge styling');
+    assert(borderlineGray.guidance.includes('recheck BIA & LFTs in 6 months'));
+
+    // Case B: HSI < 30 with Visceral Fat >= 10
+    const borderlineVf = calcHsi({ alt: 20, ast: 25, bmi: 22.0, sex: 'Male', hasT2dm: false, visceralFat: 11 });
+    assert.strictEqual(borderlineVf.hsiScore, 28.4);
+    assert.strictEqual(borderlineVf.hsiTier, 'Borderline / Monitor');
+
+    // 4. High Steatosis Risk (Orange Badge):
+    // Case A: HSI 30-36 upgraded by Visceral Fat >= 10 (ALT >= AST so no fibrosis warning)
+    const upgradedHigh = calcHsi({ alt: 25, ast: 25, bmi: 23.5, sex: 'Female', hasT2dm: false, visceralFat: 12 });
+    assert.strictEqual(upgradedHigh.hsiScore, 33.5);
+    assert.strictEqual(upgradedHigh.hsiTier, 'High Steatosis Risk');
+    assert.strictEqual(upgradedHigh.upgradedByVisceralFat, true);
+    assert(upgradedHigh.badgeClass.includes('orange'), 'High Steatosis Risk must use Orange badge styling');
+    assert(upgradedHigh.guidance.includes('upgraded from the 30–36 gray zone due to BIA Visceral Fat ≥ 10'), 'Upgraded High Steatosis Risk must note BIA Visceral Fat >= 10 upgrade');
+
+    // Case B: HSI > 36 directly (Female +2, T2DM +2, ALT 45, AST 30 -> 8*1.5 + 26.0 + 4 = 42.0)
+    const directHigh = calcHsi({ alt: 45, ast: 30, bmi: 26.0, sex: 'Female', hasT2dm: true });
+    assert.strictEqual(directHigh.hsiScore, 42.0);
+    assert.strictEqual(directHigh.hsiTier, 'High Steatosis Risk');
+    assert(directHigh.guidance.includes('Both Rosuvastatin and Atorvastatin are safe if ALT/AST < 3× ULN'));
+
+    // 5. Fibrosis Warning (Red Badge): (HSI > 36 || (HSI >= 30 && visceralFat >= 10)) && AST > ALT
+    // Case A: HSI 30-36 + Visceral Fat >= 10 + AST > ALT (AST 40, ALT 30 -> 8*(30/40)=6 + BMI 24.5 + Female 2 = 32.5, VF=11)
+    const fibrosisUpgraded = calcHsi({ alt: 30, ast: 40, bmi: 24.5, sex: 'Female', hasT2dm: false, visceralFat: 11 });
+    assert.strictEqual(fibrosisUpgraded.hsiScore, 32.5);
+    assert.strictEqual(fibrosisUpgraded.hsiTier, 'Fibrosis Warning');
+    assert(fibrosisUpgraded.badgeClass.includes('red') || fibrosisUpgraded.badgeClass.includes('rose'), 'Fibrosis Warning must use Red badge styling');
+    assert(fibrosisUpgraded.guidance.includes('Possible liver fibrosis (AST/ALT > 1.0). Request Platelet count to calculate FIB-4; if statin therapy is indicated, prefer low-dose Rosuvastatin (5 mg) over Atorvastatin.'), 'Fibrosis Warning must include exact FIB-4 and Rosuvastatin 5 mg guidance');
+
+    // Case B: HSI > 36 + AST > ALT (AST 50, ALT 40 -> 6.4 + BMI 28.0 + Female 2 + T2DM 2 = 38.4)
+    const fibrosisDirect = calcHsi({ alt: 40, ast: 50, bmi: 28.0, sex: 'Female', hasT2dm: true, visceralFat: 9 });
+    assert.strictEqual(fibrosisDirect.hsiScore, 38.4);
+    assert.strictEqual(fibrosisDirect.hsiTier, 'Fibrosis Warning');
+
+    // 6. Live DOM Weight/Height -> Auto-BMI -> HSI recalculation test
+    const weightEl = sb.doc.getElementById('encWeight');
+    const heightEl = sb.doc.getElementById('encHeight');
+    const bmiEl = sb.doc.getElementById('encBmi');
+    const vfEl = sb.doc.getElementById('encVisceralFat');
+    const astEl = sb.doc.getElementById('encAst');
+    const altEl = sb.doc.getElementById('encAlt');
+    const sexEl = sb.doc.getElementById('encHsiSex');
+    const dmEl = sb.doc.getElementById('encHsiT2dm');
+
+    sb.win.setupEncounterAutoCalculations();
+
+    // Initially blank -> Pending
+    weightEl.value = '';
+    heightEl.value = '';
+    bmiEl.value = '';
+    vfEl.value = '';
+    astEl.value = '';
+    altEl.value = '';
+    const initDomRes = sb.win.recalculateEncounterHsi();
+    assert.strictEqual(initDomRes.isPending, true);
+    assert.strictEqual(sb.doc.getElementById('encHsiBadge').textContent, 'Pending ALT / AST / BMI');
+
+    // Enter weight=65kg, height=160cm (BMI=25.4), Female, No T2DM, ALT=30, AST=40 (HSI = 8*0.75 + 25.4 + 2 = 33.4), VF=12
+    sexEl.value = 'Female';
+    dmEl.value = '0';
+    astEl.value = '40';
+    altEl.value = '30';
+    vfEl.value = '12';
+    weightEl.value = '65';
+    heightEl.value = '160';
+    // Trigger weight input listener
+    if (typeof weightEl._listeners?.input === 'function') {
+      weightEl._listeners.input();
+    } else {
+      bmiEl.value = (65 / Math.pow(1.6, 2)).toFixed(1);
+    }
+    const liveDomRes = sb.win.recalculateEncounterHsi();
+    assert.strictEqual(bmiEl.value, '25.4', 'Auto-BMI must update to 25.4 from 65kg / 160cm');
+    assert.strictEqual(liveDomRes.hsiScore, 33.4);
+    assert.strictEqual(liveDomRes.hsiTier, 'Fibrosis Warning');
+    assert(sb.doc.getElementById('encHsiBadge').textContent.includes('Fibrosis Warning'));
+    assert(sb.doc.getElementById('encBcaHsiBadge').textContent.includes('Fibrosis Warning'));
+
+    // 7. PDPA Sanitization test: hsiScore, hsiTier, hsiRisk must be stripped from Google Cloud payloads
+    const sanitized = sb.win.sanitizePayloadForGoogleCloud({
+      action: 'syncSchedule',
+      branch: 'KS01',
+      hsiScore: 38.4,
+      hsiTier: 'Fibrosis Warning',
+      hsiRisk: fibrosisDirect,
+      booking: {
+        customerName: 'Test Patient',
+        hsiScore: 38.4,
+        hsiTier: 'Fibrosis Warning'
+      }
+    });
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(sanitized, 'hsiScore'), false, 'hsiScore must be stripped from Google Cloud payload');
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(sanitized, 'hsiTier'), false, 'hsiTier must be stripped from Google Cloud payload');
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(sanitized, 'hsiRisk'), false, 'hsiRisk must be stripped from Google Cloud payload');
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(sanitized.booking, 'hsiScore'), false, 'nested hsiScore must be stripped from Google Cloud payload');
+  });
+
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);
   process.exit(failed > 0 ? 1 : 0);
 })();

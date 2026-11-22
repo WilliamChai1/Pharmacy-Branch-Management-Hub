@@ -2760,6 +2760,8 @@
             localP.notes = cloudP.notes || localP.notes;
             localP.nextTcaDate = cloudP.nextTcaDate || localP.nextTcaDate;
             localP.nextTcaPurpose = cloudP.nextTcaPurpose || localP.nextTcaPurpose;
+            if (cloudP.hsiScore != null) localP.hsiScore = cloudP.hsiScore;
+            if (cloudP.hsiTier != null) localP.hsiTier = cloudP.hsiTier;
             localP.updatedAt = cloudP.updatedAt || localP.updatedAt;
           } else {
             // Local is newer or equal: preserve local edits! Only fill fields that are empty locally
@@ -2777,6 +2779,8 @@
             localP.notes = localP.notes || cloudP.notes;
             localP.nextTcaDate = localP.nextTcaDate || cloudP.nextTcaDate;
             localP.nextTcaPurpose = localP.nextTcaPurpose || cloudP.nextTcaPurpose;
+            if (localP.hsiScore == null && cloudP.hsiScore != null) localP.hsiScore = cloudP.hsiScore;
+            if (localP.hsiTier == null && cloudP.hsiTier != null) localP.hsiTier = cloudP.hsiTier;
             if (!localP.updatedAt && cloudP.updatedAt) localP.updatedAt = cloudP.updatedAt;
           }
 
@@ -2810,6 +2814,7 @@
         if (a.nextTcaDate !== b.nextTcaDate || a.nextTcaPurpose !== b.nextTcaPurpose) return false;
         if (a.allergies !== b.allergies || a.notes !== b.notes) return false;
         if ((a.medicalHistory || '') !== (b.medicalHistory || '') || (a.height || '') !== (b.height || '')) return false;
+        if ((a.hsiScore ?? '') !== (b.hsiScore ?? '') || (a.hsiTier || '') !== (b.hsiTier || '')) return false;
         if ((a.updatedAt || '') !== (b.updatedAt || '')) return false;
 
         // Sub-array lengths
@@ -2829,6 +2834,8 @@
             if ((encA.lastUpdatedAt || '') !== (encB.lastUpdatedAt || '')) return false;
             if ((encA.chiefComplaint || '') !== (encB.chiefComplaint || '') || (encA.preDiagnostic || '') !== (encB.preDiagnostic || '')) return false;
             if ((encA.planMedications || '') !== (encB.planMedications || '') || (encA.planCounselling || '') !== (encB.planCounselling || '')) return false;
+            if ((encA.hsiScore ?? '') !== (encB.hsiScore ?? '') || (encA.hsiTier || '') !== (encB.hsiTier || '')) return false;
+            if ((encA.liverPanel?.alt ?? '') !== (encB.liverPanel?.alt ?? '') || (encA.liverPanel?.ast ?? '') !== (encB.liverPanel?.ast ?? '')) return false;
           }
         }
 

@@ -79,7 +79,8 @@ const PMG_PDPA_FORBIDDEN_CLOUD_FIELDS = new Set([
   'chronicConditions', 'allergies', 'documents', 'attachedDocs', 'hpi',
   'preDiagnostic', 'planMedications', 'planSupplements', 'planCounselling',
   'referral', 'specialtyScans', 'customTests', 'ic', 'patientIc',
-  'clinicalNotes', 'chiefComplaint', 'soapNotes', 'poctData'
+  'clinicalNotes', 'chiefComplaint', 'soapNotes', 'poctData',
+  'hsiScore', 'hsiTier', 'hsiRisk'
 ]);
 
 function sanitizePayloadForGoogleCloud(payload) {
@@ -1636,6 +1637,12 @@ function setupPatientEventListeners() {
 
         // Refresh past records overview & multi-visit table for selected patient
         renderEncounterPastRecords(pId);
+        if (typeof syncEncounterHsiDemographicsFromPatient === 'function') {
+          syncEncounterHsiDemographicsFromPatient(p);
+        }
+        if (typeof recalculateEncounterHsi === 'function') {
+          recalculateEncounterHsi();
+        }
       }
     });
   }
@@ -1683,17 +1690,22 @@ function switchPatientSubTab(tab) {
 
 // ─── AUTO-CALCULATIONS IN ENCOUNTER MODAL ─────────────────────────────────────
 function setupEncounterAutoCalculations() {
-  // BMI Calculation: Weight (kg) / (Height (m) ^ 2)
+  // BMI Calculation: Weight (kg) / (Height (m) ^ 2) + Live HSI Recalculation
   const wtEl = document.getElementById('encWeight');
   const htEl = document.getElementById('encHeight');
   const bmiEl = document.getElementById('encBmi');
   const calcBmi = () => {
-    const w = parseFloat(wtEl.value);
-    const h = parseFloat(htEl.value);
+    const w = parseFloat(wtEl ? wtEl.value : '');
+    const h = parseFloat(htEl ? htEl.value : '');
     if (w > 0 && h > 0) {
       const m = h / 100;
       const bmi = (w / (m * m)).toFixed(1);
       if (bmiEl) bmiEl.value = bmi;
+    } else if (bmiEl) {
+      bmiEl.value = '';
+    }
+    if (typeof recalculateEncounterHsi === 'function') {
+      recalculateEncounterHsi();
     }
   };
   if (wtEl) wtEl.addEventListener('input', calcBmi);
@@ -1763,7 +1775,35 @@ function setupEncounterAutoCalculations() {
 
   ['cvdSmoker', 'cvdHtnMeds', 'cvdLipidMeds', 'cvdDiabetes'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.addEventListener('change', () => recalculateCvdRisk(false));
+    if (el) el.addEventListener('change', () => {
+      if (id === 'cvdDiabetes') {
+        const hsiDm = document.getElementById('encHsiT2dm');
+        if (hsiDm) hsiDm.value = el.value;
+      }
+      recalculateCvdRisk(false);
+      if (typeof recalculateEncounterHsi === 'function') recalculateEncounterHsi();
+    });
+  });
+
+  // Live Hepatic Steatosis Index (HSI) listeners across BMI, Visceral Fat, ALT, AST, Sex, and T2DM inputs
+  ['encBmi', 'encVisceralFat', 'encAst', 'encAlt', 'encHba1c', 'encGlucose', 'encMedicalHistory'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', () => {
+        if (typeof recalculateEncounterHsi === 'function') recalculateEncounterHsi();
+      });
+      el.addEventListener('change', () => {
+        if (typeof recalculateEncounterHsi === 'function') recalculateEncounterHsi();
+      });
+    }
+  });
+  ['encGlucoseType', 'encHsiSex', 'encHsiT2dm', 'newPatientGender'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('change', () => {
+        if (typeof recalculateEncounterHsi === 'function') recalculateEncounterHsi();
+      });
+    }
   });
 }
 
@@ -1835,6 +1875,407 @@ function getBmiClassification(weight, height) {
   if (bmi >= 23.0) return { bmi, label: 'Overweight', badge: 'bg-amber-100 text-amber-700 font-semibold' };
   if (bmi < 18.5) return { bmi, label: 'Underweight', badge: 'bg-yellow-100 text-yellow-800 font-semibold' };
   return { bmi, label: 'Normal', badge: 'bg-green-100 text-green-700 font-semibold' };
+}
+
+// ─── HEPATIC STEATOSIS INDEX (HSI) & 4-TIER MASLD / FIBROSIS TRIAGE SUITE ────
+function parsePositiveClinicalNumber(val) {
+  if (val === null || val === undefined || val === '' || typeof val === 'boolean') return null;
+  if (typeof val === 'number') return (Number.isFinite(val) && val > 0) ? val : null;
+  const s = String(val).trim();
+  if (!s || s.startsWith('-')) return null;
+  const cleaned = s.replace(/^[<>≤≥=~+\s]+/, '');
+  if (!cleaned || cleaned.startsWith('-')) return null;
+  const match = cleaned.match(/^([0-9]+(?:\.[0-9]+)?)/);
+  if (!match) return null;
+  const num = parseFloat(match[1]);
+  return (Number.isFinite(num) && num > 0) ? num : null;
+}
+
+function parseOptionalVisceralFatNumber(val) {
+  if (val === null || val === undefined || val === '' || typeof val === 'boolean') return null;
+  if (typeof val === 'number') return (Number.isFinite(val) && val >= 0) ? val : null;
+  const s = String(val).trim();
+  if (!s || s.startsWith('-')) return null;
+  const cleaned = s.replace(/^[<>≤≥=~+\s]+/, '');
+  if (!cleaned || cleaned.startsWith('-')) return null;
+  const match = cleaned.match(/^([0-9]+(?:\.[0-9]+)?)/);
+  if (!match) return null;
+  const num = parseFloat(match[1]);
+  return (Number.isFinite(num) && num >= 0) ? num : null;
+}
+
+function resolveHsiSexIsFemale(patientData = {}) {
+  if (!patientData || typeof patientData !== 'object') return false;
+  if (typeof patientData.isFemale === 'boolean') return patientData.isFemale;
+  const rawSex = String(
+    patientData.sex ??
+    patientData.gender ??
+    patientData.patient?.gender ??
+    patientData.patient?.sex ??
+    ''
+  ).trim().toLowerCase();
+  if (rawSex === 'female' || rawSex === 'f' || rawSex === 'perempuan' || rawSex === '女') return true;
+  if (rawSex === 'male' || rawSex === 'm' || rawSex === 'lelaki' || rawSex === '男') return false;
+  const rawIc = String(patientData.ic ?? patientData.patient?.ic ?? '').replace(/\D/g, '');
+  if (rawIc.length >= 12) {
+    const lastDigit = parseInt(rawIc.slice(-1), 10);
+    if (!isNaN(lastDigit)) return (lastDigit % 2 === 0);
+  }
+  return false;
+}
+
+function resolveHsiHasT2dm(patientData = {}) {
+  if (!patientData || typeof patientData !== 'object') return false;
+  if (typeof patientData.hasT2dm === 'boolean') return patientData.hasT2dm;
+  if (typeof patientData.t2dm === 'boolean') return patientData.t2dm;
+  if (typeof patientData.hasDiabetes === 'boolean') return patientData.hasDiabetes;
+  if (patientData.diabetes !== undefined && patientData.diabetes !== null && patientData.diabetes !== '') {
+    if (typeof patientData.diabetes === 'boolean') return patientData.diabetes;
+    const dStr = String(patientData.diabetes).trim().toLowerCase();
+    if (dStr === '1' || dStr === 'true' || dStr === 'yes' || dStr === 'diabetic' || dStr === 't2dm') return true;
+    if (dStr === '0' || dStr === 'false' || dStr === 'no') return false;
+  }
+  if (patientData.patient && typeof patientData.patient.hasDiabetes === 'boolean' && patientData.patient.hasDiabetes) {
+    return true;
+  }
+  const condList = []
+    .concat(Array.isArray(patientData.conditions) ? patientData.conditions : [])
+    .concat(Array.isArray(patientData.chronicConditions) ? patientData.chronicConditions : [])
+    .concat(Array.isArray(patientData.patient?.conditions) ? patientData.patient.conditions : [])
+    .concat(Array.isArray(patientData.patient?.chronicConditions) ? patientData.patient.chronicConditions : []);
+  if (condList.some(c => /diabetes|t2dm|\bdm\b/i.test(String(c || '')))) return true;
+  const medHist = String(patientData.medicalHistory ?? patientData.patient?.medicalHistory ?? '');
+  if (/\b(t2dm|type\s*2\s*diabetes|diabetes\s*mellitus)\b/i.test(medHist)) return true;
+  const hba1c = parsePositiveClinicalNumber(patientData.hba1c ?? patientData.glycemicHeme?.hba1c);
+  if (hba1c !== null && hba1c >= 6.5) return true;
+  return false;
+}
+
+/**
+ * Calculates Hepatic Steatosis Index (HSI) & 4-Tier MASLD / Fibrosis Risk Stratification
+ * Formula: HSI = 8 * (ALT / AST) + BMI + (isFemale ? 2 : 0) + (hasT2dm ? 2 : 0)
+ */
+function calculateHsiRisk(patientData = {}) {
+  const data = (patientData && typeof patientData === 'object') ? patientData : {};
+  const alt = parsePositiveClinicalNumber(data.alt ?? data.ALT ?? data.liverPanel?.alt);
+  const ast = parsePositiveClinicalNumber(data.ast ?? data.AST ?? data.liverPanel?.ast);
+  const weight = parsePositiveClinicalNumber(data.weight ?? data.vitals?.weight);
+  const height = parsePositiveClinicalNumber(data.height ?? data.vitals?.height ?? data.patient?.height);
+  let bmi = parsePositiveClinicalNumber(data.bmi ?? data.BMI ?? data.vitals?.bmi);
+  if ((bmi === null || bmi <= 0) && weight !== null && height !== null && weight > 0 && height > 0) {
+    const hm = height / 100;
+    bmi = Number((weight / (hm * hm)).toFixed(1));
+  }
+  const visceralFat = parseOptionalVisceralFatNumber(
+    data.visceralFat ?? data.visceralFatLevel ?? data.bodyComposition?.visceralFat
+  );
+  const isFemale = resolveHsiSexIsFemale(data);
+  const hasT2dm = resolveHsiHasT2dm(data);
+
+  // Pending State: If ALT, AST, or BMI is missing or <= 0
+  if (alt === null || ast === null || bmi === null || alt <= 0 || ast <= 0 || bmi <= 0) {
+    return {
+      isPending: true,
+      status: 'pending',
+      hsiScore: null,
+      score: null,
+      hsiTier: 'Pending ALT / AST / BMI',
+      tier: 'Pending ALT / AST / BMI',
+      tierKey: 'pending',
+      badgeLabel: 'Pending ALT / AST / BMI',
+      pillLabel: 'Pending ALT / AST / BMI',
+      badgeClass: 'bg-gray-100 text-gray-600 border-gray-300',
+      calloutClass: 'bg-gray-50 text-gray-600 border-gray-200',
+      guidance: 'Pending ALT / AST / BMI — enter Weight & Height (BMI), ALT, and AST to calculate Hepatic Steatosis Index (HSI) and MASLD / fibrosis triage.',
+      astAltRatio: null,
+      alt,
+      ast,
+      bmi,
+      visceralFat,
+      isFemale,
+      hasT2dm,
+      upgradedByVisceralFat: false
+    };
+  }
+
+  const rawHsi = 8 * (alt / ast) + bmi + (isFemale ? 2 : 0) + (hasT2dm ? 2 : 0);
+  const hsiScore = Number(rawHsi.toFixed(1));
+  const astAltRatio = Number((ast / alt).toFixed(2));
+  const hasHighVisceralFat = visceralFat !== null && visceralFat >= 10;
+  const isHighSteatosis = (hsiScore > 36) || (hsiScore >= 30 && hasHighVisceralFat);
+  const upgradedByVisceralFat = (hsiScore >= 30 && hsiScore <= 36 && hasHighVisceralFat);
+  const isAstGtAlt = ast > alt;
+
+  let hsiTier = 'Low Risk';
+  let tierKey = 'low_risk';
+  let badgeClass = 'bg-emerald-100 text-emerald-900 border-emerald-300';
+  let calloutClass = 'bg-emerald-50/90 text-emerald-950 border-emerald-300';
+  let iconHtml = '✅';
+  let guidance = 'Fatty liver unlikely (~95% negative predictive value).';
+
+  if (isHighSteatosis && isAstGtAlt) {
+    // 1. Fibrosis Warning (Red Badge)
+    hsiTier = 'Fibrosis Warning';
+    tierKey = 'fibrosis_warning';
+    badgeClass = 'bg-red-100 text-red-900 border-red-400 ring-2 ring-red-200';
+    calloutClass = 'bg-red-50/95 text-red-950 border-red-300';
+    iconHtml = '🚨';
+    guidance = `Possible liver fibrosis (AST/ALT > 1.0). Request Platelet count to calculate FIB-4; if statin therapy is indicated, prefer low-dose Rosuvastatin (5 mg) over Atorvastatin.${upgradedByVisceralFat ? ' (Steatosis upgraded from the 30–36 gray zone due to BIA Visceral Fat ≥ 10).' : ''}`;
+  } else if (isHighSteatosis) {
+    // 2. High Steatosis Risk (Orange Badge)
+    hsiTier = 'High Steatosis Risk';
+    tierKey = 'high_steatosis';
+    badgeClass = 'bg-orange-100 text-orange-900 border-orange-400 ring-1 ring-orange-200';
+    calloutClass = 'bg-orange-50/95 text-orange-950 border-orange-300';
+    iconHtml = '🟠';
+    guidance = `High probability of MASLD${upgradedByVisceralFat ? ' (upgraded from the 30–36 gray zone due to BIA Visceral Fat ≥ 10)' : ' (HSI > 36)'}. Both Rosuvastatin and Atorvastatin are safe if ALT/AST < 3× ULN.`;
+  } else if ((hsiScore >= 30 && hsiScore <= 36) || (hsiScore < 30 && hasHighVisceralFat)) {
+    // 3. Borderline / Monitor (Amber Badge)
+    hsiTier = 'Borderline / Monitor';
+    tierKey = 'borderline';
+    badgeClass = 'bg-amber-100 text-amber-900 border-amber-300';
+    calloutClass = 'bg-amber-50/95 text-amber-950 border-amber-300';
+    iconHtml = '⚠️';
+    guidance = `Indeterminate steatosis or elevated central visceral fat${hasHighVisceralFat ? ' (HSI < 30 with BIA Visceral Fat ≥ 10)' : ' (HSI 30–36 gray zone)'}; counsel on weight/diet and recheck BIA & LFTs in 6 months.`;
+  }
+
+  const badgeLabel = `${iconHtml} HSI ${hsiScore.toFixed(1)} · ${hsiTier}`;
+  const pillLabel = `HSI ${hsiScore.toFixed(1)} (${hsiTier})`;
+
+  return {
+    isPending: false,
+    status: tierKey,
+    hsiScore,
+    score: hsiScore,
+    hsiTier,
+    tier: hsiTier,
+    tierKey,
+    iconHtml,
+    badgeLabel,
+    pillLabel,
+    badgeClass,
+    calloutClass,
+    guidance,
+    astAltRatio,
+    alt,
+    ast,
+    bmi,
+    visceralFat,
+    isFemale,
+    hasT2dm,
+    upgradedByVisceralFat
+  };
+}
+if (typeof window !== 'undefined') {
+  window.calculateHsiRisk = calculateHsiRisk;
+}
+
+function syncEncounterHsiDemographicsFromPatient(p, enc = null) {
+  const sexSel = document.getElementById('encHsiSex');
+  const dmSel = document.getElementById('encHsiT2dm');
+  const cvdDmSel = document.getElementById('cvdDiabetes');
+  const isFem = resolveHsiSexIsFemale({
+    sex: enc?.hsiRisk?.isFemale !== undefined ? (enc.hsiRisk.isFemale ? 'Female' : 'Male') : (p?.gender || ''),
+    ic: p?.ic || ''
+  });
+  if (sexSel) {
+    sexSel.value = isFem ? 'Female' : 'Male';
+  }
+  const hasDm = (cvdDmSel && cvdDmSel.value === '1') || resolveHsiHasT2dm({
+    hasT2dm: enc?.hsiRisk?.hasT2dm,
+    diabetes: enc?.cvdRisk?.params?.diabetes,
+    hba1c: enc?.glycemicHeme?.hba1c,
+    medicalHistory: enc?.medicalHistory,
+    patient: p
+  });
+  if (dmSel) {
+    dmSel.value = hasDm ? '1' : '0';
+  }
+}
+
+function onEncounterHsiDemographicChange(source) {
+  if (source === 't2dm') {
+    const dmSel = document.getElementById('encHsiT2dm');
+    const cvdDmSel = document.getElementById('cvdDiabetes');
+    if (dmSel && cvdDmSel && cvdDmSel.value !== dmSel.value) {
+      cvdDmSel.value = dmSel.value;
+      if (typeof recalculateCvdRisk === 'function') recalculateCvdRisk(false);
+    }
+  }
+  recalculateEncounterHsi();
+}
+if (typeof window !== 'undefined') {
+  window.onEncounterHsiDemographicChange = onEncounterHsiDemographicChange;
+}
+
+function recalculateEncounterHsi() {
+  const pSel = document.getElementById('encounterPatientSelect');
+  const pId = pSel ? pSel.value : null;
+  const p = pId ? findPatientById(pId) : null;
+
+  const wtEl = document.getElementById('encWeight');
+  const htEl = document.getElementById('encHeight');
+  const bmiEl = document.getElementById('encBmi');
+  const vfEl = document.getElementById('encVisceralFat');
+  const astEl = document.getElementById('encAst');
+  const altEl = document.getElementById('encAlt');
+  const sexSel = document.getElementById('encHsiSex');
+  const dmSel = document.getElementById('encHsiT2dm');
+  const cvdDmSel = document.getElementById('cvdDiabetes');
+  const hba1cEl = document.getElementById('encHba1c');
+  const medHistEl = document.getElementById('encMedicalHistory');
+
+  const w = parsePositiveClinicalNumber(wtEl ? wtEl.value : null);
+  const h = parsePositiveClinicalNumber(htEl ? htEl.value : null) || parsePositiveClinicalNumber(p?.height);
+  if (w !== null && h !== null && w > 0 && h > 0) {
+    const computedBmi = (w / Math.pow(h / 100, 2)).toFixed(1);
+    if (bmiEl && bmiEl.value !== computedBmi) {
+      bmiEl.value = computedBmi;
+    }
+  }
+
+  const bmiVal = parsePositiveClinicalNumber(bmiEl ? bmiEl.value : null) || ((w && h) ? Number((w / Math.pow(h / 100, 2)).toFixed(1)) : null);
+  const sexVal = sexSel ? sexSel.value : (p?.gender || 'Male');
+  const dmExplicit = dmSel ? (dmSel.value === '1') : (cvdDmSel ? (cvdDmSel.value === '1') : undefined);
+  const hba1cVal = parsePositiveClinicalNumber(hba1cEl ? hba1cEl.value : null);
+  const autoT2dm = dmExplicit !== undefined
+    ? dmExplicit
+    : resolveHsiHasT2dm({
+        hba1c: hba1cVal,
+        medicalHistory: medHistEl ? medHistEl.value : '',
+        patient: p
+      });
+
+  const result = calculateHsiRisk({
+    alt: altEl ? altEl.value : null,
+    ast: astEl ? astEl.value : null,
+    bmi: bmiVal,
+    weight: w,
+    height: h,
+    visceralFat: vfEl ? vfEl.value : null,
+    sex: sexVal,
+    hasT2dm: autoT2dm,
+    patient: p
+  });
+
+  // Update Body Composition Analysis (BCA) HSI Callout
+  const bcaBox = document.getElementById('encBcaHsiBox');
+  const bcaBadge = document.getElementById('encBcaHsiBadge');
+  const bcaGuidance = document.getElementById('encBcaHsiGuidance');
+  if (bcaBadge) {
+    bcaBadge.textContent = result.isPending ? 'Pending ALT / AST / BMI' : result.badgeLabel;
+    bcaBadge.className = `px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border ${result.badgeClass}`;
+  }
+  if (bcaBox) {
+    bcaBox.className = `mt-3 p-2.5 rounded-xl border text-xs transition-all ${result.calloutClass}`;
+  }
+  if (bcaGuidance) {
+    bcaGuidance.textContent = result.guidance;
+  }
+
+  // Update Liver Function Test (LFT) HSI Callout
+  const lftHeaderBadge = document.getElementById('encHsiHeaderBadge');
+  const lftBox = document.getElementById('encLftHsiBox');
+  const scoreEl = document.getElementById('encHsiScoreDisplay');
+  const badgeEl = document.getElementById('encHsiBadge');
+  const metaEl = document.getElementById('encHsiFormulaMeta');
+  const guidanceEl = document.getElementById('encHsiGuidance');
+
+  if (lftHeaderBadge) {
+    lftHeaderBadge.textContent = result.isPending ? 'Pending ALT / AST / BMI' : result.badgeLabel;
+    lftHeaderBadge.className = `text-[11px] font-extrabold px-2.5 py-0.5 rounded-full border ${result.badgeClass}`;
+  }
+  if (lftBox) {
+    lftBox.className = `p-3 rounded-xl border shadow-2xs space-y-2 transition-all ${result.calloutClass}`;
+  }
+  if (scoreEl) {
+    scoreEl.textContent = result.isPending ? '--' : result.hsiScore.toFixed(1);
+  }
+  if (badgeEl) {
+    badgeEl.textContent = result.isPending ? 'Pending ALT / AST / BMI' : result.hsiTier;
+    badgeEl.className = `px-2.5 py-0.5 rounded-full text-xs font-extrabold border ${result.badgeClass}`;
+  }
+  if (metaEl) {
+    if (result.isPending) {
+      metaEl.textContent = 'Formula: HSI = 8 × (ALT / AST) + BMI + (Female: +2) + (T2DM: +2)';
+    } else {
+      const vfTag = result.visceralFat !== null ? ` · Visceral Fat: ${result.visceralFat}${result.visceralFat >= 10 ? ' (≥10 High)' : ''}` : '';
+      metaEl.textContent = `HSI = 8×(${result.alt}/${result.ast}) + ${result.bmi} + Sex(${result.isFemale ? '+2' : '+0'}) + T2DM(${result.hasT2dm ? '+2' : '+0'}) = ${result.hsiScore.toFixed(1)} · AST/ALT: ${result.astAltRatio}${vfTag}`;
+    }
+  }
+  if (guidanceEl) {
+    guidanceEl.textContent = result.guidance;
+  }
+
+  return result;
+}
+if (typeof window !== 'undefined') {
+  window.recalculateEncounterHsi = recalculateEncounterHsi;
+}
+
+function getEncounterHsiRisk(enc, p = null) {
+  if (!enc || typeof enc !== 'object') return calculateHsiRisk({});
+  const computed = calculateHsiRisk({
+    alt: enc.liverPanel?.alt ?? enc.alt,
+    ast: enc.liverPanel?.ast ?? enc.ast,
+    bmi: enc.vitals?.bmi ?? enc.bmi,
+    weight: enc.vitals?.weight ?? enc.weight,
+    height: enc.vitals?.height ?? enc.height ?? p?.height,
+    visceralFat: enc.bodyComposition?.visceralFat ?? enc.visceralFat,
+    isFemale: enc.hsiRisk?.isFemale,
+    sex: p?.gender,
+    ic: p?.ic,
+    hasT2dm: enc.hsiRisk?.hasT2dm ?? enc.cvdRisk?.params?.diabetes,
+    hba1c: enc.glycemicHeme?.hba1c,
+    medicalHistory: enc.medicalHistory,
+    patient: p
+  });
+  return computed;
+}
+
+function getPatientLatestHsiRisk(p) {
+  if (!p || typeof p !== 'object') return null;
+  const encs = Array.isArray(p.encounters) ? p.encounters : [];
+  for (const enc of encs) {
+    const res = getEncounterHsiRisk(enc, p);
+    if (res && !res.isPending) {
+      return { ...res, encounterDate: enc.date || '' };
+    }
+  }
+  if (p.hsiScore != null && p.hsiTier && Number(p.hsiScore) > 0) {
+    const scoreNum = Number(Number(p.hsiScore).toFixed(1));
+    const tierStr = String(p.hsiTier);
+    let badgeClass = 'bg-emerald-100 text-emerald-900 border-emerald-300';
+    let iconHtml = '✅';
+    if (tierStr.includes('Fibrosis')) {
+      badgeClass = 'bg-red-100 text-red-900 border-red-400 ring-1 ring-red-200';
+      iconHtml = '🚨';
+    } else if (tierStr.includes('High Steatosis')) {
+      badgeClass = 'bg-orange-100 text-orange-900 border-orange-400';
+      iconHtml = '🟠';
+    } else if (tierStr.includes('Borderline')) {
+      badgeClass = 'bg-amber-100 text-amber-900 border-amber-300';
+      iconHtml = '⚠️';
+    }
+    return {
+      isPending: false,
+      hsiScore: scoreNum,
+      score: scoreNum,
+      hsiTier: tierStr,
+      tier: tierStr,
+      iconHtml,
+      badgeLabel: `${iconHtml} HSI ${scoreNum.toFixed(1)} · ${tierStr}`,
+      pillLabel: `HSI ${scoreNum.toFixed(1)} (${tierStr})`,
+      badgeClass,
+      guidance: ''
+    };
+  }
+  return null;
+}
+if (typeof window !== 'undefined') {
+  window.setupEncounterAutoCalculations = setupEncounterAutoCalculations;
+  window.getEncounterHsiRisk = getEncounterHsiRisk;
+  window.getPatientLatestHsiRisk = getPatientLatestHsiRisk;
 }
 
 // ─── CARDIOVASCULAR RISK SUITE (MALAYSIAN CPG FRS & 2024 AHA PREVENT™) ──────
@@ -2788,6 +3229,11 @@ function renderPatientDirectory(patients) {
       `;
     }
 
+    const latestHsi = getPatientLatestHsiRisk(p);
+    const hsiPillHtml = (latestHsi && !latestHsi.isPending)
+      ? `<div class="mt-1"><span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${latestHsi.badgeClass}" title="${escHtml(latestHsi.guidance || '')}">${latestHsi.badgeLabel}</span></div>`
+      : '';
+
     return `
       <tr class="hover:bg-blue-50/40 transition border-b border-gray-100">
         <td class="px-4 py-3">
@@ -2795,6 +3241,7 @@ function renderPatientDirectory(patients) {
             ${p.name}
           </button>
           <span class="text-[11px] text-gray-400">${p.gender}, ${p.age} yrs · ${p.ic || 'No IC'}</span>
+          ${hsiPillHtml}
         </td>
         <td class="px-3 py-3 text-xs text-gray-700">${p.phone || '—'}</td>
         <td class="px-3 py-3">
@@ -5627,6 +6074,8 @@ function showNewEncounterModal(patientId) {
     preventBadge.className = 'text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full border border-blue-200';
   }
   recalculateCvdRisk();
+  syncEncounterHsiDemographicsFromPatient(curPtRecord, null);
+  recalculateEncounterHsi();
 
   // Reset other POCT notes & files
   const otherNotesEl = document.getElementById('encOtherTestsNotes');
@@ -5700,6 +6149,8 @@ function onEncounterPatientChange() {
     document.getElementById('cvdDiabetes').value = (p.hasDiabetes || pConds.some(c => c.toLowerCase().includes('diabetes'))) ? '1' : '0';
   }
   recalculateCvdRisk();
+  syncEncounterHsiDemographicsFromPatient(p, null);
+  recalculateEncounterHsi();
   renderEncounterPastRecords(pId);
 }
 
@@ -5918,6 +6369,8 @@ function editEncounterRecord(patientId, encounterId) {
     document.getElementById('cvdDiabetes').value = cvdParams.diabetes != null ? (cvdParams.diabetes ? '1' : '0') : ((p.hasDiabetes || pConds.some(c => c.toLowerCase().includes('diabetes'))) ? '1' : '0');
   }
   recalculateCvdRisk();
+  syncEncounterHsiDemographicsFromPatient(p, enc);
+  recalculateEncounterHsi();
 
   renderEncounterPastRecords(patientId);
 
@@ -6947,10 +7400,16 @@ async function saveNewEncounter() {
     rChd: formatClinicalInputValue(document.getElementById('encRchd')?.value)
   };
 
+  const hsiResult = recalculateEncounterHsi();
+  const persistedHsiScore = (hsiResult && !hsiResult.isPending) ? hsiResult.hsiScore : null;
+  const persistedHsiTier = (hsiResult && !hsiResult.isPending) ? hsiResult.hsiTier : null;
+
   const liverObj = {
     ast: formatClinicalInputValue(document.getElementById('encAst')?.value),
     alt: formatClinicalInputValue(document.getElementById('encAlt')?.value),
-    alb: formatClinicalInputValue(document.getElementById('encAlb')?.value)
+    alb: formatClinicalInputValue(document.getElementById('encAlb')?.value),
+    hsiScore: persistedHsiScore,
+    hsiTier: persistedHsiTier
   };
 
   const kidneyObj = {
@@ -6989,6 +7448,11 @@ async function saveNewEncounter() {
   const planCounsellingVal = document.getElementById('encPlanCounselling').value.trim();
   const referralVal = document.getElementById('encReferral').value.trim();
 
+  const hsiSexVal = document.getElementById('encHsiSex')?.value;
+  if ((hsiSexVal === 'Female' || hsiSexVal === 'Male') && (!p.gender || p.gender === 'Unknown' || p.gender === 'Other')) {
+    p.gender = hsiSexVal;
+  }
+
   // If in Edit Mode for an existing encounter
   if (editingEncounterId) {
     if (!p.encounters) p.encounters = [];
@@ -7006,6 +7470,9 @@ async function saveNewEncounter() {
       targetEnc.liverPanel = liverObj;
       targetEnc.kidneyPanel = kidneyObj;
       targetEnc.glycemicHeme = glycemicObj;
+      targetEnc.hsiScore = persistedHsiScore;
+      targetEnc.hsiTier = persistedHsiTier;
+      targetEnc.hsiRisk = (hsiResult && !hsiResult.isPending) ? hsiResult : null;
 
       // Preserve previously attached diagnostic filenames if not re-uploaded
       if (!specialtyObj.airdoc && targetEnc.specialtyScans?.airdoc) specialtyObj.airdoc = targetEnc.specialtyScans.airdoc;
@@ -7073,6 +7540,9 @@ async function saveNewEncounter() {
       }
 
       p.encounters.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      const latestPtHsi = getPatientLatestHsiRisk(p);
+      p.hsiScore = latestPtHsi ? latestPtHsi.hsiScore : null;
+      p.hsiTier = latestPtHsi ? latestPtHsi.hsiTier : null;
       p.updatedAt = new Date().toISOString();
       removeDeletedPatientRecord(p.id, p.ic, p.phone, p.name);
       savePatientsData({ immediateOneDrive: true });
@@ -7117,7 +7587,10 @@ async function saveNewEncounter() {
     planCounselling: planCounsellingVal,
     referral: referralVal,
     attachedDocs: attachedDocIds,
-    cvdRisk: recalculateCvdRisk()
+    cvdRisk: recalculateCvdRisk(),
+    hsiScore: persistedHsiScore,
+    hsiTier: persistedHsiTier,
+    hsiRisk: (hsiResult && !hsiResult.isPending) ? hsiResult : null
   };
 
   // Persist updated clinical parameters to patient profile
@@ -7133,6 +7606,9 @@ async function saveNewEncounter() {
   if (!Array.isArray(p.encounters)) p.encounters = [];
   p.encounters.unshift(newEnc);
   p.encounters.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const latestPtHsi = getPatientLatestHsiRisk(p);
+  p.hsiScore = latestPtHsi ? latestPtHsi.hsiScore : null;
+  p.hsiTier = latestPtHsi ? latestPtHsi.hsiTier : null;
 
   // Merge newly prescribed medications while preserving existing chronic medications & refill metadata
   p.medications = mergeEncounterMedicationsPreservingMetadata(p.medications, planMedsVal);
@@ -7300,6 +7776,21 @@ function viewPatientProfile(patientId) {
       cvdContainer.classList.remove('hidden');
     } else {
       cvdContainer.classList.add('hidden');
+    }
+  }
+
+  // Populate HSI Fatty Liver Risk Pill Badge in Profile Header if valid ALT, AST & BMI exist
+  const hsiContainer = document.getElementById('profHsiRiskContainer');
+  const hsiEl = document.getElementById('profHsiRisk');
+  if (hsiContainer && hsiEl) {
+    const latestHsi = getPatientLatestHsiRisk(p);
+    if (latestHsi && !latestHsi.isPending) {
+      hsiEl.textContent = latestHsi.badgeLabel;
+      hsiEl.className = `inline-flex items-center gap-1 text-xs font-extrabold px-2.5 py-0.5 rounded-full border ${latestHsi.badgeClass}`;
+      hsiEl.title = latestHsi.guidance || '';
+      hsiContainer.classList.remove('hidden');
+    } else {
+      hsiContainer.classList.add('hidden');
     }
   }
 
@@ -7825,6 +8316,36 @@ function renderEncounterVitalsPoctBadges(enc, p) {
     }
   }
 
+  // 10. Liver Panel (AST, ALT, Albumin) & Hepatic Steatosis Index (HSI) Risk Badge
+  const liv = enc.liverPanel || {};
+  if (liv.ast != null || liv.alt != null || liv.alb != null) {
+    const astVal = extractNumericVal(liv.ast);
+    const altVal = extractNumericVal(liv.alt);
+    const albVal = extractNumericVal(liv.alb);
+    const isHighLft = (astVal != null && astVal > 40) || (altVal != null && altVal > 41);
+    const parts = [];
+    if (liv.ast != null && liv.ast !== '') parts.push(`AST: <b>${escHtml(String(liv.ast))}</b>`);
+    if (liv.alt != null && liv.alt !== '') parts.push(`ALT: <b>${escHtml(String(liv.alt))}</b>`);
+    if (liv.alb != null && liv.alb !== '') parts.push(`ALB: <b>${escHtml(String(liv.alb))}</b>`);
+    if (parts.length) {
+      pills.push(`
+        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold border ${isHighLft ? 'bg-amber-50 text-amber-950 border-amber-300 ring-1 ring-amber-200' : 'bg-amber-50/70 text-amber-900 border-amber-200'} shadow-xs">
+          <span class="font-extrabold">🫁 LFT:</span> ${parts.join(' | ')}
+          ${isHighLft ? '<span class="text-[10px] bg-amber-200 text-amber-900 px-1 rounded font-black">⚠️ Elevated ⬆</span>' : ''}
+        </span>
+      `);
+    }
+  }
+
+  const encHsi = getEncounterHsiRisk(enc, p);
+  if (encHsi && !encHsi.isPending) {
+    pills.push(`
+      <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-extrabold border ${encHsi.badgeClass} shadow-xs" title="${escHtml(encHsi.guidance || '')}">
+        <span>${encHsi.badgeLabel}</span>
+      </span>
+    `);
+  }
+
   return pills.join('');
 }
 
@@ -7892,6 +8413,7 @@ async function renderProfileEncounters(p) {
     const cgmPdf = (enc.specialtyScans && enc.specialtyScans.cgm) ? enc.specialtyScans.cgm : null;
     const zentalogPdf = (enc.specialtyScans && enc.specialtyScans.zentalog) ? enc.specialtyScans.zentalog : null;
     const hasAttachments = (encDocs.length > 0) || tedaUrl || airdocPdf || cgmPdf || zentalogPdf;
+    const encHsi = getEncounterHsiRisk(enc, p);
 
     return `
       <div class="bg-white border-2 border-gray-200 rounded-3xl p-5 sm:p-7 mb-6 shadow-sm hover:border-blue-300 transition">
@@ -7961,6 +8483,19 @@ async function renderProfileEncounters(p) {
         <div class="mt-4 flex flex-wrap gap-2 text-xs sm:text-sm items-center">
           ${renderEncounterVitalsPoctBadges(enc, p)}
         </div>
+
+        ${(encHsi && !encHsi.isPending) ? `
+          <div class="mt-3 p-3.5 rounded-2xl border ${encHsi.calloutClass} text-xs sm:text-sm shadow-xs">
+            <div class="flex items-center justify-between flex-wrap gap-2 mb-1">
+              <span class="font-extrabold flex items-center gap-1.5">
+                <span>🫁 Hepatic Steatosis Index (HSI) Clinical Triage:</span>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-extrabold border ${encHsi.badgeClass}">${encHsi.badgeLabel}</span>
+              </span>
+              <span class="text-[11px] font-bold opacity-80">AST/ALT: ${encHsi.astAltRatio != null ? encHsi.astAltRatio : '—'}${encHsi.visceralFat != null ? ` · Visceral Fat: ${encHsi.visceralFat}` : ''}</span>
+            </div>
+            <p class="leading-relaxed font-semibold">${escHtml(encHsi.guidance)}</p>
+          </div>
+        ` : ''}
 
         <!-- TEDA TCM & Meridian Assessment Text (if recorded) -->
         ${tedaNotes ? `
@@ -8102,6 +8637,7 @@ function renderProfileTrends(p) {
     }
     const bmiCls = (wt && ht) ? getBmiClassification(wt, ht) : (bmiVal ? { bmi: bmiVal, label: '', badge: 'bg-gray-100 text-gray-700' } : null);
     const bf = b.bodyFat;
+    const encHsi = getEncounterHsiRisk(enc, p);
 
     const tc = extractNumericVal(l.tc);
     const tg = extractNumericVal(l.tg);
@@ -8144,6 +8680,7 @@ function renderProfileTrends(p) {
           ${wt ? `<div class="font-bold text-gray-900">${escHtml(String(wt))} kg${ht ? ` <span class="text-xs text-gray-500 font-normal">(${escHtml(String(ht))} cm)</span>` : ''}</div>` : '<span class="text-gray-400 font-normal">—</span>'}
           ${bmiVal ? `<div class="mt-0.5"><span class="inline-block px-2 py-0.5 rounded text-[11px] font-bold ${bmiCls ? bmiCls.badge : 'bg-gray-100 text-gray-700'}">BMI ${bmiVal}${bmiCls?.label && bmiCls.label !== '—' ? ' · ' + bmiCls.label : ''}</span></div>` : ''}
           ${bf ? `<div class="text-[10px] text-gray-500 font-medium mt-0.5">Fat: ${escHtml(String(bf))}%</div>` : ''}
+          ${(encHsi && !encHsi.isPending) ? `<div class="mt-1"><span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${encHsi.badgeClass}" title="${escHtml(encHsi.guidance || '')}">${encHsi.badgeLabel}</span></div>` : ''}
         </td>
         <td class="px-4 py-3 font-semibold ${isGluHigh ? 'text-amber-700 font-bold' : 'text-gray-800'}">
           ${dispGlu ? `${dispGlu} (${escHtml(g.glucoseType || 'Random')})` : '—'}
