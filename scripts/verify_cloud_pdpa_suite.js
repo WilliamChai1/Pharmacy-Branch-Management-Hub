@@ -339,7 +339,8 @@ function createBrowserSandbox(fetchImpl) {
     }
   });
 
-  test('Promo Broadcast Sheep Placenta preset, POS CSV multi-line header parser & dual language posters (js/promo-broadcast.js & promo/promo.js)', () => {
+  test('Promo Broadcast Flexsure Gold SeniorCare & Sheep Placenta presets, POS CSV multi-line header parser & dual language posters (js/promo-broadcast.js & promo/promo.js)', () => {
+    assert(fs.existsSync(path.join(ROOT, 'promo', 'assets', 'flexsure-gold-seniorcare.jpg')), 'Missing promo/assets/flexsure-gold-seniorcare.jpg');
     assert(fs.existsSync(path.join(ROOT, 'promo', 'assets', 'sheep-placenta-en.jpg')), 'Missing promo/assets/sheep-placenta-en.jpg');
     assert(fs.existsSync(path.join(ROOT, 'promo', 'assets', 'sheep-placenta-zh.jpg')), 'Missing promo/assets/sheep-placenta-zh.jpg');
 
@@ -348,12 +349,32 @@ function createBrowserSandbox(fetchImpl) {
       const sb = createBrowserSandbox();
       vm.runInContext(src, sb.ctx);
 
-      // 1. Verify Sheep Placenta preset campaign is loaded with 43 unique customers
+      // 1a. Verify Flexsure Gold SeniorCare One Day Special preset is default active with 66 unique customers
+      const fgPreset = sb.win.FLEXSURE_GOLD_PRESET_CAMPAIGN;
+      assert(fgPreset && fgPreset.id === 'flexsure-gold-850g-seniorcare', `${rel} missing FLEXSURE_GOLD_PRESET_CAMPAIGN`);
+      assert.strictEqual(fgPreset.customers.length, 66, `${rel} Flexsure Gold preset should have 66 unique customers`);
+      assert.strictEqual(fgPreset.defaultPrice, 85, `${rel} Flexsure Gold promo price must be RM85`);
+      assert(fgPreset.defaultOfferDetailsEn.includes('SENIORCARE') && fgPreset.defaultOfferDetailsEn.includes('RM85'), `${rel} Flexsure Gold EN offer must state SeniorCare RM85`);
+      assert(fgPreset.defaultOfferDetailsZh.includes('SeniorCare') && fgPreset.defaultOfferDetailsZh.includes('RM85'), `${rel} Flexsure Gold ZH offer must state SeniorCare RM85`);
+      assert.strictEqual(sb.win.detectCustomerLanguagePreference('VINCENT A/L THARUMAN MANIAM'), 'bm', 'A/L customer must default to BM/EN');
+
+      // Default poster should resolve to Flexsure Gold SeniorCare poster
+      const fgPosterZh = sb.win.getPosterForLanguage('zh');
+      const fgPosterBm = sb.win.getPosterForLanguage('bm');
+      assert(fgPosterZh.url.includes('flexsure-gold-seniorcare.jpg'), `${rel} default zh poster should be flexsure-gold-seniorcare.jpg`);
+      assert(fgPosterBm.url.includes('flexsure-gold-seniorcare.jpg'), `${rel} default bm poster should be flexsure-gold-seniorcare.jpg`);
+
+      // 1b. Verify Sheep Placenta preset campaign is loaded with 43 unique customers & dual language posters when switched
       const preset = sb.win.SHEEP_PLACENTA_PRESET_CAMPAIGN;
       assert(preset && preset.id === 'sheep-placenta-600mg', `${rel} missing SHEEP_PLACENTA_PRESET_CAMPAIGN`);
       assert.strictEqual(preset.customers.length, 43, `${rel} Sheep Placenta preset should have 43 unique customers`);
 
-      // 2. Verify language-matched poster resolution (EN/BM vs Chinese)
+      sb.ctx.loadPromoCampaigns();
+      sb.ctx.loadPromoComposerState();
+      assert.strictEqual(sb.win.promoActiveCampaign.id, 'flexsure-gold-850g-seniorcare', `${rel} init must activate Flexsure Gold SeniorCare campaign by default`);
+      sb.ctx.applyCampaignDefaultsToComposer(preset, false);
+
+      // 2. Verify language-matched poster resolution (EN/BM vs Chinese) for Sheep Placenta
       const zhPoster = sb.win.getPosterForLanguage('zh');
       const bmPoster = sb.win.getPosterForLanguage('bm');
       assert.strictEqual(zhPoster.langSlot, 'zh', `${rel} zh customer should get zh poster slot`);
