@@ -372,6 +372,29 @@ function createBrowserSandbox(fetchImpl) {
       sb.ctx.loadPromoCampaigns();
       sb.ctx.loadPromoComposerState();
       assert.strictEqual(sb.win.promoActiveCampaign.id, 'flexsure-gold-850g-seniorcare', `${rel} init must activate Flexsure Gold SeniorCare campaign by default`);
+
+      // Verify generated WhatsApp messages have clean blank-line spacing between sections & bulleted multi-line offers
+      const nellyBmMsg = sb.ctx.generatePersonalizedMessage({ id: 'FG_CUST_3', name: 'NELLY ANAK SIYUD', phone: '60138448936' });
+      assert(nellyBmMsg.includes('✨ *Tawaran Istimewa:*\n• '), `${rel} BM Flexsure message must start bulleted offer details on new line`);
+      assert(nellyBmMsg.includes('\n\n📅 *Tempoh Promosi:*\n28 Nov 2026 (Sabtu) — 1 HARI SAHAJA\n\n📍 *Lokasi:*\nPMG Pharmacy Kota Sentosa\n\n📞 *Hubungi:*\n• Cawangan:'), `${rel} BM Flexsure message must include clean blank-line spacing between all info sections`);
+      assert(!nellyBmMsg.includes('2026年11月28日'), `${rel} BM Flexsure message should keep date purely in BM without Chinese date clutter`);
+
+      const jongZhMsg = sb.ctx.generatePersonalizedMessage({ id: 'FG_CUST_2', name: 'JONG SZE POH', phone: '60138864892' });
+      assert(jongZhMsg.includes('✨ *特别特惠详情：*\n• 只限 *SeniorCare 乐龄会员* 专享'), `${rel} ZH Flexsure message must format bulleted Chinese offer cleanly`);
+      assert(jongZhMsg.includes('\n\n📅 *优惠日期：*\n2026年11月28日（星期六）— 只限一天\n\n📍 *门店地点：*\nPMG Pharmacy Kota Sentosa\n\n📞 *联络电话：*\n• PMG Kota Sentosa 柜台：'), `${rel} ZH Flexsure message must include clean blank-line spacing between all info sections`);
+
+      // Verify legacy compact localStorage state auto-upgrades cleanly
+      const legacyCompactState = {
+        offerDetailsBm: 'EKSKLUSIF UNTUK AHLI SENIORCARE SAHAJA — TAWARAN 1 HARI ISTIMEWA: HANYA RM85 setin',
+        offerDetailsZh: '只限 SeniorCare 乐龄会员专享 — 一日特别优惠：每罐只需 RM85',
+        templates: {
+          bm: '✨ *Tawaran Istimewa:* {offer_details}\n📅 *Tempoh Promosi:* {promo_period}\n📍 *Lokasi:* PMG Pharmacy {branch}\n📞 *Hubungi:* {contact}'
+        }
+      };
+      assert.strictEqual(sb.ctx.upgradeLegacyCompactPromoFormatting(legacyCompactState), true, `${rel} must detect and upgrade legacy compact Flexsure state`);
+      assert(legacyCompactState.offerDetailsBm.includes('\n• '), `${rel} upgraded BM offer must be multi-line`);
+      assert(legacyCompactState.templates.bm.includes('\n\n📅 *Tempoh Promosi:*\n'), `${rel} upgraded BM template must include blank-line spacing`);
+
       sb.ctx.applyCampaignDefaultsToComposer(preset, false);
 
       // 2. Verify language-matched poster resolution (EN/BM vs Chinese) for Sheep Placenta
@@ -2067,7 +2090,8 @@ function createBrowserSandbox(fetchImpl) {
 
   test('Patient Care Hepatic Steatosis Index (HSI) 4-Tier Fatty Liver Risk Calculator, Live Auto-BMI Binding, Persistence & sw.js Cache Bump', () => {
     const swSrc = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
-    assert(swSrc.includes("const CACHE_NAME = 'pmg-hub-cache-v59';"), 'sw.js CACHE_NAME must be bumped to pmg-hub-cache-v59');
+    const swMatch = swSrc.match(/const CACHE_NAME = 'pmg-hub-cache-v(\d+)';/);
+    assert(swMatch && Number(swMatch[1]) >= 60, 'sw.js CACHE_NAME must be >= pmg-hub-cache-v60');
 
     const htmlSrc = fs.readFileSync(path.join(ROOT, 'patient', 'index.html'), 'utf8');
     assert(htmlSrc.includes('id="encBcaHsiBox"') && htmlSrc.includes('id="encLftHsiBox"') && htmlSrc.includes('id="profHsiRiskContainer"'), 'patient/index.html must include live HSI triage callouts and profile summary pill');

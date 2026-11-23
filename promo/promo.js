@@ -49,11 +49,14 @@ const FLEXSURE_GOLD_PRESET_CAMPAIGN = {
   defaultPrice: 85,
   isPreset: true,
   createdAt: '2026-11-22T00:00:00.000Z',
-  defaultOfferDetails: 'SeniorCare Members Only: ONE DAY SPECIAL ONLY RM85/can (Normal Member RM110, Save RM25/can! Limit 3 cans, First Come First Serve) | 只限乐龄会员 (SeniorCare)：一日特惠只需 RM85/罐（原会员价 RM110，每罐省 RM25！限量3罐，先到先得）',
-  defaultOfferDetailsEn: 'EXCLUSIVE FOR SENIORCARE MEMBERS ONLY — ONE DAY SPECIAL: ONLY RM85 per can (Normal Member Price RM110 — Save RM25/can!). Limited to 3 cans per customer, First Come First Serve, While Stocks Last. *T&C apply',
-  defaultOfferDetailsBm: 'EKSKLUSIF UNTUK AHLI SENIORCARE SAHAJA — TAWARAN 1 HARI ISTIMEWA: HANYA RM85 setin (Harga Ahli Biasa RM110 — Jimat RM25 setin!). Terhad 3 tin seorang, Siapa Cepat Dia Dapat, Sementara Stok Masih Ada. *Tertakluk kepada terma & syarat',
-  defaultOfferDetailsZh: '只限 SeniorCare 乐龄会员专享 — 一日特别优惠：每罐只需 RM85（原会员价 RM110，每罐立省 RM25！）。每人限量 3 罐，先到先得，售完即止。*须符合条款与条件',
+  defaultOfferDetails: '• Exclusive for *SENIORCARE Members only*\n• *ONE DAY SPECIAL:* ONLY *RM85/can* (Normal RM110, Save RM25/can!)\n• Limit 3 cans · First Come First Serve · While Stocks Last\n• 只限 *SeniorCare 乐龄会员*：一日特惠每罐 *RM85*（原会员价 RM110，每罐省 RM25！限量3罐，先到先得）',
+  defaultOfferDetailsEn: '• EXCLUSIVE for *SENIORCARE Members only*\n• *ONE DAY SPECIAL:* ONLY *RM85/can* (Normal Member RM110 — Save RM25/can!)\n• Limited to 3 cans per customer · First Come First Serve · While Stocks Last\n• _(T&C apply)_',
+  defaultOfferDetailsBm: '• EKSKLUSIF untuk *Ahli SeniorCare sahaja*\n• *TAWARAN 1 HARI ISTIMEWA:* HANYA *RM85 setin* (Harga Ahli Biasa RM110 — Jimat RM25 setin!)\n• Terhad 3 tin seorang · Siapa Cepat Dia Dapat · Sementara Stok Masih Ada\n• _(Tertakluk kepada terma & syarat)_',
+  defaultOfferDetailsZh: '• 只限 *SeniorCare 乐龄会员* 专享\n• *一日特别优惠：* 每罐只需 *RM85*（原会员价 RM110，每罐立省 RM25！）\n• 每人限量 3 罐 · 先到先得 · 售完即止\n• _(须符合条款与条件)_',
   defaultPromoPeriod: '28 Nov 2026 (Saturday / Sabtu) — ONE DAY ONLY | 2026年11月28日（星期六）— 只限一天',
+  defaultPromoPeriodBm: '28 Nov 2026 (Sabtu) — 1 HARI SAHAJA',
+  defaultPromoPeriodEn: '28 Nov 2026 (Saturday) — ONE DAY ONLY',
+  defaultPromoPeriodZh: '2026年11月28日（星期六）— 只限一天',
   defaultPosterUrlBm: 'assets/flexsure-gold-seniorcare.jpg',
   defaultPosterNameBm: 'flexsure-gold-seniorcare.jpg',
   defaultPosterUrlZh: 'assets/flexsure-gold-seniorcare.jpg',
@@ -222,10 +225,17 @@ const PROMO_DEFAULT_TEMPLATES = {
 
 Berita baik! Produk kegemaran anda *{product}* kini ada *TAWARAN ISTIMEWA / PROMOSI KHAS* terhad! 🌟
 
-✨ *Tawaran Istimewa:* {offer_details}
-📅 *Tempoh Promosi:* {promo_period}
-📍 *Lokasi:* PMG Pharmacy {branch}
-📞 *Hubungi:* {contact}
+✨ *Tawaran Istimewa:*
+{offer_details}
+
+📅 *Tempoh Promosi:*
+{promo_period}
+
+📍 *Lokasi:*
+PMG Pharmacy {branch}
+
+📞 *Hubungi:*
+{contact}
 
 Stok adalah terhad (siapa cepat, dia dapat). Jika anda ingin kami simpankan stok terlebih dahulu untuk anda, atau ingin membuat pesanan untuk penghantaran, boleh terus balas WhatsApp ini ya!
 
@@ -235,28 +245,43 @@ Terima kasih atas sokongan anda kepada PMG Pharmacy. Semoga anda sekeluarga siha
 
 好消息通知您！您之前常购买的营养品 *{product}* 现正进行 *限时特别特惠 / 促销回馈*！🌟
 
-✨ *特别特惠详情：* {offer_details}
-📅 *优惠日期：* {promo_period}
-📍 *门店地点：* PMG Pharmacy {branch}
-📞 *联络电话：* {contact}
+✨ *特别特惠详情：*
+{offer_details}
+
+📅 *优惠日期：*
+{promo_period}
+
+📍 *门店地点：*
+PMG Pharmacy {branch}
+
+📞 *联络电话：*
+{contact}
 
 存货有限，先到先得。如果您需要我们提前为您保留存货，或安排送货上门，欢迎直接回复此 WhatsApp 信息通知我们！
 
 感谢您一直以来对 PMG Pharmacy 的支持与信任！祝您与家人身体健康，平安喜乐！😊`,
 
-  bilingual: `Salam sejahtera & 您好 {name}! 
+  bilingual: `Salam sejahtera & 您好 {name}!
 Dari PMG Pharmacy {branch}（PMG 药剂行）👋
 
 🌟 *TAWARAN ISTIMEWA / 限时特别特惠* 🌟
 Produk kegemaran anda / 您关注的优质产品：
 *{product}*
 
-✨ *Tawaran / 特惠详情：* {offer_details}
-📅 *Tempoh / 优惠日期：* {promo_period}
-📍 *Lokasi / 门店：* PMG Pharmacy {branch}
-📞 *Hubungi / 联络电话：* {contact}
+✨ *Tawaran / 特惠详情：*
+{offer_details}
+
+📅 *Tempoh / 优惠日期：*
+{promo_period}
+
+📍 *Lokasi / 门店：*
+PMG Pharmacy {branch}
+
+📞 *Hubungi / 联络电话：*
+{contact}
 
 Stok terhad, siapa cepat dia dapat. Boleh terus balas WhatsApp ini untuk tempahan awal atau simpan stok ya!
+
 存货有限，先到先得。如需预留存货或送货，欢迎直接回复此 WhatsApp！
 
 Terima kasih atas sokongan anda / 祝您与家人健康平安！😊`,
@@ -265,10 +290,17 @@ Terima kasih atas sokongan anda / 祝您与家人健康平安！😊`,
 
 Great news! Your favorite product *{product}* is currently having a *SPECIAL LIMITED-TIME OFFER*! 🌟
 
-✨ *Special Offer:* {offer_details}
-📅 *Validity Period:* {promo_period}
-📍 *Location:* PMG Pharmacy {branch}
-📞 *Contact Us:* {contact}
+✨ *Special Offer:*
+{offer_details}
+
+📅 *Validity Period:*
+{promo_period}
+
+📍 *Location:*
+PMG Pharmacy {branch}
+
+📞 *Contact Us:*
+{contact}
 
 Stocks are limited on a first-come, first-served basis. If you would like us to reserve stocks for you or arrange delivery, feel free to reply directly to this WhatsApp message!
 
@@ -285,6 +317,7 @@ const STORAGE_PROMO_POSTER_BM  = 'pmg_promo_poster_data_bm';
 const STORAGE_PROMO_POSTER_ZH  = 'pmg_promo_poster_data_zh';
 const STORAGE_SHEEP_SEEDED_V1    = 'pmg_promo_sheep_placenta_seeded_v1';
 const STORAGE_FLEXSURE_SEEDED_V1 = 'pmg_promo_flexsure_gold_seeded_v1';
+const STORAGE_FLEXSURE_SEEDED_V2 = 'pmg_promo_flexsure_gold_seeded_v2';
 
 let promoCampaigns = [];
 let promoActiveCampaign = null;
@@ -446,6 +479,59 @@ function saveCustomPromoCampaigns() {
   }
 }
 
+function upgradeLegacyCompactPromoFormatting(state) {
+  if (!state || typeof state !== 'object') return false;
+  let upgraded = false;
+
+  // Upgrade legacy compact single-line Flexsure Gold offer strings to bulleted multi-line layout
+  if (typeof state.offerDetailsBm === 'string' && state.offerDetailsBm.includes('EKSKLUSIF UNTUK AHLI SENIORCARE SAHAJA') && !state.offerDetailsBm.includes('\n')) {
+    state.offerDetailsBm = FLEXSURE_GOLD_PRESET_CAMPAIGN.defaultOfferDetailsBm;
+    upgraded = true;
+  }
+  if (typeof state.offerDetailsZh === 'string' && state.offerDetailsZh.includes('只限 SeniorCare 乐龄会员专享') && !state.offerDetailsZh.includes('\n')) {
+    state.offerDetailsZh = FLEXSURE_GOLD_PRESET_CAMPAIGN.defaultOfferDetailsZh;
+    upgraded = true;
+  }
+  if (typeof state.offerDetailsEn === 'string' && state.offerDetailsEn.includes('EXCLUSIVE FOR SENIORCARE MEMBERS ONLY') && !state.offerDetailsEn.includes('\n')) {
+    state.offerDetailsEn = FLEXSURE_GOLD_PRESET_CAMPAIGN.defaultOfferDetailsEn;
+    upgraded = true;
+  }
+  if (typeof state.offerDetails === 'string' && state.offerDetails.includes('SeniorCare Members Only: ONE DAY SPECIAL') && !state.offerDetails.includes('\n')) {
+    state.offerDetails = FLEXSURE_GOLD_PRESET_CAMPAIGN.defaultOfferDetails;
+    upgraded = true;
+  }
+
+  // Upgrade any cached compact default templates (where ✨, 📅, 📍, 📞 had no blank lines between them)
+  if (state.templates && typeof state.templates === 'object') {
+    const compactPatterns = [
+      {
+        key: 'bm',
+        marker: '✨ *Tawaran Istimewa:* {offer_details}\n📅 *Tempoh Promosi:* {promo_period}\n📍 *Lokasi:* PMG Pharmacy {branch}\n📞 *Hubungi:* {contact}'
+      },
+      {
+        key: 'zh',
+        marker: '✨ *特别特惠详情：* {offer_details}\n📅 *优惠日期：* {promo_period}\n📍 *门店地点：* PMG Pharmacy {branch}\n📞 *联络电话：* {contact}'
+      },
+      {
+        key: 'bilingual',
+        marker: '✨ *Tawaran / 特惠详情：* {offer_details}\n📅 *Tempoh / 优惠日期：* {promo_period}\n📍 *Lokasi / 门店：* PMG Pharmacy {branch}\n📞 *Hubungi / 联络电话：* {contact}'
+      },
+      {
+        key: 'en',
+        marker: '✨ *Special Offer:* {offer_details}\n📅 *Validity Period:* {promo_period}\n📍 *Location:* PMG Pharmacy {branch}\n📞 *Contact Us:* {contact}'
+      }
+    ];
+    compactPatterns.forEach(({ key, marker }) => {
+      if (typeof state.templates[key] === 'string' && state.templates[key].includes(marker)) {
+        state.templates[key] = PROMO_DEFAULT_TEMPLATES[key];
+        upgraded = true;
+      }
+    });
+  }
+
+  return upgraded;
+}
+
 function loadPromoComposerState() {
   try {
     const raw = localStorage.getItem(STORAGE_PROMO_COMPOSER);
@@ -459,9 +545,19 @@ function loadPromoComposerState() {
     // First-time seed for Flexsure Gold SeniorCare One Day Special (28 Nov 2026) so existing localStorage switches cleanly
     if (localStorage.getItem(STORAGE_FLEXSURE_SEEDED_V1) !== '1') {
       applyCampaignDefaultsToComposer(FLEXSURE_GOLD_PRESET_CAMPAIGN, false);
-      promoComposerState._updatedAt = '2026-11-22T09:45:00.000Z';
+      promoComposerState._updatedAt = '2026-11-23T02:20:00.000Z';
       localStorage.setItem(STORAGE_FLEXSURE_SEEDED_V1, '1');
+      localStorage.setItem(STORAGE_FLEXSURE_SEEDED_V2, '1');
       localStorage.setItem(STORAGE_SHEEP_SEEDED_V1, '1');
+      localStorage.setItem(STORAGE_PROMO_COMPOSER, JSON.stringify(promoComposerState));
+    } else if (localStorage.getItem(STORAGE_FLEXSURE_SEEDED_V2) !== '1') {
+      const upgraded = upgradeLegacyCompactPromoFormatting(promoComposerState);
+      if (upgraded) {
+        promoComposerState._updatedAt = '2026-11-23T02:20:00.000Z';
+      }
+      localStorage.setItem(STORAGE_FLEXSURE_SEEDED_V2, '1');
+      localStorage.setItem(STORAGE_PROMO_COMPOSER, JSON.stringify(promoComposerState));
+    } else if (upgradeLegacyCompactPromoFormatting(promoComposerState)) {
       localStorage.setItem(STORAGE_PROMO_COMPOSER, JSON.stringify(promoComposerState));
     }
   } catch (e) {
@@ -749,12 +845,15 @@ function getFormattedContactString(lang) {
   const branch = promoComposerState.branchName || 'Kota Sentosa';
 
   if (lang === 'zh') {
-    return `PMG ${branch} 柜台: ${shop} | 药剂师 ${pharmName}: ${pharm}`;
+    return `• PMG ${branch} 柜台：${shop}\n• 药剂师 ${pharmName}：${pharm}`;
   }
   if (lang === 'bilingual') {
-    return `Cawangan / 柜台: ${shop} | Farmasis / 药剂师 ${pharmName}: ${pharm}`;
+    return `• Cawangan / 柜台：${shop}\n• Farmasis / 药剂师 ${pharmName}：${pharm}`;
   }
-  return `Cawangan: ${shop} | Farmasis ${pharmName}: ${pharm}`;
+  if (lang === 'en') {
+    return `• Branch Hotline: ${shop}\n• Pharmacist ${pharmName}: ${pharm}`;
+  }
+  return `• Cawangan: ${shop}\n• Farmasis ${pharmName}: ${pharm}`;
 }
 
 // ─── TEMPLATE & MESSAGE GENERATOR ─────────────────────────────────────────────
@@ -812,15 +911,29 @@ function generatePersonalizedMessage(customer) {
   const product = promoActiveCampaign.productName || 'NUTRIBRIDGE NUTRI ALPHA 800GM';
 
   // Offer details resolution based on customer language:
-  // Chinese customer -> use offerDetailsZh; BM customer -> use offerDetailsBm
+  // Chinese customer -> use offerDetailsZh; BM customer -> use offerDetailsBm; EN -> offerDetailsEn
   let offerDetails = promoComposerState.offerDetails;
   if (effLang === 'zh') {
     offerDetails = promoComposerState.offerDetailsZh || promoComposerState.offerDetails || '';
   } else if (effLang === 'bm') {
     offerDetails = promoComposerState.offerDetailsBm || promoComposerState.offerDetails || '';
+  } else if (effLang === 'en') {
+    offerDetails = promoComposerState.offerDetailsEn || promoComposerState.offerDetails || '';
   }
 
-  const promoPeriod = promoComposerState.promoPeriod || 'Sementara Stok Masih Ada / 存货有限，售完即止';
+  let promoPeriod = promoComposerState.promoPeriod || 'Sementara Stok Masih Ada / 存货有限，售完即止';
+  // Use clean single-language date when active campaign supplies language-specific defaults and user kept the default bilingual string
+  if (promoActiveCampaign && promoPeriod === promoActiveCampaign.defaultPromoPeriod) {
+    if (effLang === 'zh' && promoActiveCampaign.defaultPromoPeriodZh) {
+      promoPeriod = promoActiveCampaign.defaultPromoPeriodZh;
+    } else if (effLang === 'bm' && promoActiveCampaign.defaultPromoPeriodBm) {
+      promoPeriod = promoActiveCampaign.defaultPromoPeriodBm;
+    } else if (effLang === 'en' && promoActiveCampaign.defaultPromoPeriodEn) {
+      promoPeriod = promoActiveCampaign.defaultPromoPeriodEn;
+    } else if (effLang === 'bilingual' && promoActiveCampaign.defaultPromoPeriodBm && promoActiveCampaign.defaultPromoPeriodZh) {
+      promoPeriod = `${promoActiveCampaign.defaultPromoPeriodBm}\n${promoActiveCampaign.defaultPromoPeriodZh}`;
+    }
+  }
   const branch = promoComposerState.branchName || 'Kota Sentosa';
   const contact = getFormattedContactString(effLang);
   const shopPhone = promoComposerState.shopPhone || '+60149773924';
@@ -2134,6 +2247,7 @@ function mergePromoCloudData(cloudData) {
         posterUrlZh: preservedPosterUrlZh,
         posterFileNameZh: preservedPosterNameZh
       };
+      upgradeLegacyCompactPromoFormatting(promoComposerState);
       changed = true;
     }
   }
