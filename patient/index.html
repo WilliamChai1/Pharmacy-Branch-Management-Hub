@@ -1956,19 +1956,24 @@ Date visit: 06.01.2026
       <div class="space-y-3.5 text-xs">
         <div>
           <label class="block font-semibold text-gray-700 mb-1">Select Patient *</label>
-          <select id="aptPatientSelect" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none"></select>
+          <select id="aptPatientSelect" onchange="refreshManualAppointmentSlots()" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none"></select>
         </div>
 
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block font-semibold text-gray-700 mb-1">Date *</label>
-            <input type="date" id="aptDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none">
+            <input type="date" id="aptDate" onchange="refreshManualAppointmentSlots()" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none">
           </div>
           <div>
-            <label class="block font-semibold text-gray-700 mb-1">Time Slot</label>
-            <input type="time" id="aptTime" value="10:00" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs outline-none">
+            <label class="block font-semibold text-gray-700 mb-1">Available Time Slot *</label>
+            <select id="aptTime" onchange="updateManualAppointmentSaveState()" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none">
+              <option value="">Select a working date...</option>
+            </select>
           </div>
         </div>
+
+        <!-- Live Pharmacist Schedule, On-Leave & Slot Collision Banner -->
+        <div id="aptScheduleStatusBanner" class="hidden rounded-xl p-2.5 text-[11px] font-semibold border"></div>
 
         <div>
           <label class="block font-semibold text-gray-700 mb-1">Purpose of Visit</label>
@@ -1978,7 +1983,7 @@ Date visit: 06.01.2026
 
         <div>
           <label class="block font-semibold text-gray-700 mb-1">Attending Pharmacist (负责药剂师) *</label>
-          <select id="aptPharmacist" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none">
+          <select id="aptPharmacist" onchange="refreshManualAppointmentSlots()" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white outline-none">
             <option value="William Chai Yee Sian (Pharmacist)">William Chai Yee Sian (Pharmacist)</option>
             <option value="Duty Pharmacist">Duty Pharmacist</option>
           </select>
@@ -1995,7 +2000,7 @@ Date visit: 06.01.2026
         <button onclick="closeAppointmentModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50">
           Cancel
         </button>
-        <button onclick="saveNewAppointment()" class="px-5 py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg text-xs font-bold shadow-sm">
+        <button id="aptSaveBtn" onclick="saveNewAppointment()" class="px-5 py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg text-xs font-bold shadow-sm transition">
           Save Appointment
         </button>
       </div>
@@ -3510,7 +3515,7 @@ Date visit: 06.01.2026
   <script src="../js/db.js?v=20261121_full_audit_v4"></script>
   <script src="../js/onedrive-sync.js?v=20261121_full_audit_v4"></script>
   <script src="../js/fy2027-kpi-engine.js?v=20261121_full_audit_v4"></script>
-  <script src="../js/patient.js?v=20261122_hsi_steatosis_v5"></script>
+  <script src="../js/patient.js?v=20261122_apt_avail_v6"></script>
 
   <script>
     // Compatibility alias for New Patient modal

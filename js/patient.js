@@ -4773,11 +4773,7 @@ function sendReminderBookingLinkWa(patientId, reminderType, medId, remDate, remP
 }
 
 function showNewAppointmentModalWithDate(patientId, defaultDate) {
-  showNewAppointmentModal(patientId);
-  if (defaultDate) {
-    const dInput = document.getElementById('aptDate');
-    if (dInput) dInput.value = defaultDate;
-  }
+  showNewAppointmentModal(patientId, defaultDate || null);
 }
 
 // ─── RESCHEDULE & SHIFT CHANGE MODAL LOGIC ───────────────────────────────────
@@ -4951,6 +4947,14 @@ function saveReschedule(sendWhatsApp = false) {
   if (!newTime) {
     alert('Please enter a valid appointment time slot.');
     return;
+  }
+
+  if (typeof validateManualAppointmentSlot === 'function') {
+    const reschedCheck = validateManualAppointmentSlot(p.branch || 'Kota Sentosa', newDate, newTime, aptId);
+    if (!reschedCheck.valid) {
+      alert(`⛔ Cannot reschedule to ${newDate} (${newTime}):\n\n${reschedCheck.message}`);
+      return;
+    }
   }
 
   // Update appointment fields
@@ -7667,8 +7671,432 @@ async function saveNewEncounter() {
   }, 300);
 }
 
-// ─── BOOK APPOINTMENT MODAL ──────────────────────────────────────────────────
-function showNewAppointmentModal(patientId) {
+// ─── BOOK APPOINTMENT MODAL & LIVE PHARMACIST AVAILABILITY ENGINE ────────────
+function getBookedSlotsForDate(branchCode, dateStr, excludeAptId = null) {
+  const code = normalizeBranchCode(branchCode || 'Kota Sentosa');
+  const sched = typeof getPharmacistSchedule === 'function' ? getPharmacistSchedule(code) : null;
+  const branchName = (sched && sched.branchName) || (BRANCH_SCHEDULES[code] && BRANCH_SCHEDULES[code].name) || code;
+  const bookedMap = new Map();
+  if (!dateStr) return bookedMap;
+
+  const isExcludedStatus = (status) => {
+    const s = String(status || '').trim().toUpperCase();
+    return s === 'CANCELLED' || s === 'MISSED' || s === 'DELETED';
+  };
+  const matchesBranch = (rawBCode, rawBName) => {
+    if (!rawBCode && !rawBName) return true;
+    const normB = rawBCode ? normalizeBranchCode(rawBCode) : '';
+    return normB === code || rawBName === branchName || (rawBName && normalizeBranchCode(rawBName) === code);
+  };
+  const registerSlot = (rawTime, patientName, refId, source) => {
+    if (!rawTime) return;
+    const rawStr = String(rawTime).trim();
+    if (!rawStr || rawStr.toLowerCase().includes('anytime')) return;
+    if (excludeAptId && refId && String(refId) === String(excludeAptId)) return;
+    const normTime = normalizeAppointmentTime(rawStr);
+    if (!/^\d{2}:\d{2}$/.test(normTime)) return;
+    if (!bookedMap.has(normTime)) {
+      bookedMap.set(normTime, {
+        time: normTime,
+        patientName: patientName || 'Booked Customer',
+        ref: refId || '',
+        source
+      });
+    }
+  };
+
+  // A. Local patientsData appointments
+  if (typeof patientsData !== 'undefined' && Array.isArray(patientsData)) {
+    patientsData.forEach(pt => {
+      if (!pt || pt.status === 'DELETED') return;
+      if (!matchesBranch(pt.branch, pt.branch)) return;
+      (pt.appointments || []).forEach(apt => {
+        if (!apt || apt.date !== dateStr || isExcludedStatus(apt.status)) return;
+        registerSlot(apt.time, pt.name, apt.id || apt.ref, 'patient');
+      });
+    });
+  }
+
+  // B. Local customer self-bookings (pmg_customer_bookings)
+  try {
+    const custBookings = JSON.parse(localStorage.getItem('pmg_customer_bookings') || '[]');
+    if (Array.isArray(custBookings)) {
+      custBookings.forEach(b => {
+        if (!b || b.date !== dateStr || isExcludedStatus(b.status)) return;
+        if (!matchesBranch(b.branchCode, b.branchName)) return;
+        registerSlot(b.time, b.customerName || b.name, b.id || b.ref, 'local_booking');
+      });
+    }
+  } catch (_) {}
+
+  // C. Live cloud-synced schedule onlineBookings
+  if (sched && Array.isArray(sched.onlineBookings)) {
+    sched.onlineBookings.forEach(b => {
+      if (!b || b.date !== dateStr || isExcludedStatus(b.status)) return;
+      if (!matchesBranch(b.branchCode, b.branchName)) return;
+      registerSlot(b.time, b.customerName || b.name, b.id || b.ref, 'cloud_booking');
+    });
+  }
+
+  return bookedMap;
+}
+
+function getManualAppointmentAvailability(branchCode, dateStr, excludeAptId = null) {
+  const code = normalizeBranchCode(branchCode || 'Kota Sentosa');
+  const todayStr = getTodayDateString(0);
+  const schedForDate = getPharmacistScheduleForDate(code, dateStr);
+  const bookedMap = getBookedSlotsForDate(code, dateStr, excludeAptId);
+
+  if (!dateStr) {
+    return {
+      branchCode: code,
+      date: '',
+      isPastDate: false,
+      isClosed: true,
+      reason: 'Please select a date.',
+      schedForDate,
+      bookedMap,
+      slots: [],
+      availableSlots: [],
+      bookedCount: 0
+    };
+  }
+
+  if (dateStr < todayStr) {
+    return {
+      branchCode: code,
+      date: dateStr,
+      isPastDate: true,
+      isClosed: true,
+      reason: `Date ${dateStr} has already passed.`,
+      schedForDate,
+      bookedMap,
+      slots: [],
+      availableSlots: [],
+      bookedCount: bookedMap.size
+    };
+  }
+
+  if (schedForDate.isClosed || !schedForDate.isOpen) {
+    return {
+      branchCode: code,
+      date: dateStr,
+      isPastDate: false,
+      isClosed: true,
+      reason: schedForDate.reason || 'Pharmacist On Leave / Rest Day',
+      schedForDate,
+      bookedMap,
+      slots: [],
+      availableSlots: [],
+      bookedCount: bookedMap.size
+    };
+  }
+
+  const [openH, openM] = (schedForDate.open || '08:00').split(':').map(Number);
+  const [closeH, closeM] = (schedForDate.close || '17:00').split(':').map(Number);
+  const openMinutes = openH * 60 + openM;
+  const closeMinutes = closeH * 60 + closeM;
+
+  const hasBreak = schedForDate.hasBreak !== false && schedForDate.breakStart && schedForDate.breakEnd;
+  let breakStartMin = -1;
+  let breakEndMin = -1;
+  if (hasBreak) {
+    const [bsh, bsm] = schedForDate.breakStart.split(':').map(Number);
+    const [beh, bem] = schedForDate.breakEnd.split(':').map(Number);
+    breakStartMin = bsh * 60 + bsm;
+    breakEndMin = beh * 60 + bem;
+  }
+
+  const isToday = (dateStr === todayStr);
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+  const slots = [];
+  for (let m = openMinutes; m <= closeMinutes - 30; m += 30) {
+    const hh = String(Math.floor(m / 60)).padStart(2, '0');
+    const mm = String(m % 60).padStart(2, '0');
+    const timeVal = `${hh}:${mm}`;
+    const hourNum = Math.floor(m / 60);
+    const ampm = hourNum >= 12 ? 'PM' : 'AM';
+    const displayHour = hourNum % 12 === 0 ? 12 : hourNum % 12;
+    const label = `${displayHour}:${mm} ${ampm}`;
+
+    const isPast = isToday && (m <= currentMinutes);
+    const isBreak = hasBreak && (m >= breakStartMin && m < breakEndMin);
+    const bookedInfo = bookedMap.get(timeVal) || null;
+
+    let status = 'available';
+    if (isPast) status = 'past';
+    else if (isBreak) status = 'break';
+    else if (bookedInfo) status = 'booked';
+
+    slots.push({
+      timeVal,
+      label,
+      minutes: m,
+      status,
+      bookedBy: bookedInfo ? bookedInfo.patientName : '',
+      breakLabel: schedForDate.breakLabel || 'Rest / Lunch Break'
+    });
+  }
+
+  const availableSlots = slots.filter(s => s.status === 'available');
+  const bookedCount = slots.filter(s => s.status === 'booked').length;
+
+  return {
+    branchCode: code,
+    date: dateStr,
+    isPastDate: false,
+    isClosed: false,
+    reason: schedForDate.reason || '',
+    schedForDate,
+    bookedMap,
+    slots,
+    availableSlots,
+    bookedCount
+  };
+}
+
+function validateManualAppointmentSlot(branchCode, dateStr, timeStr, excludeAptId = null) {
+  const availability = getManualAppointmentAvailability(branchCode, dateStr, excludeAptId);
+  if (!dateStr) {
+    return { valid: false, reasonCode: 'MISSING_DATE', message: 'Please select a valid appointment date.', availability };
+  }
+  if (availability.isPastDate) {
+    return { valid: false, reasonCode: 'PAST_DATE', message: `Date ${dateStr} has already passed. Please select today or a future working day.`, availability };
+  }
+  if (availability.isClosed) {
+    return {
+      valid: false,
+      reasonCode: 'ON_LEAVE',
+      message: `Pharmacist is unavailable / on leave on ${dateStr} (${availability.reason}). Please choose another working day.`,
+      availability
+    };
+  }
+  if (!timeStr) {
+    return { valid: false, reasonCode: 'MISSING_TIME', message: 'No available time slot selected for this date.', availability };
+  }
+
+  const normTime = normalizeAppointmentTime(timeStr);
+  if (!/^\d{2}:\d{2}$/.test(normTime)) {
+    return { valid: false, reasonCode: 'INVALID_TIME', message: 'Please select a valid available time slot.', availability };
+  }
+
+  const [hh, mm] = normTime.split(':').map(Number);
+  const mins = hh * 60 + mm;
+  const schedForDate = availability.schedForDate;
+  const [openH, openM] = (schedForDate.open || '08:00').split(':').map(Number);
+  const [closeH, closeM] = (schedForDate.close || '17:00').split(':').map(Number);
+  const openMinutes = openH * 60 + openM;
+  const closeMinutes = closeH * 60 + closeM;
+
+  if (mins < openMinutes || mins >= closeMinutes) {
+    return {
+      valid: false,
+      reasonCode: 'OUTSIDE_HOURS',
+      message: `${normTime} is outside pharmacist consultation hours (${schedForDate.open} – ${schedForDate.close}) on ${dateStr}.`,
+      availability
+    };
+  }
+
+  const hasBreak = schedForDate.hasBreak !== false && schedForDate.breakStart && schedForDate.breakEnd;
+  if (hasBreak) {
+    const [bsh, bsm] = schedForDate.breakStart.split(':').map(Number);
+    const [beh, bem] = schedForDate.breakEnd.split(':').map(Number);
+    if (mins >= (bsh * 60 + bsm) && mins < (beh * 60 + bem)) {
+      return {
+        valid: false,
+        reasonCode: 'BREAK_TIME',
+        message: `${normTime} falls during pharmacist rest / lunch break (${schedForDate.breakStart} – ${schedForDate.breakEnd}).`,
+        availability
+      };
+    }
+  }
+
+  const todayStr = getTodayDateString(0);
+  if (dateStr === todayStr) {
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    if (mins <= currentMinutes) {
+      return {
+        valid: false,
+        reasonCode: 'PAST_TIME',
+        message: `Time slot ${normTime} on ${dateStr} has already passed.`,
+        availability
+      };
+    }
+  }
+
+  const bookedInfo = availability.bookedMap.get(normTime);
+  if (bookedInfo) {
+    return {
+      valid: false,
+      reasonCode: 'ALREADY_BOOKED',
+      message: `Time slot ${normTime} on ${dateStr} is already booked by ${bookedInfo.patientName}. Please select another available slot.`,
+      availability
+    };
+  }
+
+  return { valid: true, reasonCode: 'OK', message: 'Available', availability };
+}
+
+function findNextAvailableAppointmentDate(branchCode, startDateStr, maxLookaheadDays = 45) {
+  const code = normalizeBranchCode(branchCode || 'Kota Sentosa');
+  const baseStr = startDateStr || getTodayDateString(0);
+  const parts = baseStr.split('-').map(Number);
+  const baseDate = (parts.length === 3) ? new Date(parts[0], parts[1] - 1, parts[2]) : new Date();
+
+  for (let i = 0; i <= maxLookaheadDays; i++) {
+    const d = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() + i);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const candidateStr = `${y}-${m}-${day}`;
+    const avail = getManualAppointmentAvailability(code, candidateStr);
+    if (!avail.isPastDate && !avail.isClosed && avail.availableSlots.length > 0) {
+      return candidateStr;
+    }
+  }
+  return baseStr;
+}
+
+function getManualAppointmentBranchCode() {
+  const selectEl = document.getElementById('aptPatientSelect');
+  const pId = selectEl ? selectEl.value : '';
+  const p = (typeof patientsData !== 'undefined' && Array.isArray(patientsData))
+    ? patientsData.find(pt => pt.id === pId)
+    : null;
+  return normalizeBranchCode((p && p.branch) || 'Kota Sentosa');
+}
+
+function updateManualAppointmentSaveState() {
+  const saveBtn = document.getElementById('aptSaveBtn');
+  const timeEl = document.getElementById('aptTime');
+  const dateEl = document.getElementById('aptDate');
+  if (!saveBtn) return;
+
+  const branchCode = getManualAppointmentBranchCode();
+  const dateStr = dateEl ? dateEl.value : '';
+  const timeStr = timeEl ? timeEl.value : '';
+  const check = validateManualAppointmentSlot(branchCode, dateStr, timeStr);
+
+  saveBtn.disabled = !check.valid;
+  if (check.valid) {
+    saveBtn.className = 'px-5 py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg text-xs font-bold shadow-sm transition cursor-pointer';
+    saveBtn.textContent = 'Save Appointment';
+  } else {
+    saveBtn.className = 'px-5 py-2 bg-gray-300 text-gray-500 rounded-lg text-xs font-bold cursor-not-allowed transition';
+    saveBtn.textContent = check.reasonCode === 'ON_LEAVE'
+      ? 'Pharmacist On Leave'
+      : (check.reasonCode === 'ALREADY_BOOKED' ? 'Slot Already Booked' : 'Unavailable');
+  }
+}
+
+function jumpManualAppointmentToNextAvailable() {
+  const branchCode = getManualAppointmentBranchCode();
+  const dateEl = document.getElementById('aptDate');
+  const currentVal = (dateEl && dateEl.value) ? dateEl.value : getTodayDateString(0);
+  const parts = currentVal.split('-').map(Number);
+  let nextStartStr = getTodayDateString(0);
+  if (parts.length === 3) {
+    const nextD = new Date(parts[0], parts[1] - 1, parts[2] + 1);
+    const todayStr = getTodayDateString(0);
+    const cand = `${nextD.getFullYear()}-${String(nextD.getMonth() + 1).padStart(2, '0')}-${String(nextD.getDate()).padStart(2, '0')}`;
+    nextStartStr = cand > todayStr ? cand : todayStr;
+  }
+  const nextAvail = findNextAvailableAppointmentDate(branchCode, nextStartStr);
+  if (dateEl) dateEl.value = nextAvail;
+  refreshManualAppointmentSlots();
+}
+
+function refreshManualAppointmentSlots(preferredTime = null) {
+  const dateEl = document.getElementById('aptDate');
+  const timeEl = document.getElementById('aptTime');
+  const bannerEl = document.getElementById('aptScheduleStatusBanner');
+  if (!dateEl || !timeEl) return;
+
+  const branchCode = getManualAppointmentBranchCode();
+  const dateStr = dateEl.value || '';
+  const prevSelected = preferredTime || timeEl.value || '';
+  const avail = getManualAppointmentAvailability(branchCode, dateStr);
+  const sched = avail.schedForDate;
+
+  if (avail.isPastDate) {
+    timeEl.innerHTML = `<option value="" disabled selected>⛔ Date has passed</option>`;
+    timeEl.disabled = true;
+    if (bannerEl) {
+      bannerEl.className = 'rounded-xl p-2.5 text-[11px] font-semibold border bg-rose-50 border-rose-300 text-rose-800 flex items-center justify-between gap-2';
+      bannerEl.innerHTML = `<span>🚫 Date <b>${escHtml(dateStr)}</b> has already passed.</span>
+        <button type="button" onclick="jumpManualAppointmentToNextAvailable()" class="shrink-0 px-2 py-1 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold">Next Working Day</button>`;
+      bannerEl.classList.remove('hidden');
+    }
+    updateManualAppointmentSaveState();
+    return;
+  }
+
+  if (avail.isClosed) {
+    timeEl.innerHTML = `<option value="" disabled selected>🚫 Pharmacist On Leave / Closed</option>`;
+    timeEl.disabled = true;
+    if (bannerEl) {
+      bannerEl.className = 'rounded-xl p-2.5 text-[11px] font-semibold border bg-rose-50 border-rose-300 text-rose-900 flex items-center justify-between gap-2';
+      bannerEl.innerHTML = `<span>🚫 <b>Unavailable / On Leave</b> on ${escHtml(dateStr)} — ${escHtml(avail.reason || 'Rest Day')}. Booking is disabled.</span>
+        <button type="button" onclick="jumpManualAppointmentToNextAvailable()" class="shrink-0 px-2 py-1 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold">Next Working Day</button>`;
+      bannerEl.classList.remove('hidden');
+    }
+    updateManualAppointmentSaveState();
+    return;
+  }
+
+  // Working day: populate slot dropdown with available slots selectable and booked/break/past slots disabled
+  let optionsHtml = '';
+  avail.slots.forEach(slot => {
+    if (slot.status === 'past') {
+      optionsHtml += `<option value="${slot.timeVal}" disabled>⏳ ${slot.label} (${slot.timeVal}) — Passed</option>`;
+    } else if (slot.status === 'break') {
+      optionsHtml += `<option value="${slot.timeVal}" disabled>☕ ${slot.label} (${slot.timeVal}) — ${escHtml(slot.breakLabel)}</option>`;
+    } else if (slot.status === 'booked') {
+      const shortName = slot.bookedBy ? ` (${escHtml(slot.bookedBy.slice(0, 22))})` : '';
+      optionsHtml += `<option value="${slot.timeVal}" disabled>⛔ ${slot.label} (${slot.timeVal}) — Booked${shortName}</option>`;
+    } else {
+      optionsHtml += `<option value="${slot.timeVal}">🟢 ${slot.label} (${slot.timeVal}) — Available</option>`;
+    }
+  });
+
+  if (avail.availableSlots.length === 0) {
+    timeEl.innerHTML = `<option value="" disabled selected>⛔ No Available Slots Remaining</option>` + optionsHtml;
+    timeEl.disabled = true;
+    if (bannerEl) {
+      bannerEl.className = 'rounded-xl p-2.5 text-[11px] font-semibold border bg-amber-50 border-amber-300 text-amber-900 flex items-center justify-between gap-2';
+      bannerEl.innerHTML = `<span>⚠️ All consultation slots on <b>${escHtml(dateStr)}</b> are booked or ended (${avail.bookedCount} booked).</span>
+        <button type="button" onclick="jumpManualAppointmentToNextAvailable()" class="shrink-0 px-2 py-1 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold">Next Available Day</button>`;
+      bannerEl.classList.remove('hidden');
+    }
+    updateManualAppointmentSaveState();
+    return;
+  }
+
+  timeEl.disabled = false;
+  timeEl.innerHTML = optionsHtml;
+
+  const canKeepPrev = prevSelected && avail.availableSlots.some(s => s.timeVal === normalizeAppointmentTime(prevSelected));
+  timeEl.value = canKeepPrev ? normalizeAppointmentTime(prevSelected) : avail.availableSlots[0].timeVal;
+
+  if (bannerEl) {
+    const breakText = (sched.hasBreak !== false && sched.breakStart && sched.breakEnd)
+      ? ` · Break ${sched.breakStart}–${sched.breakEnd}`
+      : '';
+    const bookedText = avail.bookedCount > 0
+      ? ` · <span class="text-rose-700 font-bold">${avail.bookedCount} already booked (filtered out)</span>`
+      : '';
+    bannerEl.className = 'rounded-xl p-2.5 text-[11px] font-semibold border bg-emerald-50 border-emerald-200 text-emerald-900';
+    bannerEl.innerHTML = `🟢 <b>Working Day</b> (${escHtml(sched.open)}–${escHtml(sched.close)}${escHtml(breakText)}) · <b>${avail.availableSlots.length}</b> slots open${bookedText}`;
+    bannerEl.classList.remove('hidden');
+  }
+
+  updateManualAppointmentSaveState();
+}
+
+function showNewAppointmentModal(patientId, forcedDate = null) {
   const modal = document.getElementById('patientAptModal');
   if (!modal) return;
 
@@ -7679,23 +8107,42 @@ function showNewAppointmentModal(patientId) {
     `).join('');
   }
 
-  document.getElementById('aptDate').value = getTodayDateString(1);
-  document.getElementById('aptTime').value = '10:00';
-  document.getElementById('aptPurpose').value = 'Chronic Medication Refill & BP Review';
-  document.getElementById('aptNotes').value = '';
+  const branchCode = getManualAppointmentBranchCode();
+  const dateEl = document.getElementById('aptDate');
+  const todayStr = getTodayDateString(0);
+  if (dateEl) {
+    dateEl.min = todayStr;
+    dateEl.value = forcedDate || findNextAvailableAppointmentDate(branchCode, getTodayDateString(1));
+  }
+
+  const purposeEl = document.getElementById('aptPurpose');
+  if (purposeEl) purposeEl.value = 'Chronic Medication Refill & BP Review';
+  const notesEl = document.getElementById('aptNotes');
+  if (notesEl) notesEl.value = '';
 
   const aptPharmEl = document.getElementById('aptPharmacist');
   if (aptPharmEl) {
-    const session = getSession();
+    const session = (typeof getSession === 'function') ? getSession() : null;
     if (session && session.displayName) {
-      const match = Array.from(aptPharmEl.options).find(opt => opt.value.toLowerCase().includes(session.displayName.toLowerCase()));
+      const match = Array.from(aptPharmEl.options || []).find(opt => opt.value.toLowerCase().includes(session.displayName.toLowerCase()));
       if (match) {
         aptPharmEl.value = match.value;
       }
     }
   }
 
+  refreshManualAppointmentSlots('10:00');
   modal.classList.remove('hidden');
+
+  // Refresh latest pharmacist leave overrides & customer cloud bookings in background while modal is open
+  if (typeof fetchScheduleFromSheets === 'function') {
+    fetchScheduleFromSheets(branchCode).then(() => {
+      const liveModal = document.getElementById('patientAptModal');
+      if (liveModal && !liveModal.classList.contains('hidden')) {
+        refreshManualAppointmentSlots();
+      }
+    }).catch(() => {});
+  }
 }
 
 function closeAppointmentModal() {
@@ -7708,29 +8155,99 @@ function saveNewAppointment() {
   const p = patientsData.find(pt => pt.id === pId);
   if (!p) return;
 
+  const aptDateVal = document.getElementById('aptDate')?.value || '';
+  const aptTimeVal = document.getElementById('aptTime')?.value || '';
+  const branchCode = normalizeBranchCode(p.branch || 'Kota Sentosa');
+
+  // Hard guard: block booking on pharmacist on-leave/closed days, break times, past slots, or already-booked slots
+  const validation = validateManualAppointmentSlot(branchCode, aptDateVal, aptTimeVal);
+  if (!validation.valid) {
+    if (typeof showPmgToast === 'function') {
+      showPmgToast(`⛔ ${validation.message}`, 'error');
+    }
+    alert(`⛔ Cannot Book Appointment\n\n${validation.message}`);
+    refreshManualAppointmentSlots();
+    return false;
+  }
+
   const aptPharmEl = document.getElementById('aptPharmacist');
   const attendingPharm = aptPharmEl ? aptPharmEl.value.trim() : 'Duty Pharmacist';
+  const normTime = normalizeAppointmentTime(aptTimeVal);
+  const aptId = 'APT-' + Date.now();
+  const purposeVal = (document.getElementById('aptPurpose')?.value || '').trim();
+  const notesVal = (document.getElementById('aptNotes')?.value || '').trim();
 
   const newApt = {
-    id: 'APT-' + Date.now(),
-    date: document.getElementById('aptDate').value,
-    time: document.getElementById('aptTime').value,
-    purpose: document.getElementById('aptPurpose').value.trim(),
+    id: aptId,
+    date: aptDateVal,
+    time: normTime,
+    purpose: purposeVal,
     pharmacist: attendingPharm,
     status: 'Scheduled',
-    notes: document.getElementById('aptNotes').value.trim()
+    notes: notesVal,
+    statusUpdatedAt: new Date().toISOString()
   };
 
   if (!p.appointments) p.appointments = [];
   p.appointments.unshift(newApt);
+  p.updatedAt = new Date().toISOString();
 
-  savePatientsData();
+  savePatientsData({ immediateOneDrive: true });
+
+  // Mirror non-clinical slot reservation to local bookings & Google Cloud schedule so customer self-booking portals also block this slot
+  const schedInfo = validation.availability && validation.availability.schedForDate;
+  const cloudSlotPayload = sanitizePayloadForGoogleCloud({
+    id: aptId,
+    ref: aptId,
+    branchCode,
+    branchName: (schedInfo && schedInfo.branchName) || branchCode,
+    customerName: p.name,
+    phone: p.phone || '',
+    date: aptDateVal,
+    time: normTime,
+    service: purposeVal || 'Pharmacy Consultation / Medication Refill',
+    pharmacist: attendingPharm,
+    status: 'Scheduled',
+    source: 'Pharmacist Manual Booking',
+    createdAt: new Date().toISOString(),
+    statusUpdatedAt: newApt.statusUpdatedAt
+  });
+  try {
+    const custBookings = JSON.parse(localStorage.getItem('pmg_customer_bookings') || '[]');
+    if (Array.isArray(custBookings)) {
+      custBookings.unshift(cloudSlotPayload);
+      localStorage.setItem('pmg_customer_bookings', JSON.stringify(custBookings.slice(0, 150)));
+    }
+  } catch (_) {}
+  if (typeof pushBookingToCloud === 'function') {
+    pushBookingToCloud(cloudSlotPayload).catch(err => {
+      console.warn('[Manual Appointment] Cloud slot reservation sync warning:', err);
+    });
+  }
+
   closeAppointmentModal();
   renderPatientModule();
 
   if (viewingPatientId === pId) {
     viewPatientProfile(pId);
   }
+  if (typeof showPmgToast === 'function') {
+    showPmgToast(`✅ Appointment booked for ${p.name} on ${aptDateVal} at ${normTime}`, 'success');
+  }
+  return true;
+}
+
+if (typeof window !== 'undefined') {
+  window.getBookedSlotsForDate = getBookedSlotsForDate;
+  window.getManualAppointmentAvailability = getManualAppointmentAvailability;
+  window.validateManualAppointmentSlot = validateManualAppointmentSlot;
+  window.findNextAvailableAppointmentDate = findNextAvailableAppointmentDate;
+  window.refreshManualAppointmentSlots = refreshManualAppointmentSlots;
+  window.updateManualAppointmentSaveState = updateManualAppointmentSaveState;
+  window.jumpManualAppointmentToNextAvailable = jumpManualAppointmentToNextAvailable;
+  window.showNewAppointmentModal = showNewAppointmentModal;
+  window.showNewAppointmentModalWithDate = showNewAppointmentModalWithDate;
+  window.saveNewAppointment = saveNewAppointment;
 }
 
 // ─── PATIENT FULL PROFILE & HISTORY MODAL ────────────────────────────────────
@@ -12282,33 +12799,9 @@ function updateCustBookHours() {
     breakEndMin = beh * 60 + bem;
   }
 
-  // Prevent time slot collisions: collect already-booked slots for this date and branch
-  const bookedTimes = new Set();
-
-  // A. From customer bookings in localStorage
-  let custBookings = [];
-  try {
-    custBookings = JSON.parse(localStorage.getItem('pmg_customer_bookings') || '[]');
-  } catch (_) { custBookings = []; }
-
-  custBookings.forEach(b => {
-    if ((normalizeBranchCode(b.branchCode) === code || b.branchName === schedForDate.branchName) && b.date === dateStr && b.status !== 'Cancelled' && b.time && !b.time.includes('Anytime')) {
-      bookedTimes.add(b.time);
-    }
-  });
-
-  // B. From patientsData appointments
-  if (typeof patientsData !== 'undefined' && Array.isArray(patientsData)) {
-    patientsData.forEach(pt => {
-      if (!pt.branch || normalizeBranchCode(pt.branch) === code || pt.branch === schedForDate.branchName) {
-        (pt.appointments || []).forEach(apt => {
-          if (apt.date === dateStr && apt.status !== 'Cancelled' && apt.status !== 'Missed' && apt.time && !apt.time.includes('Anytime')) {
-            bookedTimes.add(apt.time);
-          }
-        });
-      }
-    });
-  }
+  // Prevent time slot collisions: collect already-booked slots across patientsData, local bookings & live cloud onlineBookings
+  const bookedMap = getBookedSlotsForDate(code, dateStr);
+  const bookedTimes = new Set(bookedMap.keys());
 
   const isToday = (dateStr === todayStr);
   const now = new Date();

@@ -2227,6 +2227,127 @@ function createBrowserSandbox(fetchImpl) {
     assert.strictEqual(Object.prototype.hasOwnProperty.call(sanitized.booking, 'hsiScore'), false, 'nested hsiScore must be stripped from Google Cloud payload');
   });
 
+  test('Manual Appointment Booking filters Pharmacist On-Leave days, Weekly Rest Days, Break Times & Already-Booked Slots (Local + Cloud)', () => {
+    const htmlSrc = fs.readFileSync(path.join(ROOT, 'patient', 'index.html'), 'utf8');
+    assert(htmlSrc.includes('id="aptScheduleStatusBanner"') && htmlSrc.includes('id="aptSaveBtn"') && htmlSrc.includes('<select id="aptTime"'), 'patient/index.html must include slot select, status banner, and guarded save button');
+
+    const pushedPayloads = [];
+    const sb = createBrowserSandbox(async (url, opts) => {
+      if (opts && opts.method === 'POST' && opts.body) {
+        try { pushedPayloads.push(JSON.parse(opts.body)); } catch (_) {}
+      }
+      return { ok: true, json: async () => ({ success: true, schedule: {} }) };
+    });
+    sb.ctx.alert = sb.win.alert = () => {};
+    sb.ctx.getSession = sb.win.getSession = () => ({ displayName: 'William Chai Yee Sian', role: 'pharmacist', branch: 'Kota Sentosa' });
+    sb.ctx.AbortController = sb.win.AbortController = globalThis.AbortController;
+    sb.ctx.location = sb.win.location = { href: 'https://pmg.example/patient/index.html', origin: 'https://pmg.example', pathname: '/patient/index.html', search: '' };
+    const patientSrc = fs.readFileSync(path.join(ROOT, 'js', 'patient.js'), 'utf8');
+    vm.runInContext(patientSrc, sb.ctx);
+
+    // Prepare deterministic future dates:
+    // 2099-05-04 (Monday - On Leave override), 2099-05-05 (Tuesday - Open working day), 2099-05-03 (Sunday - Weekly Rest Day)
+    const schedPayload = {
+      branchCode: 'Kota Sentosa',
+      branchName: 'PMG Pharmacy Kota Sentosa',
+      defaultPharmacist: 'William Chai Yee Sian (Pharmacist)',
+      hasBreak: true,
+      breakStart: '12:30',
+      breakEnd: '13:30',
+      weeklyTemplate: {
+        '0': { isOpen: false, open: '', close: '' },
+        '1': { isOpen: true, open: '08:00', close: '17:00' },
+        '2': { isOpen: true, open: '08:00', close: '17:00' },
+        '3': { isOpen: true, open: '08:00', close: '17:00' },
+        '4': { isOpen: true, open: '08:00', close: '17:00' },
+        '5': { isOpen: true, open: '08:00', close: '17:00' },
+        '6': { isOpen: true, open: '08:00', close: '17:00' }
+      },
+      dateOverrides: {
+        '2099-05-04': { isClosed: true, reason: 'Annual Leave (Pharmacist William)' }
+      },
+      onlineBookings: [
+        { id: 'BK-CLOUD-1', branchCode: 'Kota Sentosa', customerName: 'Cloud Online Client', date: '2099-05-05', time: '10:30 AM', status: 'Scheduled' },
+        { id: 'BK-CLOUD-CANCEL', branchCode: 'Kota Sentosa', customerName: 'Cancelled Client', date: '2099-05-05', time: '11:00', status: 'Cancelled' }
+      ],
+      lastUpdated: '2099-01-01T00:00:00.000Z'
+    };
+    sb.win.localStorage.setItem('pmg_pharmacist_schedule_Kota Sentosa', JSON.stringify(schedPayload));
+    sb.win.localStorage.setItem('pmg_customer_bookings', JSON.stringify([
+      { id: 'BK-LOCAL-1', branchCode: 'Kota Sentosa', customerName: 'Local Booking Client', date: '2099-05-05', time: '09:30', status: 'Scheduled' }
+    ]));
+
+    // Seed patientsData with one existing appointment at 10:00 on 2099-05-05
+    vm.runInContext(`
+      patientsData = [
+        { id: 'PT-A', name: 'Existing Patient A', phone: '0123456789', ic: '800101-13-1111', branch: 'Kota Sentosa', appointments: [{ id: 'APT-EX-1', date: '2099-05-05', time: '10:00', status: 'Scheduled' }] },
+        { id: 'PT-B', name: 'New Booking Patient B', phone: '0198765432', ic: '820202-13-2222', branch: 'Kota Sentosa', appointments: [] }
+      ];
+    `, sb.ctx);
+
+    // 1. On-Leave Override Day (2099-05-04) must be blocked
+    const leaveCheck = sb.win.validateManualAppointmentSlot('Kota Sentosa', '2099-05-04', '10:00');
+    assert.strictEqual(leaveCheck.valid, false);
+    assert.strictEqual(leaveCheck.reasonCode, 'ON_LEAVE');
+    assert(leaveCheck.message.includes('Annual Leave'));
+
+    // 2. Weekly Rest Day (Sunday 2099-05-03) must be blocked
+    const restDayCheck = sb.win.validateManualAppointmentSlot('Kota Sentosa', '2099-05-03', '10:00');
+    assert.strictEqual(restDayCheck.valid, false);
+    assert.strictEqual(restDayCheck.reasonCode, 'ON_LEAVE');
+
+    // 3. findNextAvailableAppointmentDate skips Sunday + Monday On-Leave to land on Tuesday 2099-05-05
+    const nextAvailDate = sb.win.findNextAvailableAppointmentDate('Kota Sentosa', '2099-05-03');
+    assert.strictEqual(nextAvailDate, '2099-05-05', 'Next available date must skip weekly rest day and on-leave override');
+
+    // 4. Already-booked slots across patientsData (10:00), local bookings (09:30), and cloud onlineBookings (10:30 AM -> 10:30) must be blocked
+    for (const takenTime of ['10:00', '09:30', '10:30']) {
+      const takenCheck = sb.win.validateManualAppointmentSlot('Kota Sentosa', '2099-05-05', takenTime);
+      assert.strictEqual(takenCheck.valid, false, `Booked slot ${takenTime} must be blocked`);
+      assert.strictEqual(takenCheck.reasonCode, 'ALREADY_BOOKED');
+    }
+
+    // 5. Cancelled cloud booking at 11:00 must remain available
+    const cancelledFreeCheck = sb.win.validateManualAppointmentSlot('Kota Sentosa', '2099-05-05', '11:00');
+    assert.strictEqual(cancelledFreeCheck.valid, true, 'Cancelled slot 11:00 must be available');
+
+    // 6. Break time (12:30, 13:00) and out-of-hours (17:30) must be blocked
+    assert.strictEqual(sb.win.validateManualAppointmentSlot('Kota Sentosa', '2099-05-05', '12:30').reasonCode, 'BREAK_TIME');
+    assert.strictEqual(sb.win.validateManualAppointmentSlot('Kota Sentosa', '2099-05-05', '17:30').reasonCode, 'OUTSIDE_HOURS');
+
+    // 7. DOM test: opening modal on On-Leave day disables save button and saveNewAppointment() refuses to save
+    sb.win.showNewAppointmentModal('PT-B', '2099-05-04');
+    sb.doc.getElementById('aptPatientSelect').value = 'PT-B';
+    sb.doc.getElementById('aptDate').value = '2099-05-04';
+    sb.win.refreshManualAppointmentSlots();
+    assert.strictEqual(sb.doc.getElementById('aptSaveBtn').disabled, true, 'Save button must be disabled on Pharmacist On-Leave day');
+    assert.strictEqual(sb.doc.getElementById('aptTime').disabled, true, 'Time dropdown must be disabled on Pharmacist On-Leave day');
+    const savedOnLeave = sb.win.saveNewAppointment();
+    assert.strictEqual(savedOnLeave, false, 'saveNewAppointment must refuse to save on Pharmacist On-Leave day');
+
+    // 8. DOM test: switching to working day 2099-05-05 shows booked slots disabled and refuses forced save on 10:00
+    sb.doc.getElementById('aptDate').value = '2099-05-05';
+    sb.win.refreshManualAppointmentSlots();
+    const timeOptionsHtml = sb.doc.getElementById('aptTime').innerHTML;
+    assert(timeOptionsHtml.includes('value="10:00" disabled') && timeOptionsHtml.includes('Existing Patient A'), '10:00 booked by Existing Patient A must be disabled in dropdown');
+    assert(timeOptionsHtml.includes('value="10:30" disabled') && timeOptionsHtml.includes('Cloud Online Client'), '10:30 booked by Cloud Online Client must be disabled in dropdown');
+    assert(timeOptionsHtml.includes('value="09:30" disabled') && timeOptionsHtml.includes('Local Booking Client'), '09:30 booked by Local Booking Client must be disabled in dropdown');
+    assert(timeOptionsHtml.includes('value="12:30" disabled'), 'Break slot 12:30 must be disabled in dropdown');
+
+    // Attempt forced save on already-booked 10:00 -> blocked
+    sb.doc.getElementById('aptTime').value = '10:00';
+    assert.strictEqual(sb.win.saveNewAppointment(), false, 'saveNewAppointment must refuse to double-book 10:00');
+
+    // Valid save on open slot 11:00 -> succeeds and adds appointment to PT-B
+    sb.doc.getElementById('aptTime').value = '11:00';
+    sb.doc.getElementById('aptPurpose').value = 'BP & Refill Review';
+    assert.strictEqual(sb.win.saveNewAppointment(), true, 'saveNewAppointment must succeed for available slot 11:00');
+    const ptBCount = vm.runInContext(`patientsData.find(p => p.id === 'PT-B').appointments.length`, sb.ctx);
+    assert.strictEqual(ptBCount, 1, 'PT-B must have 1 newly saved appointment');
+    // Verify newly booked 11:00 slot is now blocked for any subsequent booking
+    assert.strictEqual(sb.win.validateManualAppointmentSlot('Kota Sentosa', '2099-05-05', '11:00').reasonCode, 'ALREADY_BOOKED');
+  });
+
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);
   process.exit(failed > 0 ? 1 : 0);
 })();
