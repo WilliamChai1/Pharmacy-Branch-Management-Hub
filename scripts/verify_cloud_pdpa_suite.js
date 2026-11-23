@@ -2759,6 +2759,21 @@ function createBrowserSandbox(fetchImpl) {
     const dailyDir = await mockBranchDir.getDirectoryHandle('Daily_Auto_Backups', { create: false });
     const writtenVault = JSON.parse(await (await dailyDir.getFileHandle(autoRes.filename)).getFile());
     assert.strictEqual(writtenVault.binaryDocsStoredInPatientReportsFolder, true, 'Daily rolling .pmgbak must stay lightweight (no Base64 bloat) with binaries stored natively in Patient_Reports/');
+
+    // 6. Verify exact Returns & CN IndexedDB store name ('pmg_returns_cn_db') & immediate PDF re-hydration during vault restore
+    const syncSrc = fs.readFileSync(path.join(ROOT, 'js', 'onedrive-sync.js'), 'utf8');
+    assert(syncSrc.includes("'pmg_returns_db', 1, 'pmg_returns_cn_db'"), 'Vault engine must target exact Returns & CN store pmg_returns_cn_db');
+    assert(!syncSrc.includes("'pmg_returns_db', 1, 'returns_records'"), 'Legacy wrong store name returns_records must not exist');
+
+    idbDocs.clear();
+    sbPdf.win.pmgOneDriveSync.rootHandle = mockBranchDir;
+    sbPdf.win.importAllDocuments = async (docs) => {
+      docs.forEach(d => idbDocs.set(d.id, { ...d, blob: null }));
+      return docs.length;
+    };
+    await sbPdf.win.restoreFullSystemVaultFromObject(writtenVault, { silent: true, skipReload: true });
+    assert(idbDocs.get('DOC-AIR-1') && idbDocs.get('DOC-AIR-1').blob, 'Vault restore must immediately re-hydrate AirDoc PDF binary from OneDrive Patient_Reports/ and keep doc.id -> patientId link intact');
+    assert.strictEqual(idbDocs.get('DOC-AIR-1').patientId, 'PT-PDF-1', 'Restored AirDoc PDF must remain linked to exact patientId');
   });
 
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);

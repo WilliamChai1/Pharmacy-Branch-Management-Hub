@@ -506,26 +506,36 @@
             }
 
             if (!vaultText) {
+              const searchParents = [];
               try {
-                const dailyDir = await this.rootHandle.getDirectoryHandle('Daily_Auto_Backups', { create: false });
-                if (dailyDir && typeof dailyDir.entries === 'function') {
-                  const dailyFiles = [];
-                  for await (const [name, entry] of dailyDir.entries()) {
-                    if (entry.kind === 'file' && /\.pmgbak$/i.test(name)) {
-                      dailyFiles.push({ name, entry });
-                    }
-                  }
-                  dailyFiles.sort((a, b) => b.name.localeCompare(a.name));
-                  if (dailyFiles.length > 0) {
-                    const f = await dailyFiles[0].entry.getFile();
-                    const txt = await f.text();
-                    if (txt && txt.trim()) {
-                      vaultText = txt;
-                      sourceName = `Daily_Auto_Backups/${dailyFiles[0].name}`;
-                    }
-                  }
-                }
+                const bDir = await this._getTargetBranchDirectoryHandle(this._resolveCurrentBranchName());
+                if (bDir) searchParents.push(bDir);
               } catch (_) {}
+              if (!searchParents.includes(this.rootHandle)) searchParents.push(this.rootHandle);
+
+              for (const parentDir of searchParents) {
+                try {
+                  const dailyDir = await parentDir.getDirectoryHandle('Daily_Auto_Backups', { create: false });
+                  if (dailyDir && typeof dailyDir.entries === 'function') {
+                    const dailyFiles = [];
+                    for await (const [name, entry] of dailyDir.entries()) {
+                      if (entry.kind === 'file' && /\.pmgbak$/i.test(name)) {
+                        dailyFiles.push({ name, entry });
+                      }
+                    }
+                    dailyFiles.sort((a, b) => b.name.localeCompare(a.name));
+                    if (dailyFiles.length > 0) {
+                      const f = await dailyFiles[0].entry.getFile();
+                      const txt = await f.text();
+                      if (txt && txt.trim()) {
+                        vaultText = txt;
+                        sourceName = `Daily_Auto_Backups/${dailyFiles[0].name}`;
+                        break;
+                      }
+                    }
+                  }
+                } catch (_) {}
+              }
             }
 
             if (vaultText && vaultText.trim()) {
@@ -3888,8 +3898,14 @@
       healthAppData['pmg_patients_data_v1'] = patients;
     }
 
-    // 4. Capture pmg_returns_db (returns_records + signed DO proof scans)
-    const returnsRecords = await readAllIdbKeyValStore('pmg_returns_db', 1, 'returns_records', true);
+    // 4. Capture pmg_returns_db (exact store name: pmg_returns_cn_db + signed DO proof scans)
+    let returnsRecords = await readAllIdbKeyValStore('pmg_returns_db', 1, 'pmg_returns_cn_db', true);
+    if ((!Array.isArray(returnsRecords) || returnsRecords.length === 0) && localStorageDump['pmg_returns_records_v1']) {
+      try {
+        const parsedRet = JSON.parse(localStorageDump['pmg_returns_records_v1']);
+        if (Array.isArray(parsedRet)) returnsRecords = parsedRet;
+      } catch (_) {}
+    }
 
     // 5. Capture pmg_pricing_matrix_db (skus_store)
     const pricingStore = await readAllIdbKeyValStore('pmg_pricing_matrix_db', 1, 'skus_store', false);
@@ -3995,13 +4011,19 @@
     const jsonStr = JSON.stringify(bundle, null, 2);
     const blob = new Blob([jsonStr], { type: 'application/json' });
 
-    // 4. Write directly to OneDrive root folder (per-PC isolated + anti-clobber shared master + Daily_Auto_Backups)
+    // 4. Write directly to OneDrive folder (per-PC isolated + anti-clobber shared master + KOTA SENTOSA/Daily_Auto_Backups/)
     let savedToOneDriveFolder = false;
     if (isOneDriveLinked && window.pmgOneDriveSync.rootHandle) {
       try {
         await writeMasterVaultSafely(window.pmgOneDriveSync.rootHandle, bundle, devTag);
 
-        const dailyDir = await window.pmgOneDriveSync.rootHandle.getDirectoryHandle('Daily_Auto_Backups', { create: true });
+        let targetBranchDir = window.pmgOneDriveSync.rootHandle;
+        if (typeof window.pmgOneDriveSync._getTargetBranchDirectoryHandle === 'function') {
+          const bName = window.pmgOneDriveSync._resolveCurrentBranchName();
+          const resolvedDir = await window.pmgOneDriveSync._getTargetBranchDirectoryHandle(bName);
+          if (resolvedDir) targetBranchDir = resolvedDir;
+        }
+        const dailyDir = await targetBranchDir.getDirectoryHandle('Daily_Auto_Backups', { create: true });
         const dailyName = `PMG_AUTO_VAULT_${devTag}_${todayStr}.pmgbak`;
         const fhDaily = await dailyDir.getFileHandle(dailyName, { create: true });
         const wDaily = await fhDaily.createWritable();
@@ -4142,13 +4164,29 @@
       }
     }
 
-    // Restore PMG_HEALTH_DB documents
+    // Restore PMG_HEALTH_DB documents (preserves doc.id & patientId links, plus re-hydrates binary PDFs from OneDrive Patient_Reports/ if connected)
     let restoredDocs = 0;
-    if (Array.isArray(vaultObj.documents) && vaultObj.documents.length > 0 && typeof window.importAllDocuments === 'function') {
-      try {
-        restoredDocs = await window.importAllDocuments(vaultObj.documents);
-      } catch (e) {
-        console.warn('[PMG Disaster Vault] Document restore warning:', e);
+    if (Array.isArray(vaultObj.documents) && vaultObj.documents.length > 0) {
+      if (typeof window.importAllDocuments === 'function') {
+        try {
+          restoredDocs = await window.importAllDocuments(vaultObj.documents);
+        } catch (e) {
+          console.warn('[PMG Disaster Vault] Document restore warning:', e);
+        }
+      }
+      // If OneDrive is linked, immediately re-hydrate any missing AirDoc / Blood Report PDF binaries from Patient_Reports/
+      if (window.pmgOneDriveSync && window.pmgOneDriveSync.rootHandle && typeof syncPatientReportsBinaryFolder === 'function') {
+        try {
+          let targetReportDir = window.pmgOneDriveSync.rootHandle;
+          if (typeof window.pmgOneDriveSync._getTargetBranchDirectoryHandle === 'function') {
+            const bName = window.pmgOneDriveSync._resolveCurrentBranchName();
+            const resolvedDir = await window.pmgOneDriveSync._getTargetBranchDirectoryHandle(bName);
+            if (resolvedDir) targetReportDir = resolvedDir;
+          }
+          await syncPatientReportsBinaryFolder(targetReportDir, vaultObj.documents);
+        } catch (pdfHydrateErr) {
+          console.warn('[PMG Disaster Vault] Binary PDF re-hydration notice:', pdfHydrateErr);
+        }
       }
     }
 
@@ -4159,7 +4197,12 @@
       restoredIdbItems += await writeAllIdbKeyValStore('PMG_HEALTH_DB', 2, 'app_data', idb.healthAppData, false);
     }
     if (Array.isArray(idb.returnsRecords) && idb.returnsRecords.length > 0) {
-      restoredIdbItems += await writeAllIdbKeyValStore('pmg_returns_db', 1, 'returns_records', idb.returnsRecords, true);
+      restoredIdbItems += await writeAllIdbKeyValStore('pmg_returns_db', 1, 'pmg_returns_cn_db', idb.returnsRecords, true);
+      try {
+        if (!localStorage.getItem('pmg_returns_records_v1')) {
+          localStorage.setItem('pmg_returns_records_v1', JSON.stringify(idb.returnsRecords));
+        }
+      } catch (_) {}
     }
     if (idb.pricingStore && typeof idb.pricingStore === 'object') {
       restoredIdbItems += await writeAllIdbKeyValStore('pmg_pricing_matrix_db', 1, 'skus_store', idb.pricingStore, false);
@@ -4520,8 +4563,18 @@
 
     _dailyAutoBackupInProgress = true;
     try {
-      // 1. Incrementally mirror any newly uploaded AirDoc / Blood Report PDFs natively into Patient_Reports/
-      //    (Zero Base64 bloat, zero UI freeze, supports gigabytes of PDFs)
+      // 1. Resolve branch directory (e.g. KOTA SENTOSA/) so both Patient_Reports/ and Daily_Auto_Backups/ live together cleanly
+      let targetBranchDir = rootHandle;
+      if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync._getTargetBranchDirectoryHandle === 'function') {
+        try {
+          const bName = window.pmgOneDriveSync._resolveCurrentBranchName();
+          const resolvedDir = await window.pmgOneDriveSync._getTargetBranchDirectoryHandle(bName);
+          if (resolvedDir) targetBranchDir = resolvedDir;
+        } catch (_) {}
+      }
+
+      // Incrementally mirror any newly uploaded AirDoc / Blood Report PDFs natively into Patient_Reports/
+      // (Zero Base64 bloat, zero UI freeze, supports gigabytes of PDFs)
       let binarySyncStats = { uploaded: 0, restoredFromOneDrive: 0, skippedExisting: 0 };
       try {
         let localDocsMeta = [];
@@ -4529,14 +4582,8 @@
           localDocsMeta = await window.exportAllDocumentsMetadata();
         }
         if (localDocsMeta.length > 0) {
-          let targetReportDir = rootHandle;
-          if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync._getTargetBranchDirectoryHandle === 'function') {
-            const bName = window.pmgOneDriveSync._resolveCurrentBranchName();
-            const resolvedDir = await window.pmgOneDriveSync._getTargetBranchDirectoryHandle(bName);
-            if (resolvedDir) targetReportDir = resolvedDir;
-          }
           const cacheSet = window.pmgOneDriveSync ? (window.pmgOneDriveSync._syncedReportFilenames = window.pmgOneDriveSync._syncedReportFilenames || new Set()) : null;
-          binarySyncStats = await syncPatientReportsBinaryFolder(targetReportDir, localDocsMeta, cacheSet);
+          binarySyncStats = await syncPatientReportsBinaryFolder(targetBranchDir, localDocsMeta, cacheSet);
         }
       } catch (binErr) {
         console.warn('[PMG Daily Auto-Backup] Patient_Reports incremental mirror warning:', binErr);
@@ -4550,7 +4597,7 @@
       bundle.autoBackupDate = todayStr;
       bundle.binaryDocsStoredInPatientReportsFolder = !includeDocBlobs;
 
-      const dailyDir = await rootHandle.getDirectoryHandle(DAILY_BACKUP_DIR_NAME, { create: true });
+      const dailyDir = await targetBranchDir.getDirectoryHandle(DAILY_BACKUP_DIR_NAME, { create: true });
       const filename = `PMG_AUTO_VAULT_${deviceTag}_${todayStr}.pmgbak`;
       const fh = await dailyDir.getFileHandle(filename, { create: true });
       const writable = await fh.createWritable();
