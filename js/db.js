@@ -267,6 +267,43 @@ async function importAllDocuments(docsList = []) {
   });
 }
 
+// ─── DIRECT BINARY BLOB PUT (ZERO-BASE64 RESTORE FROM ONEDRIVE Patient_Reports/) ─
+async function putDocumentWithBlob(docMeta, fileBlob) {
+  if (!docMeta || !docMeta.id || !fileBlob) return false;
+  const db = await openIndexedDB();
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction([STORE_DOCUMENTS], 'readwrite');
+      const store = tx.objectStore(STORE_DOCUMENTS);
+      const record = {
+        id: docMeta.id,
+        patientId: docMeta.patientId,
+        name: docMeta.name || fileBlob.name || 'Lab_Report.pdf',
+        type: docMeta.type || fileBlob.type || 'application/octet-stream',
+        size: docMeta.size || fileBlob.size || 0,
+        date: docMeta.date || new Date().toISOString().split('T')[0],
+        createdAt: docMeta.createdAt || new Date().toISOString(),
+        blob: fileBlob,
+        notes: docMeta.notes || ''
+      };
+      store.put(record);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = (e) => reject(e);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+async function getDocumentsTotalSizeBytes() {
+  try {
+    const meta = await exportAllDocumentsMetadata();
+    return (meta || []).reduce((sum, d) => sum + (Number(d.size) || 0), 0);
+  } catch (_) {
+    return 0;
+  }
+}
+
 // ─── KEY-VALUE STORAGE ENGINE (LARGE DATASETS / ZERO QUOTA LIMITS) ───────────
 function getIdbItem(key) {
   return new Promise(async (resolve) => {
@@ -450,6 +487,8 @@ window.blobToDataURL = blobToDataURL;
 window.savePatientDocument = savePatientDocument;
 window.getPatientDocuments = getPatientDocuments;
 window.getDocumentById = getDocumentById;
+window.putDocumentWithBlob = putDocumentWithBlob;
+window.getDocumentsTotalSizeBytes = getDocumentsTotalSizeBytes;
 window.getIdbItem = getIdbItem;
 window.setIdbItem = setIdbItem;
 window.removeIdbItem = removeIdbItem;

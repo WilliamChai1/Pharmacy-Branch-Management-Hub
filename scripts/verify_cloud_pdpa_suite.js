@@ -2655,8 +2655,115 @@ function createBrowserSandbox(fetchImpl) {
     assert(ptHtml.includes('syncModalDeviceTagInput') && ptHtml.includes('syncModalDailyAutoStatus') && ptHtml.includes('saveDeviceBackupTagFromModal()'), 'patient/index.html must expose Daily Auto-Backup status & PC Tag UI');
   });
 
+  await testAsync('Large AirDoc & Blood Report PDFs: Bidirectional Native Binary Sync, Post-IT-Wipe Recovery & Zero-Lag Active-Typing Defer', async () => {
+    function makeBinaryMockDir(name = 'KOTA SENTOSA') {
+      const files = new Map();
+      const subdirs = new Map();
+      return {
+        kind: 'directory',
+        name,
+        _files: files,
+        _subdirs: subdirs,
+        queryPermission: async () => 'granted',
+        requestPermission: async () => 'granted',
+        async getFileHandle(fname, opts = {}) {
+          if (!files.has(fname)) {
+            if (!opts.create) throw new Error(`NotFoundError: ${fname}`);
+            files.set(fname, null);
+          }
+          return {
+            kind: 'file',
+            name: fname,
+            async getFile() {
+              return files.get(fname);
+            },
+            async createWritable() {
+              let writtenVal = null;
+              return {
+                async write(chunk) { writtenVal = chunk; },
+                async close() { files.set(fname, writtenVal); }
+              };
+            }
+          };
+        },
+        async getDirectoryHandle(dname, opts = {}) {
+          if (!subdirs.has(dname)) {
+            if (!opts.create) throw new Error(`NotFoundError: ${dname}`);
+            subdirs.set(dname, makeBinaryMockDir(dname));
+          }
+          return subdirs.get(dname);
+        },
+        async removeEntry(ename) {
+          files.delete(ename);
+          subdirs.delete(ename);
+        },
+        async *entries() {
+          for (const [k] of files.entries()) {
+            yield [k, { kind: 'file', name: k, getFile: async () => files.get(k) }];
+          }
+        }
+      };
+    }
+
+    const sbPdf = createBrowserSandbox();
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'onedrive-sync.js'), 'utf8'), sbPdf.ctx);
+
+    // Simulated IndexedDB document store with AirDoc + Blood Report binary PDFs
+    const idbDocs = new Map();
+    const airdocBlob = new Blob(['%PDF-1.4 AIRDOC_RETINA_SCAN_DATA'], { type: 'application/pdf' });
+    const bloodBlob = new Blob(['%PDF-1.4 BLOOD_PANEL_LAB_REPORT'], { type: 'application/pdf' });
+    idbDocs.set('DOC-AIR-1', { id: 'DOC-AIR-1', patientId: 'PT-PDF-1', name: 'AirDoc_Retina_2026.pdf', type: 'application/pdf', size: 12500000, blob: airdocBlob });
+    idbDocs.set('DOC-BLD-2', { id: 'DOC-BLD-2', patientId: 'PT-PDF-1', name: 'Blood_Report_Nov.pdf', type: 'application/pdf', size: 8400000, blob: bloodBlob });
+
+    sbPdf.win.exportAllDocumentsMetadata = async () => Array.from(idbDocs.values()).map(({ blob, ...meta }) => meta);
+    sbPdf.win.getDocumentById = async (id) => idbDocs.get(id) || null;
+    sbPdf.win.putDocumentWithBlob = async (meta, blob) => {
+      idbDocs.set(meta.id, { ...meta, blob });
+      return true;
+    };
+
+    const mockBranchDir = makeBinaryMockDir('KOTA SENTOSA');
+    const docsMeta = await sbPdf.win.exportAllDocumentsMetadata();
+
+    // 1. Upload direction: Mirror both native binary PDFs to OneDrive/Patient_Reports/
+    const stats1 = await sbPdf.win.syncPatientReportsBinaryFolder(mockBranchDir, docsMeta);
+    assert.strictEqual(stats1.uploaded, 2, 'Both AirDoc and Blood Report PDFs must be mirrored natively to Patient_Reports/');
+    assert.strictEqual(stats1.restoredFromOneDrive, 0);
+    const reportsDir = await mockBranchDir.getDirectoryHandle('Patient_Reports', { create: false });
+    assert(reportsDir._files.has('PT-PDF-1_AirDoc_Retina_2026.pdf'), 'AirDoc PDF must exist in Patient_Reports/');
+    assert(reportsDir._files.has('PT-PDF-1_Blood_Report_Nov.pdf'), 'Blood Report PDF must exist in Patient_Reports/');
+
+    // 2. Repeat check: Already-mirrored PDFs are skipped with 0 redundant disk writes
+    const stats2 = await sbPdf.win.syncPatientReportsBinaryFolder(mockBranchDir, docsMeta);
+    assert.strictEqual(stats2.uploaded, 0, 'Existing PDFs must NOT be re-uploaded');
+    assert.strictEqual(stats2.skippedExisting, 2, 'Both already-mirrored PDFs must be skipped instantly');
+
+    // 3. Post-IT-Wipe Recovery: Wipe local IndexedDB blobs completely, then sync → binary PDFs auto-restore!
+    idbDocs.clear();
+    assert.strictEqual(idbDocs.size, 0, 'Simulated IT wipe clears IndexedDB PDF blobs');
+    const statsRestore = await sbPdf.win.syncPatientReportsBinaryFolder(mockBranchDir, docsMeta);
+    assert.strictEqual(statsRestore.restoredFromOneDrive, 2, 'Both AirDoc & Blood Report PDF binaries must auto-restore from Patient_Reports/ after IT wipe');
+    assert(idbDocs.get('DOC-AIR-1') && idbDocs.get('DOC-AIR-1').blob, 'AirDoc binary blob must be restored into IndexedDB');
+    assert(idbDocs.get('DOC-BLD-2') && idbDocs.get('DOC-BLD-2').blob, 'Blood Report binary blob must be restored into IndexedDB');
+
+    // 4. Active-typing defer guard: While pharmacist is actively keying in data, daily backup yields cleanly
+    sbPdf.win.pausePmgSyncPolling(5000);
+    const pausedRes = await sbPdf.win.runDailyAutoBackupIfDue({ rootHandle: mockBranchDir, quiet: true });
+    assert.strictEqual(pausedRes.skipped, true, 'Daily auto-backup must defer while pharmacist is actively editing');
+    assert.strictEqual(pausedRes.reason, 'user_editing');
+
+    // 5. Once idle, daily auto-backup writes lightweight metadata-only .pmgbak (zero Base64 lag) while keeping PDFs in Patient_Reports/
+    sbPdf.win._pmgSyncPausedUntil = 0;
+    const autoRes = await sbPdf.win.runDailyAutoBackupIfDue({ rootHandle: mockBranchDir, refDate: new Date(2026, 10, 23, 11, 0, 0), quiet: true });
+    assert.strictEqual(autoRes.ok, true, 'Daily auto-backup must succeed once idle');
+    const dailyDir = await mockBranchDir.getDirectoryHandle('Daily_Auto_Backups', { create: false });
+    const writtenVault = JSON.parse(await (await dailyDir.getFileHandle(autoRes.filename)).getFile());
+    assert.strictEqual(writtenVault.binaryDocsStoredInPatientReportsFolder, true, 'Daily rolling .pmgbak must stay lightweight (no Base64 bloat) with binaries stored natively in Patient_Reports/');
+  });
+
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);
   process.exit(failed > 0 ? 1 : 0);
 })();
+
 
 
