@@ -393,6 +393,30 @@
           await this._inspectAndConfigureHandle(this.rootHandle);
         }
 
+        // Step 0 (IT Browser Wipe Auto-Recovery): If localStorage was cleared by IT, auto-restore PMG_FULL_SYSTEM_VAULT_LATEST.pmgbak from OneDrive first
+        try {
+          let pmgKeyCount = 0;
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i) || '';
+            if (k.startsWith('pmg_') || k.startsWith('KS01_')) pmgKeyCount++;
+          }
+          if (pmgKeyCount <= 4 && typeof window.restoreFullSystemVaultFromObject === 'function') {
+            let vaultText = '';
+            try {
+              const vFh = await this.rootHandle.getFileHandle('PMG_FULL_SYSTEM_VAULT_LATEST.pmgbak', { create: false });
+              const vFile = await vFh.getFile();
+              vaultText = await vFile.text();
+            } catch (_) {}
+            if (vaultText && vaultText.trim()) {
+              const vaultObj = JSON.parse(vaultText);
+              await window.restoreFullSystemVaultFromObject(vaultObj, { silent: true, skipReload: true });
+              console.log('[PMG OneDrive Sync] 🛡️ Auto-restored full system vault from OneDrive after browser storage cleanup.');
+            }
+          }
+        } catch (autoRestErr) {
+          console.warn('[PMG OneDrive Sync] Auto-restore check warning:', autoRestErr);
+        }
+
         const branchSel = document.getElementById('patientBranchFilter');
         const selectedFilter = branchSel ? branchSel.value : '';
 
@@ -885,6 +909,19 @@
           localStorage.setItem('pmg_last_backup_type', `OneDrive Live (${mainBranchLabel})`);
           if (session?.displayName) localStorage.setItem('pmg_last_backup_user', session.displayName);
         } catch (_) {}
+
+        // Step J: Continuously snapshot full system vault (localStorage + all 4 IndexedDB databases) to OneDrive root
+        try {
+          if (this.rootHandle && typeof window.buildFullSystemVaultBundle === 'function') {
+            const vaultSnap = await window.buildFullSystemVaultBundle({ includeDocBlobs: false });
+            const vFh = await this.rootHandle.getFileHandle('PMG_FULL_SYSTEM_VAULT_LATEST.pmgbak', { create: true });
+            const vW = await vFh.createWritable();
+            await vW.write(JSON.stringify(vaultSnap.bundle, null, 2));
+            await vW.close();
+          }
+        } catch (vaultErr) {
+          console.warn('[PMG OneDrive Sync] Full vault snapshot write warning:', vaultErr);
+        }
 
         if (typeof updateBackupStatusBadge === 'function') updateBackupStatusBadge();
         if (typeof updateDailyBackupBanner === 'function') updateDailyBackupBanner();
@@ -3536,16 +3573,513 @@
 
   window.updateSyncModalInfo = updateSyncModalInfo;
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ─── FULL SYSTEM DISASTER VAULT BACKUP & RESTORE (PRE-IT CLEANUP SHIELD) ───
+  // Captures & restores 100% of localStorage + all 4 IndexedDB databases:
+  //   1. PMG_HEALTH_DB (documents with binary PDF/image blobs + app_data)
+  //   2. pmg_returns_db (returns_records + signed DO proof scans)
+  //   3. pmg_pricing_matrix_db (skus_store master_skus)
+  //   4. pmg_performance_db (perf_store YoY datasets & 6M aging action plans)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  async function readAllIdbKeyValStore(dbName, dbVersion, storeName, isKeyPath = false) {
+    if (typeof indexedDB === 'undefined') return isKeyPath ? [] : {};
+    return new Promise((resolve) => {
+      try {
+        const req = indexedDB.open(dbName, dbVersion);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(storeName)) {
+            if (isKeyPath) db.createObjectStore(storeName, { keyPath: 'id' });
+            else db.createObjectStore(storeName);
+          }
+        };
+        req.onsuccess = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(storeName)) {
+            db.close();
+            return resolve(isKeyPath ? [] : {});
+          }
+          try {
+            const tx = db.transaction(storeName, 'readonly');
+            const store = tx.objectStore(storeName);
+            if (isKeyPath) {
+              const allReq = store.getAll();
+              allReq.onsuccess = () => {
+                const res = allReq.result || [];
+                db.close();
+                resolve(res);
+              };
+              allReq.onerror = () => { db.close(); resolve([]); };
+            } else {
+              const keysReq = store.getAllKeys();
+              const valsReq = store.getAll();
+              tx.oncomplete = () => {
+                const out = {};
+                const keys = keysReq.result || [];
+                const vals = valsReq.result || [];
+                keys.forEach((k, idx) => { out[String(k)] = vals[idx]; });
+                db.close();
+                resolve(out);
+              };
+              tx.onerror = () => { db.close(); resolve({}); };
+            }
+          } catch (_) {
+            db.close();
+            resolve(isKeyPath ? [] : {});
+          }
+        };
+        req.onerror = () => resolve(isKeyPath ? [] : {});
+      } catch (_) {
+        resolve(isKeyPath ? [] : {});
+      }
+    });
+  }
+
+  async function writeAllIdbKeyValStore(dbName, dbVersion, storeName, data, isKeyPath = false) {
+    if (typeof indexedDB === 'undefined' || !data) return 0;
+    return new Promise((resolve) => {
+      try {
+        const req = indexedDB.open(dbName, dbVersion);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(storeName)) {
+            if (isKeyPath) db.createObjectStore(storeName, { keyPath: 'id' });
+            else db.createObjectStore(storeName);
+          }
+        };
+        req.onsuccess = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(storeName)) {
+            db.close();
+            return resolve(0);
+          }
+          try {
+            const tx = db.transaction(storeName, 'readwrite');
+            const store = tx.objectStore(storeName);
+            let count = 0;
+            if (isKeyPath && Array.isArray(data)) {
+              data.forEach(item => {
+                if (item && item.id) {
+                  store.put(item);
+                  count++;
+                }
+              });
+            } else if (!isKeyPath && typeof data === 'object') {
+              Object.keys(data).forEach(k => {
+                if (data[k] !== undefined) {
+                  store.put(data[k], k);
+                  count++;
+                }
+              });
+            }
+            tx.oncomplete = () => { db.close(); resolve(count); };
+            tx.onerror = () => { db.close(); resolve(count); };
+          } catch (_) {
+            db.close();
+            resolve(0);
+          }
+        };
+        req.onerror = () => resolve(0);
+      } catch (_) {
+        resolve(0);
+      }
+    });
+  }
+
+  async function buildFullSystemVaultBundle(options = {}) {
+    const includeDocBlobs = options.includeDocBlobs !== false;
+    const nowIso = new Date().toISOString();
+    const dateStr = nowIso.split('T')[0];
+
+    // 1. Capture 100% of localStorage keys
+    const localStorageDump = {};
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k) {
+          localStorageDump[k] = localStorage.getItem(k);
+        }
+      }
+    } catch (_) {}
+
+    // 2. Capture Patient Care records (from memory, IndexedDB, or localStorage)
+    let patients = [];
+    if (typeof patientsData !== 'undefined' && Array.isArray(patientsData) && patientsData.length > 0) {
+      patients = patientsData;
+    } else if (typeof window.safeStorageGet === 'function') {
+      const idbPts = await window.safeStorageGet('pmg_patients_data_v1');
+      if (Array.isArray(idbPts)) patients = idbPts;
+    } else if (localStorageDump['pmg_patients_data_v1']) {
+      try { patients = JSON.parse(localStorageDump['pmg_patients_data_v1']) || []; } catch (_) {}
+    }
+
+    // 3. Capture PMG_HEALTH_DB (documents + app_data)
+    let documents = [];
+    try {
+      if (includeDocBlobs && typeof window.exportAllDocuments === 'function') {
+        documents = await window.exportAllDocuments();
+      } else if (typeof window.exportAllDocumentsMetadata === 'function') {
+        documents = await window.exportAllDocumentsMetadata();
+      }
+    } catch (_) {}
+    const healthAppData = await readAllIdbKeyValStore('PMG_HEALTH_DB', 2, 'app_data', false);
+    if (patients.length > 0 && (!Array.isArray(healthAppData['pmg_patients_data_v1']) || healthAppData['pmg_patients_data_v1'].length < patients.length)) {
+      healthAppData['pmg_patients_data_v1'] = patients;
+    }
+
+    // 4. Capture pmg_returns_db (returns_records + signed DO proof scans)
+    const returnsRecords = await readAllIdbKeyValStore('pmg_returns_db', 1, 'returns_records', true);
+
+    // 5. Capture pmg_pricing_matrix_db (skus_store)
+    const pricingStore = await readAllIdbKeyValStore('pmg_pricing_matrix_db', 1, 'skus_store', false);
+
+    // 6. Capture pmg_performance_db (perf_store YoY datasets & 6M aging plans)
+    const performanceStore = await readAllIdbKeyValStore('pmg_performance_db', 1, 'perf_store', false);
+
+    // 7. Also include legacy top-level fields so older restore routines remain 100% compatible
+    const pharmacistSchedules = {};
+    Object.keys(localStorageDump).forEach(k => {
+      if (k.startsWith('pmg_pharmacist_schedule_')) {
+        try { pharmacistSchedules[k] = JSON.parse(localStorageDump[k]); } catch (_) {}
+      }
+    });
+    let customerBookings = [];
+    try {
+      if (localStorageDump['pmg_customer_bookings']) {
+        customerBookings = JSON.parse(localStorageDump['pmg_customer_bookings']) || [];
+      }
+    } catch (_) {}
+
+    const bundle = {
+      app: 'PMG_MANAGEMENT_HUB',
+      version: '2.0',
+      type: 'PMG_FULL_SYSTEM_VAULT_V2',
+      exportDate: nowIso,
+      branch: 'Kota Sentosa',
+      patientCount: patients.length,
+      docCount: documents.length,
+      localStorageKeyCount: Object.keys(localStorageDump).length,
+      returnsCount: Array.isArray(returnsRecords) ? returnsRecords.length : 0,
+      pricingCount: Array.isArray(pricingStore.master_skus) ? pricingStore.master_skus.length : 0,
+      performanceKeyCount: Object.keys(performanceStore).length,
+      scheduleCount: Object.keys(pharmacistSchedules).length,
+      bookingCount: customerBookings.length,
+      patients,
+      documents,
+      pharmacistSchedules,
+      customerBookings,
+      localStorageDump,
+      indexedDbDump: {
+        healthAppData,
+        returnsRecords,
+        pricingStore,
+        performanceStore
+      }
+    };
+
+    const filename = `PMG_FULL_SYSTEM_VAULT_KS01_${dateStr}.pmgbak`;
+    return {
+      bundle,
+      filename
+    };
+  }
+
+  async function exportFullSystemVaultBackup(options = {}) {
+    const syncCloudFirst = options.syncCloudFirst !== false;
+    const downloadFile = options.downloadFile !== false;
+    const fb = document.getElementById('syncModalFeedback');
+
+    if (fb) {
+      fb.className = 'p-3 bg-indigo-50 border border-indigo-200 text-indigo-900 rounded-xl flex items-center gap-2 text-xs font-semibold';
+      fb.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-indigo-600 text-sm"></i> <span>Shielding all modules: syncing to Google Cloud, OneDrive & packaging Full System Vault (.pmgbak)…</span>';
+      fb.classList.remove('hidden');
+    }
+
+    // 1. Push latest non-patient operational state to Google Cloud first
+    if (syncCloudFirst && typeof window.triggerGoogleCloudEcosystemSync === 'function') {
+      try {
+        await window.triggerGoogleCloudEcosystemSync({ manual: true });
+      } catch (e) {
+        console.warn('[PMG Disaster Vault] Cloud sync before export warning:', e);
+      }
+    }
+
+    // 2. Sync with OneDrive if connected
+    const isOneDriveLinked = Boolean(window.pmgOneDriveSync && window.pmgOneDriveSync.rootHandle && window.pmgOneDriveSync.mode !== 'DISCONNECTED');
+    if (isOneDriveLinked) {
+      try {
+        await window.pmgOneDriveSync.manualSync();
+      } catch (e) {
+        console.warn('[PMG Disaster Vault] OneDrive sync before export warning:', e);
+      }
+    }
+
+    // 3. Build complete vault bundle including binary PDF/image documents
+    const { bundle, filename } = await buildFullSystemVaultBundle({ includeDocBlobs: true });
+    const jsonStr = JSON.stringify(bundle, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+
+    // 4. Write directly to OneDrive root folder if connected
+    let savedToOneDriveFolder = false;
+    if (isOneDriveLinked && window.pmgOneDriveSync.rootHandle) {
+      try {
+        const fhLatest = await window.pmgOneDriveSync.rootHandle.getFileHandle('PMG_FULL_SYSTEM_VAULT_LATEST.pmgbak', { create: true });
+        const wLatest = await fhLatest.createWritable();
+        await wLatest.write(jsonStr);
+        await wLatest.close();
+
+        const fhDated = await window.pmgOneDriveSync.rootHandle.getFileHandle(filename, { create: true });
+        const wDated = await fhDated.createWritable();
+        await wDated.write(jsonStr);
+        await wDated.close();
+        savedToOneDriveFolder = true;
+      } catch (e) {
+        console.warn('[PMG Disaster Vault] Direct OneDrive file write warning:', e);
+      }
+    }
+
+    // 5. Save/download local master file outside browser storage
+    if (downloadFile) {
+      let savedViaPicker = false;
+      if (typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function') {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: filename,
+            types: [{
+              description: 'PMG Full System Disaster Vault (.pmgbak)',
+              accept: { 'application/json': ['.pmgbak', '.json'] }
+            }]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          savedViaPicker = true;
+        } catch (err) {
+          if (err && err.name === 'AbortError') return { aborted: true };
+        }
+      }
+
+      if (!savedViaPicker && typeof document !== 'undefined') {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        if (a.parentNode) a.parentNode.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+      }
+    }
+
+    try {
+      localStorage.setItem('pmg_last_backup_date', bundle.exportDate);
+      localStorage.setItem('pmg_last_backup_type', savedToOneDriveFolder ? 'Full System Vault (OneDrive + Local)' : 'Full System Vault (.pmgbak)');
+    } catch (_) {}
+
+    updateSyncModalInfo();
+    if (typeof updateBackupStatusBadge === 'function') updateBackupStatusBadge();
+    if (typeof updateDailyBackupBanner === 'function') updateDailyBackupBanner();
+
+    if (fb) {
+      fb.className = 'p-3 bg-emerald-50 border border-emerald-300 text-emerald-950 rounded-xl text-xs space-y-1.5';
+      fb.innerHTML = `
+        <div class="font-extrabold flex items-center gap-1.5 text-emerald-800">
+          <i class="fa-solid fa-shield-halved text-emerald-600"></i> Full System Disaster Vault Saved (${escapeSyncHtml(filename)})
+        </div>
+        <div class="text-[11px] text-emerald-900">
+          Protected <b>${bundle.patientCount}</b> patients, <b>${bundle.docCount}</b> lab reports/PDFs, <b>${bundle.localStorageKeyCount}</b> localStorage settings, <b>${bundle.returnsCount}</b> Returns/CNs, <b>${bundle.pricingCount}</b> Pricing SKUs, and <b>${bundle.performanceKeyCount}</b> Performance/Aging datasets.
+        </div>
+        <div class="text-[10px] text-emerald-700 font-semibold">
+          If HQ IT clears browser storage, click <b>"♻️ Restore Full System Vault"</b> and select this file (or simply re-link your OneDrive folder) to restore 100% of your data in 1 click!
+        </div>
+      `;
+      fb.classList.remove('hidden');
+    }
+
+    showPmgToast(`🛡️ Full System Vault Saved (${bundle.patientCount} patients, ${bundle.localStorageKeyCount} keys, all 4 IndexedDBs)`, 'success');
+    return bundle;
+  }
+
+  async function restoreFullSystemVaultFromObject(vaultObj, options = {}) {
+    if (!vaultObj || typeof vaultObj !== 'object') {
+      throw new Error('Invalid backup file format.');
+    }
+    const silent = Boolean(options.silent);
+    const skipReload = Boolean(options.skipReload);
+
+    let restoredLsCount = 0;
+    if (vaultObj.localStorageDump && typeof vaultObj.localStorageDump === 'object') {
+      Object.keys(vaultObj.localStorageDump).forEach(k => {
+        const val = vaultObj.localStorageDump[k];
+        if (typeof val === 'string') {
+          try {
+            localStorage.setItem(k, val);
+            restoredLsCount++;
+          } catch (_) {}
+        }
+      });
+    }
+
+    // Restore pharmacistSchedules & customerBookings if present
+    if (vaultObj.pharmacistSchedules && typeof vaultObj.pharmacistSchedules === 'object') {
+      Object.keys(vaultObj.pharmacistSchedules).forEach(k => {
+        try {
+          localStorage.setItem(k, JSON.stringify(vaultObj.pharmacistSchedules[k]));
+          restoredLsCount++;
+        } catch (_) {}
+      });
+    }
+    if (Array.isArray(vaultObj.customerBookings)) {
+      try {
+        localStorage.setItem('pmg_customer_bookings', JSON.stringify(vaultObj.customerBookings));
+      } catch (_) {}
+    }
+
+    // Restore patients array (supports both full vault and legacy patient backups)
+    const rawPts = Array.isArray(vaultObj.patients)
+      ? vaultObj.patients
+      : (Array.isArray(vaultObj) ? vaultObj : (vaultObj.indexedDbDump?.healthAppData?.pmg_patients_data_v1 || []));
+
+    if (Array.isArray(rawPts) && rawPts.length > 0) {
+      if (typeof window.consolidatePatientList === 'function') {
+        const currentPts = (typeof patientsData !== 'undefined' && Array.isArray(patientsData)) ? patientsData : [];
+        const mergedPts = window.consolidatePatientList([...currentPts, ...rawPts]);
+        if (typeof patientsData !== 'undefined') patientsData = mergedPts;
+        if (typeof savePatientsData === 'function') {
+          savePatientsData();
+        } else if (typeof window.safeStorageSet === 'function') {
+          await window.safeStorageSet('pmg_patients_data_v1', mergedPts);
+        }
+      } else {
+        if (typeof window.safeStorageSet === 'function') {
+          await window.safeStorageSet('pmg_patients_data_v1', rawPts);
+        } else {
+          try { localStorage.setItem('pmg_patients_data_v1', JSON.stringify(rawPts)); } catch (_) {}
+        }
+      }
+    }
+
+    // Restore PMG_HEALTH_DB documents
+    let restoredDocs = 0;
+    if (Array.isArray(vaultObj.documents) && vaultObj.documents.length > 0 && typeof window.importAllDocuments === 'function') {
+      try {
+        restoredDocs = await window.importAllDocuments(vaultObj.documents);
+      } catch (e) {
+        console.warn('[PMG Disaster Vault] Document restore warning:', e);
+      }
+    }
+
+    // Restore all 4 IndexedDB stores if present in indexedDbDump
+    const idb = vaultObj.indexedDbDump || {};
+    let restoredIdbItems = 0;
+    if (idb.healthAppData && typeof idb.healthAppData === 'object') {
+      restoredIdbItems += await writeAllIdbKeyValStore('PMG_HEALTH_DB', 2, 'app_data', idb.healthAppData, false);
+    }
+    if (Array.isArray(idb.returnsRecords) && idb.returnsRecords.length > 0) {
+      restoredIdbItems += await writeAllIdbKeyValStore('pmg_returns_db', 1, 'returns_records', idb.returnsRecords, true);
+    }
+    if (idb.pricingStore && typeof idb.pricingStore === 'object') {
+      restoredIdbItems += await writeAllIdbKeyValStore('pmg_pricing_matrix_db', 1, 'skus_store', idb.pricingStore, false);
+    }
+    if (idb.performanceStore && typeof idb.performanceStore === 'object') {
+      restoredIdbItems += await writeAllIdbKeyValStore('pmg_performance_db', 1, 'perf_store', idb.performanceStore, false);
+    }
+
+    try {
+      localStorage.setItem('pmg_last_backup_date', new Date().toISOString());
+      localStorage.setItem('pmg_last_backup_type', 'Restored Full System Vault');
+    } catch (_) {}
+
+    if (typeof updateBackupStatusBadge === 'function') updateBackupStatusBadge();
+    if (typeof updateDailyBackupBanner === 'function') updateDailyBackupBanner();
+    if (typeof renderPatientModule === 'function') renderPatientModule();
+    updateSyncModalInfo();
+
+    const summary = {
+      patientsRestored: Array.isArray(rawPts) ? rawPts.length : 0,
+      docsRestored: restoredDocs,
+      localStorageRestored: restoredLsCount,
+      idbItemsRestored: restoredIdbItems
+    };
+
+    if (!silent) {
+      showPmgToast(`✅ Full System Vault Restored (${summary.patientsRestored} patients, ${summary.localStorageRestored} settings)`, 'success');
+      if (typeof alert === 'function') {
+        alert(`✅ Full System Disaster Vault Restored Successfully!\n\n• Patient Profiles & Consultations: ${summary.patientsRestored}\n• Lab Reports & Clinical Documents: ${summary.docsRestored}\n• LocalStorage Module Settings & Rosters: ${summary.localStorageRestored}\n• High-Capacity IndexedDB Datasets (Expiry, Returns, Pricing, Performance): ${summary.idbItemsRestored}\n\nThe page will now refresh to load all restored modules.`);
+      }
+      if (!skipReload && typeof window !== 'undefined' && window.location && typeof window.location.reload === 'function') {
+        setTimeout(() => window.location.reload(), 400);
+      }
+    }
+
+    return summary;
+  }
+
+  function triggerFullSystemVaultRestoreFilePicker() {
+    if (typeof document === 'undefined') return;
+    let input = document.getElementById('pmgFullVaultRestoreInput');
+    if (!input) {
+      input = document.createElement('input');
+      input.type = 'file';
+      input.id = 'pmgFullVaultRestoreInput';
+      input.accept = '.pmgbak,.json';
+      input.style.display = 'none';
+      input.addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        if (typeof confirm === 'function' && !confirm(`Restore Full System Disaster Vault from "${file.name}"?\n\nThis will restore all Patient Care records, Lab PDFs, Roster Timetables, Expiry & 6M Aging Action Plans, Returns & CN, Pricing Matrix, Recruitment, Promo Broadcast, 5S Audit, and Performance Studio datasets.`)) {
+          e.target.value = '';
+          return;
+        }
+        try {
+          const text = await file.text();
+          const parsed = JSON.parse(text);
+          await restoreFullSystemVaultFromObject(parsed, { silent: false, skipReload: false });
+        } catch (err) {
+          console.error('[PMG Disaster Vault] Restore error:', err);
+          if (typeof alert === 'function') alert('Failed to restore Full System Vault: ' + (err.message || err));
+        } finally {
+          e.target.value = '';
+        }
+      });
+      document.body.appendChild(input);
+    }
+    input.click();
+  }
+
+  window.buildFullSystemVaultBundle = buildFullSystemVaultBundle;
+  window.exportFullSystemVaultBackup = exportFullSystemVaultBackup;
+  window.restoreFullSystemVaultFromObject = restoreFullSystemVaultFromObject;
+  window.triggerFullSystemVaultRestoreFilePicker = triggerFullSystemVaultRestoreFilePicker;
+  window.pmgDisasterVault = {
+    buildFullSystemVaultBundle,
+    exportFullSystemVaultBackup,
+    restoreFullSystemVaultFromObject,
+    triggerFullSystemVaultRestoreFilePicker
+  };
+
   // Global singleton instance
   window.pmgOneDriveSync = new OneDriveSyncEngine();
 
-  // Auto-init when DOM is ready
+  // Auto-init when DOM is ready (includes auto-recovery from Google Cloud if IT wiped browser storage!)
   const bootSyncEngine = () => {
     window.pmgOneDriveSync.init();
     setTimeout(() => {
       try {
         window.syncAuditFromCloud?.();
         window.syncCommercialFromCloud?.();
+
+        // If localStorage was cleared by HQ IT, automatically pull all non-patient operational modules from Google Cloud
+        let pmgKeys = 0;
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i) || '';
+          if (k.startsWith('pmg_') || k.startsWith('KS01_')) pmgKeys++;
+        }
+        if (!localStorage.getItem('pmg_last_google_cloud_sync') && pmgKeys <= 4) {
+          console.log('[PMG Auto-Recovery] Empty browser storage detected after cleanup — restoring operational modules from Google Cloud…');
+          window.triggerGoogleCloudEcosystemSync?.({ manual: false }).catch(() => {});
+        }
       } catch (_) {}
     }, 2500);
   };

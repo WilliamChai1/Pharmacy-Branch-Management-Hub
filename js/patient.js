@@ -10114,7 +10114,32 @@ async function createPatientBackupBundle(type = 'DAILY_ONEDRIVE_BACKUP') {
   const branch = normalizeBranchCode(rawBranch);
   const dateStr = getTodayDateString(0);
 
-  // 1. Gather all documents from IndexedDB (use metadata for daily OneDrive backups to avoid Base64 memory bloat)
+  // If Full System Disaster Vault engine is loaded, include 100% of localStorage + all 4 IndexedDB databases!
+  if (typeof window !== 'undefined' && typeof window.buildFullSystemVaultBundle === 'function') {
+    const fullVault = await window.buildFullSystemVaultBundle({
+      includeDocBlobs: type !== 'DAILY_ONEDRIVE_BACKUP'
+    });
+    const backupBundle = {
+      ...fullVault.bundle,
+      type,
+      branch
+    };
+    const filename = `PMG_FullSystemBackup_${branch}_${dateStr}.pmgbak`;
+    const jsonStr = JSON.stringify(backupBundle, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    return {
+      bundle: backupBundle,
+      filename,
+      blob,
+      branch,
+      patientCount: backupBundle.patientCount,
+      docCount: backupBundle.docCount,
+      scheduleCount: backupBundle.scheduleCount,
+      bookingCount: backupBundle.bookingCount
+    };
+  }
+
+  // Fallback: Gather all documents from IndexedDB
   let documents = [];
   try {
     if (type === 'DAILY_ONEDRIVE_BACKUP' && typeof exportAllDocumentsMetadata === 'function') {
@@ -10126,14 +10151,18 @@ async function createPatientBackupBundle(type = 'DAILY_ONEDRIVE_BACKUP') {
     console.warn('Error exporting documents from IndexedDB:', err);
   }
 
-  // 2. Gather pharmacist working hour schedules & customer bookings from localStorage
+  // Gather pharmacist working hour schedules, customer bookings & all localStorage keys
   const pharmacistSchedules = {};
+  const localStorageDump = {};
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    if (key && key.startsWith('pmg_pharmacist_schedule_')) {
-      try {
-        pharmacistSchedules[key] = JSON.parse(localStorage.getItem(key));
-      } catch (_) {}
+    if (key) {
+      localStorageDump[key] = localStorage.getItem(key);
+      if (key.startsWith('pmg_pharmacist_schedule_')) {
+        try {
+          pharmacistSchedules[key] = JSON.parse(localStorage.getItem(key));
+        } catch (_) {}
+      }
     }
   }
 
@@ -10142,24 +10171,25 @@ async function createPatientBackupBundle(type = 'DAILY_ONEDRIVE_BACKUP') {
     customerBookings = JSON.parse(localStorage.getItem('pmg_customer_bookings') || '[]');
   } catch (_) {}
 
-  // 3. Package into bundle
   const backupBundle = {
     app: 'PMG_MANAGEMENT_HUB',
-    version: '1.2',
+    version: '2.0',
     type: type,
     exportDate: new Date().toISOString(),
     branch: branch,
     patientCount: patientsData.length,
     docCount: documents.length,
+    localStorageKeyCount: Object.keys(localStorageDump).length,
     scheduleCount: Object.keys(pharmacistSchedules).length,
     bookingCount: customerBookings.length,
     patients: patientsData,
     documents: documents,
     pharmacistSchedules: pharmacistSchedules,
-    customerBookings: customerBookings
+    customerBookings: customerBookings,
+    localStorageDump: localStorageDump
   };
 
-  const filename = `PMG_PatientBackup_${branch}_${dateStr}.pmgbak`;
+  const filename = `PMG_FullSystemBackup_${branch}_${dateStr}.pmgbak`;
   const jsonStr = JSON.stringify(backupBundle, null, 2);
   const blob = new Blob([jsonStr], { type: 'application/json' });
 
@@ -10221,7 +10251,7 @@ async function backupToOneDrive() {
     }
 
     // Record last backup details
-    const session = getSession();
+    const session = typeof getSession === 'function' ? getSession() : null;
     const nowIso = new Date().toISOString();
     localStorage.setItem('pmg_last_backup_date', nowIso);
     localStorage.setItem('pmg_last_backup_type', 'OneDrive');
@@ -10257,7 +10287,7 @@ async function backupToPenDrive() {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
-    const session = getSession();
+    const session = typeof getSession === 'function' ? getSession() : null;
     const nowIso = new Date().toISOString();
     localStorage.setItem('pmg_last_backup_date', nowIso);
     localStorage.setItem('pmg_last_backup_type', 'USB Pen Drive');
@@ -10268,7 +10298,7 @@ async function backupToPenDrive() {
     updateBackupStatusBadge();
     updateDailyBackupBanner();
 
-    alert(`💾 USB Pen Drive Backup Saved!\n\nFile: ${filename}\nPatients: ${patientCount}\nAttached Reports: ${docCount}\nPharmacist Schedules: ${scheduleCount} branch(es)\nCustomer Bookings: ${bookingCount}\n\nPlease save this file onto your branch USB Pen Drive.`);
+    alert(`💾 Full System & USB Pen Drive Backup Saved!\n\nFile: ${filename}\nPatients: ${patientCount}\nAttached Reports: ${docCount}\nPharmacist Schedules: ${scheduleCount} branch(es)\nCustomer Bookings: ${bookingCount}\nAll LocalStorage & IndexedDB Tables: Included\n\nPlease save this file onto your branch USB Pen Drive or OneDrive folder.`);
   } catch (err) {
     console.error('Backup failed:', err);
     alert('Failed to generate backup: ' + err.message);
@@ -10279,7 +10309,7 @@ async function handleRestoreBackupFile(event) {
   const file = event.target.files && event.target.files[0];
   if (!file) return;
 
-  if (!confirm(`Are you sure you want to restore from "${file.name}"?\n\nThis will restore patient profiles, consultation records, attached lab reports, and pharmacist working hour schedules.`)) {
+  if (!confirm(`Are you sure you want to restore from "${file.name}"?\n\nThis will restore patient profiles, consultation records, attached lab reports, pharmacist schedules, and all module settings.`)) {
     event.target.value = '';
     return;
   }
@@ -10290,13 +10320,28 @@ async function handleRestoreBackupFile(event) {
       const content = e.target.result;
       const backup = JSON.parse(content);
 
-      if (!backup || (!backup.patients && !Array.isArray(backup))) {
+      if (typeof window !== 'undefined' && typeof window.restoreFullSystemVaultFromObject === 'function') {
+        await window.restoreFullSystemVaultFromObject(backup, { silent: false, skipReload: true });
+        return;
+      }
+
+      if (!backup || (!backup.patients && !Array.isArray(backup) && !backup.localStorageDump)) {
         throw new Error('Invalid backup file format.');
       }
 
+      if (backup.localStorageDump && typeof backup.localStorageDump === 'object') {
+        Object.keys(backup.localStorageDump).forEach(k => {
+          if (typeof backup.localStorageDump[k] === 'string') {
+            try { localStorage.setItem(k, backup.localStorageDump[k]); } catch (_) {}
+          }
+        });
+      }
+
       // Restore patients
-      patientsData = backup.patients || backup;
-      savePatientsData();
+      if (backup.patients || Array.isArray(backup)) {
+        patientsData = consolidatePatientList([...(patientsData || []), ...(backup.patients || backup)]);
+        savePatientsData();
+      }
 
       // Restore IndexedDB documents
       let restoredDocs = 0;

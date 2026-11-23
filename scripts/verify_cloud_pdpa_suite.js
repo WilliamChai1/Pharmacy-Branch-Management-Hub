@@ -2447,6 +2447,57 @@ function createBrowserSandbox(fetchImpl) {
     assert.strictEqual(totalPts, 2, 'Exact pid match must NOT create a duplicate stub patient profile');
   });
 
+  await test('Pre-IT Full System Disaster Vault Backup & Restore Engine (100% LocalStorage + 4 IndexedDBs)', async () => {
+    const sbVault = createBrowserSandbox();
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'onedrive-sync.js'), 'utf8'), sbVault.ctx);
+
+    assert.strictEqual(typeof sbVault.win.buildFullSystemVaultBundle, 'function', 'buildFullSystemVaultBundle must be exposed on window');
+    assert.strictEqual(typeof sbVault.win.exportFullSystemVaultBackup, 'function', 'exportFullSystemVaultBackup must be exposed on window');
+    assert.strictEqual(typeof sbVault.win.restoreFullSystemVaultFromObject, 'function', 'restoreFullSystemVaultFromObject must be exposed on window');
+    assert.strictEqual(typeof sbVault.win.triggerFullSystemVaultRestoreFilePicker, 'function', 'triggerFullSystemVaultRestoreFilePicker must be exposed on window');
+
+    // Seed multi-module keys across localStorage (Patients, Expiry, Returns, Roster, Promo, 5S Audit, Commercial, Performance)
+    sbVault.win.localStorage.setItem('pmg_patients_data_v1', JSON.stringify([
+      { id: 'PT-VAULT-1', name: 'MDM TAN MEI LING', phone: '012-8889999', ic: '550101135022', branch: 'Kota Sentosa', vitals: [{ date: '2026-11-23', hba1c: 6.4 }] }
+    ]));
+    sbVault.win.localStorage.setItem('pmg_stock_expiry_data', JSON.stringify([{ id: 'EXP-VAULT-1', name: 'PANADOL ACTIFAST', qty: 15 }]));
+    sbVault.win.localStorage.setItem('pmg_promo_campaigns_v1', JSON.stringify([{ id: 'CAMP-FLEXSURE', title: 'Flexsure Gold SeniorCare' }]));
+    sbVault.win.localStorage.setItem('pmg_audit_history', JSON.stringify([{ id: 'AUD-1', score: 96 }]));
+    sbVault.win.localStorage.setItem('KS01_PERF_ACTION_PLANS', JSON.stringify({ 'SKU-001': { plan: 'Push bundle promo', status: 'In Progress' } }));
+
+    // Build Full System Disaster Vault Bundle
+    const bundle = await sbVault.win.buildFullSystemVaultBundle({ triggerCloudPush: false });
+    assert.strictEqual(bundle.app, 'PMG_FULL_SYSTEM_VAULT_V2', 'Vault bundle must carry PMG_FULL_SYSTEM_VAULT_V2 identifier');
+    assert.strictEqual(Array.isArray(bundle.patientsData) && bundle.patientsData.length, 1, 'Vault bundle must include patientsData array');
+    assert.strictEqual(bundle.patientsData[0].id, 'PT-VAULT-1', 'Vault bundle must preserve patient clinical profile');
+    assert(bundle.localStorageDump && bundle.localStorageDump.pmg_stock_expiry_data, 'Vault bundle must dump pmg_stock_expiry_data');
+    assert(bundle.localStorageDump && bundle.localStorageDump.pmg_promo_campaigns_v1, 'Vault bundle must dump pmg_promo_campaigns_v1');
+    assert(bundle.localStorageDump && bundle.localStorageDump.KS01_PERF_ACTION_PLANS, 'Vault bundle must dump KS01_PERF_ACTION_PLANS');
+
+    // Simulate HQ IT completely wiping localStorage ("clean up rubbish")
+    sbVault.win.localStorage.clear();
+    assert.strictEqual(sbVault.win.localStorage.getItem('pmg_patients_data_v1'), null, 'Simulated IT wipe must clear localStorage');
+    assert.strictEqual(sbVault.win.localStorage.getItem('KS01_PERF_ACTION_PLANS'), null, 'Simulated IT wipe must clear KS01_PERF_ACTION_PLANS');
+
+    // Restore from Full System Vault Bundle
+    const restoreStats = await sbVault.win.restoreFullSystemVaultFromObject(bundle, { silent: true, reloadAfter: false });
+    assert(restoreStats.restoredLsCount >= 5, 'Restore engine must recover all wiped localStorage keys');
+    assert.strictEqual(restoreStats.restoredPatientCount, 1, 'Restore engine must recover patient profile');
+
+    const recoveredPts = JSON.parse(sbVault.win.localStorage.getItem('pmg_patients_data_v1') || '[]');
+    assert.strictEqual(recoveredPts.length, 1, 'Recovered pmg_patients_data_v1 must have 1 patient');
+    assert.strictEqual(recoveredPts[0].name, 'MDM TAN MEI LING', 'Recovered patient name must match');
+    const recoveredPlans = JSON.parse(sbVault.win.localStorage.getItem('KS01_PERF_ACTION_PLANS') || '{}');
+    assert.strictEqual(recoveredPlans['SKU-001']?.plan, 'Push bundle promo', 'Recovered 6M aging action plan must match');
+
+    // Verify UI buttons exist in index.html and patient/index.html
+    const mainHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const ptHtml = fs.readFileSync(path.join(ROOT, 'patient', 'index.html'), 'utf8');
+    assert(mainHtml.includes('exportFullSystemVaultBackup()') && mainHtml.includes('triggerFullSystemVaultRestoreFilePicker()'), 'index.html must expose Pre-IT Full System Vault Backup & Restore buttons');
+    assert(ptHtml.includes('exportFullSystemVaultBackup()') && ptHtml.includes('triggerFullSystemVaultRestoreFilePicker()'), 'patient/index.html must expose Pre-IT Full System Vault Backup & Restore buttons');
+  });
+
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);
   process.exit(failed > 0 ? 1 : 0);
 })();
+

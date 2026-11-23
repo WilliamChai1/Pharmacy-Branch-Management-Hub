@@ -3076,6 +3076,30 @@ Date visit: 06.01.2026
             <li>Once linked, records automatically sync across devices every 60 seconds. You can also click <b>"Sync All Modules Now"</b> anytime to force an instant cross-computer update.</li>
           </ul>
         </div>
+
+        <!-- Pre-IT Maintenance / Full System Disaster Vault -->
+        <div class="p-4 bg-gradient-to-r from-indigo-50 via-purple-50 to-emerald-50 border-2 border-indigo-300 rounded-xl space-y-2.5 shadow-xs">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <h4 class="font-extrabold text-indigo-950 flex items-center gap-1.5 text-xs">
+              <i class="fa-solid fa-shield-halved text-indigo-700"></i>
+              <span>🛡️ Pre-IT Full System Disaster Vault (100% LocalStorage + All 4 IndexedDBs)</span>
+            </h4>
+            <span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full text-[10px] font-bold">Zero-Data-Loss Protection</span>
+          </div>
+          <p class="text-[11px] text-gray-700 leading-relaxed">
+            If HQ IT cleans browser cache / localStorage, click <b>Download Full System Vault (.pmgbak)</b> before maintenance to save every single record (Patients, Lab PDFs, Roster, Expiry, Returns/CN, Pricing, Recruitment, Promo, 5S Audit, Commercial &amp; Performance Studio) into OneDrive &amp; your local PC, then click <b>Restore Full System Vault</b> afterwards to recover 100% of your data in 1 click.
+          </p>
+          <div class="flex items-center gap-2 flex-wrap pt-1">
+            <button type="button" onclick="exportFullSystemVaultBackup()"
+              class="px-3.5 py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer">
+              <i class="fa-solid fa-download"></i> <span>🛡️ Download Full System Vault (.pmgbak)</span>
+            </button>
+            <button type="button" onclick="triggerFullSystemVaultRestoreFilePicker()"
+              class="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer">
+              <i class="fa-solid fa-rotate-left"></i> <span>♻️ Restore Full System Vault (.pmgbak)</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Actions -->
@@ -3515,9 +3539,9 @@ Date visit: 06.01.2026
   <script src="../js/data.js?v=20261122_shorturl_v1"></script>
   <script src="../js/auth.js?v=20261110_clean_wa_v1"></script>
   <script src="../js/db.js?v=20261121_full_audit_v4"></script>
-  <script src="../js/onedrive-sync.js?v=20261121_full_audit_v4"></script>
+  <script src="../js/onedrive-sync.js?v=20261123_disaster_vault_v1"></script>
   <script src="../js/fy2027-kpi-engine.js?v=20261121_full_audit_v4"></script>
-  <script src="../js/patient.js?v=20261122_shorturl_v7"></script>
+  <script src="../js/patient.js?v=20261123_disaster_vault_v8"></script>
 
   <script>
     // Compatibility alias for New Patient modal
