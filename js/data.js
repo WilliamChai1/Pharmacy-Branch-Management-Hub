@@ -378,29 +378,285 @@ function buildUniversalWhatsAppUrl(phone, msg) {
   return `${baseUrl}?text=${encodeURIComponent(cleanMsg)}`;
 }
 
-function openUniversalWhatsApp(phone, msg) {
-  const url = buildUniversalWhatsAppUrl(phone, msg);
+// ─── PDPA-SAFE GOOGLE APPS SCRIPT URL SHORTENER BRIDGE ───────────────────────
+const PMG_SHORT_URL_CACHE_KEY = 'pmg_short_url_cache_v1';
+const PMG_SHORT_URL_FALLBACK_API = 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+const PMG_SHORT_URL_SKIP_HOSTS = [
+  'g.page',
+  'chat.whatsapp.com',
+  'wa.me',
+  'api.whatsapp.com',
+  'tinyurl.com',
+  'is.gd',
+  'bit.ly',
+  'maps.app.goo.gl',
+  'youtu.be',
+  't.me'
+];
+
+function getPmgShortenerApiUrl() {
+  if (typeof window !== 'undefined' && window.PMG_SCHEDULE_API_URL) {
+    return window.PMG_SCHEDULE_API_URL;
+  }
+  return PMG_SHORT_URL_FALLBACK_API;
+}
+
+function loadPmgShortUrlCache() {
   try {
-    const win = window.open(url, '_blank');
-    if (win) {
-      if (typeof win.focus === 'function') win.focus();
-      return win;
+    if (typeof localStorage === 'undefined') return {};
+    const raw = localStorage.getItem(PMG_SHORT_URL_CACHE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function savePmgShortUrlCache(cacheObj) {
+  try {
+    if (typeof localStorage === 'undefined' || !cacheObj) return;
+    const keys = Object.keys(cacheObj);
+    if (keys.length > 400) {
+      const trimmed = {};
+      keys.slice(keys.length - 400).forEach(k => { trimmed[k] = cacheObj[k]; });
+      localStorage.setItem(PMG_SHORT_URL_CACHE_KEY, JSON.stringify(trimmed));
+      return;
+    }
+    localStorage.setItem(PMG_SHORT_URL_CACHE_KEY, JSON.stringify(cacheObj));
+  } catch (_) {}
+}
+
+function isUrlEligibleForShortening(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return false;
+  const url = rawUrl.trim();
+  if (!/^https?:\/\//i.test(url)) return false;
+  if (url.length <= 48) return false;
+  // Strict PDPA Guard: never send URLs containing raw NRIC query params to external shorteners
+  if (/[?&#](ic|patientic|nric)=/i.test(url)) return false;
+  try {
+    const parsed = new URL(url);
+    const host = (parsed.hostname || '').toLowerCase();
+    if (PMG_SHORT_URL_SKIP_HOSTS.some(h => host === h || host.endsWith('.' + h))) {
+      return false;
+    }
+  } catch (_) {
+    return false;
+  }
+  return true;
+}
+
+function extractUrlsFromText(text) {
+  if (!text || typeof text !== 'string') return [];
+  const matches = text.match(/https?:\/\/[^\s<>"{}|\\^`[\]]+/gi) || [];
+  const unique = [];
+  const seen = new Set();
+  matches.forEach(raw => {
+    const cleaned = raw.replace(/[.,;:!?)\]}。，；！？）》」』]+$/g, '');
+    if (cleaned && !seen.has(cleaned)) {
+      seen.add(cleaned);
+      unique.push(cleaned);
+    }
+  });
+  return unique;
+}
+
+function pmgGetCachedShortUrl(url) {
+  if (!url || typeof url !== 'string') return url || '';
+  const clean = url.trim();
+  if (!isUrlEligibleForShortening(clean)) return clean;
+  const cache = loadPmgShortUrlCache();
+  return cache[clean] || clean;
+}
+
+function pmgApplyCachedShortUrlsToMessage(msg) {
+  if (!msg || typeof msg !== 'string') return String(msg || '');
+  const urls = extractUrlsFromText(msg);
+  if (!urls.length) return msg;
+  const cache = loadPmgShortUrlCache();
+  let updated = msg;
+  urls.forEach(u => {
+    if (isUrlEligibleForShortening(u) && cache[u]) {
+      updated = updated.split(u).join(cache[u]);
+    }
+  });
+  return updated;
+}
+
+async function pmgShortenUrlsBatch(rawUrls, options = {}) {
+  const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 2800;
+  const cache = loadPmgShortUrlCache();
+  const resultMap = {};
+  const uncached = [];
+  const seen = new Set();
+
+  (Array.isArray(rawUrls) ? rawUrls : []).forEach(u => {
+    const clean = String(u || '').trim();
+    if (!clean || seen.has(clean)) return;
+    seen.add(clean);
+    if (!isUrlEligibleForShortening(clean)) {
+      resultMap[clean] = clean;
+      return;
+    }
+    if (cache[clean]) {
+      resultMap[clean] = cache[clean];
+    } else {
+      resultMap[clean] = clean;
+      uncached.push(clean);
+    }
+  });
+
+  if (uncached.length === 0 || typeof fetch !== 'function') {
+    return resultMap;
+  }
+
+  const apiUrl = getPmgShortenerApiUrl();
+  if (!apiUrl) return resultMap;
+
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => { try { controller.abort(); } catch (_) {} }, timeoutMs) : null;
+
+  try {
+    const fetchOpts = {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'shortenUrls',
+        urls: uncached.slice(0, 12),
+        updatedBy: 'PMG Hub'
+      }),
+      redirect: 'follow'
+    };
+    if (controller) fetchOpts.signal = controller.signal;
+
+    const res = await fetch(apiUrl, fetchOpts);
+    if (res && res.ok) {
+      const data = await res.json();
+      const cloudMap = (data && data.success && data.map && typeof data.map === 'object') ? data.map : null;
+      if (cloudMap) {
+        let cacheChanged = false;
+        uncached.forEach(orig => {
+          const candidate = cloudMap[orig];
+          if (typeof candidate === 'string' && /^https?:\/\//i.test(candidate) && candidate.length < orig.length) {
+            resultMap[orig] = candidate;
+            cache[orig] = candidate;
+            cacheChanged = true;
+          }
+        });
+        if (cacheChanged) savePmgShortUrlCache(cache);
+      }
+    }
+  } catch (err) {
+    // Graceful fallback: keep original URLs so WhatsApp links never break offline or before Apps Script redeploy
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn('[PMG URL Shortener] Falling back to original URLs:', err && err.message ? err.message : err);
+    }
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+
+  return resultMap;
+}
+
+async function pmgShortenUrlsInMessage(msg, options = {}) {
+  const baseText = String(msg || '');
+  const urls = extractUrlsFromText(baseText).filter(isUrlEligibleForShortening);
+  if (!urls.length) return baseText;
+
+  const map = await pmgShortenUrlsBatch(urls, options);
+  let output = baseText;
+  urls.forEach(u => {
+    const replacement = map[u];
+    if (replacement && replacement !== u) {
+      output = output.split(u).join(replacement);
+    }
+  });
+  return output;
+}
+
+function pmgPrewarmShortUrls(rawUrls) {
+  try {
+    const eligible = (Array.isArray(rawUrls) ? rawUrls : []).filter(isUrlEligibleForShortening);
+    if (!eligible.length) return;
+    const cache = loadPmgShortUrlCache();
+    const needsFetch = eligible.filter(u => !cache[u]);
+    if (!needsFetch.length) return;
+    pmgShortenUrlsBatch(needsFetch, { timeoutMs: 4000 }).catch(() => {});
+  } catch (_) {}
+}
+
+function openUniversalWhatsApp(phone, msg, options = {}) {
+  const withCached = (options && options.shorten === false)
+    ? String(msg || '')
+    : pmgApplyCachedShortUrlsToMessage(msg);
+
+  const uncachedEligible = (options && options.shorten === false)
+    ? []
+    : extractUrlsFromText(withCached).filter(isUrlEligibleForShortening);
+
+  // Fast synchronous path: all links are already cached (or no long links present)
+  if (uncachedEligible.length === 0 || typeof fetch !== 'function') {
+    const url = buildUniversalWhatsAppUrl(phone, withCached);
+    try {
+      const win = window.open(url, '_blank');
+      if (win) {
+        if (typeof win.focus === 'function') win.focus();
+        return win;
+      }
+    } catch (_) {}
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { if (a.parentNode) a.parentNode.removeChild(a); }, 300);
+    return null;
+  }
+
+  // Popup-blocker-proof async path: open tab synchronously on user click, shorten URLs via Google Apps Script, then navigate
+  let preOpenedWin = null;
+  try {
+    preOpenedWin = window.open('about:blank', '_blank');
+    if (preOpenedWin && preOpenedWin.document) {
+      preOpenedWin.document.title = 'Opening WhatsApp...';
+      preOpenedWin.document.body.innerHTML = '<div style="font-family:system-ui,sans-serif;padding:40px;text-align:center;color:#0f172a;"><h3 style="margin-bottom:8px;">⏳ Shortening links &amp; opening WhatsApp…</h3><p style="font-size:13px;color:#64748b;">Please wait a moment (PMG Pharmacy Hub)</p></div>';
     }
   } catch (_) {}
 
-  // Fallback anchor click only if window.open was explicitly blocked by browser popup blocker
-  const a = document.createElement('a');
-  a.href = url;
-  a.target = '_blank';
-  a.rel = 'noopener noreferrer';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => { if (a.parentNode) a.parentNode.removeChild(a); }, 300);
+  pmgShortenUrlsInMessage(withCached, { timeoutMs: 2800 })
+    .catch(() => withCached)
+    .then(finalMsg => {
+      const waUrl = buildUniversalWhatsAppUrl(phone, finalMsg);
+      if (preOpenedWin && !preOpenedWin.closed) {
+        try {
+          preOpenedWin.location.href = waUrl;
+          if (typeof preOpenedWin.focus === 'function') preOpenedWin.focus();
+          return;
+        } catch (_) {}
+      }
+      const a = document.createElement('a');
+      a.href = waUrl;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { if (a.parentNode) a.parentNode.removeChild(a); }, 300);
+    });
+
+  return preOpenedWin;
 }
 
 if (typeof window !== 'undefined') {
   window.sanitizeWhatsAppMessage = sanitizeWhatsAppMessage;
   window.buildUniversalWhatsAppUrl = buildUniversalWhatsAppUrl;
   window.openUniversalWhatsApp = openUniversalWhatsApp;
+  window.isUrlEligibleForShortening = isUrlEligibleForShortening;
+  window.pmgGetCachedShortUrl = pmgGetCachedShortUrl;
+  window.pmgApplyCachedShortUrlsToMessage = pmgApplyCachedShortUrlsToMessage;
+  window.pmgShortenUrlsBatch = pmgShortenUrlsBatch;
+  window.pmgShortenUrlsInMessage = pmgShortenUrlsInMessage;
+  window.pmgPrewarmShortUrls = pmgPrewarmShortUrls;
 }
 

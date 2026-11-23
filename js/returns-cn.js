@@ -3710,12 +3710,30 @@
     const phoneInput = document.getElementById('cnRemPhone');
     const picInput = document.getElementById('cnRemPicName');
     const urlInput = document.getElementById('cnRemProofUrl');
+    const rawProofUrl = buildPublicDoProofUrl(ret);
+    const displayProofUrl = (typeof window !== 'undefined' && typeof window.pmgGetCachedShortUrl === 'function')
+      ? window.pmgGetCachedShortUrl(rawProofUrl)
+      : rawProofUrl;
     if (phoneInput) phoneInput.value = defaultPhone;
     if (picInput) picInput.value = defaultPic;
-    if (urlInput) urlInput.value = buildPublicDoProofUrl(ret);
+    if (urlInput) urlInput.value = displayProofUrl;
 
     refreshCnReminderMessagePreview();
     modal.classList.remove('hidden');
+
+    // Background pre-warm short URL for the DO+PRN proof link and refresh preview once cached
+    if (typeof window !== 'undefined' && typeof window.pmgShortenUrlsBatch === 'function' && rawProofUrl) {
+      window.pmgShortenUrlsBatch([rawProofUrl], { timeoutMs: 3000 }).then(map => {
+        const shortUrl = map && map[rawProofUrl];
+        if (shortUrl && shortUrl !== rawProofUrl && activeReturnForReminder && activeReturnForReminder.id === ret.id) {
+          if (urlInput) urlInput.value = shortUrl;
+          const msgBox = document.getElementById('cnRemMessageBox');
+          if (msgBox && msgBox.value.includes(rawProofUrl)) {
+            msgBox.value = msgBox.value.split(rawProofUrl).join(shortUrl);
+          }
+        }
+      }).catch(() => {});
+    }
   }
 
   function closeCnReminderModal() {
@@ -3727,7 +3745,11 @@
     const picName = document.getElementById('cnRemPicName')?.value || '';
     const msgBox = document.getElementById('cnRemMessageBox');
     if (msgBox) {
-      msgBox.value = buildSupplierCnReminderMessage(activeReturnForReminder, { picName });
+      let previewMsg = buildSupplierCnReminderMessage(activeReturnForReminder, { picName });
+      if (typeof window !== 'undefined' && typeof window.pmgApplyCachedShortUrlsToMessage === 'function') {
+        previewMsg = window.pmgApplyCachedShortUrlsToMessage(previewMsg);
+      }
+      msgBox.value = previewMsg;
     }
   }
 
@@ -3760,20 +3782,27 @@
       || buildSupplierCnReminderMessage(activeReturnForReminder, { picName });
     const sendBtn = document.getElementById('cnRemSendBtn');
 
-    let waUrl = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    let targetCleanPhone = '';
     if (phoneRaw) {
       const parsed = normalizeSupplierWaPhone(phoneRaw);
       if (parsed.isLandline) {
         const usePicker = confirm(`"${phoneRaw}" looks like a landline number (cannot receive WhatsApp).\n\nClick OK to open WhatsApp so you can choose a Supplier Group or contact manually, or Cancel to edit the mobile number.`);
         if (!usePicker) return;
       } else if (parsed.clean) {
-        waUrl = `https://wa.me/${parsed.clean}?text=${encodeURIComponent(msg)}`;
+        targetCleanPhone = parsed.clean;
       }
     }
 
-    // Open WhatsApp tab immediately on user gesture so Safari/iOS/strict popup blockers never block it
+    // Open WhatsApp via centralized PDPA-safe shortener & popup-safe launcher
     const targetReturn = activeReturnForReminder;
-    window.open(waUrl, '_blank', 'noopener');
+    if (typeof window !== 'undefined' && typeof window.openUniversalWhatsApp === 'function') {
+      window.openUniversalWhatsApp(targetCleanPhone, msg);
+    } else {
+      const waUrl = targetCleanPhone
+        ? `https://wa.me/${targetCleanPhone}?text=${encodeURIComponent(msg)}`
+        : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+      window.open(waUrl, '_blank', 'noopener');
+    }
     closeCnReminderModal();
 
     // Record reminder metadata & push to cloud in the background

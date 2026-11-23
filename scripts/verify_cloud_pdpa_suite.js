@@ -2348,6 +2348,105 @@ function createBrowserSandbox(fetchImpl) {
     assert.strictEqual(sb.win.validateManualAppointmentSlot('Kota Sentosa', '2099-05-05', '11:00').reasonCode, 'ALREADY_BOOKED');
   });
 
+  await testAsync('Google Apps Script URL Shortener Bridge (PDPA NRIC Guard, Exact pid Matching, Caching & Offline Fallback)', async () => {
+    // 1. Static & syntax validation of google_apps_script_schedule_appointments_pricing.js
+    const gasPath = path.join(ROOT, 'google_apps_script_schedule_appointments_pricing.js');
+    const gasSrc = fs.readFileSync(gasPath, 'utf8');
+    execFileSync(process.execPath, ['--check', gasPath], { stdio: 'pipe' });
+    assert(gasSrc.includes("const TAB_SHORT_LINKS = 'Short_Links';"), 'Apps Script must define Short_Links cache tab');
+    assert(gasSrc.includes("action === 'shortenUrls'") && gasSrc.includes('handleShortenUrlsBatch'), 'Apps Script must expose shortenUrls batch endpoint');
+    assert(gasSrc.includes('tinyurl.com/api-create.php') && gasSrc.includes('is.gd/create.php'), 'Apps Script must implement TinyURL primary + is.gd fallback');
+    assert(gasSrc.includes('/[?&#](ic|patientic|nric)=/i'), 'Apps Script must enforce server-side PDPA NRIC rejection guard');
+
+    // 2. Test js/data.js shortener eligibility, batching, caching & offline fallback
+    let networkCalls = 0;
+    const sbData = createBrowserSandbox(async (url, opts) => {
+      networkCalls++;
+      const body = JSON.parse(opts.body || '{}');
+      assert.strictEqual(body.action, 'shortenUrls');
+      const map = {};
+      (body.urls || []).forEach((u, idx) => {
+        map[u] = `https://tinyurl.com/pmgshort${idx + 1}`;
+      });
+      return { ok: true, json: async () => ({ success: true, map }) };
+    });
+    sbData.ctx.AbortController = sbData.win.AbortController = globalThis.AbortController;
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'data.js'), 'utf8'), sbData.ctx);
+
+    const tedaLong = 'https://sg-report.ajaolz.com/#/pages/reportTv/reportTvMain?rid=cdb0f0d7-fed1-41a2-a51e-e7be6d786721&lang=';
+    const bookingLong = 'https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/patient/?book=1&lang=zh&pid=PT-135720&name=JONG+NYUK+FONG&phone=019-885+8456&branch=Kota+Sentosa';
+    const dirtyIcUrl = 'https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/patient/?book=1&name=TEST&ic=450817135099';
+    const googleReview = 'https://g.page/r/CUU3ygRE9IC6EBM/review';
+    const waComm = 'https://chat.whatsapp.com/D1d7scuEzrQ15rwFndmSHr';
+
+    assert.strictEqual(sbData.win.isUrlEligibleForShortening(tedaLong), true, 'TEDA URL must be eligible for shortening');
+    assert.strictEqual(sbData.win.isUrlEligibleForShortening(bookingLong), true, 'PDPA-clean pid Booking URL must be eligible for shortening');
+    assert.strictEqual(sbData.win.isUrlEligibleForShortening(dirtyIcUrl), false, 'URL containing plaintext ic= NRIC must be blocked by PDPA guard');
+    assert.strictEqual(sbData.win.isUrlEligibleForShortening(googleReview), false, 'Official g.page review URL must be preserved as-is');
+    assert.strictEqual(sbData.win.isUrlEligibleForShortening(waComm), false, 'Official chat.whatsapp.com URL must be preserved as-is');
+
+    const rawMsg = `Report:\n${tedaLong}\n\nBooking:\n${bookingLong}\n\nReview: ${googleReview}\nCommunity: ${waComm}`;
+    const shortened1 = await sbData.win.pmgShortenUrlsInMessage(rawMsg);
+    assert.strictEqual(networkCalls, 1, 'First message shortening must batch all uncached URLs in 1 request');
+    assert(shortened1.includes('https://tinyurl.com/pmgshort1') && shortened1.includes('https://tinyurl.com/pmgshort2'), 'Shortened message must replace both long URLs');
+    assert(shortened1.includes(googleReview) && shortened1.includes(waComm), 'Official review & WhatsApp community URLs must stay intact');
+
+    // Second call must hit localStorage cache with 0 network calls
+    const shortened2 = await sbData.win.pmgShortenUrlsInMessage(rawMsg);
+    assert.strictEqual(networkCalls, 1, 'Repeat shortening must use localStorage cache with 0 network calls');
+    assert.strictEqual(shortened2, shortened1);
+
+    // Offline / failure fallback test
+    const sbOffline = createBrowserSandbox(async () => { throw new Error('Network offline'); });
+    sbOffline.ctx.AbortController = sbOffline.win.AbortController = globalThis.AbortController;
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'data.js'), 'utf8'), sbOffline.ctx);
+    const offlineResult = await sbOffline.win.pmgShortenUrlsInMessage(rawMsg);
+    assert.strictEqual(offlineResult, rawMsg, 'Offline failure must gracefully fall back to original URLs without throwing');
+
+    // 3. Test getPatientSelfBookingUrl uses pid (no plaintext NRIC) & importSingleBooking locks 1-to-1 even with shared phone number
+    const sbPt = createBrowserSandbox();
+    sbPt.ctx.location = sbPt.win.location = { href: 'https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/patient/', origin: 'https://williamchai1.github.io', pathname: '/Pharmacy-Branch-Management-Hub/patient/', search: '' };
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'patient.js'), 'utf8'), sbPt.ctx);
+
+    const ptMother = { id: 'PT-FAM-1', name: 'JONG NYUK FONG', phone: '019-8858456', ic: '450817135099', branch: 'Kota Sentosa', language: 'Chinese', appointments: [] };
+    const ptFather = { id: 'PT-FAM-2', name: 'CHAI AH KOW', phone: '019-8858456', ic: '420101135111', branch: 'Kota Sentosa', language: 'Chinese', appointments: [] };
+    const selfUrl = sbPt.win.getPatientSelfBookingUrl(ptMother);
+    assert(selfUrl.includes('pid=PT-FAM-1'), 'Self-booking URL must include opaque pid=PT-FAM-1');
+    assert(!selfUrl.includes('450817135099') && !/[?&]ic=/i.test(selfUrl), 'Self-booking URL must NEVER expose plaintext NRIC ic=');
+
+    // Seed two elderly family members sharing the exact same caretaker phone number
+    vm.runInContext(`
+      patientsData = [
+        { id: 'PT-FAM-1', name: 'JONG NYUK FONG', phone: '019-8858456', ic: '450817135099', branch: 'Kota Sentosa', appointments: [] },
+        { id: 'PT-FAM-2', name: 'CHAI AH KOW', phone: '019-8858456', ic: '420101135111', branch: 'Kota Sentosa', appointments: [] }
+      ];
+    `, sbPt.ctx);
+
+    // Even if customer edits display name slightly on mobile and NRIC is stripped by PDPA cloud sanitizer, pid matches PT-FAM-1 100% accurately
+    const cloudSyncedBooking = sbPt.win.sanitizePayloadForGoogleCloud({
+      id: 'PMG-BK-PID999',
+      ref: 'PMG-BK-PID999',
+      patientId: 'PT-FAM-1',
+      patientName: 'Mdm Jong Nyuk Fong',
+      patientPhone: '019-8858456',
+      patientIc: '450817135099',
+      date: '2099-06-10',
+      time: '10:00',
+      status: 'Scheduled',
+      branchCode: 'Kota Sentosa'
+    });
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(cloudSyncedBooking, 'patientIc'), false, 'PDPA sanitizer must strip patientIc');
+    assert.strictEqual(cloudSyncedBooking.patientId, 'PT-FAM-1', 'PDPA sanitizer must preserve opaque patientId');
+
+    vm.runInContext(`importSingleBooking(${JSON.stringify(cloudSyncedBooking)}, false);`, sbPt.ctx);
+    const matchedMother = vm.runInContext(`patientsData.find(p => p.id === 'PT-FAM-1').appointments.length`, sbPt.ctx);
+    const matchedFather = vm.runInContext(`patientsData.find(p => p.id === 'PT-FAM-2').appointments.length`, sbPt.ctx);
+    const totalPts = vm.runInContext(`patientsData.length`, sbPt.ctx);
+    assert.strictEqual(matchedMother, 1, 'Booking with pid=PT-FAM-1 must attach accurately to Mother profile');
+    assert.strictEqual(matchedFather, 0, 'Booking with pid=PT-FAM-1 must NOT attach to Father profile sharing same phone');
+    assert.strictEqual(totalPts, 2, 'Exact pid match must NOT create a duplicate stub patient profile');
+  });
+
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);
   process.exit(failed > 0 ? 1 : 0);
 })();

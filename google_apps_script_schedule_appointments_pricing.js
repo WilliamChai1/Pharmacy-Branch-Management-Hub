@@ -9,6 +9,7 @@ const TAB_APPOINTMENTS = 'Patient_Appointments';
 const TAB_PRICING = 'Pricing_Matrix';
 const TAB_RECRUITMENT = 'Job_Applicants';
 const TAB_PREFERENCES = 'Staff_Preferences';
+const TAB_SHORT_LINKS = 'Short_Links';
 
 const APPOINTMENT_HEADERS = [
   'AppointmentId', 'PatientId', 'PatientName', 'PatientPhone', 'PatientIc',
@@ -339,6 +340,18 @@ function doGet(e) {
       return handleGetStaffPreferences(branchParam);
     }
 
+    // ── 4b. ACTION: SHORTEN SINGLE URL (PDPA-SAFE + GOOGLE SHEETS CACHE) ──
+    if (action === 'shortenUrl') {
+      const targetUrl = String(e.parameter.url || '').trim();
+      const result = handleShortenUrlsBatch(ss, targetUrl ? [targetUrl] : []);
+      return buildResponse({
+        success: true,
+        shortUrl: (result.map && result.map[targetUrl]) || targetUrl,
+        map: result.map || {},
+        skippedPdpa: result.skippedPdpa || []
+      });
+    }
+
     // ── 5. DEFAULT: GET PHARMACIST SCHEDULE ──
     const branch = (e.parameter.branch || 'Kota Sentosa').trim();
     let sheet = ss.getSheetByName(TAB_SCHEDULE);
@@ -381,6 +394,21 @@ function doPost(e) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const now = new Date().toISOString();
     const updatedBy = payload.updatedBy || 'Staff';
+
+    // ── 0. ACTION: SHORTEN URLS BATCH (PDPA-SAFE + SHORT_LINKS SHEET CACHE) ──
+    if (action === 'shortenUrls' || action === 'shortenUrl') {
+      const list = Array.isArray(payload.urls)
+        ? payload.urls
+        : (payload.url ? [payload.url] : []);
+      const result = handleShortenUrlsBatch(ss, list);
+      const firstUrl = list[0] ? String(list[0]).trim() : '';
+      return buildResponse({
+        success: true,
+        shortUrl: firstUrl ? ((result.map && result.map[firstUrl]) || firstUrl) : '',
+        map: result.map || {},
+        skippedPdpa: result.skippedPdpa || []
+      });
+    }
 
     // ── 1. ACTION: UPDATE APPOINTMENT STATUS (TICK / COMPLETE / MISSED) ──
     if (action === 'updateAppointmentStatus') {
@@ -1197,6 +1225,111 @@ function handleSaveStaffPreferences(payload) {
     lastUpdated: timestamp,
     updatedBy: updatedBy
   });
+}
+
+/**
+ * PDPA-Safe URL Shortener Bridge (TinyURL primary + is.gd fallback)
+ * Permanently caches shortened URLs in the Short_Links tab so all branch PCs share the same short links.
+ */
+function handleShortenUrlsBatch(ss, rawUrls) {
+  const resultMap = {};
+  const skippedPdpa = [];
+  if (!Array.isArray(rawUrls) || rawUrls.length === 0) {
+    return { map: resultMap, skippedPdpa: skippedPdpa };
+  }
+
+  let sheet = ss.getSheetByName(TAB_SHORT_LINKS);
+  if (!sheet) {
+    sheet = ss.insertSheet(TAB_SHORT_LINKS);
+    sheet.appendRow(['OriginalUrl', 'ShortUrl', 'Provider', 'CreatedAt']);
+    sheet.getRange(1, 1, 1, 4).setFontWeight('bold');
+  }
+
+  const cacheMap = {};
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    const orig = String(rows[i][0] || '').trim();
+    const sh = String(rows[i][1] || '').trim();
+    if (orig && sh && /^https?:\/\//i.test(sh)) {
+      cacheMap[orig] = sh;
+    }
+  }
+
+  const uniqueUrls = [];
+  const seen = {};
+  rawUrls.slice(0, 12).forEach(u => {
+    const clean = String(u || '').trim();
+    if (!clean || !/^https?:\/\//i.test(clean) || seen[clean]) return;
+    seen[clean] = true;
+    uniqueUrls.push(clean);
+  });
+
+  const nowIso = new Date().toISOString();
+  const rowsToAppend = [];
+
+  uniqueUrls.forEach(url => {
+    // PDPA Guard: strictly block shortening any URL containing raw NRIC query params
+    if (/[?&#](ic|patientic|nric)=/i.test(url)) {
+      skippedPdpa.push(url);
+      return;
+    }
+
+    if (cacheMap[url]) {
+      resultMap[url] = cacheMap[url];
+      return;
+    }
+
+    let shortUrl = '';
+    let provider = '';
+
+    // 1. Primary: TinyURL free create API (preserves query strings & #hash routes via HTTP 301)
+    try {
+      const tinyRes = UrlFetchApp.fetch(
+        'https://tinyurl.com/api-create.php?url=' + encodeURIComponent(url),
+        { method: 'get', muteHttpExceptions: true, followRedirects: true }
+      );
+      if (tinyRes.getResponseCode() === 200) {
+        const txt = String(tinyRes.getContentText() || '').trim();
+        if (/^https?:\/\/tinyurl\.com\/[a-zA-Z0-9_-]+$/i.test(txt)) {
+          shortUrl = txt.replace(/^http:\/\//i, 'https://');
+          provider = 'tinyurl';
+        }
+      }
+    } catch (_) {}
+
+    // 2. Fallback: is.gd simple API
+    if (!shortUrl) {
+      try {
+        const isgdRes = UrlFetchApp.fetch(
+          'https://is.gd/create.php?format=simple&url=' + encodeURIComponent(url),
+          { method: 'get', muteHttpExceptions: true, followRedirects: true }
+        );
+        if (isgdRes.getResponseCode() === 200) {
+          const txt = String(isgdRes.getContentText() || '').trim();
+          if (/^https?:\/\/is\.gd\/[a-zA-Z0-9_-]+$/i.test(txt)) {
+            shortUrl = txt.replace(/^http:\/\//i, 'https://');
+            provider = 'isgd';
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (shortUrl) {
+      cacheMap[url] = shortUrl;
+      resultMap[url] = shortUrl;
+      rowsToAppend.push([url, shortUrl, provider, nowIso]);
+    } else {
+      resultMap[url] = url;
+    }
+  });
+
+  if (rowsToAppend.length > 0) {
+    const startRow = sheet.getLastRow() + 1;
+    sheet.getRange(startRow, 1, rowsToAppend.length, 4).setValues(rowsToAppend);
+    SpreadsheetApp.flush();
+  }
+
+  return { map: resultMap, skippedPdpa: skippedPdpa };
 }
 
 function formatDateStr(val) {

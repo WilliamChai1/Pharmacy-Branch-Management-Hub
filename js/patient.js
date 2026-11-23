@@ -3477,9 +3477,9 @@ function getPatientSelfBookingUrl(patient) {
     params.set('lang', langCode);
   }
 
+  if (patient?.id) params.set('pid', patient.id);
   if (name) params.set('name', name);
   if (phone) params.set('phone', phone);
-  if (patient?.ic) params.set('ic', patient.ic);
 
   const rawBranch = patient?.branch || (typeof getSession === 'function' && getSession()?.branch) || 'Kota Sentosa';
   const branchCode = typeof normalizeBranchCode === 'function' ? normalizeBranchCode(rawBranch) : 'Kota Sentosa';
@@ -4875,7 +4875,8 @@ function buildRescheduleWhatsAppMessage(patient, originalApt, newDate, newTime, 
   const sched = typeof getPharmacistSchedule === 'function' ? getPharmacistSchedule(branchCode) : null;
   const branchName = sched ? (sched.branchName || branchInfo.name) : (branchInfo ? branchInfo.name : 'PMG Pharmacy Kota Sentosa');
   const dutyPharm = normalizePharmacistName((newPharm && !newPharm.includes('Ting')) ? newPharm : ((originalApt?.pharmacist && !originalApt.pharmacist.includes('Ting')) ? originalApt.pharmacist : (sched ? sched.defaultPharmacist : 'William Chai Yee Sian (Pharmacist)')));
-  const bookingUrl = typeof getPatientSelfBookingUrl === 'function' ? getPatientSelfBookingUrl(patient) : window.location.href;
+  const rawBookingUrl = typeof getPatientSelfBookingUrl === 'function' ? getPatientSelfBookingUrl(patient) : window.location.href;
+  const bookingUrl = typeof pmgGetCachedShortUrl === 'function' ? pmgGetCachedShortUrl(rawBookingUrl) : rawBookingUrl;
 
   const origSlot = originalApt ? `${originalApt.date} (${originalApt.time || '10:00'})` : '原定时间';
   const reasonText = reason ? reason.trim() : '';
@@ -7659,6 +7660,17 @@ async function saveNewEncounter() {
     viewPatientProfile(p.id);
   }
 
+  // Pre-warm short URLs immediately so when pharmacist confirms WhatsApp, links are already shortened
+  if (typeof pmgPrewarmShortUrls === 'function') {
+    const tUrl = newEnc?.specialtyScans?.tedaLink || (typeof newEnc?.specialtyScans?.teda === 'string' && newEnc.specialtyScans.teda.startsWith('http') ? newEnc.specialtyScans.teda : '');
+    pmgPrewarmShortUrls([
+      typeof getPatientSelfBookingUrl === 'function' ? getPatientSelfBookingUrl(p) : '',
+      tUrl,
+      'https://www.facebook.com/profile.php?id=61563952747645',
+      'https://www.facebook.com/profile.php?id=61589640333203'
+    ].filter(Boolean));
+  }
+
   // Prompt pharmacist to send WhatsApp Consultation Summary with Google Review & Community links
   setTimeout(() => {
     if (p.phone) {
@@ -8313,6 +8325,20 @@ function viewPatientProfile(patientId) {
 
   switchProfileTab('encounters');
   modal.classList.remove('hidden');
+
+  // Pre-warm short URLs in background so clicking WhatsApp opens instantly with compact links
+  if (typeof pmgPrewarmShortUrls === 'function') {
+    const urlsToWarm = [
+      typeof getPatientSelfBookingUrl === 'function' ? getPatientSelfBookingUrl(p) : '',
+      'https://www.facebook.com/profile.php?id=61563952747645',
+      'https://www.facebook.com/profile.php?id=61589640333203'
+    ];
+    (p.encounters || []).slice(0, 3).forEach(e => {
+      const tUrl = e?.specialtyScans?.tedaLink || (typeof e?.specialtyScans?.teda === 'string' && e.specialtyScans.teda.startsWith('http') ? e.specialtyScans.teda : '');
+      if (tUrl) urlsToWarm.push(tUrl);
+    });
+    pmgPrewarmShortUrls(urlsToWarm.filter(Boolean));
+  }
 }
 
 function closePatientProfileModal() {
@@ -9531,14 +9557,17 @@ function buildConsultationWaSummary(patient, enc, forcedLang = null) {
   const k = enc.kidneyPanel || {};
   const s = enc.specialtyScans || {};
 
-  const tedaUrl = s.tedaLink || (typeof s.teda === 'string' && s.teda.startsWith('http') ? s.teda : null);
+  const rawTedaUrl = s.tedaLink || (typeof s.teda === 'string' && s.teda.startsWith('http') ? s.teda : null);
+  const shortIfCached = (u) => (u && typeof pmgGetCachedShortUrl === 'function') ? pmgGetCachedShortUrl(u) : u;
+  const tedaUrl = shortIfCached(rawTedaUrl);
 
   const googleReviewLink = 'https://g.page/r/CUU3ygRE9IC6EBM/review';
   const waCommunityLink = 'https://chat.whatsapp.com/D1d7scuEzrQ15rwFndmSHr';
-  const personalFbLink = 'https://www.facebook.com/profile.php?id=61563952747645';
-  const outletFbLink = 'https://www.facebook.com/profile.php?id=61589640333203';
+  const personalFbLink = shortIfCached('https://www.facebook.com/profile.php?id=61563952747645');
+  const outletFbLink = shortIfCached('https://www.facebook.com/profile.php?id=61589640333203');
 
-  const bookingUrl = typeof getPatientSelfBookingUrl === 'function' ? getPatientSelfBookingUrl(patient) : window.location.href;
+  const rawBookingUrl = typeof getPatientSelfBookingUrl === 'function' ? getPatientSelfBookingUrl(patient) : window.location.href;
+  const bookingUrl = shortIfCached(rawBookingUrl);
   const nextTca = enc.nextTcaDate || patient.nextTcaDate || '';
   const nextPurpose = enc.nextTcaPurpose || patient.nextTcaPurpose || '';
 
@@ -12476,7 +12505,11 @@ async function initCustomerBooking(defaultBranchCode = 'Kota Sentosa') {
     }
   }
 
-  // ── Step 5: Pre-fill Name, Phone, IC from query params ────────────────────
+  // ── Step 5: Pre-fill Patient ID (opaque pid), Name, Phone, IC from query params ──
+  const pidParam = (urlParams.get('pid') || urlParams.get('patientId') || '').trim();
+  const pidInput = document.getElementById('custBookPatientId');
+  if (pidInput) pidInput.value = pidParam;
+
   const nameParam = urlParams.get('name');
   if (nameParam) {
     const nameInput = document.getElementById('custBookName');
@@ -13114,6 +13147,7 @@ async function handleCustomerBookingSubmit(e) {
   const name = document.getElementById('custBookName').value.trim();
   const phone = document.getElementById('custBookPhone').value.trim();
   const ic = document.getElementById('custBookIc') ? document.getElementById('custBookIc').value.trim() : '';
+  const pidVal = (document.getElementById('custBookPatientId')?.value || new URLSearchParams(window.location.search).get('pid') || '').trim();
 
   if (!name || !phone || !date) {
     alert(i18n.alertFillRequired);
@@ -13135,6 +13169,7 @@ async function handleCustomerBookingSubmit(e) {
     date,
     time,
     status: status,
+    patientId: pidVal || '',
     patientName: name,
     patientPhone: phone,
     patientIc: ic,
@@ -13416,15 +13451,18 @@ function switchToCustomerRefillForm() {
   if (bookCard) bookCard.classList.add('hidden');
 
   const urlParams = new URLSearchParams(window.location.search);
+  const pidParam = (urlParams.get('pid') || urlParams.get('patientId') || '').trim();
   const nameParam = urlParams.get('name') || '';
   const phoneParam = urlParams.get('phone') || '';
   const tcaDate = urlParams.get('tcaDate') || '';
   const durParam = urlParams.get('dur') || urlParams.get('duration') || '';
 
+  const pidInp = document.getElementById('custRefillPatientId');
   const nameInp = document.getElementById('custRefillName');
   const phoneInp = document.getElementById('custRefillPhone');
   const dateInp = document.getElementById('custRefillPickupDate');
 
+  if (pidInp && pidParam) pidInp.value = pidParam;
   if (nameInp && !nameInp.value && nameParam) nameInp.value = nameParam;
   if (phoneInp && !phoneInp.value && phoneParam) phoneInp.value = phoneParam;
   if (dateInp) {
@@ -13576,6 +13614,7 @@ async function handleCustomerRefillSubmit(e) {
     status: isYes ? 'REFILL_REQUESTED' : 'NO_REFILL_NEEDED',
     refillDuration: duration,
     refillDecision: isYes ? 'REFILL_REQUESTED' : 'NO_REFILL_NEEDED',
+    patientId: (document.getElementById('custRefillPatientId')?.value || new URLSearchParams(window.location.search).get('pid') || '').trim(),
     patientName: name,
     patientPhone: phone,
     notes: notes || (isYes ? `Refill requested: ${duration}` : 'Patient confirmed medication supply is sufficient.'),
@@ -13848,21 +13887,28 @@ function importSingleBooking(booking, showNotification = false) {
   const cleanIc = normalizeIcForMatching(booking.patientIc);
   const cleanName = normalizeNameForMatching(booking.patientName);
 
-  let patient = patientsData.find(p => {
-    const hasApt = (p.appointments || []).some(a => a.id === ref);
-    if (hasApt) return true;
-    const pPhone = normalizePhoneForMatching(p.phone);
-    const pIc = normalizeIcForMatching(p.ic);
-    const pName = normalizeNameForMatching(p.name);
-    if (cleanIc && pIc && cleanIc !== pIc) return false;
-    if (cleanName && pName && cleanName !== pName) return false;
-    if (booking.patientId && (p.id === booking.patientId || (p.aliasIds && p.aliasIds.includes(booking.patientId)))) return true;
-    if (cleanIc && pIc && cleanIc === pIc) return true;
-    if (cleanName && pName && cleanName === pName) {
-      if (!cleanPhone || !pPhone || cleanPhone === pPhone) return true;
-    }
-    return false;
-  });
+  let patient = null;
+  // Priority 0: Existing appointment reference OR exact opaque patientId (pid) match
+  if (booking.patientId) {
+    const targetPid = String(booking.patientId).trim();
+    patient = patientsData.find(p => p && (p.id === targetPid || (Array.isArray(p.aliasIds) && p.aliasIds.includes(targetPid))));
+  }
+  if (!patient) {
+    patient = patientsData.find(p => {
+      const hasApt = (p.appointments || []).some(a => a.id === ref);
+      if (hasApt) return true;
+      const pPhone = normalizePhoneForMatching(p.phone);
+      const pIc = normalizeIcForMatching(p.ic);
+      const pName = normalizeNameForMatching(p.name);
+      if (cleanIc && pIc && cleanIc !== pIc) return false;
+      if (cleanName && pName && cleanName !== pName) return false;
+      if (cleanIc && pIc && cleanIc === pIc) return true;
+      if (cleanName && pName && cleanName === pName) {
+        if (!cleanPhone || !pPhone || cleanPhone === pPhone) return true;
+      }
+      return false;
+    });
+  }
 
   const aptObj = {
     id: ref,
