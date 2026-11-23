@@ -5844,9 +5844,9 @@ async function downloadAllApplicantDocs(appId) {
 function downloadAllActiveApplicantDocs() {
   if (!_activeDocViewerAppId) {
     toast('No active applicant selected', 'error');
-    return;
+    return Promise.resolve();
   }
-  downloadAllApplicantDocs(_activeDocViewerAppId);
+  return downloadAllApplicantDocs(_activeDocViewerAppId);
 }
 
 // Global window aliases

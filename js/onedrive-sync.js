@@ -153,16 +153,23 @@
           const hasPerm = await this._verifyPermission(savedHandle, false, false);
           if (hasPerm) {
             await this._inspectAndConfigureHandle(savedHandle);
+            this._hideOneDriveResumeBanner();
             this._startBackgroundWatcher();
             await this.syncWithOneDriveFolder(true);
             // Stock expiry data syncs exclusively via Google Sheets as requested
             await this.syncReturnsWithOneDrive(true);
             await this.syncRentalsWithOneDrive(true);
+            setTimeout(() => {
+              if (typeof window.runDailyAutoBackupIfDue === 'function') {
+                window.runDailyAutoBackupIfDue({ force: false }).catch(() => {});
+              }
+            }, 4000);
             return;
           } else {
-            // Permission in 'prompt' state; wait for user click to request permission
+            // Permission in 'prompt' state after PC/browser restart; show 1-click resume bar
             await this._inspectAndConfigureHandle(savedHandle);
             this._updateBadge('PERMISSION_NEEDED', 'OneDrive (Click to grant access)');
+            this._showOneDriveResumeBanner();
             return;
           }
         }
@@ -171,6 +178,83 @@
       }
 
       this._updateBadge('DISCONNECTED', 'OneDrive: Connect Folder');
+    }
+
+    // ─── 1-CLICK POST-RESTART AUTO-BACKUP RESUME BAR ─────────────────────────
+    _showOneDriveResumeBanner() {
+      if (typeof document === 'undefined' || !document.body) return;
+      if (document.getElementById('pmgOneDriveResumeBar')) return;
+      const folderLabel = this.rootHandle?.name || 'KOTA SENTOSA';
+      const bar = document.createElement('div');
+      bar.id = 'pmgOneDriveResumeBar';
+      bar.className = 'fixed bottom-4 right-4 z-[99990] max-w-md bg-amber-950/95 text-amber-50 border border-amber-400/70 rounded-2xl shadow-2xl p-3.5 flex items-center gap-3 backdrop-blur-sm';
+      bar.innerHTML = `
+        <div class="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-400/50 flex items-center justify-center shrink-0">
+          <i class="fa-solid fa-shield-halved text-amber-300 text-base"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-xs font-extrabold text-white">OneDrive Auto-Backup Paused After Restart</div>
+          <div class="text-[11px] text-amber-200 leading-snug">Click once to re-enable silent daily backups to <b>${escapeSyncHtml(folderLabel)}</b>.</div>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button type="button" id="btnPmgResumeAutoBackup" onclick="window.pmgOneDriveSync.resumeAutoBackupAfterRestart()"
+            class="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-amber-950 font-extrabold text-[11px] rounded-xl transition shadow-sm cursor-pointer whitespace-nowrap">
+            🔓 Resume
+          </button>
+          <button type="button" onclick="window.pmgOneDriveSync._hideOneDriveResumeBanner()" title="Dismiss for now"
+            class="p-1.5 text-amber-300 hover:text-white rounded-lg text-xs cursor-pointer">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      `;
+      document.body.appendChild(bar);
+    }
+
+    _hideOneDriveResumeBanner() {
+      if (typeof document === 'undefined') return;
+      const bar = document.getElementById('pmgOneDriveResumeBar');
+      if (bar && bar.parentNode) bar.parentNode.removeChild(bar);
+    }
+
+    async resumeAutoBackupAfterRestart() {
+      if (!this.rootHandle) {
+        return this.connectFolder();
+      }
+      const btn = typeof document !== 'undefined' ? document.getElementById('btnPmgResumeAutoBackup') : null;
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Resuming…';
+      }
+      try {
+        const granted = await this._verifyPermission(this.rootHandle, true, true);
+        if (!granted) {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = '🔓 Resume';
+          }
+          showPmgToast('Permission was not granted. Click Resume or OneDrive Sync anytime to enable backups.', 'warning');
+          return false;
+        }
+        this._hideOneDriveResumeBanner();
+        await this._inspectAndConfigureHandle(this.rootHandle);
+        this._startBackgroundWatcher();
+        await this.syncWithOneDriveFolder(true);
+        await this.syncReturnsWithOneDrive(true);
+        await this.syncRentalsWithOneDrive(true);
+        if (typeof window.runDailyAutoBackupIfDue === 'function') {
+          await window.runDailyAutoBackupIfDue({ force: false });
+        }
+        updateSyncModalInfo();
+        showPmgToast('✅ OneDrive Live Sync & Daily Auto-Backup Resumed!', 'success');
+        return true;
+      } catch (err) {
+        console.warn('[PMG OneDrive Sync] resumeAutoBackupAfterRestart error:', err);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '🔓 Resume';
+        }
+        return false;
+      }
     }
 
     // ─── USER INTERACTIVE CONNECT ────────────────────────────────────────────
@@ -393,7 +477,7 @@
           await this._inspectAndConfigureHandle(this.rootHandle);
         }
 
-        // Step 0 (IT Browser Wipe Auto-Recovery): If localStorage was cleared by IT, auto-restore PMG_FULL_SYSTEM_VAULT_LATEST.pmgbak from OneDrive first
+        // Step 0 (IT Browser Wipe Auto-Recovery): If localStorage was cleared by IT, auto-restore from OneDrive vault (per-PC → shared LATEST → newest Daily_Auto_Backups)
         try {
           let pmgKeyCount = 0;
           for (let i = 0; i < localStorage.length; i++) {
@@ -401,16 +485,53 @@
             if (k.startsWith('pmg_') || k.startsWith('KS01_')) pmgKeyCount++;
           }
           if (pmgKeyCount <= 4 && typeof window.restoreFullSystemVaultFromObject === 'function') {
+            const devTag = typeof window.getDeviceBackupTag === 'function' ? window.getDeviceBackupTag() : '';
+            const candidateFiles = [];
+            if (devTag) candidateFiles.push(`PMG_FULL_SYSTEM_VAULT_LATEST_${devTag}.pmgbak`);
+            candidateFiles.push('PMG_FULL_SYSTEM_VAULT_LATEST.pmgbak');
+
             let vaultText = '';
-            try {
-              const vFh = await this.rootHandle.getFileHandle('PMG_FULL_SYSTEM_VAULT_LATEST.pmgbak', { create: false });
-              const vFile = await vFh.getFile();
-              vaultText = await vFile.text();
-            } catch (_) {}
+            let sourceName = '';
+            for (const fname of candidateFiles) {
+              try {
+                const vFh = await this.rootHandle.getFileHandle(fname, { create: false });
+                const vFile = await vFh.getFile();
+                const txt = await vFile.text();
+                if (txt && txt.trim()) {
+                  vaultText = txt;
+                  sourceName = fname;
+                  break;
+                }
+              } catch (_) {}
+            }
+
+            if (!vaultText) {
+              try {
+                const dailyDir = await this.rootHandle.getDirectoryHandle('Daily_Auto_Backups', { create: false });
+                if (dailyDir && typeof dailyDir.entries === 'function') {
+                  const dailyFiles = [];
+                  for await (const [name, entry] of dailyDir.entries()) {
+                    if (entry.kind === 'file' && /\.pmgbak$/i.test(name)) {
+                      dailyFiles.push({ name, entry });
+                    }
+                  }
+                  dailyFiles.sort((a, b) => b.name.localeCompare(a.name));
+                  if (dailyFiles.length > 0) {
+                    const f = await dailyFiles[0].entry.getFile();
+                    const txt = await f.text();
+                    if (txt && txt.trim()) {
+                      vaultText = txt;
+                      sourceName = `Daily_Auto_Backups/${dailyFiles[0].name}`;
+                    }
+                  }
+                }
+              } catch (_) {}
+            }
+
             if (vaultText && vaultText.trim()) {
               const vaultObj = JSON.parse(vaultText);
               await window.restoreFullSystemVaultFromObject(vaultObj, { silent: true, skipReload: true });
-              console.log('[PMG OneDrive Sync] 🛡️ Auto-restored full system vault from OneDrive after browser storage cleanup.');
+              console.log(`[PMG OneDrive Sync] 🛡️ Auto-restored full system vault from OneDrive (${sourceName}) after browser storage cleanup.`);
             }
           }
         } catch (autoRestErr) {
@@ -910,19 +1031,28 @@
           if (session?.displayName) localStorage.setItem('pmg_last_backup_user', session.displayName);
         } catch (_) {}
 
-        // Step J: Continuously snapshot full system vault (localStorage + all 4 IndexedDB databases) to OneDrive root
+        // Step J: Safely snapshot per-PC & anti-clobber shared master vault + trigger today's rolling Daily Auto-Backup if due
         try {
           if (this.rootHandle && typeof window.buildFullSystemVaultBundle === 'function') {
+            const devTag = typeof window.getDeviceBackupTag === 'function' ? window.getDeviceBackupTag() : 'PC-DEFAULT';
             const vaultSnap = await window.buildFullSystemVaultBundle({ includeDocBlobs: false });
-            const vFh = await this.rootHandle.getFileHandle('PMG_FULL_SYSTEM_VAULT_LATEST.pmgbak', { create: true });
-            const vW = await vFh.createWritable();
-            await vW.write(JSON.stringify(vaultSnap.bundle, null, 2));
-            await vW.close();
+            if (typeof window.writeMasterVaultSafely === 'function') {
+              await window.writeMasterVaultSafely(this.rootHandle, vaultSnap.bundle, devTag);
+            } else {
+              const vFh = await this.rootHandle.getFileHandle(`PMG_FULL_SYSTEM_VAULT_LATEST_${devTag}.pmgbak`, { create: true });
+              const vW = await vFh.createWritable();
+              await vW.write(JSON.stringify(vaultSnap.bundle, null, 2));
+              await vW.close();
+            }
+            if (typeof window.runDailyAutoBackupIfDue === 'function') {
+              await window.runDailyAutoBackupIfDue({ force: false, rootHandle: this.rootHandle, quiet: true });
+            }
           }
         } catch (vaultErr) {
           console.warn('[PMG OneDrive Sync] Full vault snapshot write warning:', vaultErr);
         }
 
+        this._hideOneDriveResumeBanner();
         if (typeof updateBackupStatusBadge === 'function') updateBackupStatusBadge();
         if (typeof updateDailyBackupBanner === 'function') updateDailyBackupBanner();
 
@@ -3006,10 +3136,13 @@
     _startBackgroundWatcher() {
       if (this.watcherInterval) clearInterval(this.watcherInterval);
 
-      // Periodic check every 90 seconds
+      // Periodic check every 90 seconds (live sync + automatic daily rolling full-system vault)
       this.watcherInterval = setInterval(() => {
         if (!document.hidden) {
           this.syncWithOneDriveFolder(false);
+          if (typeof window.runDailyAutoBackupIfDue === 'function') {
+            window.runDailyAutoBackupIfDue({ force: false, quiet: false }).catch(() => {});
+          }
         }
       }, this.autoSyncSeconds * 1000);
 
@@ -3023,6 +3156,9 @@
             if (now - lastTabSyncTime >= 20000) {
               lastTabSyncTime = now;
               this.syncWithOneDriveFolder(false);
+              if (typeof window.runDailyAutoBackupIfDue === 'function') {
+                window.runDailyAutoBackupIfDue({ force: false, quiet: false }).catch(() => {});
+              }
             }
           }
         });
@@ -3447,6 +3583,44 @@
         lastSyncEl.textContent = 'Ready to sync';
       }
     }
+
+    // Update Daily Auto-Backup status & Device Tag UI inside #oneDriveSyncModal
+    const tagInput = document.getElementById('syncModalDeviceTagInput');
+    const devTag = typeof getDeviceBackupTag === 'function' ? getDeviceBackupTag() : 'PC1-Operations';
+    if (tagInput && tagInput.value !== devTag && document.activeElement !== tagInput) {
+      tagInput.value = devTag;
+    }
+
+    const autoStatusEl = document.getElementById('syncModalDailyAutoStatus');
+    if (autoStatusEl) {
+      const todayStr = typeof getLocalTodayIsoDate === 'function' ? getLocalTodayIsoDate() : new Date().toISOString().split('T')[0];
+      const lastAutoDate = localStorage.getItem('pmg_last_auto_vault_date') || '';
+      const lastAutoTimeIso = localStorage.getItem('pmg_last_auto_vault_time') || '';
+      const lastAutoTag = localStorage.getItem('pmg_last_auto_vault_tag') || devTag;
+      if (lastAutoDate === todayStr && lastAutoTimeIso) {
+        let tStr = '';
+        try { tStr = new Date(lastAutoTimeIso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); } catch (_) {}
+        autoStatusEl.className = 'text-[11px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5';
+        autoStatusEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-600"></i> <span>✅ Auto-Backed Up Today at ${escapeSyncHtml(tStr || 'today')} (${escapeSyncHtml(lastAutoTag)} · 7-day history in Daily_Auto_Backups/)</span>`;
+      } else if (isConn) {
+        autoStatusEl.className = 'text-[11px] font-semibold text-indigo-800 bg-indigo-100/80 border border-indigo-200 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5';
+        autoStatusEl.innerHTML = `<i class="fa-solid fa-clock text-indigo-600"></i> <span>⏳ Daily Auto-Backup Ready (${escapeSyncHtml(devTag)} · runs automatically once per day, keeps last 7 days)</span>`;
+      } else {
+        autoStatusEl.className = 'text-[11px] font-semibold text-amber-900 bg-amber-100/80 border border-amber-300 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5';
+        autoStatusEl.innerHTML = `<i class="fa-solid fa-folder-plus text-amber-700"></i> <span>Link your OneDrive folder once to activate hands-free 7-day Daily Auto-Backups for ${escapeSyncHtml(devTag)}</span>`;
+      }
+    }
+
+    const persistEl = document.getElementById('syncModalPersistBadge');
+    if (persistEl) {
+      if (window._pmgStoragePersisted === true) {
+        persistEl.textContent = '🔒 Browser Storage Protected';
+        persistEl.className = 'px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full text-[10px] font-bold';
+      } else {
+        persistEl.textContent = '🛡️ 7-Day Auto-Vault Active';
+        persistEl.className = 'px-2 py-0.5 bg-indigo-100 text-indigo-800 border border-indigo-300 rounded-full text-[10px] font-bold';
+      }
+    }
   }
 
   // ─── TRIGGER MANUAL SYNC WITH INSTANT VISUAL FEEDBACK ──────────────────────
@@ -3585,8 +3759,17 @@
   async function readAllIdbKeyValStore(dbName, dbVersion, storeName, isKeyPath = false) {
     if (typeof indexedDB === 'undefined') return isKeyPath ? [] : {};
     return new Promise((resolve) => {
+      let settled = false;
+      const done = (val) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        resolve(val);
+      };
+      const timer = setTimeout(() => done(isKeyPath ? [] : {}), 4000);
       try {
         const req = indexedDB.open(dbName, dbVersion);
+        req.onblocked = () => done(isKeyPath ? [] : {});
         req.onupgradeneeded = (e) => {
           const db = e.target.result;
           if (!db.objectStoreNames.contains(storeName)) {
@@ -3598,7 +3781,7 @@
           const db = req.result;
           if (!db.objectStoreNames.contains(storeName)) {
             db.close();
-            return resolve(isKeyPath ? [] : {});
+            return done(isKeyPath ? [] : {});
           }
           try {
             const tx = db.transaction(storeName, 'readonly');
@@ -3608,9 +3791,9 @@
               allReq.onsuccess = () => {
                 const res = allReq.result || [];
                 db.close();
-                resolve(res);
+                done(res);
               };
-              allReq.onerror = () => { db.close(); resolve([]); };
+              allReq.onerror = () => { db.close(); done([]); };
             } else {
               const keysReq = store.getAllKeys();
               const valsReq = store.getAll();
@@ -3620,18 +3803,18 @@
                 const vals = valsReq.result || [];
                 keys.forEach((k, idx) => { out[String(k)] = vals[idx]; });
                 db.close();
-                resolve(out);
+                done(out);
               };
-              tx.onerror = () => { db.close(); resolve({}); };
+              tx.onerror = () => { db.close(); done({}); };
             }
           } catch (_) {
             db.close();
-            resolve(isKeyPath ? [] : {});
+            done(isKeyPath ? [] : {});
           }
         };
-        req.onerror = () => resolve(isKeyPath ? [] : {});
+        req.onerror = () => done(isKeyPath ? [] : {});
       } catch (_) {
-        resolve(isKeyPath ? [] : {});
+        done(isKeyPath ? [] : {});
       }
     });
   }
@@ -3639,8 +3822,17 @@
   async function writeAllIdbKeyValStore(dbName, dbVersion, storeName, data, isKeyPath = false) {
     if (typeof indexedDB === 'undefined' || !data) return 0;
     return new Promise((resolve) => {
+      let settled = false;
+      const done = (val) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        resolve(val);
+      };
+      const timer = setTimeout(() => done(0), 4000);
       try {
         const req = indexedDB.open(dbName, dbVersion);
+        req.onblocked = () => done(0);
         req.onupgradeneeded = (e) => {
           const db = e.target.result;
           if (!db.objectStoreNames.contains(storeName)) {
@@ -3652,7 +3844,7 @@
           const db = req.result;
           if (!db.objectStoreNames.contains(storeName)) {
             db.close();
-            return resolve(0);
+            return done(0);
           }
           try {
             const tx = db.transaction(storeName, 'readwrite');
@@ -3673,16 +3865,16 @@
                 }
               });
             }
-            tx.oncomplete = () => { db.close(); resolve(count); };
-            tx.onerror = () => { db.close(); resolve(count); };
+            tx.oncomplete = () => { db.close(); done(count); };
+            tx.onerror = () => { db.close(); done(count); };
           } catch (_) {
             db.close();
-            resolve(0);
+            done(0);
           }
         };
-        req.onerror = () => resolve(0);
+        req.onerror = () => done(0);
       } catch (_) {
-        resolve(0);
+        done(0);
       }
     });
   }
@@ -3816,23 +4008,34 @@
     }
 
     // 3. Build complete vault bundle including binary PDF/image documents
-    const { bundle, filename } = await buildFullSystemVaultBundle({ includeDocBlobs: true });
+    const devTag = getDeviceBackupTag();
+    const { bundle, filename: defaultFilename } = await buildFullSystemVaultBundle({ includeDocBlobs: true });
+    bundle.deviceTag = devTag;
+    const todayStr = getLocalTodayIsoDate();
+    const filename = `PMG_FULL_SYSTEM_VAULT_KS01_${devTag}_${todayStr}.pmgbak`;
     const jsonStr = JSON.stringify(bundle, null, 2);
     const blob = new Blob([jsonStr], { type: 'application/json' });
 
-    // 4. Write directly to OneDrive root folder if connected
+    // 4. Write directly to OneDrive root folder (per-PC isolated + anti-clobber shared master + Daily_Auto_Backups)
     let savedToOneDriveFolder = false;
     if (isOneDriveLinked && window.pmgOneDriveSync.rootHandle) {
       try {
-        const fhLatest = await window.pmgOneDriveSync.rootHandle.getFileHandle('PMG_FULL_SYSTEM_VAULT_LATEST.pmgbak', { create: true });
-        const wLatest = await fhLatest.createWritable();
-        await wLatest.write(jsonStr);
-        await wLatest.close();
+        await writeMasterVaultSafely(window.pmgOneDriveSync.rootHandle, bundle, devTag);
 
-        const fhDated = await window.pmgOneDriveSync.rootHandle.getFileHandle(filename, { create: true });
-        const wDated = await fhDated.createWritable();
-        await wDated.write(jsonStr);
-        await wDated.close();
+        const dailyDir = await window.pmgOneDriveSync.rootHandle.getDirectoryHandle('Daily_Auto_Backups', { create: true });
+        const dailyName = `PMG_AUTO_VAULT_${devTag}_${todayStr}.pmgbak`;
+        const fhDaily = await dailyDir.getFileHandle(dailyName, { create: true });
+        const wDaily = await fhDaily.createWritable();
+        await wDaily.write(jsonStr);
+        await wDaily.close();
+        await pruneOldDailyAutoBackups(dailyDir, devTag, 7);
+
+        try {
+          localStorage.setItem('pmg_last_auto_vault_date', todayStr);
+          localStorage.setItem('pmg_last_auto_vault_time', bundle.exportDate);
+          localStorage.setItem('pmg_last_auto_vault_file', dailyName);
+          localStorage.setItem('pmg_last_auto_vault_tag', devTag);
+        } catch (_) {}
         savedToOneDriveFolder = true;
       } catch (e) {
         console.warn('[PMG Disaster Vault] Direct OneDrive file write warning:', e);
@@ -4048,11 +4251,302 @@
     input.click();
   }
 
+  // ─── AUTOMATED DAILY ROLLING VAULT ENGINE (PC1/PC2 ISOLATION + 7-DAY PRUNING) ──
+  const DEVICE_TAG_STORAGE_KEY = 'pmg_device_backup_tag';
+  const DAILY_BACKUP_DIR_NAME = 'Daily_Auto_Backups';
+  let _dailyAutoBackupInProgress = false;
+
+  function getLocalTodayIsoDate(refDate = null) {
+    const d = refDate instanceof Date ? refDate : new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  function sanitizeDeviceTag(rawTag) {
+    const cleaned = String(rawTag || '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .replace(/[^A-Za-z0-9_-]/g, '')
+      .slice(0, 24);
+    return cleaned || 'PC1-Operations';
+  }
+
+  function getDeviceBackupTag() {
+    try {
+      const saved = localStorage.getItem(DEVICE_TAG_STORAGE_KEY);
+      if (saved && saved.trim()) {
+        return sanitizeDeviceTag(saved);
+      }
+    } catch (_) {}
+
+    // Auto-detect PC2 (Patient Care workstation) vs PC1 (Operations Hub)
+    let isPatientWorkstation = false;
+    try {
+      const pathname = (typeof window !== 'undefined' && window.location && window.location.pathname) ? window.location.pathname : '';
+      if (/\/patient(\/|$)/i.test(pathname)) {
+        isPatientWorkstation = true;
+      } else if (typeof patientsData !== 'undefined' && Array.isArray(patientsData) && patientsData.length > 0) {
+        isPatientWorkstation = true;
+      } else {
+        const rawPts = localStorage.getItem(PATIENTS_STORAGE_KEY);
+        if (rawPts) {
+          const parsed = JSON.parse(rawPts);
+          if (Array.isArray(parsed) && parsed.length > 0) isPatientWorkstation = true;
+        }
+      }
+    } catch (_) {}
+
+    return isPatientWorkstation ? 'PC2-PatientCare' : 'PC1-Operations';
+  }
+
+  function setDeviceBackupTag(rawTag) {
+    const clean = sanitizeDeviceTag(rawTag);
+    try {
+      localStorage.setItem(DEVICE_TAG_STORAGE_KEY, clean);
+    } catch (_) {}
+    updateSyncModalInfo();
+    return clean;
+  }
+
+  function saveDeviceBackupTagFromModal() {
+    const inp = typeof document !== 'undefined' ? document.getElementById('syncModalDeviceTagInput') : null;
+    if (!inp) return getDeviceBackupTag();
+    const saved = setDeviceBackupTag(inp.value);
+    inp.value = saved;
+    showPmgToast(`🏷️ PC Backup Tag saved as "${saved}" (separate 7-day rolling folder stream active)`, 'success');
+    return saved;
+  }
+
+  async function writeMasterVaultSafely(rootHandle, bundle, deviceTag) {
+    if (!rootHandle || !bundle) return { wroteDeviceLatest: false, wroteSharedLatest: false, preservedExistingPatients: false };
+    const tag = sanitizeDeviceTag(deviceTag || getDeviceBackupTag());
+    const taggedBundle = Object.assign({}, bundle, { deviceTag: tag });
+    const taggedJson = JSON.stringify(taggedBundle, null, 2);
+
+    // 1. Always write device-isolated latest snapshot (PC1 and PC2 never overwrite each other)
+    const devFileName = `PMG_FULL_SYSTEM_VAULT_LATEST_${tag}.pmgbak`;
+    const devFh = await rootHandle.getFileHandle(devFileName, { create: true });
+    const devW = await devFh.createWritable();
+    await devW.write(taggedJson);
+    await devW.close();
+
+    // 2. Anti-clobber guard for shared PMG_FULL_SYSTEM_VAULT_LATEST.pmgbak:
+    //    If this PC has 0 patients locally (e.g. PC1 Operations) while the existing shared master vault
+    //    holds PC2's clinical patients/documents, preserve existing clinical arrays so PC1 never wipes PC2's patients.
+    let sharedBundleToWrite = taggedBundle;
+    let preservedExistingPatients = false;
+    const currentPatientCount = Array.isArray(taggedBundle.patients) ? taggedBundle.patients.length : (taggedBundle.patientCount || 0);
+
+    try {
+      const existingFh = await rootHandle.getFileHandle('PMG_FULL_SYSTEM_VAULT_LATEST.pmgbak', { create: false });
+      const existingFile = await existingFh.getFile();
+      const existingText = await existingFile.text();
+      if (existingText && existingText.trim()) {
+        const existingObj = JSON.parse(existingText);
+        const existingPatientCount = Array.isArray(existingObj.patients) ? existingObj.patients.length : (existingObj.patientCount || 0);
+        if (currentPatientCount === 0 && existingPatientCount > 0) {
+          preservedExistingPatients = true;
+          const mergedLs = Object.assign({}, taggedBundle.localStorageDump || {});
+          if (existingObj.localStorageDump && existingObj.localStorageDump[PATIENTS_STORAGE_KEY] && !mergedLs[PATIENTS_STORAGE_KEY]) {
+            mergedLs[PATIENTS_STORAGE_KEY] = existingObj.localStorageDump[PATIENTS_STORAGE_KEY];
+          }
+          const mergedIdb = Object.assign({}, taggedBundle.indexedDbDump || {});
+          if (existingObj.indexedDbDump && existingObj.indexedDbDump.healthAppData) {
+            mergedIdb.healthAppData = Object.assign({}, existingObj.indexedDbDump.healthAppData, mergedIdb.healthAppData || {});
+            if (Array.isArray(existingObj.indexedDbDump.healthAppData[PATIENTS_STORAGE_KEY]) && existingObj.indexedDbDump.healthAppData[PATIENTS_STORAGE_KEY].length > 0) {
+              mergedIdb.healthAppData[PATIENTS_STORAGE_KEY] = existingObj.indexedDbDump.healthAppData[PATIENTS_STORAGE_KEY];
+            }
+          }
+          sharedBundleToWrite = Object.assign({}, taggedBundle, {
+            patientCount: existingPatientCount,
+            patients: existingObj.patients,
+            docCount: existingObj.docCount || (Array.isArray(existingObj.documents) ? existingObj.documents.length : 0),
+            documents: Array.isArray(existingObj.documents) && existingObj.documents.length > 0 ? existingObj.documents : (taggedBundle.documents || []),
+            localStorageDump: mergedLs,
+            indexedDbDump: mergedIdb,
+            preservedPatientsFromTag: existingObj.deviceTag || 'PC2-PatientCare'
+          });
+        }
+      }
+    } catch (_) {
+      // No existing shared file yet
+    }
+
+    const sharedFh = await rootHandle.getFileHandle('PMG_FULL_SYSTEM_VAULT_LATEST.pmgbak', { create: true });
+    const sharedW = await sharedFh.createWritable();
+    await sharedW.write(JSON.stringify(sharedBundleToWrite, null, 2));
+    await sharedW.close();
+
+    return {
+      wroteDeviceLatest: true,
+      deviceFileName: devFileName,
+      wroteSharedLatest: true,
+      preservedExistingPatients
+    };
+  }
+
+  async function pruneOldDailyAutoBackups(dailyDirHandle, deviceTag, keepDays = 7) {
+    const removed = [];
+    if (!dailyDirHandle || typeof dailyDirHandle.entries !== 'function') return removed;
+    const tag = sanitizeDeviceTag(deviceTag || getDeviceBackupTag());
+    const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`^PMG_AUTO_VAULT_${escapedTag}_(\\d{4}-\\d{2}-\\d{2})\\.pmgbak$`, 'i');
+
+    const matches = [];
+    try {
+      for await (const [name, entry] of dailyDirHandle.entries()) {
+        if (entry && entry.kind === 'file') {
+          const m = name.match(pattern);
+          if (m) {
+            matches.push({ name, date: m[1] });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[PMG Daily Auto-Backup] Directory listing warning during prune:', err);
+      return removed;
+    }
+
+    // Sort newest date first
+    matches.sort((a, b) => b.date.localeCompare(a.date));
+    const limit = Math.max(1, Number(keepDays) || 7);
+
+    for (let i = limit; i < matches.length; i++) {
+      const targetName = matches[i].name;
+      try {
+        if (typeof dailyDirHandle.removeEntry === 'function') {
+          await dailyDirHandle.removeEntry(targetName);
+          removed.push(targetName);
+        }
+      } catch (err) {
+        console.warn(`[PMG Daily Auto-Backup] Failed to prune old snapshot ${targetName}:`, err);
+      }
+    }
+    return removed;
+  }
+
+  async function runDailyAutoBackupIfDue(options = {}) {
+    if (_dailyAutoBackupInProgress) {
+      return { skipped: true, reason: 'in_progress' };
+    }
+    const force = Boolean(options.force);
+    const quiet = Boolean(options.quiet);
+    const keepDays = Math.max(1, Number(options.keepDays) || 7);
+    const todayStr = getLocalTodayIsoDate(options.refDate || null);
+    const deviceTag = sanitizeDeviceTag(options.deviceTag || getDeviceBackupTag());
+
+    const lastDate = localStorage.getItem('pmg_last_auto_vault_date') || '';
+    const lastTag = localStorage.getItem('pmg_last_auto_vault_tag') || '';
+    if (!force && lastDate === todayStr && lastTag === deviceTag) {
+      return { skipped: true, reason: 'already_backed_up_today', date: todayStr, deviceTag };
+    }
+
+    const rootHandle = options.rootHandle || (window.pmgOneDriveSync && window.pmgOneDriveSync.rootHandle) || null;
+    if (!rootHandle) {
+      return { skipped: true, reason: 'not_connected', date: todayStr, deviceTag };
+    }
+
+    // Verify readwrite permission silently (unless caller explicitly opted into prompting)
+    if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync._verifyPermission === 'function') {
+      const hasPerm = await window.pmgOneDriveSync._verifyPermission(rootHandle, true, Boolean(options.allowPrompt));
+      if (!hasPerm) {
+        return { skipped: true, reason: 'no_permission', date: todayStr, deviceTag };
+      }
+    }
+
+    _dailyAutoBackupInProgress = true;
+    try {
+      const { bundle } = await buildFullSystemVaultBundle({ includeDocBlobs: options.includeDocBlobs !== false });
+      bundle.deviceTag = deviceTag;
+      bundle.autoBackupDate = todayStr;
+
+      const dailyDir = await rootHandle.getDirectoryHandle(DAILY_BACKUP_DIR_NAME, { create: true });
+      const filename = `PMG_AUTO_VAULT_${deviceTag}_${todayStr}.pmgbak`;
+      const fh = await dailyDir.getFileHandle(filename, { create: true });
+      const writable = await fh.createWritable();
+      await writable.write(JSON.stringify(bundle, null, 2));
+      await writable.close();
+
+      // Update per-PC latest & anti-clobber shared master snapshot
+      const masterRes = await writeMasterVaultSafely(rootHandle, bundle, deviceTag);
+
+      // Retain latest N daily snapshots per PC
+      const pruned = await pruneOldDailyAutoBackups(dailyDir, deviceTag, keepDays);
+
+      const nowIso = new Date().toISOString();
+      try {
+        localStorage.setItem('pmg_last_auto_vault_date', todayStr);
+        localStorage.setItem('pmg_last_auto_vault_time', nowIso);
+        localStorage.setItem('pmg_last_auto_vault_file', filename);
+        localStorage.setItem('pmg_last_auto_vault_tag', deviceTag);
+        localStorage.setItem('pmg_last_backup_date', nowIso);
+        localStorage.setItem('pmg_last_backup_type', `Auto Daily Vault (${deviceTag})`);
+      } catch (_) {}
+
+      updateSyncModalInfo();
+      if (typeof updateBackupStatusBadge === 'function') updateBackupStatusBadge();
+      if (typeof updateDailyBackupBanner === 'function') updateDailyBackupBanner();
+
+      if (!quiet) {
+        showPmgToast(`🛡️ Daily Auto-Backup saved to OneDrive (${deviceTag} · ${todayStr})`, 'success');
+      }
+
+      return {
+        ok: true,
+        skipped: false,
+        date: todayStr,
+        deviceTag,
+        filename,
+        patientCount: bundle.patientCount,
+        docCount: bundle.docCount,
+        pruned,
+        preservedExistingPatients: masterRes.preservedExistingPatients
+      };
+    } catch (err) {
+      console.warn('[PMG Daily Auto-Backup] Execution warning:', err);
+      return { ok: false, skipped: false, error: err && err.message ? err.message : String(err) };
+    } finally {
+      _dailyAutoBackupInProgress = false;
+    }
+  }
+
+  async function requestPersistentBrowserStorage() {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.persist === 'function') {
+        const already = typeof navigator.storage.persisted === 'function' ? await navigator.storage.persisted() : false;
+        const granted = already || await navigator.storage.persist();
+        window._pmgStoragePersisted = Boolean(granted);
+        updateSyncModalInfo();
+        return Boolean(granted);
+      }
+    } catch (_) {}
+    window._pmgStoragePersisted = false;
+    return false;
+  }
+
+  window.getLocalTodayIsoDate = getLocalTodayIsoDate;
+  window.getDeviceBackupTag = getDeviceBackupTag;
+  window.setDeviceBackupTag = setDeviceBackupTag;
+  window.saveDeviceBackupTagFromModal = saveDeviceBackupTagFromModal;
+  window.writeMasterVaultSafely = writeMasterVaultSafely;
+  window.pruneOldDailyAutoBackups = pruneOldDailyAutoBackups;
+  window.runDailyAutoBackupIfDue = runDailyAutoBackupIfDue;
+  window.requestPersistentBrowserStorage = requestPersistentBrowserStorage;
   window.buildFullSystemVaultBundle = buildFullSystemVaultBundle;
   window.exportFullSystemVaultBackup = exportFullSystemVaultBackup;
   window.restoreFullSystemVaultFromObject = restoreFullSystemVaultFromObject;
   window.triggerFullSystemVaultRestoreFilePicker = triggerFullSystemVaultRestoreFilePicker;
   window.pmgDisasterVault = {
+    getLocalTodayIsoDate,
+    getDeviceBackupTag,
+    setDeviceBackupTag,
+    saveDeviceBackupTagFromModal,
+    writeMasterVaultSafely,
+    pruneOldDailyAutoBackups,
+    runDailyAutoBackupIfDue,
+    requestPersistentBrowserStorage,
     buildFullSystemVaultBundle,
     exportFullSystemVaultBackup,
     restoreFullSystemVaultFromObject,
@@ -4062,8 +4556,9 @@
   // Global singleton instance
   window.pmgOneDriveSync = new OneDriveSyncEngine();
 
-  // Auto-init when DOM is ready (includes auto-recovery from Google Cloud if IT wiped browser storage!)
+  // Auto-init when DOM is ready (includes persistent storage request & Google Cloud auto-recovery if IT wiped browser storage!)
   const bootSyncEngine = () => {
+    requestPersistentBrowserStorage().catch(() => {});
     window.pmgOneDriveSync.init();
     setTimeout(() => {
       try {

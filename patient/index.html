@@ -3077,17 +3077,33 @@ Date visit: 06.01.2026
           </ul>
         </div>
 
-        <!-- Pre-IT Maintenance / Full System Disaster Vault -->
+        <!-- Pre-IT Maintenance / Automated Daily Full System Disaster Vault -->
         <div class="p-4 bg-gradient-to-r from-indigo-50 via-purple-50 to-emerald-50 border-2 border-indigo-300 rounded-xl space-y-2.5 shadow-xs">
           <div class="flex items-center justify-between gap-2 flex-wrap">
             <h4 class="font-extrabold text-indigo-950 flex items-center gap-1.5 text-xs">
               <i class="fa-solid fa-shield-halved text-indigo-700"></i>
-              <span>🛡️ Pre-IT Full System Disaster Vault (100% LocalStorage + All 4 IndexedDBs)</span>
+              <span>🛡️ Automated Daily Vault &amp; Pre-IT Shield (100% LocalStorage + All 4 IndexedDBs)</span>
             </h4>
-            <span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full text-[10px] font-bold">Zero-Data-Loss Protection</span>
+            <span id="syncModalPersistBadge" class="px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full text-[10px] font-bold">🛡️ 7-Day Auto-Vault Active</span>
+          </div>
+          <div id="syncModalDailyAutoStatus" class="text-[11px] font-semibold text-indigo-800 bg-indigo-100/80 border border-indigo-200 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5">
+            <i class="fa-solid fa-clock text-indigo-600"></i> <span>Checking today's automatic rolling backup status…</span>
+          </div>
+          <div class="flex items-center justify-between gap-2 flex-wrap bg-white/80 border border-indigo-200 rounded-lg px-2.5 py-1.5">
+            <label for="syncModalDeviceTagInput" class="text-[11px] font-bold text-gray-700 flex items-center gap-1.5">
+              <i class="fa-solid fa-desktop text-indigo-600"></i> This PC Tag (prevents PC1/PC2 overwrite):
+            </label>
+            <div class="flex items-center gap-1.5">
+              <input id="syncModalDeviceTagInput" type="text" maxlength="24" placeholder="e.g. PC2-PatientCare"
+                class="px-2 py-1 text-[11px] font-mono font-bold text-indigo-950 bg-white border border-indigo-300 rounded-lg w-36 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+              <button type="button" onclick="saveDeviceBackupTagFromModal()"
+                class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-lg transition cursor-pointer">
+                Save Tag
+              </button>
+            </div>
           </div>
           <p class="text-[11px] text-gray-700 leading-relaxed">
-            If HQ IT cleans browser cache / localStorage, click <b>Download Full System Vault (.pmgbak)</b> before maintenance to save every single record (Patients, Lab PDFs, Roster, Expiry, Returns/CN, Pricing, Recruitment, Promo, 5S Audit, Commercial &amp; Performance Studio) into OneDrive &amp; your local PC, then click <b>Restore Full System Vault</b> afterwards to recover 100% of your data in 1 click.
+            Automatically saves a full daily snapshot (Patients, Lab PDFs, Roster, Expiry, Returns/CN, Pricing, Recruitment, Promo, 5S Audit, Commercial &amp; Performance Studio) to <code>Daily_Auto_Backups/</code> in OneDrive (keeps last 7 days per PC). You can also download or restore a manual snapshot anytime:
           </p>
           <div class="flex items-center gap-2 flex-wrap pt-1">
             <button type="button" onclick="exportFullSystemVaultBackup()"
@@ -3539,7 +3555,7 @@ Date visit: 06.01.2026
   <script src="../js/data.js?v=20261122_shorturl_v1"></script>
   <script src="../js/auth.js?v=20261110_clean_wa_v1"></script>
   <script src="../js/db.js?v=20261121_full_audit_v4"></script>
-  <script src="../js/onedrive-sync.js?v=20261123_disaster_vault_v1"></script>
+  <script src="../js/onedrive-sync.js?v=20261123_daily_autobackup_v2"></script>
   <script src="../js/fy2027-kpi-engine.js?v=20261121_full_audit_v4"></script>
   <script src="../js/patient.js?v=20261123_disaster_vault_v8"></script>
 

@@ -1355,3 +1355,83 @@ function createJsonResponse(data) {
 function buildResponse(obj) {
   return createJsonResponse(obj);
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// AUTOMATED NIGHTLY GOOGLE DRIVE CLOUD BACKUP (NON-PATIENT OPERATIONAL DATA ONLY)
+// Strictly PDPA-Compliant: Patient Care clinical records remain Local/OneDrive only.
+// Run installDailyCloudBackupTrigger() once in Apps Script Editor to activate.
+// ══════════════════════════════════════════════════════════════════════════════
+const DAILY_CLOUD_BACKUP_FOLDER = 'PMG_Daily_Cloud_Backups';
+const DAILY_CLOUD_BACKUP_PREFIX = 'PMG_CLOUD_BACKUP_';
+const DAILY_CLOUD_BACKUP_KEEP_DAYS = 7;
+
+function dailyAutomatedCloudBackup() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ssFile = DriveApp.getFileById(ss.getId());
+  const tz = ss.getSpreadsheetTimeZone() || 'Asia/Kuala_Lumpur';
+  const todayStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const backupName = DAILY_CLOUD_BACKUP_PREFIX + todayStr;
+
+  // Locate or create dedicated backup folder in Google Drive
+  let backupFolder = null;
+  const folders = DriveApp.getFoldersByName(DAILY_CLOUD_BACKUP_FOLDER);
+  if (folders.hasNext()) {
+    backupFolder = folders.next();
+  } else {
+    backupFolder = DriveApp.createFolder(DAILY_CLOUD_BACKUP_FOLDER);
+  }
+
+  // Idempotent guard: skip if today's backup copy already exists
+  const existingToday = backupFolder.getFilesByName(backupName);
+  let created = false;
+  if (!existingToday.hasNext()) {
+    ssFile.makeCopy(backupName, backupFolder);
+    created = true;
+  }
+
+  // Rolling 7-day retention: collect all backups, sort newest-first, trash older than keepDays
+  const allFiles = [];
+  const iter = backupFolder.getFiles();
+  while (iter.hasNext()) {
+    const f = iter.next();
+    const fname = f.getName();
+    if (fname.indexOf(DAILY_CLOUD_BACKUP_PREFIX) === 0) {
+      allFiles.push({ name: fname, file: f });
+    }
+  }
+  allFiles.sort(function(a, b) {
+    return b.name.localeCompare(a.name);
+  });
+
+  const trashed = [];
+  for (let i = DAILY_CLOUD_BACKUP_KEEP_DAYS; i < allFiles.length; i++) {
+    allFiles[i].file.setTrashed(true);
+    trashed.push(allFiles[i].name);
+  }
+
+  Logger.log(
+    '[PMG Daily Cloud Backup] Date: ' + todayStr +
+    ' | Created: ' + created +
+    ' | Kept: ' + Math.min(allFiles.length, DAILY_CLOUD_BACKUP_KEEP_DAYS) +
+    ' | Pruned: ' + trashed.length
+  );
+  return { success: true, date: todayStr, created: created, kept: Math.min(allFiles.length, DAILY_CLOUD_BACKUP_KEEP_DAYS), trashed: trashed };
+}
+
+function installDailyCloudBackupTrigger() {
+  const existing = ScriptApp.getProjectTriggers();
+  for (let i = 0; i < existing.length; i++) {
+    if (existing[i].getHandlerFunction() === 'dailyAutomatedCloudBackup') {
+      ScriptApp.deleteTrigger(existing[i]);
+    }
+  }
+  ScriptApp.newTrigger('dailyAutomatedCloudBackup')
+    .timeBased()
+    .everyDays(1)
+    .atHour(2)
+    .create();
+
+  // Also run an immediate first snapshot so today is backed up right away
+  return dailyAutomatedCloudBackup();
+}
+

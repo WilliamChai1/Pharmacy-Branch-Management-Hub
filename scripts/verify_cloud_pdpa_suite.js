@@ -68,6 +68,9 @@ function createBrowserSandbox(fetchImpl) {
       contains: () => false
     },
     parentNode: null,
+    style: {},
+    remove: () => {},
+    click: () => {},
     appendChild: () => {},
     removeChild: () => {},
     setAttribute: () => {},
@@ -87,13 +90,17 @@ function createBrowserSandbox(fetchImpl) {
     addEventListener: () => {}
   };
   const win = {
-    location: { protocol: 'https:', hostname: 'pmg-hub.local' },
+    location: { protocol: 'https:', hostname: 'pmg-hub.local', origin: 'https://pmg-hub.local', pathname: '/index.html', href: 'https://pmg-hub.local/index.html', search: '' },
     PMG_SCHEDULE_API_URL: 'https://example.invalid/exec',
     addEventListener: () => {},
+    scrollTo: () => {},
     localStorage: {
+      get length() { return store.size; },
+      key: (idx) => Array.from(store.keys())[idx] ?? null,
       getItem: (k) => (store.has(k) ? store.get(k) : null),
       setItem: (k, v) => store.set(k, String(v)),
-      removeItem: (k) => store.delete(k)
+      removeItem: (k) => store.delete(k),
+      clear: () => store.clear()
     }
   };
   win.window = win;
@@ -101,6 +108,8 @@ function createBrowserSandbox(fetchImpl) {
     window: win,
     document: doc,
     localStorage: win.localStorage,
+    Uint8Array,
+    AbortController: globalThis.AbortController,
     fetch: fetchImpl || (async () => ({ ok: true, json: async () => ({ status: 'success', schedule: {} }) })),
     console,
     setTimeout: (fn) => {
@@ -120,7 +129,13 @@ function createBrowserSandbox(fetchImpl) {
     URL,
     Blob,
     requestAnimationFrame: (fn) => fn(),
-    indexedDB: { open: () => ({}) },
+    indexedDB: {
+      open: () => {
+        const req = {};
+        Promise.resolve().then(() => { if (typeof req.onerror === 'function') req.onerror(); });
+        return req;
+      }
+    },
     alert: () => {},
     confirm: () => true
   });
@@ -977,7 +992,7 @@ function createBrowserSandbox(fetchImpl) {
   });
 
   // 13. Multi-Date TCA Reminders, Customer Interactive Refill Portal & Pharmacist Packing Queue
-  test('Multi-Date TCA Reminders, Customer Interactive Refill Portal & Pharmacist Packing Queue', async () => {
+  await testAsync('Multi-Date TCA Reminders, Customer Interactive Refill Portal & Pharmacist Packing Queue', async () => {
     let cloudPushedPayload = null;
     const fetchImpl = async (url, opts) => {
       if (opts && opts.body) {
@@ -987,6 +1002,7 @@ function createBrowserSandbox(fetchImpl) {
     };
 
     const { ctx, doc } = createBrowserSandbox(fetchImpl);
+    ctx.getSession = ctx.window.getSession = () => ({ displayName: 'William Chai', role: 'Pharmacist', branch: 'Kota Sentosa' });
     const patientSrc = fs.readFileSync(path.join(ROOT, 'js', 'patient.js'), 'utf8');
     vm.runInContext(patientSrc, ctx);
 
@@ -1001,21 +1017,21 @@ function createBrowserSandbox(fetchImpl) {
       encounters: [],
       appointments: []
     };
-    ctx.window.patientsData = [p1];
+    ctx.__testP1 = p1;
+    vm.runInContext('patientsData = [__testP1]; tempEncounterTcaReminders = [];', ctx);
 
     // Select patient in encounter modal
     doc.getElementById('encounterPatientSelect').value = p1.id;
     doc.getElementById('encDate').value = '2026-11-20';
 
     // Add multi-date reminders: 2 weeks for refill check, 2 months for clinical POCT review
-    ctx.window.tempEncounterTcaReminders = [];
     ctx.window.addEncounterTcaRow('2026-12-05', 'Interim 2-Week Medication Refill Check', 'refill');
     ctx.window.addEncounterTcaRow('2027-01-20', 'Routine Health & POCT Review', 'clinical');
 
-    assert.strictEqual(ctx.window.tempEncounterTcaReminders.length, 2, 'Must have 2 reminder dates staged');
+    assert.strictEqual(vm.runInContext('tempEncounterTcaReminders.length', ctx), 2, 'Must have 2 reminder dates staged');
 
     // Save encounter
-    await ctx.window.saveNewEncounter();
+    await (ctx.saveNewEncounter || ctx.window.saveNewEncounter)();
 
     // Verify encounter & patient received both dates and nextTcaDate is the earliest
     assert(p1.encounters.length > 0, 'Encounter must be saved');
@@ -1059,7 +1075,7 @@ function createBrowserSandbox(fetchImpl) {
     assert.strictEqual(order1.type, 'med_refill_order', 'Order type must be med_refill_order');
 
     // Part D: Medication Refill & Packing Queue (Pharmacist workflow)
-    ctx.window.renderPharmacistScheduleTab();
+    (ctx.renderPharmacistScheduleTab || ctx.window.renderPharmacistScheduleTab)();
 
     const kpiTotalEl = doc.getElementById('refillKpiTotal');
     const kpiPendEl = doc.getElementById('refillKpiPending');
@@ -1090,7 +1106,7 @@ function createBrowserSandbox(fetchImpl) {
   });
 
   // 14. Recruitment: 1-Click Download All Attached Documents & Picture as ZIP
-  test('Recruitment 1-Click Download All Attached Documents & Picture as ZIP packages candidate dossier with summary manifest', async () => {
+  await testAsync('Recruitment 1-Click Download All Attached Documents & Picture as ZIP packages candidate dossier with summary manifest', async () => {
     let cloudPushedAction = null;
     const fetchImpl = async (url) => {
       if (url.includes('action=getApplicantDoc')) {
@@ -2447,7 +2463,7 @@ function createBrowserSandbox(fetchImpl) {
     assert.strictEqual(totalPts, 2, 'Exact pid match must NOT create a duplicate stub patient profile');
   });
 
-  await test('Pre-IT Full System Disaster Vault Backup & Restore Engine (100% LocalStorage + 4 IndexedDBs)', async () => {
+  await testAsync('Pre-IT Full System Disaster Vault Backup & Restore Engine (100% LocalStorage + 4 IndexedDBs)', async () => {
     const sbVault = createBrowserSandbox();
     vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'onedrive-sync.js'), 'utf8'), sbVault.ctx);
 
@@ -2466,10 +2482,11 @@ function createBrowserSandbox(fetchImpl) {
     sbVault.win.localStorage.setItem('KS01_PERF_ACTION_PLANS', JSON.stringify({ 'SKU-001': { plan: 'Push bundle promo', status: 'In Progress' } }));
 
     // Build Full System Disaster Vault Bundle
-    const bundle = await sbVault.win.buildFullSystemVaultBundle({ triggerCloudPush: false });
-    assert.strictEqual(bundle.app, 'PMG_FULL_SYSTEM_VAULT_V2', 'Vault bundle must carry PMG_FULL_SYSTEM_VAULT_V2 identifier');
-    assert.strictEqual(Array.isArray(bundle.patientsData) && bundle.patientsData.length, 1, 'Vault bundle must include patientsData array');
-    assert.strictEqual(bundle.patientsData[0].id, 'PT-VAULT-1', 'Vault bundle must preserve patient clinical profile');
+    const built = await sbVault.win.buildFullSystemVaultBundle({ includeDocBlobs: false });
+    const bundle = built && built.bundle ? built.bundle : built;
+    assert.strictEqual(bundle.type, 'PMG_FULL_SYSTEM_VAULT_V2', 'Vault bundle must carry PMG_FULL_SYSTEM_VAULT_V2 type identifier');
+    assert.strictEqual(Array.isArray(bundle.patients) && bundle.patients.length, 1, 'Vault bundle must include patients array');
+    assert.strictEqual(bundle.patients[0].id, 'PT-VAULT-1', 'Vault bundle must preserve patient clinical profile');
     assert(bundle.localStorageDump && bundle.localStorageDump.pmg_stock_expiry_data, 'Vault bundle must dump pmg_stock_expiry_data');
     assert(bundle.localStorageDump && bundle.localStorageDump.pmg_promo_campaigns_v1, 'Vault bundle must dump pmg_promo_campaigns_v1');
     assert(bundle.localStorageDump && bundle.localStorageDump.KS01_PERF_ACTION_PLANS, 'Vault bundle must dump KS01_PERF_ACTION_PLANS');
@@ -2480,9 +2497,9 @@ function createBrowserSandbox(fetchImpl) {
     assert.strictEqual(sbVault.win.localStorage.getItem('KS01_PERF_ACTION_PLANS'), null, 'Simulated IT wipe must clear KS01_PERF_ACTION_PLANS');
 
     // Restore from Full System Vault Bundle
-    const restoreStats = await sbVault.win.restoreFullSystemVaultFromObject(bundle, { silent: true, reloadAfter: false });
-    assert(restoreStats.restoredLsCount >= 5, 'Restore engine must recover all wiped localStorage keys');
-    assert.strictEqual(restoreStats.restoredPatientCount, 1, 'Restore engine must recover patient profile');
+    const restoreStats = await sbVault.win.restoreFullSystemVaultFromObject(bundle, { silent: true, skipReload: true });
+    assert(restoreStats.localStorageRestored >= 5, 'Restore engine must recover all wiped localStorage keys');
+    assert.strictEqual(restoreStats.patientsRestored, 1, 'Restore engine must recover patient profile');
 
     const recoveredPts = JSON.parse(sbVault.win.localStorage.getItem('pmg_patients_data_v1') || '[]');
     assert.strictEqual(recoveredPts.length, 1, 'Recovered pmg_patients_data_v1 must have 1 patient');
@@ -2497,7 +2514,149 @@ function createBrowserSandbox(fetchImpl) {
     assert(ptHtml.includes('exportFullSystemVaultBackup()') && ptHtml.includes('triggerFullSystemVaultRestoreFilePicker()'), 'patient/index.html must expose Pre-IT Full System Vault Backup & Restore buttons');
   });
 
+  await testAsync('Automated Daily Rolling Auto-Backup (PC1/PC2 Isolation, Anti-Clobber, 7-Day Pruning, Persistent Storage & Nightly Apps Script)', async () => {
+    // Helper: In-memory mock File System Access API DirectoryHandle
+    function makeMockDir(name = 'KOTA SENTOSA') {
+      const files = new Map();
+      const subdirs = new Map();
+      const dir = {
+        kind: 'directory',
+        name,
+        _files: files,
+        _subdirs: subdirs,
+        queryPermission: async () => 'granted',
+        requestPermission: async () => 'granted',
+        async getFileHandle(fname, opts = {}) {
+          if (!files.has(fname)) {
+            if (!opts.create) throw new Error(`NotFoundError: ${fname}`);
+            files.set(fname, '');
+          }
+          return {
+            kind: 'file',
+            name: fname,
+            async getFile() {
+              const content = files.get(fname) || '';
+              return { text: async () => content, lastModified: Date.now() };
+            },
+            async createWritable() {
+              let buf = '';
+              return {
+                async write(chunk) { buf += String(chunk); },
+                async close() { files.set(fname, buf); }
+              };
+            }
+          };
+        },
+        async getDirectoryHandle(dname, opts = {}) {
+          if (!subdirs.has(dname)) {
+            if (!opts.create) throw new Error(`NotFoundError: ${dname}`);
+            subdirs.set(dname, makeMockDir(dname));
+          }
+          return subdirs.get(dname);
+        },
+        async removeEntry(ename) {
+          files.delete(ename);
+          subdirs.delete(ename);
+        },
+        async *entries() {
+          for (const [k] of files.entries()) {
+            yield [k, { kind: 'file', name: k, getFile: async () => ({ text: async () => files.get(k) || '' }) }];
+          }
+          for (const [k, v] of subdirs.entries()) {
+            yield [k, v];
+          }
+        }
+      };
+      return dir;
+    }
+
+    const mockRoot = makeMockDir('KOTA SENTOSA');
+
+    // 1. Simulate PC2 (Patient Care workstation with clinical patient data)
+    const sbPc2 = createBrowserSandbox();
+    sbPc2.ctx.navigator = sbPc2.win.navigator = {
+      userAgent: 'Edge Windows',
+      storage: { persisted: async () => false, persist: async () => true }
+    };
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'onedrive-sync.js'), 'utf8'), sbPc2.ctx);
+
+    const persistedOk = await sbPc2.win.requestPersistentBrowserStorage();
+    assert.strictEqual(persistedOk, true, 'requestPersistentBrowserStorage must return true when browser grants persistence');
+    assert.strictEqual(sbPc2.win._pmgStoragePersisted, true, '_pmgStoragePersisted flag must be set to true');
+
+    sbPc2.win.localStorage.setItem('pmg_patients_data_v1', JSON.stringify([
+      { id: 'PT-AUTO-1', name: 'MDM CHONG SIEW LAN', phone: '016-5551234', ic: '500303135088', branch: 'Kota Sentosa' }
+    ]));
+    assert.strictEqual(sbPc2.win.getDeviceBackupTag(), 'PC2-PatientCare', 'Workstation with patient records must auto-detect PC2-PatientCare tag');
+
+    // Pre-seed 8 older daily snapshots in Daily_Auto_Backups for PC2-PatientCare so adding today creates 9 → prunes oldest 2 to keep 7
+    const dailyDir = await mockRoot.getDirectoryHandle('Daily_Auto_Backups', { create: true });
+    const oldDates = ['2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15', '2026-11-16', '2026-11-17'];
+    for (const dt of oldDates) {
+      dailyDir._files.set(`PMG_AUTO_VAULT_PC2-PatientCare_${dt}.pmgbak`, JSON.stringify({ date: dt }));
+    }
+
+    const resPc2 = await sbPc2.win.runDailyAutoBackupIfDue({
+      rootHandle: mockRoot,
+      refDate: new Date(2026, 10, 23, 9, 0, 0),
+      keepDays: 7,
+      quiet: true
+    });
+    assert.strictEqual(resPc2.ok, true, 'PC2 daily auto-backup must succeed');
+    assert.strictEqual(resPc2.filename, 'PMG_AUTO_VAULT_PC2-PatientCare_2026-11-23.pmgbak', 'PC2 snapshot filename must include PC2-PatientCare tag and local date');
+    assert.strictEqual(resPc2.pruned.length, 2, '7-day retention must prune the 2 oldest snapshots out of 9');
+    assert(resPc2.pruned.includes('PMG_AUTO_VAULT_PC2-PatientCare_2026-11-10.pmgbak') && resPc2.pruned.includes('PMG_AUTO_VAULT_PC2-PatientCare_2026-11-11.pmgbak'), 'Oldest 2 dates must be pruned');
+    assert.strictEqual(dailyDir._files.size, 7, 'Daily_Auto_Backups must retain exactly 7 snapshots for PC2');
+
+    // Second call on the same day must skip automatically (no redundant write)
+    const resPc2Repeat = await sbPc2.win.runDailyAutoBackupIfDue({
+      rootHandle: mockRoot,
+      refDate: new Date(2026, 10, 23, 14, 0, 0),
+      keepDays: 7,
+      quiet: true
+    });
+    assert.strictEqual(resPc2Repeat.skipped, true, 'Second daily backup check on same day must be skipped');
+    assert.strictEqual(resPc2Repeat.reason, 'already_backed_up_today');
+
+    // 2. Simulate PC1 (Operations Hub with 0 local patients) running daily backup into the SAME OneDrive folder
+    const sbPc1 = createBrowserSandbox();
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'onedrive-sync.js'), 'utf8'), sbPc1.ctx);
+    sbPc1.win.localStorage.setItem('KS01_PERF_ACTION_PLANS', JSON.stringify({ 'SKU-999': { plan: 'Bundle promo' } }));
+    assert.strictEqual(sbPc1.win.getDeviceBackupTag(), 'PC1-Operations', 'Workstation without patient records must auto-detect PC1-Operations tag');
+
+    const resPc1 = await sbPc1.win.runDailyAutoBackupIfDue({
+      rootHandle: mockRoot,
+      refDate: new Date(2026, 10, 23, 10, 0, 0),
+      keepDays: 7,
+      quiet: true
+    });
+    assert.strictEqual(resPc1.ok, true, 'PC1 daily auto-backup must succeed');
+    assert.strictEqual(resPc1.preservedExistingPatients, true, 'Anti-clobber guard must trigger when PC1 (0 patients) writes after PC2 (1 patient)');
+    assert(mockRoot._files.has('PMG_FULL_SYSTEM_VAULT_LATEST_PC2-PatientCare.pmgbak'), 'PC2 isolated latest vault must exist');
+    assert(mockRoot._files.has('PMG_FULL_SYSTEM_VAULT_LATEST_PC1-Operations.pmgbak'), 'PC1 isolated latest vault must exist');
+
+    // Verify shared PMG_FULL_SYSTEM_VAULT_LATEST.pmgbak still retains PC2's clinical patient AND PC1's operational data!
+    const sharedMaster = JSON.parse(mockRoot._files.get('PMG_FULL_SYSTEM_VAULT_LATEST.pmgbak'));
+    assert.strictEqual(sharedMaster.patients.length, 1, 'Shared master vault must NOT lose PC2 patients when PC1 syncs');
+    assert.strictEqual(sharedMaster.patients[0].id, 'PT-AUTO-1', 'Shared master vault must preserve PC2 patient profile');
+    assert(sharedMaster.localStorageDump.KS01_PERF_ACTION_PLANS, 'Shared master vault must include PC1 operational data');
+
+    // 3. Verify Apps Script nightly server-side backup syntax & functions + HTML modal hooks
+    const gasPath = path.join(ROOT, 'google_apps_script_schedule_appointments_pricing.js');
+    execFileSync(process.execPath, ['-c', gasPath], { stdio: 'pipe' });
+    const gasSrc = fs.readFileSync(gasPath, 'utf8');
+    assert(gasSrc.includes('function dailyAutomatedCloudBackup()'), 'Apps Script must define dailyAutomatedCloudBackup()');
+    assert(gasSrc.includes('function installDailyCloudBackupTrigger()'), 'Apps Script must define installDailyCloudBackupTrigger()');
+    assert(gasSrc.includes('DAILY_CLOUD_BACKUP_KEEP_DAYS = 7'), 'Apps Script must enforce 7-day rolling retention');
+
+    const mainHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const ptHtml = fs.readFileSync(path.join(ROOT, 'patient', 'index.html'), 'utf8');
+    assert(mainHtml.includes('syncModalDeviceTagInput') && mainHtml.includes('syncModalDailyAutoStatus') && mainHtml.includes('saveDeviceBackupTagFromModal()'), 'index.html must expose Daily Auto-Backup status & PC Tag UI');
+    assert(ptHtml.includes('syncModalDeviceTagInput') && ptHtml.includes('syncModalDailyAutoStatus') && ptHtml.includes('saveDeviceBackupTagFromModal()'), 'patient/index.html must expose Daily Auto-Backup status & PC Tag UI');
+  });
+
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);
   process.exit(failed > 0 ? 1 : 0);
 })();
+
 
