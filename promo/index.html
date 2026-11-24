@@ -33,6 +33,76 @@
 </head>
 <body class="bg-slate-100 text-slate-800 antialiased min-h-screen flex flex-col font-sans">
 
+  <!-- PUBLIC TRILINGUAL CUSTOMER SELF-OPT-OUT PORTAL (?u=<token>) -->
+  <section id="promoCustomerOptOutView" class="hidden min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-emerald-50 via-white to-slate-100">
+    <div class="bg-white rounded-3xl shadow-xl border border-emerald-100 max-w-md w-full p-6 sm:p-8 text-center space-y-5">
+      <div class="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow-md">
+        <i class="fa-solid fa-prescription-bottle-medical text-2xl"></i>
+      </div>
+
+      <div class="space-y-1">
+        <span class="inline-block text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+          PMG Pharmacy Kota Sentosa
+        </span>
+        <h1 class="text-lg sm:text-xl font-black text-slate-900 leading-snug pt-1">
+          WhatsApp Promo Preferences<br>
+          <span class="text-sm font-bold text-slate-600">Tetapan Promosi · 促销通知退订</span>
+        </h1>
+      </div>
+
+      <div class="bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4">
+        <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Mobile Number / No. Telefon / 手机号码</p>
+        <p id="optOutMaskedPhone" class="text-lg font-mono font-black text-slate-900 mt-0.5">012-***-9999</p>
+      </div>
+
+      <!-- Step 1: 1-Tap Confirm (Prevents WhatsApp Link-Preview Bots From Auto-Triggering) -->
+      <div id="optOutConfirmStep" class="space-y-3">
+        <p class="text-xs text-slate-600 leading-relaxed">
+          Tap the button below to stop receiving future WhatsApp promotional messages from <strong>PMG Pharmacy Kota Sentosa</strong>.<br>
+          <span class="text-slate-500">Tekan butang di bawah untuk berhenti menerima info promosi WhatsApp.</span><br>
+          <span class="text-slate-500">点击下方按钮即可退订未来的 WhatsApp 促销优惠通知。</span>
+        </p>
+
+        <button id="btnConfirmSelfOptOut" type="button" onclick="confirmCustomerSelfOptOut()"
+          class="w-full py-3.5 px-4 rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-98 text-white font-extrabold text-xs sm:text-sm shadow-md transition cursor-pointer">
+          <i class="fa-solid fa-bell-slash mr-1.5"></i>
+          Confirm Unsubscribe / 确认退订 / Sahkan Berhenti
+        </button>
+
+        <p class="text-[11px] text-slate-400 leading-relaxed">
+          You can still message our pharmacist anytime for medication or health advice.
+        </p>
+      </div>
+
+      <!-- Step 2: Confirmed Unsubscribed + Undo -->
+      <div id="optOutDoneStep" class="hidden space-y-4">
+        <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-1.5">
+          <div class="text-emerald-600 text-2xl"><i class="fa-solid fa-circle-check"></i></div>
+          <p class="text-sm font-black text-emerald-900">You have been unsubscribed</p>
+          <p class="text-xs text-emerald-800 leading-relaxed">
+            Nombor anda telah dikeluarkan daripada senarai promosi kami.<br>
+            您的号码已成功退订，未来将不再收到促销通知。
+          </p>
+        </div>
+
+        <button type="button" onclick="undoCustomerSelfOptOut()"
+          class="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 font-bold text-xs transition cursor-pointer">
+          <i class="fa-solid fa-rotate-left mr-1"></i>
+          Changed your mind? Re-subscribe / Langgan Semula / 重新订阅
+        </button>
+      </div>
+
+      <p id="optOutPortalStatus" class="text-[11px] text-slate-400 font-medium"></p>
+
+      <div class="pt-2 border-t border-slate-100 text-[11px] text-slate-400">
+        PMG Pharmacy Kota Sentosa · Hotline: +6014-977 3924
+      </div>
+    </div>
+  </section>
+
+  <!-- STAFF BROADCASTER APP WRAPPER -->
+  <div id="promoStaffApp" class="flex flex-col min-h-screen">
+
   <!-- TOP STANDALONE APP BAR -->
   <header class="bg-white border-b border-gray-200 sticky top-0 z-40 shadow-xs">
     <div class="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
@@ -63,7 +133,7 @@
             class="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500">
           <span>Reuse WhatsApp Tab (Saves RAM)</span>
         </label>
-        <span class="text-[11px] text-gray-400 font-mono">v2026.10</span>
+        <span id="promoAppVersionBadge" class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300" title="Active PMG Hub build version">v68</span>
       </div>
     </div>
   </header>
@@ -539,6 +609,12 @@
                 <span>Verified WhatsApp Channel</span>
               </div>
             </div>
+            <button id="promoPreviewShuffleBtn" type="button" onclick="shuffleCustomerPromoVariation()"
+              class="px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white text-[10px] font-bold flex items-center gap-1 transition cursor-pointer shrink-0 border border-white/20"
+              title="Preview another dynamic anti-ban wording style for this customer">
+              <i class="fa-solid fa-shuffle"></i>
+              <span>Shuffle Style</span>
+            </button>
           </div>
 
           <!-- WhatsApp Chat Wallpaper Area -->
@@ -577,6 +653,77 @@
 
       <!-- RIGHT COLUMN (7 cols): Customer Broadcast Target List -->
       <div class="lg:col-span-7 space-y-4">
+
+        <!-- 🛡️ WHATSAPP ANTI-BAN SHIELD & AUTO OPT-OUT PANEL -->
+        <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-indigo-200 bg-gradient-to-r from-indigo-50/40 via-white to-emerald-50/30 space-y-2.5">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <div class="flex items-center gap-2">
+              <span class="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs shadow-xs">
+                <i class="fa-solid fa-shield-halved"></i>
+              </span>
+              <div>
+                <h4 class="text-xs font-black text-slate-900 leading-tight">WhatsApp Anti-Ban Shield &amp; 1-Tap Opt-Out</h4>
+                <p class="text-[10px] text-slate-500">Auto-varies every message + shortens 1-tap self-unsubscribe link (auto-synced across PC 1 &amp; PC 2)</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span id="promoAntiBanQuotaBadge" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                🟢 Today: 0 / 15 Safe Quota
+              </span>
+              <span id="promoAntiBanCooldownBadge" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                ✅ Ready to Send
+              </span>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 flex-wrap pt-1 border-t border-indigo-100/80">
+            <label class="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-700 bg-white px-2.5 py-1.5 rounded-xl border border-indigo-200 cursor-pointer shadow-2xs"
+              title="Automatically rotates 5 natural pharmacist message structures + Spintax phrases + buying history so every customer gets a distinct message">
+              <input type="checkbox" id="promoAntiBanDynamicToggle" checked onchange="togglePromoDynamicAntiBan(this)"
+                class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+              <span>🎲 Dynamic Anti-Ban Variations</span>
+            </label>
+
+            <select id="promoAntiBanModeSelect" onchange="setPromoAntiBanMode(this.value)"
+              title="Choose daily quota and randomized cooldown pacing to protect your WhatsApp number"
+              class="text-[11px] font-bold text-slate-700 bg-white border border-gray-300 rounded-xl py-1.5 px-2.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              <option value="warmup">🛡️ Post-Ban Warm-Up (15/day · 40–65s)</option>
+              <option value="standard">⚡ Standard Safe (30/day · 30–50s)</option>
+              <option value="off">Manual (No Limit)</option>
+            </select>
+
+            <select id="promoOptOutFooterSelect" onchange="setPromoOptOutFooterMode(this.value)"
+              title="Automatically include a shortened 1-tap opt-out link or polite STOP footer in every message"
+              class="text-[11px] font-bold text-slate-700 bg-white border border-gray-300 rounded-xl py-1.5 px-2.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              <option value="link">🔗 Auto Short Opt-Out Link</option>
+              <option value="text">💬 Reply STOP (No Link)</option>
+              <option value="off">Footer Off</option>
+            </select>
+
+            <button id="promoGenerateAiVarBtn" type="button" onclick="generateAiAntiBanVariations()"
+              class="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-2xs transition cursor-pointer"
+              title="Optional: Use Gemini 3.5 Flash Lite to generate 6 fresh AI-rewritten pharmacist variations">
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              <span>✨ AI 6× Variations</span>
+            </button>
+
+            <button type="button" onclick="openPromoOptOutManagerModal()"
+              class="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[11px] flex items-center gap-1.5 shadow-2xs transition cursor-pointer ml-auto"
+              title="View or manage customers who opted out via 1-tap link or STOP reply">
+              <i class="fa-solid fa-bell-slash"></i>
+              <span>Opt-Out List</span>
+              <span id="promoOptOutCountBadge" class="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[10px] font-black">0</span>
+            </button>
+          </div>
+
+          <div class="flex items-center gap-2 flex-wrap">
+            <span id="promoAiVariationsBadge" onclick="clearAiAntiBanVariations()"
+              class="hidden px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200 cursor-pointer hover:bg-purple-200 transition"
+              title="Click to reset back to built-in 5× variations">
+              ✨ AI Pack Active
+            </span>
+          </div>
+        </div>
 
         <!-- Sticky Fast Action "Send Next Unsent" Button -->
         <div class="bg-white p-3 rounded-2xl shadow-sm border border-emerald-200 flex items-center gap-3">
@@ -638,7 +785,7 @@
 
           <!-- Bottom Row: Status Tabs & Total Count -->
           <div class="flex items-center justify-between border-t border-gray-100 pt-3 flex-wrap gap-2">
-            <div class="flex items-center gap-1">
+            <div class="flex items-center gap-1 flex-wrap">
               <button type="button" onclick="setPromoStatusFilter('all')" data-status="all"
                 class="promo-status-tab px-3 py-1.5 rounded-lg text-xs border-b-2 font-bold text-emerald-700 border-emerald-600 transition cursor-pointer">
                 All Customers
@@ -650,6 +797,10 @@
               <button type="button" onclick="setPromoStatusFilter('sent')" data-status="sent"
                 class="promo-status-tab px-3 py-1.5 rounded-lg text-xs border-b-2 font-medium text-gray-500 border-transparent hover:text-gray-800 transition cursor-pointer">
                 Sent ✅
+              </button>
+              <button type="button" onclick="setPromoStatusFilter('optout')" data-status="optout"
+                class="promo-status-tab px-3 py-1.5 rounded-lg text-xs border-b-2 font-medium text-rose-500 border-transparent hover:text-rose-700 transition cursor-pointer">
+                Opted Out 🔕
               </button>
             </div>
 
@@ -761,11 +912,57 @@
       </div>
     </div>
 
+    <!-- OPT-OUT (DO-NOT-SEND) MANAGER MODAL -->
+    <div id="promoOptOutManagerModal" class="hidden fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+        <div class="flex items-center justify-between border-b pb-3">
+          <h3 class="font-bold text-base text-gray-900 flex items-center gap-2">
+            <i class="fa-solid fa-bell-slash text-rose-600"></i>
+            <span>Do-Not-Send Opt-Out Registry (Auto-Synced)</span>
+          </h3>
+          <button type="button" onclick="closePromoOptOutManagerModal()" class="text-gray-400 hover:text-gray-600 text-lg cursor-pointer">
+            &times;
+          </button>
+        </div>
+
+        <p class="text-xs text-gray-500 leading-relaxed">
+          Customers who tap their shortened <strong>1-Tap Opt-Out</strong> link are automatically added here across PC 1 &amp; PC 2 and skipped in all current &amp; future campaigns. You can also manually add any number that replies <code>STOP</code>.
+        </p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+          <input type="text" id="promoOptOutManualPhoneInput" placeholder="Mobile (e.g. 012-8889999)"
+            class="sm:col-span-5 text-xs font-mono font-semibold bg-white border border-gray-300 rounded-lg px-2.5 py-2 focus:ring-2 focus:ring-rose-500 focus:outline-none">
+          <input type="text" id="promoOptOutManualNameInput" placeholder="Name (optional)"
+            class="sm:col-span-4 text-xs bg-white border border-gray-300 rounded-lg px-2.5 py-2 focus:ring-2 focus:ring-rose-500 focus:outline-none">
+          <button type="button" onclick="addManualPhoneToOptOutModal()"
+            class="sm:col-span-3 px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-2xs transition cursor-pointer">
+            + Opt Out
+          </button>
+        </div>
+
+        <div id="promoOptOutManagerList" class="max-h-64 overflow-y-auto space-y-2 pr-1">
+          <!-- Populated dynamically -->
+        </div>
+
+        <div class="flex items-center justify-between pt-2 border-t border-gray-100">
+          <button type="button" onclick="pullPromoOptOutsFromGoogleCloud(false).then(() => renderPromoOptOutManagerList())"
+            class="px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-bold cursor-pointer">
+            <i class="fa-solid fa-arrows-rotate mr-1"></i> Refresh from Cloud
+          </button>
+          <button type="button" onclick="closePromoOptOutManagerModal()"
+            class="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-50 cursor-pointer">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- FY2027 Google Flow (@me Avatar) Automated Video Studio & Mini Member Day 2.50x ROI Engine -->
     <div id="promoFy2027GrowthStudio" class="mt-6"></div>
 
   </div>
   </main>
+  </div><!-- /#promoStaffApp -->
 
   <!-- TOAST NOTIFICATIONS -->
   <div id="promoToast"
@@ -774,9 +971,10 @@
     <span id="promoToastMsg">Action completed</span>
   </div>
 
-  <!-- PROMO SCRIPTS -->
+  <!-- PROMO SCRIPTS (js/data.js provides openUniversalWhatsApp & automatic Google Apps Script URL Shortener) -->
+  <script src="../js/data.js?v=20261124_antiban_v1"></script>
   <script src="../js/fy2027-kpi-engine.js?v=20261121_full_audit_v4"></script>
-  <script src="promo.js?v=20261122_flexsure_gold_v2"></script>
+  <script src="promo.js?v=20261124_antiban_v1"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       if (typeof initPromoBroadcastModule === 'function') {

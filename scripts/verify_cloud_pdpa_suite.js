@@ -389,14 +389,18 @@ function createBrowserSandbox(fetchImpl) {
       assert.strictEqual(sb.win.promoActiveCampaign.id, 'flexsure-gold-850g-seniorcare', `${rel} init must activate Flexsure Gold SeniorCare campaign by default`);
 
       // Verify generated WhatsApp messages have clean blank-line spacing between sections & bulleted multi-line offers
-      const nellyBmMsg = sb.ctx.generatePersonalizedMessage({ id: 'FG_CUST_3', name: 'NELLY ANAK SIYUD', phone: '60138448936' });
-      assert(nellyBmMsg.includes('✨ *Tawaran Istimewa:*\n• '), `${rel} BM Flexsure message must start bulleted offer details on new line`);
-      assert(nellyBmMsg.includes('\n\n📅 *Tempoh Promosi:*\n28 Nov 2026 (Sabtu) — 1 HARI SAHAJA\n\n📍 *Lokasi:*\nPMG Pharmacy Kota Sentosa\n\n📞 *Hubungi:*\n• Cawangan:'), `${rel} BM Flexsure message must include clean blank-line spacing between all info sections`);
+      const nellyBmMsg = sb.ctx.generatePersonalizedMessage({ id: 'FG_CUST_3', name: 'NELLY ANAK SIYUD', phone: '60138448936' }, { forceClassic: true });
+      assert(nellyBmMsg.includes('✨ *Tawaran Istimewa:*\n• '), `${rel} BM Flexsure classic message must start bulleted offer details on new line`);
+      assert(nellyBmMsg.includes('\n\n📅 *Tempoh Promosi:*\n28 Nov 2026 (Sabtu) — 1 HARI SAHAJA\n\n📍 *Lokasi:*\nPMG Pharmacy Kota Sentosa\n\n📞 *Hubungi:*\n• Cawangan:'), `${rel} BM Flexsure classic message must include clean blank-line spacing between all info sections`);
       assert(!nellyBmMsg.includes('2026年11月28日'), `${rel} BM Flexsure message should keep date purely in BM without Chinese date clutter`);
 
-      const jongZhMsg = sb.ctx.generatePersonalizedMessage({ id: 'FG_CUST_2', name: 'JONG SZE POH', phone: '60138864892' });
-      assert(jongZhMsg.includes('✨ *特别特惠详情：*\n• 只限 *SeniorCare 乐龄会员* 专享'), `${rel} ZH Flexsure message must format bulleted Chinese offer cleanly`);
-      assert(jongZhMsg.includes('\n\n📅 *优惠日期：*\n2026年11月28日（星期六）— 只限一天\n\n📍 *门店地点：*\nPMG Pharmacy Kota Sentosa\n\n📞 *联络电话：*\n• PMG Kota Sentosa 柜台：'), `${rel} ZH Flexsure message must include clean blank-line spacing between all info sections`);
+      const jongZhMsg = sb.ctx.generatePersonalizedMessage({ id: 'FG_CUST_2', name: 'JONG SZE POH', phone: '60138864892' }, { forceClassic: true });
+      assert(jongZhMsg.includes('✨ *特别特惠详情：*\n• 只限 *SeniorCare 乐龄会员* 专享'), `${rel} ZH Flexsure classic message must format bulleted Chinese offer cleanly`);
+      assert(jongZhMsg.includes('\n\n📅 *优惠日期：*\n2026年11月28日（星期六）— 只限一天\n\n📍 *门店地点：*\nPMG Pharmacy Kota Sentosa\n\n📞 *联络电话：*\n• PMG Kota Sentosa 柜台：'), `${rel} ZH Flexsure classic message must include clean blank-line spacing between all info sections`);
+
+      // Default dynamic anti-ban mode must also preserve blank-line spacing and clean language dates
+      const nellyDynMsg = sb.ctx.generatePersonalizedMessage({ id: 'FG_CUST_3', name: 'NELLY ANAK SIYUD', phone: '60138448936' });
+      assert(nellyDynMsg.includes('\n\n') && !nellyDynMsg.includes('2026年11月28日'), `${rel} BM dynamic anti-ban message must preserve blank-line spacing and BM date`);
 
       // Verify legacy compact localStorage state auto-upgrades cleanly
       const legacyCompactState = {
@@ -2774,6 +2778,162 @@ function createBrowserSandbox(fetchImpl) {
     await sbPdf.win.restoreFullSystemVaultFromObject(writtenVault, { silent: true, skipReload: true });
     assert(idbDocs.get('DOC-AIR-1') && idbDocs.get('DOC-AIR-1').blob, 'Vault restore must immediately re-hydrate AirDoc PDF binary from OneDrive Patient_Reports/ and keep doc.id -> patientId link intact');
     assert.strictEqual(idbDocs.get('DOC-AIR-1').patientId, 'PT-PDF-1', 'Restored AirDoc PDF must remain linked to exact patientId');
+  });
+
+  await testAsync('WhatsApp Anti-Ban Dynamic Variations, Shortened 1-Tap Customer Self-Opt-Out Portal & Pacing Guard (v68)', async () => {
+    // 1. Verify exact byte-for-byte parity between promo/promo.js and js/promo-broadcast.js
+    const promoSrc = fs.readFileSync(path.join(ROOT, 'promo', 'promo.js'), 'utf8');
+    const mirrorSrc = fs.readFileSync(path.join(ROOT, 'js', 'promo-broadcast.js'), 'utf8');
+    assert.strictEqual(promoSrc, mirrorSrc, 'promo/promo.js and js/promo-broadcast.js must stay byte-for-byte identical');
+
+    // 2. Verify promo/index.html loads ../js/data.js BEFORE promo.js, has #promoCustomerOptOutView, Anti-Ban Shield & v68 badge
+    const promoHtml = fs.readFileSync(path.join(ROOT, 'promo', 'index.html'), 'utf8');
+    const dataIdx = promoHtml.indexOf('../js/data.js');
+    const promoJsIdx = promoHtml.indexOf('promo.js?');
+    assert(dataIdx > 0 && promoJsIdx > dataIdx, 'promo/index.html must load ../js/data.js BEFORE promo.js so URL shortener works automatically');
+    assert(promoHtml.includes('id="promoCustomerOptOutView"'), 'promo/index.html must include #promoCustomerOptOutView');
+    assert(promoHtml.includes('id="promoStaffApp"'), 'promo/index.html must wrap staff UI in #promoStaffApp');
+    assert(promoHtml.includes('id="promoAntiBanDynamicToggle"'), 'promo/index.html must include Dynamic Anti-Ban toggle');
+    assert(promoHtml.includes('id="promoAntiBanModeSelect"'), 'promo/index.html must include Anti-Ban pacing mode selector');
+    assert(promoHtml.includes('id="promoOptOutFooterSelect"'), 'promo/index.html must include Opt-Out footer selector');
+    assert(promoHtml.includes('id="promoOptOutManagerModal"'), 'promo/index.html must include Opt-Out Manager modal');
+    assert(promoHtml.includes('id="promoPreviewShuffleBtn"'), 'promo/index.html must include Shuffle Style preview button');
+    assert(promoHtml.includes('v68'), 'promo/index.html must show v68 version badge');
+
+    // 3. Shared mock Google Cloud vault + URL Shortener backend across PC 1 and Customer Phone
+    const cloudVault = {};
+    const shortenedMap = {};
+    let shortCounter = 1;
+    const mockFetch = async (url, opts = {}) => {
+      const urlStr = String(url);
+      if (opts && opts.method === 'POST' && opts.body) {
+        const body = JSON.parse(opts.body);
+        if (body.action === 'shortenUrls' && Array.isArray(body.urls)) {
+          const map = {};
+          body.urls.forEach(u => {
+            if (!shortenedMap[u]) shortenedMap[u] = `https://tinyurl.com/pmgopt${shortCounter++}`;
+            map[u] = shortenedMap[u];
+          });
+          return { ok: true, json: async () => ({ success: true, map }) };
+        }
+        if (body.branch) {
+          cloudVault[body.branch] = body.schedule;
+          return { ok: true, json: async () => ({ success: true }) };
+        }
+      }
+      const m = urlStr.match(/[?&]branch=([^&]+)/);
+      const branchKey = m ? decodeURIComponent(m[1]) : '';
+      return {
+        ok: true,
+        json: async () => ({ success: true, schedule: cloudVault[branchKey] || null })
+      };
+    };
+
+    const dataSrc = fs.readFileSync(path.join(ROOT, 'js', 'data.js'), 'utf8');
+
+    // Boot PC 1 sandbox with BOTH js/data.js AND promo/promo.js
+    const sbPc1 = createBrowserSandbox();
+    sbPc1.ctx.fetch = mockFetch;
+    sbPc1.win.fetch = mockFetch;
+    vm.runInContext(dataSrc, sbPc1.ctx);
+    vm.runInContext(promoSrc, sbPc1.ctx);
+    sbPc1.ctx.loadPromoCampaigns();
+    sbPc1.ctx.loadPromoComposerState();
+    sbPc1.ctx.loadPromoAntiBanConfig();
+    sbPc1.ctx.loadPromoOptOuts();
+
+    // 4. Generate messages for 10 consecutive BM & ZH customers → verify genuine structural & wording diversity, zero unresolved Spintax, clean spacing, PDPA-safe ?u= URL
+    const sampleCustomers = [
+      { id: 'C1', name: 'NELLY ANAK SIYUD', phone: '60138448936', totalQty: 3 },
+      { id: 'C2', name: 'SITI AMINAH BINTI ALI', phone: '60128881102', totalQty: 2 },
+      { id: 'C3', name: 'FARID BIN HASSAN', phone: '60198881103', totalQty: 1 },
+      { id: 'C4', name: 'DAYANG NURUL', phone: '60148881104', totalQty: 4 },
+      { id: 'C5', name: 'ALICE ANAK JAMES', phone: '60168881105', totalQty: 1 },
+      { id: 'C6', name: 'JONG SZE POH', phone: '60138864892', totalQty: 3 },
+      { id: 'C7', name: 'TAN MEI LING', phone: '60128882207', totalQty: 2 },
+      { id: 'C8', name: 'WONG KOK WEI', phone: '60198882208', totalQty: 1 },
+      { id: 'C9', name: 'LIM XIAO HUI', phone: '60148882209', totalQty: 5 },
+      { id: 'C10', name: 'CHAI YEE MING', phone: '60168882210', totalQty: 2 }
+    ];
+    const generatedBodies = new Set();
+    const styleIndices = new Set();
+    for (const c of sampleCustomers) {
+      const msg = sbPc1.win.generatePersonalizedMessage(c);
+      assert(msg.includes('\n\n'), `Dynamic message for ${c.name} must preserve blank-line spacing`);
+      assert(!/\{[^{}]*\|[^{}]*\}/.test(msg), `Dynamic message for ${c.name} must have 0 unresolved Spintax tokens`);
+      assert(!/[?&#](ic|patientic|nric)=/i.test(msg), `Dynamic message for ${c.name} must never expose NRIC`);
+      assert(msg.includes('/promo/?u='), `Dynamic message for ${c.name} must include PDPA-clean ?u= opt-out link`);
+      // Strip customer name & opt-out URL to ensure message wording itself varies across customers
+      const skeleton = msg.replace(new RegExp(sbPc1.win.formatTitleCase(c.name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '{N}').replace(/https?:\/\/\S+/g, '{U}');
+      generatedBodies.add(skeleton);
+      styleIndices.add(sbPc1.ctx.getActiveDynamicStyleInfo(c).index);
+    }
+    assert(generatedBodies.size >= 6, `Expected ≥6 genuinely distinct dynamic message wordings across 10 customers, got ${generatedBodies.size}`);
+    assert(styleIndices.size >= 3, `Expected ≥3 distinct conversational styles rotated across 10 customers, got ${styleIndices.size}`);
+
+    // 5. Verify Shuffle Style changes a customer's previewed variation cleanly
+    const beforeShuffle = sbPc1.win.generatePersonalizedMessage(sampleCustomers[0]);
+    sbPc1.ctx.shuffleCustomerPromoVariation(sampleCustomers[0].id);
+    const afterShuffle = sbPc1.win.generatePersonalizedMessage(sampleCustomers[0]);
+    assert.notStrictEqual(beforeShuffle, afterShuffle, 'Shuffle Style must switch to a different message variation');
+
+    // 6. Verify Opt-Out URL is eligible for js/data.js URL Shortener and shortens cleanly to TinyURL
+    const rawOptUrl = sbPc1.win.buildCustomerOptOutUrl(sampleCustomers[0]);
+    assert(rawOptUrl.includes('?u=') && !rawOptUrl.includes('NELLY'), 'Opt-out URL must be opaque base64url token with no customer name');
+    assert.strictEqual(sbPc1.win.isUrlEligibleForShortening(rawOptUrl), true, 'Customer opt-out URL must be eligible for automatic URL shortening');
+    const rawMsg = sbPc1.win.generatePersonalizedMessage(sampleCustomers[0]);
+    const shortenedMsg = await sbPc1.win.pmgShortenUrlsInMessage(rawMsg);
+    assert(shortenedMsg.includes('https://tinyurl.com/pmgopt'), `Shortened WhatsApp message must replace long opt-out link with TinyURL, got: ${shortenedMsg.slice(-120)}`);
+    assert(!shortenedMsg.includes('williamchai1.github.io/Pharmacy-Branch-Management-Hub/promo/?u='), 'Raw long opt-out URL must be fully replaced by shortened link');
+    // Cached short URL should now also appear automatically in subsequent generatePersonalizedMessage() calls
+    const cachedMsg = sbPc1.win.generatePersonalizedMessage(sampleCustomers[0]);
+    assert(cachedMsg.includes('https://tinyurl.com/pmgopt'), 'Cached short URL must immediately appear in live preview/message generation');
+
+    // 7. End-to-End Customer Mobile Self-Opt-Out Portal (?u=<token>) → Google Cloud → Auto-Block on PC 2!
+    const token = rawOptUrl.split('?u=')[1];
+    const sbPhone = createBrowserSandbox();
+    sbPhone.ctx.fetch = mockFetch;
+    sbPhone.win.fetch = mockFetch;
+    vm.runInContext(promoSrc, sbPhone.ctx);
+    const decodedPhone = sbPhone.win.initCustomerOptOutPortal(token);
+    assert.strictEqual(decodedPhone, '60138448936', 'Opt-out portal must decode base64url token back to normalized customer phone');
+    assert.strictEqual(sbPhone.win.maskPhoneDisplay(decodedPhone), '013-***-8936', 'Opt-out portal must display masked phone only');
+
+    // Before clicking Confirm (e.g., WhatsApp link preview bot), customer is NOT opted out yet
+    assert.strictEqual(sbPhone.win.isPhoneOptedOut(decodedPhone), false, 'Opening ?u= preview alone must NOT auto-opt-out before customer taps Confirm');
+
+    // Customer taps Confirm Unsubscribe → writes to PMG_PROMO_OPTOUT_VAULT_KS01
+    const confirmRes = await sbPhone.win.confirmCustomerSelfOptOut();
+    assert.strictEqual(confirmRes.ok, true);
+    assert.strictEqual(confirmRes.cloudSynced, true);
+    assert(cloudVault['PMG_PROMO_OPTOUT_VAULT_KS01'] && cloudVault['PMG_PROMO_OPTOUT_VAULT_KS01'].phones['60138448936'], 'Confirming self-opt-out must persist phone to PMG_PROMO_OPTOUT_VAULT_KS01');
+
+    // PC 2 pulls opt-outs from Google Cloud → customer is immediately marked Opted Out & skipped in Pending / Send Next
+    const sbPc2 = createBrowserSandbox();
+    sbPc2.ctx.fetch = mockFetch;
+    sbPc2.win.fetch = mockFetch;
+    vm.runInContext(promoSrc, sbPc2.ctx);
+    sbPc2.ctx.loadPromoCampaigns();
+    sbPc2.ctx.loadPromoComposerState();
+    await sbPc2.win.pullPromoOptOutsFromGoogleCloud(true);
+    assert.strictEqual(sbPc2.win.isPhoneOptedOut('013-844 8936'), true, 'PC 2 must automatically recognize opted-out customer regardless of phone formatting');
+    sbPc2.ctx.setPromoStatusFilter('pending');
+    const pendingList = sbPc2.ctx.filterPromoCustomers();
+    assert(!pendingList.some(c => c.phone === '60138448936'), 'Opted-out customer must be automatically excluded from Pending Outreach');
+
+    // Customer taps Undo / Re-subscribe → removes from cloud vault
+    const undoRes = await sbPhone.win.undoCustomerSelfOptOut();
+    assert.strictEqual(undoRes.ok, true);
+    assert.strictEqual(Boolean(cloudVault['PMG_PROMO_OPTOUT_VAULT_KS01'].phones['60138448936']), false, 'Undo / Re-subscribe must remove phone from cloud opt-out vault');
+
+    // 8. Verify Anti-Ban Pacing Cooldown & Warm-Up Daily Quota Guard (15/day, 40–65s randomized cooldown)
+    const initStats = sbPc1.win.getTodayPromoSendStats();
+    assert.strictEqual(initStats.mode, 'warmup', 'Default anti-ban pacing mode must be Post-Ban Warm-Up');
+    assert.strictEqual(initStats.dailyCap, 15, 'Warm-Up mode daily cap must be 15');
+    sbPc1.win.recordPromoOutboundSend('C1', '60138448936', 'flexsure-gold-850g-seniorcare');
+    const remSec = sbPc1.win.getRemainingCooldownSeconds();
+    assert(remSec >= 38 && remSec <= 66, `Warm-Up randomized cooldown should be 40-65s, got ${remSec}s`);
+    sbPc1.ctx.startPromoCooldownTimer(0); // clean up interval timer
   });
 
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);

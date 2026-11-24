@@ -4279,7 +4279,7 @@
   let _dailyAutoBackupInProgress = false;
 
   function getLocalTodayIsoDate(refDate = null) {
-    const d = refDate instanceof Date ? refDate : new Date();
+    const d = (refDate && typeof refDate.getFullYear === 'function') ? refDate : new Date();
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');

@@ -318,6 +318,9 @@ const STORAGE_PROMO_POSTER_ZH  = 'pmg_promo_poster_data_zh';
 const STORAGE_SHEEP_SEEDED_V1    = 'pmg_promo_sheep_placenta_seeded_v1';
 const STORAGE_FLEXSURE_SEEDED_V1 = 'pmg_promo_flexsure_gold_seeded_v1';
 const STORAGE_FLEXSURE_SEEDED_V2 = 'pmg_promo_flexsure_gold_seeded_v2';
+const STORAGE_PROMO_OPTOUTS      = 'pmg_promo_optout_phones_v1';
+const STORAGE_PROMO_SEND_LOG     = 'pmg_promo_send_log_v1';
+const STORAGE_PROMO_ANTIBAN      = 'pmg_promo_antiban_config_v1';
 
 let promoCampaigns = [];
 let promoActiveCampaign = null;
@@ -355,9 +358,21 @@ let promoComposerState = {
   nameFormat: 'title'
 };
 let promoProgressMap = {}; // { [campaignId]: { [customerId]: { sent: true, sentAt: '...', langOverride: 'bm'|'zh' } } }
+let promoAntiBanConfig = {
+  enabled: true,            // Dynamic conversational variations ON by default
+  mode: 'warmup',           // 'warmup' (15/day, 40-65s) | 'standard' (30/day, 30-50s) | 'off'
+  optOutFooterMode: 'link', // 'link' (shortened 1-click self-opt-out URL) | 'text' (Reply STOP only) | 'off'
+  aiVariations: { bm: [], zh: [], en: [], bilingual: [] }
+};
+let promoOptOutMap = {}; // { [normalizedPhone60...]: { phone, name, optedOutAt, source: 'customer_self_link'|'staff_manual' } }
+let promoSendLog = [];   // [{ date: 'YYYY-MM-DD', ts: 1234567890, phone: '601...', campaignId: '...' }]
+let promoCustomerVariantOffset = {}; // { [customerId]: number } incremented by Shuffle button
+let promoCooldownUntil = 0;
+let promoCooldownTimer = null;
+
 let promoFilter = {
   search: '',
-  status: 'all', // 'all' | 'pending' | 'sent'
+  status: 'all', // 'all' | 'pending' | 'sent' | 'optout'
   loyalty: 'all', // 'all' | 'vip' | 'regular' | 'single'
   language: 'all', // 'all' | 'zh' | 'bm'
   sortBy: 'recent' // 'recent' | 'qty_desc' | 'spent_desc' | 'name_asc'
@@ -368,6 +383,7 @@ const PROMO_PAGE_SIZE = 50;
 
 const PMG_PROMO_CLOUD_URL = (typeof window !== 'undefined' && window.PMG_SCHEDULE_API_URL) || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
 const PROMO_CLOUD_VAULT_KEY = 'PMG_PROMO_BROADCAST_VAULT_KS01';
+const PROMO_OPTOUT_CLOUD_VAULT_KEY = 'PMG_PROMO_OPTOUT_VAULT_KS01';
 let promoGoogleCloudSynced = false;
 let promoCloudPushTimer = null;
 
@@ -389,14 +405,34 @@ function resolvePromoAssetUrl(assetPath) {
 
 // ─── INITIALIZATION ───────────────────────────────────────────────────────────
 function initPromoBroadcastModule() {
+  // Check if opened by a customer clicking an automatic self-opt-out link (?u=... or ?optout=...)
+  try {
+    if (typeof window !== 'undefined' && window.location && window.location.search) {
+      const params = new URLSearchParams(window.location.search);
+      const optToken = params.get('u') || params.get('optout') || params.get('unsubscribe');
+      if (optToken) {
+        initCustomerOptOutPortal(optToken);
+        return;
+      }
+    }
+  } catch (_) {}
+
+  loadPromoAntiBanConfig();
+  loadPromoOptOuts();
+  loadPromoSendLog();
   loadPromoCampaigns();
   loadPromoComposerState();
   loadPromoProgress();
   loadPromoPoster();
   renderPromoBroadcastUI();
-  // Auto check OneDrive & Google Cloud sync in background
+  renderPromoAntiBanShieldUI();
+  // Auto check OneDrive & Google Cloud sync (including customer self-opt-outs!) in background
   checkOneDriveSyncStatusQuiet();
+  pullPromoOptOutsFromGoogleCloud(true).catch(() => {});
   pullPromoBroadcastFromGoogleCloud(true).catch(() => {});
+  setTimeout(() => {
+    try { prewarmUpcomingOptOutShortUrls(6); } catch (_) {}
+  }, 1200);
 }
 window.initPromoBroadcastModule = initPromoBroadcastModule;
 
@@ -881,23 +917,571 @@ function getActivePromoTemplateText(targetLang) {
   return PROMO_DEFAULT_TEMPLATES[effectiveLang] || PROMO_DEFAULT_TEMPLATES.bm;
 }
 
-function generatePersonalizedMessage(customer) {
+// ─── WHATSAPP ANTI-BAN DYNAMIC VARIATION ENGINE & SELF-OPT-OUT HELPERS ────────
+function getPromoLocalDateStr(refDate = null) {
+  const d = refDate instanceof Date ? refDate : new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function hashStringDeterministic(str) {
+  let h = 2166136261;
+  const s = String(str || '');
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0);
+}
+
+// Resolves spintax blocks {option A|option B|option C} deterministically without touching {name}/{product} placeholders
+function resolvePromoSpintax(text, seed = 1) {
+  if (!text || typeof text !== 'string') return '';
+  let state = (Number(seed) || 1) >>> 0;
+  const nextRand = () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state;
+  };
+  let out = text;
+  let guard = 0;
+  while (/\{[^{}]*\|[^{}]*\}/.test(out) && guard < 12) {
+    guard++;
+    out = out.replace(/\{([^{}]*\|[^{}]*)\}/g, (_, group) => {
+      const opts = group.split('|');
+      const idx = nextRand() % opts.length;
+      return opts[idx];
+    });
+  }
+  return out;
+}
+
+function getTimeOfDayGreeting(lang, refDate = null) {
+  const d = refDate instanceof Date ? refDate : new Date();
+  const hr = d.getHours();
+  if (lang === 'zh') {
+    if (hr < 12) return '{早安|早上好|您好}';
+    if (hr < 18) return '{午安|下午好|您好}';
+    return '{晚上好|您好}';
+  }
+  if (lang === 'en') {
+    if (hr < 12) return '{Good morning|Hi|Hello}';
+    if (hr < 18) return '{Good afternoon|Hi|Hello}';
+    return '{Good evening|Hi|Hello}';
+  }
+  if (lang === 'bilingual') {
+    if (hr < 12) return '{Selamat pagi / 早安|Hi / 您好}';
+    if (hr < 18) return '{Selamat petang / 午安|Hi / 您好}';
+    return '{Selamat malam / 晚上好|Hi / 您好}';
+  }
+  // Default BM
+  if (hr < 12) return '{Selamat pagi|Salam sejahtera|Hi}';
+  if (hr < 15) return '{Selamat tengah hari|Salam sejahtera|Hi}';
+  if (hr < 19) return '{Selamat petang|Salam sejahtera|Hi}';
+  return '{Selamat malam|Salam sejahtera|Hi}';
+}
+
+function getCustomerHistoryContext(customer, lang) {
+  const qty = Number(customer && customer.totalQty) || 0;
+  const rawLast = customer && customer.lastDate ? String(customer.lastDate).slice(0, 10) : '';
+  const hasRealDate = Boolean(rawLast && rawLast !== 'Sebelum ini' && rawLast !== 'N/A');
+
+  if (lang === 'zh') {
+    if (qty >= 2) {
+      return hasRealDate
+        ? `{感谢您一直支持我们（上次购买：${rawLast}），想第一时间通知您|知道您平时有在喝这款（上次：${rawLast}），特地发信息提醒您}`
+        : '{知道您之前在我们店常买这款，特地第一时间通知您|感谢您一直以来对我们的支持，特地发个信息告诉您}';
+    }
+    return hasRealDate
+      ? `{记得您之前在 ${rawLast} 买过这款，想顺便告诉您一声|您之前在我们店买过这款（${rawLast}），特地和您分享这个好消息}`
+      : '{记得您之前有关注或买过这款，想顺便和您分享一下|特地发信息通知您一个好消息}';
+  }
+  if (lang === 'en') {
+    if (qty >= 2) {
+      return hasRealDate
+        ? `{Since you are one of our regular customers (last visit: ${rawLast}), we wanted to let you know first|Thank you for your continued support since ${rawLast} — sharing a quick heads-up}`
+        : '{As one of our regular customers at PMG, we wanted to give you an early heads-up|Thank you for supporting us — just sharing a quick update}';
+    }
+    return hasRealDate
+      ? `{Since you picked this up with us on ${rawLast}, thought we would share a quick update|Just a friendly note since you tried this with us on ${rawLast}}`
+      : '{Just dropping a quick friendly note from our pharmacy team|Wanted to share a quick member update with you}';
+  }
+  if (lang === 'bilingual') {
+    return qty >= 2
+      ? '{Terima kasih kerana sentiasa menyokong kami / 感谢您一直以来的支持|Makluman awal untuk pelanggan setia kami / 忠实顾客优先通知}'
+      : '{Sekadar berkongsi makluman ringkas / 顺便通知您一声|Ingin berkongsi berita baik untuk anda / 特地和您分享一个好消息}';
+  }
+  // BM
+  if (qty >= 2) {
+    return hasRealDate
+      ? `{Terima kasih kerana selalu sokong kami (pembelian terakhir: ${rawLast}), kami ingin maklumkan awal kepada anda|Memandangkan anda pelanggan setia kami (${rawLast}), kami kongsi info awal ini untuk anda}`
+      : '{Terima kasih kerana sentiasa menyokong farmasi kami — kami ingin kongsi info awal untuk anda|Sebagai pelanggan tetap kami, kami ingin maklumkan lebih awal kepada anda}';
+  }
+  return hasRealDate
+    ? `{Memandangkan anda pernah mendapatkan produk ini di kedai kami (${rawLast}), kami ingin kongsikan berita baik ini|Sekadar berkongsi makluman ringkas kerana anda pernah membeli produk ini pada ${rawLast}}`
+    : '{Sekadar berkongsi makluman ringkas daripada pasukan farmasi kami|Ingin maklumkan sedikit berita baik untuk anda}';
+}
+
+function normalizeOptOutPhone(rawPhone) {
+  const clean = cleanPhoneForWhatsApp(rawPhone);
+  return clean || String(rawPhone || '').replace(/\D/g, '');
+}
+
+function maskPhoneDisplay(rawPhone) {
+  const digits = normalizeOptOutPhone(rawPhone);
+  if (!digits || digits.length < 7) return '***';
+  const local = digits.startsWith('60') ? ('0' + digits.slice(2)) : digits;
+  return `${local.slice(0, 3)}-***-${local.slice(-4)}`;
+}
+
+function encodeOptOutToken(rawPhone) {
+  const clean = normalizeOptOutPhone(rawPhone);
+  if (!clean) return '';
+  try {
+    const b64 = (typeof btoa === 'function')
+      ? btoa(clean)
+      : Buffer.from(clean, 'utf8').toString('base64');
+    return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  } catch (_) {
+    return clean;
+  }
+}
+
+function decodeOptOutToken(token) {
+  const raw = String(token || '').trim();
+  if (!raw) return '';
+  if (/^\d{9,15}$/.test(raw)) return normalizeOptOutPhone(raw);
+  try {
+    let b64 = raw.replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    const decoded = (typeof atob === 'function')
+      ? atob(b64)
+      : Buffer.from(b64, 'base64').toString('utf8');
+    return normalizeOptOutPhone(decoded);
+  } catch (_) {
+    return normalizeOptOutPhone(raw);
+  }
+}
+
+function buildCustomerOptOutUrl(customer) {
+  const token = encodeOptOutToken(customer && customer.phone);
+  if (!token) return '';
+  let baseUrl = 'https://williamchai1.github.io/Pharmacy-Branch-Management-Hub/promo/';
+  try {
+    if (typeof window !== 'undefined' && window.location && /^https?:/i.test(window.location.origin) && !/localhost|127\.0\.0\.1|pmg-hub\.local/i.test(window.location.hostname || '')) {
+      const pathStr = window.location.pathname || '';
+      if (pathStr.includes('/promo')) {
+        baseUrl = window.location.origin + pathStr.replace(/\/promo\/?.*$/, '/promo/');
+      } else {
+        baseUrl = window.location.origin + pathStr.replace(/\/[^/]*$/, '/promo/');
+      }
+    }
+  } catch (_) {}
+  return `${baseUrl}?u=${token}`;
+}
+
+function getCustomerOptOutShortUrl(customer) {
+  const rawUrl = buildCustomerOptOutUrl(customer);
+  if (!rawUrl) return '';
+  if (typeof window !== 'undefined' && typeof window.pmgGetCachedShortUrl === 'function') {
+    return window.pmgGetCachedShortUrl(rawUrl) || rawUrl;
+  }
+  return rawUrl;
+}
+
+function prewarmUpcomingOptOutShortUrls(limit = 6) {
+  if (typeof window === 'undefined' || typeof window.pmgPrewarmShortUrls !== 'function') return;
+  if (!promoAntiBanConfig || promoAntiBanConfig.optOutFooterMode !== 'link') return;
+  if (!promoActiveCampaign || !Array.isArray(promoActiveCampaign.customers)) return;
+
+  const campaignId = promoActiveCampaign.id;
+  const pending = promoActiveCampaign.customers.filter(c => {
+    const st = getCustomerSentStatus(campaignId, c.id);
+    const val = validatePhoneNumber(c.phone);
+    return (!st || !st.sent) && val.valid && !isPhoneOptedOut(c.phone);
+  }).slice(0, limit);
+
+  const urls = pending.map(c => buildCustomerOptOutUrl(c)).filter(Boolean);
+  if (urls.length > 0) {
+    window.pmgPrewarmShortUrls(urls);
+  }
+}
+
+function getCustomerOptOutFooter(customer, effLang) {
+  const mode = (promoAntiBanConfig && promoAntiBanConfig.optOutFooterMode) || 'link';
+  if (mode === 'off') return '';
+
+  if (mode === 'link') {
+    const shortOrRawUrl = getCustomerOptOutShortUrl(customer);
+    if (shortOrRawUrl) {
+      if (effLang === 'zh') {
+        return `\n\n_如不想再收到促销通知，点此一键退订：_ ${shortOrRawUrl}`;
+      }
+      if (effLang === 'en') {
+        return `\n\n_Prefer not to receive promo updates? 1-tap opt-out:_ ${shortOrRawUrl}`;
+      }
+      if (effLang === 'bilingual') {
+        return `\n\n_Berhenti terima promosi / 一键退订促销通知:_ ${shortOrRawUrl}`;
+      }
+      return `\n\n_Tidak mahu terima info promosi lagi? Klik sini untuk berhenti:_ ${shortOrRawUrl}`;
+    }
+  }
+
+  // Fallback or explicit 'text' mode (zero links)
+  if (effLang === 'zh') {
+    return '\n\n_如不想再收到优惠通知，随时回复 STOP 即可。_';
+  }
+  if (effLang === 'en') {
+    return '\n\n_Reply STOP anytime if you prefer not to receive promo updates._';
+  }
+  if (effLang === 'bilingual') {
+    return '\n\n_Balas STOP jika tidak mahu terima promosi / 如不想收到促销通知请回复 STOP。_';
+  }
+  return '\n\n_Jika tidak mahu terima info promosi lagi, balas STOP ya._';
+}
+
+const PROMO_STYLE_LABELS = [
+  'Friendly Personal Check-In',
+  'Short & Direct Heads-Up',
+  'Pharmacist Care Update',
+  'Loyalty Appreciation Note',
+  'Quick Stock Reservation Check'
+];
+
+// 5 structurally distinct conversational pharmacy styles per language (all cleanly spaced with blank lines!)
+const PROMO_DYNAMIC_STYLES = {
+  bm: [
+    // Style 0: Friendly Personal Check-In
+    `{greeting} {name}, {kami dari|ini daripada} PMG Pharmacy {branch}.
+
+{history_note} — *{product}* kini ada {tawaran ahli|harga istimewa} untuk pelanggan kami:
+
+{offer_details}
+
+📅 *Tarikh:*
+{promo_period}
+
+📍 PMG Pharmacy {branch}
+{contact}
+
+{Kalau anda mahu kami simpankan stok dulu|Jika berminat untuk tempah atau simpan stok awal}, {boleh balas mesej ini ya|balas YA sahaja di sini ya}. {Terima kasih & semoga sihat selalu!|Jaga kesihatan sentiasa!}`,
+
+    // Style 1: Short & Direct Heads-Up
+    `{greeting} {name} 👋
+
+{Sekadar berkongsi info ringkas|Ingin beritahu berita baik} daripada PMG Pharmacy {branch}. Untuk *{product}*, ada {harga khas|tawaran menarik} pada *{promo_period}*:
+
+{offer_details}
+
+{Boleh terus datang ke|Singgah sahaja di} PMG Pharmacy {branch}, atau hubungi kami di:
+{contact}
+
+{Nak kami asingkan stok siap-siap untuk anda?|Perlu kami simpankan dulu sebelum habis stok?} {Balas sahaja mesej ini ya!|Boleh terus reply di sini ya.}`,
+
+    // Style 2: Pharmacist Care Update
+    `{greeting} {name}, {ini mesej ringkas daripada pasukan Farmasis William|salam daripada pasukan farmasi kami} di PMG Pharmacy {branch}.
+
+{history_note}. Kami ingin maklumkan *{product}* ada {tawaran istimewa|promo ahli} tidak lama lagi:
+
+*Butiran Tawaran:*
+{offer_details}
+
+*Tempoh:*
+{promo_period}
+
+{Jika anda ingin membuat pertanyaan atau simpan stok|Kalau mahu kami tolong simpankan stok untuk anda}, boleh terus balas WhatsApp ini atau hubungi:
+{contact}
+
+{Semoga anda sekeluarga sentiasa sihat dan ceria!|Terima kasih atas sokongan anda selama ini!}`,
+
+    // Style 3: Loyalty Appreciation Note
+    `{greeting} {name}! {Apa khabar?|Harap anda sihat hari ini.}
+
+{history_note}. Sebagai tanda penghargaan daripada PMG Pharmacy {branch}, ada {tawaran khas|keistimewaan ahli} untuk *{product}*:
+
+{offer_details}
+
+🗓️ *Sah pada:*
+{promo_period}
+
+📍 *Cawangan:* PMG Pharmacy {branch}
+{contact}
+
+{Stok agak terhad kali ini — balas mesej ini jika anda ingin kami reserve dulu ya.|Kalau nak kami ketepikan stok untuk pickup atau penghantaran, boleh terus reply ya.}`,
+
+    // Style 4: Quick Stock Reservation Check
+    `{greeting} {name}, {salam mesra|hello} dari PMG Pharmacy {branch}.
+
+{Kami cuma nak semak jika anda perlukan restock|Sekadar mengingatkan jika anda bercadang menambah stok} *{product}* — ada {tawaran khas|promosi ahli} pada *{promo_period}*:
+
+{offer_details}
+
+*Hubungi / Tempahan:*
+{contact}
+
+{Jika mahu kami simpankan stok supaya tidak kehabisan, balas YA sahaja di WhatsApp ini ya.|Boleh balas mesej ini bila-bila masa jika nak kami simpankan untuk anda.} {Terima kasih!|Semoga hari anda indah!}`
+  ],
+
+  zh: [
+    // Style 0: Friendly Personal Check-In
+    `{greeting} {name}，这里是 PMG Pharmacy {branch}（PMG 药剂行）。
+
+{history_note}，*{product}* 即将推出{会员特惠|回馈优惠}：
+
+{offer_details}
+
+📅 *优惠日期：*
+{promo_period}
+
+📍 PMG Pharmacy {branch}
+{contact}
+
+{如果需要我们提前帮您留货|想先预留存货的话}，{直接回复这个信息就可以了|回复“要”就能帮您先留着}。{祝您和家人身体健康！|谢谢您一直以来的支持！}`,
+
+    // Style 1: Short & Direct Heads-Up
+    `{greeting} {name} 👋
+
+PMG Pharmacy {branch} {简单通知您一声|发个短讯告诉您}：*{product}* 在 *{promo_period}* 有{特别优惠|会员好康}：
+
+{offer_details}
+
+欢迎到 PMG Pharmacy {branch} 门店，或直接联系我们：
+{contact}
+
+{需要帮您先保留几罐吗？|要不要提前帮您留货，免得卖完？}{随时回复我们就可以哦！|直接回复这里就行。}`,
+
+    // Style 2: Pharmacist Care Update
+    `{greeting} {name}，这里是 PMG Pharmacy {branch} {William 药剂师团队|药剂行团队}。
+
+{history_note}，顺便提醒您 *{product}* 近期有{会员特价|限时优惠}：
+
+*优惠内容：*
+{offer_details}
+
+*活动日期：*
+{promo_period}
+
+{如果家里快喝完了，或想先留货/安排送货|如需预留存货或有任何健康疑问}，欢迎直接回复这条 WhatsApp，或联系：
+{contact}
+
+{祝您平安健康，事事顺心！|感谢您对我们的信任！}`,
+
+    // Style 3: Loyalty Appreciation Note
+    `{greeting} {name}！{最近还好吗？|祝您今天愉快。}
+
+{history_note}。为了回馈 PMG Pharmacy {branch} 的顾客，*{product}* 特别推出以下优惠：
+
+{offer_details}
+
+🗓️ *优惠时间：*
+{promo_period}
+
+📍 *门店：* PMG Pharmacy {branch}
+{contact}
+
+{这次优惠名额和存货有限，有需要的话回复一下，我们先帮您留着哦。|如果需要预留或送货上门，直接回复信息通知我们即可。}`,
+
+    // Style 4: Quick Stock Reservation Check
+    `{greeting} {name}，PMG Pharmacy {branch} {向您问好|问候您}。
+
+{想先问一下您近期需不需要补货|顺便提醒您如果想补货} *{product}*，*{promo_period}* 正好有{会员特惠|优惠活动}：
+
+{offer_details}
+
+*预留 / 咨询联系：*
+{contact}
+
+{怕当天卖完的话，现在回复我们就能提前帮您留货哦。|有需要随时回复这个 WhatsApp 就行，谢谢您！}`
+  ],
+
+  en: [
+    // Style 0: Friendly Personal Check-In
+    `{greeting} {name}, this is the team from PMG Pharmacy {branch}.
+
+{history_note} — *{product}* has an upcoming {member offer|special deal}:
+
+{offer_details}
+
+📅 *Date:*
+{promo_period}
+
+📍 PMG Pharmacy {branch}
+{contact}
+
+{Would you like us to set stock aside for you?|Just reply YES if you'd like us to reserve stock before it runs out.} {Wishing you great health!|Thank you for your support!}`,
+
+    // Style 1: Short & Direct Heads-Up
+    `{greeting} {name} 👋
+
+Quick {heads-up|update} from PMG Pharmacy {branch}: *{product}* will be on {special member offer|promo} on *{promo_period}*:
+
+{offer_details}
+
+Drop by PMG Pharmacy {branch} or reach us here:
+{contact}
+
+{Let us know if you'd like us to hold a tin for you!|Feel free to reply here to reserve ahead.}`,
+
+    // Style 2: Pharmacist Care Update
+    `{greeting} {name}, {warm regards|greetings} from Pharmacist William & the team at PMG Pharmacy {branch}.
+
+{history_note}. Just letting you know *{product}* has a {special member perk|special promo} coming up:
+
+*Offer Details:*
+{offer_details}
+
+*Validity:*
+{promo_period}
+
+{If you're running low or would like us to reserve stock or arrange delivery|Just reply directly here if you'd like us to keep stock ready for you}:
+{contact}
+
+{Stay healthy and well!|Thank you for trusting PMG Pharmacy!}`,
+
+    // Style 3: Loyalty Appreciation Note
+    `{greeting} {name}! {Hope you're doing well today.|Hope everything is going smoothly for you.}
+
+{history_note}. As a thank-you from PMG Pharmacy {branch}, here is our upcoming offer for *{product}*:
+
+{offer_details}
+
+🗓️ *Valid on:*
+{promo_period}
+
+📍 *Outlet:* PMG Pharmacy {branch}
+{contact}
+
+{Stocks are limited this round — feel free to reply if you'd like us to reserve yours.|Reply anytime if you'd like pickup reservation or delivery.}`,
+
+    // Style 4: Quick Stock Reservation Check
+    `{greeting} {name}, checking in from PMG Pharmacy {branch}.
+
+{In case you're planning to restock|Just checking if you need to restock} *{product}*, there is a {member special|great offer} on *{promo_period}*:
+
+{offer_details}
+
+*Contact / Reservations:*
+{contact}
+
+{Just reply YES here if you'd like us to keep stock aside for you.|Reply anytime if we can help reserve this for you — thank you!}`
+  ],
+
+  bilingual: [
+    `{greeting} {name}, dari PMG Pharmacy {branch}（PMG 药剂行）.
+
+{history_note} — *{product}*:
+
+{offer_details}
+
+📅 *Tarikh / 优惠日期:*
+{promo_period}
+
+📍 PMG Pharmacy {branch}
+{contact}
+
+{Balas mesej ini jika nak simpan stok dulu / 如需提前留货请直接回复此信息哦！|Reply YA untuk tempahan awal / 回复“要”即可帮您先留货！}`,
+
+    `{greeting} {name} 👋
+
+Makluman ringkas dari PMG Pharmacy {branch} / 简短通知您：*{product}* ({promo_period}):
+
+{offer_details}
+
+*Hubungi / 联系我们:*
+{contact}
+
+{Ingin kami simpan stok untuk anda? / 需要帮您先预留存货吗？} {Balas sahaja di sini ya / 直接回复即可，谢谢！}`,
+
+    `{greeting} {name}, salam daripada pasukan Farmasis William di PMG Pharmacy {branch}（William 药剂师团队）.
+
+{history_note} — *{product}*:
+
+{offer_details}
+
+🗓️ *Tempoh / 日期:*
+{promo_period}
+
+{contact}
+
+{Semoga sihat selalu! Balas mesej ini jika perlu simpan stok / 祝您身体健康，如需留货欢迎直接回复！}`
+  ]
+};
+
+function getCustomerVariantIndex(customer, campaignId, poolLength) {
+  if (!poolLength || poolLength <= 1) return 0;
+  const cid = (customer && (customer.id || customer.phone || customer.name)) || 'guest';
+  const offset = Number(promoCustomerVariantOffset[cid]) || 0;
+  const baseHash = hashStringDeterministic(`${campaignId || 'promo'}::${cid}`);
+  return (baseHash + offset) % poolLength;
+}
+
+function getActiveDynamicStyleInfo(customer) {
+  if (!customer || !promoActiveCampaign) return { enabled: false, index: 0, total: 1, label: 'Standard Template' };
+  if (!promoAntiBanConfig || !promoAntiBanConfig.enabled) {
+    return { enabled: false, index: 0, total: 1, label: 'Classic Template' };
+  }
+  const effLang = getCustomerEffectiveLanguage(customer);
+  const langKey = (effLang === 'zh' || effLang === 'en' || effLang === 'bilingual') ? effLang : 'bm';
+  const aiList = (promoAntiBanConfig.aiVariations && Array.isArray(promoAntiBanConfig.aiVariations[langKey]) && promoAntiBanConfig.aiVariations[langKey].length > 0)
+    ? promoAntiBanConfig.aiVariations[langKey]
+    : null;
+  if (aiList) {
+    const idx = getCustomerVariantIndex(customer, promoActiveCampaign.id, aiList.length);
+    return { enabled: true, isAi: true, index: idx, total: aiList.length, label: `✨ AI Variation ${idx + 1}/${aiList.length}` };
+  }
+  const pool = PROMO_DYNAMIC_STYLES[langKey] || PROMO_DYNAMIC_STYLES.bm;
+  const idx = getCustomerVariantIndex(customer, promoActiveCampaign.id, pool.length);
+  const styleName = PROMO_STYLE_LABELS[idx] || `Style ${idx + 1}`;
+  return { enabled: true, isAi: false, index: idx, total: pool.length, label: `🎲 Style ${idx + 1}/${pool.length}: ${styleName}` };
+}
+
+function shuffleCustomerPromoVariation(customerId) {
+  const targetId = customerId || promoPreviewCustomerId || (promoActiveCampaign && promoActiveCampaign.customers && promoActiveCampaign.customers[0] && promoActiveCampaign.customers[0].id);
+  if (!targetId) return;
+  promoCustomerVariantOffset[targetId] = (Number(promoCustomerVariantOffset[targetId]) || 0) + 1;
+  promoPreviewCustomerId = targetId;
+  renderPromoChatPreview();
+  const cust = promoActiveCampaign && (promoActiveCampaign.customers || []).find(c => c.id === targetId);
+  if (cust) {
+    const info = getActiveDynamicStyleInfo(cust);
+    showPromoToast(`Switched preview for ${formatTitleCase(cust.name)} → ${info.label}`);
+  }
+}
+window.shuffleCustomerPromoVariation = shuffleCustomerPromoVariation;
+
+function generatePersonalizedMessage(customer, options = {}) {
   if (!customer || !promoActiveCampaign) return '';
 
   const effLang = getCustomerEffectiveLanguage(customer);
+  const langKey = (effLang === 'zh' || effLang === 'en' || effLang === 'bilingual') ? effLang : 'bm';
+  const useDynamic = options.forceClassic ? false : Boolean(promoAntiBanConfig && promoAntiBanConfig.enabled);
 
   let template = '';
-  if (promoComposerState.language === 'custom') {
+  const userEditedCustom = promoComposerState.language === 'custom';
+  const savedTemplateForLang = promoComposerState.templates && promoComposerState.templates[langKey]
+    ? promoComposerState.templates[langKey].trim()
+    : '';
+  const defaultTemplateForLang = (PROMO_DEFAULT_TEMPLATES[langKey] || PROMO_DEFAULT_TEMPLATES.bm).trim();
+  const userCustomizedDefaultText = Boolean(savedTemplateForLang && savedTemplateForLang !== defaultTemplateForLang);
+
+  if (useDynamic && !userEditedCustom && !userCustomizedDefaultText) {
+    // Use AI-rewritten variations if generated for this language, otherwise 5 distinct conversational pharmacy styles
+    const aiPool = (promoAntiBanConfig.aiVariations && Array.isArray(promoAntiBanConfig.aiVariations[langKey]) && promoAntiBanConfig.aiVariations[langKey].length > 0)
+      ? promoAntiBanConfig.aiVariations[langKey]
+      : null;
+    const pool = aiPool || PROMO_DYNAMIC_STYLES[langKey] || PROMO_DYNAMIC_STYLES.bm;
+    const idx = getCustomerVariantIndex(customer, promoActiveCampaign.id, pool.length);
+    template = pool[idx];
+  } else if (userEditedCustom) {
     template = (promoComposerState.templates && promoComposerState.templates.custom) || promoComposerState.customText || PROMO_DEFAULT_TEMPLATES.bm;
   } else if (promoComposerState.language === 'auto') {
-    // In auto mode, use user-edited template for customer's language if available, else default
-    if (promoComposerState.templates && promoComposerState.templates[effLang] && promoComposerState.templates[effLang].trim()) {
-      template = promoComposerState.templates[effLang];
+    if (savedTemplateForLang) {
+      template = promoComposerState.templates[langKey];
     } else {
-      template = PROMO_DEFAULT_TEMPLATES[effLang] || PROMO_DEFAULT_TEMPLATES.bm;
+      template = PROMO_DEFAULT_TEMPLATES[langKey] || PROMO_DEFAULT_TEMPLATES.bm;
     }
   } else {
-    // Specifically selected language mode (zh, bm, bilingual, en)
     const mode = promoComposerState.language;
     if (promoComposerState.templates && promoComposerState.templates[mode] && promoComposerState.templates[mode].trim()) {
       template = promoComposerState.templates[mode];
@@ -910,8 +1494,7 @@ function generatePersonalizedMessage(customer) {
   const name = promoComposerState.nameFormat === 'upper' ? rawName.toUpperCase() : formatTitleCase(rawName);
   const product = promoActiveCampaign.productName || 'NUTRIBRIDGE NUTRI ALPHA 800GM';
 
-  // Offer details resolution based on customer language:
-  // Chinese customer -> use offerDetailsZh; BM customer -> use offerDetailsBm; EN -> offerDetailsEn
+  // Offer details resolution based on customer language
   let offerDetails = promoComposerState.offerDetails;
   if (effLang === 'zh') {
     offerDetails = promoComposerState.offerDetailsZh || promoComposerState.offerDetails || '';
@@ -922,7 +1505,6 @@ function generatePersonalizedMessage(customer) {
   }
 
   let promoPeriod = promoComposerState.promoPeriod || 'Sementara Stok Masih Ada / 存货有限，售完即止';
-  // Use clean single-language date when active campaign supplies language-specific defaults and user kept the default bilingual string
   if (promoActiveCampaign && promoPeriod === promoActiveCampaign.defaultPromoPeriod) {
     if (effLang === 'zh' && promoActiveCampaign.defaultPromoPeriodZh) {
       promoPeriod = promoActiveCampaign.defaultPromoPeriodZh;
@@ -939,8 +1521,21 @@ function generatePersonalizedMessage(customer) {
   const shopPhone = promoComposerState.shopPhone || '+60149773924';
   const pharmacistPhone = promoComposerState.pharmacistPhone || '01110990693';
   const lastDate = customer.lastDate || 'Sebelum ini';
+  const greeting = getTimeOfDayGreeting(langKey, options.refDate || null);
+  const historyNote = getCustomerHistoryContext(customer, langKey);
+
+  // Inject dynamic placeholders first, then resolve all Spintax {a|b|c} deterministically per customer
+  const seed = hashStringDeterministic(
+    `${promoActiveCampaign.id || ''}::${customer.id || customer.phone || name}::${promoCustomerVariantOffset[customer.id] || 0}`
+  );
 
   let msg = template
+    .replace(/\{greeting\}/g, greeting)
+    .replace(/\{history_note\}/g, historyNote);
+
+  msg = resolvePromoSpintax(msg, seed);
+
+  msg = msg
     .replace(/\{name\}/g, name)
     .replace(/\{product\}/g, product)
     .replace(/\{offer_details\}/g, offerDetails)
@@ -950,6 +1545,11 @@ function generatePersonalizedMessage(customer) {
     .replace(/\{shop_phone\}/g, shopPhone)
     .replace(/\{pharmacist_phone\}/g, pharmacistPhone)
     .replace(/\{last_date\}/g, lastDate);
+
+  // Append polite customer opt-out footer (unless disabled or forceClassic)
+  if (!options.omitOptOutFooter && !options.forceClassic) {
+    msg += getCustomerOptOutFooter(customer, langKey);
+  }
 
   // Auto sanitize any accidental replacement diamonds into clean bullet points
   msg = msg.replace(/\uFFFD/g, '•');
@@ -1066,21 +1666,32 @@ function updateSendNextButton(customers, campaignId) {
   const nextUnsent = pool.find(c => {
     const st = getCustomerSentStatus(campaignId, c.id);
     const val = validatePhoneNumber(c.phone);
-    return (!st || !st.sent) && val.valid;
+    return (!st || !st.sent) && val.valid && !isPhoneOptedOut(c.phone);
   });
 
   if (nextUnsent) {
     const effLang = getCustomerEffectiveLanguage(nextUnsent);
     const langFlag = effLang === 'zh' ? '🇨🇳 华语' : '🇲🇾 BM';
+    const remSec = getRemainingCooldownSeconds();
     btn.disabled = false;
     btn.classList.remove('opacity-50', 'cursor-not-allowed');
-    btn.innerHTML = `<i class="fa-brands fa-whatsapp text-lg"></i> <span>Send Next: <strong>${formatTitleCase(nextUnsent.name).slice(0, 18)}</strong> (${nextUnsent.phone}) <span class="text-[10px] bg-black/20 px-1.5 py-0.5 rounded-full ml-1 font-normal">${langFlag}</span></span>`;
+    if (remSec > 0) {
+      btn.innerHTML = `<i class="fa-solid fa-hourglass-half text-base text-amber-200"></i> <span>⏳ Safe Cooldown (${remSec}s) · Next: <strong>${formatTitleCase(nextUnsent.name).slice(0, 16)}</strong> <span class="text-[10px] bg-black/20 px-1.5 py-0.5 rounded-full ml-1 font-normal">${langFlag}</span></span>`;
+    } else {
+      btn.innerHTML = `<i class="fa-brands fa-whatsapp text-lg"></i> <span>Send Next: <strong>${formatTitleCase(nextUnsent.name).slice(0, 18)}</strong> (${nextUnsent.phone}) <span class="text-[10px] bg-black/20 px-1.5 py-0.5 rounded-full ml-1 font-normal">${langFlag}</span></span>`;
+    }
     btn.onclick = () => sendCustomerPromoWhatsApp(nextUnsent.id);
+
+    // Background pre-warm shortened opt-out URL for next customer so send opens instantaneously
+    if (typeof window !== 'undefined' && typeof window.pmgPrewarmShortUrls === 'function' && promoAntiBanConfig && promoAntiBanConfig.optOutFooterMode === 'link') {
+      const nextUrl = buildCustomerOptOutUrl(nextUnsent);
+      if (nextUrl) window.pmgPrewarmShortUrls([nextUrl]);
+    }
   } else {
     btn.disabled = true;
     btn.classList.add('opacity-50', 'cursor-not-allowed');
     const langLabel = langFilter === 'zh' ? '🇨🇳 华语 ' : langFilter === 'bm' ? '🇲🇾 BM/EN ' : '';
-    btn.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400"></i> <span>All ${pool.length} ${langLabel}Customers Contacted! 🎉</span>`;
+    btn.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400"></i> <span>All ${pool.length} ${langLabel}Eligible Customers Contacted! 🎉</span>`;
     btn.onclick = null;
   }
 }
@@ -1399,18 +2010,41 @@ function renderPromoChatPreview() {
     ? (posterInfo.langSlot === 'zh' ? ' · 🖼️ 华语 Poster' : ' · 🖼️ EN/BM Poster')
     : '';
 
+  const styleInfo = getActiveDynamicStyleInfo(sample);
+  const stylePill = styleInfo.enabled
+    ? ` · <span class="font-bold text-indigo-700">${escHtml(styleInfo.label)}</span>`
+    : '';
+
   if (badge) {
-    badge.innerHTML = `Previewing for: <strong>${formatTitleCase(sample.name)}</strong> (${sample.phone || 'No phone'}) · <span class="font-bold text-emerald-800">${langLabel}${posterTag}</span>`;
+    badge.innerHTML = `Previewing for: <strong>${formatTitleCase(sample.name)}</strong> (${sample.phone || 'No phone'}) · <span class="font-bold text-emerald-800">${langLabel}${posterTag}</span>${stylePill}`;
+  }
+
+  const shuffleBtn = document.getElementById('promoPreviewShuffleBtn');
+  if (shuffleBtn) {
+    shuffleBtn.onclick = () => shuffleCustomerPromoVariation(sample.id);
   }
 
   // Poster preview in mockup (automatically switches between EN/BM & Chinese poster based on customer language!)
   if (posterPreview) {
     if (posterInfo.url) {
       posterPreview.classList.remove('hidden');
-      const imgEl = posterPreview.querySelector('img');
+      const imgEl = typeof posterPreview.querySelector === 'function' ? posterPreview.querySelector('img') : null;
       if (imgEl) imgEl.src = posterInfo.url;
     } else {
       posterPreview.classList.add('hidden');
+    }
+  }
+
+  // Pre-warm shortened opt-out URL for previewed customer so preview reflects short link seamlessly
+  if (promoAntiBanConfig && promoAntiBanConfig.optOutFooterMode === 'link' && typeof window !== 'undefined' && typeof window.pmgShortenUrlsBatch === 'function') {
+    const rawOptUrl = buildCustomerOptOutUrl(sample);
+    const cachedUrl = (typeof window.pmgGetCachedShortUrl === 'function') ? window.pmgGetCachedShortUrl(rawOptUrl) : rawOptUrl;
+    if (rawOptUrl && cachedUrl === rawOptUrl) {
+      window.pmgShortenUrlsBatch([rawOptUrl], { timeoutMs: 3500 }).then((m) => {
+        if (m && m[rawOptUrl] && m[rawOptUrl] !== rawOptUrl && (!promoPreviewCustomerId || promoPreviewCustomerId === sample.id)) {
+          renderPromoChatPreview();
+        }
+      }).catch(() => {});
     }
   }
 
@@ -1445,11 +2079,13 @@ function filterPromoCustomers() {
       if (!matchName && !matchPhone && !matchSp) return false;
     }
 
-    // 2. Status filter
+    // 2. Status filter (including Opted-Out filter)
     const st = getCustomerSentStatus(campaignId, c.id);
     const isSent = Boolean(st && st.sent);
+    const isOptOut = isPhoneOptedOut(c.phone);
     if (status === 'sent' && !isSent) return false;
-    if (status === 'pending' && isSent) return false;
+    if (status === 'pending' && (isSent || isOptOut)) return false;
+    if (status === 'optout' && !isOptOut) return false;
 
     // 3. Loyalty filter
     const qty = Number(c.totalQty) || 1;
@@ -1510,6 +2146,8 @@ function renderPromoCustomerTable() {
   const rowsHtml = displayed.map((c, idx) => {
     const st = getCustomerSentStatus(campaignId, c.id);
     const isSent = Boolean(st && st.sent);
+    const optOutRec = getPhoneOptOutRecord(c.phone);
+    const isOptOut = Boolean(optOutRec);
     const val = validatePhoneNumber(c.phone);
     const totalQty = Number(c.totalQty) || 1;
     const isVip = totalQty >= 3;
@@ -1524,7 +2162,13 @@ function renderPromoCustomerTable() {
       : `<button type="button" onclick="toggleCustomerLangPref('${safeId}')" title="Click to switch between BM and 华语 (also switches poster)" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition inline-flex items-center gap-1 cursor-pointer"><span>🇲🇾 BM</span> <i class="fa-solid fa-arrow-right-arrow-left text-[8px] opacity-60"></i></button>`;
 
     let statusBadge = '';
-    if (isSent) {
+    if (isOptOut) {
+      const autoLabel = optOutRec.source === 'customer_self_link' ? 'Auto' : 'DND';
+      statusBadge = `
+        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300" title="Customer opted out from future promos">
+          <i class="fa-solid fa-bell-slash text-rose-600"></i> Opted Out (${autoLabel})
+        </span>`;
+    } else if (isSent) {
       const timeStr = st.sentAt ? new Date(st.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Done';
       statusBadge = `
         <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
@@ -1541,7 +2185,7 @@ function renderPromoCustomerTable() {
     if (val.valid) {
       phoneHtml = `
         <div class="flex items-center gap-1.5">
-          <span class="font-mono text-xs font-semibold text-gray-800">${val.cleanPhone}</span>
+          <span class="font-mono text-xs font-semibold ${isOptOut ? 'text-gray-400 line-through' : 'text-gray-800'}">${val.cleanPhone}</span>
         </div>`;
     } else if (val.isLandline) {
       phoneHtml = `
@@ -1555,12 +2199,12 @@ function renderPromoCustomerTable() {
     }
 
     return `
-      <tr id="promoRow_${safeId}" class="border-b border-gray-100 hover:bg-emerald-50/30 transition ${isSent ? 'bg-slate-50/50' : ''}">
+      <tr id="promoRow_${safeId}" class="border-b border-gray-100 hover:bg-emerald-50/30 transition ${isOptOut ? 'bg-rose-50/40 opacity-80' : (isSent ? 'bg-slate-50/50' : '')}">
         <td class="p-3 text-center text-xs text-gray-400 font-mono">${idx + 1}</td>
 
         <td class="p-3">
-          <div class="flex items-center gap-2">
-            <span class="font-bold text-xs text-gray-900">${escHtml(formattedName)}</span>
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="font-bold text-xs ${isOptOut ? 'text-gray-500 line-through' : 'text-gray-900'}">${escHtml(formattedName)}</span>
             ${isVip ? '<span class="px-1.5 py-0.2 rounded text-[10px] font-black bg-purple-100 text-purple-800 border border-purple-200">⭐ VIP</span>' : (isRepeat ? '<span class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-blue-100 text-blue-800">Repeat</span>' : '')}
             ${langBadge}
           </div>
@@ -1586,17 +2230,26 @@ function renderPromoCustomerTable() {
 
         <td class="p-3 text-center promo-action-cell">
           <div class="flex items-center justify-center gap-1.5">
-            <button type="button" data-action="promo-send" onclick="sendCustomerPromoWhatsApp('${safeId}')"
-              class="promo-send-btn px-3 py-1.5 rounded-lg ${isSent ? 'bg-gray-100 hover:bg-emerald-50 text-gray-700 hover:text-emerald-700 border border-gray-300' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'} font-bold text-xs flex items-center gap-1 transition cursor-pointer"
-              title="Open WhatsApp chat with prefilled personalized message and auto-copied language poster">
-              <i class="fa-brands fa-whatsapp text-sm"></i>
-              <span>${isSent ? 'Resend' : 'Send'}</span>
-            </button>
+            ${isOptOut
+              ? `<button type="button" disabled class="px-2.5 py-1.5 rounded-lg bg-rose-100 text-rose-500 border border-rose-200 font-bold text-xs flex items-center gap-1 cursor-not-allowed" title="Blocked: Customer opted out of promos"><i class="fa-solid fa-ban text-xs"></i><span>Blocked</span></button>`
+              : `<button type="button" data-action="promo-send" onclick="sendCustomerPromoWhatsApp('${safeId}')"
+                  class="promo-send-btn px-3 py-1.5 rounded-lg ${isSent ? 'bg-gray-100 hover:bg-emerald-50 text-gray-700 hover:text-emerald-700 border border-gray-300' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'} font-bold text-xs flex items-center gap-1 transition cursor-pointer"
+                  title="Open WhatsApp chat with dynamic anti-ban message & shortened self-opt-out link">
+                  <i class="fa-brands fa-whatsapp text-sm"></i>
+                  <span>${isSent ? 'Resend' : 'Send'}</span>
+                </button>`
+            }
 
             <button type="button" onclick="previewPromoCustomerMessageModal('${safeId}')"
               class="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center text-xs transition cursor-pointer"
-              title="Preview message & language poster for this customer">
+              title="Preview unique message & language poster for this customer">
               <i class="fa-regular fa-eye"></i>
+            </button>
+
+            <button type="button" onclick="toggleCustomerOptOutFromRow('${safeId}')"
+              class="w-7 h-7 rounded-lg ${isOptOut ? 'bg-rose-600 text-white hover:bg-emerald-600' : 'bg-gray-100 text-gray-400 hover:bg-rose-100 hover:text-rose-600'} flex items-center justify-center text-xs transition cursor-pointer"
+              title="${isOptOut ? 'Re-enable promos for this customer' : 'Opt-Out (Do Not Send future promos)'}">
+              <i class="fa-solid ${isOptOut ? 'fa-bell' : 'fa-bell-slash'}"></i>
             </button>
 
             <button type="button" onclick="toggleCustomerPromoSentManual('${safeId}')"
@@ -1656,6 +2309,14 @@ function sendCustomerPromoWhatsApp(customerId) {
   const cust = (promoActiveCampaign.customers || []).find(c => c.id === customerId);
   if (!cust) return;
 
+  // Hard Opt-Out Block: Never message customers who opted out via self-link or manual STOP
+  if (isPhoneOptedOut(cust.phone)) {
+    const rec = getPhoneOptOutRecord(cust.phone);
+    const src = rec && rec.source === 'customer_self_link' ? 'their 1-tap Opt-Out link' : 'staff Opt-Out list';
+    alert(`🔕 Blocked by Opt-Out Protection:\n\n"${formatTitleCase(cust.name)}" (${cust.phone}) unsubscribed via ${src}.\n\nTo protect your WhatsApp account from spam reports, sending is disabled. You can re-enable them in the Opt-Out List if they ask to opt back in.`);
+    return;
+  }
+
   const val = validatePhoneNumber(cust.phone);
   if (!val.valid) {
     if (val.isLandline) {
@@ -1666,18 +2327,23 @@ function sendCustomerPromoWhatsApp(customerId) {
     return;
   }
 
+  // Soft Anti-Ban Pacing & Daily Safe Quota Check
+  if (!checkAntiBanBeforeSend(cust)) {
+    return;
+  }
+
   promoPreviewCustomerId = cust.id;
   const effLang = getCustomerEffectiveLanguage(cust);
 
-  // 1. Generate personalized message synchronously (with user updates and diamond sanitizing)
+  // 1. Generate personalized anti-ban dynamic message synchronously
   const msg = generatePersonalizedMessage(cust).replace(/\uFFFD/g, '•');
 
-  // 2. Direct WhatsApp URL
+  // 2. Direct WhatsApp URL (openUniversalWhatsApp automatically shortens the ?u= self-opt-out URL via Google Apps Script!)
   const waUrl = (typeof buildUniversalWhatsAppUrl === 'function')
     ? buildUniversalWhatsAppUrl(val.cleanPhone, msg)
     : `https://api.whatsapp.com/send?phone=${val.cleanPhone}&text=${encodeURIComponent(msg)}`;
 
-  // 3. Open WhatsApp Web / App
+  // 3. Open WhatsApp Web / App (automatically shortens ?u=... URL via TinyURL / is.gd bridge when js/data.js is loaded)
   const targetWindow = (promoComposerState.reuseWaTab !== false) ? 'pmg_whatsapp_chat_window' : '_blank';
   if (typeof openUniversalWhatsApp === 'function') {
     openUniversalWhatsApp(val.cleanPhone, msg);
@@ -1719,12 +2385,14 @@ function sendCustomerPromoWhatsApp(customerId) {
     }
   }
 
-  // 5. Update status in 0ms (targeted single row update without full table re-render)
+  // 5. Log outbound send, start randomized human cooldown, and update status in 0ms
   const campaignId = promoActiveCampaign.id;
+  recordPromoOutboundSend(cust.id, val.cleanPhone, campaignId);
   setCustomerSentStatus(campaignId, cust.id, true);
   updateSingleCustomerRowInTable(cust.id);
   renderPromoKpis();
   renderPromoChatPreview();
+  renderPromoAntiBanShieldUI();
 }
 window.sendCustomerPromoWhatsApp = sendCustomerPromoWhatsApp;
 
@@ -2389,12 +3057,14 @@ async function pushPromoBroadcastToGoogleCloud(silent = true) {
 
 async function syncPromoBroadcastWithGoogleCloud(silent = false) {
   updateSyncBadgeState('SYNCING');
+  await pullPromoOptOutsFromGoogleCloud(true).catch(() => false);
   const pulled = await pullPromoBroadcastFromGoogleCloud(true);
   const pushed = await pushPromoBroadcastToGoogleCloud(true);
+  await pushPromoOptOutsToGoogleCloud(true).catch(() => false);
   if (pulled || pushed) {
     updateSyncBadgeState('SUCCESS');
     if (!silent) {
-      showPromoToast('✅ Cloud Sync Complete: Campaign progress synced with Google Cloud!');
+      showPromoToast('✅ Cloud Sync Complete: Campaign progress & Opt-Out registry synced with Google Cloud!');
     }
     setTimeout(() => updateSyncBadgeState('IDLE'), 3000);
     return true;
@@ -2856,17 +3526,654 @@ function renderPromoFy2027GrowthStudio() {
   updateMiniMemberDayRoiUi(false);
 }
 
+// ─── ANTI-BAN PACING, OPT-OUT REGISTRY, AI VARIATIONS & SELF-OPT-OUT PORTAL ──
+const ANTI_BAN_MODES = {
+  warmup:   { label: 'Post-Ban Warm-Up (Safe)', dailyCap: 15, minSec: 40, maxSec: 65, batchEvery: 8 },
+  standard: { label: 'Standard Safe Mode',      dailyCap: 30, minSec: 30, maxSec: 50, batchEvery: 10 },
+  off:      { label: 'Manual (No Limit)',       dailyCap: 9999, minSec: 0, maxSec: 0, batchEvery: 0 }
+};
+
+function loadPromoAntiBanConfig() {
+  try {
+    const raw = localStorage.getItem(STORAGE_PROMO_ANTIBAN);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        promoAntiBanConfig = {
+          enabled: parsed.enabled !== false,
+          mode: ANTI_BAN_MODES[parsed.mode] ? parsed.mode : 'warmup',
+          optOutFooterMode: ['link', 'text', 'off'].includes(parsed.optOutFooterMode) ? parsed.optOutFooterMode : 'link',
+          aiVariations: Object.assign({ bm: [], zh: [], en: [], bilingual: [] }, parsed.aiVariations || {})
+        };
+      }
+    }
+  } catch (_) {}
+  return promoAntiBanConfig;
+}
+
+function savePromoAntiBanConfig() {
+  try {
+    localStorage.setItem(STORAGE_PROMO_ANTIBAN, JSON.stringify(promoAntiBanConfig));
+  } catch (_) {}
+}
+
+function loadPromoOptOuts() {
+  try {
+    const raw = localStorage.getItem(STORAGE_PROMO_OPTOUTS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        promoOptOutMap = parsed;
+      }
+    }
+  } catch (_) {}
+  return promoOptOutMap;
+}
+
+function savePromoOptOuts(pushCloud = true) {
+  try {
+    localStorage.setItem(STORAGE_PROMO_OPTOUTS, JSON.stringify(promoOptOutMap));
+  } catch (_) {}
+  if (pushCloud) {
+    pushPromoOptOutsToGoogleCloud(true).catch(() => {});
+    schedulePromoGoogleCloudPush();
+  }
+}
+
+function isPhoneOptedOut(rawPhone) {
+  const clean = normalizeOptOutPhone(rawPhone);
+  return Boolean(clean && promoOptOutMap && promoOptOutMap[clean]);
+}
+
+function getPhoneOptOutRecord(rawPhone) {
+  const clean = normalizeOptOutPhone(rawPhone);
+  return (clean && promoOptOutMap && promoOptOutMap[clean]) ? promoOptOutMap[clean] : null;
+}
+
+function setPhoneOptOut(rawPhone, shouldOptOut, meta = {}) {
+  const clean = normalizeOptOutPhone(rawPhone);
+  if (!clean) return false;
+  if (shouldOptOut) {
+    promoOptOutMap[clean] = {
+      phone: clean,
+      name: meta.name || '',
+      optedOutAt: meta.optedOutAt || new Date().toISOString(),
+      source: meta.source || 'staff_manual'
+    };
+  } else {
+    delete promoOptOutMap[clean];
+  }
+  savePromoOptOuts(meta.pushCloud !== false);
+  return true;
+}
+
+async function pullPromoOptOutsFromGoogleCloud(silent = true) {
+  if (!PMG_PROMO_CLOUD_URL || typeof fetch !== 'function') return false;
+  try {
+    const res = await fetch(`${PMG_PROMO_CLOUD_URL}?branch=${encodeURIComponent(PROMO_OPTOUT_CLOUD_VAULT_KEY)}`);
+    if (!res || !res.ok) return false;
+    const data = await res.json().catch(() => null);
+    const cloudObj = (data && data.success && data.schedule) ? data.schedule : null;
+    const cloudPhones = cloudObj && (cloudObj.phones || cloudObj.optOutMap);
+    if (cloudPhones && typeof cloudPhones === 'object') {
+      let added = 0;
+      Object.keys(cloudPhones).forEach(k => {
+        const clean = normalizeOptOutPhone(k);
+        if (clean && cloudPhones[k] && !promoOptOutMap[clean]) {
+          promoOptOutMap[clean] = cloudPhones[k];
+          added++;
+        }
+      });
+      if (added > 0) {
+        savePromoOptOuts(false);
+        renderPromoCustomerTable();
+        renderPromoKpis();
+        renderPromoAntiBanShieldUI();
+        if (!silent) showPromoToast(`🔕 Synced ${added} new customer opt-out(s) from Google Cloud.`);
+      }
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.warn('[PMG Promo Opt-Out Pull]', err && err.message ? err.message : err);
+    return false;
+  }
+}
+
+async function pushPromoOptOutsToGoogleCloud(silent = true) {
+  if (!PMG_PROMO_CLOUD_URL || typeof fetch !== 'function') return false;
+  try {
+    const payload = {
+      version: '1.0',
+      updatedAt: new Date().toISOString(),
+      phones: promoOptOutMap
+    };
+    const res = await fetch(PMG_PROMO_CLOUD_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        branch: PROMO_OPTOUT_CLOUD_VAULT_KEY,
+        schedule: payload,
+        updatedBy: (promoComposerState && promoComposerState.pharmacistName) || 'PMG Promo Opt-Out'
+      }),
+      redirect: 'follow'
+    });
+    return Boolean(res && res.ok);
+  } catch (err) {
+    if (!silent) console.warn('[PMG Promo Opt-Out Push]', err && err.message ? err.message : err);
+    return false;
+  }
+}
+
+function loadPromoSendLog() {
+  try {
+    const raw = localStorage.getItem(STORAGE_PROMO_SEND_LOG);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) promoSendLog = parsed;
+    }
+  } catch (_) {}
+  return promoSendLog;
+}
+
+function savePromoSendLog() {
+  try {
+    // Keep only last 14 days of send timestamps so storage stays tiny
+    const cutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
+    promoSendLog = (promoSendLog || []).filter(entry => entry && Number(entry.ts) >= cutoff);
+    localStorage.setItem(STORAGE_PROMO_SEND_LOG, JSON.stringify(promoSendLog));
+  } catch (_) {}
+}
+
+function getTodayPromoSendStats(refDate = null) {
+  const today = getPromoLocalDateStr(refDate);
+  const modeKey = (promoAntiBanConfig && ANTI_BAN_MODES[promoAntiBanConfig.mode]) ? promoAntiBanConfig.mode : 'warmup';
+  const cfg = ANTI_BAN_MODES[modeKey];
+  const todayCount = (promoSendLog || []).filter(e => e && e.date === today).length;
+  return {
+    date: today,
+    count: todayCount,
+    dailyCap: cfg.dailyCap,
+    mode: modeKey,
+    modeLabel: cfg.label,
+    remaining: Math.max(0, cfg.dailyCap - todayCount),
+    batchEvery: cfg.batchEvery
+  };
+}
+
+function getRemainingCooldownSeconds() {
+  if (!promoCooldownUntil) return 0;
+  const diff = Math.ceil((promoCooldownUntil - Date.now()) / 1000);
+  return diff > 0 ? diff : 0;
+}
+
+function startPromoCooldownTimer(seconds) {
+  if (promoCooldownTimer) {
+    clearInterval(promoCooldownTimer);
+    promoCooldownTimer = null;
+  }
+  if (!seconds || seconds <= 0) {
+    promoCooldownUntil = 0;
+    renderPromoAntiBanShieldUI();
+    return;
+  }
+  promoCooldownUntil = Date.now() + seconds * 1000;
+  renderPromoAntiBanShieldUI();
+  promoCooldownTimer = setInterval(() => {
+    const rem = getRemainingCooldownSeconds();
+    if (rem <= 0) {
+      promoCooldownUntil = 0;
+      clearInterval(promoCooldownTimer);
+      promoCooldownTimer = null;
+    }
+    renderPromoAntiBanShieldUI();
+    if (promoActiveCampaign) {
+      updateSendNextButton(promoActiveCampaign.customers || [], promoActiveCampaign.id);
+    }
+  }, 1000);
+}
+
+function checkAntiBanBeforeSend(cust) {
+  const modeKey = (promoAntiBanConfig && ANTI_BAN_MODES[promoAntiBanConfig.mode]) ? promoAntiBanConfig.mode : 'warmup';
+  if (modeKey === 'off') return true;
+
+  const stats = getTodayPromoSendStats();
+  if (stats.count >= stats.dailyCap) {
+    const ok = typeof confirm === 'function'
+      ? confirm(`🛡️ WhatsApp Anti-Ban Daily Safe Cap Reached (${stats.count} / ${stats.dailyCap} in ${stats.modeLabel})!\n\nSending more outbound promos today increases the risk of another 24-hour or 7-day WhatsApp restriction.\n\nClick Cancel to pause until tomorrow (Recommended), or OK to send to "${formatTitleCase(cust.name)}" anyway.`)
+      : true;
+    if (!ok) return false;
+  }
+
+  const remSec = getRemainingCooldownSeconds();
+  if (remSec > 0) {
+    const ok = typeof confirm === 'function'
+      ? confirm(`⏳ Human-Pacing Cooldown Active (${remSec}s left)\n\nWaiting between sends prevents WhatsApp from flagging your number for fast bulk broadcasting.\n\nClick Cancel to wait ${remSec}s (Recommended), or OK to send immediately.`)
+      : true;
+    if (!ok) return false;
+  }
+
+  return true;
+}
+
+function recordPromoOutboundSend(customerId, cleanPhone, campaignId) {
+  const today = getPromoLocalDateStr();
+  promoSendLog.push({
+    date: today,
+    ts: Date.now(),
+    customerId: customerId || '',
+    phone: cleanPhone || '',
+    campaignId: campaignId || ''
+  });
+  savePromoSendLog();
+
+  const modeKey = (promoAntiBanConfig && ANTI_BAN_MODES[promoAntiBanConfig.mode]) ? promoAntiBanConfig.mode : 'warmup';
+  const cfg = ANTI_BAN_MODES[modeKey];
+  if (cfg.maxSec > 0) {
+    const randSec = cfg.minSec + Math.floor(Math.random() * (cfg.maxSec - cfg.minSec + 1));
+    startPromoCooldownTimer(randSec);
+  }
+
+  const stats = getTodayPromoSendStats();
+  if (cfg.batchEvery > 0 && stats.count > 0 && stats.count % cfg.batchEvery === 0) {
+    showPromoToast(`☕ Batch Safety Tip: You've sent ${stats.count} promos today. Take a 10–15 min break so WhatsApp sees natural human activity!`);
+  }
+}
+
+function togglePromoDynamicAntiBan(checkbox) {
+  promoAntiBanConfig.enabled = Boolean(checkbox && checkbox.checked);
+  savePromoAntiBanConfig();
+  renderPromoChatPreview();
+  renderPromoAntiBanShieldUI();
+  showPromoToast(promoAntiBanConfig.enabled
+    ? '🛡️ Dynamic Anti-Ban Message Variations ENABLED (5 unique conversational styles + Spintax)'
+    : 'Classic fixed template mode active');
+}
+window.togglePromoDynamicAntiBan = togglePromoDynamicAntiBan;
+
+function setPromoAntiBanMode(mode) {
+  if (!ANTI_BAN_MODES[mode]) return;
+  promoAntiBanConfig.mode = mode;
+  savePromoAntiBanConfig();
+  if (mode === 'off') startPromoCooldownTimer(0);
+  renderPromoAntiBanShieldUI();
+  if (promoActiveCampaign) updateSendNextButton(promoActiveCampaign.customers || [], promoActiveCampaign.id);
+  showPromoToast(`🛡️ Pacing mode set to: ${ANTI_BAN_MODES[mode].label}`);
+}
+window.setPromoAntiBanMode = setPromoAntiBanMode;
+
+function setPromoOptOutFooterMode(mode) {
+  if (!['link', 'text', 'off'].includes(mode)) return;
+  promoAntiBanConfig.optOutFooterMode = mode;
+  savePromoAntiBanConfig();
+  if (mode === 'link') {
+    prewarmUpcomingOptOutShortUrls(6);
+  }
+  renderPromoChatPreview();
+  renderPromoAntiBanShieldUI();
+}
+window.setPromoOptOutFooterMode = setPromoOptOutFooterMode;
+
+function toggleCustomerOptOutFromRow(customerId) {
+  if (!promoActiveCampaign) return;
+  const cust = (promoActiveCampaign.customers || []).find(c => c.id === customerId);
+  if (!cust) return;
+  const currentlyOut = isPhoneOptedOut(cust.phone);
+  if (currentlyOut) {
+    if (typeof confirm === 'function' && !confirm(`Re-enable promo messages for "${formatTitleCase(cust.name)}" (${cust.phone})?`)) {
+      return;
+    }
+    setPhoneOptOut(cust.phone, false);
+    showPromoToast(`🔔 Re-enabled promos for ${formatTitleCase(cust.name)}`);
+  } else {
+    setPhoneOptOut(cust.phone, true, { name: cust.name, source: 'staff_manual' });
+    const effLang = getCustomerEffectiveLanguage(cust);
+    const politeReply = effLang === 'zh'
+      ? `好的 ${formatTitleCase(cust.name)}，我们已经帮您取消促销通知了，之后不会再打扰您。平时有任何健康或用药问题随时欢迎联系我们，祝您健康顺心！`
+      : `Baik ${formatTitleCase(cust.name)}, kami telah mengeluarkan nombor anda daripada senarai info promosi kami. Jika perlukan nasihat farmasis bila-bila masa, boleh hubungi kami ya. Terima kasih!`;
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(politeReply).catch(() => {});
+    }
+    showPromoToast(`🔕 ${formatTitleCase(cust.name)} opted out across ALL campaigns & PCs! Polite confirmation reply copied to clipboard.`);
+  }
+  renderPromoCustomerTable();
+  renderPromoKpis();
+  renderPromoAntiBanShieldUI();
+}
+window.toggleCustomerOptOutFromRow = toggleCustomerOptOutFromRow;
+
+function renderPromoAntiBanShieldUI() {
+  if (typeof document === 'undefined') return;
+  const stats = getTodayPromoSendStats();
+  const remSec = getRemainingCooldownSeconds();
+  const optOutCount = Object.keys(promoOptOutMap || {}).length;
+
+  const dynCb = document.getElementById('promoAntiBanDynamicToggle');
+  if (dynCb) dynCb.checked = Boolean(promoAntiBanConfig.enabled);
+
+  const modeSel = document.getElementById('promoAntiBanModeSelect');
+  if (modeSel && modeSel.value !== promoAntiBanConfig.mode) modeSel.value = promoAntiBanConfig.mode;
+
+  const footerSel = document.getElementById('promoOptOutFooterSelect');
+  if (footerSel && footerSel.value !== promoAntiBanConfig.optOutFooterMode) footerSel.value = promoAntiBanConfig.optOutFooterMode;
+
+  const quotaBadge = document.getElementById('promoAntiBanQuotaBadge');
+  if (quotaBadge) {
+    if (stats.mode === 'off') {
+      quotaBadge.textContent = `Today: ${stats.count} sent (Manual Mode)`;
+      quotaBadge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-300';
+    } else if (stats.count >= stats.dailyCap) {
+      quotaBadge.textContent = `⚠️ Today: ${stats.count} / ${stats.dailyCap} Cap Reached`;
+      quotaBadge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300';
+    } else if (stats.count >= Math.floor(stats.dailyCap * 0.75)) {
+      quotaBadge.textContent = `🟡 Today: ${stats.count} / ${stats.dailyCap} Safe Quota`;
+      quotaBadge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300';
+    } else {
+      quotaBadge.textContent = `🟢 Today: ${stats.count} / ${stats.dailyCap} Safe Quota`;
+      quotaBadge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300';
+    }
+  }
+
+  const cooldownBadge = document.getElementById('promoAntiBanCooldownBadge');
+  if (cooldownBadge) {
+    if (remSec > 0) {
+      cooldownBadge.textContent = `⏳ Cooldown: ${remSec}s`;
+      cooldownBadge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 animate-pulse';
+      cooldownBadge.classList.remove('hidden');
+    } else {
+      cooldownBadge.textContent = '✅ Ready to Send';
+      cooldownBadge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200';
+      cooldownBadge.classList.remove('hidden');
+    }
+  }
+
+  const optOutCountEl = document.getElementById('promoOptOutCountBadge');
+  if (optOutCountEl) optOutCountEl.textContent = String(optOutCount);
+
+  const aiBadge = document.getElementById('promoAiVariationsBadge');
+  if (aiBadge) {
+    const bmN = (promoAntiBanConfig.aiVariations && promoAntiBanConfig.aiVariations.bm && promoAntiBanConfig.aiVariations.bm.length) || 0;
+    const zhN = (promoAntiBanConfig.aiVariations && promoAntiBanConfig.aiVariations.zh && promoAntiBanConfig.aiVariations.zh.length) || 0;
+    if (bmN > 0 || zhN > 0) {
+      aiBadge.textContent = `✨ AI Pack Active (${bmN} BM · ${zhN} 华语)`;
+      aiBadge.classList.remove('hidden');
+    } else {
+      aiBadge.classList.add('hidden');
+    }
+  }
+}
+
+function openPromoOptOutManagerModal() {
+  const modal = document.getElementById('promoOptOutManagerModal');
+  if (!modal) return;
+  renderPromoOptOutManagerList();
+  modal.classList.remove('hidden');
+}
+window.openPromoOptOutManagerModal = openPromoOptOutManagerModal;
+
+function closePromoOptOutManagerModal() {
+  const modal = document.getElementById('promoOptOutManagerModal');
+  if (modal) modal.classList.add('hidden');
+}
+window.closePromoOptOutManagerModal = closePromoOptOutManagerModal;
+
+function renderPromoOptOutManagerList() {
+  const listEl = document.getElementById('promoOptOutManagerList');
+  if (!listEl) return;
+  const entries = Object.values(promoOptOutMap || {}).sort((a, b) => String(b.optedOutAt || '').localeCompare(String(a.optedOutAt || '')));
+  if (entries.length === 0) {
+    listEl.innerHTML = '<p class="text-xs text-gray-400 italic py-4 text-center">No opted-out numbers yet. When any customer taps their 1-click Opt-Out link, they appear here automatically.</p>';
+    return;
+  }
+  listEl.innerHTML = entries.map(rec => {
+    const safePhone = escHtml(rec.phone);
+    const srcBadge = rec.source === 'customer_self_link'
+      ? '<span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[10px] font-bold">Auto Self-Link</span>'
+      : '<span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold">Manual STOP</span>';
+    const dt = rec.optedOutAt ? new Date(rec.optedOutAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+    return `
+      <div class="flex items-center justify-between gap-2 p-2.5 bg-rose-50/50 border border-rose-200 rounded-xl text-xs">
+        <div class="min-w-0">
+          <div class="font-bold text-gray-900 font-mono flex items-center gap-1.5 flex-wrap">
+            <span>${safePhone}</span>
+            ${rec.name ? `<span class="font-sans text-gray-600 font-semibold">(${escHtml(formatTitleCase(rec.name))})</span>` : ''}
+            ${srcBadge}
+          </div>
+          <div class="text-[10px] text-gray-400">Opted out: ${dt || 'Recorded'}</div>
+        </div>
+        <button type="button" onclick="removePhoneFromOptOutModal('${safePhone}')"
+          class="px-2.5 py-1 rounded-lg bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 text-[11px] font-bold cursor-pointer shrink-0">
+          Re-enable
+        </button>
+      </div>`;
+  }).join('');
+}
+
+function addManualPhoneToOptOutModal() {
+  const inp = document.getElementById('promoOptOutManualPhoneInput');
+  const nameInp = document.getElementById('promoOptOutManualNameInput');
+  if (!inp) return;
+  const raw = (inp.value || '').trim();
+  const clean = normalizeOptOutPhone(raw);
+  if (!clean || clean.length < 9) {
+    alert('Please enter a valid Malaysian mobile number (e.g. 012-8889999 or 60128889999).');
+    return;
+  }
+  setPhoneOptOut(clean, true, { name: (nameInp && nameInp.value.trim()) || '', source: 'staff_manual' });
+  inp.value = '';
+  if (nameInp) nameInp.value = '';
+  renderPromoOptOutManagerList();
+  renderPromoCustomerTable();
+  renderPromoKpis();
+  renderPromoAntiBanShieldUI();
+  showPromoToast(`🔕 ${clean} added to Do-Not-Send Opt-Out list (synced to Cloud).`);
+}
+window.addManualPhoneToOptOutModal = addManualPhoneToOptOutModal;
+
+function removePhoneFromOptOutModal(phone) {
+  setPhoneOptOut(phone, false);
+  renderPromoOptOutManagerList();
+  renderPromoCustomerTable();
+  renderPromoKpis();
+  renderPromoAntiBanShieldUI();
+  showPromoToast(`🔔 Re-enabled ${phone} for future promos.`);
+}
+window.removePhoneFromOptOutModal = removePhoneFromOptOutModal;
+
+// ─── OPTIONAL 1-CLICK AI NATURAL VARIATIONS (GEMINI 3.5 FLASH LITE) ──────────
+async function generateAiAntiBanVariations() {
+  const key = (typeof window !== 'undefined' && typeof window.getGlobalGeminiKey === 'function')
+    ? window.getGlobalGeminiKey()
+    : (localStorage.getItem('pmg_gemini_key') || '').trim();
+  if (!key) {
+    alert('Please enter your Gemini API Key in the main PMG Hub header first to generate AI variations (note: 5 built-in Anti-Ban variations already work automatically without an API key!).');
+    return;
+  }
+  if (!promoActiveCampaign) return;
+  const btn = document.getElementById('promoGenerateAiVarBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating 6 AI Variations…';
+  }
+  const product = promoActiveCampaign.productName || 'Product';
+  const prompt = `You are a friendly community pharmacist at PMG Pharmacy Kota Sentosa, Sarawak.
+Rewrite the following promotional offer into 6 genuinely DIFFERENT, natural, warm 1-to-1 WhatsApp messages in Bahasa Malaysia (bm) AND 6 in Mandarin Chinese (zh) so WhatsApp does not flag them as repetitive mass broadcasts.
+Rules:
+- Keep placeholders EXACTLY intact: {name}, {product}, {offer_details}, {promo_period}, {branch}, {contact}
+- Use clean blank lines between paragraphs (never a compact wall of text)
+- Avoid spammy ALL-CAPS buzzwords; sound like a caring local pharmacist checking in
+- End each with a natural 2-way question inviting a reply
+- Product: ${product}
+- Offer BM: ${promoComposerState.offerDetailsBm || promoComposerState.offerDetails || ''}
+- Offer ZH: ${promoComposerState.offerDetailsZh || promoComposerState.offerDetails || ''}
+Return STRICT JSON only: {"bm":["...","...","...","...","...","..."],"zh":["...","...","...","...","...","..."]}`;
+
+  const models = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
+  let parsed = null;
+  for (const model of models) {
+    try {
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.85, responseMimeType: 'application/json' }
+        })
+      });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const cleanJson = rawText.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+      const candidate = JSON.parse(cleanJson);
+      if (candidate && Array.isArray(candidate.bm) && candidate.bm.length >= 3) {
+        parsed = candidate;
+        break;
+      }
+    } catch (_) {}
+  }
+
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> <span>✨ AI 6× Variations</span>';
+  }
+
+  if (parsed) {
+    promoAntiBanConfig.aiVariations = {
+      ...promoAntiBanConfig.aiVariations,
+      bm: parsed.bm.filter(s => typeof s === 'string' && s.includes('{name}')),
+      zh: Array.isArray(parsed.zh) ? parsed.zh.filter(s => typeof s === 'string' && s.includes('{name}')) : []
+    };
+    promoAntiBanConfig.enabled = true;
+    savePromoAntiBanConfig();
+    renderPromoAntiBanShieldUI();
+    renderPromoChatPreview();
+    showPromoToast(`✨ Generated ${promoAntiBanConfig.aiVariations.bm.length} BM + ${promoAntiBanConfig.aiVariations.zh.length} 华语 unique AI pharmacist variations!`);
+  } else {
+    showPromoToast('Could not reach Gemini AI right now — 5 built-in Anti-Ban variations remain active.');
+  }
+}
+window.generateAiAntiBanVariations = generateAiAntiBanVariations;
+
+function clearAiAntiBanVariations() {
+  promoAntiBanConfig.aiVariations = { bm: [], zh: [], en: [], bilingual: [] };
+  savePromoAntiBanConfig();
+  renderPromoAntiBanShieldUI();
+  renderPromoChatPreview();
+  showPromoToast('Switched back to built-in 5× pharmacist anti-ban variations.');
+}
+window.clearAiAntiBanVariations = clearAiAntiBanVariations;
+
+// ─── PUBLIC TRILINGUAL CUSTOMER SELF-OPT-OUT PORTAL (?u=<token>) ─────────────
+let _activeSelfOptOutPhone = '';
+
+function initCustomerOptOutPortal(token) {
+  const decodedPhone = decodeOptOutToken(token);
+  _activeSelfOptOutPhone = decodedPhone;
+
+  if (typeof document !== 'undefined') {
+    const staffApp = document.getElementById('promoStaffApp');
+    const optOutView = document.getElementById('promoCustomerOptOutView');
+    if (staffApp) staffApp.classList.add('hidden');
+    if (optOutView) optOutView.classList.remove('hidden');
+
+    const maskedEl = document.getElementById('optOutMaskedPhone');
+    if (maskedEl) {
+      maskedEl.textContent = decodedPhone ? maskPhoneDisplay(decodedPhone) : 'Invalid link';
+    }
+    const confirmBtn = document.getElementById('btnConfirmSelfOptOut');
+    if (confirmBtn && !decodedPhone) {
+      confirmBtn.disabled = true;
+      confirmBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+  }
+  return decodedPhone;
+}
+window.initCustomerOptOutPortal = initCustomerOptOutPortal;
+
+async function confirmCustomerSelfOptOut(explicitPhone = null) {
+  const cleanPhone = normalizeOptOutPhone(explicitPhone || _activeSelfOptOutPhone);
+  if (!cleanPhone) return { ok: false, error: 'Invalid phone token' };
+
+  const btn = typeof document !== 'undefined' ? document.getElementById('btnConfirmSelfOptOut') : null;
+  const statusBox = typeof document !== 'undefined' ? document.getElementById('optOutPortalStatus') : null;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Updating preferences…';
+  }
+
+  // Pull latest cloud opt-out vault first so we never overwrite other customers' opt-outs
+  loadPromoOptOuts();
+  await pullPromoOptOutsFromGoogleCloud(true).catch(() => {});
+
+  setPhoneOptOut(cleanPhone, true, { source: 'customer_self_link', pushCloud: false });
+  const pushed = await pushPromoOptOutsToGoogleCloud(true).catch(() => false);
+
+  if (typeof document !== 'undefined') {
+    const confirmWrap = document.getElementById('optOutConfirmStep');
+    const doneWrap = document.getElementById('optOutDoneStep');
+    if (confirmWrap) confirmWrap.classList.add('hidden');
+    if (doneWrap) doneWrap.classList.remove('hidden');
+    if (statusBox) {
+      statusBox.textContent = pushed
+        ? 'Synced automatically with PMG Pharmacy Kota Sentosa.'
+        : 'Saved locally — will sync with PMG Pharmacy.';
+    }
+  }
+  return { ok: true, phone: cleanPhone, cloudSynced: pushed };
+}
+window.confirmCustomerSelfOptOut = confirmCustomerSelfOptOut;
+
+async function undoCustomerSelfOptOut(explicitPhone = null) {
+  const cleanPhone = normalizeOptOutPhone(explicitPhone || _activeSelfOptOutPhone);
+  if (!cleanPhone) return { ok: false };
+
+  await pullPromoOptOutsFromGoogleCloud(true).catch(() => {});
+  setPhoneOptOut(cleanPhone, false, { pushCloud: false });
+  const pushed = await pushPromoOptOutsToGoogleCloud(true).catch(() => false);
+
+  if (typeof document !== 'undefined') {
+    const confirmWrap = document.getElementById('optOutConfirmStep');
+    const doneWrap = document.getElementById('optOutDoneStep');
+    if (doneWrap) doneWrap.classList.add('hidden');
+    if (confirmWrap) confirmWrap.classList.remove('hidden');
+    const btn = document.getElementById('btnConfirmSelfOptOut');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-bell-slash mr-1.5"></i> Confirm Unsubscribe / 确认退订 / Sahkan Berhenti';
+    }
+    const statusBox = document.getElementById('optOutPortalStatus');
+    if (statusBox) statusBox.textContent = '✅ Re-subscribed! You will continue receiving PMG member offers.';
+  }
+  return { ok: true, phone: cleanPhone, cloudSynced: pushed };
+}
+window.undoCustomerSelfOptOut = undoCustomerSelfOptOut;
+
 // ─── EXPOSE GLOBALS FOR WINDOW & TESTS ─────────────────────────────────────────
 if (typeof window !== 'undefined') {
   window.NUTRI_ALPHA_PRESET_CAMPAIGN = NUTRI_ALPHA_PRESET_CAMPAIGN;
   window.SHEEP_PLACENTA_PRESET_CAMPAIGN = SHEEP_PLACENTA_PRESET_CAMPAIGN;
   window.FLEXSURE_GOLD_PRESET_CAMPAIGN = FLEXSURE_GOLD_PRESET_CAMPAIGN;
   window.PROMO_DEFAULT_TEMPLATES = PROMO_DEFAULT_TEMPLATES;
+  window.PROMO_DYNAMIC_STYLES = PROMO_DYNAMIC_STYLES;
   window.formatTitleCase = formatTitleCase;
   window.cleanPhoneForWhatsApp = cleanPhoneForWhatsApp;
   window.validatePhoneNumber = validatePhoneNumber;
   window.detectCustomerLanguagePreference = detectCustomerLanguagePreference;
   window.translateEnglishPromo = translateEnglishPromo;
+  window.resolvePromoSpintax = resolvePromoSpintax;
+  window.encodeOptOutToken = encodeOptOutToken;
+  window.decodeOptOutToken = decodeOptOutToken;
+  window.maskPhoneDisplay = maskPhoneDisplay;
+  window.buildCustomerOptOutUrl = buildCustomerOptOutUrl;
+  window.getCustomerOptOutShortUrl = getCustomerOptOutShortUrl;
+  window.isPhoneOptedOut = isPhoneOptedOut;
+  window.setPhoneOptOut = setPhoneOptOut;
+  window.pullPromoOptOutsFromGoogleCloud = pullPromoOptOutsFromGoogleCloud;
+  window.pushPromoOptOutsToGoogleCloud = pushPromoOptOutsToGoogleCloud;
+  window.getTodayPromoSendStats = getTodayPromoSendStats;
+  window.getRemainingCooldownSeconds = getRemainingCooldownSeconds;
+  window.recordPromoOutboundSend = recordPromoOutboundSend;
+  window.checkAntiBanBeforeSend = checkAntiBanBeforeSend;
   window.generatePersonalizedMessage = generatePersonalizedMessage;
   window.getCustomerSentStatus = getCustomerSentStatus;
   window.setCustomerSentStatus = setCustomerSentStatus;
@@ -2888,6 +4195,16 @@ if (typeof window !== 'undefined') {
   Object.defineProperty(window, 'promoComposerState', {
     get: () => promoComposerState,
     set: (v) => { promoComposerState = v; },
+    configurable: true
+  });
+  Object.defineProperty(window, 'promoAntiBanConfig', {
+    get: () => promoAntiBanConfig,
+    set: (v) => { promoAntiBanConfig = v; },
+    configurable: true
+  });
+  Object.defineProperty(window, 'promoOptOutMap', {
+    get: () => promoOptOutMap,
+    set: (v) => { promoOptOutMap = v; },
     configurable: true
   });
 }
