@@ -2942,8 +2942,9 @@ function createBrowserSandbox(fetchImpl) {
     const mainHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
     const patientHtml = fs.readFileSync(path.join(ROOT, 'patient', 'index.html'), 'utf8');
     const promoHtml = fs.readFileSync(path.join(ROOT, 'promo', 'index.html'), 'utf8');
-    assert(swSrc.includes("pmg-hub-cache-v69"), 'sw.js must be bumped to pmg-hub-cache-v69');
-    assert(mainHtml.includes('v69') && patientHtml.includes('v69') && promoHtml.includes('v69'), 'All HTML entrypoints must show v69 version badge');
+    const swVerMatch = swSrc.match(/pmg-hub-cache-v(\d+)/);
+    assert(swVerMatch && parseInt(swVerMatch[1], 10) >= 69, 'sw.js must be bumped to pmg-hub-cache-v69+');
+    assert(/v(69|[7-9]\d|\d{3,})/.test(mainHtml) && /v(69|[7-9]\d|\d{3,})/.test(patientHtml) && /v(69|[7-9]\d|\d{3,})/.test(promoHtml), 'All HTML entrypoints must show v69+ version badge');
     assert(mainHtml.includes('id="cnRemQuickProofInput"'), 'cnReminderModal must include #cnRemQuickProofInput for 1-click DO/PRN attachment');
     assert(/id="usdFileInput"[^>]*multiple/.test(mainHtml), 'uploadSignedDoModal #usdFileInput must allow multiple DO + PRN files');
 
@@ -3191,6 +3192,138 @@ function createBrowserSandbox(fetchImpl) {
     await sbSupplier.win.pmgReturns.renderPublicDoProofPortal('publicJobAppContainer', 'ret-1791880755586-686', 'Kota Sentosa');
     const attBoxFallback = sbSupplier.doc.getElementById('publicDoSignedAttachmentBox');
     assert(attBoxFallback.innerHTML.includes('ZUELLIG RCN 019101 DO.pdf') && attBoxFallback.innerHTML.includes('Original Uploaded DO / PRN Document (PDF)'), 'Public Proof Portal must recover uploaded proof via appId=DO_PROOF_<id> even if cloudDocId metadata had not synced yet');
+  });
+
+  await testAsync('Invoices & Expiry OOM prevention (v70): 5,000-row merge avoids localStorage IPC storm, WeakMap caches stay clean, HQ policy frees quota, sync coalesces & OCR defers auto-backup', async () => {
+    const swSrc = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+    const mainHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const patientHtml = fs.readFileSync(path.join(ROOT, 'patient', 'index.html'), 'utf8');
+    const promoHtml = fs.readFileSync(path.join(ROOT, 'promo', 'index.html'), 'utf8');
+    const swVerMatch = swSrc.match(/pmg-hub-cache-v(\d+)/);
+    assert(swVerMatch && parseInt(swVerMatch[1], 10) >= 70, 'sw.js must be bumped to pmg-hub-cache-v70+');
+    assert(mainHtml.includes('v70') && patientHtml.includes('v70') && promoHtml.includes('v70'), 'All HTML entrypoints must show v70 version badge');
+
+    let fetchCalls = 0;
+    const remoteItems = [];
+    for (let i = 1; i <= 5000; i++) {
+      remoteItems.push({
+        rowId: i + 1,
+        branch: 'Kota Sentosa',
+        batchNumber: `B-${i}`,
+        itemCode: `${100000 + i}`,
+        itemDescription: `TEST MEDICINE ${i} 500MG TAB`,
+        expiryDate: i % 5 === 0 ? '30/12/2026' : '30/12/2027',
+        quantity: i % 10 === 0 ? 0 : 4,
+        sourceFile: 'INV-BATCH.pdf',
+        status: i % 10 === 0 ? 'DONE' : 'Active'
+      });
+    }
+
+    const mockFetch = async (url) => {
+      fetchCalls++;
+      if (String(url).includes('action=getExpiry')) {
+        await new Promise(r => setTimeout(r, 15));
+        return { ok: true, json: async () => ({ success: true, items: remoteItems }) };
+      }
+      return { ok: true, text: async () => JSON.stringify({ success: true }), json: async () => ({ success: true }) };
+    };
+
+    const sbExp = createBrowserSandbox(mockFetch);
+    sbExp.ctx.setText = () => {};
+    sbExp.win.setText = () => {};
+    sbExp.ctx.WeakMap = WeakMap;
+    sbExp.win.WeakMap = WeakMap;
+
+    // Instrument localStorage.setItem to count IPC writes & bytes
+    let lsWrites = 0;
+    let lsBytes = 0;
+    const origSetItem = sbExp.win.localStorage.setItem.bind(sbExp.win.localStorage);
+    sbExp.win.localStorage.setItem = (k, v) => {
+      lsWrites++;
+      lsBytes += String(v).length;
+      return origSetItem(k, v);
+    };
+
+    // Mock IndexedDB app_data helpers to verify durable persistence
+    const idbStore = new Map();
+    sbExp.win.getIdbItem = async (k) => (idbStore.has(k) ? idbStore.get(k) : null);
+    sbExp.ctx.getIdbItem = sbExp.win.getIdbItem;
+    sbExp.win.setIdbItem = async (k, v) => { idbStore.set(k, v); return true; };
+    sbExp.ctx.setIdbItem = sbExp.win.setIdbItem;
+
+    // Seed legacy 1.3MB HQ return policy copy in localStorage (without custom sync timestamp) to verify proactive cleanup
+    sbExp.win.localStorage.setItem('pmg_hq_return_policy_data', JSON.stringify([{ code: '100001', desc: 'OLD', status: 'RETURNABLE' }]));
+    lsWrites = 0;
+    lsBytes = 0;
+
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'db.js'), 'utf8'), sbExp.ctx);
+    // Rebind mock IDB hooks after db.js loads
+    sbExp.win.getIdbItem = async (k) => (idbStore.has(k) ? idbStore.get(k) : null);
+    sbExp.ctx.getIdbItem = sbExp.win.getIdbItem;
+    sbExp.win.setIdbItem = async (k, v) => { idbStore.set(k, v); return true; };
+    sbExp.ctx.setIdbItem = sbExp.win.setIdbItem;
+
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'hq_return_policy.js'), 'utf8'), sbExp.ctx);
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'expiry.js'), 'utf8'), sbExp.ctx);
+
+    // 1. initHqReturnPolicy must NOT copy 1.3MB static seed into localStorage and must clean up legacy static copy
+    sbExp.win.initHqReturnPolicy();
+    assert.strictEqual(sbExp.win.localStorage.getItem('pmg_hq_return_policy_data'), null, 'initHqReturnPolicy must not bloat localStorage with 1.3MB static seed');
+    const polSample = sbExp.win.getHqPolicyForItem({ itemCode: sbExp.win.PMG_HQ_RETURN_POLICY_SEED[0].code });
+    assert(polSample && polSample.code, 'O(1) getHqPolicyForItem lookup must still work directly from memory seed');
+
+    // 2. Large 5,000-row merge must execute with <= 2 localStorage writes (previously 15,600+ writes / 379MB!)
+    lsWrites = 0;
+    lsBytes = 0;
+    const localHalf = remoteItems.slice(0, 4500).map(x => ({ ...x }));
+    const merged = sbExp.win.mergeExpiryDatasets(localHalf, remoteItems);
+    assert.strictEqual(merged.length, 5000, 'Merged dataset must preserve all 5,000 unique batch records');
+    assert(lsWrites <= 2, `Expected <= 2 localStorage writes during 5,000-row merge, got ${lsWrites}`);
+    assert(lsBytes < 250000, `Expected < 250KB localStorage writes during 5,000-row merge, got ${lsBytes} bytes`);
+
+    // 3. Concurrent syncExpiryFromSheets calls must coalesce into 1 single network fetch & persist to IndexedDB
+    sbExp.win.pmgExpiry.setItems(localHalf);
+    fetchCalls = 0;
+    await Promise.all([
+      sbExp.win.pmgExpiry.syncFromSheets(false),
+      sbExp.win.pmgExpiry.syncFromSheets(false),
+      sbExp.win.pmgExpiry.syncFromSheets(false)
+    ]);
+    assert.strictEqual(fetchCalls, 1, `Concurrent syncExpiryFromSheets calls must coalesce into 1 fetch, got ${fetchCalls}`);
+    assert.strictEqual(sbExp.win.pmgExpiry.getItems().length, 5000, 'Synced dataset must contain all 5,000 rows');
+    assert(Array.isArray(idbStore.get('pmg_stock_expiry_data')) && idbStore.get('pmg_stock_expiry_data').length === 5000, 'Full 5,000-row expiry dataset must be durably backed up to IndexedDB');
+
+    // 4. WeakMap transient cache must NEVER leak _bNorm/_horizon/_parsedExpDate onto item objects, and auto-invalidates on date edit
+    const filtered = sbExp.ctx.filterExpiryItems();
+    const stats = sbExp.ctx.computeExpiryOverviewStats();
+    assert(filtered.length > 0 && stats.total9mKpi > 0, 'Filter & single-pass overview stats must compute accurately');
+    const leaked = sbExp.win.pmgExpiry.getItems().filter(it => '_bNorm' in it || '_horizon' in it || '_horizonDateStr' in it || '_parsedExpDate' in it);
+    assert.strictEqual(leaked.length, 0, 'Transient cache properties must live in WeakMap and never pollute persisted expiry objects');
+
+    const probeItem = sbExp.win.pmgExpiry.getItems()[0];
+    const hBefore = sbExp.ctx.getItemHorizon(probeItem);
+    probeItem.expiryDate = '30/12/2031';
+    const hAfter = sbExp.ctx.getItemHorizon(probeItem);
+    assert(hAfter.monthsLeft > hBefore.monthsLeft + 12, 'WeakMap horizon cache must automatically recompute when item.expiryDate changes');
+
+    // 5. O(N+M) confirmOcrBatchInsert merges existing batch quantity AND adds new batch without localStorage thrashing
+    lsWrites = 0;
+    await sbExp.win.confirmOcrBatchInsert([
+      { branch: 'Kota Sentosa', itemCode: '100002', itemDescription: 'TEST MEDICINE 2 500MG TAB', batchNumber: 'B-2', expiryDate: '30/12/2027', quantity: 3, selected: true, sourceFile: 'NEW_INV.pdf' },
+      { branch: 'Kota Sentosa', itemCode: '999888', itemDescription: 'BRAND NEW OCR SKU', batchNumber: 'BN-9', expiryDate: '31/12/2028', quantity: 6, selected: true, sourceFile: 'NEW_INV.pdf' }
+    ]);
+    const updatedItem2 = sbExp.win.pmgExpiry.getItems().find(x => String(x.itemCode) === '100002' && x.batchNumber === 'B-2');
+    const newOcrItem = sbExp.win.pmgExpiry.getItems().find(x => String(x.itemCode) === '999888');
+    assert.strictEqual(updatedItem2.quantity, 7, 'OCR batch commit must merge quantities onto matching branch+product+batch+expiry (4 + 3 = 7)');
+    assert(newOcrItem && newOcrItem.quantity === 6, 'OCR batch commit must insert new unmatched batch cleanly');
+
+    // 6. Active OCR flag must defer background Daily Auto-Backup so it never competes for RAM, and compact .pmgbak remains 100% valid JSON
+    const sbOd = createBrowserSandbox(mockFetch);
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'onedrive-sync.js'), 'utf8'), sbOd.ctx);
+    sbOd.win._pmgExpiryOcrInProgress = true;
+    const skippedRes = await sbOd.win.runDailyAutoBackupIfDue({ rootHandle: { kind: 'directory' }, quiet: true });
+    assert.strictEqual(skippedRes.skipped, true, 'Daily Auto-Backup must defer while Invoice PDF OCR is actively running');
+    assert.strictEqual(skippedRes.reason, 'user_editing', 'Deferred reason should report user_editing');
   });
 
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);

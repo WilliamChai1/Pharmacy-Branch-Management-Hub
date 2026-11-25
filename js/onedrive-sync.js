@@ -4194,7 +4194,7 @@
     bundle.binaryDocsStoredInPatientReportsFolder = !embedBinaryDocs;
     const todayStr = getLocalTodayIsoDate();
     const filename = `PMG_FULL_SYSTEM_VAULT_KS01_${devTag}_${todayStr}.pmgbak`;
-    const jsonStr = JSON.stringify(bundle, null, 2);
+    const jsonStr = JSON.stringify(bundle);
     const blob = new Blob([jsonStr], { type: 'application/json' });
 
     // 4. Write directly to OneDrive folder (per-PC isolated + anti-clobber shared master + KOTA SENTOSA/Daily_Auto_Backups/)
@@ -4531,7 +4531,7 @@
     if (!rootHandle || !bundle) return { wroteDeviceLatest: false, wroteSharedLatest: false, preservedExistingPatients: false };
     const tag = sanitizeDeviceTag(deviceTag || getDeviceBackupTag());
     const taggedBundle = Object.assign({}, bundle, { deviceTag: tag });
-    const taggedJson = JSON.stringify(taggedBundle, null, 2);
+    let taggedJson = JSON.stringify(taggedBundle);
 
     // 1. Always write device-isolated latest snapshot (PC1 and PC2 never overwrite each other)
     const devFileName = `PMG_FULL_SYSTEM_VAULT_LATEST_${tag}.pmgbak`;
@@ -4547,45 +4547,48 @@
     let preservedExistingPatients = false;
     const currentPatientCount = Array.isArray(taggedBundle.patients) ? taggedBundle.patients.length : (taggedBundle.patientCount || 0);
 
-    try {
-      const existingFh = await rootHandle.getFileHandle('PMG_FULL_SYSTEM_VAULT_LATEST.pmgbak', { create: false });
-      const existingFile = await existingFh.getFile();
-      const existingText = await existingFile.text();
-      if (existingText && existingText.trim()) {
-        const existingObj = JSON.parse(existingText);
-        const existingPatientCount = Array.isArray(existingObj.patients) ? existingObj.patients.length : (existingObj.patientCount || 0);
-        if (currentPatientCount === 0 && existingPatientCount > 0) {
-          preservedExistingPatients = true;
-          const mergedLs = Object.assign({}, taggedBundle.localStorageDump || {});
-          if (existingObj.localStorageDump && existingObj.localStorageDump[PATIENTS_STORAGE_KEY] && !mergedLs[PATIENTS_STORAGE_KEY]) {
-            mergedLs[PATIENTS_STORAGE_KEY] = existingObj.localStorageDump[PATIENTS_STORAGE_KEY];
-          }
-          const mergedIdb = Object.assign({}, taggedBundle.indexedDbDump || {});
-          if (existingObj.indexedDbDump && existingObj.indexedDbDump.healthAppData) {
-            mergedIdb.healthAppData = Object.assign({}, existingObj.indexedDbDump.healthAppData, mergedIdb.healthAppData || {});
-            if (Array.isArray(existingObj.indexedDbDump.healthAppData[PATIENTS_STORAGE_KEY]) && existingObj.indexedDbDump.healthAppData[PATIENTS_STORAGE_KEY].length > 0) {
-              mergedIdb.healthAppData[PATIENTS_STORAGE_KEY] = existingObj.indexedDbDump.healthAppData[PATIENTS_STORAGE_KEY];
+    if (currentPatientCount === 0) {
+      try {
+        const existingFh = await rootHandle.getFileHandle('PMG_FULL_SYSTEM_VAULT_LATEST.pmgbak', { create: false });
+        const existingFile = await existingFh.getFile();
+        const existingText = await existingFile.text();
+        if (existingText && existingText.trim()) {
+          const existingObj = JSON.parse(existingText);
+          const existingPatientCount = Array.isArray(existingObj.patients) ? existingObj.patients.length : (existingObj.patientCount || 0);
+          if (existingPatientCount > 0) {
+            preservedExistingPatients = true;
+            const mergedLs = Object.assign({}, taggedBundle.localStorageDump || {});
+            if (existingObj.localStorageDump && existingObj.localStorageDump[PATIENTS_STORAGE_KEY] && !mergedLs[PATIENTS_STORAGE_KEY]) {
+              mergedLs[PATIENTS_STORAGE_KEY] = existingObj.localStorageDump[PATIENTS_STORAGE_KEY];
             }
+            const mergedIdb = Object.assign({}, taggedBundle.indexedDbDump || {});
+            if (existingObj.indexedDbDump && existingObj.indexedDbDump.healthAppData) {
+              mergedIdb.healthAppData = Object.assign({}, existingObj.indexedDbDump.healthAppData, mergedIdb.healthAppData || {});
+              if (Array.isArray(existingObj.indexedDbDump.healthAppData[PATIENTS_STORAGE_KEY]) && existingObj.indexedDbDump.healthAppData[PATIENTS_STORAGE_KEY].length > 0) {
+                mergedIdb.healthAppData[PATIENTS_STORAGE_KEY] = existingObj.indexedDbDump.healthAppData[PATIENTS_STORAGE_KEY];
+              }
+            }
+            sharedBundleToWrite = Object.assign({}, taggedBundle, {
+              patientCount: existingPatientCount,
+              patients: existingObj.patients,
+              docCount: existingObj.docCount || (Array.isArray(existingObj.documents) ? existingObj.documents.length : 0),
+              documents: Array.isArray(existingObj.documents) && existingObj.documents.length > 0 ? existingObj.documents : (taggedBundle.documents || []),
+              localStorageDump: mergedLs,
+              indexedDbDump: mergedIdb,
+              preservedPatientsFromTag: existingObj.deviceTag || 'PC2-PatientCare'
+            });
           }
-          sharedBundleToWrite = Object.assign({}, taggedBundle, {
-            patientCount: existingPatientCount,
-            patients: existingObj.patients,
-            docCount: existingObj.docCount || (Array.isArray(existingObj.documents) ? existingObj.documents.length : 0),
-            documents: Array.isArray(existingObj.documents) && existingObj.documents.length > 0 ? existingObj.documents : (taggedBundle.documents || []),
-            localStorageDump: mergedLs,
-            indexedDbDump: mergedIdb,
-            preservedPatientsFromTag: existingObj.deviceTag || 'PC2-PatientCare'
-          });
         }
+      } catch (_) {
+        // No existing shared file yet
       }
-    } catch (_) {
-      // No existing shared file yet
     }
 
     const sharedFh = await rootHandle.getFileHandle('PMG_FULL_SYSTEM_VAULT_LATEST.pmgbak', { create: true });
     const sharedW = await sharedFh.createWritable();
-    await sharedW.write(JSON.stringify(sharedBundleToWrite, null, 2));
+    await sharedW.write(preservedExistingPatients ? JSON.stringify(sharedBundleToWrite) : taggedJson);
     await sharedW.close();
+    taggedJson = null;
 
     return {
       wroteDeviceLatest: true,
@@ -4723,8 +4726,8 @@
     const todayStr = getLocalTodayIsoDate(options.refDate || null);
     const deviceTag = sanitizeDeviceTag(options.deviceTag || getDeviceBackupTag());
 
-    // Never interrupt while user is actively keying in / saving patient records
-    if (!force && typeof window.isPmgSyncPaused === 'function' && window.isPmgSyncPaused()) {
+    // Never interrupt while user is actively keying in / saving patient records or running Invoice PDF OCR
+    if (!force && ((typeof window.isPmgSyncPaused === 'function' && window.isPmgSyncPaused()) || window._pmgExpiryOcrInProgress)) {
       return { skipped: true, reason: 'user_editing', date: todayStr, deviceTag };
     }
 
@@ -4787,7 +4790,7 @@
       const filename = `PMG_AUTO_VAULT_${deviceTag}_${todayStr}.pmgbak`;
       const fh = await dailyDir.getFileHandle(filename, { create: true });
       const writable = await fh.createWritable();
-      await writable.write(JSON.stringify(bundle, null, 2));
+      await writable.write(JSON.stringify(bundle));
       await writable.close();
 
       // Update per-PC latest & anti-clobber shared master snapshot

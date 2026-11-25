@@ -378,22 +378,36 @@ function removeIdbItem(key) {
  * 1. Writes localStorage SYNCHRONOUSLY FIRST (if <= 1.2MB) so an immediate tab reload/close never loses data.
  * 2. Always persists complete data durably to IndexedDB (zero quota limits).
  * 3. Only offloads localStorage AFTER IndexedDB write succeeds.
+ * Note: For known large non-patient catalog arrays (e.g. >1,500 expiry or HQ policy rows, always >1.2MB),
+ * skips the wasted synchronous multi-MB JSON.stringify before writing directly to IndexedDB.
  */
 async function safeStorageSet(key, value) {
   let serialized = null;
   let isOversized = false;
 
+  const isKnownLargeCatalogArray = (
+    (key === 'pmg_stock_expiry_data' || key === 'pmg_hq_return_policy_data') &&
+    Array.isArray(value) &&
+    value.length > 1500
+  );
+
   // Step 1: Synchronous localStorage write for payloads <= 1.2MB (survives instant reload)
-  try {
-    serialized = typeof value === 'string' ? value : JSON.stringify(value);
-    if (serialized.length <= 1200000) {
-      localStorage.setItem(key, serialized);
-    } else {
-      isOversized = true;
-    }
-  } catch (err) {
+  if (isKnownLargeCatalogArray) {
     isOversized = true;
-    console.warn(`[PMG Storage] LocalStorage quota reached for "${key}". Persisting full dataset to IndexedDB.`, err);
+  } else {
+    try {
+      serialized = typeof value === 'string' ? value : JSON.stringify(value);
+      if (serialized.length <= 1200000) {
+        localStorage.setItem(key, serialized);
+      } else {
+        isOversized = true;
+      }
+    } catch (err) {
+      isOversized = true;
+      console.warn(`[PMG Storage] LocalStorage quota reached for "${key}". Persisting full dataset to IndexedDB.`, err);
+    } finally {
+      serialized = null;
+    }
   }
 
   // Step 2: Durable IndexedDB write
@@ -441,6 +455,25 @@ async function autoRelieveLocalStorageQuota() {
         if (ok) {
           localStorage.removeItem('pmg_stock_expiry_data');
           console.log('[PMG Storage] Offloaded stock expiry data to IndexedDB to free localStorage quota.');
+        }
+      } catch (_) {}
+    }
+
+    // 1b. Legacy HQ return policy matrix (1.3MB+ static/synced catalog)
+    const rawHqPolicy = localStorage.getItem('pmg_hq_return_policy_data');
+    if (rawHqPolicy && rawHqPolicy.length > 400000) {
+      try {
+        const hasCustomSync = Boolean(localStorage.getItem('pmg_hq_return_last_sync'));
+        let ok = true;
+        if (hasCustomSync) {
+          const parsedPol = JSON.parse(rawHqPolicy);
+          if (Array.isArray(parsedPol) && parsedPol.length > 0) {
+            ok = await setIdbItem('pmg_hq_return_policy_data', parsedPol);
+          }
+        }
+        if (ok) {
+          localStorage.removeItem('pmg_hq_return_policy_data');
+          console.log('[PMG Storage] Freed legacy HQ return policy copy from localStorage quota.');
         }
       } catch (_) {}
     }

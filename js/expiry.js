@@ -57,9 +57,105 @@ function normalizeBranchCode(code) {
   return str;
 }
 
-// ─── PERSISTENT CLEARED / DONE EXPIRY TOMBSTONES ─────────────────────────────
+// ─── TRANSIENT WEAKMAP CACHE & O(1) INDEX HELPERS (ZERO PERSISTENCE BLOAT) ───
+const _expiryItemTransientCache = new WeakMap();
+const TRANSIENT_EXPIRY_KEYS = ['_bNorm', '_horizon', '_horizonDateStr', '_parsedExpDate'];
+let _expiryRowIdMapCache = null;
+let _expiryRowIdMapRef = null;
+let _expiryRowIdMapLen = -1;
+let _lastFilteredExpiryItems = null;
+let _lastFy2027ReadinessSignature = '';
+let _activeExpirySyncPromise = null;
+let _expiryIdbSaveInFlight = false;
+let _expiryIdbSaveQueued = false;
+let _expiryHydratingFromIdb = false;
+
+function getItemTransientCache(it) {
+  if (!it || typeof it !== 'object') return null;
+  let c = _expiryItemTransientCache.get(it);
+  if (!c) {
+    c = {};
+    _expiryItemTransientCache.set(it, c);
+  }
+  return c;
+}
+
+function getItemBranchNorm(it) {
+  if (!it) return 'kota sentosa';
+  const rawBranch = it.branch || '';
+  const c = getItemTransientCache(it);
+  if (c && c.bKey === rawBranch && c.bNorm !== undefined) {
+    return c.bNorm;
+  }
+  const bNorm = normalizeBranchCode(rawBranch).toLowerCase();
+  if (c) {
+    c.bKey = rawBranch;
+    c.bNorm = bNorm;
+  }
+  return bNorm;
+}
+
+function stripTransientExpiryFieldsFromItem(it) {
+  if (!it || typeof it !== 'object') return;
+  for (let i = 0; i < TRANSIENT_EXPIRY_KEYS.length; i++) {
+    const k = TRANSIENT_EXPIRY_KEYS[i];
+    if (k in it) delete it[k];
+  }
+}
+
+function stripTransientExpiryFields(items) {
+  if (!Array.isArray(items)) return;
+  for (let i = 0; i < items.length; i++) {
+    stripTransientExpiryFieldsFromItem(items[i]);
+  }
+}
+
+function invalidateExpiryCaches() {
+  _expiryRowIdMapCache = null;
+  _expiryRowIdMapRef = null;
+  _expiryRowIdMapLen = -1;
+  _lastFilteredExpiryItems = null;
+  if (Array.isArray(expiryItems)) {
+    delete expiryItems._productBatchMap;
+    delete expiryItems._productBatchMapLen;
+    delete expiryItems._skuBatchMap;
+  }
+}
+
+function getExpiryRowIdMap() {
+  if (_expiryRowIdMapCache && _expiryRowIdMapRef === expiryItems && _expiryRowIdMapLen === expiryItems.length) {
+    return _expiryRowIdMapCache;
+  }
+  const map = new Map();
+  if (Array.isArray(expiryItems)) {
+    for (let i = 0; i < expiryItems.length; i++) {
+      const it = expiryItems[i];
+      if (!it) continue;
+      if (it.rowId !== undefined && it.rowId !== null) {
+        const s = String(it.rowId).trim();
+        if (s && s !== 'undefined' && s !== 'null' && s !== 'NaN' && !map.has(s)) {
+          map.set(s, it);
+        }
+      }
+      if (it.tempId !== undefined && it.tempId !== null) {
+        const t = String(it.tempId).trim();
+        if (t && t !== 'undefined' && t !== 'null' && !map.has(t)) {
+          map.set(t, it);
+        }
+      }
+    }
+  }
+  _expiryRowIdMapCache = map;
+  _expiryRowIdMapRef = expiryItems;
+  _expiryRowIdMapLen = Array.isArray(expiryItems) ? expiryItems.length : 0;
+  return map;
+}
+
+// ─── PERSISTENT CLEARED / DONE EXPIRY TOMBSTONES (BATCHED, ZERO-THRASH) ──────
 const EXPIRY_CLEARED_KEYS_KEY = 'pmg_cleared_expiry_keys';
 let _cachedClearedExpiryKeysSet = null;
+let _clearedKeysBatchDepth = 0;
+let _clearedKeysDirty = false;
 
 function getClearedExpiryKeys(forceRefresh = false) {
   if (!forceRefresh && _cachedClearedExpiryKeysSet !== null) {
@@ -74,13 +170,40 @@ function getClearedExpiryKeys(forceRefresh = false) {
   return _cachedClearedExpiryKeysSet;
 }
 
+function flushClearedExpiryKeys() {
+  if (!_clearedKeysDirty || !_cachedClearedExpiryKeysSet) return;
+  _clearedKeysDirty = false;
+  try {
+    localStorage.setItem(EXPIRY_CLEARED_KEYS_KEY, JSON.stringify(Array.from(_cachedClearedExpiryKeysSet)));
+  } catch (e) {
+    console.warn('[PMG Expiry] Error flushing cleared expiry keys:', e);
+  }
+}
+
+function beginClearedKeysBatch() {
+  _clearedKeysBatchDepth++;
+}
+
+function endClearedKeysBatch() {
+  if (_clearedKeysBatchDepth > 0) _clearedKeysBatchDepth--;
+  if (_clearedKeysBatchDepth === 0) {
+    flushClearedExpiryKeys();
+  }
+}
+
 function addClearedExpiryKey(key) {
   if (!key) return;
+  const norm = String(key).trim().toUpperCase();
+  if (!norm) return;
   try {
     const set = getClearedExpiryKeys();
-    set.add(String(key).trim().toUpperCase());
+    if (set.has(norm)) return; // No-op guard prevents redundant localStorage serialization
+    set.add(norm);
     _cachedClearedExpiryKeysSet = set;
-    localStorage.setItem(EXPIRY_CLEARED_KEYS_KEY, JSON.stringify(Array.from(set)));
+    _clearedKeysDirty = true;
+    if (_clearedKeysBatchDepth === 0) {
+      flushClearedExpiryKeys();
+    }
   } catch (e) {
     console.warn('[PMG Expiry] Error saving cleared expiry key:', e);
   }
@@ -88,11 +211,17 @@ function addClearedExpiryKey(key) {
 
 function removeClearedExpiryKey(key) {
   if (!key) return;
+  const norm = String(key).trim().toUpperCase();
+  if (!norm) return;
   try {
     const set = getClearedExpiryKeys();
-    set.delete(String(key).trim().toUpperCase());
+    if (!set.has(norm)) return; // No-op guard prevents redundant localStorage serialization
+    set.delete(norm);
     _cachedClearedExpiryKeysSet = set;
-    localStorage.setItem(EXPIRY_CLEARED_KEYS_KEY, JSON.stringify(Array.from(set)));
+    _clearedKeysDirty = true;
+    if (_clearedKeysBatchDepth === 0) {
+      flushClearedExpiryKeys();
+    }
   } catch (e) {
     console.warn('[PMG Expiry] Error removing cleared expiry key:', e);
   }
@@ -102,13 +231,44 @@ function removeClearedExpiryKey(key) {
 // Keeps user adjustments safely in localStorage delta cache so they survive page refreshes,
 // restarts, IndexedDB re-hydration, and remote cloud sheet sync without ever being wiped.
 const EXPIRY_USER_EDITS_KEY = 'pmg_expiry_user_edits';
+let _cachedUserEdits = null;
+let _userEditsBatchDepth = 0;
+let _userEditsDirty = false;
 
-function getUserEdits() {
+function getUserEdits(forceRefresh = false) {
+  if (!forceRefresh && _cachedUserEdits !== null) {
+    return _cachedUserEdits;
+  }
   try {
     const raw = localStorage.getItem(EXPIRY_USER_EDITS_KEY);
-    return raw ? JSON.parse(raw) : {};
+    _cachedUserEdits = raw ? JSON.parse(raw) : {};
   } catch (_) {
-    return {};
+    _cachedUserEdits = {};
+  }
+  return _cachedUserEdits;
+}
+
+function flushUserEdits() {
+  if (!_userEditsDirty || !_cachedUserEdits) return;
+  _userEditsDirty = false;
+  try {
+    localStorage.setItem(EXPIRY_USER_EDITS_KEY, JSON.stringify(_cachedUserEdits));
+  } catch (e) {
+    console.warn('[PMG Expiry] Error saving user delta edit to localStorage:', e);
+  }
+  if (typeof setIdbItem === 'function') {
+    setIdbItem(EXPIRY_USER_EDITS_KEY, _cachedUserEdits).catch(() => {});
+  }
+}
+
+function beginUserEditsBatch() {
+  _userEditsBatchDepth++;
+}
+
+function endUserEditsBatch() {
+  if (_userEditsBatchDepth > 0) _userEditsBatchDepth--;
+  if (_userEditsBatchDepth === 0) {
+    flushUserEdits();
   }
 }
 
@@ -144,13 +304,10 @@ function recordUserEdit(item, patch) {
     };
   }
 
-  try {
-    localStorage.setItem(EXPIRY_USER_EDITS_KEY, JSON.stringify(edits));
-  } catch (e) {
-    console.warn('[PMG Expiry] Error saving user delta edit to localStorage:', e);
-  }
-  if (typeof setIdbItem === 'function') {
-    setIdbItem(EXPIRY_USER_EDITS_KEY, edits).catch(() => {});
+  _cachedUserEdits = edits;
+  _userEditsDirty = true;
+  if (_userEditsBatchDepth === 0) {
+    flushUserEdits();
   }
 }
 
@@ -365,117 +522,122 @@ function consolidatePendingOcrItems(items) {
 function healAndConsolidateExpiryItems(items) {
   if (!Array.isArray(items) || items.length === 0) return items || [];
 
-  const clearedSet = getClearedExpiryKeys();
+  beginClearedKeysBatch();
+  try {
+    const clearedSet = getClearedExpiryKeys();
 
-  // Enforce guaranteed tombstones for known obsolete/cleared items across computers
-  const guaranteedTombstones = [
-    '14', 'ROW_14', 'ROW_1815', 'ROW_3675', 'ROW_3676', 'ROW_3678',
-    'ROW_1818', 'ROW_3383',
-    'KOTA SENTOSA|123590|NO_BATCH_12/11/2026_YUMMY BITES (APPLE)|12/11/2026',
-    'KOTA SENTOSA|123590|NO_BATCH_12/10/2026_YUMMY BITES (APPLE)|12/10/2026',
-    'KOTA SENTOSA|145662|612125-A|30/11/2026',
-    'KOTA SENTOSA|145662|612125A|30/11/2026'
-  ];
-  guaranteedTombstones.forEach(k => {
-    addClearedExpiryKey(k);
-    clearedSet.add(k);
-  });
-  removeClearedExpiryKey('17');
-  removeClearedExpiryKey('ROW_17');
-  removeClearedExpiryKey('151766');
-  removeClearedExpiryKey('ROW_3526');
-  removeClearedExpiryKey('ROW_4086');
-  removeClearedExpiryKey('KOTA SENTOSA|151766|26001|15/04/2028');
-
-  const resultMap = new Map();
-
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i];
-    if (!it) continue;
-
-    if (isItemMarkedDoneOrCleared(it, clearedSet)) {
-      it.status = 'DONE';
-      it.quantity = 0;
-      it.remainingQty = 0;
+    // Enforce guaranteed tombstones for known obsolete/cleared items across computers
+    const guaranteedTombstones = [
+      '14', 'ROW_14', 'ROW_1815', 'ROW_3675', 'ROW_3676', 'ROW_3678',
+      'ROW_1818', 'ROW_3383',
+      'KOTA SENTOSA|123590|NO_BATCH_12/11/2026_YUMMY BITES (APPLE)|12/11/2026',
+      'KOTA SENTOSA|123590|NO_BATCH_12/10/2026_YUMMY BITES (APPLE)|12/10/2026',
+      'KOTA SENTOSA|145662|612125-A|30/11/2026',
+      'KOTA SENTOSA|145662|612125A|30/11/2026'
+    ];
+    for (let g = 0; g < guaranteedTombstones.length; g++) {
+      addClearedExpiryKey(guaranteedTombstones[g]);
     }
+    removeClearedExpiryKey('17');
+    removeClearedExpiryKey('ROW_17');
+    removeClearedExpiryKey('151766');
+    removeClearedExpiryKey('ROW_3526');
+    removeClearedExpiryKey('ROW_4086');
+    removeClearedExpiryKey('KOTA SENTOSA|151766|26001|15/04/2028');
 
-    const descUpper = String(it.itemDescription || '').toUpperCase();
-    const expCanon = getCanonicalExpiryDate(it.expiryDate);
+    const resultMap = new Map();
 
-    // Rule A: Yummy Bites Apple Nov 2026 or Oct 2026 is obsolete / DONE
-    if (/YUMMY BITES.*APPLE/i.test(descUpper) && (expCanon === '12/11/2026' || expCanon === '12/10/2026')) {
-      it.status = 'DONE';
-      it.quantity = 0;
-    }
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it) continue;
+      stripTransientExpiryFieldsFromItem(it);
 
-    // Rule B: Athomer Mini Propolis batch 612125-A with 30/11/2026 is obsolete / DONE
-    const btNorm = normalizeBatchNumber(it.batchNumber);
-    if (/ATHOMER.*PROPOLIS/i.test(descUpper) && btNorm === '612125A' && expCanon === '30/11/2026') {
-      it.status = 'DONE';
-      it.quantity = 0;
-    }
+      if (isItemMarkedDoneOrCleared(it, clearedSet)) {
+        it.status = 'DONE';
+        it.quantity = 0;
+        it.remainingQty = 0;
+      }
 
-    // General consolidation:
-    // When multiple records share the EXACT same branch, product, batch, and canonical expiry date:
-    // Consolidate them into a single authoritative record.
-    const b = (it.branch || 'Kota Sentosa').trim().toUpperCase();
-    const c = normalizeProductCode(it.itemCode);
-    const d = normalizeProductDesc(it.itemDescription);
-    const bt = normalizeBatchNumber(it.batchNumber);
-    const isDone = (it.status === 'DONE' || it.status === 'Cleared' || Number(it.quantity) === 0 || isItemMarkedDoneOrCleared(it, clearedSet));
+      const descUpper = String(it.itemDescription || '').toUpperCase();
+      const expCanon = getCanonicalExpiryDate(it.expiryDate);
 
-    // CRITICAL: Grouping strictly by batch identity, WITHOUT DONE/ACTIVE suffix!
-    // This guarantees that any duplicate copy of a cleared batch NEVER pops back out as an active item!
-    const batchGroupKey = `${b}|${c ? 'C_' + c : 'D_' + d.slice(0, 30)}|${bt || 'NO_BATCH'}|${expCanon}`;
+      // Rule A: Yummy Bites Apple Nov 2026 or Oct 2026 is obsolete / DONE
+      if (/YUMMY BITES.*APPLE/i.test(descUpper) && (expCanon === '12/11/2026' || expCanon === '12/10/2026')) {
+        it.status = 'DONE';
+        it.quantity = 0;
+      }
 
-    if (!resultMap.has(batchGroupKey)) {
-      resultMap.set(batchGroupKey, it);
-    } else {
-      const existing = resultMap.get(batchGroupKey);
-      const existingDone = isItemMarkedDoneOrCleared(existing, clearedSet) || existing.status === 'DONE' || Number(existing.quantity) === 0;
-      const itDone = isDone;
+      // Rule B: Athomer Mini Propolis batch 612125-A with 30/11/2026 is obsolete / DONE
+      const btNorm = normalizeBatchNumber(it.batchNumber);
+      if (/ATHOMER.*PROPOLIS/i.test(descUpper) && btNorm === '612125A' && expCanon === '30/11/2026') {
+        it.status = 'DONE';
+        it.quantity = 0;
+      }
 
-      if (existingDone && itDone) {
-        // Both copies are done: preserve permanently DONE status
-        existing.status = 'DONE';
-        existing.quantity = 0;
-        existing.remainingQty = 0;
-        existing.clearedAt = existing.clearedAt || it.clearedAt || new Date().toISOString();
-        if (it.rowId) addClearedExpiryKey(`ROW_${it.rowId}`);
-        if (existing.rowId) addClearedExpiryKey(`ROW_${existing.rowId}`);
-      } else if (!existingDone && !itDone) {
-        // Both copies are active: sum quantities!
-        existing.quantity = (Number(existing.quantity) || 0) + (Number(it.quantity) || 0);
-        existing.remainingQty = existing.quantity;
-        if (it.sourceFile && !String(existing.sourceFile || '').includes(it.sourceFile)) {
-          existing.sourceFile = `${existing.sourceFile || ''}, ${it.sourceFile}`.replace(/^,\s*/, '');
-        }
-        if (it.lastUpdated && (!existing.lastUpdated || it.lastUpdated > existing.lastUpdated)) {
-          existing.lastUpdated = it.lastUpdated;
-          if (it.updatedBy) existing.updatedBy = it.updatedBy;
-        }
+      // General consolidation:
+      // When multiple records share the EXACT same branch, product, batch, and canonical expiry date:
+      // Consolidate them into a single authoritative record.
+      const b = (it.branch || 'Kota Sentosa').trim().toUpperCase();
+      const c = normalizeProductCode(it.itemCode);
+      const d = normalizeProductDesc(it.itemDescription);
+      const bt = btNorm;
+      const isDone = (it.status === 'DONE' || it.status === 'Cleared' || Number(it.quantity) === 0 || isItemMarkedDoneOrCleared(it, clearedSet));
+
+      // CRITICAL: Grouping strictly by batch identity, WITHOUT DONE/ACTIVE suffix!
+      // This guarantees that any duplicate copy of a cleared batch NEVER pops back out as an active item!
+      const batchGroupKey = `${b}|${c ? 'C_' + c : 'D_' + d.slice(0, 30)}|${bt || 'NO_BATCH'}|${expCanon}`;
+
+      if (!resultMap.has(batchGroupKey)) {
+        resultMap.set(batchGroupKey, it);
       } else {
-        // One copy is done, but the other is active (e.g. newly received invoice stock):
-        // Active stock with positive quantity reactivates the batch!
-        const activeItem = !existingDone ? existing : it;
-        if (Number(activeItem.quantity) > 0) {
-          existing.status = 'Active';
-          existing.quantity = Number(activeItem.quantity);
-          existing.remainingQty = existing.quantity;
-          delete existing.clearedAt;
-          if (activeItem.sourceFile) existing.sourceFile = activeItem.sourceFile;
-          if (existing.rowId) removeClearedExpiryKey(`ROW_${existing.rowId}`);
-          removeClearedExpiryKey(batchGroupKey);
-        } else {
+        const existing = resultMap.get(batchGroupKey);
+        const existingDone = isItemMarkedDoneOrCleared(existing, clearedSet) || existing.status === 'DONE' || Number(existing.quantity) === 0;
+        const itDone = isDone;
+
+        if (existingDone && itDone) {
+          // Both copies are done: preserve permanently DONE status
           existing.status = 'DONE';
           existing.quantity = 0;
           existing.remainingQty = 0;
+          existing.clearedAt = existing.clearedAt || it.clearedAt || new Date().toISOString();
+          if (it.rowId) addClearedExpiryKey(`ROW_${it.rowId}`);
+          if (existing.rowId) addClearedExpiryKey(`ROW_${existing.rowId}`);
+        } else if (!existingDone && !itDone) {
+          // Both copies are active: sum quantities!
+          existing.quantity = (Number(existing.quantity) || 0) + (Number(it.quantity) || 0);
+          existing.remainingQty = existing.quantity;
+          if (it.sourceFile && !String(existing.sourceFile || '').includes(it.sourceFile)) {
+            existing.sourceFile = `${existing.sourceFile || ''}, ${it.sourceFile}`.replace(/^,\s*/, '');
+          }
+          if (it.lastUpdated && (!existing.lastUpdated || it.lastUpdated > existing.lastUpdated)) {
+            existing.lastUpdated = it.lastUpdated;
+            if (it.updatedBy) existing.updatedBy = it.updatedBy;
+          }
+        } else {
+          // One copy is done, but the other is active (e.g. newly received invoice stock):
+          // Active stock with positive quantity reactivates the batch!
+          const activeItem = !existingDone ? existing : it;
+          if (Number(activeItem.quantity) > 0) {
+            existing.status = 'Active';
+            existing.quantity = Number(activeItem.quantity);
+            existing.remainingQty = existing.quantity;
+            delete existing.clearedAt;
+            if (activeItem.sourceFile) existing.sourceFile = activeItem.sourceFile;
+            if (existing.rowId) removeClearedExpiryKey(`ROW_${existing.rowId}`);
+            removeClearedExpiryKey(batchGroupKey);
+          } else {
+            existing.status = 'DONE';
+            existing.quantity = 0;
+            existing.remainingQty = 0;
+          }
         }
       }
     }
-  }
 
-  return Array.from(resultMap.values());
+    return Array.from(resultMap.values());
+  } finally {
+    endClearedKeysBatch();
+  }
 }
 
 function getExpiryRowUid(it, fallbackIdx = '') {
@@ -501,6 +663,10 @@ function findExpiryItemById(rowId) {
   if (typeof rowId === 'object') return rowId;
   const target = String(rowId).trim();
   if (!target || target === 'undefined' || target === 'null' || target === 'NaN') return null;
+
+  const fastHit = getExpiryRowIdMap().get(target);
+  if (fastHit) return fastHit;
+
   return expiryItems.find(it => {
     if (!it) return false;
     if (it.rowId !== undefined && it.rowId !== null && String(it.rowId).trim() === target) return true;
@@ -601,27 +767,127 @@ function ensureUniqueExpiryRowIds(itemsArray) {
 }
 window.ensureUniqueExpiryRowIds = ensureUniqueExpiryRowIds;
 
+function initDefaultClearedTombstones() {
+  beginClearedKeysBatch();
+  try {
+    // Ensure default cleared SKUs and records are in persistent tombstone
+    addClearedExpiryKey('119253');
+    addClearedExpiryKey('ROW_6951');
+    addClearedExpiryKey('KOTA SENTOSA|119253|NO_BATCH');
+    addClearedExpiryKey('232903');
+    addClearedExpiryKey('ROW_321');
+    addClearedExpiryKey('KOTA SENTOSA|232903|DLVL');
+    addClearedExpiryKey('102787');
+    addClearedExpiryKey('ROW_7076');
+    addClearedExpiryKey('ROW_7109');
+    addClearedExpiryKey('KOTA SENTOSA|102787|5F01097');
+    addClearedExpiryKey('KOTA SENTOSA|102787|5H04819');
+    addClearedExpiryKey('ROW_14');
+    addClearedExpiryKey('ROW_1815');
+    addClearedExpiryKey('ROW_3675');
+    addClearedExpiryKey('ROW_3676');
+    addClearedExpiryKey('ROW_3678');
+    addClearedExpiryKey('ROW_1818');
+    addClearedExpiryKey('ROW_3383');
+    addClearedExpiryKey('KOTA SENTOSA|123590|NO_BATCH_12/11/2026_YUMMY BITES (APPLE)|12/11/2026');
+    addClearedExpiryKey('KOTA SENTOSA|123590|NO_BATCH_12/10/2026_YUMMY BITES (APPLE)|12/10/2026');
+    addClearedExpiryKey('KOTA SENTOSA|145662|612125-A|30/11/2026');
+    addClearedExpiryKey('KOTA SENTOSA|145662|612125A|30/11/2026');
+
+    // Purge any accidental bare number or product code tombstones if any were stored in client localStorage
+    removeClearedExpiryKey('112551');
+    removeClearedExpiryKey('3952');
+    removeClearedExpiryKey('ROW_3952');
+    removeClearedExpiryKey('1076');
+    removeClearedExpiryKey('ROW_1076');
+    removeClearedExpiryKey('14');
+    removeClearedExpiryKey('N/A');
+    removeClearedExpiryKey('ROW_UNDEFINED');
+    removeClearedExpiryKey('ROW_NULL');
+    removeClearedExpiryKey('17');
+    removeClearedExpiryKey('ROW_17');
+    removeClearedExpiryKey('151766');
+    removeClearedExpiryKey('ROW_3526');
+    removeClearedExpiryKey('ROW_4086');
+    removeClearedExpiryKey('KOTA SENTOSA|151766|26001|15/04/2028');
+  } finally {
+    endClearedKeysBatch();
+  }
+}
+
 // ─── INITIALIZATION ───────────────────────────────────────────────────────────
 function initExpiryModule() {
   initHqReturnPolicy();
-  loadLocalExpiryData();
   setupExpiryEventListeners();
-  loadAccumulatedWriteOffItems();
   updateAccountsShareUi(document.getElementById('expiryBranchFilter')?.value || 'Kota Sentosa');
 
-  // Defer initial UI render until expiry tab is active to eliminate page startup lag
   const expiryTabContent = document.getElementById('content-expiry');
-  if (expiryTabContent && !expiryTabContent.classList.contains('hidden')) {
-    renderExpiryUI();
-  }
+  const hasLocalExpiry = Boolean(localStorage.getItem(EXPIRY_STORAGE_KEY));
 
-  // Asynchronously hydrate from IndexedDB (preserves complete expiry dataset without localStorage quota limits)
-  if (typeof safeStorageGet === 'function') {
+  // Double-redundancy: Recover user edits from IndexedDB backup if localStorage was ever cleared
+  const recoverUserEditsPromise = (typeof getIdbItem === 'function')
+    ? getIdbItem(EXPIRY_USER_EDITS_KEY).then(idbEdits => {
+        if (idbEdits && typeof idbEdits === 'object' && Object.keys(idbEdits).length > 0) {
+          const localEdits = getUserEdits();
+          const mergedEdits = { ...idbEdits, ...localEdits };
+          _cachedUserEdits = mergedEdits;
+          try { localStorage.setItem(EXPIRY_USER_EDITS_KEY, JSON.stringify(mergedEdits)); } catch (_) {}
+          if (expiryItems.length > 0) {
+            applyUserEdits(expiryItems);
+            if (expiryTabContent && !expiryTabContent.classList.contains('hidden')) {
+              renderExpiryUI();
+            }
+          }
+        }
+      }).catch(console.warn)
+    : Promise.resolve();
+
+  const finalizePostHydration = () => {
+    _expiryHydratingFromIdb = false;
+    // Release static 1.9MB seed array from V8 heap once authoritative dataset is hydrated
+    if (expiryItems.length > 0 && window.PMG_SEED_EXPIRY_DATA && window.PMG_SEED_EXPIRY_DATA !== expiryItems) {
+      window.PMG_SEED_EXPIRY_DATA = null;
+    }
+    loadAccumulatedWriteOffItems();
+    if (expiryTabContent && !expiryTabContent.classList.contains('hidden')) {
+      renderExpiryUI();
+    }
+    // Fetch fresh data from Google Sheet in background (after IDB hydration so they never race!)
+    syncExpiryFromSheets(false);
+  };
+
+  if (hasLocalExpiry || typeof safeStorageGet !== 'function') {
+    loadLocalExpiryData();
+    loadAccumulatedWriteOffItems();
+    if (expiryTabContent && !expiryTabContent.classList.contains('hidden')) {
+      renderExpiryUI();
+    }
+    if (typeof safeStorageGet === 'function') {
+      safeStorageGet(EXPIRY_STORAGE_KEY).then(idbItems => {
+        if (Array.isArray(idbItems) && idbItems.length > 0) {
+          expiryItems = ensureUniqueExpiryRowIds(idbItems);
+          expiryItems.forEach(it => {
+            if (it && String(it.itemCode).trim() === '151766' && (Number(it.quantity) === 0 || it.status === 'DONE' || it.status === 'Cleared')) {
+              it.quantity = 5;
+              it.status = 'Active';
+              delete it.clearedAt;
+            }
+          });
+          applyUserEdits(expiryItems);
+          invalidateExpiryCaches();
+        }
+      }).catch(console.warn).finally(() => recoverUserEditsPromise.finally(finalizePostHydration));
+    } else {
+      recoverUserEditsPromise.finally(finalizePostHydration);
+    }
+  } else {
+    // Fast-path: localStorage was offloaded to IndexedDB (>1.2MB). Hydrate directly from IndexedDB
+    // instead of needlessly cloning & healing 7,762 seed rows only to discard them 20ms later!
+    initDefaultClearedTombstones();
+    _expiryHydratingFromIdb = true;
     safeStorageGet(EXPIRY_STORAGE_KEY).then(idbItems => {
       if (Array.isArray(idbItems) && idbItems.length > 0) {
-        // Authoritative user dataset from IndexedDB! Apply any persistent user delta edits (action plans / dates)
         expiryItems = ensureUniqueExpiryRowIds(idbItems);
-        // Self-healing: Reactivate 151766 from incoming stock if stale IDB had it marked 0 or DONE
         expiryItems.forEach(it => {
           if (it && String(it.itemCode).trim() === '151766' && (Number(it.quantity) === 0 || it.status === 'DONE' || it.status === 'Cleared')) {
             it.quantity = 5;
@@ -630,89 +896,35 @@ function initExpiryModule() {
           }
         });
         applyUserEdits(expiryItems);
-        loadAccumulatedWriteOffItems();
-        if (expiryTabContent && !expiryTabContent.classList.contains('hidden')) {
-          renderExpiryUI();
-        }
+        invalidateExpiryCaches();
       } else if (Array.isArray(window.PMG_SEED_EXPIRY_DATA) && window.PMG_SEED_EXPIRY_DATA.length > 0) {
-        // First boot only: seed into IndexedDB
         expiryItems = ensureUniqueExpiryRowIds(window.PMG_SEED_EXPIRY_DATA);
         applyUserEdits(expiryItems);
-        saveLocalExpiryData();
+        invalidateExpiryCaches();
+        saveLocalExpiryData({ skipHeal: true });
       }
-    }).catch(console.warn);
+    }).catch(err => {
+      console.warn('[PMG Expiry] IDB hydration fallback:', err);
+      loadLocalExpiryData();
+    }).finally(() => recoverUserEditsPromise.finally(finalizePostHydration));
   }
 
-  // Double-redundancy: Recover user edits from IndexedDB backup if localStorage was ever cleared
-  if (typeof getIdbItem === 'function') {
-    getIdbItem(EXPIRY_USER_EDITS_KEY).then(idbEdits => {
-      if (idbEdits && typeof idbEdits === 'object' && Object.keys(idbEdits).length > 0) {
-        const localEdits = getUserEdits();
-        const mergedEdits = { ...idbEdits, ...localEdits };
-        try { localStorage.setItem(EXPIRY_USER_EDITS_KEY, JSON.stringify(mergedEdits)); } catch (_) {}
-        applyUserEdits(expiryItems);
-        if (expiryTabContent && !expiryTabContent.classList.contains('hidden')) {
-          renderExpiryUI();
+  // Auto-sync when user returns to this tab (guarded against active OCR / frequent switches)
+  if (!initExpiryModule._visibilityListenerAdded) {
+    initExpiryModule._visibilityListenerAdded = true;
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && !window._pmgExpiryOcrInProgress) {
+        const now = Date.now();
+        if (now - (window._lastExpirySheetsSyncTime || 0) > 120000) {
+          syncExpiryFromSheets(false);
         }
       }
-    }).catch(console.warn);
+    });
   }
-
-  // Fetch fresh data from Google Sheet in background (Stock Expiry syncs exclusively via Google Sheets)
-  syncExpiryFromSheets(false);
-
-  // Auto-sync when user returns to this tab
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-      const now = Date.now();
-      if (now - (window._lastExpirySheetsSyncTime || 0) > 120000) {
-        syncExpiryFromSheets(false);
-      }
-    }
-  });
 }
 
 function loadLocalExpiryData() {
-  // Ensure default cleared SKUs and records are in persistent tombstone
-  addClearedExpiryKey('119253');
-  addClearedExpiryKey('ROW_6951');
-  addClearedExpiryKey('KOTA SENTOSA|119253|NO_BATCH');
-  addClearedExpiryKey('232903');
-  addClearedExpiryKey('ROW_321');
-  addClearedExpiryKey('KOTA SENTOSA|232903|DLVL');
-  addClearedExpiryKey('102787');
-  addClearedExpiryKey('ROW_7076');
-  addClearedExpiryKey('ROW_7109');
-  addClearedExpiryKey('KOTA SENTOSA|102787|5F01097');
-  addClearedExpiryKey('KOTA SENTOSA|102787|5H04819');
-  addClearedExpiryKey('ROW_14');
-  addClearedExpiryKey('ROW_1815');
-  addClearedExpiryKey('ROW_3675');
-  addClearedExpiryKey('ROW_3676');
-  addClearedExpiryKey('ROW_3678');
-  addClearedExpiryKey('ROW_1818');
-  addClearedExpiryKey('ROW_3383');
-  addClearedExpiryKey('KOTA SENTOSA|123590|NO_BATCH_12/11/2026_YUMMY BITES (APPLE)|12/11/2026');
-  addClearedExpiryKey('KOTA SENTOSA|123590|NO_BATCH_12/10/2026_YUMMY BITES (APPLE)|12/10/2026');
-  addClearedExpiryKey('KOTA SENTOSA|145662|612125-A|30/11/2026');
-  addClearedExpiryKey('KOTA SENTOSA|145662|612125A|30/11/2026');
-
-  // Purge any accidental bare number or product code tombstones if any were stored in client localStorage
-  removeClearedExpiryKey('112551');
-  removeClearedExpiryKey('3952');
-  removeClearedExpiryKey('ROW_3952');
-  removeClearedExpiryKey('1076');
-  removeClearedExpiryKey('ROW_1076');
-  removeClearedExpiryKey('14');
-  removeClearedExpiryKey('N/A');
-  removeClearedExpiryKey('ROW_UNDEFINED');
-  removeClearedExpiryKey('ROW_NULL');
-  removeClearedExpiryKey('17');
-  removeClearedExpiryKey('ROW_17');
-  removeClearedExpiryKey('151766');
-  removeClearedExpiryKey('ROW_3526');
-  removeClearedExpiryKey('ROW_4086');
-  removeClearedExpiryKey('KOTA SENTOSA|151766|26001|15/04/2028');
+  initDefaultClearedTombstones();
 
   try {
     const raw = localStorage.getItem(EXPIRY_STORAGE_KEY);
@@ -748,6 +960,7 @@ function loadLocalExpiryData() {
         }
       });
     }
+    invalidateExpiryCaches();
     // CRITICAL: DO NOT call saveLocalExpiryData() here!
     // In db.js, safeStorageSet offloads large payloads (>1.2MB) from localStorage to IndexedDB.
     // If localStorage was empty because it was offloaded, calling saveLocalExpiryData() here with
@@ -759,14 +972,39 @@ function loadLocalExpiryData() {
     } else {
       expiryItems = [];
     }
+    invalidateExpiryCaches();
   }
 }
 
-function saveLocalExpiryData() {
+function _flushExpiryIdbSaveQueue() {
+  if (_expiryIdbSaveInFlight || typeof safeStorageSet !== 'function') return;
+  _expiryIdbSaveInFlight = true;
+  _expiryIdbSaveQueued = false;
+  safeStorageSet(EXPIRY_STORAGE_KEY, expiryItems)
+    .catch(err => console.warn('[PMG Expiry] Async IDB save warning:', err))
+    .finally(() => {
+      _expiryIdbSaveInFlight = false;
+      if (_expiryIdbSaveQueued) {
+        _flushExpiryIdbSaveQueue();
+      }
+    });
+}
+
+function saveLocalExpiryData(options = {}) {
   try {
-    expiryItems = ensureUniqueExpiryRowIds(expiryItems);
+    if (!options || !options.skipHeal) {
+      expiryItems = ensureUniqueExpiryRowIds(expiryItems);
+    } else {
+      stripTransientExpiryFields(expiryItems);
+    }
+    invalidateExpiryCaches();
+
     if (typeof safeStorageSet === 'function') {
-      safeStorageSet(EXPIRY_STORAGE_KEY, expiryItems);
+      if (_expiryIdbSaveInFlight) {
+        _expiryIdbSaveQueued = true;
+      } else {
+        _flushExpiryIdbSaveQueue();
+      }
     } else {
       localStorage.setItem(EXPIRY_STORAGE_KEY, JSON.stringify(expiryItems));
     }
@@ -777,21 +1015,37 @@ function saveLocalExpiryData() {
 
 // ─── HQ RETURN POLICY ENGINE (LIVE GOOGLE SHEET CROSS-REFERENCE) ───────────────
 function initHqReturnPolicy() {
+  // Default immediately to bundled multi-category master seed (zero localStorage duplication / quota bloat)
+  if (Array.isArray(window.PMG_HQ_RETURN_POLICY_SEED) && window.PMG_HQ_RETURN_POLICY_SEED.length > 0) {
+    hqReturnPolicyList = window.PMG_HQ_RETURN_POLICY_SEED;
+  }
+
+  // Proactively migrate or clear legacy 1.3MB localStorage copy to relieve Chrome quota & RAM
   try {
     const raw = localStorage.getItem(HQ_RETURN_POLICY_STORAGE_KEY);
     if (raw) {
-      hqReturnPolicyList = JSON.parse(raw);
+      const hasCustomSync = Boolean(localStorage.getItem('pmg_hq_return_last_sync'));
+      if (hasCustomSync) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length >= 2000) {
+          hqReturnPolicyList = parsed;
+          if (typeof setIdbItem === 'function') {
+            setIdbItem(HQ_RETURN_POLICY_STORAGE_KEY, parsed).then(ok => {
+              if (ok) {
+                try { localStorage.removeItem(HQ_RETURN_POLICY_STORAGE_KEY); } catch (_) {}
+              }
+            }).catch(() => {});
+          }
+        } else {
+          localStorage.removeItem(HQ_RETURN_POLICY_STORAGE_KEY);
+        }
+      } else {
+        // Static seed copy in localStorage — already bundled in js/hq_return_policy.js
+        localStorage.removeItem(HQ_RETURN_POLICY_STORAGE_KEY);
+      }
     }
   } catch (e) {
-    console.warn('[PMG Expiry] Error reading stored HQ policy data:', e);
-  }
-
-  // If local storage is empty or contains old Poison-only seed (< 2000 items), upgrade to multi-category master seed
-  if ((!hqReturnPolicyList || !Array.isArray(hqReturnPolicyList) || hqReturnPolicyList.length < 2000) && Array.isArray(window.PMG_HQ_RETURN_POLICY_SEED)) {
-    hqReturnPolicyList = window.PMG_HQ_RETURN_POLICY_SEED;
-    try {
-      localStorage.setItem(HQ_RETURN_POLICY_STORAGE_KEY, JSON.stringify(hqReturnPolicyList));
-    } catch (e) {}
+    console.warn('[PMG Expiry] Error reading legacy HQ policy data:', e);
   }
 
   try {
@@ -803,6 +1057,25 @@ function initHqReturnPolicy() {
 
   buildHqReturnPolicyMaps();
   updateHqPolicyHeaderBadge();
+
+  // Hydrate custom live-synced HQ Return Policy from IndexedDB if user previously synced from Google Sheets
+  if (typeof getIdbItem === 'function') {
+    getIdbItem(HQ_RETURN_POLICY_STORAGE_KEY).then(idbPolicy => {
+      if (Array.isArray(idbPolicy) && idbPolicy.length >= 2000) {
+        hqReturnPolicyList = idbPolicy;
+        buildHqReturnPolicyMaps();
+        updateHqPolicyHeaderBadge();
+        // Release bundled static seed once replaced by live-synced IDB catalog
+        if (window.PMG_HQ_RETURN_POLICY_SEED && window.PMG_HQ_RETURN_POLICY_SEED !== hqReturnPolicyList) {
+          window.PMG_HQ_RETURN_POLICY_SEED = null;
+        }
+        const expiryTabContent = document.getElementById('content-expiry');
+        if (expiryTabContent && !expiryTabContent.classList.contains('hidden')) {
+          renderExpiryUI();
+        }
+      }
+    }).catch(() => {});
+  }
 }
 
 function buildHqReturnPolicyMaps() {
@@ -1277,8 +1550,16 @@ async function syncHqReturnPolicy(showToast = true) {
     }
 
     hqReturnPolicyList = parsedRules;
-    localStorage.setItem(HQ_RETURN_POLICY_STORAGE_KEY, JSON.stringify(hqReturnPolicyList));
-    localStorage.setItem('pmg_hq_return_last_sync', new Date().toISOString());
+    if (typeof setIdbItem === 'function') {
+      await setIdbItem(HQ_RETURN_POLICY_STORAGE_KEY, hqReturnPolicyList);
+      try { localStorage.removeItem(HQ_RETURN_POLICY_STORAGE_KEY); } catch (_) {}
+    } else {
+      try { localStorage.setItem(HQ_RETURN_POLICY_STORAGE_KEY, JSON.stringify(hqReturnPolicyList)); } catch (_) {}
+    }
+    try { localStorage.setItem('pmg_hq_return_last_sync', new Date().toISOString()); } catch (_) {}
+    if (window.PMG_HQ_RETURN_POLICY_SEED && window.PMG_HQ_RETURN_POLICY_SEED !== hqReturnPolicyList) {
+      window.PMG_HQ_RETURN_POLICY_SEED = null;
+    }
 
     buildHqReturnPolicyMaps();
     updateHqPolicyHeaderBadge();
@@ -1558,6 +1839,15 @@ function getExpiryItemKey(item) {
 }
 
 function mergeExpiryDatasets(localList, remoteList) {
+  beginClearedKeysBatch();
+  try {
+    return _mergeExpiryDatasetsCore(localList, remoteList);
+  } finally {
+    endClearedKeysBatch();
+  }
+}
+
+function _mergeExpiryDatasetsCore(localList, remoteList) {
   const cleanLocal = ensureUniqueExpiryRowIds(Array.isArray(localList) ? localList : []);
   const cleanRemote = ensureUniqueExpiryRowIds(Array.isArray(remoteList) ? remoteList : []);
   if (cleanRemote.length === 0) return cleanLocal;
@@ -1977,20 +2267,45 @@ function getItemHorizon(it, todayMs, todayDateStr) {
   if (!it) {
     return { monthsLeft: 999, daysLeft: 9999, label: 'Unknown', color: 'gray', level: 'safe' };
   }
-  if (it._horizon && it._horizonDateStr === todayDateStr) {
-    return it._horizon;
+  if (todayMs === undefined || !todayDateStr) {
+    const ctx = getTodayContext();
+    if (todayMs === undefined) todayMs = ctx.todayMs;
+    if (!todayDateStr) todayDateStr = ctx.todayDateStr;
   }
-  const h = calculateExpiryHorizon(it.expiryDate, todayMs);
-  it._horizon = h;
-  it._horizonDateStr = todayDateStr;
+  const rawExp = it.expiryDate;
+  const c = getItemTransientCache(it);
+  if (c && c.horizon && c.horizonDateStr === todayDateStr && c.expKey === rawExp) {
+    return c.horizon;
+  }
+  const h = calculateExpiryHorizon(rawExp, todayMs);
+  if (c) {
+    if (c.expKey !== rawExp) {
+      c.expKey = rawExp;
+      c.parsedExpDate = undefined;
+    }
+    c.horizon = h;
+    c.horizonDateStr = todayDateStr;
+  }
   return h;
 }
 
 function getItemParsedExpiryDate(it) {
   if (!it) return null;
-  if (it._parsedExpDate !== undefined) return it._parsedExpDate;
-  it._parsedExpDate = parseExpiryDate(it.expiryDate);
-  return it._parsedExpDate;
+  const rawExp = it.expiryDate;
+  const c = getItemTransientCache(it);
+  if (c && c.expKey === rawExp && c.parsedExpDate !== undefined) {
+    return c.parsedExpDate;
+  }
+  const parsed = parseExpiryDate(rawExp);
+  if (c) {
+    if (c.expKey !== rawExp) {
+      c.expKey = rawExp;
+      c.horizon = null;
+      c.horizonDateStr = '';
+    }
+    c.parsedExpDate = parsed;
+  }
+  return parsed;
 }
 
 function calculateExpiryHorizon(dateVal, overrideTodayMs) {
@@ -2023,56 +2338,74 @@ function calculateExpiryHorizon(dateVal, overrideTodayMs) {
 // ─── GOOGLE SHEETS & ONEDRIVE SYNC ───────────────────────────────────────────
 /**
  * Synchronizes stock expiry items bidirectionally across OneDrive folder and Google Sheets.
+ * Coalesces overlapping requests to prevent concurrent 1MB+ downloads and memory spikes.
  */
 async function syncExpiryFromSheets(showPrompt = true) {
+  if (_activeExpirySyncPromise) {
+    await _activeExpirySyncPromise;
+    if (showPrompt) {
+      showExpiryToast(`✅ Synced ${expiryItems.length} items live with Google Sheets!`);
+    }
+    return;
+  }
+
   const btn = document.getElementById('expirySyncBtn');
   if (btn) {
     btn.disabled = true;
     btn.innerHTML = `<i class="fa-solid fa-arrows-rotate fa-spin text-sm mr-1.5"></i>Syncing...`;
   }
 
-  try {
-    // 1. Fetch live data from Google Sheets (Stock Expiry syncs exclusively via Google Sheets)
+  const runSync = (async () => {
     try {
-      const url = `${PMG_EXPIRY_API_URL}?action=getExpiry&branch=all`;
-      const controller = new AbortController();
-      // 30-second timeout to accommodate cold starts and 1MB payloads over branch networks
-      const timeout = setTimeout(() => controller.abort(), 30000);
-      const res = await fetch(url, { method: 'GET', signal: controller.signal });
-      clearTimeout(timeout);
+      // 1. Fetch live data from Google Sheets (Stock Expiry syncs exclusively via Google Sheets)
+      try {
+        const url = `${PMG_EXPIRY_API_URL}?action=getExpiry&branch=all`;
+        const controller = new AbortController();
+        // 30-second timeout to accommodate cold starts and 1MB payloads over branch networks
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        const res = await fetch(url, { method: 'GET', signal: controller.signal });
+        clearTimeout(timeout);
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.success && Array.isArray(data.items) && data.items.length > 0) {
-          expiryItems = mergeExpiryDatasets(expiryItems, data.items);
-          applyUserEdits(expiryItems);
-          saveLocalExpiryData();
-          window._lastExpirySheetsSyncTime = Date.now();
-          if (!document.getElementById('content-expiry')?.classList.contains('hidden')) {
-            renderExpiryUI();
+        if (res.ok) {
+          let data = await res.json();
+          if (data && data.success && Array.isArray(data.items) && data.items.length > 0) {
+            expiryItems = mergeExpiryDatasets(expiryItems, data.items);
+            data = null; // Release raw API response payload immediately for GC
+            if (window.PMG_SEED_EXPIRY_DATA && window.PMG_SEED_EXPIRY_DATA !== expiryItems) {
+              window.PMG_SEED_EXPIRY_DATA = null;
+            }
+            saveLocalExpiryData({ skipHeal: true });
+            window._lastExpirySheetsSyncTime = Date.now();
+            if (!document.getElementById('content-expiry')?.classList.contains('hidden')) {
+              renderExpiryUI();
+            }
+            if (showPrompt) {
+              showExpiryToast(`✅ Synced ${expiryItems.length} items live with Google Sheets!`);
+            }
+            return;
           }
-          if (showPrompt) {
-            showExpiryToast(`✅ Synced ${expiryItems.length} items live with Google Sheets!`);
-          }
-          return;
         }
+      } catch (sheetErr) {
+        console.warn('[PMG Expiry] Sheets fetch notice:', sheetErr);
       }
-    } catch (sheetErr) {
-      console.warn('[PMG Expiry] Sheets fetch notice:', sheetErr);
-    }
 
-    if (showPrompt) {
-      showExpiryToast(`✅ Stock Expiry active with ${expiryItems.length} items.`);
+      if (showPrompt) {
+        showExpiryToast(`✅ Stock Expiry active with ${expiryItems.length} items.`);
+      }
+    } catch (err) {
+      console.warn('[PMG Expiry] Sync warning:', err);
+      if (showPrompt) showExpiryToast(`⚠️ Sync notice: using local database of ${expiryItems.length} items.`);
+    } finally {
+      _activeExpirySyncPromise = null;
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-arrows-rotate text-sm mr-1.5"></i>Sync Google Sheet`;
+      }
     }
-  } catch (err) {
-    console.warn('[PMG Expiry] Sync warning:', err);
-    if (showPrompt) showExpiryToast(`⚠️ Sync notice: using local database of ${expiryItems.length} items.`);
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.innerHTML = `<i class="fa-solid fa-arrows-rotate text-sm mr-1.5"></i>Sync Google Sheet`;
-    }
-  }
+  })();
+
+  _activeExpirySyncPromise = runSync;
+  return runSync;
 }
 
 /**
@@ -2326,6 +2659,57 @@ function parseInvoiceOrCnFilename(filename) {
   };
 }
 
+const MAX_OCR_INLINE_PDF_BYTES = 20 * 1024 * 1024; // 20MB Gemini inlineData & browser RAM guard
+const MAX_OCR_IMAGE_COMPRESS_BYTES = 1.2 * 1024 * 1024; // Downscale >1.2MB camera photos for OCR only (OneDrive keeps original)
+
+async function prepareFileForGeminiOcr(file) {
+  if (!file) throw new Error('Invalid file');
+  const mime = String(file.type || '').toLowerCase();
+  const isImage = mime.startsWith('image/');
+
+  if (!isImage && file.size > MAX_OCR_INLINE_PDF_BYTES) {
+    const mb = (file.size / (1024 * 1024)).toFixed(1);
+    throw new Error(`PDF "${file.name}" is ${mb}MB (exceeds 20MB OCR limit). File was archived to OneDrive; please split or compress PDF before AI extraction.`);
+  }
+
+  // Compress large camera photos for Gemini Vision OCR (original full-res file is already saved to OneDrive)
+  if (isImage && file.size > MAX_OCR_IMAGE_COMPRESS_BYTES && typeof document !== 'undefined' && typeof createImageBitmap === 'function') {
+    let bitmap = null;
+    let canvas = null;
+    try {
+      bitmap = await createImageBitmap(file);
+      const maxDim = 2000;
+      const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+      canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      const commaIdx = dataUrl.indexOf(',');
+      return {
+        mimeType: 'image/jpeg',
+        base64Data: commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : dataUrl
+      };
+    } catch (imgErr) {
+      console.warn('[PMG Expiry] Image OCR compression fallback to raw file:', imgErr);
+    } finally {
+      if (bitmap && typeof bitmap.close === 'function') bitmap.close();
+      if (canvas) {
+        canvas.width = 0;
+        canvas.height = 0;
+        canvas = null;
+      }
+    }
+  }
+
+  const base64Data = await readFileAsBase64(file);
+  return {
+    mimeType: file.type || 'application/pdf',
+    base64Data
+  };
+}
+
 // ─── GEMINI OCR INVOICE EXTRACTION ──────────────────────────────────────────
 /**
  * Processes a single invoice file via Gemini Multimodal Vision API directly in the browser.
@@ -2335,7 +2719,7 @@ async function extractInvoiceItemsFromPdf(file, branch, onStatus) {
   const apiKey = (typeof window.getGlobalGeminiKey === 'function' ? window.getGlobalGeminiKey() : '')
               || (localStorage.getItem('pmg_gemini_key') || '').trim()
               || PMG_GLOBAL_FALLBACK_KEY;
-  const base64Data = await readFileAsBase64(file);
+  let prepared = await prepareFileForGeminiOcr(file);
 
   if (typeof onStatus === 'function') {
     onStatus(`Analyzing ${file.name} layout & extracting line items via Gemini AI…`);
@@ -2434,51 +2818,65 @@ Return ONLY a valid JSON array of objects. No markdown formatting, no explanatio
   let successfulModel = '';
   let lastError = null;
 
-  for (const model of modelsToTry) {
-    try {
-      if (typeof onStatus === 'function') onStatus(`Extracting ${file.name} with ${model}…`);
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const payload = {
-        contents: [{
-          parts: [
-            { text: prompt },
-            {
-              inlineData: {
-                mimeType: file.type || 'application/pdf',
-                data: base64Data
-              }
-            }
-          ]
-        }],
-        generationConfig: {
-          response_mime_type: "application/json"
+  // Serialize JSON payload ONCE outside retry loop and immediately release raw base64 buffer
+  let requestBodyStr = JSON.stringify({
+    contents: [{
+      parts: [
+        { text: prompt },
+        {
+          inlineData: {
+            mimeType: prepared.mimeType,
+            data: prepared.base64Data
+          }
         }
-      };
-
-      const res = await fetch(geminiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      const resData = await res.json();
-      if (resData.error || !resData.candidates || resData.candidates.length === 0) {
-        throw new Error(resData.error?.message || `Model ${model} returned empty response.`);
-      }
-
-      const rawText = resData.candidates[0].content.parts[0].text;
-      const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-      const parsed = JSON.parse(cleanJson);
-      let list = Array.isArray(parsed) ? parsed : (parsed.items || parsed.invoiceItems || parsed.data || null);
-      if (Array.isArray(list) && list.length > 0) {
-        items = autoRepairPageBreakShiftsOnRawItems(list);
-        successfulModel = model;
-        break;
-      }
-    } catch (err) {
-      console.warn(`[PMG Expiry] ${model} attempt failed on ${file.name}:`, err);
-      lastError = err;
+      ]
+    }],
+    generationConfig: {
+      response_mime_type: "application/json"
     }
+  });
+  prepared = null;
+
+  try {
+    for (const model of modelsToTry) {
+      let timeoutId = null;
+      try {
+        if (typeof onStatus === 'function') onStatus(`Extracting ${file.name} with ${model}…`);
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const controller = new AbortController();
+        timeoutId = setTimeout(() => controller.abort(), 90000);
+
+        const res = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: requestBodyStr,
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        timeoutId = null;
+
+        const resData = await res.json();
+        if (resData.error || !resData.candidates || resData.candidates.length === 0) {
+          throw new Error(resData.error?.message || `Model ${model} returned empty response.`);
+        }
+
+        const rawText = resData.candidates[0].content.parts[0].text;
+        const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+        const parsed = JSON.parse(cleanJson);
+        let list = Array.isArray(parsed) ? parsed : (parsed.items || parsed.invoiceItems || parsed.data || null);
+        if (Array.isArray(list) && list.length > 0) {
+          items = autoRepairPageBreakShiftsOnRawItems(list);
+          successfulModel = model;
+          break;
+        }
+      } catch (err) {
+        if (timeoutId) clearTimeout(timeoutId);
+        console.warn(`[PMG Expiry] ${model} attempt failed on ${file.name}:`, err);
+        lastError = err;
+      }
+    }
+  } finally {
+    requestBodyStr = null; // Release multi-MB request string immediately for GC
   }
 
   if (!items || items.length === 0) {
@@ -2534,6 +2932,8 @@ Return ONLY a valid JSON array of objects. No markdown formatting, no explanatio
  * 2. If Credit Note (CN): Completely OMITS Gemini OCR extraction to save tokens and time.
  * 3. If Invoice (INV): Saves to OneDrive AND extracts batch/expiry items via Gemini AI.
  * 4. Updates Accounts Department Submission panel in real time.
+ * Memory-hardened: pauses background OneDrive/Daily Auto-Backup polling during batch upload & OCR,
+ * releases File references after each item, and yields between files for Chrome GC.
  */
 async function handleBatchInvoiceAndCnUpload(files, branch) {
   if (!files || files.length === 0) return;
@@ -2542,96 +2942,127 @@ async function handleBatchInvoiceAndCnUpload(files, branch) {
   const spinnerEl = document.getElementById('expiryOcrSpinner');
   if (spinnerEl) spinnerEl.classList.remove('hidden');
 
-  const fileList = Array.from(files);
-  const totalFiles = fileList.length;
-  let cnCount = 0;
-  let invCount = 0;
-  let oneDriveSavedCount = 0;
-  const invoicesToExtract = [];
-
-  const targetBranch = branch || document.getElementById('expiryBranchFilter')?.value || 'Kota Sentosa';
-
-  for (let i = 0; i < totalFiles; i++) {
-    const file = fileList[i];
-    const parsed = parseInvoiceOrCnFilename(file.name);
-
-    if (statusEl) {
-      statusEl.textContent = `[${i + 1}/${totalFiles}] Saving to OneDrive: ${file.name}…`;
-    }
-
-    // Auto-save to OneDrive if OneDrive sync engine is active
-    if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveInvoiceOrCnToOneDrive === 'function') {
-      try {
-        const res = await window.pmgOneDriveSync.saveInvoiceOrCnToOneDrive(file, targetBranch, parsed);
-        if (res && res.success) {
-          oneDriveSavedCount++;
-        }
-      } catch (err) {
-        console.warn(`[PMG Expiry] OneDrive save error on ${file.name}:`, err);
-      }
-    }
-
-    if (parsed.isCreditNote) {
-      cnCount++;
-      console.log(`[PMG Expiry] Credit Note detected: ${file.name} -> Filed to OneDrive Credit Note/${parsed.vendor}/. Expiry OCR omitted.`);
-    } else {
-      invCount++;
-      invoicesToExtract.push({ file, parsed });
-    }
+  window._pmgExpiryOcrInProgress = true;
+  if (typeof window.pausePmgSyncPolling === 'function') {
+    window.pausePmgSyncPolling(60000);
   }
 
-  // Refresh Accounts Submission Bar
-  updateAccountsShareUi(targetBranch);
+  try {
+    const fileList = Array.from(files);
+    const totalFiles = fileList.length;
+    let cnCount = 0;
+    let invCount = 0;
+    let oneDriveSavedCount = 0;
+    const invoicesToExtract = [];
 
-  // If there are invoices that require OCR extraction
-  if (invoicesToExtract.length > 0) {
-    pendingOcrItems = [];
-    const sourceNames = [];
+    const targetBranch = branch || document.getElementById('expiryBranchFilter')?.value || 'Kota Sentosa';
 
-    for (let j = 0; j < invoicesToExtract.length; j++) {
-      const { file } = invoicesToExtract[j];
-      try {
-        const extractedItems = await extractInvoiceItemsFromPdf(
-          file,
-          targetBranch,
-          (msg) => { if (statusEl) statusEl.textContent = `[Invoice ${j + 1}/${invoicesToExtract.length}] ${msg}`; }
-        );
-        if (Array.isArray(extractedItems) && extractedItems.length > 0) {
-          pendingOcrItems.push(...extractedItems);
-          sourceNames.push(file.name);
-        }
-      } catch (ocrErr) {
-        console.error(`[PMG Expiry] OCR extraction error on ${file.name}:`, ocrErr);
+    for (let i = 0; i < totalFiles; i++) {
+      const file = fileList[i];
+      if (!file) continue;
+      const parsed = parseInvoiceOrCnFilename(file.name);
+
+      if (statusEl) {
+        statusEl.textContent = `[${i + 1}/${totalFiles}] Saving to OneDrive: ${file.name}…`;
       }
+
+      // Auto-save original full-resolution file to OneDrive if OneDrive sync engine is active
+      if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveInvoiceOrCnToOneDrive === 'function') {
+        try {
+          const res = await window.pmgOneDriveSync.saveInvoiceOrCnToOneDrive(file, targetBranch, parsed);
+          if (res && res.success) {
+            oneDriveSavedCount++;
+          }
+        } catch (err) {
+          console.warn(`[PMG Expiry] OneDrive save error on ${file.name}:`, err);
+        }
+      }
+
+      if (parsed.isCreditNote) {
+        cnCount++;
+        console.log(`[PMG Expiry] Credit Note detected: ${file.name} -> Filed to OneDrive Credit Note/${parsed.vendor}/. Expiry OCR omitted.`);
+      } else {
+        invCount++;
+        invoicesToExtract.push({ file, parsed });
+      }
+      fileList[i] = null; // Release reference promptly
     }
 
-    if (spinnerEl) spinnerEl.classList.add('hidden');
+    // Refresh Accounts Submission Bar
+    updateAccountsShareUi(targetBranch);
 
-    if (pendingOcrItems.length > 0) {
-      // Consolidate repeated items across uploaded invoices with same product, batch, and canonical expiry
-      pendingOcrItems = consolidatePendingOcrItems(pendingOcrItems);
-      const msg = `✓ Extracted & consolidated ${pendingOcrItems.length} items from ${sourceNames.length} invoice(s).` +
-        (cnCount > 0 ? ` (${cnCount} CN(s) saved to OneDrive with OCR omitted per SOP)` : '');
+    // If there are invoices that require OCR extraction
+    if (invoicesToExtract.length > 0) {
+      pendingOcrItems = [];
+      const sourceNames = [];
+      const skippedOversized = [];
+
+      for (let j = 0; j < invoicesToExtract.length; j++) {
+        const entry = invoicesToExtract[j];
+        const file = entry?.file;
+        invoicesToExtract[j] = null; // Release slot reference immediately
+        if (!file) continue;
+
+        // Extend background sync pause while each invoice runs through OCR
+        if (typeof window.pausePmgSyncPolling === 'function') {
+          window.pausePmgSyncPolling(60000);
+        }
+
+        try {
+          const extractedItems = await extractInvoiceItemsFromPdf(
+            file,
+            targetBranch,
+            (msg) => { if (statusEl) statusEl.textContent = `[Invoice ${j + 1}/${invoicesToExtract.length}] ${msg}`; }
+          );
+          if (Array.isArray(extractedItems) && extractedItems.length > 0) {
+            pendingOcrItems.push(...extractedItems);
+            sourceNames.push(file.name);
+          }
+        } catch (ocrErr) {
+          console.error(`[PMG Expiry] OCR extraction error on ${file.name}:`, ocrErr);
+          if (ocrErr && /exceeds 20MB/i.test(String(ocrErr.message || ''))) {
+            skippedOversized.push(file.name);
+          }
+        }
+
+        // Yield to browser event loop between files so V8/Blink GC can reclaim PDF/base64 buffers
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+
+      if (spinnerEl) spinnerEl.classList.add('hidden');
+
+      if (pendingOcrItems.length > 0) {
+        // Consolidate repeated items across uploaded invoices with same product, batch, and canonical expiry
+        pendingOcrItems = consolidatePendingOcrItems(pendingOcrItems);
+        const msg = `✓ Extracted & consolidated ${pendingOcrItems.length} items from ${sourceNames.length} invoice(s).` +
+          (cnCount > 0 ? ` (${cnCount} CN(s) saved to OneDrive with OCR omitted per SOP)` : '') +
+          (skippedOversized.length > 0 ? ` · Skipped ${skippedOversized.length} >20MB PDF(s) (archived to OneDrive)` : '');
+        if (statusEl) {
+          statusEl.textContent = msg;
+          statusEl.className = 'text-xs text-emerald-700 font-semibold';
+        }
+        showExpiryToast(`✅ ${pendingOcrItems.length} line items ready for review!`);
+        openOcrReviewModal(sourceNames.length === 1 ? sourceNames[0] : `${sourceNames.length} Invoices (${pendingOcrItems.length} Items)`);
+      } else {
+        if (statusEl) {
+          statusEl.textContent = skippedOversized.length > 0
+            ? `Archived to OneDrive. ${skippedOversized.length} PDF(s) exceeded 20MB OCR limit — please compress/split for AI extraction.`
+            : `Upload complete. ${cnCount} CN(s) & ${invCount} Invoice(s) filed to OneDrive. No inventory items extracted.`;
+          statusEl.className = 'text-xs text-gray-600 font-semibold';
+        }
+      }
+    } else {
+      // Only Credit Notes were uploaded
+      if (spinnerEl) spinnerEl.classList.add('hidden');
       if (statusEl) {
-        statusEl.textContent = msg;
+        statusEl.textContent = `✓ ${cnCount} Credit Note(s) filed to OneDrive Credit Note folder! Expiry OCR check omitted per SOP.`;
         statusEl.className = 'text-xs text-emerald-700 font-semibold';
       }
-      showExpiryToast(`✅ ${pendingOcrItems.length} line items ready for review!`);
-      openOcrReviewModal(sourceNames.length === 1 ? sourceNames[0] : `${sourceNames.length} Invoices (${pendingOcrItems.length} Items)`);
-    } else {
-      if (statusEl) {
-        statusEl.textContent = `Upload complete. ${cnCount} CN(s) & ${invCount} Invoice(s) filed to OneDrive. No inventory items extracted.`;
-        statusEl.className = 'text-xs text-gray-600 font-semibold';
-      }
+      showExpiryToast(`✅ ${cnCount} Credit Note(s) saved to OneDrive Credit Note folder (OCR omitted per SOP).`);
     }
-  } else {
-    // Only Credit Notes were uploaded
+  } finally {
+    window._pmgExpiryOcrInProgress = false;
     if (spinnerEl) spinnerEl.classList.add('hidden');
-    if (statusEl) {
-      statusEl.textContent = `✓ ${cnCount} Credit Note(s) filed to OneDrive Credit Note folder! Expiry OCR check omitted per SOP.`;
-      statusEl.className = 'text-xs text-emerald-700 font-semibold';
-    }
-    showExpiryToast(`✅ ${cnCount} Credit Note(s) saved to OneDrive Credit Note folder (OCR omitted per SOP).`);
   }
 }
 
@@ -2646,11 +3077,17 @@ function readFileAsBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
-      const dataUrl = reader.result;
-      const base64 = dataUrl.split(',')[1];
-      resolve(base64);
+      const dataUrl = typeof reader.result === 'string' ? reader.result : '';
+      reader.onload = null;
+      reader.onerror = null;
+      const commaIdx = dataUrl.indexOf(',');
+      resolve(commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : dataUrl);
     };
-    reader.onerror = reject;
+    reader.onerror = (err) => {
+      reader.onload = null;
+      reader.onerror = null;
+      reject(err);
+    };
     reader.readAsDataURL(file);
   });
 }
@@ -2902,55 +3339,103 @@ async function confirmOcrBatchInsert(itemsToCommit = null) {
   // Consolidate selected items first so repeated lines within the batch are combined
   const consolidated = consolidatePendingOcrItems(selectedItems);
 
+  // Build O(N) lookup maps by branch+product+batch+expiry so commit runs in O(N+M) instead of O(N*M)
+  const existingByCodeBatchExp = new Map();
+  const existingByDescBatchExp = new Map();
+  const existingByBranchBatchExp = new Map();
+  for (let i = 0; i < expiryItems.length; i++) {
+    const ex = expiryItems[i];
+    if (!ex) continue;
+    const bEx = (ex.branch || 'Kota Sentosa').trim().toUpperCase();
+    const cEx = normalizeProductCode(ex.itemCode);
+    const dEx = normalizeProductDesc(ex.itemDescription);
+    const btEx = normalizeBatchNumber(ex.batchNumber);
+    const expEx = getCanonicalExpiryDate(ex.expiryDate);
+    if (cEx) {
+      const k = `${bEx}|${cEx}|${btEx}|${expEx}`;
+      if (!existingByCodeBatchExp.has(k)) existingByCodeBatchExp.set(k, ex);
+    }
+    if (dEx) {
+      const dk = `${bEx}|${dEx}|${btEx}|${expEx}`;
+      if (!existingByDescBatchExp.has(dk)) existingByDescBatchExp.set(dk, ex);
+    }
+    const bucketKey = `${bEx}|${btEx}|${expEx}`;
+    let bucket = existingByBranchBatchExp.get(bucketKey);
+    if (!bucket) {
+      bucket = [];
+      existingByBranchBatchExp.set(bucketKey, bucket);
+    }
+    bucket.push(ex);
+  }
+
   const itemsToInsert = [];
   const itemsToUpdateInSheets = [];
 
-  consolidated.forEach((it, idx) => {
-    it.branch = targetBranch;
-    it.lastUpdated = nowIso;
-    it.updatedBy = userName;
+  beginClearedKeysBatch();
+  try {
+    consolidated.forEach((it, idx) => {
+      it.branch = targetBranch;
+      it.lastUpdated = nowIso;
+      it.updatedBy = userName;
 
-    // Check if an existing item in expiryItems matches:
-    // SAME branch, SAME product, SAME batch, and SAME canonical expiry date!
-    const existing = expiryItems.find(ex => areExpiryItemsSameProductAndBatch(ex, it));
+      // Check if an existing item in expiryItems matches:
+      // SAME branch, SAME product, SAME batch, and SAME canonical expiry date!
+      const bIt = (it.branch || 'Kota Sentosa').trim().toUpperCase();
+      const cIt = normalizeProductCode(it.itemCode);
+      const dIt = normalizeProductDesc(it.itemDescription);
+      const btIt = normalizeBatchNumber(it.batchNumber);
+      const expIt = getCanonicalExpiryDate(it.expiryDate);
 
-    if (existing) {
-      // MATCH FOUND: Add quantities together!
-      const addedQty = Number(it.quantity) || 0;
-      existing.quantity = (Number(existing.quantity) || 0) + addedQty;
+      let existing = (cIt && existingByCodeBatchExp.get(`${bIt}|${cIt}|${btIt}|${expIt}`))
+                  || (dIt && existingByDescBatchExp.get(`${bIt}|${dIt}|${btIt}|${expIt}`))
+                  || null;
+      if (!existing) {
+        const candidates = existingByBranchBatchExp.get(`${bIt}|${btIt}|${expIt}`);
+        if (candidates) {
+          existing = candidates.find(ex => areExpiryItemsSameProduct(ex, it)) || null;
+        }
+      }
 
-      // If it was previously Cleared or DONE, reactivate with the incoming stock
-      if (existing.quantity > 0) {
-        existing.status = 'Active';
-        delete existing.clearedAt;
+      if (existing) {
+        // MATCH FOUND: Add quantities together!
+        const addedQty = Number(it.quantity) || 0;
+        existing.quantity = (Number(existing.quantity) || 0) + addedQty;
 
-        // CRITICAL: Purge cleared tombstones so new incoming stock is immediately visible!
-        removeClearedExpiryKey(existing.rowId);
-        removeClearedExpiryKey(`ROW_${existing.rowId}`);
-        const itKey = getExpiryItemKey(existing);
+        // If it was previously Cleared or DONE, reactivate with the incoming stock
+        if (existing.quantity > 0) {
+          existing.status = 'Active';
+          delete existing.clearedAt;
+
+          // CRITICAL: Purge cleared tombstones so new incoming stock is immediately visible!
+          removeClearedExpiryKey(existing.rowId);
+          removeClearedExpiryKey(`ROW_${existing.rowId}`);
+          const itKey = getExpiryItemKey(existing);
+          if (itKey) removeClearedExpiryKey(itKey);
+          const canonBatchKey = typeof getCanonicalBatchKey === 'function' ? getCanonicalBatchKey(existing) : '';
+          if (canonBatchKey) removeClearedExpiryKey(canonBatchKey);
+        }
+        existing.lastUpdated = nowIso;
+        existing.updatedBy = userName;
+        if (it.sourceFile && !String(existing.sourceFile || '').includes(it.sourceFile)) {
+          existing.sourceFile = `${existing.sourceFile || ''}, ${it.sourceFile}`.replace(/^,\s*/, '');
+        }
+        itemsToUpdateInSheets.push(existing);
+      } else {
+        // DIFFERENT batch or DIFFERENT expiry date: keep as a NEW, separate item!
+        if (!it.rowId || String(it.rowId) === 'undefined') {
+          it.rowId = it.tempId || `ocr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}_${idx}`;
+        }
+        it.status = 'Active';
+        removeClearedExpiryKey(it.rowId);
+        removeClearedExpiryKey(`ROW_${it.rowId}`);
+        const itKey = getExpiryItemKey(it);
         if (itKey) removeClearedExpiryKey(itKey);
-        const canonBatchKey = typeof getCanonicalBatchKey === 'function' ? getCanonicalBatchKey(existing) : '';
-        if (canonBatchKey) removeClearedExpiryKey(canonBatchKey);
+        itemsToInsert.push(it);
       }
-      existing.lastUpdated = nowIso;
-      existing.updatedBy = userName;
-      if (it.sourceFile && !String(existing.sourceFile || '').includes(it.sourceFile)) {
-        existing.sourceFile = `${existing.sourceFile || ''}, ${it.sourceFile}`.replace(/^,\s*/, '');
-      }
-      itemsToUpdateInSheets.push(existing);
-    } else {
-      // DIFFERENT batch or DIFFERENT expiry date: keep as a NEW, separate item!
-      if (!it.rowId || String(it.rowId) === 'undefined') {
-        it.rowId = it.tempId || `ocr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}_${idx}`;
-      }
-      it.status = 'Active';
-      removeClearedExpiryKey(it.rowId);
-      removeClearedExpiryKey(`ROW_${it.rowId}`);
-      const itKey = getExpiryItemKey(it);
-      if (itKey) removeClearedExpiryKey(itKey);
-      itemsToInsert.push(it);
-    }
-  });
+    });
+  } finally {
+    endClearedKeysBatch();
+  }
 
   const commitBtn = document.getElementById('expiryOcrCommitBtn');
   if (commitBtn) {
@@ -2963,9 +3448,7 @@ async function confirmOcrBatchInsert(itemsToCommit = null) {
     expiryItems.unshift(...itemsToInsert);
   }
   expiryItems = ensureUniqueExpiryRowIds(expiryItems);
-  saveLocalExpiryData();
-  delete expiryItems._productBatchMap;
-  delete expiryItems._skuBatchMap;
+  saveLocalExpiryData({ skipHeal: true });
   renderExpiryUI();
 
   if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
@@ -3033,9 +3516,7 @@ function updateExpiryItemDate(rowId, newDateStr, inputEl) {
   item.updatedBy = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
 
   recordUserEdit(item, { expiryDate: formattedDate });
-  saveLocalExpiryData();
-  delete expiryItems._productBatchMap;
-  delete expiryItems._skuBatchMap;
+  saveLocalExpiryData({ skipHeal: true });
   renderExpiryUI();
 
   if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
@@ -3071,9 +3552,7 @@ function updateExpiryItemQuantity(rowId, newQty) {
     quantity: item.quantity,
     status: item.status
   });
-  saveLocalExpiryData();
-  delete expiryItems._productBatchMap;
-  delete expiryItems._skuBatchMap;
+  saveLocalExpiryData({ skipHeal: true });
   renderExpiryUI();
 
   if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
@@ -3166,9 +3645,7 @@ function updateExpiryActionPlan(rowId, val) {
     clearancePrice: item.clearancePrice
   });
 
-  saveLocalExpiryData();
-  delete expiryItems._productBatchMap;
-  delete expiryItems._skuBatchMap;
+  saveLocalExpiryData({ skipHeal: true });
 
   // In-place DOM update for zero-lag response (avoids expensive full-table re-rendering)
   const safeRowId = String(rowId || '').trim();
@@ -3260,39 +3737,44 @@ async function markExpiryItemCleared(rowId, btnEl = null, ev = null) {
   const legacyBatchKey = (bt && bt !== 'N/A') ? bt : 'NO_BATCH';
   const poolingKey = getExpiryProductPoolingKey(target);
 
-  // Add all canonical representations to persistent tombstones
-  if (targetIdStr && targetIdStr !== 'undefined' && targetIdStr !== 'null') {
-    addClearedExpiryKey(`ROW_${targetIdStr}`);
-    addClearedExpiryKey(targetIdStr);
-  }
-  if (targetKey) addClearedExpiryKey(targetKey);
-  if (canonBatchKey) addClearedExpiryKey(canonBatchKey);
-  if (c && c !== 'N/A') addClearedExpiryKey(`${b}|${c}|${legacyBatchKey}`);
-  if (poolingKey) addClearedExpiryKey(`${poolingKey}|${bt || 'NO_BATCH'}|${expCanon}`);
-
-  // Mark matching rows with same rowId OR same exact product batch as cleared
-  expiryItems.forEach(it => {
-    if (!it) return;
-    const itIdStr = it.rowId !== undefined && it.rowId !== null ? String(it.rowId).trim() : '';
-    const isSameId = targetIdStr && targetIdStr !== 'undefined' && itIdStr === targetIdStr;
-    const isSameKey = targetKey && (getExpiryItemKey(it) === targetKey);
-    const itCanonBatchKey = `${(it.branch || 'Kota Sentosa').trim().toUpperCase()}|${normalizeProductCode(it.itemCode) ? 'C_' + normalizeProductCode(it.itemCode) : 'D_' + normalizeProductDesc(it.itemDescription).slice(0, 30)}|${normalizeBatchNumber(it.batchNumber) || 'NO_BATCH'}|${getCanonicalExpiryDate(it.expiryDate)}`;
-    const isSameBatch = canonBatchKey && (itCanonBatchKey === canonBatchKey);
-
-    if (isSameId || isSameKey || isSameBatch) {
-      it.status = 'DONE';
-      it.quantity = 0;
-      it.remainingQty = 0;
-      it.clearedAt = nowIso;
-      it.lastUpdated = nowIso;
-      it.updatedBy = userName;
-      if (itIdStr && itIdStr !== 'undefined' && itIdStr !== 'null') {
-        addClearedExpiryKey(`ROW_${itIdStr}`);
-        addClearedExpiryKey(itIdStr);
-        selectedWriteOffRowIds.delete(itIdStr);
-      }
+  beginClearedKeysBatch();
+  try {
+    // Add all canonical representations to persistent tombstones
+    if (targetIdStr && targetIdStr !== 'undefined' && targetIdStr !== 'null') {
+      addClearedExpiryKey(`ROW_${targetIdStr}`);
+      addClearedExpiryKey(targetIdStr);
     }
-  });
+    if (targetKey) addClearedExpiryKey(targetKey);
+    if (canonBatchKey) addClearedExpiryKey(canonBatchKey);
+    if (c && c !== 'N/A') addClearedExpiryKey(`${b}|${c}|${legacyBatchKey}`);
+    if (poolingKey) addClearedExpiryKey(`${poolingKey}|${bt || 'NO_BATCH'}|${expCanon}`);
+
+    // Mark matching rows with same rowId OR same exact product batch as cleared
+    expiryItems.forEach(it => {
+      if (!it) return;
+      const itIdStr = it.rowId !== undefined && it.rowId !== null ? String(it.rowId).trim() : '';
+      const isSameId = targetIdStr && targetIdStr !== 'undefined' && itIdStr === targetIdStr;
+      const isSameKey = targetKey && (getExpiryItemKey(it) === targetKey);
+      const itCanonBatchKey = `${(it.branch || 'Kota Sentosa').trim().toUpperCase()}|${normalizeProductCode(it.itemCode) ? 'C_' + normalizeProductCode(it.itemCode) : 'D_' + normalizeProductDesc(it.itemDescription).slice(0, 30)}|${normalizeBatchNumber(it.batchNumber) || 'NO_BATCH'}|${getCanonicalExpiryDate(it.expiryDate)}`;
+      const isSameBatch = canonBatchKey && (itCanonBatchKey === canonBatchKey);
+
+      if (isSameId || isSameKey || isSameBatch) {
+        it.status = 'DONE';
+        it.quantity = 0;
+        it.remainingQty = 0;
+        it.clearedAt = nowIso;
+        it.lastUpdated = nowIso;
+        it.updatedBy = userName;
+        if (itIdStr && itIdStr !== 'undefined' && itIdStr !== 'null') {
+          addClearedExpiryKey(`ROW_${itIdStr}`);
+          addClearedExpiryKey(itIdStr);
+          selectedWriteOffRowIds.delete(itIdStr);
+        }
+      }
+    });
+  } finally {
+    endClearedKeysBatch();
+  }
 
   if (targetIdStr) {
     selectedWriteOffRowIds.delete(targetIdStr);
@@ -3300,11 +3782,7 @@ async function markExpiryItemCleared(rowId, btnEl = null, ev = null) {
   saveAccumulatedWriteOffItems();
   updateWriteOffSelectedCounter();
 
-  delete expiryItems._productBatchMap;
-  delete expiryItems._skuBatchMap;
-  saveLocalExpiryData();
-  delete expiryItems._productBatchMap;
-  delete expiryItems._skuBatchMap;
+  saveLocalExpiryData({ skipHeal: true });
   renderExpiryUI();
 
   if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
@@ -3345,11 +3823,16 @@ async function reactivateExpiryItem(rowId) {
   const session = typeof getSession === 'function' ? getSession() : null;
   const nowIso = new Date().toISOString();
 
-  // Remove from cleared tombstone
-  if (item.itemCode) removeClearedExpiryKey(item.itemCode);
-  if (item.rowId) removeClearedExpiryKey(`ROW_${item.rowId}`);
-  const itemKey = getExpiryItemKey(item);
-  if (itemKey) removeClearedExpiryKey(itemKey);
+  // Remove from cleared tombstone (single flush)
+  beginClearedKeysBatch();
+  try {
+    if (item.itemCode) removeClearedExpiryKey(item.itemCode);
+    if (item.rowId) removeClearedExpiryKey(`ROW_${item.rowId}`);
+    const itemKey = getExpiryItemKey(item);
+    if (itemKey) removeClearedExpiryKey(itemKey);
+  } finally {
+    endClearedKeysBatch();
+  }
 
   item.status = 'Active';
   item.quantity = qty;
@@ -3361,9 +3844,7 @@ async function reactivateExpiryItem(rowId) {
     quantity: qty,
     status: 'Active'
   });
-  saveLocalExpiryData();
-  delete expiryItems._productBatchMap;
-  delete expiryItems._skuBatchMap;
+  saveLocalExpiryData({ skipHeal: true });
   renderExpiryUI();
 
   if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
@@ -3495,9 +3976,7 @@ async function handleEditExpiryItemSubmit(e) {
     offeredPrice: item.offeredPrice,
     clearancePrice: item.clearancePrice
   });
-  saveLocalExpiryData();
-  delete expiryItems._productBatchMap;
-  delete expiryItems._skuBatchMap;
+  saveLocalExpiryData({ skipHeal: true });
   renderExpiryUI();
 
   if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
@@ -3959,57 +4438,60 @@ function saveClearancePriceTag(silent = false) {
   activePriceTagItem.lastUpdated = nowIso;
   activePriceTagItem.updatedBy = updatedBy;
 
-  recordUserEdit(activePriceTagItem, {
-    actionPlan: formattedPlan,
-    offeredPrice: offeredPrice,
-    clearancePrice: offeredPrice,
-    normalPrice: normalPrice,
-    tagTheme: theme,
-    tagSize: size,
-    promoBanner: banner,
-    promoRemark: footerNote
-  });
-
-  // Also update any exact matching row (same unique rowId OR same exact branch + itemCode + batch + expiryDate)
-  if (Array.isArray(expiryItems)) {
-    expiryItems.forEach(it => {
-      if (!it) return;
-      const itId = (it.rowId !== undefined && it.rowId !== null) ? String(it.rowId).trim() : '';
-      const isSameId = Boolean(targetId && targetId !== 'undefined' && itId === targetId);
-      const isSameItem = Boolean(targetKey && getExpiryItemKey(it) === targetKey);
-      if (it === activePriceTagItem || isSameId || isSameItem) {
-        it.offeredPrice = offeredPrice;
-        it.clearancePrice = offeredPrice;
-        if (normalPrice) it.normalPrice = normalPrice;
-        else delete it.normalPrice;
-        it.actionPlan = formattedPlan;
-        it.tagTheme = theme;
-        it.tagSize = size;
-        it.tagPrintTarget = printTarget;
-        it.promoBanner = banner;
-        it.promoRemark = footerNote;
-        it.showBarcode = false;
-        it.pricingUpdatedAt = nowIso;
-        it.lastUpdated = nowIso;
-        it.updatedBy = updatedBy;
-        recordUserEdit(it, {
-          actionPlan: formattedPlan,
-          offeredPrice: offeredPrice,
-          clearancePrice: offeredPrice,
-          normalPrice: normalPrice,
-          tagTheme: theme,
-          tagSize: size,
-          promoBanner: banner,
-          promoRemark: footerNote
-        });
-      }
+  beginUserEditsBatch();
+  try {
+    recordUserEdit(activePriceTagItem, {
+      actionPlan: formattedPlan,
+      offeredPrice: offeredPrice,
+      clearancePrice: offeredPrice,
+      normalPrice: normalPrice,
+      tagTheme: theme,
+      tagSize: size,
+      promoBanner: banner,
+      promoRemark: footerNote
     });
+
+    // Also update any exact matching row (same unique rowId OR same exact branch + itemCode + batch + expiryDate)
+    if (Array.isArray(expiryItems)) {
+      expiryItems.forEach(it => {
+        if (!it) return;
+        const itId = (it.rowId !== undefined && it.rowId !== null) ? String(it.rowId).trim() : '';
+        const isSameId = Boolean(targetId && targetId !== 'undefined' && itId === targetId);
+        const isSameItem = Boolean(targetKey && getExpiryItemKey(it) === targetKey);
+        if (it === activePriceTagItem || isSameId || isSameItem) {
+          it.offeredPrice = offeredPrice;
+          it.clearancePrice = offeredPrice;
+          if (normalPrice) it.normalPrice = normalPrice;
+          else delete it.normalPrice;
+          it.actionPlan = formattedPlan;
+          it.tagTheme = theme;
+          it.tagSize = size;
+          it.tagPrintTarget = printTarget;
+          it.promoBanner = banner;
+          it.promoRemark = footerNote;
+          it.showBarcode = false;
+          it.pricingUpdatedAt = nowIso;
+          it.lastUpdated = nowIso;
+          it.updatedBy = updatedBy;
+          recordUserEdit(it, {
+            actionPlan: formattedPlan,
+            offeredPrice: offeredPrice,
+            clearancePrice: offeredPrice,
+            normalPrice: normalPrice,
+            tagTheme: theme,
+            tagSize: size,
+            promoBanner: banner,
+            promoRemark: footerNote
+          });
+        }
+      });
+    }
+  } finally {
+    endUserEditsBatch();
   }
 
   // Immediately save locally and refresh UI
-  saveLocalExpiryData();
-  delete expiryItems._productBatchMap;
-  delete expiryItems._skuBatchMap;
+  saveLocalExpiryData({ skipHeal: true });
   renderExpiryUI();
 
   if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
@@ -4241,37 +4723,40 @@ function updateExpiryOfferedPrice(rowId, val) {
     formattedPlan = `Clearance Promo (Offer: RM ${num.toFixed(2)})`;
   }
 
-  if (Array.isArray(expiryItems)) {
-    expiryItems.forEach(it => {
-      if (!it) return;
-      const itId = (it.rowId !== undefined && it.rowId !== null) ? String(it.rowId).trim() : '';
-      const isSameId = Boolean(targetId && targetId !== 'undefined' && itId === targetId);
-      const isSameItem = Boolean(targetKey && getExpiryItemKey(it) === targetKey);
-      if (it === item || isSameId || isSameItem) {
-        if (isNaN(num) || num <= 0) {
-          delete it.offeredPrice;
-          delete it.clearancePrice;
-          it.actionPlan = formattedPlan;
-        } else {
-          it.offeredPrice = num;
-          it.clearancePrice = num;
-          it.actionPlan = formattedPlan;
+  beginUserEditsBatch();
+  try {
+    if (Array.isArray(expiryItems)) {
+      expiryItems.forEach(it => {
+        if (!it) return;
+        const itId = (it.rowId !== undefined && it.rowId !== null) ? String(it.rowId).trim() : '';
+        const isSameId = Boolean(targetId && targetId !== 'undefined' && itId === targetId);
+        const isSameItem = Boolean(targetKey && getExpiryItemKey(it) === targetKey);
+        if (it === item || isSameId || isSameItem) {
+          if (isNaN(num) || num <= 0) {
+            delete it.offeredPrice;
+            delete it.clearancePrice;
+            it.actionPlan = formattedPlan;
+          } else {
+            it.offeredPrice = num;
+            it.clearancePrice = num;
+            it.actionPlan = formattedPlan;
+          }
+          it.pricingUpdatedAt = nowIso;
+          it.lastUpdated = nowIso;
+          it.updatedBy = updatedBy;
+          recordUserEdit(it, {
+            actionPlan: formattedPlan,
+            offeredPrice: !isNaN(num) && num > 0 ? num : undefined,
+            clearancePrice: !isNaN(num) && num > 0 ? num : undefined
+          });
         }
-        it.pricingUpdatedAt = nowIso;
-        it.lastUpdated = nowIso;
-        it.updatedBy = updatedBy;
-        recordUserEdit(it, {
-          actionPlan: formattedPlan,
-          offeredPrice: !isNaN(num) && num > 0 ? num : undefined,
-          clearancePrice: !isNaN(num) && num > 0 ? num : undefined
-        });
-      }
-    });
+      });
+    }
+  } finally {
+    endUserEditsBatch();
   }
 
-  saveLocalExpiryData();
-  delete expiryItems._productBatchMap;
-  delete expiryItems._skuBatchMap;
+  saveLocalExpiryData({ skipHeal: true });
   renderExpiryUI();
 
   if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
@@ -4311,10 +4796,9 @@ function filterExpiryItems() {
     const it = expiryItems[i];
     if (!it) continue;
 
-    // 1. Branch filter
+    // 1. Branch filter (WeakMap-cached, zero object mutation)
     if (!isBranchAll) {
-      const bNorm = it._bNorm || (it._bNorm = normalizeBranchCode(it.branch).toLowerCase());
-      if (bNorm !== targetBranchNorm) continue;
+      if (getItemBranchNorm(it) !== targetBranchNorm) continue;
     }
 
     // 2. Horizon / Status filter
@@ -4389,6 +4873,7 @@ function filterExpiryItems() {
     });
   }
 
+  _lastFilteredExpiryItems = filtered;
   return filtered;
 }
 
@@ -4413,9 +4898,57 @@ function toggleExpiryDateSort() {
 }
 window.toggleExpiryDateSort = toggleExpiryDateSort;
 
+function computeExpiryOverviewStats() {
+  let criticalCount = 0;
+  let urgentCount = 0;
+  let kpi9mCount = 0;
+  let monitor12mCount = 0;
+  let clearedCount = 0;
+  let blank9mCount = 0;
+
+  const targetBranch = activeExpiryFilter.branch;
+  const isBranchAll = !targetBranch || targetBranch === 'ALL';
+  const targetBranchNorm = isBranchAll ? '' : targetBranch.toLowerCase();
+  const clearedSet = getClearedExpiryKeys();
+  const { todayMs, todayDateStr } = getTodayContext();
+
+  const len = expiryItems.length;
+  for (let i = 0; i < len; i++) {
+    const it = expiryItems[i];
+    if (!it) continue;
+
+    if (!isBranchAll) {
+      if (getItemBranchNorm(it) !== targetBranchNorm) continue;
+    }
+
+    if (isItemMarkedDoneOrCleared(it, clearedSet)) {
+      clearedCount++;
+      continue;
+    }
+
+    const h = getItemHorizon(it, todayMs, todayDateStr);
+    if (h.monthsLeft < 3) {
+      criticalCount++;
+      if (!String(it.actionPlan || '').trim()) blank9mCount++;
+    } else if (h.monthsLeft < 6) {
+      urgentCount++;
+      if (!String(it.actionPlan || '').trim()) blank9mCount++;
+    } else if (h.monthsLeft <= 9) {
+      kpi9mCount++;
+      if (!String(it.actionPlan || '').trim()) blank9mCount++;
+    } else if (h.monthsLeft <= 12) {
+      monitor12mCount++;
+    }
+  }
+
+  const total9mKpi = criticalCount + urgentCount + kpi9mCount;
+  return { criticalCount, urgentCount, kpi9mCount, total9mKpi, monitor12mCount, clearedCount, blank9mCount };
+}
+
 function renderExpiryUI() {
-  renderExpiryKpis();
-  if (typeof renderExpiryFy2027ReadinessBar === 'function') renderExpiryFy2027ReadinessBar();
+  const stats = computeExpiryOverviewStats();
+  renderExpiryKpis(stats);
+  if (typeof renderExpiryFy2027ReadinessBar === 'function') renderExpiryFy2027ReadinessBar(stats);
   renderExpiryTable();
 }
 
@@ -4432,8 +4965,7 @@ function getExpiry9mBlankActionItems() {
     const it = expiryItems[i];
     if (!it) continue;
     if (!isBranchAll) {
-      const bNorm = it._bNorm || (it._bNorm = normalizeBranchCode(it.branch).toLowerCase());
-      if (bNorm !== targetBranchNorm) continue;
+      if (getItemBranchNorm(it) !== targetBranchNorm) continue;
     }
     if (isItemMarkedDoneOrCleared(it, clearedSet)) continue;
     const h = getItemHorizon(it, todayMs, todayDateStr);
@@ -4456,29 +4988,36 @@ function autoFillBlankExpiryActionPlans() {
   const updater = (typeof getSession === 'function' && getSession()?.displayName) || 'Pharmacist';
   let filled = 0;
   const updatedItems = [];
-  blanks.forEach(({ it, h }) => {
-    let suggested = 'Closely monitor';
-    const policy = typeof getHqPolicyForItem === 'function' ? getHqPolicyForItem(it) : null;
-    const hqStatus = policy && policy.status ? String(policy.status).toUpperCase() : '';
-    if (hqStatus === 'RETURNABLE' || hqStatus === 'SPECIAL') {
-      suggested = hqStatus === 'SPECIAL' ? 'Returnable with Condition' : 'Return to HQ / Supplier';
-    } else if (h.monthsLeft < 3) {
-      suggested = 'Clearance Promo (Near-Expiry Basket)';
-    } else if (h.monthsLeft < 6) {
-      suggested = 'Front Display & Team Push';
-    } else {
-      suggested = 'Closely monitor';
-    }
-    it.actionPlan = suggested;
-    it.lastUpdated = nowIso;
-    it.updatedBy = updater;
-    if (typeof recordUserEdit === 'function') {
-      recordUserEdit(it, { actionPlan: suggested });
-    }
-    updatedItems.push(it);
-    filled++;
-  });
-  if (typeof saveLocalExpiryData === 'function') saveLocalExpiryData();
+
+  beginUserEditsBatch();
+  try {
+    blanks.forEach(({ it, h }) => {
+      let suggested = 'Closely monitor';
+      const policy = typeof getHqPolicyForItem === 'function' ? getHqPolicyForItem(it) : null;
+      const hqStatus = policy && policy.status ? String(policy.status).toUpperCase() : '';
+      if (hqStatus === 'RETURNABLE' || hqStatus === 'SPECIAL') {
+        suggested = hqStatus === 'SPECIAL' ? 'Returnable with Condition' : 'Return to HQ / Supplier';
+      } else if (h.monthsLeft < 3) {
+        suggested = 'Clearance Promo (Near-Expiry Basket)';
+      } else if (h.monthsLeft < 6) {
+        suggested = 'Front Display & Team Push';
+      } else {
+        suggested = 'Closely monitor';
+      }
+      it.actionPlan = suggested;
+      it.lastUpdated = nowIso;
+      it.updatedBy = updater;
+      if (typeof recordUserEdit === 'function') {
+        recordUserEdit(it, { actionPlan: suggested });
+      }
+      updatedItems.push(it);
+      filled++;
+    });
+  } finally {
+    endUserEditsBatch();
+  }
+
+  if (typeof saveLocalExpiryData === 'function') saveLocalExpiryData({ skipHeal: true });
   if (typeof pushBatchExpiryToSheets === 'function' && updatedItems.length > 0) {
     pushBatchExpiryToSheets(updatedItems).catch(err => console.warn('[Expiry] Auto-fill cloud push warning:', err));
   } else if (typeof pushExpiryUpdateToSheets === 'function') {
@@ -4506,18 +5045,20 @@ function filterExpiryBlankActionPlans() {
   renderExpiryUI();
 }
 
-function renderExpiryFy2027ReadinessBar() {
+function renderExpiryFy2027ReadinessBar(precomputedStats = null) {
   const host = document.getElementById('expiryFy2027ReadinessBar');
   if (!host) return;
   const cutOff = window.PmgFy2027Kpi
     ? window.PmgFy2027Kpi.getDaysUntilMonthlyCutOff(14)
     : { daysRemaining: 0, isUrgent: false, nextCutOffDate: '' };
-  const { inHorizon, blanks } = getExpiry9mBlankActionItems();
-  const total = inHorizon.length;
-  const blankCount = blanks.length;
+  const stats = precomputedStats || computeExpiryOverviewStats();
+  const total = stats.total9mKpi;
+  const blankCount = stats.blank9mCount;
   const completenessPct = total > 0 ? Math.round(((total - blankCount) / total) * 100) : 100;
 
-  if (window.PmgFy2027Kpi) {
+  const readinessSig = `${blankCount}|${completenessPct}`;
+  if (window.PmgFy2027Kpi && readinessSig !== _lastFy2027ReadinessSignature) {
+    _lastFy2027ReadinessSignature = readinessSig;
     window.PmgFy2027Kpi.saveFy2027VaultLocal({
       expiryBlankPlansCount: blankCount,
       expiryCompliancePct: blankCount === 0 ? 100 : completenessPct
@@ -4557,48 +5098,13 @@ window.autoFillBlankExpiryActionPlans = autoFillBlankExpiryActionPlans;
 window.filterExpiryBlankActionPlans = filterExpiryBlankActionPlans;
 window.renderExpiryFy2027ReadinessBar = renderExpiryFy2027ReadinessBar;
 
-function renderExpiryKpis() {
-  let criticalCount = 0;
-  let urgentCount = 0;
-  let kpi9mCount = 0;
-  let monitor12mCount = 0;
-  let clearedCount = 0;
-
-  const targetBranch = activeExpiryFilter.branch;
-  const isBranchAll = !targetBranch || targetBranch === 'ALL';
-  const targetBranchNorm = isBranchAll ? '' : targetBranch.toLowerCase();
-  const clearedSet = getClearedExpiryKeys();
-  const { todayMs, todayDateStr } = getTodayContext();
-
-  const len = expiryItems.length;
-  for (let i = 0; i < len; i++) {
-    const it = expiryItems[i];
-    if (!it) continue;
-
-    if (!isBranchAll) {
-      const bNorm = it._bNorm || (it._bNorm = normalizeBranchCode(it.branch).toLowerCase());
-      if (bNorm !== targetBranchNorm) continue;
-    }
-
-    if (isItemMarkedDoneOrCleared(it, clearedSet)) {
-      clearedCount++;
-      continue;
-    }
-
-    const h = getItemHorizon(it, todayMs, todayDateStr);
-    if (h.monthsLeft < 3) criticalCount++;
-    else if (h.monthsLeft < 6) urgentCount++;
-    else if (h.monthsLeft <= 9) kpi9mCount++;
-    else if (h.monthsLeft <= 12) monitor12mCount++;
-  }
-
-  const total9mKpi = criticalCount + urgentCount + kpi9mCount;
-
-  setText('expiryKpiCritical', criticalCount);
-  setText('expiryKpiUrgent', urgentCount);
-  setText('expiryKpi9m', total9mKpi);
-  setText('expiryKpi12m', monitor12mCount);
-  setText('expiryKpiCleared', clearedCount);
+function renderExpiryKpis(precomputedStats = null) {
+  const stats = precomputedStats || computeExpiryOverviewStats();
+  setText('expiryKpiCritical', stats.criticalCount);
+  setText('expiryKpiUrgent', stats.urgentCount);
+  setText('expiryKpi9m', stats.total9mKpi);
+  setText('expiryKpi12m', stats.monitor12mCount);
+  setText('expiryKpiCleared', stats.clearedCount);
 }
 
 function getExpiryProductPoolingKey(item) {
@@ -4679,6 +5185,16 @@ function renderExpiryTable() {
   }
 
   if (items.length === 0) {
+    if (_expiryHydratingFromIdb && expiryItems.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="10" class="text-center py-12 text-blue-600">
+            <i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3 block"></i>
+            Loading stock expiry database…
+          </td>
+        </tr>`;
+      return;
+    }
     tbody.innerHTML = `
       <tr>
         <td colspan="10" class="text-center py-12 text-gray-400">
@@ -4687,6 +5203,7 @@ function renderExpiryTable() {
           <p class="text-xs text-gray-400 mt-1">Upload a PDF invoice or click "+ Quick Add" to begin tracking.</p>
         </td>
       </tr>`;
+    updateBatchDecisionBar(items);
     return;
   }
 
@@ -4707,7 +5224,7 @@ function renderExpiryTable() {
     const itemBatches = productBatchMap[productKey] || [];
 
     let badgeClass = 'bg-gray-100 text-gray-600';
-    if (h.level === 'expired' || h.level === 'critical') badgeClass = 'bg-rose-100 text-rose-700 font-bold border border-rose-200 animate-pulse';
+    if (h.level === 'expired' || h.level === 'critical') badgeClass = 'bg-rose-100 text-rose-700 font-bold border border-rose-200';
     else if (h.level === 'urgent') badgeClass = 'bg-amber-100 text-amber-800 font-bold border border-amber-200';
     else if (h.level === 'kpi') badgeClass = 'bg-yellow-100 text-yellow-800 font-bold border border-yellow-200';
     else if (h.level === 'monitor') badgeClass = 'bg-blue-100 text-blue-700 font-semibold';
@@ -4762,7 +5279,7 @@ function renderExpiryTable() {
                 </div>
               ` : (String(it.actionPlan || '').toLowerCase().includes('clearance') || String(it.actionPlan || '').toLowerCase().includes('promo')) ? `
                 <button type="button" onclick="openClearancePriceTagModal('${safeRowId}')"
-                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 transition animate-pulse cursor-pointer"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 transition cursor-pointer"
                   title="Click to input offered price and print price tag">
                   <i class="fa-solid fa-tag text-amber-600 text-[9px]"></i> + Set Offer Price
                 </button>
@@ -4850,7 +5367,7 @@ function renderExpiryTable() {
     `;
   }).join('');
 
-  updateBatchDecisionBar();
+  updateBatchDecisionBar(items);
 }
 
 function loadMoreExpiryRows() {
@@ -5052,25 +5569,28 @@ function handleExpirySearchChange(val) {
   clearTimeout(searchDebounceTimer);
 
   if (!cleanVal) {
-    activeExpiryFilter.search = '';
-    expiryCurrentPage = 1;
-    renderExpiryUI();
+    if (activeExpiryFilter.search !== '') {
+      activeExpiryFilter.search = '';
+      expiryCurrentPage = 1;
+      renderExpiryTable();
+    }
     return;
   }
 
   searchDebounceTimer = setTimeout(() => {
+    if (activeExpiryFilter.search === cleanVal && _lastFilteredExpiryItems) return;
     activeExpiryFilter.search = cleanVal;
     expiryCurrentPage = 1;
-    renderExpiryUI();
+    renderExpiryTable();
 
-    // If search term is 3+ characters and returned 0 matches, or if sheets haven't synced recently,
-    // automatically trigger background sync from Google Sheets so freshly uploaded invoice rows appear
-    const matches = filterExpiryItems();
+    // If search term is 3+ characters and returned 0 matches (and not synced within last 2 minutes),
+    // trigger background sync from Google Sheets so freshly uploaded invoice rows appear without spamming requests.
+    const matchCount = Array.isArray(_lastFilteredExpiryItems) ? _lastFilteredExpiryItems.length : 0;
     const timeSinceLastSync = Date.now() - (window._lastExpirySheetsSyncTime || 0);
-    if ((matches.length === 0 || timeSinceLastSync > 60000) && cleanVal.length >= 3) {
+    if (cleanVal.length >= 3 && !window._pmgExpiryOcrInProgress && timeSinceLastSync > 120000 && (matchCount === 0 || timeSinceLastSync > 300000)) {
       syncExpiryFromSheets(false).catch(console.warn);
     }
-  }, 100);
+  }, 180);
 }
 window.handleExpirySearchChange = handleExpirySearchChange;
 
@@ -5102,7 +5622,7 @@ function setupExpiryEventListeners() {
     horizonSelect.addEventListener('change', e => {
       activeExpiryFilter.horizon = e.target.value;
       expiryCurrentPage = 1;
-      renderExpiryUI();
+      renderExpiryTable();
     });
   }
 
@@ -5111,7 +5631,7 @@ function setupExpiryEventListeners() {
     returnPolicySelect.addEventListener('change', e => {
       activeExpiryFilter.returnPolicy = e.target.value;
       expiryCurrentPage = 1;
-      renderExpiryUI();
+      renderExpiryTable();
     });
   }
 
@@ -5120,17 +5640,15 @@ function setupExpiryEventListeners() {
     actionPlanSelect.addEventListener('change', e => {
       activeExpiryFilter.actionPlan = e.target.value;
       expiryCurrentPage = 1;
-      renderExpiryUI();
+      renderExpiryTable();
     });
   }
 
   const searchInput = document.getElementById('expirySearchInput');
   if (searchInput) {
     searchInput.addEventListener('input', e => handleExpirySearchChange(e.target.value));
-    searchInput.addEventListener('change', e => handleExpirySearchChange(e.target.value));
-    searchInput.addEventListener('keyup', e => {
+    searchInput.addEventListener('keydown', e => {
       if (e.key === 'Escape') clearExpirySearch();
-      else handleExpirySearchChange(e.target.value);
     });
     searchInput.addEventListener('search', e => handleExpirySearchChange(e.target.value));
   }
@@ -5496,13 +6014,7 @@ async function updateBatchExplorerQty(rowId, newQty) {
   item.remainingQty = num;
   item.lastUpdated = new Date().toISOString();
 
-  // Invalidate cache
-  delete expiryItems._productBatchMap;
-  delete expiryItems._skuBatchMap;
-
-  saveLocalExpiryData();
-  delete expiryItems._productBatchMap;
-  delete expiryItems._skuBatchMap;
+  saveLocalExpiryData({ skipHeal: true });
   renderExpiryUI();
 
   if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
@@ -5546,7 +6058,7 @@ async function markBatchItemDoneClear(rowId, btnEl = null, ev = null) {
     window.pausePmgSyncPolling(15000);
   }
 
-  // 2. Instantly mark as cleared in-memory and in persistent tombstone
+  // 2. Instantly mark as cleared in-memory and in persistent tombstone (batched single write)
   const nowIso = new Date().toISOString();
   const session = typeof getSession === 'function' ? getSession() : null;
   const userName = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
@@ -5562,37 +6074,42 @@ async function markBatchItemDoneClear(rowId, btnEl = null, ev = null) {
   const legacyBatchKey = (bt && bt !== 'N/A') ? bt : 'NO_BATCH';
   const poolingKey = getExpiryProductPoolingKey(item);
 
-  if (targetIdStr && targetIdStr !== 'undefined' && targetIdStr !== 'null') {
-    addClearedExpiryKey(`ROW_${targetIdStr}`);
-    addClearedExpiryKey(targetIdStr);
-  }
-  if (targetKey) addClearedExpiryKey(targetKey);
-  if (canonBatchKey) addClearedExpiryKey(canonBatchKey);
-  if (c && c !== 'N/A') addClearedExpiryKey(`${b}|${c}|${legacyBatchKey}`);
-  if (poolingKey) addClearedExpiryKey(`${poolingKey}|${bt || 'NO_BATCH'}|${expCanon}`);
-
-  expiryItems.forEach(it => {
-    if (!it) return;
-    const itIdStr = it.rowId !== undefined && it.rowId !== null ? String(it.rowId).trim() : '';
-    const isSameId = targetIdStr && targetIdStr !== 'undefined' && itIdStr === targetIdStr;
-    const isSameKey = targetKey && (getExpiryItemKey(it) === targetKey);
-    const itCanonBatchKey = `${(it.branch || 'Kota Sentosa').trim().toUpperCase()}|${normalizeProductCode(it.itemCode) ? 'C_' + normalizeProductCode(it.itemCode) : 'D_' + normalizeProductDesc(it.itemDescription).slice(0, 30)}|${normalizeBatchNumber(it.batchNumber) || 'NO_BATCH'}|${getCanonicalExpiryDate(it.expiryDate)}`;
-    const isSameBatch = canonBatchKey && (itCanonBatchKey === canonBatchKey);
-
-    if (isSameId || isSameKey || isSameBatch) {
-      it.status = 'DONE';
-      it.quantity = 0;
-      it.remainingQty = 0;
-      it.clearedAt = nowIso;
-      it.lastUpdated = nowIso;
-      it.updatedBy = userName;
-      if (itIdStr && itIdStr !== 'undefined' && itIdStr !== 'null') {
-        addClearedExpiryKey(`ROW_${itIdStr}`);
-        addClearedExpiryKey(itIdStr);
-        selectedWriteOffRowIds.delete(itIdStr);
-      }
+  beginClearedKeysBatch();
+  try {
+    if (targetIdStr && targetIdStr !== 'undefined' && targetIdStr !== 'null') {
+      addClearedExpiryKey(`ROW_${targetIdStr}`);
+      addClearedExpiryKey(targetIdStr);
     }
-  });
+    if (targetKey) addClearedExpiryKey(targetKey);
+    if (canonBatchKey) addClearedExpiryKey(canonBatchKey);
+    if (c && c !== 'N/A') addClearedExpiryKey(`${b}|${c}|${legacyBatchKey}`);
+    if (poolingKey) addClearedExpiryKey(`${poolingKey}|${bt || 'NO_BATCH'}|${expCanon}`);
+
+    expiryItems.forEach(it => {
+      if (!it) return;
+      const itIdStr = it.rowId !== undefined && it.rowId !== null ? String(it.rowId).trim() : '';
+      const isSameId = targetIdStr && targetIdStr !== 'undefined' && itIdStr === targetIdStr;
+      const isSameKey = targetKey && (getExpiryItemKey(it) === targetKey);
+      const itCanonBatchKey = `${(it.branch || 'Kota Sentosa').trim().toUpperCase()}|${normalizeProductCode(it.itemCode) ? 'C_' + normalizeProductCode(it.itemCode) : 'D_' + normalizeProductDesc(it.itemDescription).slice(0, 30)}|${normalizeBatchNumber(it.batchNumber) || 'NO_BATCH'}|${getCanonicalExpiryDate(it.expiryDate)}`;
+      const isSameBatch = canonBatchKey && (itCanonBatchKey === canonBatchKey);
+
+      if (isSameId || isSameKey || isSameBatch) {
+        it.status = 'DONE';
+        it.quantity = 0;
+        it.remainingQty = 0;
+        it.clearedAt = nowIso;
+        it.lastUpdated = nowIso;
+        it.updatedBy = userName;
+        if (itIdStr && itIdStr !== 'undefined' && itIdStr !== 'null') {
+          addClearedExpiryKey(`ROW_${itIdStr}`);
+          addClearedExpiryKey(itIdStr);
+          selectedWriteOffRowIds.delete(itIdStr);
+        }
+      }
+    });
+  } finally {
+    endClearedKeysBatch();
+  }
 
   if (targetIdStr) {
     selectedWriteOffRowIds.delete(targetIdStr);
@@ -5600,14 +6117,8 @@ async function markBatchItemDoneClear(rowId, btnEl = null, ev = null) {
   saveAccumulatedWriteOffItems();
   updateWriteOffSelectedCounter();
 
-  // Invalidate cache
-  delete expiryItems._productBatchMap;
-  delete expiryItems._skuBatchMap;
-
   // 3. Persist locally and update background main table immediately
-  saveLocalExpiryData();
-  delete expiryItems._productBatchMap;
-  delete expiryItems._skuBatchMap;
+  saveLocalExpiryData({ skipHeal: true });
   renderExpiryUI();
 
   // 4. Check remaining active batches for this product in explorer modal
@@ -5683,13 +6194,10 @@ function isItemPoison(item) {
   if (item.category && String(item.category).toUpperCase() === 'POISON') return true;
   if (item.category && ['OTC', 'PC', 'M&B', 'SUP', 'FA', 'EC', 'F&B', 'H&L'].includes(String(item.category).toUpperCase())) return false;
 
-  if (typeof hqReturnPolicyList !== 'undefined' && Array.isArray(hqReturnPolicyList)) {
-    const code = String(item.itemCode || '').trim();
-    const desc = String(item.itemDescription || '').toUpperCase();
-    const found = hqReturnPolicyList.find(p => (code && String(p.itemCode || '').trim() === code) || (desc && String(p.brand || '').toUpperCase().includes(desc)));
-    if (found && found.category) {
-      return String(found.category).toUpperCase() === 'POISON';
-    }
+  // O(1) indexed policy lookup instead of O(5,200) linear scan
+  const found = typeof getHqPolicyForItem === 'function' ? getHqPolicyForItem(item) : null;
+  if (found && found.category) {
+    return String(found.category).toUpperCase() === 'POISON';
   }
 
   const desc = String(item.itemDescription || '').toUpperCase();
@@ -5793,14 +6301,16 @@ function toggleSelectAllExpiry(isChecked) {
 }
 window.toggleSelectAllExpiry = toggleSelectAllExpiry;
 
-function updateBatchDecisionBar() {
+function updateBatchDecisionBar(preFilteredItems = null) {
   const count = selectedBatchDecisionRowIds.size;
   const bar = document.getElementById('expiryBatchDecisionBar');
   const countBadge = document.getElementById('batchDecisionCountBadge');
   const allCb = document.getElementById('expirySelectAllCheckbox');
 
   if (allCb) {
-    const displayed = filterExpiryItems();
+    const displayed = Array.isArray(preFilteredItems)
+      ? preFilteredItems
+      : (Array.isArray(_lastFilteredExpiryItems) ? _lastFilteredExpiryItems : filterExpiryItems());
     allCb.checked = displayed.length > 0 && displayed.every(d => selectedBatchDecisionRowIds.has(String(d.rowId)));
   }
 
@@ -5827,40 +6337,54 @@ async function bulkMarkSelectedExpiryDone() {
   const session = typeof getSession === 'function' ? getSession() : null;
   const userName = session?.displayName || localStorage.getItem('pmg_user_name') || 'Pharmacist';
 
-  ids.forEach(id => {
-    const it = findExpiryItemById(id);
-    if (it) {
-      it.status = 'DONE';
-      it.quantity = 0;
-      it.remainingQty = 0;
-      it.clearedAt = nowIso;
-      it.lastUpdated = nowIso;
-      it.updatedBy = userName;
+  const targetCanonBatchKeys = new Set();
+  const clearedItemsForSync = [];
 
-      const targetIdStr = String(it.rowId || id).trim();
-      if (targetIdStr && targetIdStr !== 'undefined' && targetIdStr !== 'null') {
-        addClearedExpiryKey(`ROW_${targetIdStr}`);
-        addClearedExpiryKey(targetIdStr);
+  beginClearedKeysBatch();
+  try {
+    ids.forEach(id => {
+      const it = findExpiryItemById(id);
+      if (it) {
+        it.status = 'DONE';
+        it.quantity = 0;
+        it.remainingQty = 0;
+        it.clearedAt = nowIso;
+        it.lastUpdated = nowIso;
+        it.updatedBy = userName;
+        clearedItemsForSync.push({ id, it });
+
+        const targetIdStr = String(it.rowId || id).trim();
+        if (targetIdStr && targetIdStr !== 'undefined' && targetIdStr !== 'null') {
+          addClearedExpiryKey(`ROW_${targetIdStr}`);
+          addClearedExpiryKey(targetIdStr);
+        }
+        const targetKey = getExpiryItemKey(it);
+        if (targetKey) addClearedExpiryKey(targetKey);
+
+        const b = (it.branch || 'Kota Sentosa').trim().toUpperCase();
+        const c = normalizeProductCode(it.itemCode);
+        const d = normalizeProductDesc(it.itemDescription);
+        const bt = normalizeBatchNumber(it.batchNumber);
+        const expCanon = getCanonicalExpiryDate(it.expiryDate);
+        const canonBatchKey = `${b}|${c ? 'C_' + c : 'D_' + d.slice(0, 30)}|${bt || 'NO_BATCH'}|${expCanon}`;
+        if (canonBatchKey) {
+          addClearedExpiryKey(canonBatchKey);
+          targetCanonBatchKeys.add(canonBatchKey);
+        }
+        if (c && c !== 'N/A') addClearedExpiryKey(`${b}|${c}|${bt || 'NO_BATCH'}`);
+        const poolingKey = getExpiryProductPoolingKey(it);
+        if (poolingKey) addClearedExpiryKey(`${poolingKey}|${bt || 'NO_BATCH'}|${expCanon}`);
       }
-      const targetKey = getExpiryItemKey(it);
-      if (targetKey) addClearedExpiryKey(targetKey);
+    });
 
-      const b = (it.branch || 'Kota Sentosa').trim().toUpperCase();
-      const c = normalizeProductCode(it.itemCode);
-      const d = normalizeProductDesc(it.itemDescription);
-      const bt = normalizeBatchNumber(it.batchNumber);
-      const expCanon = getCanonicalExpiryDate(it.expiryDate);
-      const canonBatchKey = `${b}|${c ? 'C_' + c : 'D_' + d.slice(0, 30)}|${bt || 'NO_BATCH'}|${expCanon}`;
-      if (canonBatchKey) addClearedExpiryKey(canonBatchKey);
-      if (c && c !== 'N/A') addClearedExpiryKey(`${b}|${c}|${bt || 'NO_BATCH'}`);
-      const poolingKey = getExpiryProductPoolingKey(it);
-      if (poolingKey) addClearedExpiryKey(`${poolingKey}|${bt || 'NO_BATCH'}|${expCanon}`);
-
-      // Also mark any duplicates in memory
-      expiryItems.forEach(dup => {
-        if (!dup) return;
-        const dupCanon = `${(dup.branch || 'Kota Sentosa').trim().toUpperCase()}|${normalizeProductCode(dup.itemCode) ? 'C_' + normalizeProductCode(dup.itemCode) : 'D_' + normalizeProductDesc(dup.itemDescription).slice(0, 30)}|${normalizeBatchNumber(dup.batchNumber) || 'NO_BATCH'}|${getCanonicalExpiryDate(dup.expiryDate)}`;
-        if (canonBatchKey && dupCanon === canonBatchKey) {
+    // Single O(N) pass to mark any in-memory duplicates matching any of the cleared batches
+    if (targetCanonBatchKeys.size > 0) {
+      for (let i = 0; i < expiryItems.length; i++) {
+        const dup = expiryItems[i];
+        if (!dup) continue;
+        const cDup = normalizeProductCode(dup.itemCode);
+        const dupCanon = `${(dup.branch || 'Kota Sentosa').trim().toUpperCase()}|${cDup ? 'C_' + cDup : 'D_' + normalizeProductDesc(dup.itemDescription).slice(0, 30)}|${normalizeBatchNumber(dup.batchNumber) || 'NO_BATCH'}|${getCanonicalExpiryDate(dup.expiryDate)}`;
+        if (targetCanonBatchKeys.has(dupCanon)) {
           dup.status = 'DONE';
           dup.quantity = 0;
           dup.remainingQty = 0;
@@ -5872,17 +6396,14 @@ async function bulkMarkSelectedExpiryDone() {
             addClearedExpiryKey(String(dup.rowId));
           }
         }
-      });
+      }
     }
-  });
+  } finally {
+    endClearedKeysBatch();
+  }
 
   selectedBatchDecisionRowIds.clear();
-  delete expiryItems._productBatchMap;
-  delete expiryItems._skuBatchMap;
-  saveLocalExpiryData();
-  delete expiryItems._productBatchMap;
-  delete expiryItems._skuBatchMap;
-  updateBatchDecisionBar();
+  saveLocalExpiryData({ skipHeal: true });
   renderExpiryUI();
 
   if (typeof currentExplorerProductKey !== 'undefined' && currentExplorerProductKey && !document.getElementById('skuBatchExplorerModal')?.classList.contains('hidden')) {
@@ -5891,11 +6412,9 @@ async function bulkMarkSelectedExpiryDone() {
 
   showExpiryToast(`✅ ${ids.length} item(s) marked as Done Clear!`);
 
-  // Sync to OneDrive and Sheets
-  const branch = document.getElementById('expiryBranchFilter')?.value || 'Kota Sentosa';
-  ids.forEach(id => {
-    const it = findExpiryItemById(id);
-    if (it) pushExpiryUpdateToSheets(id, 0, 'DONE', it.expiryDate).catch(console.warn);
+  // Sync to Sheets in background
+  clearedItemsForSync.forEach(({ id, it }) => {
+    pushExpiryUpdateToSheets(id, 0, 'DONE', it.expiryDate).catch(console.warn);
   });
 }
 window.bulkMarkSelectedExpiryDone = bulkMarkSelectedExpiryDone;
@@ -5904,27 +6423,31 @@ function bulkAddSelectedToWriteOff() {
   const ids = Array.from(selectedBatchDecisionRowIds);
   if (ids.length === 0) return;
 
-  ids.forEach(id => {
-    selectedWriteOffRowIds.add(String(id));
-    const it = findExpiryItemById(id);
-    if (it) {
-      it.actionPlan = 'Write-off / Dispose';
-      recordUserEdit(it, { actionPlan: 'Write-off / Dispose' });
-      pushExpiryUpdateToSheets(it.rowId, it.quantity, it.status, it.expiryDate, {
-        actionPlan: 'Write-off / Dispose',
-        branch: it.branch,
-        itemCode: it.itemCode,
-        itemDescription: it.itemDescription,
-        batchNumber: it.batchNumber
-      }).catch(console.warn);
-    }
-  });
+  beginUserEditsBatch();
+  try {
+    ids.forEach(id => {
+      selectedWriteOffRowIds.add(String(id));
+      const it = findExpiryItemById(id);
+      if (it) {
+        it.actionPlan = 'Write-off / Dispose';
+        recordUserEdit(it, { actionPlan: 'Write-off / Dispose' });
+        pushExpiryUpdateToSheets(it.rowId, it.quantity, it.status, it.expiryDate, {
+          actionPlan: 'Write-off / Dispose',
+          branch: it.branch,
+          itemCode: it.itemCode,
+          itemDescription: it.itemDescription,
+          batchNumber: it.batchNumber
+        }).catch(console.warn);
+      }
+    });
+  } finally {
+    endUserEditsBatch();
+  }
 
   selectedBatchDecisionRowIds.clear();
-  saveLocalExpiryData();
+  saveLocalExpiryData({ skipHeal: true });
   saveAccumulatedWriteOffItems();
   updateWriteOffSelectedCounter();
-  updateBatchDecisionBar();
   renderExpiryUI();
 
   openStockWriteOffModal();
@@ -5938,30 +6461,37 @@ function bulkSetSelectedActionPlan(planValue) {
   if (ids.length === 0) return;
 
   const finalPlan = planValue === '__CLEAR__' ? '' : planValue;
-  ids.forEach(id => {
-    const it = findExpiryItemById(id);
-    if (it) {
-      const planToSet = (finalPlan === '' && isItemBelow9Months(it)) ? 'Closely monitor' : finalPlan;
-      it.actionPlan = planToSet;
-      it.lastUpdated = new Date().toISOString();
-      if (planToSet === 'Write-off / Dispose') {
-        selectedWriteOffRowIds.add(String(id));
-      } else {
-        selectedWriteOffRowIds.delete(String(id));
+  const nowIso = new Date().toISOString();
+
+  beginUserEditsBatch();
+  try {
+    ids.forEach(id => {
+      const it = findExpiryItemById(id);
+      if (it) {
+        const planToSet = (finalPlan === '' && isItemBelow9Months(it)) ? 'Closely monitor' : finalPlan;
+        it.actionPlan = planToSet;
+        it.lastUpdated = nowIso;
+        if (planToSet === 'Write-off / Dispose') {
+          selectedWriteOffRowIds.add(String(id));
+        } else {
+          selectedWriteOffRowIds.delete(String(id));
+        }
+        recordUserEdit(it, { actionPlan: planToSet });
+        pushExpiryUpdateToSheets(it.rowId, it.quantity, it.status, it.expiryDate, {
+          actionPlan: planToSet,
+          branch: it.branch,
+          itemCode: it.itemCode,
+          itemDescription: it.itemDescription,
+          batchNumber: it.batchNumber
+        }).catch(console.warn);
       }
-      recordUserEdit(it, { actionPlan: planToSet });
-      pushExpiryUpdateToSheets(it.rowId, it.quantity, it.status, it.expiryDate, {
-        actionPlan: planToSet,
-        branch: it.branch,
-        itemCode: it.itemCode,
-        itemDescription: it.itemDescription,
-        batchNumber: it.batchNumber
-      }).catch(console.warn);
-    }
-  });
+    });
+  } finally {
+    endUserEditsBatch();
+  }
 
   selectedBatchDecisionRowIds.clear();
-  saveLocalExpiryData();
+  saveLocalExpiryData({ skipHeal: true });
   saveAccumulatedWriteOffItems();
   updateWriteOffSelectedCounter();
   renderExpiryUI();
@@ -5987,7 +6517,7 @@ function toggleSelectWriteOffItem(rowId, isChecked) {
     if (item && (!item.actionPlan || item.actionPlan === '' || item.actionPlan === 'Closely monitor')) {
       item.actionPlan = 'Write-off / Dispose';
       recordUserEdit(item, { actionPlan: 'Write-off / Dispose' });
-      saveLocalExpiryData();
+      saveLocalExpiryData({ skipHeal: true });
       pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate, {
         actionPlan: 'Write-off / Dispose',
         branch: item.branch,
@@ -6004,7 +6534,7 @@ function toggleSelectWriteOffItem(rowId, isChecked) {
       const resetPlan = isItemBelow9Months(item) ? 'Closely monitor' : '';
       item.actionPlan = resetPlan;
       recordUserEdit(item, { actionPlan: resetPlan });
-      saveLocalExpiryData();
+      saveLocalExpiryData({ skipHeal: true });
       pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate, {
         actionPlan: resetPlan,
         branch: item.branch,
@@ -6019,7 +6549,7 @@ function toggleSelectWriteOffItem(rowId, isChecked) {
   renderExpiryUI();
 }
 
-function updateWriteOffSelectedCounter() {
+function updateWriteOffSelectedCounter(preFilteredItems = null) {
   const count = selectedWriteOffRowIds.size;
   const countEl = document.getElementById('writeOffSelectedCount');
   const btnEl = document.getElementById('btnOpenWriteOffModal');
@@ -6049,8 +6579,12 @@ function updateWriteOffSelectedCounter() {
 
   const allCb = document.getElementById('expirySelectAllCheckbox');
   if (allCb) {
-    const displayed = filterExpiryItems();
-    allCb.checked = displayed.length > 0 && displayed.every(d => selectedWriteOffRowIds.has(String(d.rowId)));
+    const displayed = Array.isArray(preFilteredItems)
+      ? preFilteredItems
+      : (Array.isArray(_lastFilteredExpiryItems) ? _lastFilteredExpiryItems : null);
+    if (displayed) {
+      allCb.checked = displayed.length > 0 && displayed.every(d => selectedWriteOffRowIds.has(String(d.rowId)));
+    }
   }
 }
 
@@ -6073,24 +6607,29 @@ function clearAllWriteOffSelection(skipConfirm = false) {
     }
   }
   let modified = false;
-  selectedWriteOffRowIds.forEach(id => {
-    const item = findExpiryItemById(id);
-    if (item && isWriteOffActionPlan(item.actionPlan)) {
-      const resetPlan = isItemBelow9Months(item) ? 'Closely monitor' : '';
-      item.actionPlan = resetPlan;
-      recordUserEdit(item, { actionPlan: resetPlan });
-      pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate, {
-        actionPlan: resetPlan,
-        branch: item.branch,
-        itemCode: item.itemCode,
-        itemDescription: item.itemDescription,
-        batchNumber: item.batchNumber
-      }).catch(console.warn);
-      modified = true;
-    }
-  });
+  beginUserEditsBatch();
+  try {
+    selectedWriteOffRowIds.forEach(id => {
+      const item = findExpiryItemById(id);
+      if (item && isWriteOffActionPlan(item.actionPlan)) {
+        const resetPlan = isItemBelow9Months(item) ? 'Closely monitor' : '';
+        item.actionPlan = resetPlan;
+        recordUserEdit(item, { actionPlan: resetPlan });
+        pushExpiryUpdateToSheets(item.rowId, item.quantity, item.status, item.expiryDate, {
+          actionPlan: resetPlan,
+          branch: item.branch,
+          itemCode: item.itemCode,
+          itemDescription: item.itemDescription,
+          batchNumber: item.batchNumber
+        }).catch(console.warn);
+        modified = true;
+      }
+    });
+  } finally {
+    endUserEditsBatch();
+  }
   if (modified) {
-    saveLocalExpiryData();
+    saveLocalExpiryData({ skipHeal: true });
   }
   selectedWriteOffRowIds.clear();
   try {
@@ -6743,7 +7282,7 @@ function confirmAndExecuteWriteOff() {
   selectedWriteOffRowIds.clear();
   saveAccumulatedWriteOffItems();
   updateWriteOffSelectedCounter();
-  saveLocalExpiryData();
+  saveLocalExpiryData({ skipHeal: true });
   closeStockWriteOffModal();
   renderExpiryUI();
 
@@ -6815,7 +7354,7 @@ window.updateExpiryOfferedPrice = updateExpiryOfferedPrice;
 
 window.pmgExpiry = {
   getItems: () => expiryItems,
-  setItems: (items) => { expiryItems = ensureUniqueExpiryRowIds(items); saveLocalExpiryData(); renderExpiryUI(); },
+  setItems: (items) => { expiryItems = ensureUniqueExpiryRowIds(items); saveLocalExpiryData({ skipHeal: true }); renderExpiryUI(); },
   mergeDatasets: mergeExpiryDatasets,
   ensureUniqueRowIds: ensureUniqueExpiryRowIds,
   getItemKey: getExpiryItemKey,
