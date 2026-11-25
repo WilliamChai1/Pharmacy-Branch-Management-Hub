@@ -1,7 +1,7 @@
 // sw.js — Service Worker for PMG Branch Operations & Management Hub
 'use strict';
 
-const CACHE_NAME = 'pmg-hub-cache-v68';
+const CACHE_NAME = 'pmg-hub-cache-v69';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -55,6 +55,11 @@ self.addEventListener('activate', event => {
 // Fetch: Network-First for local HTML, JS, CSS to ensure immediate updates across all devices; fallback to cache offline
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
+
+  // Never intercept POST/PUT/DELETE API mutations in Service Worker cache
+  if (event.request.method !== 'GET') {
+    return;
+  }
 
   // Always fetch live for Google Generative AI / Gemini API calls
   if (url.hostname.includes('googleapis.com') || url.hostname.includes('google.com')) {

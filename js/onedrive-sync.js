@@ -1592,6 +1592,177 @@
       }
     }
 
+    _mergeSignedProofFields(primaryProof, secondaryProof) {
+      if (!primaryProof && !secondaryProof) return null;
+      if (!primaryProof) return { ...secondaryProof };
+      if (!secondaryProof) return { ...primaryProof };
+
+      const pFile = String(primaryProof.fileName || '').trim().toLowerCase();
+      const sFile = String(secondaryProof.fileName || '').trim().toLowerCase();
+      const pPath = String(primaryProof.path || '').trim().toLowerCase();
+      const sPath = String(secondaryProof.path || '').trim().toLowerCase();
+      const pTime = String(primaryProof.timestamp || '');
+      const sTime = String(secondaryProof.timestamp || '');
+      const sameUnderlyingFile = (pFile && sFile && pFile === sFile) || (pPath && sPath && pPath === sPath) || !pFile || !sFile;
+      const merged = { ...secondaryProof, ...primaryProof };
+
+      // Never wipe an existing cloudDocId unless primaryProof is a genuinely newer upload of a different file that has its own cloudDocId
+      if (!merged.cloudDocId && secondaryProof.cloudDocId && (sameUnderlyingFile || !pTime || sTime >= pTime)) {
+        merged.cloudDocId = secondaryProof.cloudDocId;
+        merged.cloudFileUrl = secondaryProof.cloudFileUrl || merged.cloudFileUrl || '';
+        merged.mimeType = merged.mimeType || secondaryProof.mimeType || '';
+      }
+      if ((!Array.isArray(merged.additionalDocs) || merged.additionalDocs.length === 0) && Array.isArray(secondaryProof.additionalDocs) && secondaryProof.additionalDocs.length > 0 && sameUnderlyingFile) {
+        merged.additionalDocs = secondaryProof.additionalDocs;
+      }
+      if ((!merged.path || String(merged.path).startsWith('Local_')) && secondaryProof.path && !String(secondaryProof.path).startsWith('Local_')) {
+        merged.path = secondaryProof.path;
+      }
+      if (!merged.oneDriveSynced && secondaryProof.oneDriveSynced) {
+        merged.oneDriveSynced = true;
+      }
+      return merged;
+    }
+
+    // ─── READ SIGNED DO / PRN PROOF FILE FROM ONEDRIVE FOR CLOUD BACKFILL ────
+    async readSignedDoProofFromOneDrive(branchName, signedProof, doMeta = {}, options = {}) {
+      if (!this.rootHandle || this.mode === 'DISCONNECTED' || !signedProof) {
+        return { success: false, reason: 'DISCONNECTED' };
+      }
+
+      try {
+        const hasPerm = await this._verifyPermission(this.rootHandle, false, Boolean(options.interactive));
+        if (!hasPerm) {
+          return { success: false, reason: 'NO_PERMISSION' };
+        }
+
+        const getDirChild = async (parentHandle, childName) => {
+          if (!parentHandle || !childName) return null;
+          try {
+            return await parentHandle.getDirectoryHandle(childName, { create: false });
+          } catch (_) {
+            if (typeof parentHandle.values === 'function') {
+              try {
+                const targetLower = String(childName).trim().toLowerCase();
+                for await (const entry of parentHandle.values()) {
+                  if (entry && entry.kind === 'directory' && String(entry.name || '').trim().toLowerCase() === targetLower) {
+                    return entry;
+                  }
+                }
+              } catch (_) {}
+            }
+            return null;
+          }
+        };
+
+        const getFileChild = async (dirHandle, candidateNames, doPrefix) => {
+          if (!dirHandle) return null;
+          const names = Array.from(new Set((candidateNames || []).map(n => String(n || '').trim()).filter(Boolean)));
+          for (const name of names) {
+            try {
+              const fh = await dirHandle.getFileHandle(name, { create: false });
+              if (fh) return fh;
+            } catch (_) {}
+          }
+          if (typeof dirHandle.values === 'function') {
+            try {
+              const lowerTargets = names.map(n => n.toLowerCase());
+              const lowerPrefix = doPrefix ? `${String(doPrefix).toLowerCase()}_signed_proof` : '';
+              for await (const entry of dirHandle.values()) {
+                if (!entry || entry.kind !== 'file') continue;
+                const eName = String(entry.name || '').trim().toLowerCase();
+                if (lowerTargets.includes(eName) || (lowerPrefix && eName.startsWith(lowerPrefix))) {
+                  return entry;
+                }
+              }
+            } catch (_) {}
+          }
+          return null;
+        };
+
+        const rawPath = String(signedProof.path || '').replace(/\\/g, '/').trim();
+        const rawSegments = rawPath ? rawPath.split('/').map(s => s.trim()).filter(Boolean) : [];
+        let resolvedBranch = BRANCH_FOLDER_MAP[(branchName || '').toUpperCase()] || this._resolveCurrentBranchName() || 'KOTA SENTOSA';
+        let subSegments = [...rawSegments];
+
+        if (subSegments.length > 0) {
+          const firstUpper = subSegments[0].toUpperCase();
+          const mappedFirst = BRANCH_FOLDER_MAP[firstUpper] || (KNOWN_BRANCH_FOLDERS.includes(firstUpper) ? firstUpper : '');
+          if (mappedFirst) {
+            resolvedBranch = mappedFirst;
+            subSegments = subSegments.slice(1);
+          }
+        }
+
+        const branchDir = await this._getTargetBranchDirectoryHandle(resolvedBranch);
+        if (!branchDir) {
+          return { success: false, reason: 'BRANCH_DIR_ERROR' };
+        }
+
+        const cleanDoNo = String(doMeta.doNumber || '').replace(/[<>:"/\\|?*]/g, '_').trim();
+        let fileHandle = null;
+
+        // 1. Direct walk using stored relative OneDrive path (e.g. DO/2026/11 - November/Vendor/DO-KS-..._Signed_Proof.pdf)
+        if (subSegments.length >= 2 && !rawPath.startsWith('Local_')) {
+          const dirParts = subSegments.slice(0, -1);
+          const leafFileName = subSegments[subSegments.length - 1];
+          let curDir = branchDir;
+          for (const part of dirParts) {
+            curDir = await getDirChild(curDir, part);
+            if (!curDir) break;
+          }
+          if (curDir) {
+            fileHandle = await getFileChild(curDir, [leafFileName, signedProof.fileName], cleanDoNo);
+          }
+        }
+
+        // 2. Fallback: construct DO/<Year>/<Month>/<Vendor> from metadata if path was local or renamed
+        if (!fileHandle && cleanDoNo) {
+          const doDir = await getDirChild(branchDir, 'DO');
+          if (doDir) {
+            const tsDate = signedProof.timestamp ? new Date(signedProof.timestamp) : null;
+            const yearCandidates = Array.from(new Set([
+              doMeta.year ? String(doMeta.year) : '',
+              tsDate && !isNaN(tsDate.getTime()) ? String(tsDate.getFullYear()) : '',
+              String(new Date().getFullYear())
+            ].filter(Boolean)));
+            const vendorClean = String(doMeta.vendor || 'General').replace(/[<>:"/\\|?*]/g, '').trim() || 'General';
+
+            for (const yr of yearCandidates) {
+              const yrDir = await getDirChild(doDir, yr);
+              if (!yrDir || typeof yrDir.values !== 'function') continue;
+              try {
+                for await (const monthEntry of yrDir.values()) {
+                  if (!monthEntry || monthEntry.kind !== 'directory') continue;
+                  const vDir = await getDirChild(monthEntry, vendorClean);
+                  if (vDir) {
+                    fileHandle = await getFileChild(vDir, [signedProof.fileName], cleanDoNo);
+                    if (fileHandle) break;
+                  }
+                }
+              } catch (_) {}
+              if (fileHandle) break;
+            }
+          }
+        }
+
+        if (!fileHandle) {
+          return { success: false, reason: 'FILE_NOT_FOUND' };
+        }
+
+        const file = await fileHandle.getFile();
+        return {
+          success: true,
+          file,
+          fileName: signedProof.fileName || file.name,
+          path: rawPath || file.name
+        };
+      } catch (err) {
+        console.warn('[PMG OneDrive Sync] Read Signed DO from OneDrive warning:', err && err.message ? err.message : err);
+        return { success: false, reason: err && err.message ? err.message : 'READ_ERROR' };
+      }
+    }
+
     // ─── SAVE RETURNS / CN DATABASE (JSON) TO ONEDRIVE ───────────────────────
     async saveReturnsDatabaseToOneDrive(branchName, returnsData) {
       if (!this.rootHandle || this.mode === 'DISCONNECTED') return false;
@@ -1620,7 +1791,7 @@
           }
         } catch (_) {}
 
-        // Step 2: Merge returns by ID without resurrecting deleted items
+        // Step 2: Merge returns by ID without resurrecting deleted items or wiping signedProof.cloudDocId
         const returnMap = new Map();
         (cloudReturns || []).filter(r => r && r.id && !deletedSet.has(r.id)).forEach(r => returnMap.set(r.id, r));
         (returnsData || []).filter(r => r && r.id && !deletedSet.has(r.id)).forEach(r => {
@@ -1629,7 +1800,11 @@
             const locTime = r.updatedAt || r.createdAt || '';
             const cldTime = cld.updatedAt || cld.createdAt || '';
             if (locTime >= cldTime) {
-              returnMap.set(r.id, { ...cld, ...r });
+              const mergedProof = this._mergeSignedProofFields(r.signedProof, cld.signedProof);
+              returnMap.set(r.id, { ...cld, ...r, ...(mergedProof ? { signedProof: mergedProof } : {}) });
+            } else {
+              const mergedProof = this._mergeSignedProofFields(cld.signedProof, r.signedProof);
+              returnMap.set(r.id, { ...r, ...cld, ...(mergedProof ? { signedProof: mergedProof } : {}) });
             }
           } else {
             returnMap.set(r.id, r);
@@ -2309,22 +2484,26 @@
             return rb === bFolder.toUpperCase() || rb === bName.toUpperCase();
           });
 
-          // Bidirectional merge helper
+          // Bidirectional merge helper (always preserves signedProof.cloudDocId across OneDrive & Google Cloud)
+          const withMergedProof = (winner, loser) => {
+            const mergedProof = this._mergeSignedProofFields(winner.signedProof, loser.signedProof);
+            return { ...loser, ...winner, ...(mergedProof ? { signedProof: mergedProof } : {}) };
+          };
           const resolveReturnConflict = (loc, cld) => {
             if (!loc) return cld;
             if (!cld) return loc;
             const locTime = loc.updatedAt || loc.createdAt || '';
             const cldTime = cld.updatedAt || cld.createdAt || '';
             if (cldTime && locTime) {
-              if (cldTime > locTime) return { ...loc, ...cld };
-              if (locTime > cldTime) return { ...cld, ...loc };
+              if (cldTime > locTime) return withMergedProof(cld, loc);
+              if (locTime > cldTime) return withMergedProof(loc, cld);
             }
-            if (cld.signedProof && !loc.signedProof) return { ...loc, ...cld };
-            if (loc.signedProof && !cld.signedProof) return { ...cld, ...loc };
-            if (cld.xilnexKeyed && !loc.xilnexKeyed) return { ...loc, ...cld };
-            if (loc.xilnexKeyed && !cld.xilnexKeyed) return { ...cld, ...loc };
-            if ((cld.items || []).length > (loc.items || []).length) return { ...loc, ...cld };
-            return { ...loc, ...cld };
+            if (cld.signedProof && !loc.signedProof) return withMergedProof(cld, loc);
+            if (loc.signedProof && !cld.signedProof) return withMergedProof(loc, cld);
+            if (cld.xilnexKeyed && !loc.xilnexKeyed) return withMergedProof(cld, loc);
+            if (loc.xilnexKeyed && !cld.xilnexKeyed) return withMergedProof(loc, cld);
+            if ((cld.items || []).length > (loc.items || []).length) return withMergedProof(cld, loc);
+            return withMergedProof(cld, loc);
           };
 
           const branchMap = new Map();
@@ -2388,6 +2567,13 @@
           if (!silent && typeof showPmgToast === 'function') {
             showPmgToast(`🔄 OneDrive Returns Synced (${localReturns.length} records)`, 'success');
           }
+        }
+
+        // Auto-backfill any OneDrive DO/PRN proof files that don't have a Cloud Proof Link docId yet
+        if (window.pmgReturns && typeof window.pmgReturns.backfillMissingCloudProofs === 'function') {
+          setTimeout(() => {
+            window.pmgReturns.backfillMissingCloudProofs({ interactive: false }).catch(() => {});
+          }, 250);
         }
 
         return true;

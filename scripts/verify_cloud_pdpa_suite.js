@@ -2798,7 +2798,7 @@ function createBrowserSandbox(fetchImpl) {
     assert(promoHtml.includes('id="promoOptOutFooterSelect"'), 'promo/index.html must include Opt-Out footer selector');
     assert(promoHtml.includes('id="promoOptOutManagerModal"'), 'promo/index.html must include Opt-Out Manager modal');
     assert(promoHtml.includes('id="promoPreviewShuffleBtn"'), 'promo/index.html must include Shuffle Style preview button');
-    assert(promoHtml.includes('v68'), 'promo/index.html must show v68 version badge');
+    assert(/v6[89]|v[7-9]\d/.test(promoHtml), 'promo/index.html must show active version badge');
 
     // 3. Shared mock Google Cloud vault + URL Shortener backend across PC 1 and Customer Phone
     const cloudVault = {};
@@ -2934,6 +2934,263 @@ function createBrowserSandbox(fetchImpl) {
     const remSec = sbPc1.win.getRemainingCooldownSeconds();
     assert(remSec >= 38 && remSec <= 66, `Warm-Up randomized cooldown should be 40-65s, got ${remSec}s`);
     sbPc1.ctx.startPromoCooldownTimer(0); // clean up interval timer
+  });
+
+  await testAsync('Returns & CN Original DO / PRN Cloud Proof Sync, OneDrive Auto-Backfill, Octet-Stream PDF Normalization, Multi-File Upload & Mobile PDF.js Public Proof Portal (v69)', async () => {
+    // 1. Verify v69 cache & UI hooks in sw.js, index.html, patient/index.html, promo/index.html
+    const swSrc = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+    const mainHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const patientHtml = fs.readFileSync(path.join(ROOT, 'patient', 'index.html'), 'utf8');
+    const promoHtml = fs.readFileSync(path.join(ROOT, 'promo', 'index.html'), 'utf8');
+    assert(swSrc.includes("pmg-hub-cache-v69"), 'sw.js must be bumped to pmg-hub-cache-v69');
+    assert(mainHtml.includes('v69') && patientHtml.includes('v69') && promoHtml.includes('v69'), 'All HTML entrypoints must show v69 version badge');
+    assert(mainHtml.includes('id="cnRemQuickProofInput"'), 'cnReminderModal must include #cnRemQuickProofInput for 1-click DO/PRN attachment');
+    assert(/id="usdFileInput"[^>]*multiple/.test(mainHtml), 'uploadSignedDoModal #usdFileInput must allow multiple DO + PRN files');
+
+    // 2. Shared mock Google Cloud backend (PMG_RETURNS_VAULT + Applicant_Documents)
+    const cloudSchedules = {};
+    const cloudApplicantDocs = new Map(); // docId -> { docId, appId, field, name, mimeType, data }
+    let docSeq = 1;
+
+    const samplePdfBytes = Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n', 'utf8');
+    const samplePdfB64 = samplePdfBytes.toString('base64'); // starts with JVBERi0
+    const sampleJpegB64 = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAEBAQEBAQEBAQEBAQ==';
+
+    // Existing return record (like William's live DO-KS-2610-340) that has OneDrive signedProof WITHOUT cloudDocId
+    const legacyOneDriveReturn = {
+      id: 'ret-1791880755586-686',
+      doNumber: 'DO-KS-2610-340',
+      branch: 'Kota Sentosa',
+      date: '13.10.2026',
+      supplier: 'ZUELLIG PHARMA SDN BHD',
+      destCompany: 'ZUELLIG PHARMA SDN BHD',
+      status: 'awaiting_cn',
+      totalCartons: 1,
+      cnNumber: '',
+      signedProof: {
+        fileName: 'ZUELLIG RCN 019101 DO.pdf',
+        path: 'KOTA SENTOSA/DO/2026/11 - November/ZUELLIG PHARMA SDN BHD/DO-KS-2610-340_Signed_Proof.pdf',
+        oneDriveSynced: true,
+        timestamp: '2026-11-06T02:10:17.809Z'
+      },
+      items: [
+        { cartonNo: '1', itemCode: '104853 - BOX', itemDescription: 'SENSODYNE REPAIR & PROTECT 100G', quantity: '1', uom: 'UNIT', prnNumber: '74738', reason: 'Expired' }
+      ],
+      createdAt: '2026-10-13T08:39:15.586Z',
+      updatedAt: '2026-11-06T02:10:17.809Z'
+    };
+
+    cloudSchedules['PMG_RETURNS_VAULT_Kota Sentosa'] = {
+      branchCode: 'Kota Sentosa',
+      branchReturns: [JSON.parse(JSON.stringify(legacyOneDriveReturn))]
+    };
+
+    const sharedFetch = async (url, opts = {}) => {
+      const u = String(url);
+      if (opts && opts.method === 'POST' && opts.body) {
+        const body = JSON.parse(opts.body);
+        if (body.action === 'uploadApplicantDoc') {
+          const docId = `${body.appId}_${body.doc.field || 'doc'}_${docSeq++}`;
+          cloudApplicantDocs.set(docId, {
+            docId,
+            appId: body.appId,
+            field: String(body.doc.field || '').toLowerCase(),
+            name: body.doc.name,
+            mimeType: body.doc.type,
+            data: body.doc.data
+          });
+          return { ok: true, json: async () => ({ success: true, docId, fileUrl: `sheet://doc/${docId}` }) };
+        }
+        if (body.branch && body.schedule) {
+          cloudSchedules[body.branch] = JSON.parse(JSON.stringify(body.schedule));
+          return { ok: true, json: async () => ({ success: true }) };
+        }
+      }
+      if (u.includes('action=getApplicantDoc')) {
+        const sp = new URLSearchParams(u.split('?')[1] || '');
+        const qDocId = sp.get('docId') || '';
+        const qAppId = sp.get('appId') || '';
+        const qField = (sp.get('field') || '').toLowerCase();
+        if (qDocId && cloudApplicantDocs.has(qDocId)) {
+          const d = cloudApplicantDocs.get(qDocId);
+          return { ok: true, json: async () => ({ success: true, ...d }) };
+        }
+        if (qAppId) {
+          const matches = Array.from(cloudApplicantDocs.values()).filter(d => d.appId === qAppId && (!qField || d.field === qField));
+          if (matches.length > 0) {
+            const latest = matches[matches.length - 1];
+            return { ok: true, json: async () => ({ success: true, ...latest }) };
+          }
+        }
+        return { ok: true, json: async () => ({ success: false, error: 'Document not found' }) };
+      }
+      const m = u.match(/[?&]branch=([^&]+)/);
+      const branchKey = m ? decodeURIComponent(m[1]) : '';
+      return {
+        ok: true,
+        json: async () => ({ success: Boolean(cloudSchedules[branchKey]), schedule: cloudSchedules[branchKey] || null })
+      };
+    };
+
+    // 3. Boot Branch PC 1 with OneDrive linked (containing ZUELLIG PDF with empty file.type = '' like Windows scanner)
+    const sbPc1 = createBrowserSandbox(sharedFetch);
+    class MockFileReader {
+      readAsDataURL(blobOrMock) {
+        Promise.resolve().then(() => {
+          this.result = blobOrMock._mockDataUrl || `data:application/octet-stream;base64,${samplePdfB64}`;
+          if (typeof this.onload === 'function') this.onload();
+        });
+      }
+    }
+    sbPc1.ctx.FileReader = MockFileReader;
+    sbPc1.win.FileReader = MockFileReader;
+
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'onedrive-sync.js'), 'utf8'), sbPc1.ctx);
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'returns-cn.js'), 'utf8'), sbPc1.ctx);
+
+    // Wire a mock OneDrive BRANCH folder tree: KOTA SENTOSA -> DO -> 2026 -> 11 - November -> ZUELLIG PHARMA SDN BHD -> DO-KS-2610-340_Signed_Proof.pdf
+    const makeMockDir = (childrenMap) => ({
+      kind: 'directory',
+      queryPermission: async () => 'granted',
+      requestPermission: async () => 'granted',
+      getDirectoryHandle: async (name) => {
+        if (childrenMap[name] && childrenMap[name].kind === 'directory') return childrenMap[name];
+        throw new Error(`Dir not found: ${name}`);
+      },
+      getFileHandle: async (name) => {
+        if (childrenMap[name] && childrenMap[name].kind === 'file') return childrenMap[name];
+        throw new Error(`File not found: ${name}`);
+      },
+      values: async function* () {
+        for (const [k, v] of Object.entries(childrenMap)) {
+          yield { ...v, name: k };
+        }
+      }
+    });
+
+    const mockScannerPdfFile = {
+      name: 'DO-KS-2610-340_Signed_Proof.pdf',
+      type: '', // Windows scanner empty MIME!
+      size: samplePdfBytes.length,
+      _mockDataUrl: `data:application/octet-stream;base64,${samplePdfB64}`
+    };
+    const mockBranchRoot = makeMockDir({
+      DO: makeMockDir({
+        '2026': makeMockDir({
+          '11 - November': makeMockDir({
+            'ZUELLIG PHARMA SDN BHD': makeMockDir({
+              'DO-KS-2610-340_Signed_Proof.pdf': {
+                kind: 'file',
+                getFile: async () => mockScannerPdfFile
+              }
+            })
+          })
+        })
+      })
+    });
+    sbPc1.win.pmgOneDriveSync.rootHandle = mockBranchRoot;
+    sbPc1.win.pmgOneDriveSync.mode = 'BRANCH';
+    sbPc1.win.pmgOneDriveSync.activeBranchFolder = 'KOTA SENTOSA';
+
+    await sbPc1.win.pmgReturns.setReturnsData([JSON.parse(JSON.stringify(legacyOneDriveReturn))]);
+    const backfillRes = await sbPc1.win.pmgReturns.backfillMissingCloudProofs({ interactive: false });
+    assert.strictEqual(backfillRes.syncedCount, 1, 'OneDrive auto-backfill must automatically sync existing DO/PRN PDF to Cloud Proof Vault');
+
+    const syncedVaultReturn = cloudSchedules['PMG_RETURNS_VAULT_Kota Sentosa'].branchReturns.find(r => r.id === 'ret-1791880755586-686');
+    assert(syncedVaultReturn && syncedVaultReturn.signedProof && syncedVaultReturn.signedProof.cloudDocId, 'Cloud Returns Vault must now store populated signedProof.cloudDocId');
+    const uploadedPdfEntry = cloudApplicantDocs.get(syncedVaultReturn.signedProof.cloudDocId);
+    assert(uploadedPdfEntry && uploadedPdfEntry.data.startsWith('data:application/pdf;base64,JVBERi0'), 'Scanner PDF with empty MIME must be normalized to data:application/pdf;base64,...');
+
+    // Verify OneDrive conflict merge never wipes cloudDocId when merging with older OneDrive metadata lacking cloudDocId
+    const mergedProof = sbPc1.win.pmgOneDriveSync._mergeSignedProofFields(
+      { fileName: 'ZUELLIG RCN 019101 DO.pdf', path: legacyOneDriveReturn.signedProof.path, oneDriveSynced: true, timestamp: '2026-11-06T02:10:17.809Z' },
+      syncedVaultReturn.signedProof
+    );
+    assert.strictEqual(mergedProof.cloudDocId, syncedVaultReturn.signedProof.cloudDocId, 'OneDrive merge must never wipe existing cloudDocId for the same proof file');
+
+    // 4. Test Multi-File Upload (Signed DO Photo + Separate PRN Slip PDF) on a second return record
+    const multiReturn = {
+      id: 'ret-ks-multi-901',
+      doNumber: 'DO-KS-2611-901',
+      branch: 'Kota Sentosa',
+      date: '25.11.2026',
+      supplier: 'KWONG HENG LEE',
+      destCompany: 'KWONG HENG LEE',
+      destAttn: 'Dickson',
+      status: 'pending_pickup',
+      totalCartons: 1,
+      cnNumber: '',
+      signedProof: null,
+      items: [
+        { cartonNo: '1', itemCode: '126607', itemDescription: 'VIDA C 325ML', quantity: '19', uom: 'UNIT', prnNumber: '74734', reason: 'Expired' }
+      ],
+      createdAt: '2026-11-25T01:00:00.000Z',
+      updatedAt: '2026-11-25T01:00:00.000Z'
+    };
+    const currentList = sbPc1.win.pmgReturns.getReturnsData();
+    currentList.push(multiReturn);
+    await sbPc1.win.pmgReturns.setReturnsData(currentList);
+
+    const attachRes = await sbPc1.win.pmgReturns.attachAndSyncProofFilesToReturn(multiReturn, [
+      { name: 'DO-KS-2611-901_Signed.jpg', type: 'image/jpeg', size: 1200, _mockDataUrl: `data:image/jpeg;base64,${sampleJpegB64}` },
+      { name: 'PRN_74734_Slip.pdf', type: 'application/octet-stream', size: 2400, _mockDataUrl: `data:application/octet-stream;base64,${samplePdfB64}` }
+    ]);
+    assert.strictEqual(attachRes.success, true, 'Multi-file DO + PRN upload must succeed');
+    assert.strictEqual(attachRes.cloudSyncedCount, 2, 'Both Signed DO photo and PRN PDF must be synced to Cloud Proof Vault');
+    assert(Array.isArray(multiReturn.signedProof.additionalDocs) && multiReturn.signedProof.additionalDocs.length === 1, 'Secondary PRN file must be recorded in signedProof.additionalDocs');
+
+    // 5. Security Guard: Verify XSS / SVG / HTML payloads (even disguised as octet-stream or .jpg) are strictly rejected
+    const apiPc1 = sbPc1.win.pmgReturns;
+    const svgB64 = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"></svg>').toString('base64');
+    assert.strictEqual(apiPc1.inferAndNormalizeProofMime('evil.svg', 'image/svg+xml', `data:image/svg+xml;base64,${svgB64}`), null, 'SVG data URI must be blocked');
+    assert.strictEqual(apiPc1.inferAndNormalizeProofMime('disguised.jpg', 'application/octet-stream', `data:application/octet-stream;base64,${svgB64}`), null, 'Disguised SVG inside octet-stream .jpg must be blocked');
+
+    // 6. Boot External Supplier Mobile WhatsApp Browser (Zero local storage, mock PDF.js 2-page renderer)
+    const sbSupplier = createBrowserSandbox(sharedFetch);
+    // Provide canvas + 2-page PDF.js mock to verify mobile WhatsApp multi-page PDF -> <img> rendering
+    const origCreateEl = sbSupplier.doc.createElement;
+    sbSupplier.doc.createElement = (tag) => {
+      const el = origCreateEl(tag);
+      if (String(tag).toLowerCase() === 'canvas') {
+        el.getContext = () => ({ fillStyle: '', fillRect: () => {} });
+        el.toDataURL = () => `data:image/jpeg;base64,${sampleJpegB64}`;
+      }
+      return el;
+    };
+    sbSupplier.win.pdfjsLib = {
+      getDocument: () => ({
+        promise: Promise.resolve({
+          numPages: 2,
+          getPage: async (pageNum) => ({
+            getViewport: ({ scale }) => ({ width: 600 * scale, height: 840 * scale, pageNum }),
+            render: () => ({ promise: Promise.resolve() })
+          })
+        })
+      })
+    };
+
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'returns-cn.js'), 'utf8'), sbSupplier.ctx);
+
+    // Supplier opens WhatsApp link for backfilled PDF record (DO-KS-2610-340)
+    await sbSupplier.win.pmgReturns.renderPublicDoProofPortal('publicJobAppContainer', 'ret-1791880755586-686', 'Kota Sentosa');
+    const portalHtml1 = sbSupplier.doc.getElementById('publicJobAppContainer').innerHTML;
+    const attIdx1 = portalHtml1.indexOf('id="publicDoSignedAttachmentBox"');
+    const tableIdx1 = portalHtml1.indexOf('Returned Goods Breakdown');
+    assert(attIdx1 > 0 && tableIdx1 > attIdx1, 'Original Uploaded DO/PRN Proof section must appear ABOVE Returned Goods Breakdown so suppliers see the scan immediately');
+
+    const pdfPagesBox = sbSupplier.doc.getElementById('publicDoPdfPages_0');
+    assert(pdfPagesBox && pdfPagesBox.innerHTML.includes('Page 1 of 2') && pdfPagesBox.innerHTML.includes('Page 2 of 2'), 'Public Proof Portal must render all PDF pages via PDF.js as inline <img> elements for WhatsApp mobile compatibility');
+
+    // Supplier opens WhatsApp link for Multi-File record (DO-KS-2611-901: Signed DO JPG + PRN PDF)
+    await sbSupplier.win.pmgReturns.renderPublicDoProofPortal('publicJobAppContainer', 'ret-ks-multi-901', 'Kota Sentosa');
+    const attBoxMulti = sbSupplier.doc.getElementById('publicDoSignedAttachmentBox');
+    assert(attBoxMulti.innerHTML.includes('DO-KS-2611-901_Signed.jpg') && attBoxMulti.innerHTML.includes('PRN_74734_Slip.pdf'), 'Public Proof Portal must display both the Signed DO image and PRN PDF together');
+
+    // Fallback test: even if cloudDocId is stripped from metadata, portal still recovers uploaded proof via appId=DO_PROOF_<id>
+    cloudSchedules['PMG_RETURNS_VAULT_Kota Sentosa'].branchReturns[0].signedProof.cloudDocId = '';
+    await sbSupplier.win.pmgReturns.renderPublicDoProofPortal('publicJobAppContainer', 'ret-1791880755586-686', 'Kota Sentosa');
+    const attBoxFallback = sbSupplier.doc.getElementById('publicDoSignedAttachmentBox');
+    assert(attBoxFallback.innerHTML.includes('ZUELLIG RCN 019101 DO.pdf') && attBoxFallback.innerHTML.includes('Original Uploaded DO / PRN Document (PDF)'), 'Public Proof Portal must recover uploaded proof via appId=DO_PROOF_<id> even if cloudDocId metadata had not synced yet');
   });
 
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);

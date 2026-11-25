@@ -1011,6 +1011,124 @@
     }
   }
 
+  // ─── LOCAL DO/PRN PROOF BINARY CACHE (DEDICATED IDB — ZERO LOCALSTORAGE BLOAT) ─
+  const PROOF_BLOBS_DB_NAME = 'pmg_returns_proof_blobs_db';
+  const PROOF_BLOBS_STORE = 'proof_blobs';
+  let proofBlobsDbInstance = null;
+  const inMemoryProofBlobCache = new Map();
+
+  function openProofBlobsDb() {
+    return new Promise((resolve, reject) => {
+      if (proofBlobsDbInstance) return resolve(proofBlobsDbInstance);
+      if (typeof indexedDB === 'undefined' || !indexedDB || typeof indexedDB.open !== 'function') {
+        return reject(new Error('IndexedDB unavailable'));
+      }
+      const req = indexedDB.open(PROOF_BLOBS_DB_NAME, 1);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (db && db.objectStoreNames && !db.objectStoreNames.contains(PROOF_BLOBS_STORE)) {
+          db.createObjectStore(PROOF_BLOBS_STORE, { keyPath: 'id' });
+        }
+      };
+      req.onsuccess = () => {
+        proofBlobsDbInstance = req.result;
+        resolve(proofBlobsDbInstance);
+      };
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function saveLocalProofDocsToIdb(returnId, docsList) {
+    if (!returnId || !Array.isArray(docsList) || docsList.length === 0) return false;
+    const cleanDocs = docsList
+      .filter(d => d && d.dataUrl)
+      .map(d => ({
+        fileName: d.fileName || 'DO_Proof',
+        mimeType: d.mimeType || 'application/octet-stream',
+        size: Number(d.size) || String(d.dataUrl).length,
+        dataUrl: String(d.dataUrl),
+        field: d.field || 'signedDoProof'
+      }));
+    if (cleanDocs.length === 0) return false;
+    inMemoryProofBlobCache.set(returnId, cleanDocs);
+    try {
+      const db = await openProofBlobsDb();
+      return await new Promise((resolve) => {
+        const tx = db.transaction(PROOF_BLOBS_STORE, 'readwrite');
+        const store = tx.objectStore(PROOF_BLOBS_STORE);
+        store.put({ id: returnId, docs: cleanDocs, updatedAt: new Date().toISOString() });
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      });
+    } catch (_) {
+      return true;
+    }
+  }
+
+  async function loadLocalProofDocsFromIdb(returnId) {
+    if (!returnId) return [];
+    if (inMemoryProofBlobCache.has(returnId)) {
+      return inMemoryProofBlobCache.get(returnId) || [];
+    }
+    try {
+      const db = await openProofBlobsDb();
+      return await new Promise((resolve) => {
+        const tx = db.transaction(PROOF_BLOBS_STORE, 'readonly');
+        const store = tx.objectStore(PROOF_BLOBS_STORE);
+        const req = store.get(returnId);
+        req.onsuccess = () => {
+          const docs = (req.result && Array.isArray(req.result.docs)) ? req.result.docs : [];
+          if (docs.length > 0) inMemoryProofBlobCache.set(returnId, docs);
+          resolve(docs);
+        };
+        req.onerror = () => resolve([]);
+      });
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function mergeSignedProofMetadata(primaryProof, secondaryProof) {
+    if (!primaryProof && !secondaryProof) return null;
+    if (!primaryProof) return JSON.parse(JSON.stringify(secondaryProof));
+    if (!secondaryProof) return JSON.parse(JSON.stringify(primaryProof));
+
+    const pFile = String(primaryProof.fileName || '').trim().toLowerCase();
+    const sFile = String(secondaryProof.fileName || '').trim().toLowerCase();
+    const pPath = String(primaryProof.path || '').trim().toLowerCase();
+    const sPath = String(secondaryProof.path || '').trim().toLowerCase();
+    const pTime = String(primaryProof.timestamp || '');
+    const sTime = String(secondaryProof.timestamp || '');
+    const sameUnderlyingFile = (pFile && sFile && pFile === sFile) || (pPath && sPath && pPath === sPath) || !pFile || !sFile;
+    const merged = { ...secondaryProof, ...primaryProof };
+
+    // Never lose cloudDocId when merging with an older/OneDrive metadata snapshot of the same proof file
+    if (!merged.cloudDocId && secondaryProof.cloudDocId && (sameUnderlyingFile || !pTime || sTime >= pTime)) {
+      merged.cloudDocId = secondaryProof.cloudDocId;
+      merged.cloudFileUrl = secondaryProof.cloudFileUrl || merged.cloudFileUrl || '';
+      merged.mimeType = merged.mimeType || secondaryProof.mimeType || '';
+    }
+    if ((!Array.isArray(merged.additionalDocs) || merged.additionalDocs.length === 0) && Array.isArray(secondaryProof.additionalDocs) && secondaryProof.additionalDocs.length > 0 && sameUnderlyingFile) {
+      merged.additionalDocs = JSON.parse(JSON.stringify(secondaryProof.additionalDocs));
+    }
+    if ((!merged.path || String(merged.path).startsWith('Local_')) && secondaryProof.path && !String(secondaryProof.path).startsWith('Local_')) {
+      merged.path = secondaryProof.path;
+    }
+    if (!merged.oneDriveSynced && secondaryProof.oneDriveSynced) {
+      merged.oneDriveSynced = true;
+    }
+    return merged;
+  }
+
+  function countCloudDocIdsOnProof(proof) {
+    if (!proof) return 0;
+    let count = proof.cloudDocId ? 1 : 0;
+    if (Array.isArray(proof.additionalDocs)) {
+      count += proof.additionalDocs.filter(d => d && d.cloudDocId).length;
+    }
+    return count;
+  }
+
   // ─── ONEDRIVE SYNC INTEGRATION ───────────────────────────────────────────────
   async function syncReturnsWithOneDrive(targetBranch) {
     // 1. Delegate to central OneDriveSyncEngine if available for bidirectional sync
@@ -1018,6 +1136,7 @@
       try {
         await window.pmgOneDriveSync.syncReturnsWithOneDrive(true);
         renderReturnsUI();
+        autoBackfillMissingCloudProofs({ interactive: false }).catch(() => {});
         return;
       } catch (err) {
         console.warn('[PMG Returns] Central OneDrive sync delegate note:', err);
@@ -1045,7 +1164,11 @@
             const locT = loc.updatedAt || loc.createdAt || '';
             const cldT = r.updatedAt || r.createdAt || '';
             if (cldT > locT) {
-              map.set(r.id, { ...loc, ...r });
+              const mergedProof = mergeSignedProofMetadata(r.signedProof, loc.signedProof);
+              map.set(r.id, { ...loc, ...r, ...(mergedProof ? { signedProof: mergedProof } : {}) });
+            } else {
+              const mergedProof = mergeSignedProofMetadata(loc.signedProof, r.signedProof);
+              map.set(r.id, { ...r, ...loc, ...(mergedProof ? { signedProof: mergedProof } : {}) });
             }
           } else {
             map.set(r.id, r);
@@ -1053,7 +1176,7 @@
         });
         returnsData = Array.from(map.values());
         await saveAllReturnsToDb(returnsData);
-        localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
+        try { localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData)); } catch (_) {}
         renderReturnsUI();
       }
 
@@ -1061,6 +1184,7 @@
       const branchOnlyData = returnsData.filter(r => (r.branch || '').toUpperCase() === branch.toUpperCase() && !deletedIds.includes(r.id));
       await window.pmgOneDriveSync.saveReturnsDatabaseToOneDrive(branch, branchOnlyData);
       console.log(`[PMG Returns] Synced returns with OneDrive for ${branch}`);
+      autoBackfillMissingCloudProofs({ interactive: false }).catch(() => {});
     } catch (err) {
       console.warn('[PMG Returns] OneDrive sync skipped:', err);
     }
@@ -1134,7 +1258,12 @@
             const locT = loc.updatedAt || loc.createdAt || '';
             const cldT = r.updatedAt || r.createdAt || '';
             if (cldT > locT) {
-              map.set(r.id, { ...loc, ...r });
+              const mergedProof = mergeSignedProofMetadata(r.signedProof, loc.signedProof);
+              map.set(r.id, { ...loc, ...r, ...(mergedProof ? { signedProof: mergedProof } : {}) });
+              changed = true;
+            } else if (countCloudDocIdsOnProof(r.signedProof) > countCloudDocIdsOnProof(loc.signedProof)) {
+              const mergedProof = mergeSignedProofMetadata(loc.signedProof, r.signedProof);
+              map.set(r.id, { ...loc, signedProof: mergedProof });
               changed = true;
             }
           } else {
@@ -1161,7 +1290,7 @@
           const locT = loc.updatedAt || loc.createdAt || '';
           const cldT = cld.updatedAt || cld.createdAt || '';
           if (locT > cldT) return true;
-          if ((loc.signedProof && loc.signedProof.cloudDocId) && !(cld.signedProof && cld.signedProof.cloudDocId)) return true;
+          if (countCloudDocIdsOnProof(loc.signedProof) > countCloudDocIdsOnProof(cld.signedProof)) return true;
           if ((loc.cnReminderCount || 0) > (cld.cnReminderCount || 0)) return true;
           return false;
         });
@@ -1194,10 +1323,18 @@
   async function onCloudSync(incomingData) {
     if (!Array.isArray(incomingData)) return;
     const deletedIds = JSON.parse(localStorage.getItem('pmg_deleted_returns') || '["ret-ks-2609-002", "ret-lnd-2609-001"]');
-    const clean = incomingData.filter(r => r && r.id && !deletedIds.includes(r.id));
+    const existingById = new Map((returnsData || []).filter(r => r && r.id).map(r => [r.id, r]));
+    const clean = incomingData
+      .filter(r => r && r.id && !deletedIds.includes(r.id))
+      .map(r => {
+        const prev = existingById.get(r.id);
+        if (!prev) return r;
+        const mergedProof = mergeSignedProofMetadata(r.signedProof, prev.signedProof);
+        return mergedProof ? { ...r, signedProof: mergedProof } : r;
+      });
     returnsData = clean;
     await saveAllReturnsToDb(clean);
-    localStorage.setItem('pmg_returns_records_v1', JSON.stringify(clean));
+    try { localStorage.setItem('pmg_returns_records_v1', JSON.stringify(clean)); } catch (_) {}
     renderReturnsUI();
   }
 
@@ -1209,7 +1346,7 @@
     if (!Array.isArray(data)) return;
     returnsData = data;
     await saveAllReturnsToDb(data);
-    localStorage.setItem('pmg_returns_records_v1', JSON.stringify(data));
+    try { localStorage.setItem('pmg_returns_records_v1', JSON.stringify(data)); } catch (_) {}
     renderReturnsUI();
   }
 
@@ -1267,7 +1404,9 @@
 
     // 1. Live Google Sheets Cloud Sync (Instant on Mobile, Laptop & Counter PC)
     setTimeout(() => {
-      syncReturnsWithGoogleSheets(getActiveBranchName()).catch(() => {});
+      syncReturnsWithGoogleSheets(getActiveBranchName())
+        .then(() => autoBackfillMissingCloudProofs({ interactive: false }))
+        .catch(() => {});
     }, 400);
 
     // 2. Trigger OneDrive cloud sync in background if on desktop
@@ -1575,6 +1714,10 @@
     document.getElementById('nrDate').value = formatTodayDateForDo();
     document.getElementById('nrVerifiedBy').value = getCurrentUserDisplayName();
     document.getElementById('nrRemarks').value = '';
+    const nrProofInput = document.getElementById('nrProofFileInput');
+    if (nrProofInput) nrProofInput.value = '';
+    const nrProofPreview = document.getElementById('nrProofFilePreview');
+    if (nrProofPreview) nrProofPreview.textContent = 'Optional: attach scanned DO / PRN (PDF, JPG, PNG)';
 
     // Initial 2 empty items
     draftItems = [
@@ -1928,11 +2071,17 @@
 
     returnsData.unshift(newRecord);
     await saveSingleReturnToDb(newRecord);
-    localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
+    try { localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData)); } catch (_) {}
 
-    // Sync to OneDrive & Google Cloud
-    syncReturnsWithOneDrive(branch);
-    syncReturnsWithGoogleSheets(branch);
+    const nrProofInput = document.getElementById('nrProofFileInput');
+    const nrProofFiles = nrProofInput && nrProofInput.files ? Array.from(nrProofInput.files) : [];
+    if (nrProofFiles.length > 0) {
+      await attachAndSyncProofFilesToReturn(newRecord, nrProofFiles, { preservePendingStatus: true });
+    } else {
+      // Sync to OneDrive & Google Cloud
+      syncReturnsWithOneDrive(branch);
+      syncReturnsWithGoogleSheets(branch);
+    }
 
     closeNewReturnModal();
     renderReturnsUI();
@@ -1993,6 +2142,17 @@
     if (verBy) verBy.value = ret.verifiedBy || getCurrentUserDisplayName();
     const rem = document.getElementById('erRemarks');
     if (rem) rem.value = ret.remarks || '';
+    const erProofInput = document.getElementById('erProofFileInput');
+    if (erProofInput) erProofInput.value = '';
+    const erProofPreview = document.getElementById('erProofFilePreview');
+    if (erProofPreview) {
+      if (ret.signedProof && ret.signedProof.fileName) {
+        const extraCount = Array.isArray(ret.signedProof.additionalDocs) ? ret.signedProof.additionalDocs.length : 0;
+        erProofPreview.textContent = `Attached: ${ret.signedProof.fileName}${extraCount > 0 ? ` (+${extraCount} more)` : ''} ${ret.signedProof.cloudDocId ? '· ☁️ Cloud Link Ready' : '· (Local/OneDrive)'}`;
+      } else {
+        erProofPreview.textContent = 'No DO / PRN scan attached yet';
+      }
+    }
 
     renderEditDraftItemsTable();
     checkEditPrnLimitsAndCartons();
@@ -2295,17 +2455,24 @@
 
     const idx = returnsData.findIndex(r => r.id === activeReturnForEdit.id);
     if (idx !== -1) {
+      activeReturnForEdit.signedProof = mergeSignedProofMetadata(activeReturnForEdit.signedProof, returnsData[idx].signedProof);
       returnsData[idx] = activeReturnForEdit;
     } else {
       returnsData.unshift(activeReturnForEdit);
     }
 
     await saveSingleReturnToDb(activeReturnForEdit);
-    localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
+    try { localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData)); } catch (_) {}
 
-    // Sync to OneDrive & Google Cloud
-    syncReturnsWithOneDrive(branch);
-    syncReturnsWithGoogleSheets(branch);
+    const erProofInput = document.getElementById('erProofFileInput');
+    const erProofFiles = erProofInput && erProofInput.files ? Array.from(erProofInput.files) : [];
+    if (erProofFiles.length > 0) {
+      await attachAndSyncProofFilesToReturn(activeReturnForEdit, erProofFiles, { preservePendingStatus: true });
+    } else {
+      // Sync to OneDrive & Google Cloud
+      syncReturnsWithOneDrive(branch);
+      syncReturnsWithGoogleSheets(branch);
+    }
 
     const savedId = activeReturnForEdit.id;
     closeEditReturnModal();
@@ -3274,7 +3441,49 @@
     }
   }
 
-  // ─── MODAL 3: UPLOAD SIGNED DO PROOF (ONEDRIVE INTEGRATION) ───────────────────
+  // ─── MODAL 3: UPLOAD SIGNED DO / PRN PROOF (ONEDRIVE + CLOUD PROOF LINK) ──────
+  function renderUsdExistingProofStatus(ret) {
+    const box = document.getElementById('usdExistingProofBox');
+    if (!box) return;
+    if (!ret || !ret.signedProof || !ret.signedProof.fileName) {
+      box.classList.add('hidden');
+      box.innerHTML = '';
+      return;
+    }
+    const extraCount = Array.isArray(ret.signedProof.additionalDocs) ? ret.signedProof.additionalDocs.length : 0;
+    const allNames = [
+      ret.signedProof.fileName,
+      ...(Array.isArray(ret.signedProof.additionalDocs) ? ret.signedProof.additionalDocs.map(d => d.fileName).filter(Boolean) : [])
+    ].join(', ');
+    box.classList.remove('hidden');
+    if (ret.signedProof.cloudDocId) {
+      box.className = 'rounded-xl p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 flex flex-wrap items-center justify-between gap-2';
+      box.innerHTML = `
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-circle-check text-emerald-600"></i>
+          <div>
+            <p class="font-bold text-xs">Current Cloud Proof (${1 + extraCount} file${extraCount > 0 ? 's' : ''}): ${escapeHtml(allNames)}</p>
+            <p class="text-[11px] text-emerald-700">Synced to WhatsApp Cloud Proof Link. Uploading below will update/replace it.</p>
+          </div>
+        </div>
+      `;
+    } else {
+      box.className = 'rounded-xl p-3 bg-amber-50 border border-amber-200 text-amber-900 flex flex-wrap items-center justify-between gap-2';
+      box.innerHTML = `
+        <div class="flex items-center gap-2 flex-1 min-w-[180px]">
+          <i class="fa-solid fa-cloud-arrow-up text-amber-600"></i>
+          <div>
+            <p class="font-bold text-xs">Saved on OneDrive: ${escapeHtml(allNames)}</p>
+            <p class="text-[11px] text-amber-800">Not synced to WhatsApp Cloud Link yet. Click Sync or re-select file below.</p>
+          </div>
+        </div>
+        <button type="button" onclick="pmgReturns.syncExistingProofToCloudNow('${escapeHtml(ret.id)}')" class="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-bold cursor-pointer shrink-0">
+          <i class="fa-solid fa-rotate mr-1"></i>Sync from OneDrive
+        </button>
+      `;
+    }
+  }
+
   function openUploadSignedDoModal(returnId) {
     const ret = returnsData.find(r => r.id === returnId);
     if (!ret) return;
@@ -3290,6 +3499,7 @@
     document.getElementById('usdPickupDate').value = ret.pickupDate || formatTodayDateForDo();
     document.getElementById('usdFileInput').value = '';
     document.getElementById('usdFileNamePreview').textContent = 'No file selected';
+    renderUsdExistingProofStatus(ret);
 
     modal.classList.remove('hidden');
   }
@@ -3298,13 +3508,27 @@
     document.getElementById('uploadSignedDoModal')?.classList.add('hidden');
   }
 
+  function formatSelectedFilesLabel(fileList) {
+    const files = fileList ? Array.from(fileList) : [];
+    if (files.length === 0) return 'No file selected';
+    const totalKb = (files.reduce((acc, f) => acc + (Number(f.size) || 0), 0) / 1024).toFixed(1);
+    if (files.length === 1) {
+      return `${files[0].name} (${totalKb} KB)`;
+    }
+    return `${files.length} files: ${files.map(f => f.name).join(', ')} (${totalKb} KB total)`;
+  }
+
   function handleUsdFileSelected(input) {
-    if (input.files && input.files[0]) {
-      const file = input.files[0];
-      const preview = document.getElementById('usdFileNamePreview');
-      if (preview) {
-        preview.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
-      }
+    const preview = document.getElementById('usdFileNamePreview');
+    if (preview && input) {
+      preview.textContent = formatSelectedFilesLabel(input.files);
+    }
+  }
+
+  function handleInlineProofFileSelected(input, previewId) {
+    const preview = document.getElementById(previewId);
+    if (preview && input) {
+      preview.textContent = formatSelectedFilesLabel(input.files);
     }
   }
 
@@ -3420,6 +3644,7 @@
     const cartons = ret.totalCartons || 1;
     const proofUrl = buildPublicDoProofUrl(ret);
     const senderName = getCurrentUserDisplayName() || 'Pharmacist';
+    const hasUploadedProof = Boolean(ret.signedProof && (ret.signedProof.cloudDocId || ret.signedProof.fileName));
 
     const lines = [
       `Hi ${picName},`,
@@ -3437,7 +3662,7 @@
 
     lines.push(`• *Summary:* ${itemCount} SKU(s), ${cartons} Carton(s)`);
     lines.push('');
-    lines.push(`📄 *Document of Proof (DO + PRN${ret.signedProof && ret.signedProof.cloudDocId ? ' & Signed Copy' : ''}):*`);
+    lines.push(`📄 *Document of Proof (DO + PRN${hasUploadedProof ? ' & Signed Copy' : ''}):*`);
     lines.push(proofUrl);
     lines.push('');
     lines.push(`Kindly assist to check and issue the Credit Note (CN) at your earliest convenience. Thank you!`);
@@ -3446,59 +3671,348 @@
     return lines.join('\n');
   }
 
-  function fileToCloudSafeDataUrl(file) {
+  // Strictly blocks SVG/HTML/XML/JS while normalizing scanner PDFs & images whose MIME was empty or octet-stream
+  function inferAndNormalizeProofMime(fileName, declaredMime, rawDataStr) {
+    if (!rawDataStr) return null;
+    let candidate = String(rawDataStr).trim();
+
+    // If an un-updated Apps Script concatenated two data: URIs on fallback appId lookup, pick the latest segment
+    if (candidate.indexOf('data:', 5) !== -1) {
+      const segments = candidate.split(/(?=data:[A-Za-z0-9/+.-]*;base64,)/i).filter(Boolean);
+      if (segments.length > 0) {
+        candidate = segments[segments.length - 1].trim();
+      }
+    }
+
+    const lowerDecl = String(declaredMime || '').trim().toLowerCase();
+    const lowerName = String(fileName || '').trim().toLowerCase();
+
+    // Security guard: explicitly forbid SVG, HTML, XML, text, or script payloads
+    if (
+      lowerDecl.includes('svg') ||
+      lowerDecl.includes('html') ||
+      lowerDecl.includes('xml') ||
+      lowerDecl.includes('javascript') ||
+      lowerDecl.startsWith('text/') ||
+      lowerName.endsWith('.svg') ||
+      lowerName.endsWith('.html') ||
+      lowerName.endsWith('.htm') ||
+      lowerName.endsWith('.xml') ||
+      /^data:(image\/svg|text\/|application\/(javascript|ecmascript|xhtml|xml))/i.test(candidate)
+    ) {
+      return null;
+    }
+
+    let headerMime = '';
+    let b64Payload = candidate;
+    if (candidate.startsWith('data:')) {
+      const commaIdx = candidate.indexOf(',');
+      if (commaIdx === -1) return null;
+      const meta = candidate.slice(5, commaIdx);
+      if (!/;base64/i.test(meta)) return null;
+      headerMime = meta.split(';')[0].trim().toLowerCase();
+      b64Payload = candidate.slice(commaIdx + 1);
+    }
+
+    const cleanB64 = b64Payload.replace(/\s+/g, '');
+    if (!cleanB64 || !/^[A-Za-z0-9+/=]+$/.test(cleanB64)) return null;
+
+    // Decode first ~32 chars of base64 to check against disguised SVG/HTML/script payloads
+    try {
+      if (typeof atob === 'function') {
+        const probe = atob(cleanB64.slice(0, 64)).trim().toLowerCase();
+        if (probe.startsWith('<svg') || probe.startsWith('<!doctype html') || probe.startsWith('<html') || probe.startsWith('<script') || probe.includes('<svg')) {
+          return null;
+        }
+      }
+    } catch (_) {}
+
+    let resolvedMime = '';
+    // 1. Magic-byte detection (handles scanner PDFs & OneDrive files with empty/octet-stream MIME)
+    if (cleanB64.startsWith('JVBERi0')) {
+      resolvedMime = 'application/pdf';
+    } else if (cleanB64.startsWith('/9j/')) {
+      resolvedMime = 'image/jpeg';
+    } else if (cleanB64.startsWith('iVBORw0KGgo')) {
+      resolvedMime = 'image/png';
+    } else if (cleanB64.startsWith('R0lGOD')) {
+      resolvedMime = 'image/gif';
+    } else if (cleanB64.startsWith('UklGR')) {
+      resolvedMime = 'image/webp';
+    }
+
+    // 2. Fallback to safe header/declared MIME or filename extension
+    const safeMimes = new Set(['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif']);
+    if (!resolvedMime) {
+      if (safeMimes.has(headerMime)) {
+        resolvedMime = headerMime === 'image/jpg' ? 'image/jpeg' : headerMime;
+      } else if (safeMimes.has(lowerDecl)) {
+        resolvedMime = lowerDecl === 'image/jpg' ? 'image/jpeg' : lowerDecl;
+      } else if (lowerName.endsWith('.pdf')) {
+        resolvedMime = 'application/pdf';
+      } else if (/\.(jpe?g|jfif)$/i.test(lowerName)) {
+        resolvedMime = 'image/jpeg';
+      } else if (lowerName.endsWith('.png')) {
+        resolvedMime = 'image/png';
+      } else if (lowerName.endsWith('.webp')) {
+        resolvedMime = 'image/webp';
+      } else if (lowerName.endsWith('.gif')) {
+        resolvedMime = 'image/gif';
+      }
+    }
+
+    if (!resolvedMime || !safeMimes.has(resolvedMime)) return null;
+    return {
+      mimeType: resolvedMime,
+      base64: cleanB64,
+      dataUrl: `data:${resolvedMime};base64,${cleanB64}`
+    };
+  }
+
+  let _pdfJsLoadPromise = null;
+  function loadPdfJsLibrary() {
+    if (typeof window === 'undefined' || typeof document === 'undefined' || typeof document.createElement !== 'function') {
+      return Promise.resolve(null);
+    }
+    if (window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function') {
+      return Promise.resolve(window.pdfjsLib);
+    }
+    if (_pdfJsLoadPromise) return _pdfJsLoadPromise;
+
+    const CDN_PRIMARY = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    const WORKER_PRIMARY = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const CDN_FALLBACK = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+    const WORKER_FALLBACK = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+
+    const injectScript = (src, workerSrc) => new Promise((resolve) => {
+      try {
+        if (!document.head && !document.body) return resolve(null);
+        const s = document.createElement('script');
+        let settled = false;
+        const finish = (lib) => {
+          if (settled) return;
+          settled = true;
+          resolve(lib || null);
+        };
+        const timer = setTimeout(() => finish(window.pdfjsLib || null), 6000);
+        s.src = src;
+        s.async = true;
+        s.onload = () => {
+          clearTimeout(timer);
+          if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+          }
+          finish(window.pdfjsLib || null);
+        };
+        s.onerror = () => {
+          clearTimeout(timer);
+          finish(null);
+        };
+        (document.head || document.body).appendChild(s);
+      } catch (_) {
+        resolve(null);
+      }
+    });
+
+    _pdfJsLoadPromise = injectScript(CDN_PRIMARY, WORKER_PRIMARY).then(lib => {
+      if (lib) return lib;
+      return injectScript(CDN_FALLBACK, WORKER_FALLBACK);
+    }).then(lib => {
+      if (!lib) _pdfJsLoadPromise = null;
+      return lib;
+    });
+    return _pdfJsLoadPromise;
+  }
+
+  function base64ToUint8Array(cleanB64) {
+    const bin = atob(cleanB64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) {
+      bytes[i] = bin.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  async function compressOversizedPdfDataUrl(normalizedPdfObj) {
+    if (!normalizedPdfObj || !normalizedPdfObj.base64) return normalizedPdfObj;
+    try {
+      const pdfjsLib = await loadPdfJsLibrary();
+      const JsPdfCtor = (typeof window !== 'undefined' && window.jspdf && window.jspdf.jsPDF) || (typeof jsPDF === 'function' ? jsPDF : null);
+      if (!pdfjsLib || !JsPdfCtor || typeof document === 'undefined') return normalizedPdfObj;
+
+      const bytes = base64ToUint8Array(normalizedPdfObj.base64);
+      const pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
+      const maxPages = Math.min(pdfDoc.numPages || 1, 15);
+      let outPdf = null;
+
+      for (let p = 1; p <= maxPages; p++) {
+        const page = await pdfDoc.getPage(p);
+        const vp = page.getViewport({ scale: 1.65 });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(vp.width);
+        canvas.height = Math.round(vp.height);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return normalizedPdfObj;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvasContext: ctx, viewport: vp }).promise;
+        const pageJpeg = canvas.toDataURL('image/jpeg', 0.78);
+        const isLandscape = vp.width > vp.height;
+        const ptW = vp.width * 0.75;
+        const ptH = vp.height * 0.75;
+        if (!outPdf) {
+          outPdf = new JsPdfCtor({ orientation: isLandscape ? 'landscape' : 'portrait', unit: 'pt', format: [ptW, ptH] });
+        } else {
+          outPdf.addPage([ptW, ptH], isLandscape ? 'landscape' : 'portrait');
+        }
+        outPdf.addImage(pageJpeg, 'JPEG', 0, 0, ptW, ptH, undefined, 'FAST');
+      }
+
+      if (outPdf) {
+        const compressedDataUri = outPdf.output('datauristring');
+        const normCompressed = inferAndNormalizeProofMime('compressed.pdf', 'application/pdf', compressedDataUri);
+        if (normCompressed && normCompressed.dataUrl.length < normalizedPdfObj.dataUrl.length) {
+          return normCompressed;
+        }
+      }
+    } catch (err) {
+      console.warn('[PMG Returns] Oversized PDF compression fallback to original PDF:', err && err.message ? err.message : err);
+    }
+    return normalizedPdfObj;
+  }
+
+  function fileToCloudSafeDataUrl(fileOrDoc) {
     return new Promise((resolve, reject) => {
-      if (!file) return reject(new Error('No file provided'));
-      const mime = file.type || 'application/octet-stream';
+      if (!fileOrDoc) return reject(new Error('No file provided'));
+
+      const processRawDataUrl = async (rawStr, fileName, declaredMime, rawSize) => {
+        const normalized = inferAndNormalizeProofMime(fileName, declaredMime, rawStr);
+        if (!normalized) {
+          return reject(new Error('Unsupported proof file format. Please upload a PDF, JPG, PNG, or WebP document.'));
+        }
+
+        // Compress large camera photos using canvas so cloud proof loads fast on supplier mobile while keeping text crisp
+        if (normalized.mimeType.startsWith('image/') && typeof document !== 'undefined' && typeof Image !== 'undefined') {
+          return new Promise((resImg) => {
+            let done = false;
+            const finishImg = (payload) => {
+              if (done) return;
+              done = true;
+              resImg(payload);
+            };
+            const fallbackPayload = {
+              dataUrl: normalized.dataUrl,
+              mimeType: normalized.mimeType,
+              size: rawSize || normalized.dataUrl.length,
+              fileName: fileName || 'DO_Proof.jpg'
+            };
+            const timer = setTimeout(() => finishImg(fallbackPayload), 1500);
+            try {
+              const img = new Image();
+              img.onload = () => {
+                clearTimeout(timer);
+                try {
+                  const maxDim = 1600;
+                  let w = img.width || 0;
+                  let h = img.height || 0;
+                  if ((w > maxDim || h > maxDim || normalized.dataUrl.length > 1600000) && w > 0 && h > 0) {
+                    if (w > maxDim || h > maxDim) {
+                      const ratio = Math.min(maxDim / w, maxDim / h);
+                      w = Math.round(w * ratio);
+                      h = Math.round(h * ratio);
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w;
+                    canvas.height = h;
+                    const ctx = canvas.getContext && canvas.getContext('2d');
+                    if (ctx) {
+                      ctx.fillStyle = '#FFFFFF';
+                      ctx.fillRect(0, 0, w, h);
+                      ctx.drawImage(img, 0, 0, w, h);
+                      const compressed = canvas.toDataURL('image/jpeg', 0.82);
+                      if (compressed && compressed.startsWith('data:image/')) {
+                        return finishImg({
+                          dataUrl: compressed,
+                          mimeType: 'image/jpeg',
+                          size: compressed.length,
+                          fileName: fileName || 'DO_Proof.jpg'
+                        });
+                      }
+                    }
+                  }
+                } catch (_) {}
+                finishImg(fallbackPayload);
+              };
+              img.onerror = () => {
+                clearTimeout(timer);
+                finishImg(fallbackPayload);
+              };
+              img.src = normalized.dataUrl;
+            } catch (_) {
+              clearTimeout(timer);
+              finishImg(fallbackPayload);
+            }
+          });
+        }
+
+        // Preserve original PDF untouched up to ~2.85MB binary; compress oversized scanner PDFs cleanly if larger
+        if (normalized.mimeType === 'application/pdf' && normalized.dataUrl.length > 3800000) {
+          const compressedPdf = await compressOversizedPdfDataUrl(normalized);
+          return {
+            dataUrl: compressedPdf.dataUrl,
+            mimeType: 'application/pdf',
+            size: compressedPdf.dataUrl.length,
+            fileName: fileName || 'DO_Proof.pdf'
+          };
+        }
+
+        return {
+          dataUrl: normalized.dataUrl,
+          mimeType: normalized.mimeType,
+          size: rawSize || normalized.dataUrl.length,
+          fileName: fileName || 'DO_Proof'
+        };
+      };
+
+      // Support already-cached { dataUrl, fileName, mimeType, size } objects from local IDB
+      if (typeof fileOrDoc === 'object' && typeof fileOrDoc.dataUrl === 'string' && !(typeof Blob !== 'undefined' && fileOrDoc instanceof Blob)) {
+        processRawDataUrl(
+          fileOrDoc.dataUrl,
+          fileOrDoc.fileName || fileOrDoc.name || 'DO_Proof',
+          fileOrDoc.mimeType || fileOrDoc.type || '',
+          fileOrDoc.size || fileOrDoc.dataUrl.length
+        ).then(resolve).catch(reject);
+        return;
+      }
+
+      if (typeof FileReader === 'undefined') {
+        return reject(new Error('FileReader unavailable'));
+      }
       const reader = new FileReader();
       reader.onerror = () => reject(new Error('Failed to read file'));
       reader.onload = () => {
-        const rawDataUrl = reader.result;
-        // Compress large camera photos using canvas so cloud proof loads fast on supplier mobile
-        if (mime.startsWith('image/') && typeof document !== 'undefined' && typeof Image !== 'undefined') {
-          const img = new Image();
-          img.onload = () => {
-            try {
-              const maxDim = 1400;
-              let w = img.width;
-              let h = img.height;
-              if (w > maxDim || h > maxDim) {
-                const ratio = Math.min(maxDim / w, maxDim / h);
-                w = Math.round(w * ratio);
-                h = Math.round(h * ratio);
-              }
-              const canvas = document.createElement('canvas');
-              canvas.width = w;
-              canvas.height = h;
-              const ctx = canvas.getContext('2d');
-              if (ctx) {
-                ctx.fillStyle = '#FFFFFF';
-                ctx.fillRect(0, 0, w, h);
-                ctx.drawImage(img, 0, 0, w, h);
-                const compressed = canvas.toDataURL('image/jpeg', 0.78);
-                return resolve({ dataUrl: compressed, mimeType: 'image/jpeg', size: compressed.length });
-              }
-            } catch (_) {}
-            resolve({ dataUrl: rawDataUrl, mimeType: mime, size: file.size || rawDataUrl.length });
-          };
-          img.onerror = () => resolve({ dataUrl: rawDataUrl, mimeType: mime, size: file.size || rawDataUrl.length });
-          img.src = rawDataUrl;
-        } else {
-          resolve({ dataUrl: rawDataUrl, mimeType: mime, size: file.size || rawDataUrl.length });
-        }
+        processRawDataUrl(
+          reader.result,
+          fileOrDoc.name || fileOrDoc.fileName || 'DO_Proof',
+          fileOrDoc.type || fileOrDoc.mimeType || '',
+          fileOrDoc.size || 0
+        ).then(resolve).catch(reject);
       };
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(fileOrDoc);
     });
   }
 
-  async function uploadSignedProofToCloudVault(ret, file) {
-    if (!PMG_SCHEDULE_API_URL || !ret || !ret.id || !file) return { success: false };
+  async function uploadSignedProofToCloudVault(ret, fileOrDoc, fieldName = 'signedDoProof') {
+    if (!PMG_SCHEDULE_API_URL || !ret || !ret.id || !fileOrDoc) return { success: false };
     try {
-      const { dataUrl, mimeType, size } = await fileToCloudSafeDataUrl(file);
-      if (!dataUrl || dataUrl.length > 4800000) {
-        console.warn('[PMG Returns] Signed proof exceeds cloud vault size limit (~3.5MB); skipping cloud image upload.');
-        return { success: false, reason: 'too_large' };
+      const prepared = await fileToCloudSafeDataUrl(fileOrDoc);
+      const { dataUrl, mimeType, size, fileName } = prepared;
+      if (!dataUrl || dataUrl.length > 9800000) {
+        console.warn('[PMG Returns] Signed proof exceeds cloud vault size limit (~7.3MB); skipping cloud upload.');
+        return { success: false, reason: 'too_large', dataUrl, mimeType, size, fileName };
       }
+      const cleanField = fieldName || 'signedDoProof';
+      const uploadName = `${ret.doNumber || ret.id}_${fileName || 'Signed_DO'}`;
       const res = await fetch(PMG_SCHEDULE_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
@@ -3506,8 +4020,8 @@
           action: 'uploadApplicantDoc',
           appId: `DO_PROOF_${ret.id}`,
           doc: {
-            field: 'signedDoProof',
-            name: `${ret.doNumber || ret.id}_${file.name}`,
+            field: cleanField,
+            name: uploadName,
             type: mimeType,
             size: size,
             data: dataUrl
@@ -3515,15 +4029,307 @@
         }),
         redirect: 'follow'
       });
-      if (!res.ok) return { success: false };
+      if (!res.ok) {
+        return { success: false, reason: `http_${res.status}`, dataUrl, mimeType, size, fileName };
+      }
       const json = await res.json();
       if (json && json.success && json.docId) {
-        return { success: true, docId: json.docId, fileUrl: json.fileUrl || `sheet://doc/${json.docId}`, mimeType };
+        return {
+          success: true,
+          docId: json.docId,
+          fileUrl: json.fileUrl || `sheet://doc/${json.docId}`,
+          mimeType,
+          dataUrl,
+          size,
+          fileName,
+          field: cleanField
+        };
       }
-      return { success: false };
+      return { success: false, reason: (json && json.error) || 'vault_rejected', dataUrl, mimeType, size, fileName };
     } catch (err) {
-      console.warn('[PMG Returns] Cloud proof vault upload warning:', err.message);
-      return { success: false };
+      console.warn('[PMG Returns] Cloud proof vault upload warning:', err && err.message ? err.message : err);
+      return { success: false, reason: err && err.message ? err.message : 'upload_error' };
+    }
+  }
+
+  async function attachAndSyncProofFilesToReturn(ret, filesInput, options = {}) {
+    const files = filesInput ? Array.from(filesInput).filter(Boolean) : [];
+    if (!ret || files.length === 0) return { success: false, uploadedCount: 0 };
+
+    const uploadedMetaList = [];
+    const localIdbDocs = [];
+
+    for (let idx = 0; idx < files.length; idx++) {
+      const file = files[idx];
+      const fieldKey = idx === 0 ? 'signedDoProof' : `signedDoProof_${idx + 1}`;
+      const fileDisplayName = file.name || file.fileName || `DO_PRN_Proof_${idx + 1}`;
+      let savedPath = `Local_${fileDisplayName}`;
+      let oneDriveSaved = false;
+
+      // 1. Save original binary to OneDrive if connected
+      if (
+        typeof Blob !== 'undefined' &&
+        file instanceof Blob &&
+        window.pmgOneDriveSync &&
+        typeof window.pmgOneDriveSync.saveSignedDoProofToOneDrive === 'function'
+      ) {
+        try {
+          const doSuffix = idx === 0 ? (ret.doNumber || 'DO') : `${ret.doNumber || 'DO'}_Part${idx + 1}`;
+          const odRes = await window.pmgOneDriveSync.saveSignedDoProofToOneDrive(file, ret.branch, {
+            doNumber: doSuffix,
+            vendor: ret.supplier,
+            year: new Date().getFullYear(),
+            monthFolder: window.pmgOneDriveSync._formatCurrentMonthString ? window.pmgOneDriveSync._formatCurrentMonthString() : undefined
+          });
+          if (odRes && odRes.success) {
+            savedPath = odRes.path;
+            oneDriveSaved = true;
+          }
+        } catch (odErr) {
+          console.warn('[PMG Returns] OneDrive proof save skipped (continuing to Cloud Proof Vault):', odErr);
+        }
+      }
+
+      // 2. Upload normalized image/PDF to Google Cloud Proof Vault
+      const cloudRes = await uploadSignedProofToCloudVault(ret, file, fieldKey);
+      if (cloudRes.dataUrl) {
+        localIdbDocs.push({
+          fileName: fileDisplayName,
+          mimeType: cloudRes.mimeType || file.type || '',
+          size: cloudRes.size || file.size || cloudRes.dataUrl.length,
+          dataUrl: cloudRes.dataUrl,
+          field: fieldKey
+        });
+      }
+
+      uploadedMetaList.push({
+        fileName: fileDisplayName,
+        path: savedPath,
+        oneDriveSynced: oneDriveSaved,
+        cloudDocId: cloudRes.success ? cloudRes.docId : '',
+        cloudFileUrl: cloudRes.success ? cloudRes.fileUrl : '',
+        mimeType: cloudRes.mimeType || file.type || '',
+        field: fieldKey,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // 3. Cache normalized DataURLs locally in dedicated IDB so offline/retry & instant local preview always work
+    if (localIdbDocs.length > 0) {
+      await saveLocalProofDocsToIdb(ret.id, localIdbDocs);
+    }
+
+    const primary = uploadedMetaList[0];
+    const extras = uploadedMetaList.slice(1);
+    if (options.driverName !== undefined && String(options.driverName).trim()) {
+      ret.pickupBy = String(options.driverName).trim();
+    } else if (!ret.pickupBy && !options.preservePendingStatus) {
+      ret.pickupBy = 'Transporter Driver';
+    }
+    if (options.pickupDate !== undefined && String(options.pickupDate).trim()) {
+      ret.pickupDate = String(options.pickupDate).trim();
+    } else if (!ret.pickupDate && !options.preservePendingStatus) {
+      ret.pickupDate = formatTodayDateForDo();
+    }
+    if (ret.status !== 'completed' && !options.preservePendingStatus) {
+      ret.status = 'awaiting_cn';
+    }
+
+    ret.updatedAt = new Date().toISOString();
+    ret.signedProof = {
+      fileName: primary.fileName,
+      path: primary.path,
+      oneDriveSynced: primary.oneDriveSynced,
+      cloudDocId: primary.cloudDocId,
+      cloudFileUrl: primary.cloudFileUrl,
+      mimeType: primary.mimeType,
+      ...(extras.length > 0 ? { additionalDocs: extras } : {}),
+      timestamp: primary.timestamp
+    };
+
+    await saveSingleReturnToDb(ret);
+    try { localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData)); } catch (_) {}
+    syncReturnsWithOneDrive(ret.branch);
+    await syncReturnsWithGoogleSheets(ret.branch, true);
+
+    const cloudSyncedCount = uploadedMetaList.filter(m => Boolean(m.cloudDocId)).length;
+    return {
+      success: cloudSyncedCount > 0,
+      uploadedCount: uploadedMetaList.length,
+      cloudSyncedCount,
+      oneDriveSaved: uploadedMetaList.some(m => m.oneDriveSynced)
+    };
+  }
+
+  // Deduplicated OneDrive / Local IDB -> Google Cloud Proof Vault auto-backfill engine
+  const inFlightProofSyncs = new Map();
+  let isBatchProofBackfillRunning = false;
+
+  async function ensureReturnProofSyncedToCloud(ret, options = {}) {
+    if (!ret || !ret.id || !ret.signedProof) {
+      return { synced: false, reason: 'no_proof_record' };
+    }
+    const extras = Array.isArray(ret.signedProof.additionalDocs) ? ret.signedProof.additionalDocs : [];
+    const allAlreadyInCloud = Boolean(ret.signedProof.cloudDocId) && extras.every(d => d && d.cloudDocId);
+    if (allAlreadyInCloud) {
+      return { synced: true, alreadySynced: true, cloudDocId: ret.signedProof.cloudDocId };
+    }
+
+    if (inFlightProofSyncs.has(ret.id)) {
+      return inFlightProofSyncs.get(ret.id);
+    }
+
+    const syncTask = (async () => {
+      try {
+        let updatedAny = false;
+
+        // 1. Try recovering from local pmg_returns_proof_blobs_db first
+        const cachedLocalDocs = await loadLocalProofDocsFromIdb(ret.id);
+        if (cachedLocalDocs.length > 0) {
+          if (!ret.signedProof.cloudDocId && cachedLocalDocs[0]) {
+            const upRes = await uploadSignedProofToCloudVault(ret, cachedLocalDocs[0], cachedLocalDocs[0].field || 'signedDoProof');
+            if (upRes.success && upRes.docId) {
+              ret.signedProof.cloudDocId = upRes.docId;
+              ret.signedProof.cloudFileUrl = upRes.fileUrl;
+              ret.signedProof.mimeType = upRes.mimeType || ret.signedProof.mimeType || '';
+              updatedAny = true;
+            }
+          }
+          for (let i = 0; i < extras.length; i++) {
+            const ex = extras[i];
+            const cachedEx = cachedLocalDocs[i + 1];
+            if (ex && !ex.cloudDocId && cachedEx) {
+              const upEx = await uploadSignedProofToCloudVault(ret, cachedEx, ex.field || `signedDoProof_${i + 2}`);
+              if (upEx.success && upEx.docId) {
+                ex.cloudDocId = upEx.docId;
+                ex.cloudFileUrl = upEx.fileUrl;
+                ex.mimeType = upEx.mimeType || ex.mimeType || '';
+                updatedAny = true;
+              }
+            }
+          }
+        }
+
+        // 2. If still missing cloudDocId, read original PDF/image directly from linked OneDrive DO/ folder
+        if (
+          !ret.signedProof.cloudDocId &&
+          typeof window !== 'undefined' &&
+          window.pmgOneDriveSync &&
+          typeof window.pmgOneDriveSync.readSignedDoProofFromOneDrive === 'function'
+        ) {
+          const odRead = await window.pmgOneDriveSync.readSignedDoProofFromOneDrive(
+            ret.branch,
+            ret.signedProof,
+            { doNumber: ret.doNumber, vendor: ret.supplier },
+            { interactive: Boolean(options.interactive) }
+          );
+          if (odRead && odRead.success && odRead.file) {
+            const upOd = await uploadSignedProofToCloudVault(ret, odRead.file, 'signedDoProof');
+            if (upOd.dataUrl) {
+              await saveLocalProofDocsToIdb(ret.id, [{
+                fileName: ret.signedProof.fileName || odRead.fileName || odRead.file.name,
+                mimeType: upOd.mimeType || odRead.file.type || '',
+                size: upOd.size || odRead.file.size || upOd.dataUrl.length,
+                dataUrl: upOd.dataUrl,
+                field: 'signedDoProof'
+              }]);
+            }
+            if (upOd.success && upOd.docId) {
+              ret.signedProof.cloudDocId = upOd.docId;
+              ret.signedProof.cloudFileUrl = upOd.fileUrl;
+              ret.signedProof.mimeType = upOd.mimeType || ret.signedProof.mimeType || '';
+              updatedAny = true;
+            }
+          }
+        }
+
+        if (updatedAny) {
+          ret.updatedAt = new Date().toISOString();
+          await saveSingleReturnToDb(ret);
+          try { localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData)); } catch (_) {}
+          if (!options.deferVaultPush) {
+            syncReturnsWithOneDrive(ret.branch);
+            await syncReturnsWithGoogleSheets(ret.branch, true);
+          }
+          renderReturnsTable();
+          if (activeReturnForUpload && activeReturnForUpload.id === ret.id) {
+            renderUsdExistingProofStatus(ret);
+          }
+          if (activeReturnForReminder && activeReturnForReminder.id === ret.id) {
+            renderCnRemProofStatusBanner(ret);
+            refreshCnReminderMessagePreview();
+          }
+          return { synced: true, cloudDocId: ret.signedProof.cloudDocId };
+        }
+
+        return { synced: Boolean(ret.signedProof.cloudDocId), reason: 'source_unavailable' };
+      } catch (err) {
+        console.warn('[PMG Returns] ensureReturnProofSyncedToCloud warning:', err && err.message ? err.message : err);
+        return { synced: false, reason: err && err.message ? err.message : 'sync_error' };
+      } finally {
+        inFlightProofSyncs.delete(ret.id);
+      }
+    })();
+
+    inFlightProofSyncs.set(ret.id, syncTask);
+    return syncTask;
+  }
+
+  async function autoBackfillMissingCloudProofs(options = {}) {
+    if (isBatchProofBackfillRunning) return { syncedCount: 0 };
+    const candidates = (returnsData || []).filter(r => r && r.signedProof && r.signedProof.fileName && !r.signedProof.cloudDocId);
+    if (candidates.length === 0) return { syncedCount: 0 };
+
+    // Prioritize pending/awaiting_cn supplier returns so active CN Reminder links become cloud-ready first
+    candidates.sort((a, b) => {
+      const aScore = isEligibleForCnReminder(a) ? 0 : 1;
+      const bScore = isEligibleForCnReminder(b) ? 0 : 1;
+      return aScore - bScore;
+    });
+
+    isBatchProofBackfillRunning = true;
+    const touchedBranches = new Set();
+    let syncedCount = 0;
+    try {
+      for (const ret of candidates) {
+        const res = await ensureReturnProofSyncedToCloud(ret, {
+          interactive: Boolean(options.interactive),
+          deferVaultPush: true
+        });
+        if (res && res.synced && ret.signedProof && ret.signedProof.cloudDocId) {
+          syncedCount++;
+          touchedBranches.add(ret.branch || getActiveBranchName());
+        }
+      }
+      for (const br of touchedBranches) {
+        syncReturnsWithOneDrive(br);
+        await syncReturnsWithGoogleSheets(br, true);
+      }
+      if (syncedCount > 0) {
+        renderReturnsUI();
+        console.log(`[PMG Returns] ☁️ Auto-synced ${syncedCount} existing DO/PRN proof document(s) to Cloud Proof Vault.`);
+      }
+    } finally {
+      isBatchProofBackfillRunning = false;
+    }
+    return { syncedCount };
+  }
+
+  async function syncExistingProofToCloudNow(returnId) {
+    const ret = returnsData.find(r => r.id === returnId) || activeReturnForReminder || activeReturnForUpload;
+    if (!ret || !ret.signedProof) return;
+    renderCnRemProofStatusBanner(ret, { syncing: true });
+    const res = await ensureReturnProofSyncedToCloud(ret, { interactive: true });
+    renderCnRemProofStatusBanner(ret);
+    renderUsdExistingProofStatus(ret);
+    if (res && res.synced) {
+      if (typeof showPmgToast === 'function') {
+        showPmgToast(`☁️ Original DO / PRN file (${ret.signedProof.fileName}) synced to Cloud Proof Link!`, 'success');
+      }
+    } else {
+      alert(`Could not automatically read "${ret.signedProof.fileName}" from OneDrive on this device (OneDrive folder may not be linked yet).\n\nPlease select the PDF / image file directly to attach it to the Cloud Proof Link.`);
+      const quickInput = document.getElementById('cnRemQuickProofInput') || document.getElementById('usdFileInput');
+      if (quickInput && typeof quickInput.click === 'function') quickInput.click();
     }
   }
 
@@ -3535,64 +4341,23 @@
     const pickupDate = document.getElementById('usdPickupDate').value.trim();
     const btn = document.getElementById('usdSubmitBtn');
 
-    if (!fileInput.files || fileInput.files.length === 0) {
-      alert('Please select or capture the driver-signed DO document.');
+    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+      alert('Please select or photograph the signed DO / PRN document (PDF, JPG, or PNG).');
       return;
     }
 
-    const file = fileInput.files[0];
     btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving to OneDrive &amp; Cloud Link…';
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Uploading to OneDrive &amp; Cloud Link…';
 
     try {
-      let savedPath = `Local_${file.name}`;
-      let oneDriveSaved = false;
+      const targetRet = activeReturnForUpload;
+      const result = await attachAndSyncProofFilesToReturn(targetRet, fileInput.files, {
+        driverName: driverName || 'Transporter Driver',
+        pickupDate: pickupDate || formatTodayDateForDo(),
+        preservePendingStatus: false
+      });
 
-      // 1. Save to OneDrive if connected (isolated try/catch so revoked handle never skips cloud proof upload)
-      if (window.pmgOneDriveSync && typeof window.pmgOneDriveSync.saveSignedDoProofToOneDrive === 'function') {
-        try {
-          const res = await window.pmgOneDriveSync.saveSignedDoProofToOneDrive(file, activeReturnForUpload.branch, {
-            doNumber: activeReturnForUpload.doNumber,
-            vendor: activeReturnForUpload.supplier,
-            year: new Date().getFullYear(),
-            monthFolder: window.pmgOneDriveSync._formatCurrentMonthString ? window.pmgOneDriveSync._formatCurrentMonthString() : '09 - September'
-          });
-
-          if (res && res.success) {
-            savedPath = res.path;
-            oneDriveSaved = true;
-          }
-        } catch (odErr) {
-          console.warn('[PMG Returns] OneDrive proof save skipped (will still upload cloud proof):', odErr);
-        }
-      }
-
-      // 2. Upload compressed image/PDF to Google Cloud Proof Vault so suppliers can open it via WhatsApp link
-      const cloudRes = await uploadSignedProofToCloudVault(activeReturnForUpload, file);
-
-      // Update record
-      activeReturnForUpload.pickupBy = driverName || 'Transporter Driver';
-      activeReturnForUpload.pickupDate = pickupDate || formatTodayDateForDo();
-      if (activeReturnForUpload.status !== 'completed') {
-        activeReturnForUpload.status = 'awaiting_cn';
-      }
-      activeReturnForUpload.updatedAt = new Date().toISOString();
-      activeReturnForUpload.signedProof = {
-        fileName: file.name,
-        path: savedPath,
-        oneDriveSynced: oneDriveSaved,
-        cloudDocId: cloudRes.success ? cloudRes.docId : '',
-        cloudFileUrl: cloudRes.success ? cloudRes.fileUrl : '',
-        mimeType: cloudRes.mimeType || file.type || '',
-        timestamp: new Date().toISOString()
-      };
-
-      await saveSingleReturnToDb(activeReturnForUpload);
-      try { localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData)); } catch (lsErr) { console.warn('[PMG Returns] localStorage quota warning:', lsErr); }
-      syncReturnsWithOneDrive(activeReturnForUpload.branch);
-      await syncReturnsWithGoogleSheets(activeReturnForUpload.branch, true);
-
-      const uploadedId = activeReturnForUpload.id;
+      const uploadedId = targetRet.id;
       closeUploadSignedDoModal();
       renderReturnsUI();
 
@@ -3604,30 +4369,162 @@
         }
       }
 
-      const cloudNote = cloudRes.success
-        ? '\n☁️ Cloud Proof Link is live — suppliers can now view this signed DO from WhatsApp!'
-        : '\n(Saved locally/OneDrive; Digital DO + PRN proof link remains active.)';
-      alert(`✅ Signed DO proof saved!${cloudNote}\nStatus updated to: "Awaiting Credit Note".`);
+      const cloudNote = result.success
+        ? `\n☁️ Cloud Proof Link is LIVE (${result.cloudSyncedCount} file${result.cloudSyncedCount > 1 ? 's' : ''}) — suppliers will see the actual uploaded DO/PRN document when clicking your WhatsApp link!`
+        : '\n⚠️ Saved locally/OneDrive, but Cloud Link upload could not reach Google Cloud right now. It will auto-retry when online.';
+      alert(`✅ DO / PRN proof saved!${cloudNote}\nStatus updated to: "Awaiting Credit Note".`);
     } catch (err) {
       console.error('[PMG Returns] Proof upload error:', err);
-      alert('Error saving signed DO. Please try again.');
+      alert('Error saving DO / PRN proof: ' + (err && err.message ? err.message : 'Please try again.'));
     } finally {
       btn.disabled = false;
       btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Upload &amp; Save Proof';
     }
   }
 
-  function viewSignedProof(returnId) {
+  async function handleCnRemQuickProofSelected(input) {
+    if (!activeReturnForReminder || !input || !input.files || input.files.length === 0) return;
+    const files = Array.from(input.files);
+    input.value = '';
+    const ret = activeReturnForReminder;
+    renderCnRemProofStatusBanner(ret, { syncing: true, customText: `Uploading ${files.length} DO / PRN proof file${files.length > 1 ? 's' : ''} to Cloud Link…` });
+    try {
+      const res = await attachAndSyncProofFilesToReturn(ret, files, {
+        preservePendingStatus: ret.status === 'pending_pickup'
+      });
+      renderReturnsUI();
+      renderCnRemProofStatusBanner(ret);
+      refreshCnReminderMessagePreview();
+      if (res.success && typeof showPmgToast === 'function') {
+        showPmgToast(`☁️ Uploaded ${res.cloudSyncedCount} DO / PRN proof document(s) to WhatsApp Cloud Link!`, 'success');
+      } else if (!res.success) {
+        alert('Saved locally, but could not reach Google Cloud right now. Please check internet connection and try again.');
+      }
+    } catch (err) {
+      renderCnRemProofStatusBanner(ret);
+      alert('Could not attach DO / PRN file: ' + (err && err.message ? err.message : 'Unknown error'));
+    }
+  }
+
+  async function viewSignedProof(returnId) {
     const ret = returnsData.find(r => r.id === returnId);
     if (!ret || !ret.signedProof) return;
+
     if (ret.signedProof.cloudDocId && typeof window !== 'undefined' && typeof window.open === 'function') {
       window.open(buildPublicDoProofUrl(ret), '_blank', 'noopener');
+      syncReturnsWithGoogleSheets(ret.branch, true).catch(() => {});
       return;
     }
-    alert(`📁 Signed DO Proof Location:\n\nPath: ${ret.signedProof.path}\nFile: ${ret.signedProof.fileName}\nDriver: ${ret.pickupBy || 'N/A'}\nDate: ${ret.pickupDate || 'N/A'}\n\nTip: Re-upload the photo once to enable instant Cloud Proof Link preview for suppliers.`);
+
+    // Attempt live OneDrive / local IDB -> Cloud sync on user click, then open Public Proof Portal directly
+    let win = null;
+    if (typeof window !== 'undefined' && typeof window.open === 'function') {
+      try {
+        win = window.open('about:blank', '_blank');
+        if (win && win.document) {
+          win.document.title = 'Syncing DO / PRN Proof...';
+          win.document.body.innerHTML = '<div style="font-family:system-ui,sans-serif;padding:40px;text-align:center;color:#0f172a;"><h3>⏳ Syncing original DO / PRN document to Cloud Proof Link…</h3><p style="font-size:13px;color:#64748b;">Opening Supplier Proof Portal (PMG Pharmacy Hub)</p></div>';
+        }
+      } catch (_) {}
+    }
+
+    const syncRes = await ensureReturnProofSyncedToCloud(ret, { interactive: true });
+    if (syncRes && syncRes.synced) {
+      const url = buildPublicDoProofUrl(ret);
+      if (win && !win.closed) {
+        win.location.href = url;
+      } else if (typeof window !== 'undefined' && typeof window.open === 'function') {
+        window.open(url, '_blank', 'noopener');
+      }
+      return;
+    }
+
+    if (win && !win.closed) {
+      try { win.close(); } catch (_) {}
+    }
+    alert(`📁 Original DO / PRN Proof (${ret.signedProof.fileName}) was saved on OneDrive (${ret.signedProof.path || 'Branch OneDrive'}), which is not currently accessible on this browser.\n\nPlease link your OneDrive folder or re-select the PDF/image once to make it viewable via Cloud Proof Link.`);
   }
 
   // ─── MODAL 4B: WHATSAPP SUPPLIER CN REMINDER ─────────────────────────────────
+  function renderCnRemProofStatusBanner(ret, state = {}) {
+    const proofBox = document.getElementById('cnRemProofStatusBox');
+    if (!proofBox || !ret) return;
+
+    const safeId = escapeHtml(String(ret.id || '')).replace(/'/g, '&#39;');
+    const triggerQuickPick = `const qi=document.getElementById('cnRemQuickProofInput');if(qi)qi.click();else pmgReturns.openUploadSignedDoModal('${safeId}')`;
+
+    if (state.syncing) {
+      const msg = state.customText || `Syncing original uploaded DO / PRN document (${ret.signedProof ? ret.signedProof.fileName : 'file'}) to Cloud Proof Link…`;
+      proofBox.className = 'rounded-xl p-3 border text-xs flex flex-wrap items-center justify-between gap-2 bg-blue-50 border-blue-200 text-blue-900';
+      proofBox.innerHTML = `
+        <div class="flex items-center gap-2.5">
+          <i class="fa-solid fa-circle-notch fa-spin text-blue-600 text-base"></i>
+          <div>
+            <p class="font-bold">${escapeHtml(msg)}</p>
+            <p class="text-[11px] text-blue-700">Preparing original image/PDF so suppliers see the exact scanned document on WhatsApp…</p>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    if (ret.signedProof && ret.signedProof.cloudDocId) {
+      const extraDocs = Array.isArray(ret.signedProof.additionalDocs) ? ret.signedProof.additionalDocs : [];
+      const allFileNames = [ret.signedProof.fileName, ...extraDocs.map(d => d && d.fileName).filter(Boolean)].filter(Boolean).join(', ');
+      proofBox.className = 'rounded-xl p-3 border text-xs flex flex-wrap items-center justify-between gap-2 bg-emerald-50 border-emerald-200 text-emerald-900';
+      proofBox.innerHTML = `
+        <div class="flex items-center gap-2 flex-1 min-w-[200px]">
+          <i class="fa-solid fa-circle-check text-emerald-600 text-base"></i>
+          <div>
+            <p class="font-bold">Original DO / PRN Document Synced to Cloud Link</p>
+            <p class="text-[11px] text-emerald-700">Supplier will see the DO + PRN table <strong>AND</strong> your actual uploaded copy (${escapeHtml(allFileNames)}).</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button type="button" onclick="pmgReturns.previewPublicDoProofInNewTab()" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold cursor-pointer">
+            <i class="fa-solid fa-eye mr-1"></i>Preview Proof
+          </button>
+          <button type="button" onclick="${triggerQuickPick}" class="px-2.5 py-1 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[11px] font-bold cursor-pointer">
+            Replace / Add File
+          </button>
+        </div>
+      `;
+    } else if (ret.signedProof && ret.signedProof.fileName) {
+      proofBox.className = 'rounded-xl p-3 border text-xs flex flex-wrap items-center justify-between gap-2 bg-amber-50 border-amber-300 text-amber-950';
+      proofBox.innerHTML = `
+        <div class="flex items-center gap-2 flex-1 min-w-[200px]">
+          <i class="fa-solid fa-triangle-exclamation text-amber-600 text-base"></i>
+          <div>
+            <p class="font-bold">Original File (${escapeHtml(ret.signedProof.fileName)}) Not Synced to Cloud Link Yet</p>
+            <p class="text-[11px] text-amber-800">Click <strong>Sync from OneDrive</strong> or <strong>Attach File</strong> below so the supplier sees the actual scanned DO / PRN image or PDF instead of text only.</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button type="button" onclick="pmgReturns.syncExistingProofToCloudNow('${safeId}')" class="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold shadow-xs cursor-pointer">
+            <i class="fa-solid fa-rotate mr-1"></i>Sync from OneDrive
+          </button>
+          <button type="button" onclick="${triggerQuickPick}" class="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-bold shadow-xs cursor-pointer">
+            <i class="fa-solid fa-file-arrow-up mr-1"></i>Attach File
+          </button>
+        </div>
+      `;
+    } else {
+      proofBox.className = 'rounded-xl p-3 border text-xs flex flex-wrap items-center justify-between gap-2 bg-amber-50 border-amber-200 text-amber-900';
+      proofBox.innerHTML = `
+        <div class="flex items-center gap-2 flex-1 min-w-[200px]">
+          <i class="fa-solid fa-file-invoice text-amber-600 text-base"></i>
+          <div>
+            <p class="font-bold">No Original DO / PRN Scan Attached Yet (Text Table Only)</p>
+            <p class="text-[11px] text-amber-800">Attach your scanned DO / PRN copy (PDF or photo) so suppliers see the actual signed document when clicking the WhatsApp link.</p>
+          </div>
+        </div>
+        <button type="button" onclick="${triggerQuickPick}" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-bold shadow-xs cursor-pointer shrink-0">
+          <i class="fa-solid fa-camera mr-1"></i>Attach DO / PRN Copy
+        </button>
+      `;
+    }
+  }
+
   function openCnReminderModal(returnId) {
     const ret = returnsData.find(r => r.id === returnId);
     if (!ret) return;
@@ -3675,37 +4572,8 @@
       }
     }
 
-    // Proof Status Banner
-    const proofBox = document.getElementById('cnRemProofStatusBox');
-    if (proofBox) {
-      if (ret.signedProof && ret.signedProof.cloudDocId) {
-        proofBox.className = 'rounded-xl p-3 border text-xs flex flex-wrap items-center justify-between gap-2 bg-emerald-50 border-emerald-200 text-emerald-900';
-        proofBox.innerHTML = `
-          <div class="flex items-center gap-2">
-            <i class="fa-solid fa-circle-check text-emerald-600 text-base"></i>
-            <div>
-              <p class="font-bold">Signed DO Proof Synced to Cloud Link</p>
-              <p class="text-[11px] text-emerald-700">Supplier will see the full DO + PRN table AND your uploaded signed DO (${escapeHtml(ret.signedProof.fileName)}).</p>
-            </div>
-          </div>
-          <button type="button" onclick="pmgReturns.openUploadSignedDoModal('${ret.id}')" class="px-2.5 py-1 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[11px] font-bold cursor-pointer">Replace File</button>
-        `;
-      } else {
-        proofBox.className = 'rounded-xl p-3 border text-xs flex flex-wrap items-center justify-between gap-2 bg-amber-50 border-amber-200 text-amber-900';
-        proofBox.innerHTML = `
-          <div class="flex items-center gap-2 flex-1 min-w-[200px]">
-            <i class="fa-solid fa-file-invoice text-amber-600 text-base"></i>
-            <div>
-              <p class="font-bold">Digital DO + PRN Link Ready ${ret.signedProof ? '(Signed scan not in cloud yet)' : '(No signed DO scan attached yet)'}</p>
-              <p class="text-[11px] text-amber-800">Supplier can already view the itemized DO &amp; PRN list via link. Optionally attach the signed DO photo so it appears on the same page.</p>
-            </div>
-          </div>
-          <button type="button" onclick="pmgReturns.openUploadSignedDoModal('${ret.id}')" class="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-bold shadow-xs cursor-pointer shrink-0">
-            <i class="fa-solid fa-camera mr-1"></i>Attach Signed DO
-          </button>
-        `;
-      }
-    }
+    const needsAutoCloudProofSync = Boolean(ret.signedProof && ret.signedProof.fileName && !ret.signedProof.cloudDocId);
+    renderCnRemProofStatusBanner(ret, { syncing: needsAutoCloudProofSync });
 
     const phoneInput = document.getElementById('cnRemPhone');
     const picInput = document.getElementById('cnRemPicName');
@@ -3720,6 +4588,20 @@
 
     refreshCnReminderMessagePreview();
     modal.classList.remove('hidden');
+
+    // Automatically sync existing OneDrive / local DO+PRN proof into Cloud Proof Vault right when modal opens
+    if (needsAutoCloudProofSync) {
+      ensureReturnProofSyncedToCloud(ret, { interactive: true }).then(() => {
+        if (activeReturnForReminder && activeReturnForReminder.id === ret.id) {
+          renderCnRemProofStatusBanner(ret);
+          refreshCnReminderMessagePreview();
+        }
+      }).catch(() => {
+        if (activeReturnForReminder && activeReturnForReminder.id === ret.id) {
+          renderCnRemProofStatusBanner(ret);
+        }
+      });
+    }
 
     // Background pre-warm short URL for the DO+PRN proof link and refresh preview once cached
     if (typeof window !== 'undefined' && typeof window.pmgShortenUrlsBatch === 'function' && rawProofUrl) {
@@ -3766,6 +4648,11 @@
     ret.lastCnReminderAt = new Date().toISOString();
     ret.updatedAt = new Date().toISOString();
 
+    // Ensure original DO/PRN binary is pushed to Cloud Proof Vault if present locally/OneDrive
+    if (ret.signedProof && !ret.signedProof.cloudDocId) {
+      await ensureReturnProofSyncedToCloud(ret, { interactive: false, deferVaultPush: true });
+    }
+
     await saveSingleReturnToDb(ret);
     try {
       localStorage.setItem('pmg_returns_records_v1', JSON.stringify(returnsData));
@@ -3805,7 +4692,7 @@
     }
     closeCnReminderModal();
 
-    // Record reminder metadata & push to cloud in the background
+    // Record reminder metadata & push original DO/PRN proof + return state to cloud in the background
     if (sendBtn) {
       sendBtn.disabled = true;
       sendBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Syncing Proof Link…';
@@ -3857,12 +4744,43 @@
     }
   }
 
-  function previewPublicDoProofInNewTab() {
+  async function previewPublicDoProofInNewTab() {
     if (!activeReturnForReminder) return;
-    const proofUrl = buildPublicDoProofUrl(activeReturnForReminder);
-    const branch = activeReturnForReminder.branch;
-    window.open(proofUrl, '_blank', 'noopener');
-    syncReturnsWithGoogleSheets(branch, true).catch(err => console.warn('[PMG Returns] Background preview sync warning:', err));
+    const ret = activeReturnForReminder;
+    const proofUrl = buildPublicDoProofUrl(ret);
+    const branch = ret.branch;
+
+    // Popup-safe synchronous tab open + await proof & metadata cloud sync so preview never hits stale cloud state
+    let previewWin = null;
+    if (typeof window !== 'undefined' && typeof window.open === 'function') {
+      try {
+        previewWin = window.open('about:blank', '_blank');
+        if (previewWin && previewWin.document) {
+          previewWin.document.title = 'Loading Supplier Proof View...';
+          previewWin.document.body.innerHTML = '<div style="font-family:system-ui,sans-serif;padding:40px;text-align:center;color:#0f172a;"><h3 style="margin-bottom:8px;">⏳ Syncing DO / PRN Document of Proof to Cloud…</h3><p style="font-size:13px;color:#64748b;">Opening Supplier View (PMG Pharmacy Hub)</p></div>';
+        }
+      } catch (_) {}
+    }
+
+    try {
+      if (ret.signedProof && !ret.signedProof.cloudDocId) {
+        await ensureReturnProofSyncedToCloud(ret, { interactive: true, deferVaultPush: true });
+      }
+      await syncReturnsWithGoogleSheets(branch, true);
+    } catch (err) {
+      console.warn('[PMG Returns] Preview sync warning:', err);
+    }
+
+    if (previewWin && !previewWin.closed) {
+      try {
+        previewWin.location.href = proofUrl;
+        if (typeof previewWin.focus === 'function') previewWin.focus();
+        return;
+      } catch (_) {}
+    }
+    if (typeof window !== 'undefined' && typeof window.open === 'function') {
+      window.open(proofUrl, '_blank', 'noopener');
+    }
   }
 
   // ─── PUBLIC SUPPLIER DO & PRN DOCUMENT OF PROOF PORTAL (?doProof=...) ────────
@@ -3876,6 +4794,7 @@
       'Kota Sentosa'
     ].filter(Boolean)));
 
+    let cloudRecord = null;
     for (const br of branchCandidates) {
       const vaultKeys = [`PMG_RETURNS_VAULT_${br}`, br];
       for (const vk of vaultKeys) {
@@ -3886,22 +4805,161 @@
           const list = data && data.schedule && Array.isArray(data.schedule.branchReturns)
             ? data.schedule.branchReturns : [];
           const found = list.find(r => r && (r.id === cleanId || r.doNumber === cleanId));
-          if (found) return found;
+          if (found) {
+            cloudRecord = found;
+            break;
+          }
         } catch (_) {}
+      }
+      if (cloudRecord) break;
+    }
+
+    // 2. Also check local cache / memory so same-device previews inherit any newly attached proof metadata immediately
+    let localRecord = null;
+    try {
+      const cached = JSON.parse(localStorage.getItem('pmg_returns_records_v1') || '[]');
+      localRecord = cached.find(r => r && (r.id === cleanId || r.doNumber === cleanId)) || null;
+    } catch (_) {}
+    if (!localRecord) {
+      localRecord = (returnsData || []).find(r => r && (r.id === cleanId || r.doNumber === cleanId)) || null;
+    }
+
+    if (cloudRecord && localRecord) {
+      const mergedProof = mergeSignedProofMetadata(cloudRecord.signedProof, localRecord.signedProof);
+      return mergedProof ? { ...localRecord, ...cloudRecord, signedProof: mergedProof } : { ...localRecord, ...cloudRecord };
+    }
+    if (cloudRecord) return cloudRecord;
+    if (localRecord) return localRecord;
+
+    return SEED_RETURNS.find(r => r && (r.id === cleanId || r.doNumber === cleanId)) || null;
+  }
+
+  async function renderPdfPagesIntoContainer(cleanBase64, pagesContainerId, iframeFallbackId, pageBadgeId) {
+    const pagesBox = document.getElementById(pagesContainerId);
+    if (!pagesBox || !cleanBase64) return false;
+
+    try {
+      const pdfjsLib = await loadPdfJsLibrary();
+      if (!pdfjsLib || typeof document === 'undefined') return false;
+
+      const bytes = base64ToUint8Array(cleanBase64);
+      const pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
+      const numPages = pdfDoc.numPages || 1;
+      const maxRenderPages = Math.min(numPages, 20);
+
+      const badgeEl = pageBadgeId ? document.getElementById(pageBadgeId) : null;
+      if (badgeEl) {
+        badgeEl.textContent = `${numPages} Page${numPages !== 1 ? 's' : ''}`;
+        badgeEl.classList.remove('hidden');
+      }
+
+      const pageHtmlParts = [];
+      for (let p = 1; p <= maxRenderPages; p++) {
+        const page = await pdfDoc.getPage(p);
+        const baseVp = page.getViewport({ scale: 1 });
+        const targetScale = baseVp.width > 0 ? Math.min(2.4, Math.max(1.5, 1400 / baseVp.width)) : 2.0;
+        const vp = page.getViewport({ scale: targetScale });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(vp.width);
+        canvas.height = Math.round(vp.height);
+        const ctx = canvas.getContext && canvas.getContext('2d');
+        if (!ctx) return false;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvasContext: ctx, viewport: vp }).promise;
+        const pageImgUrl = canvas.toDataURL('image/jpeg', 0.9);
+
+        pageHtmlParts.push(`
+          <div class="bg-white rounded-xl border border-slate-300 shadow-sm overflow-hidden">
+            ${numPages > 1 ? `<div class="bg-slate-100 px-3 py-1.5 border-b border-slate-200 text-[11px] font-bold text-slate-600 flex justify-between items-center"><span>Page ${p} of ${numPages}</span><span>Original Scanned DO / PRN</span></div>` : ''}
+            <img src="${pageImgUrl}" alt="Original DO / PRN Document Page ${p}" class="w-full h-auto block object-contain bg-white">
+          </div>
+        `);
+      }
+
+      pagesBox.innerHTML = pageHtmlParts.join('\n');
+      pagesBox.classList.remove('hidden');
+      const fallbackFrame = iframeFallbackId ? document.getElementById(iframeFallbackId) : null;
+      if (fallbackFrame) fallbackFrame.classList.add('hidden');
+      return true;
+    } catch (err) {
+      console.warn('[PMG Returns] PDF.js inline page render fallback to native viewer:', err && err.message ? err.message : err);
+      return false;
+    }
+  }
+
+  async function fetchAllProofDocumentsForPortal(ret) {
+    const resolvedDocs = [];
+    if (!ret || !ret.id) return resolvedDocs;
+
+    const candidateEntries = [];
+    if (ret.signedProof) {
+      candidateEntries.push({
+        cloudDocId: ret.signedProof.cloudDocId || '',
+        fileName: ret.signedProof.fileName || '',
+        mimeType: ret.signedProof.mimeType || '',
+        field: 'signedDoProof'
+      });
+      if (Array.isArray(ret.signedProof.additionalDocs)) {
+        ret.signedProof.additionalDocs.forEach((d, idx) => {
+          if (d) {
+            candidateEntries.push({
+              cloudDocId: d.cloudDocId || '',
+              fileName: d.fileName || '',
+              mimeType: d.mimeType || '',
+              field: d.field || `signedDoProof_${idx + 2}`
+            });
+          }
+        });
       }
     }
 
-    // 2. Fallback to local cache / IndexedDB / seed records
-    try {
-      const cached = JSON.parse(localStorage.getItem('pmg_returns_records_v1') || '[]');
-      const foundLocal = cached.find(r => r && (r.id === cleanId || r.doNumber === cleanId));
-      if (foundLocal) return foundLocal;
-    } catch (_) {}
+    // 1. Fetch explicit cloudDocIds from Google Cloud Applicant_Documents vault
+    for (const entry of candidateEntries) {
+      if (!entry.cloudDocId) continue;
+      try {
+        const docRes = await fetch(`${PMG_SCHEDULE_API_URL}?action=getApplicantDoc&docId=${encodeURIComponent(entry.cloudDocId)}`);
+        const docJson = docRes.ok ? await docRes.json() : null;
+        if (docJson && docJson.success && docJson.data) {
+          resolvedDocs.push({
+            rawData: String(docJson.data).trim(),
+            fileName: entry.fileName || docJson.name || `${ret.doNumber || ret.id}_Signed_DO`,
+            mimeType: docJson.mimeType || entry.mimeType || ''
+          });
+        }
+      } catch (_) {}
+    }
 
-    const foundMem = (returnsData || []).find(r => r && (r.id === cleanId || r.doNumber === cleanId));
-    if (foundMem) return foundMem;
+    // 2. Fallback: query by appId=DO_PROOF_<ret.id> in case cloudDocId metadata was still syncing when link was tapped
+    if (resolvedDocs.length === 0 && PMG_SCHEDULE_API_URL) {
+      try {
+        const fbRes = await fetch(`${PMG_SCHEDULE_API_URL}?action=getApplicantDoc&appId=${encodeURIComponent(`DO_PROOF_${ret.id}`)}&field=signedDoProof`);
+        const fbJson = fbRes.ok ? await fbRes.json() : null;
+        if (fbJson && fbJson.success && fbJson.data) {
+          resolvedDocs.push({
+            rawData: String(fbJson.data).trim(),
+            fileName: (ret.signedProof && ret.signedProof.fileName) || fbJson.name || `${ret.doNumber || ret.id}_Signed_DO`,
+            mimeType: fbJson.mimeType || (ret.signedProof && ret.signedProof.mimeType) || ''
+          });
+        }
+      } catch (_) {}
+    }
 
-    return SEED_RETURNS.find(r => r && (r.id === cleanId || r.doNumber === cleanId)) || null;
+    // 3. Same-device local IndexedDB proof blob fallback
+    if (resolvedDocs.length === 0) {
+      const localDocs = await loadLocalProofDocsFromIdb(ret.id);
+      localDocs.forEach(ld => {
+        if (ld && ld.dataUrl) {
+          resolvedDocs.push({
+            rawData: String(ld.dataUrl).trim(),
+            fileName: ld.fileName || (ret.signedProof && ret.signedProof.fileName) || `${ret.doNumber || ret.id}_Signed_DO`,
+            mimeType: ld.mimeType || ''
+          });
+        }
+      });
+    }
+
+    return resolvedDocs;
   }
 
   async function renderPublicDoProofPortal(containerId, returnId, branchHint) {
@@ -3934,6 +4992,7 @@
     const statusLabel = ret.cnNumber
       ? `CN Settled (${ret.cnNumber})`
       : (ret.status === 'awaiting_cn' ? 'Collected · Awaiting Credit Note (CN)' : 'Return Logged · Pending Credit Note (CN)');
+    const expectsProofFetch = Boolean((ret.signedProof && (ret.signedProof.cloudDocId || ret.signedProof.fileName)) || PMG_SCHEDULE_API_URL);
 
     container.innerHTML = `
       <div class="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
@@ -3953,7 +5012,7 @@
           </div>
         </div>
 
-        <!-- DO & PRN Metadata Grid -->
+        <!-- DO & PRN Metadata Grid + Original Uploaded Proof Copy + Itemized Breakdown -->
         <div class="p-6 space-y-5">
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div class="bg-blue-50/70 border border-blue-200 rounded-xl p-3">
@@ -3979,6 +5038,24 @@
               <div class="text-xs font-black text-emerald-900 mt-0.5">${escapeHtml(statusLabel)}</div>
               <div class="text-[11px] text-emerald-800 mt-0.5">${ret.pickupBy ? `Driver: ${escapeHtml(ret.pickupBy)}${ret.pickupDate ? ` (${escapeHtml(ret.pickupDate)})` : ''}` : `Cartons: ${ret.totalCartons || 1} · ${items.length} SKU(s)`}</div>
             </div>
+          </div>
+
+          <!-- Original Uploaded DO / PRN Document Proof Section (Displayed Prominently First for Suppliers) -->
+          <div id="publicDoSignedAttachmentBox" class="border border-emerald-200 rounded-xl p-4 bg-emerald-50/30">
+            ${expectsProofFetch ? `
+              <div class="flex items-center gap-2 text-xs font-bold text-slate-700">
+                <i class="fa-solid fa-circle-notch fa-spin text-emerald-600"></i>
+                <span>Loading original uploaded DO / PRN document proof${ret.signedProof && ret.signedProof.fileName ? ` (${escapeHtml(ret.signedProof.fileName)})` : ''}…</span>
+              </div>
+            ` : `
+              <div class="flex items-center gap-2.5 text-xs text-slate-600">
+                <i class="fa-solid fa-file-signature text-blue-600 text-base"></i>
+                <div>
+                  <p class="font-bold text-slate-800">Verified PMG Branch Return Record</p>
+                  <p class="text-[11px] text-slate-500">Prepared / Verified By: <strong>${escapeHtml(ret.verifiedBy || 'PMG Pharmacist')}</strong>${ret.pickupBy ? ` · Driver: <strong>${escapeHtml(ret.pickupBy)}</strong> (${escapeHtml(ret.pickupDate || '')})` : ''}</p>
+                </div>
+              </div>
+            `}
           </div>
 
           <!-- Itemized Return Goods Table -->
@@ -4015,85 +5092,141 @@
               </table>
             </div>
           </div>
-
-          <!-- Driver-Signed DO Proof Attachment Section -->
-          <div id="publicDoSignedAttachmentBox" class="border border-slate-200 rounded-xl p-4 bg-slate-50">
-            ${ret.signedProof && ret.signedProof.cloudDocId ? `
-              <div class="flex items-center gap-2 text-xs font-bold text-slate-700">
-                <i class="fa-solid fa-circle-notch fa-spin text-emerald-600"></i>
-                <span>Loading driver-signed DO proof attachment (${escapeHtml(ret.signedProof.fileName)})…</span>
-              </div>
-            ` : `
-              <div class="flex items-center gap-2.5 text-xs text-slate-600">
-                <i class="fa-solid fa-file-signature text-blue-600 text-base"></i>
-                <div>
-                  <p class="font-bold text-slate-800">Verified PMG Branch Return Record</p>
-                  <p class="text-[11px] text-slate-500">Prepared / Verified By: <strong>${escapeHtml(ret.verifiedBy || 'PMG Pharmacist')}</strong>${ret.pickupBy ? ` · Driver: <strong>${escapeHtml(ret.pickupBy)}</strong> (${escapeHtml(ret.pickupDate || '')})` : ''}</p>
-                </div>
-              </div>
-            `}
-          </div>
         </div>
       </div>
     `;
 
-    // Fetch driver-signed DO scan from cloud vault if available
-    if (ret.signedProof && ret.signedProof.cloudDocId) {
-      const attBox = document.getElementById('publicDoSignedAttachmentBox');
-      try {
-        const docRes = await fetch(`${PMG_SCHEDULE_API_URL}?action=getApplicantDoc&docId=${encodeURIComponent(ret.signedProof.cloudDocId)}`);
-        const docJson = docRes.ok ? await docRes.json() : null;
-        if (attBox && docJson && docJson.success && docJson.data) {
-          const rawDataStr = String(docJson.data).trim();
-          const allowedDataUriRe = /^data:(image\/(jpeg|jpg|png|webp|gif)|application\/pdf);base64,[A-Za-z0-9+/=\s]+$/i;
-          if (!allowedDataUriRe.test(rawDataStr)) {
-            attBox.innerHTML = `<p class="text-xs text-amber-800 font-semibold"><i class="fa-solid fa-shield-halved mr-1"></i>Signed DO attachment format is unsupported for inline preview. Please refer to the verified DO &amp; PRN breakdown above.</p>`;
-          } else {
-            const mime = String(docJson.mimeType || ret.signedProof.mimeType || '').toLowerCase();
-            const fName = ret.signedProof.fileName || docJson.name || `${ret.doNumber}_Signed_DO`;
-            const isPdf = mime.includes('pdf') || rawDataStr.toLowerCase().startsWith('data:application/pdf');
-            if (isPdf) {
-              let blobUrl = rawDataStr;
-              try {
-                const b64 = rawDataStr.includes(',') ? rawDataStr.split(',')[1] : rawDataStr;
-                const bin = atob(b64);
-                const bytes = new Uint8Array(bin.length);
-                for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-                blobUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-              } catch (_) {}
-              attBox.innerHTML = `
-                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                  <div class="text-xs font-black text-emerald-900 flex items-center gap-1.5">
-                    <i class="fa-solid fa-file-pdf text-rose-600 text-base"></i> Driver-Signed DO Proof (PDF)
-                  </div>
-                  <a href="${blobUrl}" download="${escapeHtml(fName)}" target="_blank" rel="noopener" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5">
-                    <i class="fa-solid fa-download"></i> Open / Download Signed DO
-                  </a>
-                </div>
-                <iframe src="${blobUrl}" class="w-full h-[540px] rounded-xl border border-slate-300 bg-white"></iframe>
-              `;
-            } else {
-              attBox.innerHTML = `
-                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                  <div class="text-xs font-black text-emerald-900 flex items-center gap-1.5">
-                    <i class="fa-solid fa-file-shield text-emerald-600 text-base"></i> Driver-Signed DO Proof Copy
-                  </div>
-                  <a href="${rawDataStr}" download="${escapeHtml(fName)}" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5">
-                    <i class="fa-solid fa-download"></i> Download Signed DO Photo
-                  </a>
-                </div>
-                <img src="${rawDataStr}" alt="Driver Signed DO Proof" class="w-full max-h-[720px] object-contain rounded-xl border border-slate-300 bg-white shadow-xs">
-              `;
-            }
-          }
-        } else if (attBox) {
-          attBox.innerHTML = `<p class="text-xs text-amber-800 font-semibold"><i class="fa-solid fa-circle-info mr-1"></i>Signed DO file (${escapeHtml(ret.signedProof.fileName)}) is archived on branch OneDrive. Refer to the verified DO &amp; PRN breakdown above.</p>`;
+    // Fetch & render original uploaded DO / PRN document(s) (image & multi-page PDF)
+    const attBox = document.getElementById('publicDoSignedAttachmentBox');
+    if (!attBox) return;
+
+    try {
+      const rawDocs = await fetchAllProofDocumentsForPortal(ret);
+      if (rawDocs.length === 0) {
+        if (ret.signedProof && ret.signedProof.fileName) {
+          attBox.className = 'border border-amber-200 rounded-xl p-4 bg-amber-50/70';
+          attBox.innerHTML = `<p class="text-xs text-amber-900 font-semibold"><i class="fa-solid fa-circle-info mr-1 text-amber-600"></i>Original DO / PRN file (<strong>${escapeHtml(ret.signedProof.fileName)}</strong>) is archived on branch OneDrive and pending cloud sync. Please refer to the verified DO &amp; PRN breakdown below or contact PMG Pharmacy (${escapeHtml(ret.branch || 'Branch')}) if you require the scanned copy re-sent.</p>`;
+        } else {
+          attBox.className = 'border border-slate-200 rounded-xl p-4 bg-slate-50';
+          attBox.innerHTML = `
+            <div class="flex items-center gap-2.5 text-xs text-slate-600">
+              <i class="fa-solid fa-file-signature text-blue-600 text-base"></i>
+              <div>
+                <p class="font-bold text-slate-800">Verified PMG Branch Return Record</p>
+                <p class="text-[11px] text-slate-500">Prepared / Verified By: <strong>${escapeHtml(ret.verifiedBy || 'PMG Pharmacist')}</strong>${ret.pickupBy ? ` · Driver: <strong>${escapeHtml(ret.pickupBy)}</strong> (${escapeHtml(ret.pickupDate || '')})` : ''}</p>
+              </div>
+            </div>
+          `;
         }
-      } catch (err) {
-        if (attBox) {
-          attBox.innerHTML = `<p class="text-xs text-amber-800 font-semibold"><i class="fa-solid fa-circle-info mr-1"></i>Could not load signed DO image attachment right now. Please refer to the verified DO &amp; PRN breakdown above.</p>`;
-        }
+        return;
       }
+
+      const validDocs = [];
+      let hadRejectedUnsafeDoc = false;
+      rawDocs.forEach(docItem => {
+        const norm = inferAndNormalizeProofMime(docItem.fileName, docItem.mimeType, docItem.rawData);
+        if (norm) {
+          validDocs.push({
+            ...norm,
+            fileName: docItem.fileName
+          });
+        } else {
+          hadRejectedUnsafeDoc = true;
+        }
+      });
+
+      if (validDocs.length === 0) {
+        attBox.className = 'border border-amber-200 rounded-xl p-4 bg-amber-50';
+        attBox.innerHTML = `<p class="text-xs text-amber-800 font-semibold"><i class="fa-solid fa-shield-halved mr-1"></i>${hadRejectedUnsafeDoc ? 'Signed DO attachment format is unsupported for inline preview.' : 'Attachment could not be decoded.'} Please refer to the verified DO &amp; PRN breakdown below.</p>`;
+        return;
+      }
+
+      const pdfRenderJobs = [];
+      const docsHtml = validDocs.map((docObj, idx) => {
+        const isPdf = docObj.mimeType === 'application/pdf';
+        const fName = docObj.fileName || `${ret.doNumber || 'PMG'}_Proof_${idx + 1}.${isPdf ? 'pdf' : 'jpg'}`;
+        const multiLabel = validDocs.length > 1 ? ` (${idx + 1} of ${validDocs.length})` : '';
+
+        if (isPdf) {
+          let blobUrl = docObj.dataUrl;
+          try {
+            const bytes = base64ToUint8Array(docObj.base64);
+            if (typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+              blobUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+            }
+          } catch (_) {}
+
+          const pagesId = `publicDoPdfPages_${idx}`;
+          const iframeId = `publicDoPdfFrame_${idx}`;
+          const badgeId = `publicDoPdfBadge_${idx}`;
+          pdfRenderJobs.push({ base64: docObj.base64, pagesId, iframeId, badgeId });
+
+          return `
+            <div class="space-y-3 ${idx > 0 ? 'pt-4 border-t border-emerald-200' : ''}">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="text-xs font-black text-emerald-950 flex items-center gap-1.5 flex-wrap">
+                  <i class="fa-solid fa-file-pdf text-rose-600 text-base"></i>
+                  <span>Original Uploaded DO / PRN Document (PDF)${multiLabel} · Driver-Signed DO Proof Copy</span>
+                  <span class="font-mono text-[11px] font-semibold text-slate-600">(${escapeHtml(fName)})</span>
+                  <span id="${badgeId}" class="hidden px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold"></span>
+                </div>
+                <div class="flex items-center gap-1.5 print:hidden">
+                  <a href="${blobUrl}" target="_blank" rel="noopener" class="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-lg text-xs font-bold inline-flex items-center gap-1.5">
+                    <i class="fa-solid fa-arrow-up-right-from-square text-blue-600"></i> Open PDF
+                  </a>
+                  <a href="${blobUrl}" download="${escapeHtml(fName)}" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5">
+                    <i class="fa-solid fa-download"></i> Download Signed DO
+                  </a>
+                </div>
+              </div>
+              <div id="${pagesId}" class="hidden space-y-3"></div>
+              <iframe id="${iframeId}" src="${blobUrl}" class="w-full h-[600px] rounded-xl border border-slate-300 bg-white" title="${escapeHtml(fName)}"></iframe>
+            </div>
+          `;
+        }
+
+        let imgHref = docObj.dataUrl;
+        try {
+          const bytes = base64ToUint8Array(docObj.base64);
+          if (typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+            imgHref = URL.createObjectURL(new Blob([bytes], { type: docObj.mimeType }));
+          }
+        } catch (_) {}
+
+        return `
+          <div class="space-y-3 ${idx > 0 ? 'pt-4 border-t border-emerald-200' : ''}">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="text-xs font-black text-emerald-950 flex items-center gap-1.5 flex-wrap">
+                <i class="fa-solid fa-file-shield text-emerald-600 text-base"></i>
+                <span>Original Uploaded DO / PRN Proof${multiLabel} · Driver-Signed DO Proof Copy</span>
+                <span class="font-mono text-[11px] font-semibold text-slate-600">(${escapeHtml(fName)})</span>
+              </div>
+              <div class="flex items-center gap-1.5 print:hidden">
+                <a href="${imgHref}" target="_blank" rel="noopener" class="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-lg text-xs font-bold inline-flex items-center gap-1.5">
+                  <i class="fa-solid fa-magnifying-glass-plus text-blue-600"></i> Full Size
+                </a>
+                <a href="${docObj.dataUrl}" download="${escapeHtml(fName)}" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5">
+                  <i class="fa-solid fa-download"></i> Download Signed DO Photo
+                </a>
+              </div>
+            </div>
+            <a href="${imgHref}" target="_blank" rel="noopener" class="block" title="Tap to open full-resolution original document">
+              <img src="${docObj.dataUrl}" alt="Driver Signed DO Proof" class="w-full max-h-[900px] object-contain rounded-xl border border-slate-300 bg-white shadow-sm">
+            </a>
+          </div>
+        `;
+      }).join('');
+
+      attBox.className = 'border-2 border-emerald-300 rounded-xl p-4 bg-emerald-50/40 space-y-4';
+      attBox.innerHTML = docsHtml;
+
+      // Render every PDF page directly into crisp <img> elements via PDF.js so WhatsApp mobile & Android/iOS browsers display all pages natively
+      for (const job of pdfRenderJobs) {
+        await renderPdfPagesIntoContainer(job.base64, job.pagesId, job.iframeId, job.badgeId).catch(() => {});
+      }
+    } catch (err) {
+      attBox.className = 'border border-amber-200 rounded-xl p-4 bg-amber-50';
+      attBox.innerHTML = `<p class="text-xs text-amber-800 font-semibold"><i class="fa-solid fa-circle-info mr-1"></i>Could not load signed DO attachment right now. Please refer to the verified DO &amp; PRN breakdown below.</p>`;
     }
   }
 
@@ -4281,7 +5414,16 @@
     openUploadSignedDoModal: openUploadSignedDoModal,
     closeUploadSignedDoModal: closeUploadSignedDoModal,
     handleUsdFileSelected: handleUsdFileSelected,
+    handleInlineProofFileSelected: handleInlineProofFileSelected,
+    handleCnRemQuickProofSelected: handleCnRemQuickProofSelected,
     submitSignedDoProof: submitSignedDoProof,
+    attachAndSyncProofFilesToReturn: attachAndSyncProofFilesToReturn,
+    ensureReturnProofSyncedToCloud: ensureReturnProofSyncedToCloud,
+    backfillMissingCloudProofs: autoBackfillMissingCloudProofs,
+    syncExistingProofToCloudNow: syncExistingProofToCloudNow,
+    inferAndNormalizeProofMime: inferAndNormalizeProofMime,
+    saveLocalProofDocsToIdb: saveLocalProofDocsToIdb,
+    loadLocalProofDocsFromIdb: loadLocalProofDocsFromIdb,
     viewSignedProof: viewSignedProof,
     isStockTransferOrTransit: isStockTransferOrTransit,
     isEligibleForCnReminder: isEligibleForCnReminder,

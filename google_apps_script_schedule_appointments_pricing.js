@@ -319,15 +319,21 @@ function doGet(e) {
 
       if (matched.length === 0) return buildResponse({ success: false, error: 'Document not found' });
 
-      matched.sort((a, b) => (Number(a[6]) || 0) - (Number(b[6]) || 0));
-      const mimeType = matched[0][4] || 'image/jpeg';
-      const fileName = matched[0][3] || 'document.jpg';
-      const fullData = matched.map(m => String(m[8] || '')).join('');
+      // If queried by appId without explicit docId and multiple versions exist, pick the latest uploaded docId
+      const targetDocId = docId || String(matched[matched.length - 1][0] || '').trim();
+      const targetChunks = targetDocId
+        ? matched.filter(r => String(r[0] || '').trim() === targetDocId)
+        : matched;
+
+      targetChunks.sort((a, b) => (Number(a[6]) || 0) - (Number(b[6]) || 0));
+      const mimeType = targetChunks[0][4] || 'image/jpeg';
+      const fileName = targetChunks[0][3] || 'document.jpg';
+      const fullData = targetChunks.map(m => String(m[8] || '')).join('');
 
       return buildResponse({
         success: true,
-        docId: matched[0][0],
-        appId: matched[0][1],
+        docId: targetChunks[0][0],
+        appId: targetChunks[0][1],
         name: fileName,
         mimeType: mimeType,
         data: fullData
@@ -795,12 +801,17 @@ function doPost(e) {
         docSheet.appendRow(['DocId', 'ApplicationId', 'Field', 'FileName', 'MimeType', 'Size', 'ChunkIndex', 'TotalChunks', 'DataChunk', 'CreatedAt']);
       }
       const docId = `${appId}_${doc.field || 'doc'}_${Date.now()}`;
-      const fullData = doc.data;
+      const fullData = String(doc.data || '');
       const chunkSize = 35000;
-      const totalChunks = Math.ceil(fullData.length / chunkSize);
+      const totalChunks = Math.max(1, Math.ceil(fullData.length / chunkSize));
+      const rowsToInsert = [];
       for (let c = 0; c < totalChunks; c++) {
         const chunk = fullData.substring(c * chunkSize, (c + 1) * chunkSize);
-        docSheet.appendRow([docId, appId, doc.field || 'file', doc.name || 'document', doc.type || 'image/jpeg', doc.size || 0, c, totalChunks, chunk, now]);
+        rowsToInsert.push([docId, appId, doc.field || 'file', doc.name || 'document', doc.type || 'image/jpeg', doc.size || 0, c, totalChunks, chunk, now]);
+      }
+      if (rowsToInsert.length > 0) {
+        const startRow = docSheet.getLastRow() + 1;
+        docSheet.getRange(startRow, 1, rowsToInsert.length, rowsToInsert[0].length).setValues(rowsToInsert);
       }
       const fileUrl = `sheet://doc/${docId}`;
 
