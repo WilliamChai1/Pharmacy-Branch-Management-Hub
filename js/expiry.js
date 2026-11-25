@@ -153,9 +153,97 @@ function getExpiryRowIdMap() {
 
 // ─── PERSISTENT CLEARED / DONE EXPIRY TOMBSTONES (BATCHED, ZERO-THRASH) ──────
 const EXPIRY_CLEARED_KEYS_KEY = 'pmg_cleared_expiry_keys';
+const EXPIRY_REACTIVATED_KEYS_KEY = 'pmg_reactivated_expiry_keys';
+const EXPIRY_EDITS_CLOUD_API_URL = (typeof window !== 'undefined' && window.PMG_SCHEDULE_API_URL)
+  || 'https://script.google.com/macros/s/AKfycbyYfM2i7OXo6WojdLv7KwohWD4qnPfwsq-dCH6ECoEhtPnfKJnM8jKCzOC_dB9hSljVdQ/exec';
+const EXPIRY_EDITS_CLOUD_VAULT_KEY = 'PMG_EXPIRY_EDITS_VAULT_KS01';
+const EXPIRY_SEED_BACKFILL_CUTOFF_ISO = '2026-10-30T00:00:00.000Z';
+
 let _cachedClearedExpiryKeysSet = null;
 let _clearedKeysBatchDepth = 0;
 let _clearedKeysDirty = false;
+let _cachedReactivatedExpiryKeys = null;
+let _suppressExpiryCloudVaultPush = false;
+let _expiryCloudVaultPushTimer = null;
+let _expiryCloudVaultPushInFlight = false;
+let _expiryCloudVaultPushQueued = false;
+
+function getReactivatedExpiryKeys(forceRefresh = false) {
+  if (!forceRefresh && _cachedReactivatedExpiryKeys !== null) {
+    return _cachedReactivatedExpiryKeys;
+  }
+  try {
+    const raw = localStorage.getItem(EXPIRY_REACTIVATED_KEYS_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    _cachedReactivatedExpiryKeys = (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+  } catch (_) {
+    _cachedReactivatedExpiryKeys = {};
+  }
+  return _cachedReactivatedExpiryKeys;
+}
+
+function saveReactivatedExpiryKeys(mapObj) {
+  _cachedReactivatedExpiryKeys = mapObj || {};
+  try {
+    localStorage.setItem(EXPIRY_REACTIVATED_KEYS_KEY, JSON.stringify(_cachedReactivatedExpiryKeys));
+  } catch (_) {}
+}
+
+function recordReactivatedExpiryKeysForItem(item, isoTs) {
+  if (!item) return;
+  const ts = isoTs || new Date().toISOString();
+  const map = getReactivatedExpiryKeys();
+  const keys = getCanonicalKeysForExpiryItem(item);
+  keys.forEach(k => { if (k) map[String(k).trim().toUpperCase()] = ts; });
+  saveReactivatedExpiryKeys(map);
+}
+
+function removeReactivatedExpiryKeysForItem(item) {
+  if (!item) return;
+  const map = getReactivatedExpiryKeys();
+  let changed = false;
+  const keys = getCanonicalKeysForExpiryItem(item);
+  keys.forEach(k => {
+    const u = String(k || '').trim().toUpperCase();
+    if (u && Object.prototype.hasOwnProperty.call(map, u)) {
+      delete map[u];
+      changed = true;
+    }
+  });
+  if (changed) saveReactivatedExpiryKeys(map);
+}
+
+function getCanonicalKeysForExpiryItem(item) {
+  if (!item) return [];
+  const out = [];
+  const rId = item.rowId !== undefined && item.rowId !== null ? String(item.rowId).trim() : '';
+  if (rId && rId !== 'undefined' && rId !== 'null') {
+    out.push(`ROW_${rId.toUpperCase()}`);
+    out.push(rId.toUpperCase());
+  }
+  const itemKey = typeof getExpiryItemKey === 'function' ? getExpiryItemKey(item) : '';
+  if (itemKey) out.push(itemKey.toUpperCase());
+  const b = String(item.branch || 'Kota Sentosa').trim().toUpperCase();
+  const c = typeof normalizeProductCode === 'function' ? normalizeProductCode(item.itemCode) : String(item.itemCode || '').trim().toUpperCase();
+  const d = typeof normalizeProductDesc === 'function' ? normalizeProductDesc(item.itemDescription) : String(item.itemDescription || '').trim().toUpperCase().slice(0, 30);
+  const bt = typeof normalizeBatchNumber === 'function' ? normalizeBatchNumber(item.batchNumber) : String(item.batchNumber || '').trim().toUpperCase();
+  const expCanon = typeof getCanonicalExpiryDate === 'function' ? getCanonicalExpiryDate(item.expiryDate) : '';
+  const editKey = `${b}|${c ? 'C_' + c : 'D_' + d.slice(0, 30)}|${bt || 'NO_BATCH'}`;
+  out.push(editKey);
+  if (expCanon) out.push(`${editKey}|${expCanon}`);
+  if (c && c !== 'N/A') out.push(`${b}|${c}|${bt || 'NO_BATCH'}`);
+  if (d) out.push(`${b}|D_${d.slice(0, 30)}|${bt || 'NO_BATCH'}`);
+  const poolKey = typeof getExpiryProductPoolingKey === 'function' ? getExpiryProductPoolingKey(item) : '';
+  if (poolKey && expCanon) out.push(`${poolKey}|${bt || 'NO_BATCH'}|${expCanon}`.toUpperCase());
+  return Array.from(new Set(out.filter(Boolean)));
+}
+
+function extractBaseProductCode(rawCode) {
+  const c = typeof normalizeProductCode === 'function' ? normalizeProductCode(rawCode) : String(rawCode || '').trim().toUpperCase();
+  if (!c) return '';
+  const m = c.match(/^([A-Z0-9]+)\s*[-–\/]\s*.+$/);
+  return m && m[1] ? m[1].trim() : c;
+}
 
 function getClearedExpiryKeys(forceRefresh = false) {
   if (!forceRefresh && _cachedClearedExpiryKeysSet !== null) {
@@ -177,6 +265,9 @@ function flushClearedExpiryKeys() {
     localStorage.setItem(EXPIRY_CLEARED_KEYS_KEY, JSON.stringify(Array.from(_cachedClearedExpiryKeysSet)));
   } catch (e) {
     console.warn('[PMG Expiry] Error flushing cleared expiry keys:', e);
+  }
+  if (!_suppressExpiryCloudVaultPush) {
+    schedulePushExpiryEditsVaultToCloud(false);
   }
 }
 
@@ -228,8 +319,9 @@ function removeClearedExpiryKey(key) {
 }
 
 // ─── PERSISTENT USER DELTA EDITS (Action Plans, Expiry Dates & Quantities) ──
-// Keeps user adjustments safely in localStorage delta cache so they survive page refreshes,
-// restarts, IndexedDB re-hydration, and remote cloud sheet sync without ever being wiped.
+// Keeps user adjustments safely in localStorage + IndexedDB + Google Cloud Vault
+// (PMG_EXPIRY_EDITS_VAULT_KS01) so edits made on Outlet Admin PC 1 immediately
+// synchronize to the Laptop and all other branch PCs.
 const EXPIRY_USER_EDITS_KEY = 'pmg_expiry_user_edits';
 let _cachedUserEdits = null;
 let _userEditsBatchDepth = 0;
@@ -259,6 +351,9 @@ function flushUserEdits() {
   if (typeof setIdbItem === 'function') {
     setIdbItem(EXPIRY_USER_EDITS_KEY, _cachedUserEdits).catch(() => {});
   }
+  if (!_suppressExpiryCloudVaultPush) {
+    schedulePushExpiryEditsVaultToCloud(false);
+  }
 }
 
 function beginUserEditsBatch() {
@@ -272,34 +367,58 @@ function endUserEditsBatch() {
   }
 }
 
-function recordUserEdit(item, patch) {
-  if (!item) return;
+function buildExpiryEditKeys(item) {
   const b = String(item.branch || 'Kota Sentosa').trim().toUpperCase();
   const c = typeof normalizeProductCode === 'function' ? normalizeProductCode(item.itemCode) : String(item.itemCode || '').trim().toUpperCase();
   const bt = typeof normalizeBatchNumber === 'function' ? normalizeBatchNumber(item.batchNumber) : String(item.batchNumber || '').trim().toUpperCase();
   const d = typeof normalizeProductDesc === 'function' ? normalizeProductDesc(item.itemDescription) : String(item.itemDescription || '').trim().toUpperCase().slice(0, 30);
   const rowId = (item.rowId !== undefined && item.rowId !== null && String(item.rowId) !== 'undefined') ? String(item.rowId).trim() : '';
+  const baseCode = extractBaseProductCode(item.itemCode);
 
   const itemKey = `${b}|${c ? 'C_' + c : 'D_' + d.slice(0, 30)}|${bt || 'NO_BATCH'}`;
+  const descKey = d ? `${b}|D_${d.slice(0, 30)}|${bt || 'NO_BATCH'}` : '';
+  const baseCodeKey = (baseCode && baseCode !== c) ? `${b}|C_${baseCode}|${bt || 'NO_BATCH'}` : '';
+  const rowKey = rowId ? 'ROW_' + rowId : '';
+  return { b, c, bt, d, rowId, itemKey, descKey, baseCodeKey, rowKey };
+}
+
+function recordUserEdit(item, patch) {
+  if (!item) return;
+  const { b, itemKey, descKey, rowKey } = buildExpiryEditKeys(item);
+
+  // Strip undefined keys so we never clobber existing properties, while preserving explicit null (e.g. cleared offeredPrice)
+  const cleanPatch = {};
+  if (patch && typeof patch === 'object') {
+    Object.keys(patch).forEach(k => {
+      if (patch[k] !== undefined) cleanPatch[k] = patch[k];
+    });
+  }
 
   const edits = getUserEdits();
   const editData = {
-    ...patch,
+    ...cleanPatch,
     branch: b,
     itemCode: item.itemCode,
     batchNumber: item.batchNumber,
     itemDescription: item.itemDescription,
-    lastUpdated: new Date().toISOString()
+    lastUpdated: cleanPatch.lastUpdated || new Date().toISOString()
   };
 
   edits[itemKey] = {
-    ...edits[itemKey],
+    ...(edits[itemKey] || {}),
     ...editData
   };
 
-  if (rowId) {
-    edits['ROW_' + rowId] = {
-      ...edits['ROW_' + rowId],
+  if (descKey && descKey !== itemKey) {
+    edits[descKey] = {
+      ...(edits[descKey] || {}),
+      ...editData
+    };
+  }
+
+  if (rowKey) {
+    edits[rowKey] = {
+      ...(edits[rowKey] || {}),
       ...editData
     };
   }
@@ -311,56 +430,550 @@ function recordUserEdit(item, patch) {
   }
 }
 
+function findNewestUserEditForItem(it, edits) {
+  if (!it || !edits) return null;
+  const { itemKey, descKey, baseCodeKey, rowKey } = buildExpiryEditKeys(it);
+  const candidates = [];
+
+  if (rowKey && edits[rowKey]) {
+    const rowEdit = edits[rowKey];
+    // Verify product compatibility for ROW_<id> matches to prevent shifted sheet rowId collisions
+    const productCompatible = !rowEdit.itemDescription || !it.itemDescription ||
+      (typeof areExpiryItemsSameProduct === 'function' ? areExpiryItemsSameProduct(it, rowEdit) : true);
+    if (productCompatible) {
+      candidates.push(rowEdit);
+    }
+  }
+  if (itemKey && edits[itemKey]) candidates.push(edits[itemKey]);
+  if (descKey && descKey !== itemKey && edits[descKey]) candidates.push(edits[descKey]);
+  if (baseCodeKey && edits[baseCodeKey]) candidates.push(edits[baseCodeKey]);
+
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0];
+
+  // Pick the strictly newest edit entry by lastUpdated timestamp
+  let best = candidates[0];
+  let bestTs = best.lastUpdated ? new Date(best.lastUpdated).getTime() : 0;
+  for (let i = 1; i < candidates.length; i++) {
+    const cand = candidates[i];
+    const candTs = cand.lastUpdated ? new Date(cand.lastUpdated).getTime() : 0;
+    if (candTs > bestTs) {
+      best = cand;
+      bestTs = candTs;
+    }
+  }
+  return best;
+}
+
 function applyUserEdits(items) {
   if (!Array.isArray(items) || items.length === 0) return items;
   const edits = getUserEdits();
-  const keys = Object.keys(edits);
-  if (keys.length === 0) return items;
+  if (!edits || Object.keys(edits).length === 0) return items;
 
   const clearedSet = typeof getClearedExpiryKeys === 'function' ? getClearedExpiryKeys() : null;
 
   items.forEach(it => {
     if (!it) return;
-    const b = String(it.branch || 'Kota Sentosa').trim().toUpperCase();
-    const c = typeof normalizeProductCode === 'function' ? normalizeProductCode(it.itemCode) : String(it.itemCode || '').trim().toUpperCase();
-    const bt = typeof normalizeBatchNumber === 'function' ? normalizeBatchNumber(it.batchNumber) : String(it.batchNumber || '').trim().toUpperCase();
-    const d = typeof normalizeProductDesc === 'function' ? normalizeProductDesc(it.itemDescription) : String(it.itemDescription || '').trim().toUpperCase().slice(0, 30);
-    const rowId = (it.rowId !== undefined && it.rowId !== null && String(it.rowId) !== 'undefined') ? String(it.rowId).trim() : '';
+    const e = findNewestUserEditForItem(it, edits);
+    if (!e) return;
 
-    const itemKey = `${b}|${c ? 'C_' + c : 'D_' + d.slice(0, 30)}|${bt || 'NO_BATCH'}`;
-    const descKey = `${b}|D_${d.slice(0, 30)}|${bt || 'NO_BATCH'}`;
-    const rowKey = rowId ? 'ROW_' + rowId : null;
+    const editTs = e.lastUpdated ? new Date(e.lastUpdated).getTime() : 0;
+    const itemTs = it.lastUpdated ? new Date(it.lastUpdated).getTime() : 0;
+    const editWinsTime = !itemTs || editTs >= itemTs;
 
-    const e = (rowKey && edits[rowKey]) || edits[itemKey] || edits[descKey];
-    if (e) {
-      if (e.actionPlan !== undefined && e.actionPlan !== null) {
-        it.actionPlan = String(e.actionPlan).trim();
+    if (e.actionPlan !== undefined && e.actionPlan !== null) {
+      it.actionPlan = String(e.actionPlan).trim();
+    }
+    if (e.expiryDate !== undefined && String(e.expiryDate).trim() !== '') {
+      it.expiryDate = e.expiryDate;
+    }
+
+    const editStatusUpper = String(e.status || '').trim().toUpperCase();
+    if ((editStatusUpper === 'DONE' || editStatusUpper === 'CLEARED' || editStatusUpper === 'WRITTEN-OFF') && editWinsTime) {
+      it.status = e.status;
+      it.quantity = 0;
+      it.remainingQty = 0;
+      it.clearedAt = e.clearedAt || e.lastUpdated || it.clearedAt;
+    } else if (editStatusUpper === 'ACTIVE' && Number(e.quantity) > 0 && editWinsTime) {
+      it.status = 'Active';
+      it.quantity = Number(e.quantity);
+      it.remainingQty = Number(e.quantity);
+      delete it.clearedAt;
+    } else if (typeof isItemMarkedDoneOrCleared !== 'function' || !isItemMarkedDoneOrCleared(it, clearedSet)) {
+      if (e.quantity !== undefined && e.quantity !== null && !isNaN(e.quantity) && editWinsTime) {
+        it.quantity = Number(e.quantity);
+        it.remainingQty = Number(e.quantity);
       }
-      if (e.expiryDate !== undefined && String(e.expiryDate).trim() !== '') {
-        it.expiryDate = e.expiryDate;
-      }
-      if (typeof isItemMarkedDoneOrCleared !== 'function' || !isItemMarkedDoneOrCleared(it, clearedSet)) {
-        if (e.quantity !== undefined && e.quantity !== null && !isNaN(e.quantity)) {
-          it.quantity = e.quantity;
-        }
-      }
-      if (e.offeredPrice !== undefined && e.offeredPrice !== null) {
-        it.offeredPrice = e.offeredPrice;
-        if (it.clearancePrice === undefined) it.clearancePrice = e.offeredPrice;
-      }
-      if (e.clearancePrice !== undefined && e.clearancePrice !== null) {
-        it.clearancePrice = e.clearancePrice;
-      }
-      if (e.tagTheme) it.tagTheme = e.tagTheme;
-      if (e.tagSize) it.tagSize = e.tagSize;
-      if (e.promoBanner) it.promoBanner = e.promoBanner;
-      if (e.promoRemark) it.promoRemark = e.promoRemark;
-      if (e.lastUpdated && (!it.lastUpdated || e.lastUpdated > it.lastUpdated)) {
-        it.lastUpdated = e.lastUpdated;
-      }
+    }
+
+    if (e.offeredPrice === null) {
+      delete it.offeredPrice;
+      delete it.clearancePrice;
+    } else if (e.offeredPrice !== undefined) {
+      it.offeredPrice = e.offeredPrice;
+      if (e.clearancePrice === undefined) it.clearancePrice = e.offeredPrice;
+    }
+    if (e.clearancePrice === null) {
+      delete it.clearancePrice;
+    } else if (e.clearancePrice !== undefined) {
+      it.clearancePrice = e.clearancePrice;
+    }
+    if (e.normalPrice === null) {
+      delete it.normalPrice;
+    } else if (e.normalPrice !== undefined) {
+      it.normalPrice = e.normalPrice;
+    }
+    if (e.tagTheme) it.tagTheme = e.tagTheme;
+    if (e.tagSize) it.tagSize = e.tagSize;
+    if (e.promoBanner) it.promoBanner = e.promoBanner;
+    if (e.promoRemark) it.promoRemark = e.promoRemark;
+    if (e.lastUpdated && (!it.lastUpdated || e.lastUpdated > it.lastUpdated)) {
+      it.lastUpdated = e.lastUpdated;
     }
   });
   return items;
+}
+
+// ─── CROSS-PC GOOGLE CLOUD DELTA VAULT (PMG_EXPIRY_EDITS_VAULT_KS01) ─────────
+// Non-patient operational module: syncs Action Plans, Offered/Clearance Prices,
+// Price Tag settings, Expiry/Qty edits, Cleared tombstones, and Write-Off queue
+// across Outlet Admin PC 1, Laptop, and all branch devices via PMG_SCHEDULE_API_URL.
+function _encodeUtf8ToBase64(str) {
+  if (typeof TextEncoder !== 'undefined' && typeof btoa === 'function') {
+    const bytes = new TextEncoder().encode(str);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(bin);
+  }
+  return btoa(unescape(encodeURIComponent(str)));
+}
+
+function _decodeBase64ToUtf8(b64) {
+  const cleanB64 = String(b64 || '').replace(/^data:[^;]+;base64,/, '');
+  if (typeof TextDecoder !== 'undefined' && typeof atob === 'function') {
+    const bin = atob(cleanB64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+  return decodeURIComponent(escape(atob(cleanB64)));
+}
+
+function getExpiryEditsCloudApiUrl() {
+  return (typeof window !== 'undefined' && window.PMG_SCHEDULE_API_URL) || EXPIRY_EDITS_CLOUD_API_URL;
+}
+
+async function readExpiryEditsCloudVault() {
+  const apiUrl = getExpiryEditsCloudApiUrl();
+  if (!apiUrl || typeof fetch !== 'function') return null;
+  try {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeout = controller ? setTimeout(() => controller.abort(), 15000) : null;
+    const res = await fetch(
+      `${apiUrl}?branch=${encodeURIComponent(EXPIRY_EDITS_CLOUD_VAULT_KEY)}`,
+      controller ? { method: 'GET', signal: controller.signal } : { method: 'GET' }
+    );
+    if (timeout) clearTimeout(timeout);
+    if (!res || !res.ok) return null;
+    const data = await res.json().catch(() => null);
+    const raw = (data && data.schedule && typeof data.schedule === 'object') ? data.schedule : null;
+    if (!raw) return null;
+
+    if (raw.chunkedDocId) {
+      const docRes = await fetch(`${apiUrl}?action=getApplicantDoc&docId=${encodeURIComponent(raw.chunkedDocId)}`);
+      if (!docRes || !docRes.ok) return null;
+      const docData = await docRes.json().catch(() => null);
+      const rawB64 = docData && (docData.data || docData.base64Data);
+      if (!rawB64) return null;
+      const decoded = _decodeBase64ToUtf8(rawB64);
+      const parsed = JSON.parse(decoded);
+      return (parsed && typeof parsed === 'object') ? parsed : null;
+    }
+    return raw;
+  } catch (err) {
+    console.warn('[PMG Expiry Cloud Vault] Read failed:', err?.message || err);
+    return null;
+  }
+}
+
+async function writeExpiryEditsCloudVault(vaultObj) {
+  const apiUrl = getExpiryEditsCloudApiUrl();
+  if (!apiUrl || typeof fetch !== 'function' || !vaultObj) return false;
+  try {
+    const session = typeof getSession === 'function' ? getSession() : null;
+    const updatedBy = session?.displayName || localStorage.getItem('pmg_user_name') || 'PMG Expiry Sync';
+    const jsonStr = JSON.stringify(vaultObj);
+
+    if (jsonStr.length > 38000) {
+      const b64Payload = _encodeUtf8ToBase64(jsonStr);
+      const uploadRes = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'uploadApplicantDoc',
+          appId: EXPIRY_EDITS_CLOUD_VAULT_KEY,
+          doc: {
+            field: 'expiryEditsVault',
+            name: 'expiry_edits_vault.json',
+            type: 'application/json',
+            size: jsonStr.length,
+            data: `data:application/json;base64,${b64Payload}`
+          }
+        }),
+        redirect: 'follow'
+      });
+      const uploadJson = uploadRes && uploadRes.ok ? await uploadRes.json().catch(() => null) : null;
+      if (!uploadJson || !uploadJson.success || !uploadJson.docId) return false;
+
+      const pointer = {
+        chunkedDocId: uploadJson.docId,
+        version: vaultObj.version || 1,
+        updatedAt: vaultObj.updatedAt || new Date().toISOString(),
+        editCount: Object.keys(vaultObj.edits || {}).length
+      };
+      const ptrRes = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          branch: EXPIRY_EDITS_CLOUD_VAULT_KEY,
+          schedule: pointer,
+          updatedBy
+        }),
+        redirect: 'follow'
+      });
+      return Boolean(ptrRes && ptrRes.ok);
+    }
+
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        branch: EXPIRY_EDITS_CLOUD_VAULT_KEY,
+        schedule: vaultObj,
+        updatedBy
+      }),
+      redirect: 'follow'
+    });
+    return Boolean(res && res.ok);
+  } catch (err) {
+    console.warn('[PMG Expiry Cloud Vault] Write failed:', err?.message || err);
+    return false;
+  }
+}
+
+function buildCompactCloudEditsMap(editsObj) {
+  const out = {};
+  if (!editsObj || typeof editsObj !== 'object') return out;
+  Object.keys(editsObj).forEach(k => {
+    const val = editsObj[k];
+    if (!val || typeof val !== 'object') return;
+    // Skip ephemeral Quick Add ROW_qa_ keys in cloud vault — canonical itemKey/descKey carry the same edit across PCs
+    if (/^ROW_(QA_|EXP_)/i.test(k)) return;
+    out[k] = val;
+  });
+  return out;
+}
+
+function buildExpiryEditsCloudPayload() {
+  const edits = buildCompactCloudEditsMap(getUserEdits());
+  const clearedKeys = Array.from(getClearedExpiryKeys());
+  const reactivatedKeys = { ...getReactivatedExpiryKeys() };
+  let writeOffIds = [];
+  const writeOffKeys = [];
+  try {
+    writeOffIds = Array.from(selectedWriteOffRowIds || []);
+    writeOffIds.forEach(id => {
+      const it = findExpiryItemById(id);
+      if (it) {
+        const { itemKey } = buildExpiryEditKeys(it);
+        if (itemKey) writeOffKeys.push(itemKey);
+      }
+    });
+  } catch (_) {}
+
+  return {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    edits,
+    clearedKeys,
+    reactivatedKeys,
+    writeOffIds,
+    writeOffKeys: Array.from(new Set(writeOffKeys))
+  };
+}
+
+function backfillUserEditsFromLocalItems(items) {
+  if (!Array.isArray(items) || items.length === 0) return false;
+  const edits = getUserEdits();
+  let addedAny = false;
+
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (!it) continue;
+
+    const rawPlan = String(it.actionPlan || '').trim();
+    const planLower = rawPlan.toLowerCase();
+    const isCustomPlan = Boolean(rawPlan) && planLower !== 'closely monitor' && planLower !== 'returnable with condition';
+    const hasOffer = (it.offeredPrice !== undefined && it.offeredPrice !== null && Number(it.offeredPrice) > 0) ||
+      (it.clearancePrice !== undefined && it.clearancePrice !== null && Number(it.clearancePrice) > 0);
+    if (!isCustomPlan && !hasOffer) continue;
+
+    const ts = it.lastUpdated || it.pricingUpdatedAt || '';
+    const isManualQuickEntry = String(it.sourceFile || '').trim().toLowerCase() === 'manual quick entry';
+    // Ignore historical static seed entries from before Nov 2026 unless already in user edits
+    if (!isManualQuickEntry && (!ts || ts < EXPIRY_SEED_BACKFILL_CUTOFF_ISO)) continue;
+
+    const { b, itemKey, descKey } = buildExpiryEditKeys(it);
+    const existing = edits[itemKey] || (descKey && edits[descKey]);
+    const existingTs = existing && existing.lastUpdated ? new Date(existing.lastUpdated).getTime() : 0;
+    const itemTs = ts ? new Date(ts).getTime() : Date.now();
+
+    if (!existing || itemTs > existingTs) {
+      const backfilled = {
+        ...(existing || {}),
+        branch: b,
+        itemCode: it.itemCode,
+        batchNumber: it.batchNumber,
+        itemDescription: it.itemDescription,
+        actionPlan: rawPlan,
+        lastUpdated: ts || new Date().toISOString()
+      };
+      if (it.offeredPrice !== undefined && it.offeredPrice !== null) backfilled.offeredPrice = it.offeredPrice;
+      if (it.clearancePrice !== undefined && it.clearancePrice !== null) backfilled.clearancePrice = it.clearancePrice;
+      if (it.normalPrice !== undefined && it.normalPrice !== null) backfilled.normalPrice = it.normalPrice;
+      if (it.tagTheme) backfilled.tagTheme = it.tagTheme;
+      if (it.tagSize) backfilled.tagSize = it.tagSize;
+      if (it.promoBanner) backfilled.promoBanner = it.promoBanner;
+      if (it.promoRemark) backfilled.promoRemark = it.promoRemark;
+
+      edits[itemKey] = backfilled;
+      if (descKey && descKey !== itemKey) {
+        edits[descKey] = { ...(edits[descKey] || {}), ...backfilled };
+      }
+      addedAny = true;
+    }
+  }
+
+  if (addedAny) {
+    _cachedUserEdits = edits;
+    try { localStorage.setItem(EXPIRY_USER_EDITS_KEY, JSON.stringify(edits)); } catch (_) {}
+    if (typeof setIdbItem === 'function') {
+      setIdbItem(EXPIRY_USER_EDITS_KEY, edits).catch(() => {});
+    }
+  }
+  return addedAny;
+}
+
+function mergeExpiryUserEditsMaps(localEdits, cloudEdits) {
+  const locMap = (localEdits && typeof localEdits === 'object') ? localEdits : {};
+  const cldMap = (cloudEdits && typeof cloudEdits === 'object') ? cloudEdits : {};
+  const merged = {};
+  let localHasNewer = false;
+  let cloudHasNewer = false;
+
+  const allKeys = new Set([...Object.keys(locMap), ...Object.keys(cldMap)]);
+  allKeys.forEach(k => {
+    const loc = locMap[k];
+    const cld = cldMap[k];
+    if (loc && !cld) {
+      merged[k] = loc;
+      if (!/^ROW_(QA_|EXP_)/i.test(k)) {
+        localHasNewer = true;
+      }
+    } else if (cld && !loc) {
+      merged[k] = cld;
+      cloudHasNewer = true;
+    } else if (loc && cld) {
+      const locTs = loc.lastUpdated ? new Date(loc.lastUpdated).getTime() : 0;
+      const cldTs = cld.lastUpdated ? new Date(cld.lastUpdated).getTime() : 0;
+      if (cldTs > locTs) {
+        merged[k] = { ...loc, ...cld };
+        cloudHasNewer = true;
+      } else if (locTs > cldTs) {
+        merged[k] = { ...cld, ...loc };
+        if (!/^ROW_(QA_|EXP_)/i.test(k)) {
+          localHasNewer = true;
+        }
+      } else {
+        merged[k] = { ...cld, ...loc };
+      }
+    }
+  });
+
+  return { merged, localHasNewer, cloudHasNewer };
+}
+
+function _executeExpiryEditsVaultPush() {
+  if (_expiryCloudVaultPushInFlight) {
+    _expiryCloudVaultPushQueued = true;
+    return Promise.resolve(true);
+  }
+  _expiryCloudVaultPushInFlight = true;
+  _expiryCloudVaultPushQueued = false;
+  const payload = buildExpiryEditsCloudPayload();
+  return writeExpiryEditsCloudVault(payload)
+    .catch(err => {
+      console.warn('[PMG Expiry Cloud Vault] Background push notice:', err?.message || err);
+      return false;
+    })
+    .finally(() => {
+      _expiryCloudVaultPushInFlight = false;
+      if (_expiryCloudVaultPushQueued) {
+        _executeExpiryEditsVaultPush();
+      }
+    });
+}
+
+function schedulePushExpiryEditsVaultToCloud(immediate = false) {
+  if (_suppressExpiryCloudVaultPush) return Promise.resolve(false);
+  if (immediate) {
+    if (_expiryCloudVaultPushTimer) {
+      clearTimeout(_expiryCloudVaultPushTimer);
+      _expiryCloudVaultPushTimer = null;
+    }
+    return _executeExpiryEditsVaultPush();
+  }
+  if (_expiryCloudVaultPushTimer) {
+    clearTimeout(_expiryCloudVaultPushTimer);
+  }
+  _expiryCloudVaultPushTimer = setTimeout(() => {
+    _expiryCloudVaultPushTimer = null;
+    _executeExpiryEditsVaultPush();
+  }, 600);
+  return Promise.resolve(true);
+}
+
+async function reconcileExpiryEditsVaultWithCloud(prefetchedCloudVault = undefined) {
+  // 1. Backfill any recent local item edits (e.g., Outlet Admin PC 1 edits from before v71)
+  backfillUserEditsFromLocalItems(expiryItems);
+
+  const cloudVault = (prefetchedCloudVault !== undefined)
+    ? prefetchedCloudVault
+    : await readExpiryEditsCloudVault();
+
+  const localEdits = getUserEdits();
+  const cloudEdits = (cloudVault && cloudVault.edits && typeof cloudVault.edits === 'object') ? cloudVault.edits : {};
+  const { merged: mergedEdits, localHasNewer: editsLocalNewer, cloudHasNewer: editsCloudNewer } =
+    mergeExpiryUserEditsMaps(localEdits, cloudEdits);
+
+  // 2. Merge reactivated keys (newer timestamp wins)
+  const localReactivated = getReactivatedExpiryKeys();
+  const cloudReactivated = (cloudVault && cloudVault.reactivatedKeys && typeof cloudVault.reactivatedKeys === 'object')
+    ? cloudVault.reactivatedKeys : {};
+  const mergedReactivated = { ...cloudReactivated };
+  let reactivatedLocalNewer = false;
+  Object.keys(localReactivated).forEach(k => {
+    const locTs = localReactivated[k] || '';
+    const cldTs = cloudReactivated[k] || '';
+    if (!cldTs || locTs > cldTs) {
+      mergedReactivated[k] = locTs;
+      reactivatedLocalNewer = true;
+    }
+  });
+
+  // 3. Merge cleared tombstones (union of local + cloud, minus keys explicitly reactivated AFTER cloudVault.updatedAt)
+  const localCleared = getClearedExpiryKeys();
+  const cloudClearedArr = (cloudVault && Array.isArray(cloudVault.clearedKeys)) ? cloudVault.clearedKeys : [];
+  const cloudClearedSet = new Set(cloudClearedArr.map(k => String(k || '').trim().toUpperCase()).filter(Boolean));
+  const cloudVaultTs = (cloudVault && cloudVault.updatedAt) ? new Date(cloudVault.updatedAt).getTime() : 0;
+
+  let clearedLocalNewer = false;
+  let clearedCloudNewer = false;
+  const mergedCleared = new Set();
+
+  localCleared.forEach(k => {
+    const u = String(k || '').trim().toUpperCase();
+    if (!u) return;
+    mergedCleared.add(u);
+    if (!cloudClearedSet.has(u)) clearedLocalNewer = true;
+  });
+
+  cloudClearedSet.forEach(u => {
+    const reactTs = mergedReactivated[u] ? new Date(mergedReactivated[u]).getTime() : 0;
+    // Skip stale cloud tombstone if this batch was explicitly reactivated AFTER the cloud vault update
+    if (reactTs > 0 && (!cloudVaultTs || reactTs > cloudVaultTs)) return;
+    if (!localCleared.has(u)) clearedCloudNewer = true;
+    mergedCleared.add(u);
+  });
+
+  // 4. Persist merged state locally without triggering echo push
+  const prevSuppress = _suppressExpiryCloudVaultPush;
+  _suppressExpiryCloudVaultPush = true;
+  try {
+    _cachedUserEdits = mergedEdits;
+    if (editsCloudNewer || Object.keys(mergedEdits).length > 0) {
+      try { localStorage.setItem(EXPIRY_USER_EDITS_KEY, JSON.stringify(mergedEdits)); } catch (_) {}
+      if (typeof setIdbItem === 'function') {
+        setIdbItem(EXPIRY_USER_EDITS_KEY, mergedEdits).catch(() => {});
+      }
+    }
+    if (clearedCloudNewer) {
+      _cachedClearedExpiryKeysSet = mergedCleared;
+      try { localStorage.setItem(EXPIRY_CLEARED_KEYS_KEY, JSON.stringify(Array.from(mergedCleared))); } catch (_) {}
+    }
+    saveReactivatedExpiryKeys(mergedReactivated);
+
+    // Merge cloud write-off queue IDs / canonical keys
+    if (cloudVault && (Array.isArray(cloudVault.writeOffIds) || Array.isArray(cloudVault.writeOffKeys))) {
+      try {
+        const curIds = new Set(JSON.parse(localStorage.getItem('pmg_accumulated_write_off_ids') || '[]'));
+        let woChanged = false;
+        (cloudVault.writeOffIds || []).forEach(id => {
+          const s = String(id || '').trim();
+          if (s && !curIds.has(s)) { curIds.add(s); woChanged = true; }
+        });
+        if (Array.isArray(cloudVault.writeOffKeys) && cloudVault.writeOffKeys.length > 0 && Array.isArray(expiryItems)) {
+          const keySet = new Set(cloudVault.writeOffKeys);
+          expiryItems.forEach(it => {
+            if (!it || !it.rowId) return;
+            const { itemKey } = buildExpiryEditKeys(it);
+            if (keySet.has(itemKey) && !curIds.has(String(it.rowId))) {
+              curIds.add(String(it.rowId));
+              woChanged = true;
+            }
+          });
+        }
+        if (woChanged) {
+          localStorage.setItem('pmg_accumulated_write_off_ids', JSON.stringify(Array.from(curIds)));
+        }
+      } catch (_) {}
+    }
+
+    if (Array.isArray(expiryItems) && expiryItems.length > 0) {
+      applyUserEdits(expiryItems);
+      if (clearedCloudNewer) {
+        expiryItems.forEach(it => {
+          if (it && isItemMarkedDoneOrCleared(it, mergedCleared)) {
+            it.status = 'DONE';
+            it.quantity = 0;
+            it.remainingQty = 0;
+          }
+        });
+      }
+    }
+  } finally {
+    _suppressExpiryCloudVaultPush = prevSuppress;
+  }
+
+  // 5. Push merged vault up if cloud had no vault yet (and local has edits) OR local has strictly newer edits/tombstones
+  const compactLocalEditCount = Object.keys(buildCompactCloudEditsMap(mergedEdits)).length;
+  const shouldPushToCloud = (!cloudVault && compactLocalEditCount > 0) ||
+    editsLocalNewer ||
+    reactivatedLocalNewer ||
+    (clearedLocalNewer && compactLocalEditCount > 0);
+
+  if (shouldPushToCloud) {
+    await writeExpiryEditsCloudVault(buildExpiryEditsCloudPayload());
+  }
+
+  return {
+    cloudAvailable: Boolean(cloudVault),
+    editsCount: Object.keys(mergedEdits).length,
+    pushedToCloud: shouldPushToCloud,
+    pulledFromCloud: editsCloudNewer || clearedCloudNewer
+  };
 }
 
 // Discontinued / fully obsolete SKUs barred from active inventory
@@ -522,6 +1135,8 @@ function consolidatePendingOcrItems(items) {
 function healAndConsolidateExpiryItems(items) {
   if (!Array.isArray(items) || items.length === 0) return items || [];
 
+  const prevSuppress = _suppressExpiryCloudVaultPush;
+  _suppressExpiryCloudVaultPush = true;
   beginClearedKeysBatch();
   try {
     const clearedSet = getClearedExpiryKeys();
@@ -603,15 +1218,37 @@ function healAndConsolidateExpiryItems(items) {
           if (it.rowId) addClearedExpiryKey(`ROW_${it.rowId}`);
           if (existing.rowId) addClearedExpiryKey(`ROW_${existing.rowId}`);
         } else if (!existingDone && !itDone) {
-          // Both copies are active: sum quantities!
-          existing.quantity = (Number(existing.quantity) || 0) + (Number(it.quantity) || 0);
-          existing.remainingQty = existing.quantity;
+          const srcA = String(existing.sourceFile || '').trim().toLowerCase();
+          const srcB = String(it.sourceFile || '').trim().toLowerCase();
+          const bothQuickEntry = srcA === 'manual quick entry' && srcB === 'manual quick entry';
+          if (bothQuickEntry) {
+            // Historical duplicate Quick Add appends (same branch/code/batch/expiry & sourceFile='Manual Quick Entry'):
+            // Deduplicate instead of multiplying quantities (e.g. 1 + 1 + 1 stays 1).
+            existing.quantity = Math.max(Number(existing.quantity) || 0, Number(it.quantity) || 0);
+            existing.remainingQty = existing.quantity;
+            // Prefer the latest numeric Google Sheet rowId so future updates target the newest Sheet row
+            const existNumId = /^\d+$/.test(String(existing.rowId || '').trim()) ? parseInt(existing.rowId, 10) : 0;
+            const itNumId = /^\d+$/.test(String(it.rowId || '').trim()) ? parseInt(it.rowId, 10) : 0;
+            if (itNumId > existNumId) {
+              existing.rowId = it.rowId;
+            }
+          } else {
+            // Both copies are active invoice lines: sum quantities!
+            existing.quantity = (Number(existing.quantity) || 0) + (Number(it.quantity) || 0);
+            existing.remainingQty = existing.quantity;
+          }
           if (it.sourceFile && !String(existing.sourceFile || '').includes(it.sourceFile)) {
             existing.sourceFile = `${existing.sourceFile || ''}, ${it.sourceFile}`.replace(/^,\s*/, '');
           }
+          if (!existing.actionPlan && it.actionPlan) existing.actionPlan = it.actionPlan;
+          if (existing.offeredPrice === undefined && it.offeredPrice !== undefined) existing.offeredPrice = it.offeredPrice;
+          if (existing.clearancePrice === undefined && it.clearancePrice !== undefined) existing.clearancePrice = it.clearancePrice;
           if (it.lastUpdated && (!existing.lastUpdated || it.lastUpdated > existing.lastUpdated)) {
             existing.lastUpdated = it.lastUpdated;
             if (it.updatedBy) existing.updatedBy = it.updatedBy;
+            if (it.actionPlan) existing.actionPlan = it.actionPlan;
+            if (it.offeredPrice !== undefined) existing.offeredPrice = it.offeredPrice;
+            if (it.clearancePrice !== undefined) existing.clearancePrice = it.clearancePrice;
           }
         } else {
           // One copy is done, but the other is active (e.g. newly received invoice stock):
@@ -637,6 +1274,7 @@ function healAndConsolidateExpiryItems(items) {
     return Array.from(resultMap.values());
   } finally {
     endClearedKeysBatch();
+    _suppressExpiryCloudVaultPush = prevSuppress;
   }
 }
 
@@ -768,6 +1406,8 @@ function ensureUniqueExpiryRowIds(itemsArray) {
 window.ensureUniqueExpiryRowIds = ensureUniqueExpiryRowIds;
 
 function initDefaultClearedTombstones() {
+  const prevSuppress = _suppressExpiryCloudVaultPush;
+  _suppressExpiryCloudVaultPush = true;
   beginClearedKeysBatch();
   try {
     // Ensure default cleared SKUs and records are in persistent tombstone
@@ -812,6 +1452,7 @@ function initDefaultClearedTombstones() {
     removeClearedExpiryKey('KOTA SENTOSA|151766|26001|15/04/2028');
   } finally {
     endClearedKeysBatch();
+    _suppressExpiryCloudVaultPush = prevSuppress;
   }
 }
 
@@ -1839,19 +2480,28 @@ function getExpiryItemKey(item) {
 }
 
 function mergeExpiryDatasets(localList, remoteList) {
+  const prevSuppress = _suppressExpiryCloudVaultPush;
+  _suppressExpiryCloudVaultPush = true;
   beginClearedKeysBatch();
   try {
     return _mergeExpiryDatasetsCore(localList, remoteList);
   } finally {
     endClearedKeysBatch();
+    _suppressExpiryCloudVaultPush = prevSuppress;
   }
 }
 
 function _mergeExpiryDatasetsCore(localList, remoteList) {
   const cleanLocal = ensureUniqueExpiryRowIds(Array.isArray(localList) ? localList : []);
   const cleanRemote = ensureUniqueExpiryRowIds(Array.isArray(remoteList) ? remoteList : []);
-  if (cleanRemote.length === 0) return cleanLocal;
-  if (cleanLocal.length === 0) return cleanRemote;
+  if (cleanRemote.length === 0) {
+    applyUserEdits(cleanLocal);
+    return cleanLocal;
+  }
+  if (cleanLocal.length === 0) {
+    applyUserEdits(cleanRemote);
+    return cleanRemote;
+  }
 
   const clearedSet = getClearedExpiryKeys();
   const map = new Map();
@@ -2344,7 +2994,7 @@ async function syncExpiryFromSheets(showPrompt = true) {
   if (_activeExpirySyncPromise) {
     await _activeExpirySyncPromise;
     if (showPrompt) {
-      showExpiryToast(`✅ Synced ${expiryItems.length} items live with Google Sheets!`);
+      showExpiryToast(`✅ Synced ${expiryItems.length} items live with Google Sheets & Cloud Vault!`);
     }
     return;
   }
@@ -2357,36 +3007,74 @@ async function syncExpiryFromSheets(showPrompt = true) {
 
   const runSync = (async () => {
     try {
-      // 1. Fetch live data from Google Sheets (Stock Expiry syncs exclusively via Google Sheets)
-      try {
+      // 1. Fetch live rows from Google Sheets AND Cross-PC Edits Cloud Vault (PMG_EXPIRY_EDITS_VAULT_KS01) in parallel
+      const sheetFetchPromise = (async () => {
         const url = `${PMG_EXPIRY_API_URL}?action=getExpiry&branch=all`;
         const controller = new AbortController();
         // 30-second timeout to accommodate cold starts and 1MB payloads over branch networks
         const timeout = setTimeout(() => controller.abort(), 30000);
-        const res = await fetch(url, { method: 'GET', signal: controller.signal });
-        clearTimeout(timeout);
-
-        if (res.ok) {
-          let data = await res.json();
-          if (data && data.success && Array.isArray(data.items) && data.items.length > 0) {
-            expiryItems = mergeExpiryDatasets(expiryItems, data.items);
-            data = null; // Release raw API response payload immediately for GC
-            if (window.PMG_SEED_EXPIRY_DATA && window.PMG_SEED_EXPIRY_DATA !== expiryItems) {
-              window.PMG_SEED_EXPIRY_DATA = null;
+        try {
+          const res = await fetch(url, { method: 'GET', signal: controller.signal });
+          clearTimeout(timeout);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.success && Array.isArray(data.items) && data.items.length > 0) {
+              return data.items;
             }
-            saveLocalExpiryData({ skipHeal: true });
-            window._lastExpirySheetsSyncTime = Date.now();
-            if (!document.getElementById('content-expiry')?.classList.contains('hidden')) {
-              renderExpiryUI();
-            }
-            if (showPrompt) {
-              showExpiryToast(`✅ Synced ${expiryItems.length} items live with Google Sheets!`);
-            }
-            return;
           }
+        } catch (sheetErr) {
+          clearTimeout(timeout);
+          console.warn('[PMG Expiry] Sheets fetch notice:', sheetErr);
         }
-      } catch (sheetErr) {
-        console.warn('[PMG Expiry] Sheets fetch notice:', sheetErr);
+        return null;
+      })();
+
+      const cloudVaultPromise = readExpiryEditsCloudVault().catch(() => null);
+
+      const [remoteItems, prefetchedVault] = await Promise.all([sheetFetchPromise, cloudVaultPromise]);
+
+      // 2. Reconcile Cross-PC Edits Cloud Vault FIRST so merged user edits & cleared tombstones apply during dataset merge
+      let vaultResult = { cloudAvailable: false, pulledFromCloud: false, pushedToCloud: false };
+      try {
+        vaultResult = await reconcileExpiryEditsVaultWithCloud(prefetchedVault);
+      } catch (vaultErr) {
+        console.warn('[PMG Expiry] Cloud vault reconcile notice:', vaultErr);
+      }
+
+      // 3. Merge live Google Sheets items (automatically applies merged user edits & deduplicates Quick Entry copies)
+      let didUpdateDataset = false;
+      if (Array.isArray(remoteItems) && remoteItems.length > 0) {
+        expiryItems = mergeExpiryDatasets(expiryItems, remoteItems);
+        if (window.PMG_SEED_EXPIRY_DATA && window.PMG_SEED_EXPIRY_DATA !== expiryItems) {
+          window.PMG_SEED_EXPIRY_DATA = null;
+        }
+        didUpdateDataset = true;
+      } else if (vaultResult.pulledFromCloud && Array.isArray(expiryItems) && expiryItems.length > 0) {
+        applyUserEdits(expiryItems);
+        didUpdateDataset = true;
+      }
+
+      if (didUpdateDataset) {
+        // Re-sync write-off queue selection without triggering a redundant cloud echo push
+        const prevSuppress = _suppressExpiryCloudVaultPush;
+        _suppressExpiryCloudVaultPush = true;
+        try {
+          if (typeof loadAccumulatedWriteOffItems === 'function') {
+            loadAccumulatedWriteOffItems();
+          }
+        } finally {
+          _suppressExpiryCloudVaultPush = prevSuppress;
+        }
+
+        saveLocalExpiryData({ skipHeal: true });
+        window._lastExpirySheetsSyncTime = Date.now();
+        if (!document.getElementById('content-expiry')?.classList.contains('hidden')) {
+          renderExpiryUI();
+        }
+        if (showPrompt) {
+          showExpiryToast(`✅ Synced ${expiryItems.length} items live with Google Sheets & Cloud Vault!`);
+        }
+        return;
       }
 
       if (showPrompt) {
@@ -2422,10 +3110,40 @@ async function pushExpiryUpdateToSheets(rowId, quantity, status, expiryDate = nu
     // Do NOT send 'update_item' or 'update_action_plan' as GAS will reject them with "Unrecognized action".
     const primaryAction = isDoneOrCleared ? 'mark_cleared' : 'update_qty';
 
-    const rawIdStr = String(rowId || '').trim();
-    const numRowId = /^\d+$/.test(rawIdStr) ? parseInt(rawIdStr, 10) : NaN;
-    // If rowId is non-numeric, invalid, or beyond Google Sheet rows (> 100000), insert/append via batch_insert
+    let rawIdStr = String(rowId || '').trim();
+    let numRowId = /^\d+$/.test(rawIdStr) ? parseInt(rawIdStr, 10) : NaN;
+
+    // If rowId is non-numeric (e.g. qa_... or EXP_...), first check if a matching numeric Sheet row already exists
+    if ((isNaN(numRowId) || numRowId <= 1 || numRowId > 100000) && item && Array.isArray(expiryItems)) {
+      const numericTwin = expiryItems.find(other => {
+        if (!other || other === item) return false;
+        const oid = String(other.rowId || '').trim();
+        if (!/^\d+$/.test(oid)) return false;
+        const n = parseInt(oid, 10);
+        return n > 1 && n <= 100000 && areExpiryItemsSameProductAndBatch(item, other);
+      });
+      if (numericTwin) {
+        rawIdStr = String(numericTwin.rowId).trim();
+        numRowId = parseInt(rawIdStr, 10);
+        item.rowId = numericTwin.rowId;
+      }
+    }
+
+    // If rowId is still non-numeric, NEVER duplicate an already-pushed Manual Quick Entry row or an Action Plan/Pricing-only edit!
+    // Sync those immediately via the Cross-PC Cloud Vault (PMG_EXPIRY_EDITS_VAULT_KS01) instead of appending duplicate Sheet rows.
     if (isNaN(numRowId) || numRowId <= 1 || numRowId > 100000) {
+      const isAlreadyPushedQuickEntry = Boolean(
+        item && (item._pushedToSheet || String(item.sourceFile || '').trim().toLowerCase() === 'manual quick entry')
+      );
+      const isActionOrPriceOnlyEdit = Boolean(
+        extraFields && (extraFields.actionPlan !== undefined || extraFields.offeredPrice !== undefined || extraFields.clearancePrice !== undefined)
+      ) && !isDoneOrCleared;
+
+      if (isAlreadyPushedQuickEntry || isActionOrPriceOnlyEdit) {
+        await schedulePushExpiryEditsVaultToCloud(true);
+        return true;
+      }
+
       if (isDoneOrCleared || quantity !== null) {
         return await pushBatchExpiryToSheets([{
           rowId: item?.rowId || rowId,
@@ -3613,6 +4331,7 @@ function updateExpiryActionPlan(rowId, val) {
   item.lastUpdated = nowIso;
 
   // Extract offeredPrice if present in the plan text (e.g. "Clearance Promo (Offer: RM 8.00)")
+  let clearedOfferPrice = false;
   const m = cleanVal.match(/offer:\s*rm\s*([\d.]+)/i) || cleanVal.match(/rm\s*([\d.]+)/i);
   if (m && m[1]) {
     const parsedPrice = parseFloat(m[1]);
@@ -3625,6 +4344,7 @@ function updateExpiryActionPlan(rowId, val) {
     delete item.offeredPrice;
     delete item.clearancePrice;
     item.pricingUpdatedAt = nowIso;
+    clearedOfferPrice = true;
   }
 
   // --- WRITE-OFF ACCUMULATION HANDLING ---
@@ -3641,8 +4361,8 @@ function updateExpiryActionPlan(rowId, val) {
 
   recordUserEdit(item, {
     actionPlan: item.actionPlan,
-    offeredPrice: item.offeredPrice,
-    clearancePrice: item.clearancePrice
+    offeredPrice: clearedOfferPrice ? null : item.offeredPrice,
+    clearancePrice: clearedOfferPrice ? null : item.clearancePrice
   });
 
   saveLocalExpiryData({ skipHeal: true });
@@ -3737,6 +4457,7 @@ async function markExpiryItemCleared(rowId, btnEl = null, ev = null) {
   const legacyBatchKey = (bt && bt !== 'N/A') ? bt : 'NO_BATCH';
   const poolingKey = getExpiryProductPoolingKey(target);
 
+  removeReactivatedExpiryKeysForItem(target);
   beginClearedKeysBatch();
   try {
     // Add all canonical representations to persistent tombstones
@@ -3775,6 +4496,13 @@ async function markExpiryItemCleared(rowId, btnEl = null, ev = null) {
   } finally {
     endClearedKeysBatch();
   }
+
+  recordUserEdit(target, {
+    status: 'DONE',
+    quantity: 0,
+    clearedAt: nowIso,
+    lastUpdated: nowIso
+  });
 
   if (targetIdStr) {
     selectedWriteOffRowIds.delete(targetIdStr);
@@ -3823,9 +4551,11 @@ async function reactivateExpiryItem(rowId) {
   const session = typeof getSession === 'function' ? getSession() : null;
   const nowIso = new Date().toISOString();
 
-  // Remove from cleared tombstone (single flush)
+  // Remove from cleared tombstone (single flush) and record reactivation timestamp so older cloud tombstones never re-clear it
+  recordReactivatedExpiryKeysForItem(item, nowIso);
   beginClearedKeysBatch();
   try {
+    getCanonicalKeysForExpiryItem(item).forEach(k => removeClearedExpiryKey(k));
     if (item.itemCode) removeClearedExpiryKey(item.itemCode);
     if (item.rowId) removeClearedExpiryKey(`ROW_${item.rowId}`);
     const itemKey = getExpiryItemKey(item);
@@ -3842,7 +4572,8 @@ async function reactivateExpiryItem(rowId) {
 
   recordUserEdit(item, {
     quantity: qty,
-    status: 'Active'
+    status: 'Active',
+    lastUpdated: nowIso
   });
   saveLocalExpiryData({ skipHeal: true });
   renderExpiryUI();
@@ -3945,6 +4676,7 @@ async function handleEditExpiryItemSubmit(e) {
       updateWriteOffSelectedCounter();
     }
   }
+  let clearedOfferPrice = false;
   if (!isNaN(offeredPriceVal) && offeredPriceVal >= 0) {
     item.offeredPrice = offeredPriceVal;
     item.clearancePrice = offeredPriceVal;
@@ -3956,6 +4688,7 @@ async function handleEditExpiryItemSubmit(e) {
     delete item.offeredPrice;
     delete item.clearancePrice;
     item.pricingUpdatedAt = nowIso;
+    clearedOfferPrice = true;
   }
 
   if (item.quantity === 0) {
@@ -3973,8 +4706,9 @@ async function handleEditExpiryItemSubmit(e) {
     expiryDate: item.expiryDate,
     quantity: item.quantity,
     status: item.status,
-    offeredPrice: item.offeredPrice,
-    clearancePrice: item.clearancePrice
+    offeredPrice: clearedOfferPrice ? null : item.offeredPrice,
+    clearancePrice: clearedOfferPrice ? null : item.clearancePrice,
+    lastUpdated: nowIso
   });
   saveLocalExpiryData({ skipHeal: true });
   renderExpiryUI();
@@ -4746,8 +5480,9 @@ function updateExpiryOfferedPrice(rowId, val) {
           it.updatedBy = updatedBy;
           recordUserEdit(it, {
             actionPlan: formattedPlan,
-            offeredPrice: !isNaN(num) && num > 0 ? num : undefined,
-            clearancePrice: !isNaN(num) && num > 0 ? num : undefined
+            offeredPrice: !isNaN(num) && num > 0 ? num : null,
+            clearancePrice: !isNaN(num) && num > 0 ? num : null,
+            lastUpdated: nowIso
           });
         }
       });
@@ -5735,6 +6470,12 @@ async function handleQuickAddSubmit(e) {
   };
 
   expiryItems.unshift(newItem);
+  recordUserEdit(newItem, {
+    expiryDate: newItem.expiryDate,
+    quantity: newItem.quantity,
+    status: 'Active',
+    lastUpdated: nowIso
+  });
   saveLocalExpiryData();
   delete expiryItems._productBatchMap;
   delete expiryItems._skuBatchMap;
@@ -5744,8 +6485,17 @@ async function handleQuickAddSubmit(e) {
     openSkuBatchExplorerModal(currentExplorerProductKey);
   }
 
-  // Push to Sheets
-  await pushBatchExpiryToSheets([newItem]);
+  // Push once to Sheets and flag _pushedToSheet so immediate Action Plan / Price edits never duplicate the Sheet row
+  newItem._pushedToSheet = true;
+  const insertedOk = await pushBatchExpiryToSheets([newItem]);
+  if (insertedOk) {
+    // Reconcile the real numeric Google Sheet rowId in the background (non-blocking)
+    setTimeout(() => {
+      if (!_activeExpirySyncPromise) {
+        syncExpiryFromSheets(false).catch(() => {});
+      }
+    }, 1500);
+  }
 
   closeQuickAddExpiryModal();
   document.getElementById('expiryQuickAddForm')?.reset();
@@ -6012,7 +6762,14 @@ async function updateBatchExplorerQty(rowId, newQty) {
 
   item.quantity = num;
   item.remainingQty = num;
-  item.lastUpdated = new Date().toISOString();
+  const nowIso = new Date().toISOString();
+  item.lastUpdated = nowIso;
+
+  recordUserEdit(item, {
+    quantity: num,
+    status: item.status || 'Active',
+    lastUpdated: nowIso
+  });
 
   saveLocalExpiryData({ skipHeal: true });
   renderExpiryUI();
@@ -6074,6 +6831,7 @@ async function markBatchItemDoneClear(rowId, btnEl = null, ev = null) {
   const legacyBatchKey = (bt && bt !== 'N/A') ? bt : 'NO_BATCH';
   const poolingKey = getExpiryProductPoolingKey(item);
 
+  removeReactivatedExpiryKeysForItem(item);
   beginClearedKeysBatch();
   try {
     if (targetIdStr && targetIdStr !== 'undefined' && targetIdStr !== 'null') {
@@ -6110,6 +6868,13 @@ async function markBatchItemDoneClear(rowId, btnEl = null, ev = null) {
   } finally {
     endClearedKeysBatch();
   }
+
+  recordUserEdit(item, {
+    status: 'DONE',
+    quantity: 0,
+    clearedAt: nowIso,
+    lastUpdated: nowIso
+  });
 
   if (targetIdStr) {
     selectedWriteOffRowIds.delete(targetIdStr);
@@ -6257,7 +7022,13 @@ function loadAccumulatedWriteOffItems() {
     validIds.forEach(id => selectedWriteOffRowIds.add(id));
   }
 
-  saveAccumulatedWriteOffItems();
+  const prevSuppress = _suppressExpiryCloudVaultPush;
+  _suppressExpiryCloudVaultPush = true;
+  try {
+    saveAccumulatedWriteOffItems();
+  } finally {
+    _suppressExpiryCloudVaultPush = prevSuppress;
+  }
   updateWriteOffSelectedCounter();
 }
 
@@ -6265,6 +7036,9 @@ function saveAccumulatedWriteOffItems() {
   try {
     localStorage.setItem('pmg_accumulated_write_off_ids', JSON.stringify(Array.from(selectedWriteOffRowIds)));
   } catch (e) {}
+  if (!_suppressExpiryCloudVaultPush) {
+    schedulePushExpiryEditsVaultToCloud(false);
+  }
 }
 
 // ─── BATCH DECISION & BULK OPERATIONS ENGINE ─────────────────────────────────
@@ -7271,7 +8045,25 @@ function confirmAndExecuteWriteOff() {
     console.warn('Failed to save to write-off archive:', err);
   }
 
-  // Push removal / written-off status to Google Sheets
+  // Record written-off status in Cross-PC Cloud Vault & push to Google Sheets
+  beginUserEditsBatch();
+  beginClearedKeysBatch();
+  try {
+    archived.forEach(it => {
+      getCanonicalKeysForExpiryItem(it).forEach(k => addClearedExpiryKey(k));
+      recordUserEdit(it, {
+        status: 'Written-Off',
+        actionPlan: 'Written-Off',
+        quantity: 0,
+        clearedAt: it.writtenOffAt,
+        lastUpdated: it.writtenOffAt
+      });
+    });
+  } finally {
+    endClearedKeysBatch();
+    endUserEditsBatch();
+  }
+
   archived.forEach(it => {
     pushExpiryUpdateToSheets(it.rowId, 0, 'Written-Off', it.expiryDate, {
       actionPlan: 'Written-Off',
@@ -7363,6 +8155,11 @@ window.pmgExpiry = {
   syncFromOneDrive: () => syncExpiryFromSheets(false),
   saveToOneDrive: (branch) => Promise.resolve(true),
   syncFromSheets: syncExpiryFromSheets,
+  syncEditsVaultWithCloud: reconcileExpiryEditsVaultWithCloud,
+  pushEditsVaultToCloud: schedulePushExpiryEditsVaultToCloud,
+  readEditsCloudVault: readExpiryEditsCloudVault,
+  recordUserEdit: recordUserEdit,
+  applyUserEdits: applyUserEdits,
   getShortDatedStock: getShortDatedStockForReplenishment,
   syncHqReturnPolicy: syncHqReturnPolicy,
   getHqPolicyForItem: getHqPolicyForItem,

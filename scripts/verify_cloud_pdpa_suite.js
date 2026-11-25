@@ -3201,9 +3201,14 @@ function createBrowserSandbox(fetchImpl) {
     const promoHtml = fs.readFileSync(path.join(ROOT, 'promo', 'index.html'), 'utf8');
     const swVerMatch = swSrc.match(/pmg-hub-cache-v(\d+)/);
     assert(swVerMatch && parseInt(swVerMatch[1], 10) >= 70, 'sw.js must be bumped to pmg-hub-cache-v70+');
-    assert(mainHtml.includes('v70') && patientHtml.includes('v70') && promoHtml.includes('v70'), 'All HTML entrypoints must show v70 version badge');
+    const verAtLeast70 = (html) => {
+      const m = html.match(/\bv(\d+)\b/);
+      return Boolean(m && parseInt(m[1], 10) >= 70);
+    };
+    assert(verAtLeast70(mainHtml) && verAtLeast70(patientHtml) && verAtLeast70(promoHtml), 'All HTML entrypoints must show v70+ version badge');
 
-    let fetchCalls = 0;
+    let sheetsFetchCalls = 0;
+    let vaultReadCalls = 0;
     const remoteItems = [];
     for (let i = 1; i <= 5000; i++) {
       remoteItems.push({
@@ -3220,10 +3225,15 @@ function createBrowserSandbox(fetchImpl) {
     }
 
     const mockFetch = async (url) => {
-      fetchCalls++;
-      if (String(url).includes('action=getExpiry')) {
+      const u = String(url);
+      if (u.includes('action=getExpiry')) {
+        sheetsFetchCalls++;
         await new Promise(r => setTimeout(r, 15));
         return { ok: true, json: async () => ({ success: true, items: remoteItems }) };
+      }
+      if (u.includes('PMG_EXPIRY_EDITS_VAULT_KS01')) {
+        vaultReadCalls++;
+        return { ok: true, json: async () => ({ success: false, error: 'Branch not found' }) };
       }
       return { ok: true, text: async () => JSON.stringify({ success: true }), json: async () => ({ success: true }) };
     };
@@ -3281,15 +3291,17 @@ function createBrowserSandbox(fetchImpl) {
     assert(lsWrites <= 2, `Expected <= 2 localStorage writes during 5,000-row merge, got ${lsWrites}`);
     assert(lsBytes < 250000, `Expected < 250KB localStorage writes during 5,000-row merge, got ${lsBytes} bytes`);
 
-    // 3. Concurrent syncExpiryFromSheets calls must coalesce into 1 single network fetch & persist to IndexedDB
+    // 3. Concurrent syncExpiryFromSheets calls must coalesce into 1 single Sheets fetch + 1 Cloud Vault read & persist to IndexedDB
     sbExp.win.pmgExpiry.setItems(localHalf);
-    fetchCalls = 0;
+    sheetsFetchCalls = 0;
+    vaultReadCalls = 0;
     await Promise.all([
       sbExp.win.pmgExpiry.syncFromSheets(false),
       sbExp.win.pmgExpiry.syncFromSheets(false),
       sbExp.win.pmgExpiry.syncFromSheets(false)
     ]);
-    assert.strictEqual(fetchCalls, 1, `Concurrent syncExpiryFromSheets calls must coalesce into 1 fetch, got ${fetchCalls}`);
+    assert.strictEqual(sheetsFetchCalls, 1, `Concurrent syncExpiryFromSheets calls must coalesce into 1 Sheets fetch, got ${sheetsFetchCalls}`);
+    assert.strictEqual(vaultReadCalls, 1, `Concurrent syncExpiryFromSheets calls must coalesce into 1 Cloud Vault read, got ${vaultReadCalls}`);
     assert.strictEqual(sbExp.win.pmgExpiry.getItems().length, 5000, 'Synced dataset must contain all 5,000 rows');
     assert(Array.isArray(idbStore.get('pmg_stock_expiry_data')) && idbStore.get('pmg_stock_expiry_data').length === 5000, 'Full 5,000-row expiry dataset must be durably backed up to IndexedDB');
 
@@ -3324,6 +3336,233 @@ function createBrowserSandbox(fetchImpl) {
     const skippedRes = await sbOd.win.runDailyAutoBackupIfDue({ rootHandle: { kind: 'directory' }, quiet: true });
     assert.strictEqual(skippedRes.skipped, true, 'Daily Auto-Backup must defer while Invoice PDF OCR is actively running');
     assert.strictEqual(skippedRes.reason, 'user_editing', 'Deferred reason should report user_editing');
+  });
+
+  await testAsync('Cross-PC Expiry Edits Cloud Vault & Quick Add Deduplication (v71): PC 1 Action Plans/Prices sync to Laptop via PMG_EXPIRY_EDITS_VAULT_KS01, legacy PC 1 auto-backfills, Quick Add stops duplicating Sheet rows & chunked >38KB vault round-trips', async () => {
+    const swSrc = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+    const mainHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const patientHtml = fs.readFileSync(path.join(ROOT, 'patient', 'index.html'), 'utf8');
+    const promoHtml = fs.readFileSync(path.join(ROOT, 'promo', 'index.html'), 'utf8');
+    const swVerMatch = swSrc.match(/pmg-hub-cache-v(\d+)/);
+    assert(swVerMatch && parseInt(swVerMatch[1], 10) >= 71, 'sw.js must be bumped to pmg-hub-cache-v71+');
+    assert(mainHtml.includes('v71') && patientHtml.includes('v71') && promoHtml.includes('v71'), 'All HTML entrypoints must show v71 version badge');
+
+    // Shared mock Google Cloud backend simulating the real 8-column Expiry Sheet GAS (which drops actionPlan/offeredPrice!)
+    // + the live Schedule/Ops Cloud Vault GAS (PMG_EXPIRY_EDITS_VAULT_KS01 + uploadApplicantDoc/getApplicantDoc)
+    const sheetRows = [
+      { rowId: 4658, branch: 'Kota Sentosa', batchNumber: 'B100', itemCode: '125100', itemDescription: 'SAMPLE VITAMIN C 1000MG', expiryDate: '30/04/2027', quantity: 5, sourceFile: 'INV-1.pdf', status: 'Active' }
+    ];
+    let batchInsertCount = 0;
+    const cloudVaults = {};
+    const cloudDocs = {};
+    let docSeq = 1;
+
+    const createMultiPcFetch = () => async (url, opts = {}) => {
+      const u = String(url);
+      const method = (opts.method || 'GET').toUpperCase();
+
+      // 1. Legacy 8-column Stock Expiry Google Sheet API (drops actionPlan/offeredPrice just like live production!)
+      if (u.includes('action=getExpiry')) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            items: sheetRows.map(r => ({
+              rowId: r.rowId,
+              branch: r.branch,
+              batchNumber: r.batchNumber,
+              itemCode: r.itemCode,
+              itemDescription: r.itemDescription,
+              expiryDate: r.expiryDate,
+              quantity: r.quantity,
+              sourceFile: r.sourceFile,
+              status: r.status
+            }))
+          })
+        };
+      }
+      if (u.includes('AKfycbyp0uv8uw2ckUJ9eoq16o10Z0v-4c-ToQpuSwLXXwHpW9dnmw1OVll9gzhCmdwFaJIBTA') && method === 'POST') {
+        const body = JSON.parse(opts.body || '{}');
+        if (body.action === 'batch_insert' && Array.isArray(body.items)) {
+          batchInsertCount++;
+          body.items.forEach(it => {
+            const nextRowId = sheetRows.length > 0 ? Math.max(...sheetRows.map(x => x.rowId)) + 1 : 2;
+            // Notice: 8-column GAS intentionally drops actionPlan & offeredPrice!
+            sheetRows.push({
+              rowId: nextRowId,
+              branch: it.branch,
+              batchNumber: it.batchNumber,
+              itemCode: it.itemCode,
+              itemDescription: it.itemDescription,
+              expiryDate: it.expiryDate,
+              quantity: it.quantity,
+              sourceFile: it.sourceFile,
+              status: it.status || 'Active'
+            });
+          });
+        }
+        return { ok: true, text: async () => JSON.stringify({ success: true }), json: async () => ({ success: true }) };
+      }
+
+      // 2. Live Ops Cloud Vault API (PMG_SCHEDULE_API_URL)
+      if (u.includes('action=getApplicantDoc')) {
+        const m = u.match(/docId=([^&]+)/);
+        const docId = m ? decodeURIComponent(m[1]) : '';
+        const doc = cloudDocs[docId];
+        return { ok: true, json: async () => (doc ? { success: true, data: doc.data } : { success: false }) };
+      }
+      if (u.includes('branch=')) {
+        const m = u.match(/branch=([^&]+)/);
+        const br = m ? decodeURIComponent(m[1]) : '';
+        if (cloudVaults[br]) {
+          return { ok: true, json: async () => ({ status: 'success', schedule: cloudVaults[br] }) };
+        }
+        return { ok: true, json: async () => ({ success: false, error: `Branch not found: ${br}` }) };
+      }
+      if (method === 'POST') {
+        const body = JSON.parse(opts.body || '{}');
+        if (body.action === 'uploadApplicantDoc') {
+          const docId = `DOC_EXP_${docSeq++}`;
+          cloudDocs[docId] = { data: body.doc.data, name: body.doc.name };
+          return { ok: true, json: async () => ({ success: true, docId }) };
+        }
+        if (body.branch && body.schedule) {
+          cloudVaults[body.branch] = body.schedule;
+          return { ok: true, json: async () => ({ status: 'success' }) };
+        }
+      }
+      return { ok: true, text: async () => JSON.stringify({ success: true }), json: async () => ({ success: true }) };
+    };
+
+    const bootExpiryPc = () => {
+      const sb = createBrowserSandbox(createMultiPcFetch());
+      const origGetById = sb.doc.getElementById.bind(sb.doc);
+      sb.doc.getElementById = (id) => {
+        const el = origGetById(id);
+        if (el) {
+          if (typeof el.querySelector !== 'function') el.querySelector = () => null;
+          if (typeof el.querySelectorAll !== 'function') el.querySelectorAll = () => [];
+          if (typeof el.reset !== 'function') el.reset = () => {};
+        }
+        return el;
+      };
+      sb.ctx.setText = () => {};
+      sb.win.setText = () => {};
+      sb.ctx.WeakMap = WeakMap;
+      sb.win.WeakMap = WeakMap;
+      sb.ctx.TextEncoder = TextEncoder;
+      sb.ctx.TextDecoder = TextDecoder;
+      sb.win.TextEncoder = TextEncoder;
+      sb.win.TextDecoder = TextDecoder;
+      vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'hq_return_policy.js'), 'utf8'), sb.ctx);
+      vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'expiry.js'), 'utf8'), sb.ctx);
+      return sb;
+    };
+
+    // ─── SCENARIO A: PC 1 Quick Add + Action Plan ("Clearance Promo / PWP") → Laptop Sync ───
+    const pc1 = bootExpiryPc();
+    // Populate Quick Add form fields on PC 1
+    pc1.doc.getElementById('qaBranch').value = 'Kota Sentosa';
+    pc1.doc.getElementById('qaItemCode').value = '125995 - bot120';
+    pc1.doc.getElementById('qaItemDesc').value = 'Blackmores Pregnancy & Breast-feeding Gold';
+    pc1.doc.getElementById('qaBatch').value = '325631';
+    pc1.doc.getElementById('qaExpiry').value = '14/05/2027';
+    pc1.doc.getElementById('qaQty').value = '1';
+    pc1.doc.getElementById('expiryQuickAddForm').reset = () => {};
+
+    await pc1.ctx.handleQuickAddSubmit({ preventDefault: () => {} });
+    assert.strictEqual(batchInsertCount, 1, 'Quick Add must call batch_insert exactly ONCE');
+
+    const addedOnPc1 = pc1.win.pmgExpiry.getItems().find(x => String(x.itemCode) === '125995 - bot120');
+    assert(addedOnPc1, 'Quick Add item must be present on PC 1');
+
+    // Immediately change Action Plan to "Clearance Promo / PWP" while rowId is still qa_...
+    pc1.ctx.updateExpiryActionPlan(addedOnPc1.rowId, 'Clearance Promo / PWP');
+    // Also set offered price on existing row 4658
+    pc1.win.pmgExpiry.setItems([...pc1.win.pmgExpiry.getItems(), { ...sheetRows[0] }]);
+    pc1.win.updateExpiryOfferedPrice(4658, '29.90');
+    await pc1.win.pmgExpiry.pushEditsVaultToCloud(true);
+
+    // Crucial regression check: editing Action Plan on a Quick Add row must NOT duplicate Sheet rows!
+    assert.strictEqual(batchInsertCount, 1, `Editing Action Plan on a Quick Add item must NEVER append duplicate Sheet rows (got ${batchInsertCount})`);
+    assert(cloudVaults['PMG_EXPIRY_EDITS_VAULT_KS01'], 'PMG_EXPIRY_EDITS_VAULT_KS01 must be persisted to Google Cloud');
+
+    // Simulate historical duplicate Manual Quick Entry rows 4659, 4660, 4661 ALREADY sitting in the live Sheet!
+    const liveQuickRow = sheetRows.find(r => r.itemCode === '125995 - bot120');
+    sheetRows.push({ ...liveQuickRow, rowId: liveQuickRow.rowId + 1 });
+    sheetRows.push({ ...liveQuickRow, rowId: liveQuickRow.rowId + 2 });
+
+    // Laptop opens fresh (empty localStorage, zero local edits) and syncs
+    const laptop = bootExpiryPc();
+    await laptop.win.pmgExpiry.syncFromSheets(false);
+
+    const blackmoresLaptop = laptop.win.pmgExpiry.getItems().find(x => String(x.itemCode) === '125995 - bot120');
+    assert(blackmoresLaptop, 'Laptop must receive Blackmores Pregnancy & Breast-feeding Gold from Sheets');
+    assert.strictEqual(blackmoresLaptop.quantity, 1, `Duplicate Manual Quick Entry Sheet rows must deduplicate to qty=1 (NOT 3), got ${blackmoresLaptop.quantity}`);
+    assert.strictEqual(laptop.ctx.getItemActionPlan(blackmoresLaptop), 'Clearance Promo / PWP', `Laptop must display PC 1 Action Plan "Clearance Promo / PWP" instead of "Closely monitor" (got "${laptop.ctx.getItemActionPlan(blackmoresLaptop)}")`);
+
+    const vitCLaptop = laptop.win.pmgExpiry.getItems().find(x => String(x.itemCode) === '125100');
+    assert(vitCLaptop && vitCLaptop.offeredPrice === 29.9, 'Laptop must receive PC 1 offered price RM 29.90');
+
+    // ─── SCENARIO B: Legacy PC 1 Upgrade Recovery (empty Cloud Vault, pre-v71 local edits on PC 1) ───
+    delete cloudVaults['PMG_EXPIRY_EDITS_VAULT_KS01'];
+    const legacyPc1 = bootExpiryPc();
+    // Pre-v71 PC 1 had a modified item sitting in local dataset (no cloud vault existed yet)
+    legacyPc1.win.pmgExpiry.setItems([
+      {
+        rowId: 'qa_legacy_123',
+        branch: 'Kota Sentosa',
+        batchNumber: '325631',
+        itemCode: '125995 - bot120',
+        itemDescription: 'Blackmores Pregnancy & Breast-feeding Gold',
+        expiryDate: '14/05/2027',
+        quantity: 1,
+        sourceFile: 'Manual Quick Entry',
+        status: 'Active',
+        actionPlan: 'Clearance Promo / PWP',
+        lastUpdated: '2026-11-25T03:00:00.000Z'
+      }
+    ]);
+    await legacyPc1.win.pmgExpiry.syncFromSheets(false);
+    assert(cloudVaults['PMG_EXPIRY_EDITS_VAULT_KS01'], 'Legacy PC 1 refreshing to v71 must auto-backfill and upload existing local edits to PMG_EXPIRY_EDITS_VAULT_KS01');
+
+    const freshLaptop2 = bootExpiryPc();
+    await freshLaptop2.win.pmgExpiry.syncFromSheets(false);
+    const recoveredOnLaptop = freshLaptop2.win.pmgExpiry.getItems().find(x => String(x.itemCode) === '125995 - bot120');
+    assert.strictEqual(freshLaptop2.ctx.getItemActionPlan(recoveredOnLaptop), 'Clearance Promo / PWP', 'Laptop must recover legacy PC 1 edits immediately after PC 1 refreshes to v71');
+
+    // ─── SCENARIO C: Bidirectional Conflict Resolution (Laptop newer edit wins, unrelated PC 1 edit preserved) ───
+    const laptopEditItem = freshLaptop2.win.pmgExpiry.getItems().find(x => String(x.itemCode) === '125100');
+    freshLaptop2.ctx.updateExpiryActionPlan(laptopEditItem.rowId, 'Return to Supplier');
+    await freshLaptop2.win.pmgExpiry.pushEditsVaultToCloud(true);
+
+    await legacyPc1.win.pmgExpiry.syncFromSheets(false);
+    const vitCOnPc1 = legacyPc1.win.pmgExpiry.getItems().find(x => String(x.itemCode) === '125100');
+    const blackmoresStillOnPc1 = legacyPc1.win.pmgExpiry.getItems().find(x => String(x.itemCode) === '125995 - bot120');
+    assert.strictEqual(legacyPc1.ctx.getItemActionPlan(vitCOnPc1), 'Return to Supplier', 'Newer Laptop edit must sync back to PC 1');
+    assert.strictEqual(legacyPc1.ctx.getItemActionPlan(blackmoresStillOnPc1), 'Clearance Promo / PWP', 'Unrelated PC 1 edits must be preserved during bidirectional merge');
+
+    // ─── SCENARIO D: Oversized >38KB Vault Automatically Chunks via uploadApplicantDoc / getApplicantDoc ───
+    const bigEdits = {};
+    for (let i = 0; i < 220; i++) {
+      bigEdits[`KOTA SENTOSA|C_BIG${i}|B${i}`] = {
+        branch: 'KOTA SENTOSA',
+        itemCode: `BIG${i}`,
+        batchNumber: `B${i}`,
+        itemDescription: `OVERSIZED TEST PRODUCT DESCRIPTION NUMBER ${i} WITH EXTRA METADATA`,
+        actionPlan: `Clearance Promo / PWP #${i}`,
+        offeredPrice: 12.5,
+        lastUpdated: '2026-11-25T04:00:00.000Z'
+      };
+    }
+    const chunkPc = bootExpiryPc();
+    chunkPc.win.localStorage.setItem('pmg_expiry_user_edits', JSON.stringify(bigEdits));
+    await chunkPc.win.pmgExpiry.pushEditsVaultToCloud(true);
+    assert(cloudVaults['PMG_EXPIRY_EDITS_VAULT_KS01'] && cloudVaults['PMG_EXPIRY_EDITS_VAULT_KS01'].chunkedDocId, 'Vault exceeding 38KB must automatically upload via uploadApplicantDoc and store chunkedDocId pointer');
+
+    const chunkReaderLaptop = bootExpiryPc();
+    const readBackVault = await chunkReaderLaptop.win.pmgExpiry.readEditsCloudVault();
+    assert(readBackVault && readBackVault.edits && readBackVault.edits['KOTA SENTOSA|C_BIG219|B219']?.actionPlan === 'Clearance Promo / PWP #219', 'Chunked >38KB Expiry Edits Vault must decode accurately on another PC');
   });
 
   console.log(`\nSummary: ${passed} passed, ${failed} failed.`);
